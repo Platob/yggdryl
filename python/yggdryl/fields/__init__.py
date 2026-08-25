@@ -1,10 +1,11 @@
 """Datatype-specific factories returning the canonical native ``Field``.
 
-The exported ``*Field`` names are static views only. Every factory returns an
-ordinary :class:`yggdryl.Field`, so metadata, Arrow caching, equality, and record
-schemas continue to have one native implementation.
+The exported ``*Field`` names are typing views only. Every factory returns an
+ordinary :class:`yggdryl.Field`, so metadata, Arrow caching, equality, and
+dataclass schemas continue to have one native implementation.
 """
 
+from ._classes import field
 from ._typing import TypedDataType, TypedField
 from .binary import (
     BinaryField,
@@ -97,7 +98,8 @@ from .scalar import BooleanField, NullField, boolean, null
 from .temporal import (
     Date32Field,
     Date64Field,
-    DurationField,
+    Duration32Field,
+    Duration64Field,
     IntervalField,
     Time32Field,
     Time64Field,
@@ -105,7 +107,8 @@ from .temporal import (
     TimestampField,
     date32,
     date64,
-    duration,
+    duration32,
+    duration64,
     interval,
     time,
     time32,
@@ -126,7 +129,8 @@ __all__ = [
     "DecimalField",
     "DenseUnionField",
     "DictionaryField",
-    "DurationField",
+    "Duration32Field",
+    "Duration64Field",
     "FixedSizeBinaryField",
     "FixedSizeListField",
     "Float16Field",
@@ -175,12 +179,14 @@ __all__ = [
     "decimal256",
     "dense_union",
     "dictionary",
-    "duration",
+    "duration32",
+    "duration64",
     "fixed_size_binary",
     "fixed_size_list",
     "float16",
     "float32",
     "float64",
+    "field",
     "geography",
     "geometry",
     "int8",

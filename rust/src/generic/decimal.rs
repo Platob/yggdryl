@@ -13,39 +13,53 @@
 //! mapping key.
 //!
 //! ```
-//! use yggdryl::Value;
+//! use yggdryl::Scalar;
 //!
-//! let price = Value::decimal(1_050, 2); // 10.50
+//! let price = Scalar::d128(1_050, 2); // 10.50
 //!
-//! assert_eq!(price.as_decimal(), Some((1_050, 2)));
-//! assert_eq!(price, Value::decimal(105, 1)); // the same number, less precision
+//! assert_eq!(price.as_d128(), Some((1_050, 2)));
+//! assert_eq!(price, Scalar::d128(105, 1));
 //! assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
 //! ```
 
 use std::cmp::Ordering;
 
-use super::value::Value;
+use super::scalar::Scalar;
+use crate::I256;
 
-impl Value {
+impl Scalar {
     /// Build an exact decimal from an unscaled integer and a scale.
     ///
-    /// The value is `unscaled * 10^-scale`, so `Value::decimal(1_050, 2)` is
+    /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
-    pub const fn decimal(unscaled: i128, scale: i8) -> Self {
-        Self::Decimal(unscaled, scale)
+    pub const fn d128(unscaled: i128, scale: i8) -> Self {
+        Self::D128(unscaled, scale)
     }
 
-    /// Return the unscaled integer and scale when this is an exact decimal.
-    pub const fn as_decimal(&self) -> Option<(i128, i8)> {
+    /// Build an exact decimal with a 256-bit coefficient.
+    pub const fn d256(unscaled: I256, scale: i8) -> Self {
+        Self::D256(unscaled, scale)
+    }
+
+    /// Return the coefficient and scale when this is a 128-bit decimal.
+    pub const fn as_d128(&self) -> Option<(i128, i8)> {
         match self {
-            Self::Decimal(unscaled, scale) => Some((*unscaled, *scale)),
+            Self::D128(unscaled, scale) => Some((*unscaled, *scale)),
+            _ => None,
+        }
+    }
+
+    /// Return the coefficient and scale when this is a 256-bit decimal.
+    pub const fn as_d256(&self) -> Option<(I256, i8)> {
+        match self {
+            Self::D256(unscaled, scale) => Some((*unscaled, *scale)),
             _ => None,
         }
     }
 
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
-        matches!(self, Self::Decimal(..))
+        matches!(self, Self::D128(..) | Self::D256(..))
     }
 
     /// Return this decimal's unscaled integer at `scale`, when it is exact.
@@ -54,7 +68,11 @@ impl Value {
     /// restated at that scale. Restating to fewer fractional digits would throw
     /// digits away, so it answers `None` rather than rounding.
     pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128> {
-        let (unscaled, current) = self.as_decimal()?;
+        let (unscaled, current) = match self {
+            Self::D128(unscaled, scale) => (*unscaled, *scale),
+            Self::D256(unscaled, scale) => (unscaled.as_i128()?, *scale),
+            _ => return None,
+        };
         let shift = i32::from(scale) - i32::from(current);
         match shift.cmp(&0) {
             Ordering::Equal => Some(unscaled),
@@ -66,20 +84,72 @@ impl Value {
             }
         }
     }
+
+    /// Return this decimal's 256-bit coefficient at `scale`, when exact.
+    pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256> {
+        let (unscaled, current) = match self {
+            Self::D128(unscaled, current) => (I256::from_i128(*unscaled), *current),
+            Self::D256(unscaled, current) => (*unscaled, *current),
+            _ => return None,
+        };
+        let shift = i32::from(scale) - i32::from(current);
+        match shift.cmp(&0) {
+            Ordering::Equal => Some(unscaled),
+            Ordering::Greater => (0..shift).try_fold(unscaled, |held, _| held.checked_mul_ten()),
+            Ordering::Less => (0..-shift).try_fold(unscaled, |held, _| held.divided_by_ten()),
+        }
+    }
+
+    /// Render an exact decimal without passing through a float.
+    pub fn as_decimal_utf8(&self) -> Option<String> {
+        let (coefficient, scale) = match self {
+            Self::D128(coefficient, scale) => (I256::from_i128(*coefficient), *scale),
+            Self::D256(coefficient, scale) => (*coefficient, *scale),
+            _ => return None,
+        };
+        Some(decimal_text(coefficient, scale))
+    }
+}
+
+/// Render a coefficient and scale in ordinary decimal notation.
+pub(crate) fn decimal_text(coefficient: I256, scale: i8) -> String {
+    let encoded = coefficient.to_string();
+    if scale == 0 {
+        return encoded;
+    }
+    let (sign, digits) = encoded
+        .strip_prefix('-')
+        .map_or(("", encoded.as_str()), |digits| ("-", digits));
+    if scale < 0 {
+        return format!(
+            "{sign}{digits}{}",
+            "0".repeat(usize::from(scale.unsigned_abs()))
+        );
+    }
+    let scale = usize::from(scale.unsigned_abs());
+    if digits.len() > scale {
+        let split = digits.len() - scale;
+        format!("{sign}{}.{}", &digits[..split], &digits[split..])
+    } else {
+        format!("{sign}0.{}{digits}", "0".repeat(scale - digits.len()))
+    }
 }
 
 /// Strip the trailing zeros a decimal's coefficient carries.
 ///
 /// Equal numbers share exactly one normal form, which is what lets `Hash` agree
 /// with the numeric `Ord` below without either of them widening the coefficient.
-pub(super) const fn normalize(unscaled: i128, scale: i8) -> (i128, i8) {
-    if unscaled == 0 {
-        return (0, 0);
+pub(super) fn normalize(unscaled: I256, scale: i8) -> (I256, i8) {
+    if unscaled.is_zero() {
+        return (I256::ZERO, 0);
     }
     let mut unscaled = unscaled;
     let mut scale = scale;
-    while unscaled % 10 == 0 && scale > i8::MIN {
-        unscaled /= 10;
+    while scale > i8::MIN {
+        let Some(reduced) = unscaled.divided_by_ten() else {
+            break;
+        };
+        unscaled = reduced;
         scale -= 1;
     }
     (unscaled, scale)
@@ -87,9 +157,9 @@ pub(super) const fn normalize(unscaled: i128, scale: i8) -> (i128, i8) {
 
 /// Compare two decimals by the number each one names.
 pub(super) fn compare(
-    left_unscaled: i128,
+    left_unscaled: I256,
     left_scale: i8,
-    right_unscaled: i128,
+    right_unscaled: I256,
     right_scale: i8,
 ) -> Ordering {
     let (left_unscaled, left_scale) = normalize(left_unscaled, left_scale);
@@ -97,7 +167,9 @@ pub(super) fn compare(
     if left_scale == right_scale {
         return left_unscaled.cmp(&right_unscaled);
     }
-    let sign = left_unscaled.signum().cmp(&right_unscaled.signum());
+    let sign = left_unscaled
+        .cmp(&I256::ZERO)
+        .cmp(&right_unscaled.cmp(&I256::ZERO));
     if sign != Ordering::Equal {
         return sign;
     }
@@ -106,31 +178,42 @@ pub(super) fn compare(
     // digits up to the other's scale and compare magnitudes. A product that no
     // longer fits is by that fact the larger magnitude, because the coefficient
     // it is compared against did fit.
-    let left_magnitude = left_unscaled.unsigned_abs();
-    let right_magnitude = right_unscaled.unsigned_abs();
-    let magnitudes = if left_scale < right_scale {
+    if left_scale < right_scale {
         scale_up(
-            left_magnitude,
+            left_unscaled,
             i32::from(right_scale) - i32::from(left_scale),
         )
-        .map_or(Ordering::Greater, |left| left.cmp(&right_magnitude))
+        .map_or_else(
+            || {
+                if left_unscaled.is_negative() {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            },
+            |left| left.cmp(&right_unscaled),
+        )
     } else {
         scale_up(
-            right_magnitude,
+            right_unscaled,
             i32::from(left_scale) - i32::from(right_scale),
         )
-        .map_or(Ordering::Less, |right| left_magnitude.cmp(&right))
-    };
-    if left_unscaled.is_negative() {
-        magnitudes.reverse()
-    } else {
-        magnitudes
+        .map_or_else(
+            || {
+                if right_unscaled.is_negative() {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            },
+            |right| left_unscaled.cmp(&right),
+        )
     }
 }
 
 /// Multiply a magnitude by ten `digits` times, or report that it overflowed.
-fn scale_up(magnitude: u128, digits: i32) -> Option<u128> {
-    (0..digits).try_fold(magnitude, |magnitude, _| magnitude.checked_mul(10))
+fn scale_up(unscaled: I256, digits: i32) -> Option<I256> {
+    (0..digits).try_fold(unscaled, |held, _| held.checked_mul_ten())
 }
 
 /// Multiply a signed coefficient by ten `digits` times, or report the overflow.

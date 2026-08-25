@@ -2,6 +2,55 @@
 
 use crate::generic::wkb::{Coord, Dimensions};
 
+mod identity {
+    use std::collections::{BTreeSet, HashSet};
+    use std::hash::Hash;
+
+    use crate::generic::wkb::{BoundingBox, Coord, Geometry};
+
+    #[test]
+    fn public_geometry_values_have_total_float_identity() {
+        fn assert_traits<T: Clone + Eq + Hash + Ord>() {}
+        assert_traits::<Coord>();
+        assert_traits::<BoundingBox>();
+        assert_traits::<Geometry>();
+
+        let first = Coord {
+            x: f64::from_bits(0x7ff8_0000_0000_0001),
+            y: 1.0,
+            z: None,
+            m: None,
+        };
+        let same_nan = Coord {
+            x: f64::from_bits(0x7ff8_0000_0000_0042),
+            ..first
+        };
+        assert_eq!(first, same_nan);
+        assert_eq!(HashSet::from([first, same_nan]).len(), 1);
+
+        let positive_zero = Coord { x: 0.0, ..first };
+        let negative_zero = Coord { x: -0.0, ..first };
+        assert_ne!(positive_zero, negative_zero);
+        assert_eq!(BTreeSet::from([positive_zero, negative_zero]).len(), 2);
+
+        let bounds = BoundingBox {
+            xmin: f64::NAN,
+            xmax: 1.0,
+            ymin: 2.0,
+            ymax: 3.0,
+            zmin: None,
+            zmax: None,
+            mmin: None,
+            mmax: None,
+        };
+        let same_bounds = BoundingBox {
+            xmin: f64::from_bits(0x7ff8_0000_0000_0042),
+            ..bounds
+        };
+        assert_eq!(bounds, same_bounds);
+    }
+}
+
 /// Both byte orders every geometry must read from; `true` is little endian,
 /// which is what the order byte itself spells.
 const ORDERS: [bool; 2] = [true, false];
@@ -82,7 +131,7 @@ mod reading {
         DIMENSIONS, ORDERS, axis_values, model_coordinate, push_doubles, push_header, push_u32,
         wkt_coordinate,
     };
-    use crate::generic::wkb::{Coord, Geometry, to_wkt};
+    use crate::generic::wkb::{Coord, Geometry, into_wkt};
 
     #[test]
     fn a_point_parses_in_every_dimensionality_and_byte_order() {
@@ -105,7 +154,7 @@ mod reading {
                 assert_eq!(geometry.type_id(), 1 + offset);
                 assert!(!geometry.is_empty());
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!("POINT{marker} ({})", wkt_coordinate(&values))
                 );
             }
@@ -137,7 +186,7 @@ mod reading {
                 );
                 assert_eq!(geometry.type_id(), 2 + offset);
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!(
                         "LINESTRING{marker} ({}, {})",
                         wkt_coordinate(&first),
@@ -194,7 +243,7 @@ mod reading {
                         .join(", ")
                 };
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!(
                         "POLYGON{marker} (({}), ({}))",
                         wkt_ring(&ring),
@@ -234,7 +283,7 @@ mod reading {
                 );
                 assert_eq!(geometry.type_id(), 4 + offset);
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!(
                         "MULTIPOINT{marker} (({}), ({}))",
                         wkt_coordinate(&first),
@@ -273,7 +322,7 @@ mod reading {
                 );
                 assert_eq!(geometry.type_id(), 5 + offset);
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!(
                         "MULTILINESTRING{marker} (({}), ({}))",
                         wkt_coordinate(&first),
@@ -321,7 +370,7 @@ mod reading {
                     .collect::<Vec<_>>()
                     .join(", ");
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!("MULTIPOLYGON{marker} ((({spelled})))")
                 );
             }
@@ -362,7 +411,7 @@ mod reading {
                 );
                 assert_eq!(geometry.type_id(), 7 + offset);
                 assert_eq!(
-                    to_wkt(&bytes).unwrap(),
+                    into_wkt(&bytes).unwrap(),
                     format!(
                         "GEOMETRYCOLLECTION{marker} (POINT{marker} ({}), LINESTRING{marker} ({}))",
                         wkt_coordinate(&point),
@@ -376,7 +425,7 @@ mod reading {
 
 mod empties {
     use super::{ORDERS, push_doubles, push_header, push_u32};
-    use crate::generic::wkb::{Dimensions, Geometry, to_wkt};
+    use crate::generic::wkb::{Dimensions, Geometry, into_wkt};
 
     #[test]
     fn a_zero_count_reads_as_empty_for_every_container_type() {
@@ -395,7 +444,7 @@ mod empties {
 
                 let geometry = Geometry::from_slice(&bytes).unwrap();
                 assert!(geometry.is_empty(), "type {code} should read as empty");
-                assert_eq!(to_wkt(&bytes).unwrap(), format!("{tag} EMPTY"));
+                assert_eq!(into_wkt(&bytes).unwrap(), format!("{tag} EMPTY"));
             }
         }
     }
@@ -416,7 +465,7 @@ mod empties {
                 }
             );
             assert!(geometry.is_empty());
-            assert_eq!(to_wkt(&bytes).unwrap(), "POINT EMPTY");
+            assert_eq!(into_wkt(&bytes).unwrap(), "POINT EMPTY");
         }
     }
 
@@ -428,7 +477,7 @@ mod empties {
         push_header(&mut bytes, true, 3_001);
         push_doubles(&mut bytes, true, &[f64::NAN, f64::NAN, f64::NAN, f64::NAN]);
 
-        assert_eq!(to_wkt(&bytes).unwrap(), "POINT ZM EMPTY");
+        assert_eq!(into_wkt(&bytes).unwrap(), "POINT ZM EMPTY");
     }
 
     #[test]
@@ -441,14 +490,14 @@ mod empties {
         push_header(&mut bytes, true, 1);
         push_doubles(&mut bytes, true, &[1.5, 2.5]);
 
-        assert_eq!(to_wkt(&bytes).unwrap(), "MULTIPOINT (EMPTY, (1.5 2.5))");
+        assert_eq!(into_wkt(&bytes).unwrap(), "MULTIPOINT (EMPTY, (1.5 2.5))");
     }
 }
 
 mod nesting {
     use super::{push_doubles, push_header, push_u32};
     use crate::DataType;
-    use crate::generic::wkb::{Coord, Dimensions, Geometry, bounding_box, to_wkt};
+    use crate::generic::wkb::{Coord, Dimensions, Geometry, bounding_box, into_wkt};
 
     /// Wrap one XY point in `levels` single-member collections.
     fn nested_collections(levels: usize) -> Vec<u8> {
@@ -500,7 +549,7 @@ mod nesting {
             }
         );
         assert_eq!(
-            to_wkt(&bytes).unwrap(),
+            into_wkt(&bytes).unwrap(),
             "GEOMETRYCOLLECTION (GEOMETRYCOLLECTION (POINT (1.5 2.5)), LINESTRING EMPTY)"
         );
     }
@@ -823,7 +872,7 @@ mod ewkb {
 
 mod exactness {
     use super::{push_doubles, push_header};
-    use crate::generic::wkb::{Geometry, to_wkt};
+    use crate::generic::wkb::{Geometry, into_wkt};
 
     #[test]
     fn extreme_coordinates_round_trip_bit_exactly() {
@@ -854,6 +903,6 @@ mod exactness {
         push_header(&mut bytes, true, 1);
         push_doubles(&mut bytes, true, &[0.1, -2.5]);
 
-        assert_eq!(to_wkt(&bytes).unwrap(), "POINT (0.1 -2.5)");
+        assert_eq!(into_wkt(&bytes).unwrap(), "POINT (0.1 -2.5)");
     }
 }

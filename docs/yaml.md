@@ -1,143 +1,151 @@
 # YAML
 
-`yggdryl::yaml` reads and writes YAML as the shared [`Value`](text.md), one document or a stream of them.
+YAML supports one document or a document stream, using ordinary YAML without
+private Yggdryl tags.
+
+## Text media and Arrow batches
+
+A YAML document stream carries raw structured values, not line-record media.
+For streamed Arrow batches with explicit overwrite and append behavior, use
+[Text media](text.md#text-media-and-arrow-batches). Text deliberately refuses
+keyed merge because a line has no stable row identity.
+
+## Raw shared-Scalar access
+
+Rust returns the shared `Scalar`; Python and JavaScript project it into native
+objects through the same codec.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{yaml, Scalar};
+
+    let value = yaml::from_utf8("symbol: AAPL\nquantity: 2\n")?;
+
+    assert_eq!(
+        value.get_key_str("symbol").and_then(Scalar::as_utf8),
+        Some("AAPL")
+    );
+    assert_eq!(yaml::into_utf8(&value)?, "quantity: 2\nsymbol: AAPL\n");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, yaml
+
+    natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
+    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
+
+    assert value.kind == "record"
+    assert value.as_py() == natural == {"quantity": 2, "symbol": "AAPL"}
+    assert yaml.dumps(value) == b"quantity: 2\nsymbol: AAPL\n"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar, yaml } = require('yggdryl')
+
+    const natural = yaml.loads('symbol: AAPL\nquantity: 2\n')
+    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { scalar: true })
+    const encoded = yaml.dumps(value)
+
+    assert.ok(value instanceof Scalar)
+    assert.equal(value.kind, 'record')
+    assert.deepEqual(value.asJs(), natural)
+    assert.ok(Buffer.isBuffer(encoded))
+    assert.deepEqual(yaml.loads(encoded), natural)
+    ```
+
+Mappings with string names become sorted `Record` values. YAML mappings with
+other keys remain `Mapping` and preserve insertion order. Duplicate keys are
+rejected. Python `cls=Scalar` and JavaScript `{ scalar: true }` return the exact
+native tree; omitting the selector keeps natural language objects.
+
+## Natural values and exact Fields
+
+Schemaless reads preserve only types proven by YAML syntax: null, boolean,
+integer, float, string, sequence, mapping, and standard binary. Unknown custom
+tags do not create private runtime classes; the tagged scalar or collection is
+read by its natural shape.
+
+Exact native values dump as interoperable YAML:
+
+| native value | natural YAML |
+| --- | --- |
+| `D128`, `D256` | quoted scale-preserving string |
+| `Bytes`, `Geospatial` | standard `!!binary` base64 |
+| date, time, `DateTime64`, duration | ISO scalar when representable |
+| `F16`, `F32`, `F64` | YAML float, including non-finite values |
+
+`!!binary` is a YAML standard tag, not a private marker envelope. No private
+tag is written. A plain quoted `"AP8="` therefore stays a string unless a
+[`Field`](field.md) declares it binary.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{yaml, DataType, Field, Scalar};
+
+    let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
+    let decoded = yaml::from_utf8_with_field("'12.50'\n", &amount)?;
+
+    assert_eq!(decoded, Scalar::d128(1_250, 2));
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    from yggdryl import Field, yaml
+
+    amount = Field("amount", "decimal128(8, 2)", nullable=False)
+
+    assert yaml.loads("'12.50'\n", field=amount) == Decimal("12.50")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, yaml } = require('yggdryl')
+
+    const amount = new Field('amount', 'decimal128(8, 2)', false)
+    const decoded = yaml.loads("'12.50'\n", { field: amount })
+
+    assert.equal(decoded.kind, 'd128')
+    assert.equal(decoded.scale, 2)
+    ```
+
+A Struct Field resolves record names into its child order and returns a row
+`Sequence` in Rust; Python and JavaScript restore a dictionary or object at
+their boundary. Malformed exact values and missing required children fail.
+
+## Documents and streams
+
+Rust `from_utf8`, `from_bytes`, and `from_reader` require exactly one YAML
+document. Their `_all` forms return every document, and
+`from_reader_iter[_with_field]` yields lazily and fuses after the first error.
+`into_writer_all` emits a YAML document stream.
+
+Python and JavaScript use `loads` / `dumps` for one document and
+`loads_all` / `dump_all` for a stream. Python `load_all` and JavaScript
+`loadAll` keep readable streams lazy.
 
 === "Rust"
 
     ```rust
     use yggdryl::yaml;
 
-    let value = yaml::from_str("symbol: AAPL\nquantity: 2\n")?;
-    assert_eq!(
-        value.get_key_str("symbol").and_then(|value| value.as_str()),
-        Some("AAPL"),
-    );
+    let documents = yaml::from_utf8_all("id: 1\n---\nid: 2\n")?;
+    let mut destination = Vec::new();
+    yaml::into_writer_all(&documents, &mut destination)?;
 
-    let encoded = yaml::to_vec(&value)?;
-    assert_eq!(yaml::from_slice(&encoded)?, value);
-
-    // One document means one.
-    assert!(yaml::from_str("id: 1\n---\nid: 2\n").is_err());
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import yaml
-
-    value = yaml.loads("symbol: AAPL\nquantity: 2\n")
-    assert value == {"symbol": "AAPL", "quantity": 2}
-
-    encoded = yaml.dumps(value)
-    assert isinstance(encoded, bytes)
-    assert yaml.loads(encoded) == value
-
-    # One document means one.
-    try:
-        yaml.loads("id: 1\n---\nid: 2\n")
-    except ValueError as error:
-        assert "expected one YAML document" in str(error)
-    else:
-        raise AssertionError("a second document must be reported")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const value = yaml.loads('symbol: AAPL\nquantity: 2\n')
-    assert.deepEqual(value, { symbol: 'AAPL', quantity: 2 })
-
-    const encoded = yaml.dumps(value)
-    assert.deepEqual(yaml.loads(encoded), value)
-
-    // One document means one.
-    assert.throws(() => yaml.loads('id: 1\n---\nid: 2\n'), /one YAML document/)
-    ```
-
-A single-document call decodes exactly one document and reports a second one at the byte it starts
-on, so feeding a stream to it fails instead of silently dropping data. The document-stream calls are
-below.
-
-Encoding writes one flow document per value, with every mapping key spelled explicitly:
-`{? "symbol" : "AAPL", ? "quantity" : 2}`. Explicit keys are what let a mapping keyed by a sequence
-or a boolean survive a round trip, which YAML's plain `key: value` form cannot carry. Reading is not
-restricted to what writing produces: block syntax, anchors and aliases, and the core schema's own
-spellings all decode.
-
-The bindings are byte-first. `dumps` returns `bytes` in Python and a `Buffer` in JavaScript, never
-text, so what you hold is what goes on the wire; decoding returns native objects rather than a
-`Value`.
-
-## Documents
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{Value, yaml};
-
-    let documents = yaml::from_str_all("id: 1\n---\nid: 2\n---\nnull\n")?;
-    assert_eq!(documents.len(), 3);
-    assert_eq!(documents[2], Value::Null);
-
-    let encoded = yaml::to_vec_all(&documents)?;
-    assert!(std::str::from_utf8(&encoded)?.contains("\n---\n"));
-    assert_eq!(yaml::from_slice_all(&encoded)?, documents);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import yaml
-
-    documents = list(yaml.loads_all("id: 1\n---\nid: 2\n---\nnull\n"))
-    assert documents == [{"id": 1}, {"id": 2}, None]
-
-    encoded = yaml.dumps_all(documents)
-    assert b"\n---\n" in encoded
-    assert list(yaml.loads_all(encoded)) == documents
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const documents = yaml.loadsAll('id: 1\n---\nid: 2\n---\nnull\n')
-    assert.deepEqual(documents, [{ id: 1 }, { id: 2 }, null])
-
-    const encoded = yaml.dumpAll(documents)
-    assert.match(encoded.toString(), /\n---\n/)
-    assert.deepEqual(yaml.loadsAll(encoded), documents)
-    ```
-
-Writing a stream puts `---` between documents and never before the first, so a one-document stream
-is byte-identical to a single-document write.
-
-A null document is still a document. `null`, `~`, and an explicit `---` with nothing after it all
-yield a value, at any position in the stream, so document *n* of the input is document *n* of the
-output. Anything that dropped them would turn a positional stream into a guess.
-
-These calls hold every document at once. The reader below holds one.
-
-=== "Rust"
-
-    ```rust
-    use std::io::Cursor;
-    use yggdryl::{Value, yaml};
-
-    let mut reader = yaml::Reader::new(Cursor::new("id: 1\n---\nitems: [1, 2\n"));
-
-    let first = reader.next().expect("a first document")?;
-    assert_eq!(first.get_key_str("id"), Some(&Value::U64(1)));
-    assert!(reader.byte_offset() >= "id: 1\n".len());
-
-    // The second document is malformed, and the reader is done after saying so.
-    assert!(reader.next().expect("a second document").is_err());
-    assert!(reader.next().is_none());
+    assert_eq!(documents.len(), 2);
+    assert_eq!(yaml::from_bytes_all(&destination)?, documents);
     ```
 
 === "Python"
@@ -147,137 +155,46 @@ These calls hold every document at once. The reader below holds one.
 
     from yggdryl import yaml
 
-    documents = yaml.load_all(io.BytesIO(b"id: 1\n---\nitems: [1, 2\n"))
-    assert next(documents) == {"id": 1}
+    documents = list(yaml.load_all(io.BytesIO(b"id: 1\n---\nid: 2\n")))
 
-    # The second document is malformed, and the iterator is done after saying so.
-    try:
-        next(documents)
-    except ValueError as error:
-        assert "at byte 23 (document byte 17)" in str(error)
-    else:
-        raise AssertionError("the malformed document must be reported")
-
-    assert list(documents) == []
+    assert documents == [{"id": 1}, {"id": 2}]
+    assert yaml.dumps_all(documents) == b"id: 1\n---\nid: 2\n"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Readable } = require('node:stream')
     const { yaml } = require('yggdryl')
 
-    async function main() {
-      const source = Readable.from([
-        Buffer.from('id: 1\n---\n'),
-        Buffer.from('items: [1, 2\n'),
-      ])
-      const documents = []
+    const documents = yaml.loadsAll('id: 1\n---\nid: 2\n')
+    const encoded = yaml.dumpAll(documents)
 
-      // The second document is malformed, and the loop ends after saying so.
-      await assert.rejects(async () => {
-        for await (const document of yaml.loadAllStream(source)) documents.push(document)
-      }, /cumulative byte/)
-
-      assert.deepEqual(documents, [{ id: 1 }])
-    }
-
-    main()
+    assert.deepEqual(documents, [{ id: 1 }, { id: 2 }])
+    assert.deepEqual(yaml.loadsAll(encoded), documents)
     ```
 
-One document is decoded per step, so the first is usable before the rest of the stream has been
-read - here, before it is even valid. A failure carries both offsets: the cumulative byte in the
-stream and the byte inside the document that failed. After a failure the iterator is finished
-rather than resynchronized, so a broken document cannot be stepped over into the next one.
+Each error carries both the document start and the failing byte offset in the
+whole source. After failure, the iterator is exhausted.
 
-`Reader::new` owns its source and `from_reader_iter` borrows one; both take anything readable.
-Python's `load_all` accepts a path or any object with `readline`, and JavaScript's `loadAllStream`
-takes a Node stream or an async iterable of chunks and yields documents as they arrive.
+## Formatting
 
-Parser bounds come from [`Limits`](text.md), and the `_with_limits` entry points take an explicit
-one. Depth and node counts are checked per document, `max_documents` caps how many a stream may
-hold, and `max_input_bytes` bounds the whole input. Two ceilings are the parser's own and no caller
-limit raises them: `MAX_FLOW_DEPTH` (255) for `[` and `{` flow nesting, and `MAX_PARSER_DEPTH`
-(384) for block nesting.
-
-## Laying out a dump
-
-Every dump method has a `_with_formatting` companion taking one shared
-[`Formatting`](text.md#laying-out-a-dump) value, and every existing method delegates to it with the
-default - so no output changes a byte unless a caller asks. Formatting changes **bytes, never
-meaning**: parsing any formatting of the same value yields an equal value, and dumping the same value
-under the same formatting twice is byte-identical.
-
-Block style with a two-space indent is today's behavior and stays the default; an integer width
-simply replaces the `2`. **No indent means flow style** - `{a: 1, b: 2}` on one line - which is valid
-YAML and round-trips, and is an explicitly requested opt-in, never what a caller gets by accident.
-A schema dump's one-key-per-line block style is the default precisely so nobody has to ask for it.
-A tab request falls back to the default width, because YAML forbids tabs as indentation outright and
-emitting one would produce a document that will not parse.
+YAML defaults to two-space block style. `Formatting::indented(n)` changes the
+block width; `Formatting::compact()` selects flow style. Layout changes bytes,
+never meaning.
 
 === "Rust"
 
     ```rust
-    use yggdryl::generic::Value;
     use yggdryl::text::Formatting;
+    use yggdryl::{yaml, Scalar};
 
-    let value = Value::from_mapping([
-        (Value::String("id".into()), Value::I64(1)),
-        (Value::String("tags".into()), Value::from_sequence([Value::String("a".into())])),
-    ])?;
+    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+    let flow =
+        yaml::into_utf8_with_formatting(&value, Formatting::compact())?;
 
-    assert_eq!(yggdryl::yaml::to_vec(&value)?, b"id: 1\ntags:\n  - a\n");
-    assert_eq!(
-        yggdryl::yaml::to_vec_with_formatting(&value, Formatting::indented(4))?,
-        b"id: 1\ntags:\n    - a\n",
-    );
-
-    // Flow style is the explicit opt-in, and it round-trips.
-    let flow = yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact())?;
-    assert_eq!(flow, b"{id: 1, tags: [a]}\n");
-    assert_eq!(yggdryl::yaml::from_slice(&flow)?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Field
-
-    field = Field("id", "int64", nullable=False)
-
-    # Block style at two spaces is the default; a width replaces the 2.
-    assert field.to_yaml().startswith("name: id\ndata_type:\n  type: int64")
-    assert field.to_yaml(indent=4).startswith("name: id\ndata_type:\n    type: int64")
-
-    # `indent=None` asks for flow style, which is valid YAML and round-trips.
-    assert field.to_yaml(indent=None).startswith("{name: id,")
-    assert Field.from_yaml(field.to_yaml(indent=None)) == field
-    ```
-
-=== "JavaScript"
-
-    !!! note "Rust first"
-        The layout option lands in the JavaScript facades once the core surface settles.
-
-
-## Tags are read, never written
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{Value, yaml};
-
-    let value = Value::from_mapping([
-        (Value::from("payload"), Value::from(vec![0_u8, 255])),
-    ])?;
-
-    let encoded = yaml::to_vec(&value)?;
-    let text = std::str::from_utf8(&encoded)?;
-    assert!(!text.contains("!yggdryl"));
-    assert!(text.contains(r#""$yggdryl": "bytes""#));
-
-    assert_eq!(yaml::from_slice(&encoded)?, value);
+    assert_eq!(flow, "{id: 1}\n");
+    assert_eq!(yaml::from_utf8(&flow)?, value);
     ```
 
 === "Python"
@@ -285,10 +202,13 @@ emitting one would produce a document that will not parse.
     ```python
     from yggdryl import yaml
 
-    encoded = yaml.dumps({"payload": b"\x00\xff"})
-    assert b"!yggdryl" not in encoded
-    assert b'"$yggdryl": "bytes"' in encoded
-    assert yaml.loads(encoded) == {"payload": b"\x00\xff"}
+    value = {"child": {"id": 1}}
+    laid_out = yaml.dumps(value, indent=4)
+    flow = yaml.dumps(value, indent=None)
+
+    assert b"\n    id:" in laid_out
+    assert flow.startswith(b"{")
+    assert yaml.loads(laid_out) == yaml.loads(flow) == value
     ```
 
 === "JavaScript"
@@ -297,178 +217,40 @@ emitting one would produce a document that will not parse.
     const assert = require('node:assert/strict')
     const { yaml } = require('yggdryl')
 
-    const encoded = yaml.dumps({ payload: Buffer.from([0, 255]) })
-    assert.ok(!encoded.toString().includes('!yggdryl'))
-    assert.match(encoded.toString(), /"\$yggdryl": "bytes"/)
-    assert.deepEqual(yaml.loads(encoded), { payload: Buffer.from([0, 255]) })
+    const value = { child: { id: 1 } }
+    const laidOut = yaml.dumps(value, { indent: 4 })
+    const flow = yaml.dumps(value, { indent: null })
+
+    assert.ok(laidOut.includes(Buffer.from('\n    id:')))
+    assert.equal(flow[0], '{'.charCodeAt(0))
+    assert.deepEqual(yaml.loads(laidOut), yaml.loads(flow))
     ```
 
-Nothing on the write path emits a YAML tag. A value with no native YAML spelling becomes an ordinary
-flow mapping under the `$yggdryl` marker, flat: marker and payload are two entries of one mapping. A
-custom `!yggdryl/*` tag would make the document unreadable to every other YAML implementation, while
-the envelope is plain YAML any parser loads, under the same `$yggdryl` marker [JSON](json.md) uses.
+The writer quotes scalars when their plain spelling would change type or
+structure. Deterministic Record order makes repeated dumps byte-identical.
 
-The same envelope carries what YAML's core schema has no spelling for: bytes as base64 and 128-bit
-integers as decimal strings. A non-finite float needs no envelope, because the core schema spells
-it natively as `.inf`, `-.inf`, and `.nan`, and reading resolves those spellings back. A temporal
-needs none either: it writes as its classic ISO string - `2026-08-15`, `2026-08-15T12:30:00Z`,
-`PT90S` - which reads back as the string it is, and a [`Field`](field.md) or a record class is
-what recovers the typed reading.
+## Placeholders
 
-A string is written plain only when the reader resolves that text to the same string. The decision
-comes from the reader itself, so a spelling it reads as a number is quoted, `.inf`, `1_000.5`, and
-`0x1F` among them, and a string stays a string across a round trip.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{Value, yaml};
-
-    // A machine tag on input is semantic: it names a kind the value model has.
-    assert_eq!(
-        yaml::from_str("!yggdryl/bytes AP8=\n")?,
-        Value::from(vec![0_u8, 255]),
-    );
-
-    // An application tag names nothing the value model has, so it stays the
-    // annotation YAML defines it to be and the node under it is the value.
-    let value = yaml::from_str("!vendor:quantity {value: 4}\n")?;
-    assert_eq!(value.get_key_str("value"), Some(&Value::U64(4)));
-
-    // A comment is not read either.
-    assert_eq!(
-        yaml::from_str("# vendor:attacker\n!vendor:quantity {value: 4}\n")?,
-        value,
-    );
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import yaml
-
-    # A machine tag on input is semantic.
-    assert yaml.loads("!yggdryl/bytes AP8=\n") == b"\x00\xff"
-
-    # An application tag is an annotation, so the node under it is the value.
-    assert yaml.loads("!vendor:quantity {value: 4}\n") == {"value": 4}
-
-    # A comment is not read either.
-    assert yaml.loads("# vendor:attacker\n!vendor:quantity {value: 4}\n") == {
-        "value": 4
-    }
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    // A machine tag on input is semantic.
-    assert.deepEqual(yaml.loads('!yggdryl/bytes AP8=\n'), Buffer.from([0, 255]))
-
-    // An application tag is an annotation, so the node under it is the value.
-    assert.deepEqual(yaml.loads('!vendor:quantity {value: 4}\n'), { value: 4 })
-
-    // A comment is not read either.
-    assert.deepEqual(
-      yaml.loads('# vendor:attacker\n!vendor:quantity {value: 4}\n'),
-      { value: 4 },
-    )
-    ```
-
-Reading accepts more than writing produces, so a document another producer tagged still loads. What
-a tag can say is the difference: `!yggdryl/*` names a kind the value model has and selects it, while
-every other tag names something no value can hold, so the node decodes as the plain value it
-annotates rather than failing a document this codec can otherwise read in full. A comment is display
-text either way, and rewriting one changes no decoded value.
-
-No decoded document names a class in any runtime. A caller that wants one names it in the call -
-`cls=` in Python - see [Python](extensions/python.md) and
-[JavaScript](extensions/javascript.md).
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{Value, yaml};
-
-    let collision = Value::from_mapping([
-        (Value::from("$yggdryl"), Value::from("bytes")),
-        (Value::from("value"), Value::from("AP8=")),
-    ])?;
-
-    let encoded = yaml::to_vec(&collision)?;
-    assert!(std::str::from_utf8(&encoded)?.contains(r#""$yggdryl": "mapping""#));
-    assert_eq!(yaml::from_slice(&encoded)?, collision);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import yaml
-
-    collision = {"$yggdryl": "bytes", "value": "AP8="}
-
-    encoded = yaml.dumps(collision)
-    assert b'"$yggdryl": "mapping"' in encoded
-    assert yaml.loads(encoded) == collision
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const collision = { $yggdryl: 'bytes', value: 'AP8=' }
-
-    const encoded = yaml.dumps(collision)
-    assert.match(encoded.toString(), /"\$yggdryl": "mapping"/)
-    assert.deepEqual(yaml.loads(encoded), collision)
-    ```
-
-An envelope made of ordinary YAML is one application data can spell by accident. A mapping that
-would read back as an envelope is wrapped once more, as
-`{"$yggdryl": "mapping", "value": [[key, value], ...]}`, so it decodes as the plain mapping it was
-and is never promoted to bytes or to any other kind.
-
-The same [`Value`](text.md) is what [JSON](json.md) and [TOML](toml.md) read and write, and
-`yggdryl::text` picks the format at run time when the caller does not know it in advance.
-
-## Placeholders, and the quoting that YAML requires
-
-`loads` resolves Jinja-*style* `{{ NAME }}` placeholders when a caller asks it to - the grammar and
-the security notes are on the [structured text](text.md#jinja-style-placeholders) page. YAML has
-one rule of its own, and it is the single most common way people get this wrong:
-
-**A bare `{{ PORT }}` is not a placeholder to YAML.** It is a flow mapping whose only key is
-another flow mapping, and YAML has read it that way before any substitution runs. Quote it:
-
-```yaml
-port: "{{ PORT }}"   # a string scalar - it resolves
-port: {{ PORT }}     # a flow mapping - YAML already decided
-```
-
-Substitution happens after parsing and never changes a document's shape, so nothing here rewrites
-the unquoted form into the one you meant. You get the mapping YAML says you asked for.
+Placeholder substitution is opt-in and runs after YAML parsing. It changes
+string values only, never keys or document structure. Quote placeholders:
+unquoted braces are YAML flow-mapping syntax.
 
 === "Rust"
 
     ```rust
     use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Value;
+    use yggdryl::Scalar;
 
-    let loading = Loading::new()
-        .with_placeholders(Placeholders::new().with_variable("PORT", Value::I64(8080)));
+    let loading = Loading::new().with_placeholders(
+        Placeholders::new().with_variable("PORT", Scalar::I64(8080)),
+    );
+    let value = yggdryl::text::from_utf8_with(
+        "port: \"{{ PORT }}\"\n",
+        Format::Yaml,
+        &loading,
+    )?;
 
-    // Quoted: a string scalar, so it resolves - and adopts the resolved type.
-    let quoted = yggdryl::text::from_str_with("port: \"{{ PORT }}\"\n", Format::Yaml, &loading)?;
-    assert_eq!(quoted.get_key_str("port"), Some(&Value::I64(8080)));
-
-    // Unquoted: the flow mapping YAML read, untouched.
-    let bare = yggdryl::text::from_str_with("port: {{ PORT }}\n", Format::Yaml, &loading)?;
-    assert!(bare.get_key_str("port").and_then(Value::as_mapping).is_some());
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
     ```
 
 === "Python"
@@ -476,11 +258,10 @@ the unquoted form into the one you meant. You get the mapping YAML says you aske
     ```python
     from yggdryl import yaml
 
-    filling = {"placeholders": {"PORT": 8080}}
-    assert yaml.loads('port: "{{ PORT }}"\n', **filling)["port"] == 8080
+    options = {"placeholders": {"PORT": 8080}}
 
-    # Unquoted, YAML read a flow mapping before anything else ran.
-    assert isinstance(yaml.loads("port: {{ PORT }}\n", **filling)["port"], dict)
+    assert yaml.loads('port: "{{ PORT }}"\n', **options) == {"port": 8080}
+    assert isinstance(yaml.loads("port: {{ PORT }}\n", **options)["port"], dict)
     ```
 
 === "JavaScript"
@@ -490,11 +271,30 @@ the unquoted form into the one you meant. You get the mapping YAML says you aske
     const { yaml } = require('yggdryl')
 
     const options = { placeholders: { PORT: 8080 } }
-    assert.equal(yaml.loads('port: "{{ PORT }}"\n', options).port, 8080)
 
-    // Unquoted, YAML read a flow mapping before anything else ran.
-    assert.equal(typeof yaml.loads('port: {{ PORT }}\n', options).port, 'object')
+    assert.deepEqual(yaml.loads('port: "{{ PORT }}"\n', options), { port: 8080 })
     ```
+
+The supplied mapping wins over the environment. Environment lookup is a
+separate switch and remains off by default. Field interpretation runs after
+substitution, so a resolved natural string can become an exact typed value.
+See [structured text](text.md#jinja-style-placeholders) for syntax, security,
+and measured overhead.
+
+## Limits and errors
+
+Nullable binding options expose the same byte, depth, decoded-node, and
+document limits as Rust (`max_input_bytes` / `maxInputBytes`, and the matching
+names for the other three). They apply equally to held input and streams;
+omission uses the core defaults. Invalid UTF-8, duplicate keys, malformed
+syntax, exhaustion, and Field conversion report YAML plus a byte offset.
+
+## `IOBase` and content coding
+
+Generic `from_io` / `into_io` infer YAML and outer compression from the
+handle's media type, so `.yaml.gz` is one transparent operation. Python accepts
+`PathLike` sources and destinations; JavaScript accepts paths, file
+descriptors, file URLs, and streams.
 
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 

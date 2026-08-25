@@ -111,7 +111,7 @@ fn native_order_hash_json_and_stable_hash_are_value_based() {
     assert!(hashed.contains(&left));
     assert_ne!(left.stable_hash(), right.stable_hash());
 
-    let json = right.to_json().unwrap();
+    let json = right.clone().into_json().unwrap();
     assert_eq!(Field::from_json(&json).unwrap(), right);
 }
 
@@ -122,7 +122,7 @@ fn structural_json_uses_tagged_data_types_and_rejects_bad_shapes() {
         DataType::from_str("struct<id:bigint,tags:array<string>>").unwrap(),
         false,
     );
-    let field_json = field.to_json().unwrap();
+    let field_json = field.into_json().unwrap();
     let field_value: serde_json::Value = serde_json::from_str(&field_json).unwrap();
     assert!(field_value.is_object());
     assert_eq!(field_value["data_type"]["type"], "struct");
@@ -178,8 +178,9 @@ fn borrowed_and_consuming_arrow_paths_are_lossless() {
         r#"field("items",array<struct<id:bigint,name:string>>,nullable=false,metadata={"source":"test"})"#,
     )
     .unwrap();
-    let first = field.to_arrow_ref().unwrap();
-    let second = field.to_arrow_ref().unwrap();
+    let first = Arc::new(field.clone().into_arrow().unwrap());
+    let field = Field::from_arrow_ref(Arc::clone(&first)).unwrap();
+    let second = field.clone().into_arrow_ref().unwrap();
     assert!(Arc::ptr_eq(&first, &second));
     assert_eq!(Field::from_arrow(first.as_ref()).unwrap(), field);
 
@@ -188,7 +189,7 @@ fn borrowed_and_consuming_arrow_paths_are_lossless() {
     let shared = field.clone().into_arrow_ref().unwrap();
     let imported = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
     assert_eq!(imported, field);
-    assert!(Arc::ptr_eq(&shared, &imported.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_ref().unwrap()));
 }
 
 #[test]
@@ -219,13 +220,14 @@ fn arrow_dictionary_options_survive_parsing_and_cache_invalidation() {
     assert_ne!(nested, different);
     assert_ne!(nested.cmp(&different), std::cmp::Ordering::Equal);
 
-    let json: serde_json::Value = serde_json::from_str(&field.to_json().unwrap()).unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(&field.clone().into_json().unwrap()).unwrap();
     assert_eq!(json["dictionary_id"], "41");
     assert_eq!(Field::from_json(&json.to_string()).unwrap(), field);
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = field.clone().into_arrow_ref().unwrap();
     field.set_name("renamed_codes");
-    let rebuilt = field.to_arrow_ref().unwrap();
+    let rebuilt = field.clone().into_arrow_ref().unwrap();
     assert!(!Arc::ptr_eq(&cached, &rebuilt));
     assert_eq!(rebuilt.dict_id(), Some(41));
     assert_eq!(rebuilt.dict_is_ordered(), Some(true));
@@ -233,15 +235,19 @@ fn arrow_dictionary_options_survive_parsing_and_cache_invalidation() {
 
 #[test]
 fn no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it() {
-    let mut field = Field::new("id", DataType::Int64, false)
+    let field = Field::new("id", DataType::Int64, false)
         .try_with_metadata("source", "one")
         .unwrap();
-    let original = field.to_arrow_ref().unwrap();
+    let original = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&original)).unwrap();
     field.insert_metadata("source", "one").unwrap();
-    assert!(Arc::ptr_eq(&original, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &original,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field.insert_metadata("source", "two").unwrap();
-    let changed = field.to_arrow_ref().unwrap();
+    let changed = field.clone().into_arrow_ref().unwrap();
     assert!(!Arc::ptr_eq(&original, &changed));
 }
 
@@ -266,7 +272,7 @@ fn metadata_is_a_deterministic_shared_native_value() {
     assert_eq!(metadata.next_entry(None), Some(("a", "first")));
     assert_eq!(metadata.next_entry(Some("a")), Some(("z", "last")));
 
-    let json = metadata.to_json().unwrap();
+    let json = metadata.clone().into_json().unwrap();
     assert_eq!(json, r#"{"a":"first","z":"last"}"#);
     assert_eq!(Metadata::from_json(&json).unwrap(), metadata);
     assert_eq!(metadata.to_string().parse::<Metadata>().unwrap(), metadata);
@@ -328,13 +334,17 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
         Some(("ddl", "CREATE TABLE trades"))
     );
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.set_alias("latest_trade").unwrap();
     field
         .set_property(&Scheme::POSTGRES, "ddl", "CREATE TABLE trades")
         .unwrap();
     field.set_location(location);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field.clear_properties(&Scheme::POSTGRES);
     assert!(!field.has_property(&Scheme::POSTGRES, "ddl"));
@@ -342,7 +352,10 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
         field.get_property(&Scheme::ICEBERG, "format-version"),
         Some("2")
     );
-    assert!(!Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     assert_eq!(field.remove_alias().as_deref(), Some("latest_trade"));
     assert_eq!(field.remove_catalog_name().as_deref(), Some("analytics"));
@@ -353,7 +366,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
 
 #[test]
 fn http_metadata_is_canonical_typed_and_cache_aware() {
-    let mut field = Field::from_parts(
+    let field = Field::from_parts(
         "payload",
         DataType::Binary,
         false,
@@ -371,20 +384,31 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     assert_eq!(field.get_metadata("HTTP:CONTENT-LENGTH"), Some("42"));
     assert_eq!(field.get_metadata("http:content-length"), Some("42"));
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.set_content_type("text/plain; charset=utf-8").unwrap();
     field.set_content_length(42);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field.set_cache_control("public, max-age=60").unwrap();
     assert_eq!(field.cache_control(), Some("public, max-age=60"));
-    assert!(!Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     let unchanged = field.clone();
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     assert!(field.set_etag("good\r\nInjected: bad").is_err());
     assert_eq!(field, unchanged);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     assert_eq!(field.remove_content_length().unwrap(), Some(42));
     assert_eq!(field.remove_content_length().unwrap(), None);
@@ -399,7 +423,8 @@ fn http_case_collisions_and_typed_location_are_transactional() {
     let mut field = Field::new("payload", DataType::Binary, false);
     field.set_accept("application/json").unwrap();
     let snapshot = field.clone();
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     assert!(
         field
             .set_metadata([
@@ -409,7 +434,10 @@ fn http_case_collisions_and_typed_location_are_transactional() {
             .is_err()
     );
     assert_eq!(field, snapshot);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field
         .insert_metadata("HTTP:Location", "../relative/resource")
@@ -458,7 +486,8 @@ fn https_properties_share_the_canonical_http_namespace() {
         [("content-type", "application/json")]
     );
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     let snapshot = field.clone();
     assert!(
         field
@@ -466,7 +495,10 @@ fn https_properties_share_the_canonical_http_namespace() {
             .is_err()
     );
     assert_eq!(field, snapshot);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     assert_eq!(
         field
@@ -548,15 +580,22 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
     assert_eq!(field.content_encoding(), Some("gzip, compress, zstd"));
     assert_eq!(field.media_type().unwrap(), media);
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.set_media_type(media).unwrap();
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     let unsupported = MediaType::from_parts(MimeType::JSON, [MimeType::BZIP2]).unwrap();
     let unchanged = field.clone();
     assert!(field.set_media_type(unsupported).is_err());
     assert_eq!(field, unchanged);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field.set_mime_type(MimeType::JSON);
     assert_eq!(field.content_type(), Some("application/json"));
@@ -571,7 +610,7 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
 
 #[test]
 fn malformed_typed_http_media_removal_is_transactional() {
-    let mut field = Field::from_parts(
+    let field = Field::from_parts(
         "payload",
         DataType::Binary,
         false,
@@ -582,11 +621,15 @@ fn malformed_typed_http_media_removal_is_transactional() {
     )
     .unwrap();
     let snapshot = field.clone();
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     assert!(field.media_type().is_err());
     assert!(field.remove_media_type().is_err());
     assert_eq!(field, snapshot);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     let duplicate = Field::from_parts(
         "duplicate",
@@ -623,7 +666,7 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
     );
     let imported = Field::from_arrow_ref(Arc::clone(&imported_arrow)).unwrap();
     assert_eq!(imported.parquet_field_id().unwrap(), Some(17));
-    let canonical_arrow = imported.to_arrow_ref().unwrap();
+    let canonical_arrow = imported.into_arrow_ref().unwrap();
     assert!(!Arc::ptr_eq(&imported_arrow, &canonical_arrow));
     assert_eq!(
         canonical_arrow
@@ -640,7 +683,7 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
         Some(17)
     );
 
-    let mut field = Field::from_parts(
+    let field = Field::from_parts(
         "trade",
         DataType::Utf8,
         false,
@@ -650,16 +693,24 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
     assert_eq!(field.parquet_field_id().unwrap(), Some(17));
     assert_eq!(field.get_metadata("PARQUET:field_id"), Some("17"));
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.set_parquet_field_id(17);
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     field.set_parquet_field_id(i32::MIN);
     assert_eq!(field.parquet_field_id().unwrap(), Some(i32::MIN));
-    assert!(!Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
     assert_eq!(
         field
-            .to_arrow_ref()
+            .clone()
+            .into_arrow_ref()
             .unwrap()
             .metadata()
             .get("PARQUET:field_id")
@@ -668,7 +719,7 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
     );
 
     field.set_parquet_field_id(i32::MAX);
-    let json = field.to_json().unwrap();
+    let json = field.clone().into_json().unwrap();
     let restored = Field::from_json(&json).unwrap();
     assert_eq!(restored.parquet_field_id().unwrap(), Some(i32::MAX));
     assert_eq!(field.remove_parquet_field_id().unwrap(), Some(i32::MAX));
@@ -766,7 +817,7 @@ fn arrow_cache_is_rebuilt_when_typed_metadata_is_canonicalized() {
         Some("https://example.com/table".to_owned())
     );
 
-    let projected = field.to_arrow_ref().unwrap();
+    let projected = field.into_arrow_ref().unwrap();
     assert!(!Arc::ptr_eq(&arrow, &projected));
     assert_eq!(
         projected.metadata().get("location").map(String::as_str),
@@ -801,7 +852,7 @@ fn nested_location(field: &ArrowField) -> Option<&str> {
 fn borrowed_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     let arrow = arrow_field_with_nested_noncanonical_location();
     let field = Field::from_arrow(&arrow).unwrap();
-    let projected = field.to_arrow().unwrap();
+    let projected = field.into_arrow().unwrap();
 
     assert_eq!(nested_location(&arrow), Some("HTTPS://example.com/table"));
     assert_eq!(
@@ -814,7 +865,7 @@ fn borrowed_arrow_import_rebuilds_parent_for_nested_canonicalization() {
 fn shared_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     let arrow = Arc::new(arrow_field_with_nested_noncanonical_location());
     let field = Field::from_arrow_ref(Arc::clone(&arrow)).unwrap();
-    let projected = field.to_arrow_ref().unwrap();
+    let projected = field.into_arrow_ref().unwrap();
 
     assert!(!Arc::ptr_eq(&arrow, &projected));
     assert_eq!(
@@ -823,7 +874,10 @@ fn shared_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     );
 
     let canonical = Field::from_arrow_ref(Arc::clone(&projected)).unwrap();
-    assert!(Arc::ptr_eq(&projected, &canonical.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &projected,
+        &canonical.into_arrow_ref().unwrap()
+    ));
 }
 
 #[test]
@@ -1049,7 +1103,7 @@ fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitiv
     assert_eq!(
         metadata
             .http()
-            .to_metadata()
+            .into_metadata()
             .unwrap()
             .get("http:content-type"),
         Some("text/plain")
@@ -1058,18 +1112,29 @@ fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitiv
 
 #[test]
 fn a_protocol_write_invalidates_the_arrow_cache_exactly_once() {
-    let mut field = DataType::Int64.required_field("price");
-    let cached = field.to_arrow_ref().unwrap();
+    let field = DataType::Int64.required_field("price");
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.iceberg_mut().insert("doc", "close").unwrap();
-    assert!(!Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
-    let cached = field.to_arrow_ref().unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
     field.iceberg_mut().insert("doc", "close").unwrap();
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
 
     // A rejected value leaves the field, and its cache, untouched.
     assert!(field.iceberg_mut().insert("", "no name").is_err());
-    assert!(Arc::ptr_eq(&cached, &field.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
     assert_eq!(field.iceberg().len(), 1);
 }
 
@@ -1395,7 +1460,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
     let mut row = DataType::from_fields([DataType::Int64.required_field("id")])
         .unwrap()
         .required_field("row");
-    let before = row.to_arrow().unwrap();
+    let before = row.clone().into_arrow().unwrap();
     assert!(before.data_type().to_string().contains("id"));
     assert!(!before.data_type().to_string().contains("venue"));
 
@@ -1403,7 +1468,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
         .unwrap();
 
     // The projection is rebuilt from the mutated field, never served stale.
-    let after = row.to_arrow().unwrap();
+    let after = row.into_arrow().unwrap();
     assert!(
         after.data_type().to_string().contains("venue"),
         "{}",

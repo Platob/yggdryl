@@ -119,9 +119,9 @@ const directRecords = path.join(root, 'direct.arrows')
 // Flushed, because a staged whole value is published on flush: an unflushed
 // fixture would leave the read rows below measuring an empty file.
 const records = IOBase.fromArrowFs(handler, wrapperRecords)
-records.writeArrowBatchReader(table)
+records.overwriteArrowTable(table)
 records.flush()
-new IOBase(directRecords).writeArrowBatchReader(table)
+new IOBase(directRecords).overwriteArrowTable(table)
 
 const handle = IOBase.fromArrowFs(handler, source)
 const folder = IOBase.fromArrowFs(handler, lake)
@@ -174,18 +174,18 @@ function recordBenchmark(name, operation) {
 }
 
 recordBenchmark('arrowfs/read_records', () =>
-  IOBase.fromArrowFs(handler, wrapperRecords).readArrowBatchReader().toTable(),
+  IOBase.fromArrowFs(handler, wrapperRecords).readArrowReader().intoTable(),
 )
 recordBenchmark('local/read_records', () =>
-  new IOBase(directRecords).readArrowBatchReader().toTable(),
+  new IOBase(directRecords).readArrowReader().intoTable(),
 )
 recordBenchmark('arrowfs/write_records', () => {
   const sink = IOBase.fromArrowFs(handler, wrapperRecords)
-  sink.writeArrowBatchReader(table)
+  sink.overwriteArrowTable(table)
   sink.flush()
 })
 recordBenchmark('local/write_records', () =>
-  new IOBase(directRecords).writeArrowBatchReader(table),
+  new IOBase(directRecords).overwriteArrowTable(table),
 )
 
 fs.rmSync(root, { recursive: true, force: true })

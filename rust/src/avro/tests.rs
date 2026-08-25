@@ -1,11 +1,11 @@
 //! Unit tests for the Avro codec module.
 
 use crate::io::{Buffer, IOBase};
-use crate::{MediaType, MimeType, Value};
+use crate::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
-fn manifest_shaped_schema() -> Value {
-    crate::json::from_str(
+fn manifest_shaped_schema() -> Scalar {
+    crate::json::from_utf8(
         r#"{"type":"record","name":"row","fields":[
             {"name":"code","type":"int","field-id":1},
             {"name":"name","type":"string","field-id":2},
@@ -29,36 +29,30 @@ fn buffer() -> Buffer {
 
 /// Write a container by hand: magic, header, one block per payload.
 fn handmade_container(schema_json: &str, codec: &str, blocks: &[(i64, Vec<u8>)]) -> Buffer {
+    handmade_container_with_header(
+        &[
+            ("avro.schema", schema_json.as_bytes()),
+            ("avro.codec", codec.as_bytes()),
+        ],
+        blocks,
+    )
+}
+
+/// Write a container with caller-controlled header entries for hardening tests.
+fn handmade_container_with_header(entries: &[(&str, &[u8])], blocks: &[(i64, Vec<u8>)]) -> Buffer {
     let mut output = Vec::new();
     output.extend_from_slice(b"Obj\x01");
-    let mut put_long = |output: &mut Vec<u8>, value: i64| {
-        let mut encoded = ((value << 1) ^ (value >> 63)) as u64;
-        loop {
-            let byte = (encoded & 0x7f) as u8;
-            encoded >>= 7;
-            if encoded == 0 {
-                output.push(byte);
-                break;
-            }
-            output.push(byte | 0x80);
-        }
-    };
-    let put_bytes =
-        |output: &mut Vec<u8>, put_long: &mut dyn FnMut(&mut Vec<u8>, i64), bytes: &[u8]| {
-            put_long(output, bytes.len() as i64);
-            output.extend_from_slice(bytes);
-        };
-    put_long(&mut output, 2);
-    put_bytes(&mut output, &mut put_long, b"avro.schema");
-    put_bytes(&mut output, &mut put_long, schema_json.as_bytes());
-    put_bytes(&mut output, &mut put_long, b"avro.codec");
-    put_bytes(&mut output, &mut put_long, codec.as_bytes());
-    put_long(&mut output, 0);
+    super::datum::put_long(&mut output, entries.len() as i64);
+    for (key, value) in entries {
+        super::datum::put_bytes(&mut output, key.as_bytes());
+        super::datum::put_bytes(&mut output, value);
+    }
+    super::datum::put_long(&mut output, 0);
     let sync = [7_u8; 16];
     output.extend_from_slice(&sync);
     for (count, payload) in blocks {
-        put_long(&mut output, *count);
-        put_bytes(&mut output, &mut put_long, payload);
+        super::datum::put_long(&mut output, *count);
+        super::datum::put_bytes(&mut output, payload);
         output.extend_from_slice(&sync);
     }
     let mut handle = buffer();
@@ -69,17 +63,17 @@ fn handmade_container(schema_json: &str, codec: &str, blocks: &[(i64, Vec<u8>)])
 mod containers {
     use super::{buffer, manifest_shaped_schema};
     use crate::io::IOBase;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn a_container_round_trips_every_encoded_branch() {
         let schema = manifest_shaped_schema();
-        let row = crate::json::from_str(
+        let row = crate::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,300000],
                 "nested":{"flag":true}}"#,
         )
         .unwrap();
-        let empty = crate::json::from_str(
+        let empty = crate::json::from_utf8(
             r#"{"code":0,"name":"","score":null,"raw":null,"tags":[],
                 "nested":{"flag":false}}"#,
         )
@@ -121,7 +115,7 @@ mod containers {
             container.rows[1]
                 .get_key_str("nested")
                 .and_then(|nested| nested.get_key_str("flag"))
-                .and_then(Value::as_bool),
+                .and_then(Scalar::as_bool),
             Some(false)
         );
     }
@@ -149,7 +143,7 @@ mod containers {
             &mut handle,
             &manifest_shaped_schema(),
             &[],
-            &[crate::json::from_str(
+            &[crate::json::from_utf8(
                 r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],
                     "nested":{"flag":true}}"#,
             )
@@ -172,12 +166,12 @@ mod containers {
         let mut handle = buffer();
         avro::write_container(
             &mut handle,
-            &crate::json::from_str(
+            &crate::json::from_utf8(
                 r#"{"type":"record","name":"r","fields":[{"name":"v","type":"long"}]}"#,
             )
             .unwrap(),
             &[],
-            &[crate::json::from_str(r#"{"v":1}"#).unwrap()],
+            &[crate::json::from_utf8(r#"{"v":1}"#).unwrap()],
         )
         .unwrap();
         let mut bytes = handle.read_all_bytes().unwrap();
@@ -216,10 +210,27 @@ mod containers {
             .to_string();
         assert!(message.contains("at most 16 bytes"), "{message}");
     }
+
+    #[test]
+    fn a_row_budget_is_applied_after_the_mandatory_header() {
+        let schema = crate::json::from_utf8(r#""long""#).unwrap();
+        let rows = [Scalar::I64(1), Scalar::I64(2)];
+        let mut handle = buffer();
+        avro::write_container(&mut handle, &schema, &[], &rows).unwrap();
+
+        let limits = crate::Limits::new(128, 1 << 20, 1, 1_024);
+        let message = avro::read_container_with_limits(&handle, limits)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("at most 1 rows"), "{message}");
+    }
 }
 
 mod schemas {
-    use crate::avro::Schema;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use crate::avro::{Container, Schema};
 
     #[test]
     fn canonical_form_and_fingerprint_match_the_reference_implementation() {
@@ -236,7 +247,7 @@ mod schemas {
         };
 
         let int = Schema::from_str("\"int\"").unwrap();
-        assert_eq!(int.to_canonical_form(), "\"int\"");
+        assert_eq!(int.clone().into_canonical_form(), "\"int\"");
         assert_eq!(hex(&int), "8f5c393f1ad57572");
 
         let record = Schema::from_str(
@@ -247,7 +258,7 @@ mod schemas {
         )
         .unwrap();
         assert_eq!(
-            record.to_canonical_form(),
+            record.clone().into_canonical_form(),
             r#"{"name":"trade","type":"record","fields":[{"name":"symbol","type":"string"},{"name":"qty","type":"long"}]}"#
         );
         assert_eq!(hex(&record), "f5780492090a723f");
@@ -273,15 +284,131 @@ mod schemas {
     }
 
     #[test]
+    fn schema_value_traits_keep_complete_behavior_not_only_canonical_form() {
+        let date = Schema::from_str(r#"{"type":"int","logicalType":"date"}"#).unwrap();
+        let integer = Schema::from_str(r#"{"type":"int"}"#).unwrap();
+
+        // Parsing Canonical Form intentionally erases logical annotations,
+        // while Schema identity cannot: these decode to different Scalars.
+        assert_eq!(
+            date.clone().into_canonical_form(),
+            integer.clone().into_canonical_form()
+        );
+        assert_eq!(date.fingerprint(), integer.fingerprint());
+        assert_ne!(date, integer);
+        assert_ne!(date.stable_hash(), integer.stable_hash());
+        assert_ne!(date.cmp(&integer), std::cmp::Ordering::Equal);
+
+        let reordered = Schema::from_str(r#"{"logicalType":"date","type":"int"}"#).unwrap();
+        assert_eq!(date, reordered);
+        assert_eq!(date.stable_hash(), reordered.stable_hash());
+
+        let native_mapping = crate::Scalar::from_mapping([
+            (
+                crate::Scalar::from("logicalType"),
+                crate::Scalar::from("date"),
+            ),
+            (crate::Scalar::from("type"), crate::Scalar::from("int")),
+        ])
+        .unwrap();
+        let native = Schema::from_json(&native_mapping).unwrap();
+        assert_eq!(date, native);
+        assert_eq!(date.stable_hash(), native.stable_hash());
+
+        let reparsed =
+            Schema::from_str(&crate::json::into_utf8(&native.clone().into_json()).unwrap())
+                .unwrap();
+        assert_eq!(native, reparsed);
+
+        let nested_mapping = crate::Scalar::from_mapping([
+            (crate::Scalar::from("type"), crate::Scalar::from("record")),
+            (crate::Scalar::from("name"), crate::Scalar::from("row")),
+            (
+                crate::Scalar::from("fields"),
+                crate::Scalar::from_sequence([crate::Scalar::from_mapping([
+                    (crate::Scalar::from("name"), crate::Scalar::from("items")),
+                    (
+                        crate::Scalar::from("type"),
+                        crate::Scalar::from_mapping([
+                            (crate::Scalar::from("type"), crate::Scalar::from("array")),
+                            (
+                                crate::Scalar::from("items"),
+                                crate::Scalar::from_mapping([(
+                                    crate::Scalar::from("type"),
+                                    crate::Scalar::from("int"),
+                                )])
+                                .unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    ),
+                ])
+                .unwrap()]),
+            ),
+        ])
+        .unwrap();
+        let nested = Schema::from_json(&nested_mapping).unwrap();
+        let nested_parsed = Schema::from_str(
+            r#"{"type":"record","name":"row","fields":[{"name":"items","type":{"type":"array","items":{"type":"int"}}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(nested, nested_parsed);
+        assert_eq!(nested.clone().into_json(), nested_mapping);
+
+        let native_hash = |schema: &Schema| {
+            let mut hasher = DefaultHasher::new();
+            schema.hash(&mut hasher);
+            hasher.finish()
+        };
+        assert_eq!(native_hash(&date), native_hash(&reordered));
+    }
+
+    #[test]
+    fn decoded_containers_have_complete_structural_value_identity() {
+        fn assert_traits<T: Clone + Eq + Ord + Hash>() {}
+        assert_traits::<Container>();
+
+        let container = Container {
+            schema: Schema::from_str(r#"{"type":"long"}"#).unwrap(),
+            metadata: vec![
+                ("source".into(), "test".into()),
+                ("zone".into(), "UTC".into()),
+            ],
+            rows: vec![crate::Scalar::I16(7)],
+        };
+        let mut equal = container.clone();
+        equal.metadata.reverse();
+        let mut later = container.clone();
+        later.rows.push(crate::Scalar::I16(8));
+        assert_eq!(container, equal);
+        assert_eq!(container.stable_hash(), equal.stable_hash());
+        assert!(container < later);
+
+        // Public construction can still describe an invalid duplicate-key
+        // header. Its first-value lookup remains part of exact identity even
+        // though valid parsed headers reject this shape.
+        let mut duplicate = container.clone();
+        duplicate.metadata = vec![
+            ("source".into(), "first".into()),
+            ("source".into(), "last".into()),
+        ];
+        let mut reversed_duplicate = duplicate.clone();
+        reversed_duplicate.metadata.reverse();
+        assert_ne!(duplicate, reversed_duplicate);
+        assert_ne!(duplicate.get("source"), reversed_duplicate.get("source"));
+    }
+
+    #[test]
     fn the_source_json_round_trips_verbatim() {
-        let document = crate::json::from_str(
+        let document = crate::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[{"name":"id","type":"int","field-id":42}]}"#,
         )
         .unwrap();
         let schema = Schema::from_json(&document).unwrap();
-        assert_eq!(schema.to_json(), document);
+        assert_eq!(schema.clone().into_json(), document);
         // The unmodeled attribute is still in the JSON the schema writes.
-        let text = String::from_utf8(crate::json::to_vec(&schema.to_json()).unwrap()).unwrap();
+        let text =
+            String::from_utf8(crate::json::into_bytes(&schema.into_json()).unwrap()).unwrap();
         assert!(text.contains("field-id"), "{text}");
     }
 
@@ -298,7 +425,7 @@ mod schemas {
         .unwrap();
         // Both the bare reference (inheriting the namespace) and the dotted
         // fullname resolve to the registered types.
-        assert!(schema.to_canonical_form().contains("com.example.inner"));
+        assert!(schema.into_canonical_form().contains("com.example.inner"));
     }
 
     #[test]
@@ -308,21 +435,21 @@ mod schemas {
         )
         .unwrap();
         assert_eq!(
-            schema.to_canonical_form(),
+            schema.into_canonical_form(),
             r#"{"name":"org.other.hash","type":"fixed","size":4}"#
         );
     }
 
     #[test]
     fn a_recursive_schema_parses_and_round_trips_data() {
-        let schema_json = crate::json::from_str(
+        let schema_json = crate::json::from_utf8(
             r#"{"type":"record","name":"node","fields":[
                 {"name":"value","type":"long"},
                 {"name":"next","type":["null","node"],"default":null}
             ]}"#,
         )
         .unwrap();
-        let list = crate::json::from_str(
+        let list = crate::json::from_utf8(
             r#"{"value":1,"next":{"value":2,"next":{"value":3,"next":null}}}"#,
         )
         .unwrap();
@@ -331,7 +458,7 @@ mod schemas {
         let container = crate::avro::read_container(&handle).unwrap();
         let tail = container.rows[0]
             .path("next.next.value")
-            .and_then(crate::Value::as_i64);
+            .and_then(crate::Scalar::as_i64);
         assert_eq!(tail, Some(3));
     }
 
@@ -351,7 +478,7 @@ mod schemas {
         for _ in 0..20 {
             document = format!(r#"{{"type":"array","items":{document}}}"#);
         }
-        let parsed = crate::json::from_str(&document).unwrap();
+        let parsed = crate::json::from_utf8(&document).unwrap();
         let limits = crate::Limits::new(8, 1 << 20, 1 << 20, 8);
         let message = Schema::from_json_with_limits(&parsed, limits)
             .unwrap_err()
@@ -399,16 +526,16 @@ mod schemas {
 mod logical {
     use std::sync::Arc;
 
-    use crate::enums::TimeUnit;
-    use crate::{Timezone, Value, avro};
+    use crate::generic::TimeUnit;
+    use crate::{Scalar, Timezone, avro};
 
     /// Round-trip one value through a single-field record container.
-    fn round_trip(field_type: &str, value: Value) -> Value {
-        let schema = crate::json::from_str(&format!(
+    fn round_trip(field_type: &str, value: Scalar) -> Scalar {
+        let schema = crate::json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{{"name":"v","type":{field_type}}}]}}"#
         ))
         .unwrap();
-        let row = Value::from_mapping([(Value::from("v"), value)]).unwrap();
+        let row = Scalar::from_mapping([(Scalar::from("v"), value)]).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], &[row]).unwrap();
         let container = avro::read_container(&handle).unwrap();
@@ -421,21 +548,21 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"date"}"#,
-                Value::Date(19_782)
+                Scalar::date32(19_782)
             ),
-            Value::Date(19_782)
+            Scalar::date32(19_782)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"date"}"#,
-                Value::Date(-3_652)
+                Scalar::date32(-3_652)
             ),
-            Value::Date(-3_652)
+            Scalar::date32(-3_652)
         );
         // A bare integer still encodes; it decodes as the calendar value.
         assert_eq!(
-            round_trip(r#"{"type":"int","logicalType":"date"}"#, Value::I64(3)),
-            Value::Date(3)
+            round_trip(r#"{"type":"int","logicalType":"date"}"#, Scalar::I64(3)),
+            Scalar::date32(3)
         );
     }
 
@@ -444,16 +571,16 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"int","logicalType":"time-millis"}"#,
-                Value::Time(86_399_999, TimeUnit::Millisecond)
+                Scalar::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::Time(86_399_999, TimeUnit::Millisecond)
+            Scalar::Time32(86_399_999, TimeUnit::Millisecond, Timezone::NAIVE)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"time-micros"}"#,
-                Value::Time(1_000, TimeUnit::Millisecond)
+                Scalar::Time32(1_000, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::Time(1_000_000, TimeUnit::Microsecond),
+            Scalar::Time64(1_000_000, TimeUnit::Microsecond, Timezone::NAIVE),
             "a coarser unit converts losslessly"
         );
     }
@@ -463,36 +590,39 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"timestamp-micros"}"#,
-                Value::Timestamp(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
+                Scalar::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
             ),
-            Value::Timestamp(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
+            Scalar::DateTime64(-1_000_000, TimeUnit::Microsecond, Timezone::UTC)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"timestamp-nanos"}"#,
-                Value::I64(123)
+                Scalar::I64(123)
             ),
-            Value::Timestamp(123, TimeUnit::Nanosecond, Timezone::UTC)
+            Scalar::DateTime64(123, TimeUnit::Nanosecond, Timezone::UTC)
         );
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"local-timestamp-millis"}"#,
-                Value::DateTime(555, TimeUnit::Millisecond)
+                Scalar::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
             ),
-            Value::DateTime(555, TimeUnit::Millisecond)
+            Scalar::DateTime64(555, TimeUnit::Millisecond, Timezone::NAIVE)
         );
     }
 
     #[test]
     fn a_lossy_unit_conversion_is_refused_naming_both_units() {
-        let schema = crate::json::from_str(
+        let schema = crate::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"long","logicalType":"time-micros"}}
             ]}"#,
         )
         .unwrap();
-        let row = Value::from_mapping([(Value::from("v"), Value::Time(1, TimeUnit::Nanosecond))])
-            .unwrap();
+        let row = Scalar::from_mapping([(
+            Scalar::from("v"),
+            Scalar::Time64(1, TimeUnit::Nanosecond, Timezone::NAIVE),
+        )])
+        .unwrap();
         let mut handle = super::buffer();
         let message = avro::write_container(&mut handle, &schema, &[], &[row])
             .unwrap_err()
@@ -509,7 +639,7 @@ mod logical {
             1_234_567_890_123_456_789_012_345_678,
         ] {
             for sign in [1, -1] {
-                let value = Value::Decimal(unscaled * sign, 2);
+                let value = Scalar::d128(unscaled * sign, 2);
                 assert_eq!(
                     round_trip(
                         r#"{"type":"bytes","logicalType":"decimal","precision":38,"scale":2}"#,
@@ -520,7 +650,7 @@ mod logical {
             }
         }
         // Over fixed, sign-extended to the declared width.
-        let value = Value::Decimal(-12_345, 2);
+        let value = Scalar::d128(-12_345, 2);
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"amount","size":16,"logicalType":"decimal","precision":20,"scale":2}"#,
@@ -532,13 +662,13 @@ mod logical {
 
     #[test]
     fn an_overflowing_decimal_is_refused_naming_the_precision() {
-        let schema = crate::json::from_str(
+        let schema = crate::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"bytes","logicalType":"decimal","precision":4,"scale":0}}
             ]}"#,
         )
         .unwrap();
-        let row = Value::from_mapping([(Value::from("v"), Value::Decimal(123_456, 0))]).unwrap();
+        let row = Scalar::from_mapping([(Scalar::from("v"), Scalar::d128(123_456, 0))]).unwrap();
         let mut handle = super::buffer();
         let message = avro::write_container(&mut handle, &schema, &[], &[row])
             .unwrap_err()
@@ -551,14 +681,14 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"string","logicalType":"uuid"}"#,
-                Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+                Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             ),
-            Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+            Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
         );
         // The fixed form accepts the canonical text and stores the bytes.
         let decoded = round_trip(
             r#"{"type":"fixed","name":"id","size":16,"logicalType":"uuid"}"#,
-            Value::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
+            Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
         );
         assert_eq!(decoded.as_bytes().map(<[u8]>::len), Some(16), "{decoded:?}");
         assert_eq!(decoded.as_bytes().map(|bytes| bytes[0]), Some(0xF8));
@@ -570,7 +700,7 @@ mod logical {
         for part in [1_u32, 2, 3] {
             duration.extend_from_slice(&part.to_le_bytes());
         }
-        let value = Value::Bytes(Arc::from(duration.as_slice()));
+        let value = Scalar::Bytes(Arc::from(duration.as_slice()));
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"span","size":12,"logicalType":"duration"}"#,
@@ -585,32 +715,32 @@ mod logical {
         assert_eq!(
             round_trip(
                 r#"{"type":"long","logicalType":"nobody-knows-this"}"#,
-                Value::I64(9)
+                Scalar::I64(9)
             ),
-            Value::I64(9)
+            Scalar::I64(9)
         );
         // Invalid decimal attributes degrade too, per the specification.
         assert_eq!(
             round_trip(
                 r#"{"type":"bytes","logicalType":"decimal","precision":2,"scale":9}"#,
-                Value::Bytes(Arc::from(&[1_u8, 2][..]))
+                Scalar::Bytes(Arc::from(&[1_u8, 2][..]))
             ),
-            Value::Bytes(Arc::from(&[1_u8, 2][..]))
+            Scalar::Bytes(Arc::from(&[1_u8, 2][..]))
         );
     }
 }
 
 mod resolution {
     use crate::avro::{Resolution, Schema};
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// Write rows with the writer schema, read them back with the reader.
-    fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Value> {
-        let writer_json = crate::json::from_str(writer).unwrap();
+    fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Scalar> {
+        let writer_json = crate::json::from_utf8(writer).unwrap();
         let mut handle = super::buffer();
-        let rows: Vec<Value> = rows
+        let rows: Vec<Scalar> = rows
             .iter()
-            .map(|row| crate::json::from_str(row).unwrap())
+            .map(|row| crate::json::from_utf8(row).unwrap())
             .collect();
         avro::write_container(&mut handle, &writer_json, &[], &rows).unwrap();
         let reader = Schema::from_str(reader).unwrap();
@@ -626,22 +756,22 @@ mod resolution {
     #[test]
     fn every_legal_promotion_widens_in_place() {
         let cases = [
-            ("\"int\"", "\"long\"", r#"{"v":7}"#, Value::I64(7)),
-            ("\"int\"", "\"float\"", r#"{"v":7}"#, Value::from(7_f32)),
-            ("\"int\"", "\"double\"", r#"{"v":7}"#, Value::from(7_f64)),
-            ("\"long\"", "\"float\"", r#"{"v":7}"#, Value::from(7_f32)),
-            ("\"long\"", "\"double\"", r#"{"v":7}"#, Value::from(7_f64)),
+            ("\"int\"", "\"long\"", r#"{"v":7}"#, Scalar::I64(7)),
+            ("\"int\"", "\"float\"", r#"{"v":7}"#, Scalar::from(7_f32)),
+            ("\"int\"", "\"double\"", r#"{"v":7}"#, Scalar::from(7_f64)),
+            ("\"long\"", "\"float\"", r#"{"v":7}"#, Scalar::from(7_f32)),
+            ("\"long\"", "\"double\"", r#"{"v":7}"#, Scalar::from(7_f64)),
             (
                 "\"float\"",
                 "\"double\"",
                 r#"{"v":1.5}"#,
-                Value::from(1.5_f64),
+                Scalar::from(1.5_f64),
             ),
             (
                 "\"string\"",
                 "\"bytes\"",
                 r#"{"v":"hi"}"#,
-                Value::from(b"hi".as_slice()),
+                Scalar::from(b"hi".as_slice()),
             ),
         ];
         for (from, to, row, expected) in cases {
@@ -662,7 +792,10 @@ mod resolution {
             &record(r#"{"name":"v","type":"string"}"#),
             &[r#"{"v":"ok"}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_str), Some("ok"));
+        assert_eq!(
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
+            Some("ok")
+        );
     }
 
     #[test]
@@ -690,7 +823,7 @@ mod resolution {
         );
         assert_eq!(rows[0].len(), 1);
         assert_eq!(
-            rows[0].get_key_str("b").and_then(Value::as_str),
+            rows[0].get_key_str("b").and_then(Scalar::as_str),
             Some("kept")
         );
     }
@@ -708,12 +841,12 @@ mod resolution {
             &[r#"{"a":5}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("note").and_then(Value::as_str),
+            rows[0].get_key_str("note").and_then(Scalar::as_str),
             Some("none")
         );
         assert!(rows[0].get_key_str("maybe").unwrap().is_null());
         assert_eq!(
-            rows[0].get_key_str("raw").and_then(Value::as_bytes),
+            rows[0].get_key_str("raw").and_then(Scalar::as_bytes),
             Some(&[0xFF_u8, 0x00][..])
         );
     }
@@ -742,7 +875,7 @@ mod resolution {
             &[r#"{"qty":31}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("quantity").and_then(Value::as_i64),
+            rows[0].get_key_str("quantity").and_then(Scalar::as_i64),
             Some(31)
         );
     }
@@ -755,8 +888,8 @@ mod resolution {
             &[r#"{"a":1,"b":"x"}"#],
         );
         let keys = rows[0].keys();
-        assert_eq!(keys, ["b", "a"], "the reader's order wins");
-        assert_eq!(rows[0].get_key_str("a").and_then(Value::as_i64), Some(1));
+        assert_eq!(keys, ["a", "b"], "records are name-sorted values");
+        assert_eq!(rows[0].get_key_str("a").and_then(Scalar::as_i64), Some(1));
     }
 
     #[test]
@@ -771,11 +904,11 @@ mod resolution {
             &[r#"{"v":"SELL"}"#, r#"{"v":"HOLD"}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("v").and_then(Value::as_str),
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
             Some("SELL")
         );
         assert_eq!(
-            rows[1].get_key_str("v").and_then(Value::as_str),
+            rows[1].get_key_str("v").and_then(Scalar::as_str),
             Some("OTHER"),
             "an unknown writer symbol falls back to the reader default"
         );
@@ -791,15 +924,15 @@ mod resolution {
             &record(r#"{"name":"v","type":"long"}"#),
             &[r#"{"v":9}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_i64), Some(9));
+        assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(9));
 
-        let writer_json = crate::json::from_str(&writer).unwrap();
+        let writer_json = crate::json::from_utf8(&writer).unwrap();
         let mut handle = super::buffer();
         avro::write_container(
             &mut handle,
             &writer_json,
             &[],
-            &[crate::json::from_str(r#"{"v":null}"#).unwrap()],
+            &[crate::json::from_utf8(r#"{"v":null}"#).unwrap()],
         )
         .unwrap();
         let reader = Schema::from_str(&record(r#"{"name":"v","type":"long"}"#)).unwrap();
@@ -816,7 +949,7 @@ mod resolution {
             &record(r#"{"name":"v","type":["null","long"]}"#),
             &[r#"{"v":4}"#],
         );
-        assert_eq!(rows[0].get_key_str("v").and_then(Value::as_i64), Some(4));
+        assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(4));
     }
 
     #[test]
@@ -827,12 +960,12 @@ mod resolution {
             &[r#"{"v":"text"}"#, r#"{"v":null}"#, r#"{"v":7}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("v").and_then(Value::as_str),
+            rows[0].get_key_str("v").and_then(Scalar::as_str),
             Some("text")
         );
         assert!(rows[1].get_key_str("v").unwrap().is_null());
         assert_eq!(
-            rows[2].get_key_str("v").and_then(Value::as_f64),
+            rows[2].get_key_str("v").and_then(Scalar::as_f64),
             Some(7.0),
             "the long branch promotes into the reader's double branch"
         );
@@ -854,7 +987,7 @@ mod resolution {
             reader,
             &[r#"{"value":1,"label":"a","next":{"value":2,"label":"b","next":null}}"#],
         );
-        assert_eq!(rows[0].path("next.value").and_then(Value::as_i64), Some(2));
+        assert_eq!(rows[0].path("next.value").and_then(Scalar::as_i64), Some(2));
         assert!(rows[0].path("next.label").is_none(), "projected away");
     }
 
@@ -862,7 +995,7 @@ mod resolution {
     fn resolving_to_the_writer_schema_is_the_identity() {
         let schema = super::manifest_shaped_schema();
         let parsed = Schema::from_json(&schema).unwrap();
-        let row = crate::json::from_str(
+        let row = crate::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -899,8 +1032,8 @@ mod resolution {
             ]}
         ]}"#;
         let rows = resolved(writer, reader, &[r#"{"f1":{"x":7},"f2":{"x":"hi"}}"#]);
-        assert_eq!(rows[0].path("f1.x").and_then(Value::as_i64), Some(7));
-        assert_eq!(rows[0].path("f2.x").and_then(Value::as_str), Some("hi"));
+        assert_eq!(rows[0].path("f1.x").and_then(Scalar::as_i64), Some(7));
+        assert_eq!(rows[0].path("f2.x").and_then(Scalar::as_str), Some("hi"));
     }
 
     #[test]
@@ -921,7 +1054,7 @@ mod resolution {
             &[r#"{"v":3}"#],
         );
         assert_eq!(
-            rows[0].get_key_str("via").and_then(Value::as_str),
+            rows[0].get_key_str("via").and_then(Scalar::as_str),
             Some("exact")
         );
     }
@@ -933,7 +1066,7 @@ mod resolution {
             &record(r#"{"name":"b","aliases":["a"],"type":"long"}"#),
             &[r#"{"a":1,"b":2}"#],
         );
-        assert_eq!(rows[0].get_key_str("b").and_then(Value::as_i64), Some(2));
+        assert_eq!(rows[0].get_key_str("b").and_then(Scalar::as_i64), Some(2));
     }
 
     #[test]
@@ -975,7 +1108,7 @@ mod resolution {
 }
 
 mod streaming {
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn blocks_stream_and_skipping_costs_nothing() {
@@ -1006,14 +1139,14 @@ mod streaming {
         assert_eq!(first.count(), 1);
         // The first block is skipped: never decompressed, never decoded.
         let second = blocks.next_block().unwrap().unwrap();
-        assert_eq!(second.rows().unwrap(), [Value::I64(9)]);
+        assert_eq!(second.rows().unwrap(), [Scalar::I64(9)]);
         assert!(blocks.next_block().unwrap().is_none());
     }
 
     #[test]
     fn a_written_container_streams_back_the_same_rows() {
         let schema = super::manifest_shaped_schema();
-        let row = crate::json::from_str(
+        let row = crate::json::from_utf8(
             r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -1032,11 +1165,59 @@ mod streaming {
         assert_eq!(block.rows().unwrap(), [row]);
         assert!(blocks.next_block().unwrap().is_none());
     }
+
+    #[test]
+    fn owning_blocks_keep_the_stream_lazy_and_honor_limits() {
+        let encode_long = |value: i64| -> Vec<u8> {
+            let mut output = Vec::new();
+            let mut encoded = ((value << 1) ^ (value >> 63)) as u64;
+            loop {
+                let byte = (encoded & 0x7f) as u8;
+                encoded >>= 7;
+                output.push(if encoded == 0 { byte } else { byte | 0x80 });
+                if encoded == 0 {
+                    return output;
+                }
+            }
+        };
+        let source = super::handmade_container(
+            "\"long\"",
+            "null",
+            &[(1, encode_long(7)), (1, encode_long(9))],
+        );
+        let mut blocks = avro::read_blocks_owned(source).unwrap();
+        assert_eq!(blocks.schema().kind(), "long");
+        assert!(blocks.metadata().is_empty());
+        let first = blocks.next_block().unwrap().unwrap();
+        assert_eq!(first.count(), 1);
+        // The first payload may be discarded without ever decoding it.
+        let second = blocks.next_block().unwrap().unwrap();
+        assert_eq!(second.rows().unwrap(), [Scalar::I64(9)]);
+        assert!(blocks.next_block().unwrap().is_none());
+
+        let source = super::handmade_container("\"long\"", "null", &[]);
+        let limits = crate::Limits::new(128, 1, 1_000_000, 1_024);
+        let message = avro::read_blocks_owned_with_limits(source, limits)
+            .err()
+            .expect("the one-byte schema limit must fail")
+            .to_string();
+        assert!(message.contains("at most 1 bytes"), "{message}");
+    }
+
+    #[test]
+    fn a_lazy_block_applies_its_row_budget_after_opening_the_header() {
+        let source = super::handmade_container("\"null\"", "null", &[(3, Vec::new())]);
+        let limits = crate::Limits::new(128, 1 << 20, 2, 1_024);
+        let mut blocks = avro::read_blocks_with_limits(&source, limits).unwrap();
+
+        let message = blocks.next_block().unwrap_err().to_string();
+        assert!(message.contains("at most 2 rows"), "{message}");
+    }
 }
 
 mod single_object {
     use crate::avro::Schema;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     #[test]
     fn a_datum_round_trips_through_the_single_object_framing() {
@@ -1047,12 +1228,12 @@ mod single_object {
             ]}"#,
         )
         .unwrap();
-        let value = Value::from_mapping([
-            (Value::from("symbol"), Value::from("AAPL")),
-            (Value::from("qty"), Value::from(100_i64)),
+        let value = Scalar::from_record([
+            ("symbol", Scalar::from("AAPL")),
+            ("qty", Scalar::from(100_i64)),
         ])
         .unwrap();
-        let framed = avro::to_single_object_vec(&schema, &value).unwrap();
+        let framed = avro::into_single_object_vec(&schema, &value).unwrap();
         assert_eq!(&framed[..2], &[0xC3, 0x01]);
         assert_eq!(
             avro::from_single_object_slice(&framed, &schema).unwrap(),
@@ -1064,7 +1245,7 @@ mod single_object {
     fn a_wrong_fingerprint_is_refused_naming_both() {
         let schema = Schema::from_str("\"long\"").unwrap();
         let other = Schema::from_str("\"string\"").unwrap();
-        let framed = avro::to_single_object_vec(&schema, &Value::I64(1)).unwrap();
+        let framed = avro::into_single_object_vec(&schema, &Scalar::I64(1)).unwrap();
         let message = avro::from_single_object_slice(&framed, &other)
             .unwrap_err()
             .to_string();
@@ -1074,7 +1255,7 @@ mod single_object {
     #[test]
     fn bytes_after_the_datum_are_refused() {
         let schema = Schema::from_str("\"long\"").unwrap();
-        let mut framed = avro::to_single_object_vec(&schema, &Value::I64(1)).unwrap();
+        let mut framed = avro::into_single_object_vec(&schema, &Scalar::I64(1)).unwrap();
         framed.push(0x00);
         let message = avro::from_single_object_slice(&framed, &schema)
             .unwrap_err()
@@ -1085,7 +1266,7 @@ mod single_object {
 
 #[cfg(feature = "parquet")]
 mod snappy {
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// Encode one long, snappy-compress it, and append the big-endian CRC-32.
     fn snappy_block(value: i64) -> Vec<u8> {
@@ -1111,7 +1292,7 @@ mod snappy {
     fn snappy_blocks_decode_and_verify_their_crc() {
         let handle = super::handmade_container("\"long\"", "snappy", &[(1, snappy_block(42))]);
         let container = avro::read_container(&handle).unwrap();
-        assert_eq!(container.rows, [Value::I64(42)]);
+        assert_eq!(container.rows, [Scalar::I64(42)]);
     }
 
     #[test]
@@ -1127,6 +1308,22 @@ mod snappy {
 
 mod hardening {
     use crate::avro;
+
+    #[test]
+    fn duplicate_header_keys_are_refused_before_map_projection() {
+        let handle = super::handmade_container_with_header(
+            &[
+                ("avro.schema", b"\"long\""),
+                ("avro.schema", b"\"null\""),
+                ("avro.codec", b"null"),
+            ],
+            &[],
+        );
+        let message = avro::read_container(&handle).unwrap_err().to_string();
+        assert!(message.contains("duplicate \"avro.schema\""), "{message}");
+        let message = avro::read_blocks(&handle).err().unwrap().to_string();
+        assert!(message.contains("duplicate \"avro.schema\""), "{message}");
+    }
 
     #[test]
     fn recursive_data_deeper_than_the_limit_is_an_error_not_a_crash() {
@@ -1187,16 +1384,18 @@ mod hardening {
 
 #[cfg(feature = "arrow")]
 mod records {
-    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use arrow_array::builder::{Float64Builder, Int64Builder, ListBuilder, StringBuilder};
     use arrow_array::types::{Float64Type, Int64Type};
-    use arrow_array::{Array, RecordBatch, cast::AsArray};
+    use arrow_array::{Array, RecordBatch, RecordBatchIterator, cast::AsArray};
+    use arrow_schema::ArrowError;
 
     use crate::avro::{Avro, AvroOptions};
-    use crate::generic::IORecordOptions;
-    use crate::io::{Buffer, IOBase};
-    use crate::{DataType, Field, Url, avro};
+    use crate::generic::{IORecordOptions, RecordOptions};
+    use crate::io::{Buffer, IOBase, IOMedia};
+    use crate::{DataType, Field, MediaType, Url, avro};
 
     /// One canonical batch with a nullable column and a list column.
     fn batch() -> (Field, RecordBatch) {
@@ -1238,7 +1437,7 @@ mod records {
                 nulls,
             )
         };
-        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let arrow_schema = schema.clone().into_arrow_schema().unwrap();
         let batch = RecordBatch::try_new(
             arrow_schema,
             vec![
@@ -1256,20 +1455,149 @@ mod records {
         Buffer::new().with_media_type(Url::from_str("file:///trades.avro").unwrap().media_type())
     }
 
+    /// Two independent handles over one in-memory byte value.
+    #[derive(Clone, Debug)]
+    struct Shared {
+        handle: Arc<Mutex<Buffer>>,
+        media_type: MediaType,
+    }
+
+    impl Shared {
+        fn new(handle: Buffer) -> Self {
+            let media_type = handle.media_type().clone();
+            Self {
+                handle: Arc::new(Mutex::new(handle)),
+                media_type,
+            }
+        }
+    }
+
+    impl crate::io::IOMedia for Shared {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Shared {
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+            self.handle.lock().unwrap().pread(offset, buffer)
+        }
+
+        fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+            self.handle.lock().unwrap().pwrite(offset, bytes)
+        }
+
+        fn size(&self) -> u64 {
+            self.handle.lock().unwrap().size()
+        }
+
+        fn capacity(&self) -> u64 {
+            self.handle.lock().unwrap().capacity()
+        }
+
+        fn reserve(&mut self, capacity: u64) -> crate::Result<()> {
+            self.handle.lock().unwrap().reserve(capacity)
+        }
+
+        fn truncate(&mut self, size: u64) -> crate::Result<()> {
+            self.handle.lock().unwrap().truncate(size)
+        }
+
+        fn url(&self) -> Option<&Url> {
+            None
+        }
+
+        fn media_type(&self) -> &MediaType {
+            &self.media_type
+        }
+
+        fn set_media_type(&mut self, media_type: MediaType) {
+            self.handle
+                .lock()
+                .unwrap()
+                .set_media_type(media_type.clone());
+            self.media_type = media_type;
+        }
+    }
+
+    /// A positional handle measuring how much row-size metadata traversal
+    /// fetches from a large container.
+    struct Counting {
+        handle: Buffer,
+        reads: AtomicUsize,
+        bytes: AtomicUsize,
+    }
+
+    impl Counting {
+        fn new(handle: Buffer) -> Self {
+            Self {
+                handle,
+                reads: AtomicUsize::new(0),
+                bytes: AtomicUsize::new(0),
+            }
+        }
+
+        fn cost(&self, operation: impl FnOnce()) -> (usize, usize) {
+            let reads = self.reads.load(Ordering::Relaxed);
+            let bytes = self.bytes.load(Ordering::Relaxed);
+            operation();
+            (
+                self.reads.load(Ordering::Relaxed) - reads,
+                self.bytes.load(Ordering::Relaxed) - bytes,
+            )
+        }
+    }
+
+    impl crate::io::IOMedia for Counting {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Counting {
+        crate::delegate_iobase!(handle: pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
+            ls, kind, clear, remove, is_atomic, is_tabular);
+
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+            let read = self.handle.pread(offset, buffer)?;
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            self.bytes.fetch_add(read, Ordering::Relaxed);
+            Ok(read)
+        }
+    }
+
+    /// A one-batch reader that reports whether a write pulled its input.
+    fn counted_reader(pulls: Arc<AtomicUsize>) -> crate::arrow::BatchReader {
+        let (_, batch) = batch();
+        let schema = batch.schema();
+        let batches = std::iter::once(batch).inspect(move |_| {
+            pulls.fetch_add(1, Ordering::Relaxed);
+        });
+        crate::arrow::batch_reader(schema, batches)
+    }
+
+    fn reader_then_error(first: RecordBatch) -> crate::arrow::BatchReader {
+        let schema = first.schema();
+        Box::new(RecordBatchIterator::new(
+            [
+                Ok(first),
+                Err(ArrowError::ComputeError("later Avro source failure".into())),
+            ],
+            schema,
+        ))
+    }
+
     #[test]
     fn batches_round_trip_through_the_record_surface() {
         let (schema, batch) = batch();
         let mut handle = handle();
         let options = crate::generic::RecordOptions::for_media_type(handle.media_type()).unwrap();
         handle
-            .write_arrow_batch_reader(
+            .overwrite_arrow_reader(
                 crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
                 &options,
             )
             .unwrap();
 
         let read: Vec<RecordBatch> = handle
-            .read_arrow_batch_reader(&options)
+            .read_arrow_reader(&options)
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
@@ -1293,7 +1621,7 @@ mod records {
         let (_, batch) = batch();
         let mut handle = handle();
         let options = AvroOptions::new();
-        avro::write_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
             &options,
@@ -1328,9 +1656,133 @@ mod records {
     #[test]
     fn an_empty_handle_reads_as_no_batches() {
         let handle = handle();
-        let options = AvroOptions::new().with_schema(batch().0);
+        let options = AvroOptions::new().with_field(batch().0);
         let read = avro::read_batch_reader(&handle, None, &options).unwrap();
         assert_eq!(read.count(), 0);
+    }
+
+    #[test]
+    fn dimensions_describe_all_blocks_and_ignore_read_options() {
+        let (field, first) = batch();
+        let (_, second) = batch();
+        let mut media = Avro::new(handle());
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(first.schema(), [first, second]),
+                &options,
+            )
+            .unwrap();
+        media.options_mut().set_max_row_size(Some(1));
+        media.options_mut().set_select_by_names(vec!["id".into()]);
+        media
+            .options_mut()
+            .set_filter_partitions(vec![("id".into(), "999".into())]);
+
+        assert_eq!(media.row_size().unwrap(), 6);
+        assert_eq!(media.column_size().unwrap(), field.field_len());
+    }
+
+    #[test]
+    fn an_empty_open_avro_container_has_explicit_lifecycle_and_dimensions() {
+        let (field, batch) = batch();
+        let mut media = Avro::new(handle()).with_field(field.clone());
+
+        media.open().unwrap();
+        assert!(media.opened());
+        assert_eq!(media.row_size().unwrap(), 0);
+        assert_eq!(media.column_size().unwrap(), field.field_len());
+
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert!(media.opened());
+        assert_eq!(media.row_size().unwrap(), 3);
+
+        media.clear().unwrap();
+        assert!(media.opened());
+        assert_eq!(media.row_size().unwrap(), 0);
+        assert_eq!(media.column_size().unwrap(), field.field_len());
+
+        media.remove(false).unwrap();
+        assert!(!media.opened(), "removal ends the opened session");
+    }
+
+    #[test]
+    fn an_open_avro_cache_is_stable_until_close_then_reads_fresh() {
+        let encoded = |copies: usize| {
+            let (_, template) = batch();
+            let schema = template.schema();
+            let batches = std::iter::repeat_n(template, copies);
+            let mut media = Avro::new(handle());
+            let options = media.record_options().unwrap();
+            media
+                .overwrite_arrow_reader(crate::arrow::batch_reader(schema, batches), &options)
+                .unwrap();
+            media.into_handle()
+        };
+        let first = encoded(1);
+        let replacement = encoded(2);
+        let shared = Shared::new(first);
+        let mut external = shared.clone();
+        let mut media = Avro::new(shared);
+
+        media.open().unwrap();
+        assert_eq!(media.row_size().unwrap(), 3);
+        external.write_all_bytes(replacement.as_slice()).unwrap();
+        assert_eq!(media.row_size().unwrap(), 3, "the open metadata is stable");
+
+        media.close().unwrap();
+        assert!(!media.opened());
+        assert_eq!(media.row_size().unwrap(), 6, "closed reads are fresh");
+    }
+
+    #[test]
+    fn dimensions_skip_a_large_avro_payload_without_decoding_it() {
+        let field = DataType::from_fields([DataType::Utf8.required_field("payload")])
+            .unwrap()
+            .required_field("rows");
+        let payload = "0123456789abcdef".repeat(65_536);
+        let batch = RecordBatch::try_new(
+            field.clone().into_arrow_schema().unwrap(),
+            vec![Arc::new(arrow_array::StringArray::from(vec![payload]))],
+        )
+        .unwrap();
+        let options = AvroOptions::new()
+            .with_codec("null")
+            .with_field(field.clone());
+        let mut media = Avro::new(handle()).with_options(options);
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        let counting = Counting::new(media.into_handle());
+        let total = counting.size() as usize;
+
+        let (schema_reads, schema_fetched) = counting.cost(|| {
+            assert_eq!(counting.column_size().unwrap(), 1);
+        });
+        assert!(schema_reads > 0);
+        assert!(
+            schema_fetched * 4 < total,
+            "schema header fetched {schema_fetched} of {total} encoded bytes"
+        );
+
+        let (reads, fetched) = counting.cost(|| {
+            assert_eq!(counting.row_size().unwrap(), 1);
+        });
+        assert!(reads > 0);
+        assert!(
+            fetched * 4 < total,
+            "metadata traversal fetched {fetched} of {total} encoded bytes"
+        );
     }
 
     #[test]
@@ -1353,17 +1805,212 @@ mod records {
         // An Arrow schema is anonymous, so the record's name is the options'
         // root name; naming it keeps the round trip exact.
         let mut media = Avro::new(handle()).with_root_name("trades");
+        let options = media.record_options().unwrap();
         media
-            .write_batch_reader(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
             .unwrap();
-        assert!(media.opened(), "a write refreshes the cache");
-        media.close().unwrap();
-        assert!(!media.opened());
+        assert!(!media.opened(), "a closed write must not start a cache");
         media.open().unwrap();
         assert!(media.opened());
-        let derived = media.schema().unwrap();
+        let derived = media.read_arrow_field(&options).unwrap();
         assert_eq!(derived.name(), schema.name());
         assert_eq!(derived.field_len(), schema.field_len());
+        media.close().unwrap();
+        assert!(!media.opened());
+    }
+
+    #[test]
+    fn the_wrapper_owns_avro_options_over_an_unnamed_buffer() {
+        let (field, _) = batch();
+        let media = Avro::new(Buffer::new()).with_field(field.clone());
+        let options = media.record_options().unwrap();
+
+        assert!(matches!(options, RecordOptions::Avro(_)));
+        assert_eq!(options.field(), Some(&field));
+    }
+
+    #[test]
+    fn mismatched_options_are_rejected_before_any_write_pulls_input() {
+        let (field, _) = batch();
+        for operation in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut media = Avro::new(Buffer::new()).with_field(field.clone());
+            let mut options = RecordOptions::Ipc(crate::ipc::IpcOptions::new());
+            if operation == "merge" {
+                options.set_merge_by_names(vec!["id".into()]);
+            }
+            let result = match operation {
+                "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+                    &mut media,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                "append" => crate::io::IOMedia::append_arrow_reader(
+                    &mut media,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                "merge" => crate::io::IOMedia::merge_arrow_reader(
+                    &mut media,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("Avro"), "{operation}: {message}");
+            assert_eq!(pulls.load(Ordering::Relaxed), 0, "{operation}");
+            assert!(media.handle().is_empty(), "{operation}");
+        }
+    }
+
+    #[test]
+    fn an_open_cache_tracks_the_final_avro_field_after_casting() {
+        let stored = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("symbol"),
+        ])
+        .unwrap()
+        .required_field("trades");
+        let first = RecordBatch::try_new(
+            crate::arrow::arrow_schema_from_field(&stored).unwrap(),
+            vec![
+                Arc::new(arrow_array::Int64Array::from(vec![1])),
+                Arc::new(arrow_array::StringArray::from(vec![Some("AAPL")])),
+            ],
+        )
+        .unwrap();
+        let mut media = Avro::new(handle()).with_root_name("trades");
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(first.schema(), [first]),
+                &options,
+            )
+            .unwrap();
+        media.open().unwrap();
+
+        let loose = DataType::from_fields([
+            DataType::Utf8.required_field("id"),
+            DataType::Utf8.nullable_field("symbol"),
+        ])
+        .unwrap()
+        .required_field("trades");
+        let incoming = RecordBatch::try_new(
+            crate::arrow::arrow_schema_from_field(&loose).unwrap(),
+            vec![
+                Arc::new(arrow_array::StringArray::from(vec!["7"])),
+                Arc::new(arrow_array::StringArray::from(vec![Some("MSFT")])),
+            ],
+        )
+        .unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                &options,
+            )
+            .unwrap();
+
+        assert!(media.opened());
+        assert_eq!(media.read_arrow_field(&options).unwrap(), stored);
+    }
+
+    #[test]
+    fn append_and_merge_keep_an_open_avro_cache_coherent_until_close() {
+        let (field, first) = batch();
+        let mut media = Avro::new(Buffer::new()).with_field(field.clone());
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(first.schema(), [first]),
+                &options,
+            )
+            .unwrap();
+        assert!(!media.opened());
+        media.open().unwrap();
+        media.options_mut().set_commit_row_size(Some(1));
+
+        let (_, appended) = batch();
+        let append_options = media.record_options().unwrap();
+        media
+            .append_arrow_reader(
+                crate::arrow::batch_reader(appended.schema(), [appended]),
+                &append_options,
+            )
+            .unwrap();
+        assert!(media.opened());
+        assert_eq!(media.read_arrow_field(&append_options).unwrap(), field);
+        assert_eq!(
+            media
+                .read_arrow_reader(&append_options)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            6
+        );
+
+        media.options_mut().set_merge_by_names(vec!["id".into()]);
+        let (_, merged) = batch();
+        let merge_options = media.record_options().unwrap();
+        media
+            .merge_arrow_reader(
+                crate::arrow::batch_reader(merged.schema(), [merged]),
+                &merge_options,
+            )
+            .unwrap();
+        assert!(media.opened());
+        assert_eq!(media.read_arrow_field(&merge_options).unwrap(), field);
+        assert_eq!(
+            media
+                .read_arrow_reader(&merge_options)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            6
+        );
+
+        media.close().unwrap();
+        assert!(!media.opened());
+        assert_eq!(media.read_arrow_field(&merge_options).unwrap(), field);
+    }
+
+    #[test]
+    fn a_partial_commit_keeps_an_open_avro_cache_coherent() {
+        let (field, first) = batch();
+        let mut media = Avro::new(Buffer::new()).with_field(field.clone());
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(first.schema(), [first]),
+                &options,
+            )
+            .unwrap();
+        media.open().unwrap();
+        media.options_mut().set_commit_row_size(Some(1));
+        let (_, incoming) = batch();
+
+        let options = media.record_options().unwrap();
+        let message = media
+            .overwrite_arrow_reader(reader_then_error(incoming.slice(0, 1)), &options)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("later Avro source failure"), "{message}");
+        assert!(media.opened());
+        assert_eq!(media.read_arrow_field(&options).unwrap(), field);
+        assert_eq!(media.row_size().unwrap(), 1);
+        assert_eq!(
+            media
+                .read_arrow_reader(&options)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            1
+        );
     }
 
     #[test]
@@ -1371,7 +2018,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &crate::json::from_str(
+            &crate::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"v","type":["null","long","string"]}
                 ]}"#,
@@ -1394,7 +2041,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &crate::json::from_str(
+            &crate::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"gap","type":["null"]},
                     {"name":"v","type":["long"]}
@@ -1403,8 +2050,8 @@ mod records {
             .unwrap(),
             &[],
             &[
-                crate::json::from_str(r#"{"gap":null,"v":5}"#).unwrap(),
-                crate::json::from_str(r#"{"gap":null,"v":6}"#).unwrap(),
+                crate::json::from_utf8(r#"{"gap":null,"v":5}"#).unwrap(),
+                crate::json::from_utf8(r#"{"gap":null,"v":6}"#).unwrap(),
             ],
         )
         .unwrap();
@@ -1434,7 +2081,7 @@ mod records {
             .unwrap(),
             false,
         );
-        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let arrow_schema = schema.into_arrow_schema().unwrap();
         let batch = RecordBatch::try_new(
             arrow_schema,
             vec![
@@ -1444,7 +2091,7 @@ mod records {
         )
         .unwrap();
         let mut handle = handle();
-        avro::write_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch]),
             &AvroOptions::new(),
@@ -1465,12 +2112,12 @@ mod records {
         let schema = Field::new(
             "row",
             DataType::from_fields([
-                DataType::Interval(crate::enums::TimeUnit::MonthDayNano).required_field("span")
+                DataType::Interval(crate::generic::TimeUnit::MonthDayNano).required_field("span")
             ])
             .unwrap(),
             false,
         );
-        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let arrow_schema = schema.into_arrow_schema().unwrap();
         let batch = RecordBatch::try_new(
             arrow_schema,
             vec![Arc::new(arrow_array::IntervalMonthDayNanoArray::from(
@@ -1479,7 +2126,7 @@ mod records {
         )
         .unwrap();
         let mut handle = handle();
-        let message = avro::write_batch_reader(
+        let message = avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch]),
             &AvroOptions::new(),
@@ -1518,7 +2165,7 @@ mod records {
             DataType::from_fields([
                 DataType::Date32.required_field("day"),
                 DataType::Timestamp(
-                    crate::enums::TimeUnit::Microsecond,
+                    crate::generic::TimeUnit::Microsecond,
                     Some(crate::Timezone::UTC),
                 )
                 .nullable_field("at"),
@@ -1527,7 +2174,7 @@ mod records {
             .unwrap(),
             false,
         );
-        let arrow_schema = schema.to_arrow_schema().unwrap();
+        let arrow_schema = schema.into_arrow_schema().unwrap();
         let batch = RecordBatch::try_new(
             arrow_schema,
             vec![
@@ -1550,22 +2197,22 @@ mod records {
 
         let mut handle = handle();
         let options = AvroOptions::new();
-        avro::write_batch_reader(
+        avro::overwrite_arrow_reader(
             &mut handle,
             crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
             &options,
         )
         .unwrap();
 
-        // The container is readable at the Value level with typed temporals.
+        // The container is readable at the Scalar level with typed temporals.
         let container = avro::read_container(&handle).unwrap();
         assert_eq!(
             container.rows[0].get_key_str("day"),
-            Some(&crate::Value::Date(19_782))
+            Some(&crate::Scalar::date32(19_782))
         );
         assert_eq!(
             container.rows[1].get_key_str("cost"),
-            Some(&crate::Value::Decimal(-99, 2))
+            Some(&crate::Scalar::d128(-99, 2))
         );
 
         // And columnar reads reproduce the arrays exactly.
@@ -1580,12 +2227,12 @@ mod records {
 }
 
 mod matrix {
-    use crate::enums::TimeUnit;
-    use crate::{Value, avro};
+    use crate::generic::TimeUnit;
+    use crate::{Scalar, avro};
 
     /// Round-trip rows through a container and hand them back.
-    fn round_trip(schema: &str, rows: &[Value]) -> Vec<Value> {
-        let schema = crate::json::from_str(schema).unwrap();
+    fn round_trip(schema: &str, rows: &[Scalar]) -> Vec<Scalar> {
+        let schema = crate::json::from_utf8(schema).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], rows).unwrap();
         avro::read_container(&handle).unwrap().rows
@@ -1596,18 +2243,16 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"counts","type":{"type":"map","values":"long"}}
         ]}"#;
-        let full = Value::from_mapping([(
-            Value::from("counts"),
-            Value::from_mapping([
-                (Value::from("a"), Value::from(1_i64)),
-                (Value::from("b"), Value::from(-2_i64)),
+        let full = Scalar::from_record([(
+            "counts",
+            Scalar::from_mapping([
+                (Scalar::from("a"), Scalar::from(1_i64)),
+                (Scalar::from("b"), Scalar::from(-2_i64)),
             ])
             .unwrap(),
         )])
         .unwrap();
-        let empty =
-            Value::from_mapping([(Value::from("counts"), Value::from_mapping([]).unwrap())])
-                .unwrap();
+        let empty = Scalar::from_record([("counts", Scalar::from_mapping([]).unwrap())]).unwrap();
         let rows = round_trip(schema, &[full.clone(), empty.clone()]);
         assert_eq!(rows, [full, empty]);
     }
@@ -1625,16 +2270,23 @@ mod matrix {
                             ]}}}}
                 ]}}}
         ]}"#;
-        let row = crate::json::from_str(
+        let row = crate::json::from_utf8(
             r#"{"outer":[{"by_name":{"legs":[{"flag":true},{"flag":false}],"none":[]}}]}"#,
         )
         .unwrap();
         let rows = round_trip(schema, std::slice::from_ref(&row));
-        assert_eq!(rows[0], row);
+        assert!(rows[0].as_record().is_some());
+        assert!(
+            rows[0]
+                .path("outer.0.by_name")
+                .unwrap()
+                .as_mapping()
+                .is_some()
+        );
         assert_eq!(
             rows[0]
                 .path("outer.0.by_name.legs.1.flag")
-                .and_then(Value::as_bool),
+                .and_then(Scalar::as_bool),
             Some(false)
         );
     }
@@ -1646,8 +2298,8 @@ mod matrix {
                 {"type":"record","name":"point","fields":[{"name":"x","type":"long"}]}
             ]}
         ]}"#;
-        let some = crate::json::from_str(r#"{"v":{"x":9}}"#).unwrap();
-        let none = crate::json::from_str(r#"{"v":null}"#).unwrap();
+        let some = crate::json::from_utf8(r#"{"v":{"x":9}}"#).unwrap();
+        let none = crate::json::from_utf8(r#"{"v":null}"#).unwrap();
         let rows = round_trip(schema, &[some.clone(), none.clone()]);
         assert_eq!(rows, [some, none]);
     }
@@ -1658,11 +2310,18 @@ mod matrix {
             {"name":"ms","type":{"type":"int","logicalType":"time-millis"}},
             {"name":"us","type":{"type":"long","logicalType":"time-micros"}}
         ]}"#;
-        let row = Value::from_mapping([
-            (Value::from("ms"), Value::Time(0, TimeUnit::Millisecond)),
+        let row = Scalar::from_record([
             (
-                Value::from("us"),
-                Value::Time(86_399_999_999, TimeUnit::Microsecond),
+                "ms",
+                Scalar::Time32(0, TimeUnit::Millisecond, crate::Timezone::NAIVE),
+            ),
+            (
+                "us",
+                Scalar::Time64(
+                    86_399_999_999,
+                    TimeUnit::Microsecond,
+                    crate::Timezone::NAIVE,
+                ),
             ),
         ])
         .unwrap();
@@ -1675,7 +2334,7 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"day","type":{"type":"int","logicalType":"date"}}
         ]}"#;
-        let row = Value::from_mapping([(Value::from("day"), Value::Date(19_782))]).unwrap();
+        let row = Scalar::from_record([("day", Scalar::date32(19_782))]).unwrap();
         assert_eq!(round_trip(schema, std::slice::from_ref(&row))[0], row);
     }
 
@@ -1692,7 +2351,7 @@ mod matrix {
 
 mod snapshots {
     use crate::io::IOBase;
-    use crate::{Value, avro};
+    use crate::{Scalar, avro};
 
     /// The byte snapshot of one fixed schema and data pair.
     ///
@@ -1702,7 +2361,7 @@ mod snapshots {
     /// only for a deliberate format change, never to quiet the test.
     #[test]
     fn a_fixed_container_encodes_to_exactly_these_bytes() {
-        let schema = crate::json::from_str(
+        let schema = crate::json::from_utf8(
             r#"{"type":"record","name":"snap","fields":[
                 {"name":"id","type":"long"},
                 {"name":"tag","type":"string"}
@@ -1710,20 +2369,20 @@ mod snapshots {
         )
         .unwrap();
         let rows = [
-            crate::json::from_str(r#"{"id":1,"tag":"a"}"#).unwrap(),
-            crate::json::from_str(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
+            crate::json::from_utf8(r#"{"id":1,"tag":"a"}"#).unwrap(),
+            crate::json::from_utf8(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
         ];
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
         let bytes = handle.read_all_bytes().unwrap();
         let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
         let expected = concat!(
-            "4f626a0106166176726f2e736368656d61ca017b2274797065223a227265636f72",
-            "64222c226e616d65223a22736e6170222c226669656c6473223a5b7b226e616d65",
-            "223a226964222c2274797065223a226c6f6e67227d2c7b226e616d65223a227461",
-            "67222c2274797065223a22737472696e67227d5d7d146176726f2e636f6465630e",
-            "6465666c617465026b02760093d719303c57b434de8a739deedae53b041263624a",
-            "6466494a060093d719303c57b434de8a739deedae53b",
+            "4f626a0106166176726f2e736368656d61ca017b226669656c6473223a5b7b226e",
+            "616d65223a226964222c2274797065223a226c6f6e67227d2c7b226e616d65223a",
+            "22746167222c2274797065223a22737472696e67227d5d2c226e616d65223a2273",
+            "6e6170222c2274797065223a227265636f7264227d146176726f2e636f6465630e",
+            "6465666c617465026b027600c98ecdf13366dd2eb73d0abf308c2d40041263624a",
+            "6466494a0600c98ecdf13366dd2eb73d0abf308c2d40",
         );
         assert_eq!(
             hex, expected,
@@ -1745,7 +2404,7 @@ mod snapshots {
     #[test]
     fn a_single_object_datum_encodes_to_exactly_these_bytes() {
         let schema = avro::Schema::from_str("\"long\"").unwrap();
-        let framed = avro::to_single_object_vec(&schema, &Value::I64(3)).unwrap();
+        let framed = avro::into_single_object_vec(&schema, &Scalar::I64(3)).unwrap();
         let hex: String = framed.iter().map(|byte| format!("{byte:02x}")).collect();
         // C3 01, the little-endian Rabin fingerprint of "long" (the value
         // fastavro computes for the same schema), then zig-zag 3.
@@ -1793,7 +2452,7 @@ mod fuzz_lite {
     #[test]
     fn mutated_containers_never_panic() {
         let schema = super::manifest_shaped_schema();
-        let rows = [crate::json::from_str(
+        let rows = [crate::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,3],
                 "nested":{"flag":true}}"#,
         )
@@ -1867,7 +2526,7 @@ mod limits {
     use arrow_array::RecordBatchReader;
 
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOBase};
+    use crate::io::{Buffer, IOMedia};
     use crate::{DataType, Field, Url};
 
     /// A struct field is the schema of the batches it describes.
@@ -1880,7 +2539,7 @@ mod limits {
     /// A reader over one batch of `ids`.
     fn reader(ids: Vec<i64>) -> crate::arrow::BatchReader {
         let batch = arrow_array::RecordBatch::try_new(
-            crate::arrow::schema_from_field(&schema()).unwrap(),
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
             vec![Arc::new(arrow_array::Int64Array::from(ids))],
         )
         .unwrap();
@@ -1894,7 +2553,7 @@ mod limits {
     /// The total rows a handle yields under `options`.
     fn rows(handle: &Buffer, options: &RecordOptions) -> usize {
         handle
-            .read_arrow_batch_reader(options)
+            .read_arrow_reader(options)
             .unwrap()
             .map(|batch| batch.unwrap().num_rows())
             .sum()
@@ -1903,19 +2562,19 @@ mod limits {
     #[test]
     fn a_zero_limit_reads_the_declared_schema_and_no_batches() {
         let mut handle = handle();
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
         handle
-            .write_arrow_batch_reader(reader(vec![1, 2]), &options)
+            .overwrite_arrow_reader(reader(vec![1, 2]), &options)
             .unwrap();
 
         let mut limited = handle
-            .read_arrow_batch_reader(&options.with_max_row_size(0))
+            .read_arrow_reader(&options.with_max_row_size(0))
             .unwrap();
         // The schema is asserted, not only the emptiness: `Some(0)` is a
         // valid ask that still says what the rows would have been.
         assert_eq!(
             limited.schema(),
-            crate::arrow::schema_from_field(&schema()).unwrap()
+            crate::arrow::arrow_schema_from_field(&schema()).unwrap()
         );
         assert!(limited.next().is_none());
     }
@@ -1923,16 +2582,16 @@ mod limits {
     #[test]
     fn a_limited_write_truncates_what_the_caller_offered() {
         let mut handle = handle();
-        let options = handle.record_options().unwrap().with_schema(schema());
+        let options = handle.record_options().unwrap().with_field(schema());
 
         handle
-            .write_arrow_batch_reader(reader(vec![1, 2]), &options.clone().with_max_row_size(1))
+            .overwrite_arrow_reader(reader(vec![1, 2]), &options.clone().with_max_row_size(1))
             .unwrap();
         assert_eq!(rows(&handle, &options), 1);
 
         // An append is a write, so the same bound truncates it the same way.
         handle
-            .append_arrow_batch_reader(reader(vec![3, 4]), &options.clone().with_max_row_size(1))
+            .append_arrow_reader(reader(vec![3, 4]), &options.clone().with_max_row_size(1))
             .unwrap();
         assert_eq!(rows(&handle, &options), 2);
     }

@@ -59,7 +59,7 @@ const children: IOBase[] = [...(handle.parent?.ls(true) ?? [])]
 const globbed: IOBase[] = [...handle.glob('**/*.arrows')]
 const joined: IOBase = handle.joinpath('year=2024', 'part-0.arrows')
 const schema: Field = handle.readArrowField()
-const rows: BatchReader = handle.readArrowBatchReader()
+const rows: BatchReader = handle.readArrowReader()
 handle.flush()
 
 void kind

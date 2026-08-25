@@ -34,7 +34,7 @@ pub(crate) fn core_data_type_to_pyarrow<'py>(
     py: Python<'py>,
     data_type: &CoreDataType,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = data_type.to_arrow_ffi().map_err(value_error)?;
+    let schema = data_type.clone().into_arrow_ffi().map_err(value_error)?;
     import_ffi_schema(py, "DataType", &schema)
 }
 
@@ -42,7 +42,7 @@ pub(crate) fn core_field_to_pyarrow<'py>(
     py: Python<'py>,
     field: &yggdryl::Field,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = field.to_arrow_ffi().map_err(value_error)?;
+    let schema = field.clone().into_arrow_ffi().map_err(value_error)?;
     import_ffi_schema(py, "Field", &schema)
 }
 
@@ -58,7 +58,7 @@ pub(crate) fn default_arrow_scalar_to_pyarrow<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let data = array.to_data();
     let (ffi_array, _data_type_schema) = to_ffi(&data).map_err(value_error)?;
-    let ffi_field = field.to_arrow_ffi().map_err(value_error)?;
+    let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
     py.import("pyarrow")?
         .getattr("Array")?
         .call_method1(
@@ -86,7 +86,7 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
     let (ffi_array, ffi_data_type) = to_ffi(&data).map_err(value_error)?;
     let array_class = py.import("pyarrow")?.getattr("Array")?;
     if let Some(field) = field {
-        let ffi_field = field.to_arrow_ffi().map_err(value_error)?;
+        let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
         return array_class.call_method1(
             "_import_from_c",
             (
@@ -107,7 +107,7 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
 /// Constructs or safely casts one `PyArrow` scalar to an exact Arrow datatype.
 ///
 /// Keeping this helper beside the C Schema projection gives `DataType`,
-/// `Field`, and the records adapter one conversion contract without adding an
+/// `Field`, and Python value conversion one contract without adding an
 /// Arrow array/value dependency to the core crate.
 pub(crate) fn arrow_scalar_from_core_type<'py>(
     py: Python<'py>,
@@ -170,7 +170,7 @@ fn typed_arrow_scalar<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     match pyarrow.getattr("scalar")?.call1((value, target.clone())) {
         Ok(scalar) => Ok(scalar),
-        Err(scalar_error) => {
+        Err(value_error) => {
             // PyArrow exposes a few valid scalar layouts only through an
             // array slot (currently run-end encoding is the important case).
             let values = PyList::new(py, [value])?;
@@ -179,7 +179,7 @@ fn typed_arrow_scalar<'py>(
             kwargs.set_item("safe", safe)?;
             match pyarrow.getattr("array")?.call((values,), Some(&kwargs)) {
                 Ok(array) => array.get_item(0),
-                Err(_) => Err(scalar_error),
+                Err(_) => Err(value_error),
             }
         }
     }
@@ -205,7 +205,7 @@ pub(crate) fn core_data_type_from_value(value: &Bound<'_, PyAny>) -> PyResult<Co
 fn core_data_type_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
     let inferred = hint
         .py()
-        .import("yggdryl.records._hints")?
+        .import("yggdryl.fields._hints")?
         .getattr("datatype_from_pyhint")?
         .call1((hint,))?;
     let inferred = inferred.extract::<PyRef<'_, PyDataType>>()?;
@@ -304,12 +304,22 @@ impl FromPyObject<'_, '_> for DecimalScale {
 #[derive(Clone)]
 pub(crate) struct PyDataType {
     pub(crate) inner: CoreDataType,
+    /// Child Field views inherit the frozen state of the Field that exposed
+    /// this datatype. The core datatype remains immutable in either case.
+    pub(crate) children_read_only: bool,
 }
 
 impl PyDataType {
+    pub(crate) const fn from_inner(inner: CoreDataType) -> Self {
+        Self {
+            inner,
+            children_read_only: false,
+        }
+    }
+
     fn from_validated(inner: CoreDataType) -> PyResult<Self> {
         inner.validate().map_err(value_error)?;
-        Ok(Self { inner })
+        Ok(Self::from_inner(inner))
     }
 }
 
@@ -317,7 +327,7 @@ impl PyDataType {
 impl PyDataType {
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_data_type_from_value(value).map(|inner| Self { inner })
+        core_data_type_from_value(value).map(Self::from_inner)
     }
 
     #[staticmethod]
@@ -381,13 +391,21 @@ impl PyDataType {
             }
             "time32" => CoreDataType::time32(unit).map_err(value_error)?,
             "time64" => CoreDataType::time64(unit).map_err(value_error)?,
-            "duration" => {
+            "duration32" => {
                 if !unit.is_temporal() {
                     return Err(PyValueError::new_err(
-                        "duration requires a temporal resolution unit",
+                        "duration32 requires a temporal resolution unit",
                     ));
                 }
-                CoreDataType::Duration(unit)
+                CoreDataType::duration32(unit).map_err(value_error)?
+            }
+            "duration64" => {
+                if !unit.is_temporal() {
+                    return Err(PyValueError::new_err(
+                        "duration64 requires a temporal resolution unit",
+                    ));
+                }
+                CoreDataType::duration64(unit).map_err(value_error)?
             }
             "interval" => {
                 if !unit.is_interval() {
@@ -539,11 +557,12 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Internal allocation-free dictionary value view for record inference.
+    /// Internal allocation-free dictionary value view for annotation inference.
     fn _dictionary_value_type(&self) -> PyResult<Self> {
         match &self.inner {
             CoreDataType::Dictionary(dictionary) => Ok(Self {
                 inner: dictionary.value().clone(),
+                children_read_only: self.children_read_only,
             }),
             _ => Err(PyTypeError::new_err(
                 "dictionary value type is available only on dictionary datatypes",
@@ -577,7 +596,21 @@ impl PyDataType {
     fn time(unit: &str) -> PyResult<Self> {
         let unit = CoreTimeUnit::from_str(unit).map_err(value_error)?;
         CoreDataType::time(unit)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    #[staticmethod]
+    fn duration32(unit: &str) -> PyResult<Self> {
+        CoreDataType::duration32(CoreTimeUnit::from_str(unit).map_err(value_error)?)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    #[staticmethod]
+    fn duration64(unit: &str) -> PyResult<Self> {
+        CoreDataType::duration64(CoreTimeUnit::from_str(unit).map_err(value_error)?)
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -589,20 +622,20 @@ impl PyDataType {
     )]
     fn decimal(precision: DecimalPrecision, scale: DecimalScale) -> PyResult<Self> {
         CoreDataType::decimal(precision.0, scale.0)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
     /// Infers a native datatype from a Python type annotation.
     #[staticmethod]
     fn from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_data_type_from_pyhint(hint).map(|inner| Self { inner })
+        core_data_type_from_pyhint(hint).map(Self::from_inner)
     }
 
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreDataType::from_str(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -610,7 +643,7 @@ impl PyDataType {
     fn from_arrow(value: PyArrowType<ArrowDataType>) -> PyResult<Self> {
         let PyArrowType(value) = value;
         CoreDataType::try_from(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -618,25 +651,21 @@ impl PyDataType {
     #[staticmethod]
     fn from_fields(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
         CoreDataType::from_fields(core_fields_from_iterable(fields)?)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreDataType::from_json(value)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
-    }
-
-    fn to_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        core_data_type_to_pyarrow(py, &self.inner)
     }
 
     /// Returns the cached Python annotation corresponding to this datatype.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let data_type = Py::new(py, self.clone())?;
-        py.import("yggdryl.records._defaults")?
+        py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyhint_from_datatype")?
             .call1((data_type,))
     }
@@ -654,17 +683,19 @@ impl PyDataType {
         let field = yggdryl::Field::new("value", self.inner.clone(), false);
         let scalar = default_arrow_scalar_to_pyarrow(py, &field, &array)?;
         let data_type = Py::new(py, self.clone())?;
-        py.import("yggdryl.records._defaults")?
+        py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyvalue_from_datatype")?
             .call1((data_type, scalar))
     }
 
     /// Returns a recursively normalized datatype for a named compatibility target.
-    fn to_scheme_compat(&self, target: &str) -> PyResult<Self> {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
         let target = CoreScheme::from_str(target).map_err(value_error)?;
         self.inner
-            .to_scheme_compat(&target)
-            .map(|inner| Self { inner })
+            .clone()
+            .into_scheme_compat(&target)
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -734,18 +765,13 @@ impl PyDataType {
     /// `indent=None` is compact - today's output and the default; an integer
     /// pretty-prints with that many spaces per nesting level, exactly as
     /// `json.dumps(indent=n)` reads.
-    #[pyo3(signature = (*, indent = None))]
-    fn to_json(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_json_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as structural JSON.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = None))]
     fn into_json(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_json(indent)
+        self.inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Deserialize and validate from structural YAML.
@@ -764,18 +790,13 @@ impl PyDataType {
     /// `indent=2` is the default. `indent=None` asks for flow style -
     /// `{a: 1, b: 2}` on one line - which is valid YAML and round-trips, and
     /// is never what a caller gets by accident.
-    #[pyo3(signature = (*, indent = Some(2)))]
-    fn to_yaml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_yaml_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as YAML.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = Some(2)))]
     fn into_yaml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_yaml(indent)
+        self.inner
+            .clone()
+            .into_yaml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Deserialize and validate from structural TOML.
@@ -790,37 +811,31 @@ impl PyDataType {
     ///
     /// TOML has no null, and this model never needs one: an unset optional
     /// attribute is omitted rather than faked, so nothing is lost.
-    #[pyo3(signature = (*, indent = None))]
-    fn to_toml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.inner
-            .to_toml_with_formatting(crate::formatting_of(indent))
-            .map_err(value_error)
-    }
-
-    /// Consume and serialize as TOML.
     #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (*, indent = None))]
     fn into_toml(&self, indent: Option<u8>) -> PyResult<String> {
-        self.to_toml(indent)
+        self.inner
+            .clone()
+            .into_toml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
     }
 
     /// Project this value onto a plain structural mapping.
     ///
     /// The core's one structural model - the model JSON, YAML, and TOML are
     /// all expressed over - handed back as a `dict`, so a schema drops into any
-    /// document a caller already builds. Spelled `to_dict` rather than
-    /// `to_value` because `from_value` is already this module's
-    /// boundary-inference entry point and a Python caller reads a `dict` here.
-    fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::value::as_py(py, &self.inner.to_value())
+    /// document a caller already builds.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
     ///
-    /// The inverse of `to_dict`, through the core's one conversion.
+    /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreDataType::from_value(crate::value::from_py(value)?)
+        CoreDataType::from_value(crate::scalar::from_py(value)?)
             .map_err(value_error)
             .and_then(Self::from_validated)
     }
@@ -858,19 +873,20 @@ impl PyDataType {
         self.inner.is_nested()
     }
 
-    /// Internal record-casting view of temporal resolution. Keeping this on
+    /// Internal field-class conversion view of temporal resolution. Keeping this on
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
             CoreDataType::Timestamp(unit, _)
             | CoreDataType::Time32(unit)
             | CoreDataType::Time64(unit)
-            | CoreDataType::Duration(unit) => Some(unit.as_str()),
+            | CoreDataType::Duration32(unit)
+            | CoreDataType::Duration64(unit) => Some(unit.as_str()),
             _ => None,
         }
     }
 
-    /// Internal record-casting view of a timestamp timezone.
+    /// Internal field-class conversion view of a timestamp timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
             CoreDataType::Timestamp(_, timezone) => {
@@ -894,7 +910,7 @@ impl PyDataType {
         }
     }
 
-    /// Internal record-casting view of fixed-size-list arity.
+    /// Internal field-class conversion view of fixed-size-list arity.
     fn _fixed_size_list_length(&self) -> Option<i32> {
         match &self.inner {
             CoreDataType::FixedSizeList(_, length) => Some(*length),
@@ -942,6 +958,7 @@ impl PyDataType {
         PyDataTypeIterator {
             inner: self.inner.clone(),
             index: 0,
+            read_only: self.children_read_only,
         }
     }
 
@@ -958,7 +975,8 @@ impl PyDataType {
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
-        child_of(&self.inner, key).map(PyField::from_inner)
+        child_of(&self.inner, key)
+            .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
     }
 
     /// Refuse child mutation: a `DataType` is a read-only child collection.
@@ -1019,8 +1037,12 @@ impl PyDataType {
             .unbind())
     }
 
-    fn __hash__(&self) -> u64 {
+    fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
     }
 
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
@@ -1042,17 +1064,26 @@ impl PyDataType {
 pub(crate) struct PyDataTypeIterator {
     inner: CoreDataType,
     index: usize,
+    read_only: bool,
 }
 
 impl PyDataTypeIterator {
     /// Iterate one node's children, from `Field` or from `DataType`.
-    pub(crate) const fn over(inner: CoreDataType) -> Self {
-        Self { inner, index: 0 }
+    pub(crate) const fn over(inner: CoreDataType, read_only: bool) -> Self {
+        Self {
+            inner,
+            index: 0,
+            read_only,
+        }
     }
 }
 
 #[pymethods]
 impl PyDataTypeIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -1060,7 +1091,7 @@ impl PyDataTypeIterator {
     fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyField> {
         let field = slf.inner.get_field(slf.index)?.clone();
         slf.index += 1;
-        Some(PyField::from_inner(field))
+        Some(PyField::from_inner_with_read_only(field, slf.read_only))
     }
 
     fn __length_hint__(&self) -> usize {

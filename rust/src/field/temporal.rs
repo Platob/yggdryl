@@ -7,5 +7,6 @@ define_field_types!(Date32, "date32", crate::DataType::Date32);
 define_field_types!(Date64, "date64", crate::DataType::Date64);
 define_field_types!(Time32, "time32", crate::DataType::Time32(_));
 define_field_types!(Time64, "time64", crate::DataType::Time64(_));
-define_field_types!(Duration, "duration", crate::DataType::Duration(_));
+define_field_types!(Duration32, "duration32", crate::DataType::Duration32(_));
+define_field_types!(Duration64, "duration64", crate::DataType::Duration64(_));
 define_field_types!(Interval, "interval", crate::DataType::Interval(_));

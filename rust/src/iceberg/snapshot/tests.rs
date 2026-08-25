@@ -60,7 +60,7 @@ fn chained(count: i64, step_ms: i64) -> TableMetadata {
 
 mod references {
     use super::{SnapshotRef, TableMetadata, chained};
-    use crate::Value;
+    use crate::Scalar;
 
     #[test]
     fn a_branch_and_a_tag_report_their_kind() {
@@ -144,7 +144,7 @@ mod references {
     #[test]
     fn a_reference_round_trips_through_json_with_and_without_retention() {
         let bare = SnapshotRef::tag(7);
-        let document = bare.to_json().unwrap();
+        let document = bare.clone().into_json().unwrap();
         assert!(document.get_key_str("min-snapshots-to-keep").is_none());
         assert!(document.get_key_str("max-snapshot-age-ms").is_none());
         assert!(document.get_key_str("max-ref-age-ms").is_none());
@@ -157,23 +157,23 @@ mod references {
             .unwrap()
             .with_max_ref_age_ms(2_000)
             .unwrap();
-        let document = retained.to_json().unwrap();
+        let document = retained.clone().into_json().unwrap();
         assert_eq!(
             document
                 .get_key_str("min-snapshots-to-keep")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(2)
         );
         assert_eq!(
             document
                 .get_key_str("max-snapshot-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(1_000)
         );
         assert_eq!(
             document
                 .get_key_str("max-ref-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             Some(2_000)
         );
         assert_eq!(SnapshotRef::from_json(&document).unwrap(), retained);
@@ -196,10 +196,10 @@ mod references {
             )
             .unwrap();
 
-        let document = metadata.to_json().unwrap();
+        let document = metadata.clone().into_json().unwrap();
         let read = TableMetadata::from_json(&document).unwrap();
         assert_eq!(read.refs, metadata.refs);
-        assert_eq!(read.to_json().unwrap(), document);
+        assert_eq!(read.into_json().unwrap(), document);
     }
 }
 
@@ -530,7 +530,7 @@ mod validation {
         assert!(message.contains("max-snapshot-age-ms"), "{message}");
 
         // A malformed document can be written but never read back quietly.
-        let document = metadata.to_json().unwrap();
+        let document = metadata.into_json().unwrap();
         assert!(TableMetadata::from_json(&document).is_err());
     }
 }

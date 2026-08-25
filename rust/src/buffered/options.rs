@@ -50,7 +50,7 @@ const MAX_PAGE_SIZE: usize = 1024 * 1024 * 1024;
 /// assert_eq!(tight.page_size(), 1_024);
 /// assert_eq!(tight.max_bytes(), 2_048);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BufferedOptions {
     page_size: usize,
     /// `page_size.trailing_zeros()`, kept so an offset turns into a page index

@@ -3,7 +3,7 @@ use yggdryl::DataType;
 #[test]
 fn structural_json_uses_tagged_objects_and_rejects_bad_shapes() {
     let data_type = DataType::from_str("struct<id:bigint,tags:array<string>>").unwrap();
-    let data_type_json = data_type.to_json().unwrap();
+    let data_type_json = data_type.clone().into_json().unwrap();
     let data_type_value: serde_json::Value = serde_json::from_str(&data_type_json).unwrap();
     assert_eq!(data_type_value["type"], "struct");
     assert!(data_type_value["fields"].is_array());

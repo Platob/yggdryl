@@ -11,13 +11,13 @@ src/enums/             Shared value vocabularies: units, schemes, MIME values
 src/metadata.rs        Shared immutable metadata map
 src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
 src/io/                The IOBase storage trait, Buffer, and Coded
-src/generic/           Holder, Media, RecordOptions, and the shared Value
+src/generic/           Scalar, enums, Holder, Media, and RecordOptions
 src/local/             Local Path, Folder, and memory-mapped File
 src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
 src/{ipc,parquet}/     Record encodings over any handle
 src/iceberg/           Apache Iceberg tables over one container handle
 src/uri.rs             Identifier domain
-src/text/              Shared Value, dispatch, limits, text utilities
+src/text/              Structured codecs, dispatch, limits, text utilities
 src/{json,yaml,toml}/  Format-specific parsers, streams, emitters
 src/codec.rs           Compatibility-only public facade
 tests/{datatype,enums,field,text}/
@@ -73,11 +73,11 @@ python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
 python/.venv/Scripts/python -m maturin develop --release --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
-python/.venv/Scripts/python -m mypy --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_records.py
+python/.venv/Scripts/python -m mypy --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
-The record decorator, annotation mapping, safe dictionary conversion, and codec
-examples are documented in [`python/RECORDS.md`](../python/RECORDS.md) and
+The field decorator, annotation mapping, dataclass field definitions, and codec
+examples are documented in [`python/FIELDS.md`](../python/FIELDS.md) and
 [`python/README.md`](../python/README.md).
 
 Node.js development:

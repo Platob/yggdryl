@@ -8,7 +8,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Limits, Result, Value};
+use crate::{Limits, Result, Scalar};
 
 use super::datum::{Cursor, DatumCodec, invalid};
 use super::schema::Schema;
@@ -21,7 +21,7 @@ const SINGLE_MAGIC: [u8; 2] = [0xC3, 0x01];
 /// # Errors
 ///
 /// Returns an error when the value does not fit the schema, naming both.
-pub fn to_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>> {
+pub fn into_single_object_vec(schema: &Schema, value: &Scalar) -> Result<Vec<u8>> {
     let datum = DatumCodec {
         names: &schema.names,
         limits: Limits::default(),
@@ -39,7 +39,7 @@ pub fn to_single_object_vec(schema: &Schema, value: &Value) -> Result<Vec<u8>> {
 ///
 /// Returns an error when the framing is not single-object encoding, when the
 /// fingerprint is not the writer schema's, or when the body does not decode.
-pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Value> {
+pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Scalar> {
     from_single_object_slice_with_limits(input, writer, Limits::default())
 }
 
@@ -52,7 +52,7 @@ pub fn from_single_object_slice_with_limits(
     input: &[u8],
     writer: &Schema,
     limits: Limits,
-) -> Result<Value> {
+) -> Result<Scalar> {
     if input.len() > limits.max_input_bytes() {
         return Err(invalid(format_smolstr!(
             "expected a single-object datum of at most {} bytes, got {}",

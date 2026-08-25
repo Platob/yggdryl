@@ -16,13 +16,15 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use smol_str::SmolStr;
 use yggdryl::iceberg::{
-    DataFile, FormatVersion, IcebergOptions, ManifestEntry, PartitionSpec, Snapshot, Table,
-    TableMetadata, assign_field_ids, read_manifest, read_manifest_for_plan, write_manifest,
+    CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
+    ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
+    SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
+    read_manifest, read_manifest_for_plan, write_manifest,
 };
 use yggdryl::io::partition::partition_text;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::Folder;
-use yggdryl::{DataType, Field, MediaType, MimeType, Value};
+use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// Distinct venue values the planning tables partition on.
 const VENUES: usize = 8;
@@ -89,7 +91,8 @@ fn plan_table(label: &str, files: usize) -> Table<Folder> {
     )
     .expect("the scratch table creates");
     let arrow = schema
-        .to_arrow_schema()
+        .clone()
+        .into_arrow_schema()
         .expect("the schema projects to Arrow");
     for index in 0..files / 2 {
         let commit = i64::try_from(index).expect("the commit index fits an id");
@@ -208,17 +211,17 @@ fn synthesized_metadata() -> TableMetadata {
 fn metadata_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("metadata");
     let document = synthesized_metadata()
-        .to_json()
+        .into_json()
         .expect("the synthetic metadata projects to JSON");
     let text = String::from_utf8(
-        yggdryl::json::to_vec(&document).expect("the synthetic document encodes"),
+        yggdryl::json::into_bytes(&document).expect("the synthetic document encodes"),
     )
     .expect("the encoded document is UTF-8");
 
     // Proven once outside the timer: the text really carries the shape the
     // benchmark claims to parse.
     let parsed =
-        TableMetadata::from_json(&yggdryl::json::from_str(&text).expect("the text parses"))
+        TableMetadata::from_json(&yggdryl::json::from_utf8(&text).expect("the text parses"))
             .expect("the document reads back");
     assert_eq!(parsed.snapshots.len(), 100);
     assert_eq!(parsed.schemas.len(), 3);
@@ -227,7 +230,7 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Bytes(text.len() as u64));
     group.bench_function("parse_json", |bencher| {
         bencher.iter(|| {
-            let value = yggdryl::json::from_str(black_box(text.as_str()))
+            let value = yggdryl::json::from_utf8(black_box(text.as_str()))
                 .expect("the serialized document parses");
             TableMetadata::from_json(&value).expect("the parsed document reads")
         });
@@ -253,7 +256,7 @@ fn manifest_entries(count: usize) -> Vec<ManifestEntry> {
                         "file:///bench/table/data/venue={name}/part-{index:05}.parquet"
                     )
                     .into(),
-                    partition: vec![Value::from(name.as_str())],
+                    partition: vec![Scalar::from(name.as_str())],
                     record_count: 100,
                     file_size_in_bytes: 4_096,
                     column_sizes: vec![(1, 800), (2, 1_600)],
@@ -340,8 +343,8 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
 /// The single-value renderer every partition directory name goes through.
 fn partition_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("partition");
-    let date = Value::date(19_723);
-    let text = Value::from("XNAS");
+    let date = Scalar::date32(19_723);
+    let text = Scalar::from("XNAS");
 
     // Proven once outside the timers: both values render, and the date renders
     // as calendar text rather than its day count.
@@ -356,6 +359,119 @@ fn partition_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("text_render/utf8", |bencher| {
         bencher.iter(|| partition_text(black_box(&text)).expect("the text renders"));
+    });
+    group.finish();
+}
+
+/// Stable structural hashes over representative immutable Iceberg values.
+fn identity_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("identity");
+    let schema = plan_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("valid partition spec");
+    let partition = spec.fields[0].clone();
+    let metadata = synthesized_metadata();
+    let snapshot = metadata.snapshots[0].clone();
+    let entry = manifest_entries(1).into_iter().next().expect("one entry");
+    let data = entry.data_file.clone();
+    let summary = FieldSummary::default();
+    let manifest = ManifestFile {
+        manifest_path: "metadata/manifest.avro".into(),
+        manifest_length: 4_096,
+        partition_spec_id: spec.spec_id,
+        content: ManifestContent::Data,
+        sequence_number: 1,
+        min_sequence_number: 1,
+        added_snapshot_id: snapshot.snapshot_id,
+        added_files_count: 1,
+        existing_files_count: 0,
+        deleted_files_count: 0,
+        added_rows_count: data.record_count,
+        existing_rows_count: 0,
+        deleted_rows_count: 0,
+        partitions: vec![summary.clone()],
+        first_row_id: None,
+    };
+    let snapshot_ref = SnapshotRef::branch(snapshot.snapshot_id);
+    let compaction = Compaction {
+        files_before: 8,
+        files_after: 2,
+        bytes_rewritten: 32_768,
+    };
+    let options = IcebergOptions::new().with_commit_retries(2);
+    let sort = SortField {
+        source_id: 1,
+        transform: Transform::Identity,
+        direction: "asc".into(),
+        null_order: "nulls-first".into(),
+    };
+    let order = SortOrder {
+        order_id: 1,
+        fields: vec![sort.clone()],
+    };
+    let conflict = CommitConflict {
+        expected_version: 1,
+        beaten: 2,
+        last_seen_version: 3,
+    };
+    let task = ScanTask {
+        entry: entry.clone(),
+        spec: spec.clone(),
+        residual: vec![0],
+    };
+    let plan = ScanPlan {
+        tasks: vec![task.clone()],
+        excluded: Vec::new(),
+        skipped: vec![manifest.clone()],
+        manifests_read: 1,
+    };
+
+    group.bench_function("stable_hash_partition_field", |bencher| {
+        bencher.iter(|| black_box(&partition).stable_hash());
+    });
+    group.bench_function("stable_hash_partition_spec", |bencher| {
+        bencher.iter(|| black_box(&spec).stable_hash());
+    });
+    group.bench_function("stable_hash_snapshot", |bencher| {
+        bencher.iter(|| black_box(&snapshot).stable_hash());
+    });
+    group.bench_function("stable_hash_snapshot_ref", |bencher| {
+        bencher.iter(|| black_box(&snapshot_ref).stable_hash());
+    });
+    group.bench_function("stable_hash_data_file", |bencher| {
+        bencher.iter(|| black_box(&data).stable_hash());
+    });
+    group.bench_function("stable_hash_manifest_file", |bencher| {
+        bencher.iter(|| black_box(&manifest).stable_hash());
+    });
+    group.bench_function("stable_hash_manifest_entry", |bencher| {
+        bencher.iter(|| black_box(&entry).stable_hash());
+    });
+    group.bench_function("stable_hash_field_summary", |bencher| {
+        bencher.iter(|| black_box(&summary).stable_hash());
+    });
+    group.bench_function("stable_hash_compaction", |bencher| {
+        bencher.iter(|| black_box(&compaction).stable_hash());
+    });
+    group.bench_function("stable_hash_options", |bencher| {
+        bencher.iter(|| black_box(&options).stable_hash());
+    });
+    group.bench_function("stable_hash_sort_field", |bencher| {
+        bencher.iter(|| black_box(&sort).stable_hash());
+    });
+    group.bench_function("stable_hash_sort_order", |bencher| {
+        bencher.iter(|| black_box(&order).stable_hash());
+    });
+    group.bench_function("stable_hash_commit_conflict", |bencher| {
+        bencher.iter(|| black_box(&conflict).stable_hash());
+    });
+    group.bench_function("stable_hash_scan_task", |bencher| {
+        bencher.iter(|| black_box(&task).stable_hash());
+    });
+    group.bench_function("stable_hash_scan_plan", |bencher| {
+        bencher.iter(|| black_box(&plan).stable_hash());
+    });
+    group.bench_function("stable_hash_table_metadata", |bencher| {
+        bencher.iter(|| black_box(&metadata).stable_hash());
     });
     group.finish();
 }
@@ -404,7 +520,7 @@ fn merge_table(label: &str, files: usize) -> Table<Folder> {
     )
     .expect("the scratch table creates");
     let arrow = schema
-        .to_arrow_schema()
+        .into_arrow_schema()
         .expect("the schema projects to Arrow");
     for index in 0..files {
         let id = i64::try_from(index).expect("the file index fits an id");
@@ -428,7 +544,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("merge");
     let mut table = merge_table(SCRATCH_LABELS[3], 50);
     let arrow = plan_schema()
-        .to_arrow_schema()
+        .into_arrow_schema()
         .expect("the schema projects to Arrow");
     let upsert = RecordBatch::try_new(
         arrow,
@@ -504,7 +620,7 @@ fn read_table(label: &str, files: usize, rows: usize) -> Table<Folder> {
     )
     .expect("the scratch table creates");
     let arrow = schema
-        .to_arrow_schema()
+        .into_arrow_schema()
         .expect("the schema projects to Arrow");
     for file in 0..files {
         let base = i64::try_from(file * rows).expect("the row index fits an id");
@@ -601,7 +717,8 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
     let path = scratch(SCRATCH_LABELS[5]);
     let schema = plan_schema();
     let arrow = schema
-        .to_arrow_schema()
+        .clone()
+        .into_arrow_schema()
         .expect("the schema projects to Arrow");
 
     group.throughput(Throughput::Elements(4));
@@ -825,6 +942,7 @@ criterion_group!(
     metadata_benchmarks,
     manifest_benchmarks,
     partition_benchmarks,
+    identity_benchmarks,
     compact_benchmarks,
     merge_benchmarks,
     read_benchmarks,

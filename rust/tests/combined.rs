@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use arrow_schema::SchemaRef;
-use yggdryl::arrow::{BatchReader, batch_reader, combined, combined_as, schema_from_field};
+use yggdryl::arrow::{BatchReader, batch_reader, combined, combined_as};
 use yggdryl::{DataType, Field};
 
 /// A reader over one batch of the shape `columns` names.
 fn reader(root: &Field, columns: Vec<arrow_array::ArrayRef>) -> BatchReader {
-    let schema = schema_from_field(root).expect("an Arrow schema");
+    let schema = root.clone().into_arrow_schema().expect("an Arrow schema");
     if columns.is_empty() {
         return batch_reader(schema, []);
     }
@@ -39,7 +39,7 @@ fn drain(reader: BatchReader) -> Vec<RecordBatch> {
 #[test]
 fn identical_schemas_pass_through_uncast() {
     let shape = root([DataType::Int64.nullable_field("id")]);
-    let schema: SchemaRef = schema_from_field(&shape).unwrap();
+    let schema: SchemaRef = shape.clone().into_arrow_schema().unwrap();
 
     let left = reader(&shape, vec![ids(&[1])]);
     let right = reader(&shape, vec![ids(&[2])]);
@@ -247,10 +247,10 @@ fn combining_pulls_no_batch_until_the_result_is_iterated() {
     // without pulling anything.
     let joined = combined(
         Box::new(Tripwire {
-            schema: schema_from_field(&left_shape).unwrap(),
+            schema: left_shape.into_arrow_schema().unwrap(),
         }),
         Box::new(Tripwire {
-            schema: schema_from_field(&right_shape).unwrap(),
+            schema: right_shape.into_arrow_schema().unwrap(),
         }),
     )
     .expect("a merge");
@@ -272,10 +272,10 @@ fn an_explicit_root_casts_both_sides() {
     )
     .expect("a chain");
 
-    assert_eq!(joined.schema(), schema_from_field(&target).unwrap());
+    assert_eq!(joined.schema(), target.clone().into_arrow_schema().unwrap());
     let batches = drain(joined);
     assert_eq!(batches.len(), 2);
     for batch in &batches {
-        assert_eq!(batch.schema(), schema_from_field(&target).unwrap());
+        assert_eq!(batch.schema(), target.clone().into_arrow_schema().unwrap());
     }
 }

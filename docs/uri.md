@@ -54,7 +54,7 @@
 Scheme, authority, and path are concrete values, not optionals: a URI with no authority has the
 empty authority, and a URI with no path has the empty path. Query and fragment are the two
 components that are genuinely absent or present, so they are the only ones that arrive as an
-option. The scheme is a [`Scheme`](enums.md) and the path is a `UriPath`, both of which validate
+option. The scheme is a [`Scheme`](generic.md) and the path is a `UriPath`, both of which validate
 on construction, so an ill-formed component cannot reach a `Uri` at all.
 
 ## Canonical on arrival
@@ -136,6 +136,81 @@ equal and hash equal. What it will not do is guess: a token before the colon tha
 scheme is an error rather than a silent fall back to `file:`, and a malformed percent escape,
 a space, or a bracket in the wrong place is a parse error carrying the byte offset that failed.
 The `file:` fallback applies only when there is no scheme token at all.
+
+Python's `Uri`, `Url`, and `Urn` wrappers remain editable until their first
+`hash(...)`. That first hash locks only that wrapper, keeping dictionary and set
+keys stable; a later setter raises `TypeError`. `copy.copy` and pickle restore
+independent, unlocked wrappers when another edit is needed. `stable_hash()` is
+only a deterministic value calculation and does not lock the object. Rust's
+ownership rules protect hashed keys, while JavaScript exposes `stableHash()`
+explicitly because the language has no custom hash protocol.
+
+```python
+import copy
+
+from yggdryl import Url
+
+url = Url("https://example.test/data.json")
+lookup = {url: "cached"}  # locks this wrapper
+assert lookup[url] == "cached"
+
+editable = copy.copy(url)
+editable.set_extension("parquet")
+assert editable != url
+```
+
+## Credentials and S3 locations
+
+User information splits at its first colon, so later colons remain in the
+password. S3 accessors distinguish endpoint-style hosts from bucket-style
+authorities without a network request: a first component ending in `.com` or
+`.io` is a hostname; otherwise it is the bucket. Recognized AWS S3 hostnames
+also expose their region.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Uri;
+
+    let secured = Uri::from_str("https://user:pass:word@example.com/data")?;
+    assert_eq!(secured.user(), Some("user"));
+    assert_eq!(secured.password(), Some("pass:word"));
+    assert_eq!(secured.hostname(), Some("example.com"));
+
+    let s3 = Uri::from_str("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")?;
+    assert_eq!(s3.bucket(), Some("trades"));
+    assert_eq!(s3.region(), Some("eu-west-3"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Uri
+
+    secured = Uri("https://user:pass:word@example.com/data")
+    assert (secured.user, secured.password, secured.hostname) == (
+        "user", "pass:word", "example.com"
+    )
+
+    s3 = Uri("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")
+    assert (s3.bucket, s3.region) == ("trades", "eu-west-3")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Uri } = require('yggdryl')
+
+    const secured = Uri.from('https://user:pass:word@example.com/data')
+    assert.deepEqual(
+      [secured.user, secured.password, secured.hostname],
+      ['user', 'pass:word', 'example.com'],
+    )
+
+    const s3 = Uri.from('s3://trades.s3.eu-west-3.amazonaws.com/part.parquet')
+    assert.deepEqual([s3.bucket, s3.region], ['trades', 'eu-west-3'])
+    ```
 
 ## Path segments
 
@@ -382,7 +457,7 @@ refused: encoding is the caller's decision, and the setters will not silently ma
     ```
 
 `report.csv.gz.zst` is CSV that was gzipped and then zstd-compressed, and the extension chain says
-so in order. [`MediaType`](enums.md) splits that into a base and its transparent encodings, which
+so in order. [`MediaType`](generic.md) splits that into a base and its transparent encodings, which
 is exactly what an HTTP `Content-Type` plus `Content-Encoding` pair carries, so a name and a set
 of headers describe the same thing. A name with no recognised suffix reads as
 `application/octet-stream` rather than failing.
@@ -411,7 +486,7 @@ concrete syntax.
     assert_eq!(urn.authority().as_str(), "");
 
     // Each refuses what it is not.
-    assert!(urn.to_uri().to_url().is_err());
+    assert!(urn.into_uri().into_url().is_err());
     assert!(Urn::from_uri(uri).is_err());
     assert!(Url::from_str("mailto:user@example.test").is_err());
     assert!(Url::from_str("https:///missing-authority").is_err());
@@ -434,7 +509,7 @@ concrete syntax.
     assert urn.authority == ""
 
     for rejected in (
-        lambda: urn.to_uri().to_url(),
+        lambda: urn.into_uri().into_url(),
         lambda: Urn(uri),
         lambda: Url("mailto:user@example.test"),
     ):
@@ -462,7 +537,7 @@ concrete syntax.
     assert.equal(urn.namespaceSpecific, '9780131103627')
     assert.equal(urn.authority, '')
 
-    assert.throws(() => urn.toUri().toUrl())
+    assert.throws(() => urn.intoUri().intoUrl())
     assert.throws(() => Urn.fromUri(uri))
     assert.throws(() => Url.fromString('mailto:user@example.test'))
     ```
@@ -501,10 +576,10 @@ alone.
     let unc = Uri::from_path(r"\\server\share\prices\ticks.csv")?;
     assert_eq!(unc.to_string(), "file://server/share/prices/ticks.csv");
     assert_eq!(unc.authority().as_str(), "server");
-    assert_eq!(unc.to_path()?, PathBuf::from("//server/share/prices/ticks.csv"));
+    assert_eq!(unc.into_path()?, PathBuf::from("//server/share/prices/ticks.csv"));
 
     // Only a `file:` identifier has a path at all.
-    assert!(Url::from_str("https://example.test/data.csv")?.to_path().is_err());
+    assert!(Url::from_str("https://example.test/data.csv")?.into_path().is_err());
     ```
 
 === "Python"
@@ -520,18 +595,18 @@ alone.
     assert uri.authority == ""
     assert uri.file_name == "report.parquet"
 
-    # `__fspath__` is `to_path`, so a URI goes straight into `open` or `pathlib`.
-    assert uri.to_path() == "C:/Users/Ada Lovelace/report.parquet"
-    assert os.fspath(uri) == uri.to_path()
-    assert Uri.from_path(uri.to_path()) == uri
+    # `__fspath__` is `into_path`, so a URI goes straight into `open` or `pathlib`.
+    assert uri.into_path() == "C:/Users/Ada Lovelace/report.parquet"
+    assert os.fspath(uri) == uri.into_path()
+    assert Uri.from_path(uri.into_path()) == uri
 
     unc = Uri.from_path(r"\\server\share\prices\ticks.csv")
     assert str(unc) == "file://server/share/prices/ticks.csv"
     assert unc.authority == "server"
-    assert unc.to_path() == "//server/share/prices/ticks.csv"
+    assert unc.into_path() == "//server/share/prices/ticks.csv"
 
     try:
-        Url("https://example.test/data.csv").to_path()
+        Url("https://example.test/data.csv").into_path()
         raise AssertionError("a network URL has no path")
     except ValueError:
         pass
@@ -548,18 +623,18 @@ alone.
     assert.equal(uri.authority, '')
     assert.equal(uri.fileName, 'report.parquet')
 
-    assert.equal(uri.toPath(), 'C:/Users/Ada Lovelace/report.parquet')
-    assert.ok(Uri.fromPath(uri.toPath()).equals(uri))
+    assert.equal(uri.intoPath(), 'C:/Users/Ada Lovelace/report.parquet')
+    assert.ok(Uri.fromPath(uri.intoPath()).equals(uri))
 
     const unc = Uri.fromPath('\\\\server\\share\\prices\\ticks.csv')
     assert.equal(unc.toString(), 'file://server/share/prices/ticks.csv')
     assert.equal(unc.authority, 'server')
-    assert.equal(unc.toPath(), '//server/share/prices/ticks.csv')
+    assert.equal(unc.intoPath(), '//server/share/prices/ticks.csv')
 
-    assert.throws(() => Url.fromString('https://example.test/data.csv').toPath())
+    assert.throws(() => Url.fromString('https://example.test/data.csv').intoPath())
     ```
 
-`from_path` and `to_path` are the whole bridge to `std::path`, and `TryFrom` is spelled in both
+`from_path` and `into_path` are the whole bridge to `std::path`, and `TryFrom` is spelled in both
 directions - `Uri::try_from(path)` and `PathBuf::try_from(&uri)` - for the places where a
 conversion is inferred rather than named. A Windows drive becomes the first path segment under an
 empty authority, a UNC server becomes the authority, and the encoding round-trips: a space is
@@ -605,11 +680,14 @@ canonical `file:` URL is also what [`local`](local.md) stores as the entire stat
 === "Python"
 
     ```python
-    from yggdryl import Url
+    from yggdryl import Uri, Url
 
     url = Url("https://example.test/a/b/c?q=1#frag")
+    uri = Uri(url)
 
-    # `joinpath` and `/` compose the way they do on a `PurePath`.
+    # Both the generic URI and the narrower URL compose like a `PurePath`.
+    assert str(uri.joinpath("../d")) == "https://example.test/a/b/d?q=1#frag"
+    assert str(uri / "/root") == "https://example.test/root?q=1#frag"
     assert str(url / "d") == "https://example.test/a/b/c/d?q=1#frag"
     assert str(url.joinpath("d", "e")) == "https://example.test/a/b/c/d/e?q=1#frag"
 
@@ -705,7 +783,7 @@ which is a fact about the scheme rather than a missing value.
 scheme, because reporting anything else would require a network call an accessor has no business
 making. `local_mime_type` follows the same rule from the other side: an existing directory is
 `MimeType::DIRECTORY`, an existing local file is identified from its name and falls back to
-`MimeType::FILE`, and a remote URL falls back to the [`MimeType`](enums.md) its name already
+`MimeType::FILE`, and a remote URL falls back to the [`MimeType`](generic.md) its name already
 implies.
 
 ## Patterns and partitions

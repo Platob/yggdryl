@@ -14,13 +14,15 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, RecordBatch, Scalar, StringArray,
+    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, RecordBatch, Scalar as ArrowScalar,
+    StringArray,
 };
 use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
+use yggdryl::expression::Statement;
 use yggdryl::expression::{Bound, Bounds};
-use yggdryl::{DataType, Expression, Field, Value};
+use yggdryl::{DataType, Expression, Field, Scalar};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
 const ROWS: usize = 65_536;
@@ -100,7 +102,7 @@ fn batch() -> RecordBatch {
     let venues: StringArray = (0..ROWS)
         .map(|row| Some(if row % 2 == 0 { "XNAS" } else { "XLON" }))
         .collect();
-    let arrow_schema = yggdryl::arrow::schema_from_field(&schema()).unwrap();
+    let arrow_schema = schema().into_arrow_schema().unwrap();
     RecordBatch::try_new(
         arrow_schema,
         vec![
@@ -165,6 +167,19 @@ fn bind_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&parsed).to_string());
         });
     }
+    group.finish();
+
+    let expression: Expression = "ccy = 'EUR' and size > 500".parse().unwrap();
+    let statement: Statement = "select ccy, price where ccy = 'EUR' order by price desc limit 10"
+        .parse()
+        .unwrap();
+    let mut group = criterion.benchmark_group("expression_identity");
+    group.bench_function("stable_hash_expression", |bencher| {
+        bencher.iter(|| black_box(&expression).stable_hash());
+    });
+    group.bench_function("stable_hash_statement", |bencher| {
+        bencher.iter(|| black_box(&statement).stable_hash());
+    });
     group.finish();
 }
 
@@ -235,10 +250,10 @@ fn apply_benchmarks(criterion: &mut Criterion) {
 /// The same predicates, written straight against Arrow with no expression.
 fn kernel_mask(batch: &RecordBatch, name: &str) -> BooleanArray {
     let column = |index: usize| batch.column(index).clone();
-    let text = |value: &str| Scalar::new(Arc::new(StringArray::from(vec![value])) as ArrayRef);
-    let number = |value: i64| Scalar::new(Arc::new(Int64Array::from(vec![value])) as ArrayRef);
+    let text = |value: &str| ArrowScalar::new(Arc::new(StringArray::from(vec![value])) as ArrayRef);
+    let number = |value: i64| ArrowScalar::new(Arc::new(Int64Array::from(vec![value])) as ArrayRef);
     let decimal = |value: i128| {
-        Scalar::new(Arc::new(
+        ArrowScalar::new(Arc::new(
             Decimal128Array::from(vec![value])
                 .with_precision_and_scale(9, 2)
                 .unwrap(),
@@ -284,17 +299,17 @@ fn and_masks(left: &BooleanArray, right: &BooleanArray) -> BooleanArray {
 /// The scalar tier, for the shape of read that has no batch.
 fn scalar_benchmarks(criterion: &mut Criterion) {
     let schema = schema();
-    let rows: Vec<Value> = (0..1_024)
+    let rows: Vec<Scalar> = (0..1_024)
         .map(|row| {
-            Value::from_sequence([
-                Value::from(CURRENCIES[row % CURRENCIES.len()]),
-                Value::Decimal(i128::try_from(row % 20_000).unwrap_or_default(), 2),
+            Scalar::from_sequence([
+                Scalar::from(CURRENCIES[row % CURRENCIES.len()]),
+                Scalar::d128(i128::try_from(row % 20_000).unwrap_or_default(), 2),
                 if row % 16 == 0 {
-                    Value::Null
+                    Scalar::Null
                 } else {
-                    Value::I64(i64::try_from(row % 1_000).unwrap_or_default())
+                    Scalar::I64(i64::try_from(row % 1_000).unwrap_or_default())
                 },
-                Value::from(if row % 2 == 0 { "XNAS" } else { "XLON" }),
+                Scalar::from(if row % 2 == 0 { "XNAS" } else { "XLON" }),
             ])
         })
         .collect();
@@ -325,26 +340,26 @@ fn prune_benchmarks(criterion: &mut Criterion) {
     let bounds = Bounds::new(Some(ROWS as u64))
         .with_column(
             "ccy",
-            Some(Value::from("EUR")),
-            Some(Value::from("USD")),
+            Some(Scalar::from("EUR")),
+            Some(Scalar::from("USD")),
             Some(0),
         )
         .with_column(
             "price",
-            Some(Value::Decimal(0, 2)),
-            Some(Value::Decimal(1_999_900, 2)),
+            Some(Scalar::d128(0, 2)),
+            Some(Scalar::d128(1_999_900, 2)),
             Some(0),
         )
         .with_column(
             "size",
-            Some(Value::I64(0)),
-            Some(Value::I64(999)),
+            Some(Scalar::I64(0)),
+            Some(Scalar::I64(999)),
             Some(4_096),
         )
         .with_column(
             "venue",
-            Some(Value::from("XLON")),
-            Some(Value::from("XNAS")),
+            Some(Scalar::from("XLON")),
+            Some(Scalar::from("XNAS")),
             Some(0),
         );
     let mut group = criterion.benchmark_group("expression_prune");

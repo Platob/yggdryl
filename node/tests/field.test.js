@@ -11,7 +11,81 @@ const {
   ProtocolMetadata,
   Uri,
   Url,
+  fields,
+  intoField,
 } = require('yggdryl')
+
+test('intoField memoizes one class-level struct field and renames by cloning', () => {
+  let calls = 0
+  class Quote {
+    static get intoStructField() {
+      calls += 1
+      return fields.struct('Quote', [fields.int64('id')], { nullable: false })
+    }
+  }
+
+  const root = intoField(Quote)
+  assert.strictEqual(intoField(new Quote()), root)
+  assert.strictEqual(intoField(root), root)
+  assert.equal(calls, 1)
+
+  const renamed = intoField(Quote, 'quote')
+  assert.notStrictEqual(renamed, root)
+  assert.equal(renamed.name, 'quote')
+  assert.equal(root.name, 'Quote')
+  assert.equal(intoField(Quote, '').name, '')
+  assert.equal(intoField('price: int64').name, 'price')
+  assert.throws(() => intoField(Quote, 7), /name must be a string/)
+})
+
+test('intoField requires a static getter and validates class roots', () => {
+  let getterCalls = 0
+  let cached
+  class GetterRow {
+    static get intoStructField() {
+      getterCalls += 1
+      cached ??= fields.struct('GetterRow', [fields.int64('id')], {
+        nullable: false,
+      })
+      return cached
+    }
+  }
+
+  assert.strictEqual(intoField(GetterRow), GetterRow.intoStructField)
+  assert.strictEqual(intoField(new GetterRow()), cached)
+  // One access resolves the global memo and one is the explicit getter read.
+  assert.equal(getterCalls, 2)
+
+  class ScalarRoot {
+    static get intoStructField() {
+      return fields.int64('id', { nullable: false })
+    }
+  }
+  class NullableRoot {
+    static get intoStructField() {
+      return fields.struct('row', [])
+    }
+  }
+  class MissingRoot {
+    static get intoStructField() {}
+  }
+  class MethodRoot {
+    static intoStructField() {
+      return fields.struct('MethodRoot', [], { nullable: false })
+    }
+  }
+  class StoredRoot {}
+  StoredRoot.intoStructField = fields.struct('StoredRoot', [], {
+    nullable: false,
+  })
+  assert.throws(() => intoField(ScalarRoot), /non-null native struct Field/)
+  assert.throws(() => intoField(NullableRoot), /non-null native struct Field/)
+  assert.throws(() => intoField(MissingRoot), /non-null native struct Field/)
+  assert.throws(() => intoField(MethodRoot), /must be a static getter/)
+  assert.throws(() => intoField(StoredRoot), /must be a static getter/)
+  assert.throws(() => intoField(null), /value must be a Field/)
+  assert.throws(() => intoField({}), /value must be a Field/)
+})
 
 test('field values infer native datatypes and round-trip canonically', () => {
   const type = new DataType('varchar')

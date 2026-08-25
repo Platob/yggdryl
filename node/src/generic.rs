@@ -5,10 +5,12 @@
 //! media type, which is what [`crate::io::JsIOBase::record_options`] reads off
 //! the handle.
 
-use napi::bindgen_prelude::Result;
+use napi::bindgen_prelude::{Buffer, Result};
 use napi_derive::napi;
-use yggdryl::Level;
-use yggdryl::generic::{IORecordOptions, RecordOptions as CoreRecordOptions};
+use yggdryl::generic::{
+    DEFAULT_RECORD_BATCH_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
+};
+use yggdryl::{IOMode, Level};
 
 use crate::exact_u8;
 use crate::field::{JsField, MetadataEntry};
@@ -16,26 +18,6 @@ use crate::media::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
 };
 use crate::napi_error;
-
-/// Name a page compression the way the Parquet parser accepts it.
-///
-/// The codec's own `Display` prints the level as its internal type, which its
-/// own `FromStr` then refuses, so the accepted spelling is written here rather
-/// than recovered from that text.
-fn compression_name(compression: parquet::basic::Compression) -> String {
-    use parquet::basic::Compression as C;
-
-    match compression {
-        C::UNCOMPRESSED => "uncompressed".to_owned(),
-        C::SNAPPY => "snappy".to_owned(),
-        C::GZIP(level) => format!("gzip({})", level.compression_level()),
-        C::LZO => "lzo".to_owned(),
-        C::BROTLI(level) => format!("brotli({})", level.compression_level()),
-        C::LZ4 => "lz4".to_owned(),
-        C::ZSTD(level) => format!("zstd({})", level.compression_level()),
-        C::LZ4_RAW => "lz4_raw".to_owned(),
-    }
-}
 
 /// The settings one record read or write takes.
 #[napi(js_name = "RecordOptions")]
@@ -54,25 +36,12 @@ impl JsRecordOptions {
         Self { inner }
     }
 
-    /// Borrow the Parquet settings, or name the encoding that has none.
-    fn parquet_mut(&mut self, setting: &str) -> Result<&mut yggdryl::parquet::ParquetOptions> {
-        let encoding = self.inner.mime_type();
-        match &mut self.inner {
-            CoreRecordOptions::Parquet(options) => Ok(options),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
-                Err(napi_error(format!(
-                    "expected Parquet options to set {setting}, got {encoding}"
-                )))
-            }
-        }
-    }
-
     /// Resolve the options a call was given, or the ones a handle names.
     pub(crate) fn resolved(
         value: Option<&Self>,
         handle: &yggdryl::generic::Holder,
     ) -> Result<CoreRecordOptions> {
-        use yggdryl::io::IOBase as _;
+        use yggdryl::io::IOMedia as _;
 
         match value {
             Some(options) => Ok(options.inner.clone()),
@@ -117,16 +86,30 @@ impl JsRecordOptions {
         JsMimeType::from_core(self.inner.mime_type())
     }
 
-    /// The declared canonical schema, when one was declared.
+    /// The declared canonical root Field, when one was declared.
     #[napi(getter)]
-    pub fn schema(&self) -> Option<JsField> {
-        self.inner.schema().cloned().map(JsField::from_core)
+    pub fn field(&self) -> Option<JsField> {
+        self.inner.field().cloned().map(JsField::from_core)
     }
 
-    /// Declare the canonical schema.
+    /// Validate explicit write intent before JavaScript converts or pulls input.
+    ///
+    /// The loader captures and removes this private bridge, then calls it ahead
+    /// of every representation adapter so an invalid mode never consumes a
+    /// one-shot reader, iterable, or async iterable.
+    #[napi(js_name = "_requireWritePreflightNative", skip_typescript)]
+    pub fn require_write_preflight(&self, intent: String) -> Result<u32> {
+        let mode = IOMode::from_str(&intent).map_err(napi_error)?;
+        self.inner.require_write_mode(mode).map_err(napi_error)?;
+        self.inner.require_commit_row_size().map_err(napi_error)?;
+        self.inner.require_write_limits().map_err(napi_error)?;
+        u32::try_from(DEFAULT_RECORD_BATCH_SIZE).map_err(napi_error)
+    }
+
+    /// Declare the canonical root Field.
     #[napi(setter)]
-    pub fn set_schema(&mut self, schema: &JsField) {
-        self.inner.set_schema(schema.inner.clone());
+    pub fn set_field(&mut self, field: &JsField) {
+        self.inner.set_field(field.inner.clone());
     }
 
     /// The root Field name used when a schema is inferred.
@@ -223,6 +206,34 @@ impl JsRecordOptions {
         Ok(())
     }
 
+    /// Rows published per streamed-write commit, when one is set.
+    #[napi(getter)]
+    pub fn commit_row_size(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.commit_row_size().map(|rows| rows as f64)
+    }
+
+    /// Set the streamed-write publication cadence.
+    ///
+    /// Zero is retained so the write preflight can reject it before touching a
+    /// one-shot JavaScript source. `null` restores one publication at the end.
+    #[napi(setter)]
+    pub fn set_commit_row_size(&mut self, commit_row_size: Option<f64>) -> Result<()> {
+        let rows = match commit_row_size {
+            Some(rows) => {
+                let rows = crate::exact_u64(rows, "commitRowSize")?;
+                Some(usize::try_from(rows).map_err(|_| {
+                    napi_error(format!(
+                        "commitRowSize {rows} exceeds this platform's row-count range"
+                    ))
+                })?)
+            }
+            None => None,
+        };
+        self.inner.set_commit_row_size(rows);
+        Ok(())
+    }
+
     /// The compression level on the shared 0-to-9 scale.
     #[napi(getter)]
     pub fn level(&self) -> u8 {
@@ -273,6 +284,36 @@ impl JsRecordOptions {
         self.inner.set_filter_partitions(filter_partitions);
     }
 
+    /// The Avro block codec name, or `null` for another encoding.
+    #[napi(getter)]
+    pub fn block_codec(&self) -> Option<String> {
+        self.inner.avro_block_codec().map(ToOwned::to_owned)
+    }
+
+    /// Validate and set the Avro block codec name.
+    #[napi(setter)]
+    pub fn set_block_codec(&mut self, block_codec: String) -> Result<()> {
+        self.inner
+            .set_avro_block_codec(&block_codec)
+            .map_err(napi_error)
+    }
+
+    /// The fixed sixteen-byte Avro synchronization marker, when one is set.
+    #[napi(getter)]
+    pub fn sync_marker(&self) -> Option<Buffer> {
+        self.inner
+            .avro_sync_marker()
+            .map(|marker| marker.to_vec().into())
+    }
+
+    /// Set or clear the fixed Avro synchronization marker.
+    #[napi(setter)]
+    pub fn set_sync_marker(&mut self, marker: Option<Buffer>) -> Result<()> {
+        self.inner
+            .set_avro_sync_marker(marker.as_deref())
+            .map_err(napi_error)
+    }
+
     /// The page compression applied inside a Parquet file, if this is one.
     ///
     /// A setting one encoding has is absent on the others rather than invented,
@@ -280,58 +321,45 @@ impl JsRecordOptions {
     /// handle instead.
     #[napi(getter)]
     pub fn compression(&self) -> Option<String> {
-        match &self.inner {
-            CoreRecordOptions::Parquet(options) => Some(compression_name(options.compression)),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
-                None
-            }
-        }
+        self.inner.parquet_compression_name()
     }
 
     /// Set the page compression applied inside a Parquet file.
     #[napi(setter)]
     pub fn set_compression(&mut self, compression: String) -> Result<()> {
-        let options = self.parquet_mut("a page compression")?;
-        // The target field names the type, so the parquet crate's own parser is
-        // what accepts `uncompressed`, `snappy`, `zstd(3)`, and the rest.
-        options.compression = compression.parse().map_err(napi_error)?;
-        Ok(())
+        self.inner
+            .set_parquet_compression_name(&compression)
+            .map_err(napi_error)
     }
 
     /// The maximum rows per row group of a Parquet file, if this is one.
     #[napi(getter)]
     pub fn max_row_group_size(&self) -> Option<u32> {
-        match &self.inner {
-            CoreRecordOptions::Parquet(options) => u32::try_from(options.max_row_group_size).ok(),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
-                None
-            }
-        }
+        self.inner
+            .parquet_max_row_group_size()
+            .and_then(|rows| u32::try_from(rows).ok())
     }
 
     /// Set the maximum rows per row group of a Parquet file.
     #[napi(setter)]
     pub fn set_max_row_group_size(&mut self, rows: u32) -> Result<()> {
-        self.parquet_mut("a row-group size")?.max_row_group_size = rows as usize;
-        Ok(())
+        self.inner
+            .set_parquet_max_row_group_size(rows as usize)
+            .map_err(napi_error)
     }
 
     /// The footer key/value entries a Parquet write adds.
     #[napi(getter)]
     pub fn key_value_metadata(&self) -> Vec<MetadataEntry> {
-        match &self.inner {
-            CoreRecordOptions::Parquet(options) => options
-                .key_value_metadata
-                .iter()
-                .map(|(key, value)| MetadataEntry {
-                    key: key.clone(),
-                    value: value.clone(),
-                })
-                .collect(),
-            CoreRecordOptions::Ipc(_) | CoreRecordOptions::Avro(_) | CoreRecordOptions::Text(_) => {
-                Vec::new()
-            }
-        }
+        self.inner
+            .parquet_key_value_metadata()
+            .unwrap_or_default()
+            .iter()
+            .map(|(key, value)| MetadataEntry {
+                key: key.clone(),
+                value: value.clone(),
+            })
+            .collect()
     }
 
     /// Return these options with a different Parquet page compression.
@@ -355,17 +383,33 @@ impl JsRecordOptions {
     pub fn with_key_value(&self, key: String, value: String) -> Result<Self> {
         let mut options = self.clone();
         options
-            .parquet_mut("footer metadata")?
-            .key_value_metadata
-            .push((key, value));
+            .inner
+            .push_parquet_key_value(key, value)
+            .map_err(napi_error)?;
         Ok(options)
     }
 
-    /// Return these options with a declared canonical schema.
+    /// Return these options with a validated Avro block codec.
     #[napi]
-    pub fn with_schema(&self, schema: &JsField) -> Self {
+    pub fn with_block_codec(&self, block_codec: String) -> Result<Self> {
         let mut options = self.clone();
-        options.set_schema(schema);
+        options.set_block_codec(block_codec)?;
+        Ok(options)
+    }
+
+    /// Return these options with a fixed Avro marker, or `null` to clear it.
+    #[napi]
+    pub fn with_sync_marker(&self, marker: Option<Buffer>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_sync_marker(marker)?;
+        Ok(options)
+    }
+
+    /// Return these options with a declared canonical root Field.
+    #[napi]
+    pub fn with_field(&self, field: &JsField) -> Self {
+        let mut options = self.clone();
+        options.set_field(field);
         options
     }
 
@@ -409,6 +453,14 @@ impl JsRecordOptions {
         Ok(options)
     }
 
+    /// Return these options with a streamed-write publication cadence.
+    #[napi]
+    pub fn with_commit_row_size(&self, commit_row_size: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_commit_row_size(Some(commit_row_size))?;
+        Ok(options)
+    }
+
     /// Return these options with a different compression level.
     #[napi]
     pub fn with_level(&self, level: f64) -> Result<Self> {
@@ -441,10 +493,34 @@ impl JsRecordOptions {
         options
     }
 
+    /// Return whether the encoding variant and every current setting are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsRecordOptions) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare the complete options through the core's total order.
+    #[napi]
+    pub fn compare(&self, other: &JsRecordOptions) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete core options value.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached copy whose later mutations do not affect this value.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
+
     /// Return the encoding these options describe, so they print as what they
     /// encode rather than as an opaque object.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.mime_type().to_string()
     }
 }

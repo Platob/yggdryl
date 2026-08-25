@@ -54,10 +54,10 @@ benchmark('defaults/nested_struct_js', Math.max(1, Math.floor(iterations / 10)),
 )
 benchmark('defaults/cached_hint', iterations, () => nested.defaultJSHint())
 benchmark('defaults/arrow_compat_clone', iterations, () =>
-  sparkSource.dataType.toSchemeCompat('arrow'),
+  sparkSource.dataType.intoSchemeCompat('arrow'),
 )
 benchmark('defaults/spark_nested_normalize', Math.max(1, Math.floor(iterations / 10)), () =>
-  sparkSource.toSchemeCompat('spark'),
+  sparkSource.intoSchemeCompat('spark'),
 )
 benchmark('defaults/arrow_scalar_ipc', Math.max(1, Math.floor(iterations / 1_000)), () =>
   int64.defaultArrowScalar(),

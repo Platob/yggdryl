@@ -29,7 +29,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, Error, Field, Result, TimeUnit, Value};
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -199,11 +199,9 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                         right.data_type()
                     ))
                 })?;
-            // Division and remainder produce null on a zero divisor rather
-            // than failing a whole batch, so their output is always nullable.
-            let nullable = left.is_nullable()
-                || right.is_nullable()
-                || matches!(operator, Operator::Div | Operator::Rem);
+            // Arithmetic propagates operand nulls. Overflow, division by zero,
+            // and inexact decimal division are errors rather than nulls.
+            let nullable = left.is_nullable() || right.is_nullable();
             Ok(named(expression, data_type, nullable))
         }
         Expression::Negate(inner) => {
@@ -500,17 +498,20 @@ fn is_signed_numeric(data_type: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
     ) || decimal_parts(unwrap_dictionary(data_type)).is_some()
-        || matches!(unwrap_dictionary(data_type), DataType::Duration(_))
+        || matches!(
+            unwrap_dictionary(data_type),
+            DataType::Duration32(_) | DataType::Duration64(_)
+        )
 }
 
 /// The temporal family and unit of a datatype, if it has one.
 pub(crate) const fn temporal_parts(data_type: &DataType) -> Option<(u8, TimeUnit)> {
     match data_type {
-        DataType::Date32 => Some((0, TimeUnit::Second)),
+        DataType::Date32 => Some((0, TimeUnit::Day)),
         DataType::Date64 => Some((0, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
         DataType::Timestamp(unit, _) => Some((2, *unit)),
-        DataType::Duration(unit) => Some((3, *unit)),
+        DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
         _ => None,
     }
 }
@@ -518,11 +519,12 @@ pub(crate) const fn temporal_parts(data_type: &DataType) -> Option<(u8, TimeUnit
 /// How fine a unit is, so two temporals can meet at the finer one.
 const fn unit_rank(unit: TimeUnit) -> u8 {
     match unit {
-        TimeUnit::Second => 0,
-        TimeUnit::Millisecond => 1,
-        TimeUnit::Microsecond => 2,
-        TimeUnit::Nanosecond => 3,
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 4,
+        TimeUnit::Day => 0,
+        TimeUnit::Second => 1,
+        TimeUnit::Millisecond => 2,
+        TimeUnit::Microsecond => 3,
+        TimeUnit::Nanosecond => 4,
+        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 5,
     }
 }
 
@@ -616,7 +618,15 @@ pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType>
                     };
                     DataType::Timestamp(unit, zone)
                 }
-                _ => DataType::Duration(unit),
+                _ => {
+                    if matches!(left, DataType::Duration64(_))
+                        || matches!(right, DataType::Duration64(_))
+                    {
+                        DataType::duration64(unit).ok()?
+                    } else {
+                        DataType::duration32(unit).ok()?
+                    }
+                }
             })
         }
         _ => None,
@@ -627,6 +637,18 @@ pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType>
 fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Option<DataType> {
     let left = unwrap_dictionary(left);
     let right = unwrap_dictionary(right);
+    if matches!(left, DataType::Duration32(_) | DataType::Duration64(_))
+        && is_integer(right)
+        && matches!(operator, Operator::Mul | Operator::Div)
+    {
+        return Some(left.clone());
+    }
+    if is_integer(left)
+        && matches!(right, DataType::Duration32(_) | DataType::Duration64(_))
+        && matches!(operator, Operator::Mul)
+    {
+        return Some(right.clone());
+    }
     // A temporal and a duration are the one mixed-family arithmetic that is
     // meaningful, and it is spelled out rather than promoted.
     match (temporal_parts(left), temporal_parts(right), operator) {
@@ -636,10 +658,15 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         (Some((3, _)), Some((family, _)), Operator::Add) if family != 3 => {
             return Some(right.clone());
         }
-        (Some((family, unit)), Some((other, _)), Operator::Sub)
+        (Some((family, left_unit)), Some((other, right_unit)), Operator::Sub)
             if family == other && family != 3 =>
         {
-            return Some(DataType::Duration(unit));
+            let unit = if unit_rank(left_unit) >= unit_rank(right_unit) {
+                left_unit
+            } else {
+                right_unit
+            };
+            return DataType::duration64(unit).ok();
         }
         _ => {}
     }
@@ -693,7 +720,11 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         )
         .ok();
     }
-    if is_integer(&shared) || is_float(&shared) || matches!(shared, DataType::Duration(_)) {
+    if is_integer(&shared)
+        || is_float(&shared)
+        || (matches!(shared, DataType::Duration32(_) | DataType::Duration64(_))
+            && matches!(operator, Operator::Add | Operator::Sub))
+    {
         return Some(shared);
     }
     None
@@ -826,7 +857,7 @@ fn function_field(
             let segment = match key.data_type() {
                 data_type if is_integer(data_type) => Segment::Index(0),
                 _ => Segment::Key(
-                    crate::TypedValue::from_parts(key.data_type().clone(), Value::Null)
+                    crate::TypedScalar::from_parts(key.data_type().clone(), Scalar::Null)
                         .map_err(|error| typing_error(format_smolstr!("{error}")))?,
                 ),
             };

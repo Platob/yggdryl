@@ -1,7 +1,17 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
-const { DataType, Field, MediaType, MimeType, fields } = require('yggdryl')
+const {
+  DataType,
+  Expression,
+  Field,
+  MediaType,
+  MimeType,
+  Statement,
+  fields,
+  iceberg: icebergApi,
+  intoField,
+} = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '100000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
@@ -46,6 +56,19 @@ const iceberg = property.iceberg
 const partitioned = Field.from(
   'row: struct<year: int32 not null, price: float64 not null> not null',
 ).withPartitionFields(['year'])
+const rowField = fields.struct('BenchRow', [id, name], { nullable: false })
+const expression = new Expression('id + 1 > 2')
+const statement = new Statement('select id where id > 0')
+const icebergSchema = icebergApi.assignFieldIds(rowField)
+const icebergSpec = icebergApi.PartitionSpec.identity(icebergSchema, ['id'], 1)
+const icebergSpecDocument = icebergSpec.intoJSON()
+class BenchRow {
+  static get intoStructField() {
+    return rowField
+  }
+}
+// Resolve before timing so this measures the steady cached class accessor.
+intoField(BenchRow)
 
 const knownMime = 'application/json'
 const customMime = 'application/vnd.benchmark+json'
@@ -61,7 +84,26 @@ benchmark('schema/variant_dense_2', () => DataType.variant([id, name]))
 benchmark('schema/time_field_infer_time32', () => fields.time('clock', 'ms'))
 benchmark('schema/time_field_infer_time64', () => fields.time('clock', 'ns'))
 benchmark('schema/from_json', () => DataType.fromJSON(structuralJson))
+benchmark('schema/into_field_native', () => intoField(rowField))
+benchmark('schema/into_field_class_cached', () => intoField(BenchRow))
+benchmark('schema/into_field_renamed', () => intoField(BenchRow, 'row'))
 benchmark('schema/metadata_ignored_equals', () => struct.equals(struct, false))
+benchmark('expression/equals', () => expression.equals(expression))
+benchmark('expression/compare', () => expression.compare(expression))
+benchmark('expression/stable_hash', () => expression.stableHash())
+benchmark('expression/clone', () => expression.clone())
+benchmark('statement/equals', () => statement.equals(statement))
+benchmark('statement/compare', () => statement.compare(statement))
+benchmark('statement/stable_hash', () => statement.stableHash())
+benchmark('statement/clone', () => statement.clone())
+benchmark('iceberg/partition_spec_equals', () => icebergSpec.equals(icebergSpec))
+benchmark('iceberg/partition_spec_compare', () => icebergSpec.compare(icebergSpec))
+benchmark('iceberg/partition_spec_stable_hash', () => icebergSpec.stableHash())
+benchmark('iceberg/partition_spec_clone', () => icebergSpec.clone())
+benchmark('iceberg/partition_spec_from_json', () =>
+  icebergApi.PartitionSpec.fromJSON(icebergSpecDocument),
+)
+benchmark('iceberg/partition_spec_into_json', () => icebergSpec.intoJSON())
 benchmark('schema/diff_first_wide_struct_1024', () =>
   wideLeft.showDiffs(wideRight, false).next(),
 )

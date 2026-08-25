@@ -190,6 +190,10 @@ impl IOFolder for Folder {
     }
 }
 
+impl crate::io::IOMedia for Folder {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for Folder {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()

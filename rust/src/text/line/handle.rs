@@ -8,17 +8,19 @@
 //! bytes unchanged** - so a `.log.gz` behind a `Text` can still be copied or
 //! uploaded verbatim.
 //!
-//! It overrides only [`open`](crate::io::IOBase::open) and
-//! [`close`](crate::io::IOBase::close). `open` materializes what repeated calls
-//! would re-derive - the resolved schema and the peeled coding plan - and
-//! `close` publishes and releases it. Nothing fills that cache as a side effect
-//! of an ordinary read: a cache nobody asked for is how a handle serves a stale
-//! answer after the resource changes underneath it.
+//! Its lifecycle and byte-mutation overrides exist only to manage cached
+//! derivations. `open` materializes the resolved field and peeled coding plan;
+//! the first dimension request lazily fills its opened-session cell, and
+//! `close` publishes and releases them. Nothing fills that cache as a side
+//! effect of an ordinary read: a cache nobody asked for is how a handle serves
+//! a stale answer after the resource changes underneath it.
 
 use std::io::Read;
 use std::sync::Arc;
+#[cfg(feature = "arrow")]
+use std::sync::OnceLock;
 
-use crate::io::{Cursor, IOBase};
+use crate::io::{Cursor, DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::{Codec, Field, MimeType, Result};
 
 use super::options::TextLineOptions;
@@ -52,10 +54,10 @@ use super::view::TextLine;
 pub struct Text<H: IOBase> {
     handle: H,
     options: Arc<TextLineOptions>,
-    /// A declared canonical schema, cast onto the projected rows.
+    /// A declared canonical field, cast onto the projected rows.
     ///
-    /// What [`with_schema`](Self::with_schema) sets, exactly as on every other
-    /// media handle; unset, the projection's own root is the schema.
+    /// What [`with_field`](Self::with_field) sets, exactly as on every other
+    /// media handle; unset, the projection's own root is the field.
     declared: Option<Field>,
     /// The location the records report, when it is not the handle's own.
     ///
@@ -71,9 +73,29 @@ pub struct Text<H: IOBase> {
 #[derive(Clone, Debug)]
 struct Cached {
     /// The emitted root, resolved once.
-    schema: Field,
+    field: Field,
     /// The content codings to peel, outermost first, resolved once.
     codings: Vec<MimeType>,
+    /// The logical row count, filled only when the opened caller asks for it.
+    #[cfg(feature = "arrow")]
+    row_size: OnceLock<u64>,
+    /// The canonical field width, filled only when the opened caller asks.
+    #[cfg(feature = "arrow")]
+    column_size: OnceLock<usize>,
+}
+
+impl Cached {
+    /// Start one opened-session cache without reading record bytes.
+    fn new(field: Field, codings: Vec<MimeType>) -> Self {
+        Self {
+            field,
+            codings,
+            #[cfg(feature = "arrow")]
+            row_size: OnceLock::new(),
+            #[cfg(feature = "arrow")]
+            column_size: OnceLock::new(),
+        }
+    }
 }
 
 impl<H: IOBase> Text<H> {
@@ -95,18 +117,19 @@ impl<H: IOBase> Text<H> {
         }
     }
 
-    /// Declare the canonical schema the projected rows are cast onto.
+    /// Declare the canonical field the projected rows are cast onto.
     ///
     /// The same setting every media handle carries: unset, the projection's
-    /// own root is the schema.
-    pub fn set_schema(&mut self, schema: Field) {
-        self.declared = Some(schema);
+    /// own root is the field.
+    pub fn set_field(&mut self, field: Field) {
+        self.declared = Some(field);
+        self.refresh_open_cache();
     }
 
-    /// Return this handler with a declared canonical schema.
+    /// Return this handler with a declared canonical field.
     #[must_use]
-    pub fn with_schema(mut self, schema: Field) -> Self {
-        self.set_schema(schema);
+    pub fn with_field(mut self, field: Field) -> Self {
+        self.set_field(field);
         self
     }
 
@@ -161,6 +184,19 @@ impl<H: IOBase> Text<H> {
         &self.handle
     }
 
+    /// Refuse options for a different encoding before a write can pull its
+    /// first incoming batch.
+    #[cfg(feature = "arrow")]
+    fn require_record_options(&self, options: &crate::generic::RecordOptions) -> Result<()> {
+        if matches!(options, crate::generic::RecordOptions::Text(_)) {
+            return Ok(());
+        }
+        Err(crate::Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.encoding"),
+            reason: crate::text::expected_got("text record options", options.mime_type()),
+        })
+    }
+
     /// Give the wrapped handle back, publishing any pending write first.
     ///
     /// # Errors
@@ -181,7 +217,7 @@ impl<H: IOBase> Text<H> {
     /// Any cached derivation is dropped: it described the old extractor.
     pub fn set_options(&mut self, options: TextLineOptions) {
         self.options = Arc::new(options);
-        self.cached = None;
+        self.refresh_open_cache();
     }
 
     /// Return this handler with a different extractor.
@@ -286,17 +322,17 @@ impl<H: IOBase> Text<H> {
 
     /// The root Struct Field this handler's records project onto.
     ///
-    /// The declared schema when one was set; otherwise, answered from the
+    /// The declared field when one was set; otherwise, answered from the
     /// options alone when the handle is closed, and from the cache between
     /// `open` and `close`. No resource is read either way.
     #[must_use]
-    pub fn schema(&self) -> &Field {
+    pub fn field(&self) -> &Field {
         if let Some(declared) = &self.declared {
             return declared;
         }
         match &self.cached {
-            Some(cached) => &cached.schema,
-            None => self.options.schema(),
+            Some(cached) => &cached.field,
+            None => self.options.field(),
         }
     }
 
@@ -305,6 +341,20 @@ impl<H: IOBase> Text<H> {
         match &self.cached {
             Some(cached) => cached.codings.clone(),
             None => self.handle.media_type().encodings().to_vec(),
+        }
+    }
+
+    /// Replace stale opened-session derivations without ending the session.
+    ///
+    /// Closed handles deliberately stay uncached. An opened handle keeps its
+    /// lifecycle state, but every lazy dimension is empty again after a field,
+    /// extractor, media-type, or byte mutation.
+    fn refresh_open_cache(&mut self) {
+        if self.cached.is_some() {
+            self.cached = Some(Cached::new(
+                self.options.field().clone(),
+                self.handle.media_type().encodings().to_vec(),
+            ));
         }
     }
 
@@ -370,8 +420,12 @@ impl<H: IOBase> Text<H> {
         I: IntoIterator<Item = L>,
         L: AsRef<[u8]>,
     {
-        self.handle.truncate(0)?;
-        self.append_lines(lines)
+        let result = (|| {
+            self.handle.truncate(0)?;
+            self.append_lines_inner(lines)
+        })();
+        self.refresh_open_cache();
+        result
     }
 
     /// Append `lines` after this resource's current end, each terminated.
@@ -388,6 +442,17 @@ impl<H: IOBase> Text<H> {
     ///
     /// Returns the resource's write failure.
     pub fn append_lines<I, L>(&mut self, lines: I) -> Result<()>
+    where
+        I: IntoIterator<Item = L>,
+        L: AsRef<[u8]>,
+    {
+        let result = self.append_lines_inner(lines);
+        self.refresh_open_cache();
+        result
+    }
+
+    /// The shared append implementation; callers own cache invalidation.
+    fn append_lines_inner<I, L>(&mut self, lines: I) -> Result<()>
     where
         I: IntoIterator<Item = L>,
         L: AsRef<[u8]>,
@@ -426,68 +491,56 @@ pub(crate) fn borrowed_lines<'handle, H: IOBase + ?Sized>(
     options: Arc<TextLineOptions>,
 ) -> TextLines<Box<dyn Read + 'handle>> {
     let codings = handle.media_type().encodings().to_vec();
-    let mut stream: Box<dyn Read + 'handle> = Box::new(BorrowedReader {
-        source: handle,
-        offset: 0,
-    });
+    // The shared default is non-zero, the only construction failure the public
+    // byte stream permits. Reads and decoding failures stay lazy items.
+    let mut stream: Box<dyn Read + 'handle> = Box::new(
+        handle
+            .pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)
+            .expect("the internal text byte-stream batch is non-zero"),
+    );
     for coding in codings.iter().rev() {
         stream = Codec::from_mime_type(coding).reader(stream);
     }
     TextLines::over(stream, options, url_text(handle))
 }
 
-/// Read a *coding view's* records off the encoded handle beneath it.
+/// Count one handle's logical text records through the borrowed extractor.
 ///
-/// A coding handle presents decoded bytes while its wrapped handle holds the
-/// encoded form, so its records stream through one streaming decoder rather
-/// than through the materialized value: a compressed resource pays one window
-/// instead of its decompressed size. A pending write already has the decoded
-/// value in memory, so it reads through the view itself.
-///
-/// This is the only place that difference lives; the splitting is the same one
-/// implementation either way.
-pub(crate) fn coded_lines<'handle, V, H>(
-    view: &'handle V,
-    encoded: &'handle H,
-    codec: crate::Codec,
-    dirty: bool,
-) -> Result<TextLines<Box<dyn Read + 'handle>>>
-where
-    V: IOBase,
-    H: IOBase,
-{
-    let options = Arc::new(TextLineOptions::new());
-    if dirty {
-        return Ok(borrowed_lines(view, options));
-    }
-    let mut stream: Box<dyn Read + 'handle> = codec.reader(Box::new(BorrowedReader {
-        source: encoded,
-        offset: 0,
-    }));
-    for coding in view.media_type().encodings().iter().rev() {
-        stream = crate::Codec::from_mime_type(coding).reader(stream);
-    }
-    Ok(TextLines::over(stream, options, url_text(view)))
-}
-
-/// A streaming reader over a borrowed handle, at its own offset.
-///
-/// [`IOBase::reader_at`](crate::io::IOBase::reader_at) needs `Self: Sized` and
-/// ties its lifetime to the receiver, which a `?Sized` borrow cannot satisfy.
-/// This is the same three lines without either constraint.
-struct BorrowedReader<'handle, H: IOBase + ?Sized> {
-    source: &'handle H,
-    offset: u64,
-}
-
-impl<H: IOBase + ?Sized> Read for BorrowedReader<'_, H> {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        let read = self
-            .source
-            .pread(self.offset, buffer)
-            .map_err(std::io::Error::other)?;
-        self.offset += read as u64;
-        Ok(read)
+/// Record boundaries are exactly those of [`borrowed_lines`], including
+/// multiline pattern and log records. No Arrow array or record batch is built:
+/// one borrowed record window is advanced at a time. Containers count their
+/// leaves lazily, while an absent handle contributes zero rows.
+#[cfg(any(feature = "arrow", test))]
+pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &TextLineOptions) -> Result<u64> {
+    match handle.kind() {
+        crate::IOKind::Directory => {
+            let mut total = 0_u64;
+            for child in handle.children_where(&[], false)? {
+                let child = child?;
+                total = total
+                    .checked_add(row_size(&child, options)?)
+                    .ok_or_else(|| crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$"),
+                        reason: smol_str::SmolStr::new_static("logical row count exceeds u64::MAX"),
+                    })?;
+            }
+            Ok(total)
+        }
+        crate::IOKind::Unknown => Ok(0),
+        _ => {
+            let mut lines = borrowed_lines(handle, Arc::new(options.clone()));
+            let mut total = 0_u64;
+            while let Some(line) = lines.next() {
+                line?;
+                total = total
+                    .checked_add(1)
+                    .ok_or_else(|| crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$"),
+                        reason: smol_str::SmolStr::new_static("logical row count exceeds u64::MAX"),
+                    })?;
+            }
+            Ok(total)
+        }
     }
 }
 
@@ -573,19 +626,42 @@ impl<R: Read> TextLines<R> {
 /// A [`Text`] handler mirrors its wrapped handle's bytes exactly.
 ///
 /// The encoded value is exposed unchanged, so a `.log.gz` behind a `Text` is
-/// still a `.log.gz` to anything that copies or uploads it. Only `open` and
-/// `close` are overridden, and they only manage the derivation cache.
-impl<H: IOBase> IOBase for Text<H> {
-    crate::delegate_iobase!(handle, except_lifecycle);
+/// still a `.log.gz` to anything that copies or uploads it. Its lifecycle and
+/// mutation overrides only keep the opened-session derivation cache coherent.
+impl<H: IOBase> crate::io::IOMedia for Text<H> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self
+    }
 
-    // The byte surface is the wrapped handle's; the record surface is this
-    // handler's own, so `is_tabular` is answered here rather than delegated.
-    crate::delegate_iobase!(handle: is_atomic);
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self
+    }
 
-    /// A `Text` always presents its value as rows: the line projection needs
-    /// no stored schema, so the record surface answers for any bytes.
-    fn is_tabular(&self) -> bool {
-        true
+    /// Count logical text records without constructing Arrow batches.
+    ///
+    /// Closed handles stream a fresh count every time. Inside an explicit
+    /// `open`/`close` session, the first request fills the cache even when the
+    /// answer is zero; later requests reuse it until a relevant mutation.
+    #[cfg(feature = "arrow")]
+    fn row_size(&self) -> Result<u64> {
+        if let Some(cached) = &self.cached {
+            if let Some(size) = cached.row_size.get() {
+                return Ok(*size);
+            }
+            let size = row_size(&self.handle, &self.options)?;
+            return Ok(*cached.row_size.get_or_init(|| size));
+        }
+        row_size(&self.handle, &self.options)
+    }
+
+    /// Return the width of the canonical Struct field without reading bytes.
+    #[cfg(feature = "arrow")]
+    fn column_size(&self) -> Result<usize> {
+        let size = self.field().fields().len();
+        match &self.cached {
+            Some(cached) => Ok(*cached.column_size.get_or_init(|| size)),
+            None => Ok(size),
+        }
     }
 
     /// The record options of a `Text` are its own extractor.
@@ -596,22 +672,104 @@ impl<H: IOBase> IOBase for Text<H> {
     #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::generic::RecordOptions> {
         let mut options = super::record::TextOptions::with_lines(self.options.as_ref().clone());
-        options.schema = self.declared.clone();
+        options.field = self.declared.clone();
         Ok(crate::generic::RecordOptions::Text(Box::new(options)))
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        self.require_record_options(options)?;
+        crate::io::overwrite_arrow_reader_default(self, batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        self.require_record_options(options)?;
+        crate::io::append_arrow_reader_default(self, batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<()> {
+        self.require_record_options(options)?;
+        crate::io::merge_arrow_reader_default(self, batches, options)
+    }
+}
+
+impl<H: IOBase> IOBase for Text<H> {
+    crate::delegate_iobase!(handle: pread, pstream_bytes, size, capacity, reserve, url, media_type, flush,
+        parent, child_by_path, ls, kind);
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.handle.read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.handle.read_range(offset, length)
+    }
+
+    /// Write bytes through and invalidate every opened-session dimension.
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
+        let result = self.handle.pwrite(offset, bytes);
+        self.refresh_open_cache();
+        result
+    }
+
+    /// Resize through and invalidate every opened-session dimension.
+    fn truncate(&mut self, size: u64) -> Result<()> {
+        let result = self.handle.truncate(size);
+        self.refresh_open_cache();
+        result
+    }
+
+    /// Replace the declared representation and refresh its coding plan.
+    fn set_media_type(&mut self, media_type: crate::MediaType) {
+        self.handle.set_media_type(media_type);
+        self.refresh_open_cache();
+    }
+
+    // The byte surface is the wrapped handle's; the record surface is this
+    // handler's own, so `is_tabular` is answered here rather than delegated.
+    fn is_atomic(&self) -> bool {
+        self.handle.is_atomic()
+    }
+
+    /// A `Text` always presents its value as rows: the line projection needs
+    /// no stored schema, so the record surface answers for any bytes.
+    fn is_tabular(&self) -> bool {
+        true
+    }
+
+    /// Preserve a wrapped decoding view instead of reopening its raw encoded
+    /// location under this view's decoded media type.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_lines(&self, options: &TextLineOptions) -> Result<crate::arrow::BatchReader> {
+        self.handle.read_arrow_lines(options)
     }
 
     /// Materialize what repeated calls would re-derive.
     ///
-    /// The resolved schema and the peeled coding plan, and nothing else - no
-    /// bytes are read, because the emitted shape follows from the options
-    /// alone.
+    /// The resolved field and peeled coding plan are captured immediately;
+    /// dimension cells remain empty until asked. In particular, opening text
+    /// never scans its bytes merely to count rows.
     fn open(&mut self) -> Result<()> {
         self.handle.open()?;
         if self.cached.is_none() {
-            self.cached = Some(Cached {
-                schema: self.options.schema().clone(),
-                codings: self.handle.media_type().encodings().to_vec(),
-            });
+            self.cached = Some(Cached::new(
+                self.options.field().clone(),
+                self.handle.media_type().encodings().to_vec(),
+            ));
         }
         Ok(())
     }
@@ -627,13 +785,14 @@ impl<H: IOBase> IOBase for Text<H> {
         self.handle.close()
     }
 
-    /// Empty the wrapped resource, dropping the derivation cache with it.
+    /// Empty the wrapped resource and invalidate opened-session dimensions.
     fn clear(&mut self) -> Result<()> {
-        self.cached = None;
-        self.handle.clear()
+        let result = self.handle.clear();
+        self.refresh_open_cache();
+        result
     }
 
-    /// Delete the wrapped resource, and the derivation cache with it.
+    /// Delete the wrapped resource and release the opened-session cache.
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.cached = None;
         self.handle.remove(recursive)

@@ -9,18 +9,21 @@
 //! schema be finite.
 //!
 //! Logical types are modeled because the value model above this codec is
-//! typed: a `date` int decodes as a calendar [`Value::Date`](crate::Value)
+//! typed: a `date` int decodes as a calendar [`Scalar::Date32`](crate::Scalar)
 //! rather than a bare count, and a `decimal` keeps its unscaled integer and
 //! scale exactly. An annotation this implementation does not know - or one
 //! whose attributes are invalid for its underlying type - degrades to the
 //! underlying type, as the specification requires, never to an error.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Limits, Result, Value};
+use crate::{Limits, Result, Scalar};
 
 use super::datum::invalid;
 
@@ -34,16 +37,20 @@ pub const MAX_SCHEMA_DEPTH: usize = 384;
 /// One parsed Avro schema.
 ///
 /// Cloning is cheap: the node tree and the name registry are shared, and the
-/// JSON the schema round-trips as is the same shared [`Value`] it was parsed
+/// JSON the schema round-trips as is the same shared [`Scalar`] it was parsed
 /// from.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Schema {
     /// The root node.
     pub(crate) node: Node,
     /// Every named type in the schema, by fullname.
     pub(crate) names: Arc<HashMap<SmolStr, Node>>,
     /// The JSON this schema round-trips as.
-    json: Value,
+    json: Scalar,
+    /// Complete JSON identity with every object normalized to a sorted record.
+    identity: Scalar,
+    /// Parsing Canonical Form, shared by cheap clones and filled on demand.
+    canonical: Arc<OnceLock<String>>,
 }
 
 /// One node of the parsed schema tree.
@@ -137,13 +144,14 @@ pub(crate) struct FieldType {
     /// Iceberg resolves a column by identifier rather than by name, so the
     /// attribute is surfaced onto the decoded field's metadata rather than
     /// merely surviving as an unmodeled attribute.
+    #[cfg(feature = "arrow")]
     pub(crate) field_id: Option<i32>,
     /// The declared default, as the JSON it was written with.
     ///
     /// Kept raw because the specification only consults a default during
     /// schema resolution; converting lazily means a malformed default on a
     /// field nobody fills is never an error.
-    pub(crate) default: Option<Value>,
+    pub(crate) default: Option<Scalar>,
 }
 
 /// One Avro enum type.
@@ -188,7 +196,7 @@ impl Schema {
     ///
     /// Returns an error when the document is not an Avro schema, naming the
     /// construct that was found and where.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         Self::from_json_with_limits(document, Limits::default())
     }
 
@@ -198,7 +206,7 @@ impl Schema {
     ///
     /// Returns an error when the document is not an Avro schema or exceeds
     /// the limits.
-    pub fn from_json_with_limits(document: &Value, limits: Limits) -> Result<Self> {
+    pub fn from_json_with_limits(document: &Scalar, limits: Limits) -> Result<Self> {
         let mut parser = Parser {
             names: HashMap::new(),
             depth_limit: limits.max_depth().min(MAX_SCHEMA_DEPTH),
@@ -208,6 +216,8 @@ impl Schema {
             node,
             names: Arc::new(parser.names),
             json: document.clone(),
+            identity: normalized_schema_json(document)?,
+            canonical: Arc::new(OnceLock::new()),
         })
     }
 
@@ -227,15 +237,20 @@ impl Schema {
     ///
     /// Returns an error when the bytes are not JSON or not a schema.
     pub fn from_slice(input: &[u8]) -> Result<Self> {
-        Self::from_json(&crate::json::from_slice(input)?)
+        Self::from_json(&crate::json::from_bytes(input)?)
     }
 
     /// Return the JSON this schema round-trips as.
     ///
     /// A parsed schema answers with the exact document it was parsed from, so
     /// attributes this implementation does not model survive verbatim.
-    pub fn to_json(&self) -> Value {
-        self.json.clone()
+    pub fn into_json(self) -> Scalar {
+        self.json
+    }
+
+    /// Borrow the exact JSON document this schema was parsed from.
+    pub const fn as_json(&self) -> &Scalar {
+        &self.json
     }
 
     /// Return the name a caller would use to refer to the root of this schema.
@@ -245,11 +260,17 @@ impl Schema {
 
     /// Render the Parsing Canonical Form: the one spelling of this schema
     /// every implementation agrees on, which is what fingerprints hash.
-    pub fn to_canonical_form(&self) -> String {
-        let mut output = String::new();
-        let mut printed = Vec::new();
-        canonical(&self.node, &self.names, &mut printed, &mut output);
-        output
+    pub fn into_canonical_form(self) -> String {
+        self.canonical_form().to_owned()
+    }
+
+    fn canonical_form(&self) -> &str {
+        self.canonical.get_or_init(|| {
+            let mut output = String::new();
+            let mut printed = Vec::new();
+            canonical(&self.node, &self.names, &mut printed, &mut output);
+            output
+        })
     }
 
     /// Return the 64-bit Rabin fingerprint of the canonical form.
@@ -257,7 +278,87 @@ impl Schema {
     /// This is the fingerprint single-object encoding frames a datum with,
     /// and the natural cache key for a resolution plan.
     pub fn fingerprint(&self) -> u64 {
-        rabin(self.to_canonical_form().as_bytes())
+        rabin(self.canonical_form().as_bytes())
+    }
+
+    /// Return a deterministic hash of the complete retained schema document.
+    ///
+    /// Unlike an Avro fingerprint, this preserves logical annotations,
+    /// defaults, aliases, and extension attributes that affect this schema's
+    /// behavior or round trip.
+    pub fn stable_hash(&self) -> u64 {
+        self.identity.stable_hash()
+    }
+}
+
+impl fmt::Debug for Schema {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Schema")
+            .field("json", &self.json)
+            .finish()
+    }
+}
+
+impl PartialEq for Schema {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity == other.identity
+    }
+}
+
+impl Eq for Schema {}
+
+impl PartialOrd for Schema {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Schema {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.identity.cmp(&other.identity)
+    }
+}
+
+impl Hash for Schema {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity.hash(state);
+    }
+}
+
+/// Normalize JSON objects independently of how a language boundary represented
+/// them (`Mapping` or `Record`) while preserving every key and nested value.
+fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
+    match value {
+        Scalar::Sequence(values) => Ok(Scalar::from_sequence(
+            values
+                .iter()
+                .map(normalized_schema_json)
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        Scalar::Record(entries) => Scalar::from_record(
+            entries
+                .iter()
+                .map(|(name, value)| {
+                    normalized_schema_json(value).map(|value| (name.clone(), value))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        Scalar::Mapping(entries) => Scalar::from_record(
+            entries
+                .iter()
+                .map(|(name, value)| {
+                    let name = name.as_str().ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected every Avro schema object key to be text, got {}",
+                            name.kind()
+                        ))
+                    })?;
+                    Ok((name, normalized_schema_json(value)?))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        scalar => Ok(scalar.clone()),
     }
 }
 
@@ -265,7 +366,7 @@ impl std::str::FromStr for Schema {
     type Err = crate::Error;
 
     fn from_str(input: &str) -> Result<Self> {
-        Self::from_json(&crate::json::from_str(input)?)
+        Self::from_json(&crate::json::from_utf8(input)?)
     }
 }
 
@@ -415,7 +516,7 @@ struct Parser {
 
 impl Parser {
     /// Parse one schema node in an enclosing namespace.
-    fn parse(&mut self, document: &Value, namespace: &str, depth: usize) -> Result<Node> {
+    fn parse(&mut self, document: &Scalar, namespace: &str, depth: usize) -> Result<Node> {
         if depth >= self.depth_limit {
             return Err(invalid(format_smolstr!(
                 "expected an Avro schema at most {} levels deep",
@@ -432,7 +533,7 @@ impl Parser {
             }
             return Ok(Node::Union(parsed.into()));
         }
-        if document.as_mapping().is_none() {
+        if document.as_record().is_none() && document.as_mapping().is_none() {
             return Err(invalid(format_smolstr!(
                 "expected an Avro schema name, union, or object, got {}",
                 document.kind()
@@ -448,7 +549,7 @@ impl Parser {
             return self.parse(type_name, namespace, depth + 1);
         };
 
-        let logical = document.get_key_str("logicalType").and_then(Value::as_str);
+        let logical = document.get_key_str("logicalType").and_then(Scalar::as_str);
         match type_name {
             "record" | "error" => self.parse_record(document, namespace, depth),
             "enum" => self.parse_enum(document, namespace),
@@ -486,13 +587,13 @@ impl Parser {
 
     /// Parse a record, registering it before its own fields are read so a
     /// self-referential field resolves.
-    fn parse_record(&mut self, document: &Value, namespace: &str, depth: usize) -> Result<Node> {
+    fn parse_record(&mut self, document: &Scalar, namespace: &str, depth: usize) -> Result<Node> {
         let (fullname, child_namespace) = declared_name(document, namespace)?;
         self.check_unregistered(&fullname)?;
         let aliases = declared_aliases(document, &child_namespace);
         let entries = document
             .get_key_str("fields")
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected an Avro record \"fields\" array on {fullname:?}"
@@ -508,7 +609,7 @@ impl Parser {
         for entry in entries {
             let field_name = entry
                 .get_key_str("name")
-                .and_then(Value::as_str)
+                .and_then(Scalar::as_str)
                 .ok_or_else(|| {
                     invalid(format_smolstr!(
                         "expected an Avro field \"name\" inside {fullname:?}"
@@ -521,11 +622,11 @@ impl Parser {
             })?;
             let field_aliases = entry
                 .get_key_str("aliases")
-                .and_then(Value::as_sequence)
+                .and_then(Scalar::as_sequence)
                 .map(|aliases| {
                     aliases
                         .iter()
-                        .filter_map(Value::as_str)
+                        .filter_map(Scalar::as_str)
                         .map(SmolStr::new)
                         .collect()
                 })
@@ -534,9 +635,10 @@ impl Parser {
                 name: SmolStr::new(field_name),
                 aliases: field_aliases,
                 schema: self.parse(field_type, &child_namespace, depth + 1)?,
+                #[cfg(feature = "arrow")]
                 field_id: entry
                     .get_key_str("field-id")
-                    .and_then(Value::as_i64)
+                    .and_then(Scalar::as_i64)
                     .and_then(|id| i32::try_from(id).ok()),
                 default: entry.get_key_str("default").cloned(),
             });
@@ -566,12 +668,12 @@ impl Parser {
     }
 
     /// Parse an enum and register it.
-    fn parse_enum(&mut self, document: &Value, namespace: &str) -> Result<Node> {
+    fn parse_enum(&mut self, document: &Scalar, namespace: &str) -> Result<Node> {
         let (fullname, child_namespace) = declared_name(document, namespace)?;
         self.check_unregistered(&fullname)?;
         let symbols = document
             .get_key_str("symbols")
-            .and_then(Value::as_sequence)
+            .and_then(Scalar::as_sequence)
             .ok_or_else(|| {
                 invalid(SmolStr::new_static(
                     "expected an Avro enum \"symbols\" array",
@@ -592,7 +694,7 @@ impl Parser {
             symbols: names.into(),
             default: document
                 .get_key_str("default")
-                .and_then(Value::as_str)
+                .and_then(Scalar::as_str)
                 .map(SmolStr::new),
         }));
         self.names.insert(fullname, node.clone());
@@ -602,7 +704,7 @@ impl Parser {
     /// Parse a fixed, apply any logical annotation, and register the result.
     fn parse_fixed(
         &mut self,
-        document: &Value,
+        document: &Scalar,
         namespace: &str,
         logical: Option<&str>,
     ) -> Result<Node> {
@@ -610,7 +712,7 @@ impl Parser {
         self.check_unregistered(&fullname)?;
         let size = document
             .get_key_str("size")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|size| usize::try_from(size).ok())
             .ok_or_else(|| {
                 invalid(SmolStr::new_static(
@@ -672,7 +774,7 @@ impl Parser {
 ///
 /// An unknown annotation, or one over an underlying type it does not fit,
 /// degrades to the underlying type per the specification.
-fn annotate(node: Node, logical: Option<&str>, document: &Value) -> Node {
+fn annotate(node: Node, logical: Option<&str>, document: &Scalar) -> Node {
     let Some(logical) = logical else {
         return node;
     };
@@ -693,14 +795,14 @@ fn annotate(node: Node, logical: Option<&str>, document: &Value) -> Node {
 }
 
 /// Build a decimal node when its attributes are valid for the underlying type.
-fn decimal_over(fixed: Option<Arc<FixedType>>, document: &Value) -> Option<Node> {
+fn decimal_over(fixed: Option<Arc<FixedType>>, document: &Scalar) -> Option<Node> {
     let precision = document
         .get_key_str("precision")
-        .and_then(Value::as_i64)
+        .and_then(Scalar::as_i64)
         .and_then(|precision| u32::try_from(precision).ok())?;
     let scale = document
         .get_key_str("scale")
-        .and_then(Value::as_i64)
+        .and_then(Scalar::as_i64)
         .and_then(|scale| u32::try_from(scale).ok())
         .unwrap_or(0);
     if precision == 0 || scale > precision {
@@ -736,10 +838,10 @@ fn max_precision_for(size: usize) -> u32 {
 }
 
 /// Read a named type's fullname and the namespace its children inherit.
-fn declared_name(document: &Value, namespace: &str) -> Result<(SmolStr, String)> {
+fn declared_name(document: &Scalar, namespace: &str) -> Result<(SmolStr, String)> {
     let name = document
         .get_key_str("name")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .ok_or_else(|| invalid(SmolStr::new_static("expected an Avro type \"name\"")))?;
     // A dotted name is already a fullname and any namespace attribute is
     // ignored, which is the specification's rule.
@@ -748,7 +850,7 @@ fn declared_name(document: &Value, namespace: &str) -> Result<(SmolStr, String)>
     }
     let space = document
         .get_key_str("namespace")
-        .and_then(Value::as_str)
+        .and_then(Scalar::as_str)
         .unwrap_or(namespace);
     let fullname = if space.is_empty() {
         SmolStr::new(name)
@@ -759,14 +861,14 @@ fn declared_name(document: &Value, namespace: &str) -> Result<(SmolStr, String)>
 }
 
 /// Read a named type's aliases, resolved against its own namespace.
-fn declared_aliases(document: &Value, namespace: &str) -> Vec<SmolStr> {
+fn declared_aliases(document: &Scalar, namespace: &str) -> Vec<SmolStr> {
     document
         .get_key_str("aliases")
-        .and_then(Value::as_sequence)
+        .and_then(Scalar::as_sequence)
         .map(|aliases| {
             aliases
                 .iter()
-                .filter_map(Value::as_str)
+                .filter_map(Scalar::as_str)
                 .map(|alias| {
                     if alias.contains('.') || namespace.is_empty() {
                         SmolStr::new(alias)

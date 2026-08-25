@@ -7,11 +7,11 @@
 
 use std::hint::black_box;
 
-use criterion::{Criterion, Throughput};
+use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::IOBase;
+use yggdryl::io::IOMedia;
 
-use super::{ROWS, batch, handle, stored, wide};
+use super::{ROWS, batch, handle, reader, stored, stored_with, wide};
 
 pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("io_record");
@@ -21,52 +21,119 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
     let source = batch();
 
     group.bench_function("overwrite/ipc", |bencher| {
-        bencher.iter(|| {
-            let mut target = handle("bench-overwrite.arrows");
-            let options = target
-                .record_options()
-                .expect("an implemented encoding")
-                .with_schema(field.clone());
-            target
-                .write_arrow_batch_reader(
-                    yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),
-                    &options,
-                )
-                .expect("the fixture must write");
-        });
+        bencher.iter_batched(
+            || {
+                let target = handle("bench-overwrite.arrows");
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone());
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .overwrite_arrow_reader(reader(black_box(&source)), &options)
+                    .expect("the fixture must write");
+            },
+            BatchSize::LargeInput,
+        );
     });
 
     group.bench_function("append/ipc", |bencher| {
-        bencher.iter(|| {
-            let mut target = stored("bench-append.arrows");
-            let options = target
-                .record_options()
-                .expect("an implemented encoding")
-                .with_schema(field.clone());
-            target
-                .append_arrow_batch_reader(
-                    yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),
-                    &options,
-                )
-                .expect("the fixture must append");
-        });
+        bencher.iter_batched(
+            || {
+                let target = stored_with("bench-append.arrows", &source);
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone());
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .append_arrow_reader(reader(black_box(&source)), &options)
+                    .expect("the fixture must append");
+            },
+            BatchSize::LargeInput,
+        );
     });
 
     group.bench_function("merge/ipc", |bencher| {
-        bencher.iter(|| {
-            let mut target = stored("bench-merge.arrows");
-            let options = target
-                .record_options()
-                .expect("an implemented encoding")
-                .with_schema(field.clone())
-                .with_merge_by_names(["id"]);
-            target
-                .write_arrow_batch_reader(
-                    yggdryl::arrow::batch_reader(source.schema(), [black_box(source.clone())]),
-                    &options,
-                )
-                .expect("the fixture must merge");
-        });
+        bencher.iter_batched(
+            || {
+                let target = stored_with("bench-merge.arrows", &source);
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone())
+                    .with_merge_by_names(["id"]);
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .merge_arrow_reader(reader(black_box(&source)), &options)
+                    .expect("the fixture must merge");
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    group.bench_function("overwrite_record_batch/ipc", |bencher| {
+        bencher.iter_batched(
+            || {
+                let target = handle("bench-overwrite-batch.arrows");
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone());
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .overwrite_arrow_batch(black_box(source.clone()), &options)
+                    .expect("the fixture batch must overwrite");
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    group.bench_function("append_record_batch/ipc", |bencher| {
+        bencher.iter_batched(
+            || {
+                let target = stored_with("bench-append-batch.arrows", &source);
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone());
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .append_arrow_batch(black_box(source.clone()), &options)
+                    .expect("the fixture batch must append");
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    group.bench_function("merge_record_batch/ipc", |bencher| {
+        bencher.iter_batched(
+            || {
+                let target = stored_with("bench-merge-batch.arrows", &source);
+                let options = target
+                    .record_options()
+                    .expect("an implemented encoding")
+                    .with_field(field.clone())
+                    .with_merge_by_names(["id"]);
+                (target, options)
+            },
+            |(mut target, options)| {
+                target
+                    .merge_arrow_batch(black_box(source.clone()), &options)
+                    .expect("the fixture batch must merge");
+            },
+            BatchSize::LargeInput,
+        );
     });
 
     group.bench_function("read/ipc", |bencher| {
@@ -74,7 +141,7 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
         let options = handle.record_options().expect("an implemented encoding");
         bencher.iter(|| {
             black_box(&handle)
-                .read_arrow_batch_reader(&options)
+                .read_arrow_reader(&options)
                 .expect("the fixture must read")
                 .map(|batch| batch.expect("a decodable batch").num_rows())
                 .sum::<usize>()

@@ -28,7 +28,7 @@ fn batch(base: usize, rows: usize) -> RecordBatch {
     ])
     .expect("a struct")
     .required_field("row")
-    .to_arrow_schema()
+    .into_arrow_schema()
     .expect("an arrow schema");
     RecordBatch::try_new(
         schema,
@@ -69,7 +69,7 @@ pub(crate) fn codec_benchmarks(criterion: &mut Criterion) {
                 .map(|index| batch(index * block_rows, block_rows))
                 .collect();
             let schema = batches[0].schema();
-            avro::write_batch_reader(
+            avro::overwrite_arrow_reader(
                 &mut stored,
                 yggdryl::arrow::batch_reader(schema, batches),
                 &options,

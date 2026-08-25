@@ -162,17 +162,19 @@ impl JsTimezone {
 
     /// The local reading, in epoch seconds, of a UTC instant.
     #[napi]
-    pub fn to_local(&self, epoch: f64) -> Result<i64> {
+    pub fn into_local(&self, epoch: f64) -> Result<i64> {
         self.inner
-            .to_local(exact_i64(epoch, "epoch")?)
+            .clone()
+            .into_local(exact_i64(epoch, "epoch")?)
             .map_err(napi_error)
     }
 
     /// The UTC instant, in epoch seconds, a local reading names.
     #[napi]
-    pub fn to_utc(&self, local: f64) -> Result<i64> {
+    pub fn into_utc(&self, local: f64) -> Result<i64> {
         self.inner
-            .to_utc(exact_i64(local, "local")?)
+            .clone()
+            .into_utc(exact_i64(local, "local")?)
             .map_err(napi_error)
     }
 
@@ -213,14 +215,14 @@ impl JsTimezone {
     }
 
     /// Return the canonical name, accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.as_str().to_owned()
     }
 
     /// Serialize as the canonical name, so a zone survives `JSON.stringify`.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> String {
+    pub fn js_json(&self) -> String {
         self.inner.as_str().to_owned()
     }
 }

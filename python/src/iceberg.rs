@@ -11,18 +11,19 @@
 //! ask what a commit produced without opening the Avro files by hand; none of
 //! them can be constructed from Python, because only a commit writes one.
 
+use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple, PyType};
 
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog, Compaction, DataFile, FileFormat, FormatVersion, IcebergOptions, ManifestContent,
-    ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
-    assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
+    Catalog, Compaction, DataFile, FieldSummary, FileFormat, FormatVersion, IcebergOptions,
+    ManifestContent, ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot,
+    Table, assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
 };
 use yggdryl::io::IOBase as _;
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Value};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 
 use crate::datatype::core_data_type_from_value;
 use crate::field::{PyField, core_field_from_value};
@@ -33,6 +34,16 @@ use crate::value_error;
 
 /// The root name given to a schema that arrives as a bare Arrow schema.
 const SCHEMA_ROOT_NAME: &str = "row";
+
+/// Read one required key from a private pickle state mapping.
+fn required_pickle_item<'py>(
+    state: &Bound<'py, PyDict>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    state
+        .get_item(name)?
+        .ok_or_else(|| PyValueError::new_err(format!("native pickle state is missing {name:?}")))
+}
 
 /// Number every field of a schema, depth first, and return the numbered copy.
 ///
@@ -66,7 +77,7 @@ pub(crate) fn iceberg_schema_from_json(
     name: &str,
     document: &Bound<'_, PyAny>,
 ) -> PyResult<PyField> {
-    let document = crate::value::from_py(document)?;
+    let document = crate::scalar::from_py(document)?;
     schema_from_json(name, &document)
         .map(PyField::from_inner)
         .map_err(value_error)
@@ -85,7 +96,7 @@ pub(crate) fn iceberg_schema_to_json(
 ) -> PyResult<Py<PyAny>> {
     let root = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
     let document = schema_to_json(&root).map_err(value_error)?;
-    crate::value::as_py(py, &document)
+    crate::scalar::as_py(py, &document)
 }
 
 /// Check one type change against the promotions Iceberg allows.
@@ -132,10 +143,10 @@ fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Par
 }
 
 /// Project one Iceberg partition value as the Python value it stands for.
-fn partition_values<'py>(py: Python<'py>, values: &[Value]) -> PyResult<Bound<'py, PyTuple>> {
+fn partition_values<'py>(py: Python<'py>, values: &[Scalar]) -> PyResult<Bound<'py, PyTuple>> {
     let projected: Vec<Py<PyAny>> = values
         .iter()
-        .map(|value| crate::value::as_py(py, value))
+        .map(|value| crate::scalar::as_py(py, value))
         .collect::<PyResult<_>>()?;
     PyTuple::new(py, projected)
 }
@@ -248,7 +259,7 @@ fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
         return handle.folder_holder();
     }
     let url = core_url_from_value(value)?;
-    Holder::folder(url.to_path().map_err(value_error)?).map_err(value_error)
+    Holder::folder(url.into_path().map_err(value_error)?).map_err(value_error)
 }
 
 /// The Iceberg option fields every Iceberg call also accepts as keywords.
@@ -416,9 +427,67 @@ fn with_call_options<R>(
     module = "yggdryl._native",
     skip_from_py_object
 )]
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub(crate) struct PyIcebergOptions {
     pub(crate) inner: IcebergOptions,
+    hash_locked: bool,
+}
+
+impl Clone for PyIcebergOptions {
+    fn clone(&self) -> Self {
+        Self::from_core(self.inner.clone())
+    }
+}
+
+impl PyIcebergOptions {
+    fn from_core(inner: IcebergOptions) -> Self {
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "hashed IcebergOptions are frozen; copy them before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let state = PyDict::new(py);
+        if let Some(value) = self.inner.commit_retries_option() {
+            state.set_item("commit_retries", value)?;
+        }
+        if let Some(value) = self.inner.commit_min_backoff_ms_option() {
+            state.set_item("commit_min_backoff_ms", value)?;
+        }
+        if let Some(value) = self.inner.commit_max_backoff_ms_option() {
+            state.set_item("commit_max_backoff_ms", value)?;
+        }
+        if let Some(value) = self.inner.target_file_size_bytes_option() {
+            state.set_item("target_file_size", value)?;
+        }
+        if let Some(value) = self.inner.read_parallelism_option() {
+            state.set_item("read_parallelism", value)?;
+        }
+        if let Some(value) = self.inner.read_parallel_min_files_option() {
+            state.set_item("read_parallel_min_files", value)?;
+        }
+        if let Some(value) = self.inner.read_parallel_min_file_size_bytes_option() {
+            state.set_item("read_parallel_min_file_size", value)?;
+        }
+        if let Some(value) = self.inner.compact_after_commits_option() {
+            state.set_item("compact_after_commits", value)?;
+        }
+        if let Some(value) = self.inner.data_format_option() {
+            state.set_item("data_format", value.to_string())?;
+        }
+        Ok(state)
+    }
 }
 
 #[pymethods]
@@ -429,7 +498,15 @@ impl PyIcebergOptions {
     fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
         let mut inner = IcebergOptions::new();
         apply_iceberg_kwargs("IcebergOptions", &mut inner, kwargs)?;
-        Ok(Self { inner })
+        Ok(Self::from_core(inner))
+    }
+
+    /// Rebuild exactly the options that were explicitly configured.
+    #[staticmethod]
+    fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let mut inner = IcebergOptions::new();
+        apply_iceberg_kwargs("IcebergOptions._from_pickle", &mut inner, Some(state))?;
+        Ok(Self::from_core(inner))
     }
 
     /// How many beaten commit attempts are retried. Default: 4.
@@ -439,8 +516,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_commit_retries(&mut self, retries: u32) {
+    fn set_commit_retries(&mut self, retries: u32) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_commit_retries(retries);
+        Ok(())
     }
 
     /// The first commit retry wait in milliseconds. Default: 100.
@@ -450,8 +529,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_commit_min_backoff_ms(&mut self, wait_ms: u64) {
+    fn set_commit_min_backoff_ms(&mut self, wait_ms: u64) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_commit_min_backoff_ms(wait_ms);
+        Ok(())
     }
 
     /// The largest commit retry wait in milliseconds. Default: 60000.
@@ -461,8 +542,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) {
+    fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_commit_max_backoff_ms(wait_ms);
+        Ok(())
     }
 
     /// The size a data file aims for, in bytes. Default: 512 MiB.
@@ -473,6 +556,7 @@ impl PyIcebergOptions {
 
     #[setter]
     fn set_target_file_size(&mut self, bytes: u64) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_target_file_size_bytes(bytes)
             .map_err(value_error)
@@ -487,6 +571,7 @@ impl PyIcebergOptions {
 
     #[setter]
     fn set_read_parallelism(&mut self, threads: usize) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner
             .set_read_parallelism(threads)
             .map_err(value_error)
@@ -499,8 +584,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_read_parallel_min_files(&mut self, files: usize) {
+    fn set_read_parallel_min_files(&mut self, files: usize) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_read_parallel_min_files(files);
+        Ok(())
     }
 
     /// The recorded size below which a file does not count toward justifying
@@ -511,8 +598,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_read_parallel_min_file_size(&mut self, bytes: u64) {
+    fn set_read_parallel_min_file_size(&mut self, bytes: u64) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_read_parallel_min_file_size_bytes(bytes);
+        Ok(())
     }
 
     /// After how many data commits an automatic compaction runs; `None` - the
@@ -523,8 +612,10 @@ impl PyIcebergOptions {
     }
 
     #[setter]
-    fn set_compact_after_commits(&mut self, commits: u32) {
+    fn set_compact_after_commits(&mut self, commits: u32) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_compact_after_commits(commits);
+        Ok(())
     }
 
     /// The format new data files are written in, as the spec spells it.
@@ -541,17 +632,45 @@ impl PyIcebergOptions {
 
     #[setter]
     fn set_data_format(&mut self, format: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
         self.inner.set_data_format(file_format_from_value(format)?);
         Ok(())
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "IcebergOptions(commit_retries={}, target_file_size={}, data_format={:?})",
-            self.inner.commit_retries(),
-            self.inner.target_file_size_bytes(),
-            self.inner.data_format().to_string(),
-        )
+    /// Return a deterministic hash of every explicitly configured option.
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let state = self.pickle_state(py)?;
+        Ok(format!(
+            "IcebergOptions._from_pickle({})",
+            state.repr()?.to_str()?
+        ))
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.pickle_state(py)?.into_any().unbind(),),
+        ))
     }
 
     fn __copy__(&self) -> Self {
@@ -580,6 +699,10 @@ pub(crate) struct PyCatalog {
 
 #[pymethods]
 impl PyCatalog {
+    // A catalog is a live external-resource handle, not a value snapshot.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// Describe a catalog over a warehouse folder, touching nothing.
     ///
     /// `warehouse` accepts an [`IOBase`][crate::io::PyIOBase] handle or
@@ -601,7 +724,8 @@ impl PyCatalog {
                     .warehouse()
                     .url()
                     .ok_or_else(|| PyValueError::new_err("this catalog has no location"))?
-                    .to_path()
+                    .clone()
+                    .into_path()
                     .map_err(value_error)?,
             )
             .map_err(value_error)?,
@@ -767,6 +891,10 @@ impl PyTable {
 
 #[pymethods]
 impl PyTable {
+    // A table is a mutable external-resource handle with cached planning state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// Create a table, writing its first metadata document.
     ///
     /// `partition_by` accepts a [`PartitionSpec`] or the column names to
@@ -848,7 +976,8 @@ impl PyTable {
             Holder::folder(
                 root.url()
                     .ok_or_else(|| PyValueError::new_err("this table has no location"))?
-                    .to_path()
+                    .clone()
+                    .into_path()
                     .map_err(value_error)?,
             )
             .map_err(value_error)?,
@@ -1320,7 +1449,7 @@ impl PyTable {
     fn options(&self) -> PyResult<PyIcebergOptions> {
         self.inner
             .options()
-            .map(|inner| PyIcebergOptions { inner })
+            .map(PyIcebergOptions::from_core)
             .map_err(value_error)
     }
 
@@ -1649,6 +1778,10 @@ impl PySchemaUpdate {
 
 #[pymethods]
 impl PySchemaUpdate {
+    // A transactional update changes until commit or discard.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// Record a new column under `parent` - `""` for the root, a dotted path
     /// for a nested struct.
     ///
@@ -1827,7 +1960,7 @@ impl PySchemaUpdate {
     }
 }
 
-/// What a scan decided to read, before a single row was read.
+/// A bounded five-count report of what a scan decided before reading rows.
 ///
 /// The core plan holds the data files themselves, because a write needs them;
 /// this view keeps only the counts, because a caller asking what the metadata
@@ -1866,10 +1999,48 @@ impl PyScanPlan {
             manifests_skipped: plan.manifests_skipped(),
         }
     }
+
+    const fn identity(&self) -> (i64, usize, usize, usize, usize) {
+        (
+            self.record_count,
+            self.files_planned,
+            self.files_skipped,
+            self.manifests_read,
+            self.manifests_skipped,
+        )
+    }
+
+    fn identity_value(&self) -> Scalar {
+        Scalar::from_sequence([
+            Scalar::from(self.record_count),
+            Scalar::from(u64::try_from(self.files_planned).unwrap_or(u64::MAX)),
+            Scalar::from(u64::try_from(self.files_skipped).unwrap_or(u64::MAX)),
+            Scalar::from(u64::try_from(self.manifests_read).unwrap_or(u64::MAX)),
+            Scalar::from(u64::try_from(self.manifests_skipped).unwrap_or(u64::MAX)),
+        ])
+    }
 }
 
 #[pymethods]
 impl PyScanPlan {
+    /// Rebuild the complete count report for pickle without planning a scan.
+    #[staticmethod]
+    fn _from_pickle(
+        record_count: i64,
+        files_planned: usize,
+        files_skipped: usize,
+        manifests_read: usize,
+        manifests_skipped: usize,
+    ) -> Self {
+        Self {
+            record_count,
+            files_planned,
+            files_skipped,
+            manifests_read,
+            manifests_skipped,
+        }
+    }
+
     /// The rows the planned files hold, as the manifests counted them.
     ///
     /// This is the count a scan would yield only when every filter is on a
@@ -1906,9 +2077,54 @@ impl PyScanPlan {
 
     fn __repr__(&self) -> String {
         format!(
-            "ScanPlan(record_count={}, files_planned={}, files_skipped={})",
-            self.record_count, self.files_planned, self.files_skipped,
+            "ScanPlan._from_pickle({}, {}, {}, {}, {})",
+            self.record_count,
+            self.files_planned,
+            self.files_skipped,
+            self.manifests_read,
+            self.manifests_skipped,
         )
+    }
+
+    /// Return a deterministic hash of the complete count report.
+    fn stable_hash(&self) -> u64 {
+        self.identity_value().stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(
+            crate::compare(self.identity().cmp(&other.identity()), operation)
+                .into_pyobject(other.py())?
+                .to_owned()
+                .into_any()
+                .unbind(),
+        )
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn __reduce__(
+        &self,
+        py: Python<'_>,
+    ) -> PyResult<(Py<PyAny>, (i64, usize, usize, usize, usize))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            self.identity(),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -1934,6 +2150,15 @@ impl PyCompaction {
 
 #[pymethods]
 impl PyCompaction {
+    #[staticmethod]
+    fn _from_pickle(files_before: usize, files_after: usize, bytes_rewritten: i64) -> Self {
+        Self::from_core(Compaction {
+            files_before,
+            files_after,
+            bytes_rewritten,
+        })
+    }
+
     /// How many live data files were read and replaced.
     #[getter]
     fn files_before(&self) -> usize {
@@ -1954,9 +2179,47 @@ impl PyCompaction {
 
     fn __repr__(&self) -> String {
         format!(
-            "Compaction(files_before={}, files_after={}, bytes_rewritten={})",
+            "Compaction._from_pickle({}, {}, {})",
             self.inner.files_before, self.inner.files_after, self.inner.bytes_rewritten,
         )
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (usize, usize, i64))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (
+                self.inner.files_before,
+                self.inner.files_after,
+                self.inner.bytes_rewritten,
+            ),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -1973,7 +2236,17 @@ pub(crate) struct PyPartitionField {
 }
 
 #[pymethods]
+#[allow(clippy::wrong_self_convention)] // Python projections preserve immutable wrappers.
 impl PyPartitionField {
+    /// Read one native partition-field JSON value.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let document = crate::scalar::from_py(document)?;
+        PartitionField::from_json(&document)
+            .map(|inner| Self { inner })
+            .map_err(value_error)
+    }
+
     /// The partition column's name, which is also its directory prefix.
     #[getter]
     fn name(&self) -> &str {
@@ -1998,12 +2271,52 @@ impl PyPartitionField {
         self.inner.field_id
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "PartitionField({:?}, transform={:?})",
-            self.inner.name.as_str(),
-            self.inner.transform.to_string(),
-        )
+    /// Return the native partition-field JSON value as natural Python data.
+    fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let document = self.inner.clone().into_json().map_err(value_error)?;
+        crate::scalar::as_py(py, &document)
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let document = self.into_json(py)?;
+        Ok(format!(
+            "PartitionField.from_json({})",
+            document.bind(py).repr()?.to_str()?
+        ))
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("from_json")?.unbind(),
+            (self.into_json(py)?,),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -2026,7 +2339,17 @@ impl PyPartitionSpec {
 }
 
 #[pymethods]
+#[allow(clippy::wrong_self_convention)] // Python projections preserve immutable wrappers.
 impl PyPartitionSpec {
+    /// Read one native partition-spec JSON value.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let document = crate::scalar::from_py(document)?;
+        PartitionSpec::from_json(&document)
+            .map(Self::from_core)
+            .map_err(value_error)
+    }
+
     /// The unpartitioned spec, which every table has as spec zero.
     #[classmethod]
     fn unpartitioned(_cls: &Bound<'_, PyType>) -> Self {
@@ -2079,12 +2402,52 @@ impl PyPartitionSpec {
         self.inner.fields.len()
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "PartitionSpec(spec_id={}, fields={})",
-            self.inner.spec_id,
-            self.inner.fields.len(),
-        )
+    /// Return the native partition-spec JSON value as natural Python data.
+    fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let document = self.inner.clone().into_json().map_err(value_error)?;
+        crate::scalar::as_py(py, &document)
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let document = self.into_json(py)?;
+        Ok(format!(
+            "PartitionSpec.from_json({})",
+            document.bind(py).repr()?.to_str()?
+        ))
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("from_json")?.unbind(),
+            (self.into_json(py)?,),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -2107,7 +2470,17 @@ impl PySnapshot {
 }
 
 #[pymethods]
+#[allow(clippy::wrong_self_convention)] // Python projections preserve immutable wrappers.
 impl PySnapshot {
+    /// Read one native snapshot JSON value.
+    #[classmethod]
+    fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let document = crate::scalar::from_py(document)?;
+        Snapshot::from_json(&document)
+            .map(Self::from_core)
+            .map_err(value_error)
+    }
+
     /// The identifier of this snapshot, unique within the table.
     #[getter]
     fn snapshot_id(&self) -> i64 {
@@ -2160,12 +2533,54 @@ impl PySnapshot {
         Ok(summary)
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "Snapshot({}, operation={:?})",
-            self.inner.snapshot_id,
-            self.inner.operation(),
-        )
+    /// Return the native snapshot JSON value for one Iceberg format version.
+    #[pyo3(signature = (version=3))]
+    fn into_json(&self, py: Python<'_>, version: i64) -> PyResult<Py<PyAny>> {
+        let version = FormatVersion::from_number(version).map_err(value_error)?;
+        let document = self.inner.clone().into_json(version).map_err(value_error)?;
+        crate::scalar::as_py(py, &document)
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let document = self.into_json(py, 3)?;
+        Ok(format!(
+            "Snapshot.from_json({})",
+            document.bind(py).repr()?.to_str()?
+        ))
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("from_json")?.unbind(),
+            (self.into_json(py, 3)?,),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -2185,10 +2600,80 @@ impl PyManifestFile {
     fn from_core(inner: ManifestFile) -> Self {
         Self { inner }
     }
+
+    fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let state = PyDict::new(py);
+        state.set_item("manifest_path", self.inner.manifest_path.as_str())?;
+        state.set_item("manifest_length", self.inner.manifest_length)?;
+        state.set_item("partition_spec_id", self.inner.partition_spec_id)?;
+        state.set_item("content", self.inner.content.code())?;
+        state.set_item("sequence_number", self.inner.sequence_number)?;
+        state.set_item("min_sequence_number", self.inner.min_sequence_number)?;
+        state.set_item("added_snapshot_id", self.inner.added_snapshot_id)?;
+        state.set_item("added_files_count", self.inner.added_files_count)?;
+        state.set_item("existing_files_count", self.inner.existing_files_count)?;
+        state.set_item("deleted_files_count", self.inner.deleted_files_count)?;
+        state.set_item("added_rows_count", self.inner.added_rows_count)?;
+        state.set_item("existing_rows_count", self.inner.existing_rows_count)?;
+        state.set_item("deleted_rows_count", self.inner.deleted_rows_count)?;
+        let partitions = self
+            .inner
+            .partitions
+            .iter()
+            .map(|summary| {
+                (
+                    summary.contains_null,
+                    summary.contains_nan,
+                    summary.lower_bound.clone(),
+                    summary.upper_bound.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        state.set_item("partitions", partitions)?;
+        state.set_item("first_row_id", self.inner.first_row_id)?;
+        Ok(state)
+    }
 }
 
 #[pymethods]
 impl PyManifestFile {
+    /// Rebuild the complete immutable manifest-list row for pickle.
+    #[staticmethod]
+    fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let partitions = required_pickle_item(state, "partitions")?
+            .extract::<Vec<(bool, Option<bool>, Option<Vec<u8>>, Option<Vec<u8>>)>>()?
+            .into_iter()
+            .map(
+                |(contains_null, contains_nan, lower_bound, upper_bound)| FieldSummary {
+                    contains_null,
+                    contains_nan,
+                    lower_bound,
+                    upper_bound,
+                },
+            )
+            .collect();
+        Ok(Self::from_core(ManifestFile {
+            manifest_path: required_pickle_item(state, "manifest_path")?
+                .extract::<String>()?
+                .into(),
+            manifest_length: required_pickle_item(state, "manifest_length")?.extract()?,
+            partition_spec_id: required_pickle_item(state, "partition_spec_id")?.extract()?,
+            content: ManifestContent::from_code(required_pickle_item(state, "content")?.extract()?)
+                .map_err(value_error)?,
+            sequence_number: required_pickle_item(state, "sequence_number")?.extract()?,
+            min_sequence_number: required_pickle_item(state, "min_sequence_number")?.extract()?,
+            added_snapshot_id: required_pickle_item(state, "added_snapshot_id")?.extract()?,
+            added_files_count: required_pickle_item(state, "added_files_count")?.extract()?,
+            existing_files_count: required_pickle_item(state, "existing_files_count")?.extract()?,
+            deleted_files_count: required_pickle_item(state, "deleted_files_count")?.extract()?,
+            added_rows_count: required_pickle_item(state, "added_rows_count")?.extract()?,
+            existing_rows_count: required_pickle_item(state, "existing_rows_count")?.extract()?,
+            deleted_rows_count: required_pickle_item(state, "deleted_rows_count")?.extract()?,
+            partitions,
+            first_row_id: required_pickle_item(state, "first_row_id")?.extract()?,
+        }))
+    }
+
     /// The manifest's location, as a URI.
     #[getter]
     fn path(&self) -> &str {
@@ -2254,12 +2739,46 @@ impl PyManifestFile {
         self.inner.existing_rows_count
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "ManifestFile({:?}, added_files_count={})",
-            self.inner.manifest_path.as_str(),
-            self.inner.added_files_count,
-        )
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let state = self.pickle_state(py)?;
+        Ok(format!(
+            "ManifestFile._from_pickle({})",
+            state.repr()?.to_str()?
+        ))
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.pickle_state(py)?.into_any().unbind(),),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -2279,10 +2798,67 @@ impl PyDataFile {
     fn from_core(inner: DataFile) -> Self {
         Self { inner }
     }
+
+    fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let state = PyDict::new(py);
+        state.set_item("content", self.inner.content)?;
+        state.set_item("file_path", self.inner.file_path.as_str())?;
+        state.set_item("file_format", self.inner.file_format.to_string())?;
+        let partition = self
+            .inner
+            .partition
+            .iter()
+            .map(|value| crate::scalar::scalar_pickle_state(py, value))
+            .collect::<PyResult<Vec<_>>>()?;
+        state.set_item("partition", PyTuple::new(py, partition)?)?;
+        state.set_item("record_count", self.inner.record_count)?;
+        state.set_item("file_size_in_bytes", self.inner.file_size_in_bytes)?;
+        state.set_item("column_sizes", self.inner.column_sizes.clone())?;
+        state.set_item("value_counts", self.inner.value_counts.clone())?;
+        state.set_item("null_value_counts", self.inner.null_value_counts.clone())?;
+        state.set_item("nan_value_counts", self.inner.nan_value_counts.clone())?;
+        state.set_item("lower_bounds", self.inner.lower_bounds.clone())?;
+        state.set_item("upper_bounds", self.inner.upper_bounds.clone())?;
+        state.set_item("split_offsets", self.inner.split_offsets.clone())?;
+        state.set_item("sort_order_id", self.inner.sort_order_id)?;
+        state.set_item("first_row_id", self.inner.first_row_id)?;
+        Ok(state)
+    }
 }
 
 #[pymethods]
 impl PyDataFile {
+    /// Rebuild the complete immutable data-file description for pickle.
+    #[staticmethod]
+    fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let partition = required_pickle_item(state, "partition")?
+            .try_iter()?
+            .map(|value| crate::scalar::scalar_from_pickle_state(&value?, 0))
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(Self::from_core(DataFile {
+            content: required_pickle_item(state, "content")?.extract()?,
+            file_path: required_pickle_item(state, "file_path")?
+                .extract::<String>()?
+                .into(),
+            file_format: required_pickle_item(state, "file_format")?
+                .extract::<String>()?
+                .parse()
+                .map_err(value_error)?,
+            partition,
+            record_count: required_pickle_item(state, "record_count")?.extract()?,
+            file_size_in_bytes: required_pickle_item(state, "file_size_in_bytes")?.extract()?,
+            column_sizes: required_pickle_item(state, "column_sizes")?.extract()?,
+            value_counts: required_pickle_item(state, "value_counts")?.extract()?,
+            null_value_counts: required_pickle_item(state, "null_value_counts")?.extract()?,
+            nan_value_counts: required_pickle_item(state, "nan_value_counts")?.extract()?,
+            lower_bounds: required_pickle_item(state, "lower_bounds")?.extract()?,
+            upper_bounds: required_pickle_item(state, "upper_bounds")?.extract()?,
+            split_offsets: required_pickle_item(state, "split_offsets")?.extract()?,
+            sort_order_id: required_pickle_item(state, "sort_order_id")?.extract()?,
+            first_row_id: required_pickle_item(state, "first_row_id")?.extract()?,
+        }))
+    }
+
     /// The file's location, as a URI.
     #[getter]
     fn path(&self) -> &str {
@@ -2369,12 +2945,46 @@ impl PyDataFile {
         self.inner.content
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "DataFile({:?}, record_count={})",
-            self.inner.file_path.as_str(),
-            self.inner.record_count,
-        )
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let state = self.pickle_state(py)?;
+        Ok(format!(
+            "DataFile._from_pickle({})",
+            state.repr()?.to_str()?
+        ))
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.pickle_state(py)?.into_any().unbind(),),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }
 
@@ -2393,6 +3003,10 @@ pub(crate) struct PyNamespace {
 
 #[pymethods]
 impl PyNamespace {
+    // This is a live view through a catalog, not a detached namespace value.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// The namespace's dotted name.
     #[getter]
     fn name(&self) -> &str {
@@ -2529,6 +3143,10 @@ impl PyNamespaces {
 
 #[pymethods]
 impl PyNamespaces {
+    // Collection answers depend on storage at the moment they are requested.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// `namespaces["sales"]` answers the namespace; a missing one is a
     /// `KeyError` carrying the native message.
     ///
@@ -2658,6 +3276,10 @@ pub(crate) struct PyNames {
 
 #[pymethods]
 impl PyNames {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -2689,6 +3311,10 @@ pub(crate) struct PyNamespaceIterator {
 
 #[pymethods]
 impl PyNamespaceIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -2727,6 +3353,10 @@ pub(crate) struct PyTableIterator {
 
 #[pymethods]
 impl PyTableIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -2812,6 +3442,10 @@ impl PyTables {
 
 #[pymethods]
 impl PyTables {
+    // Collection answers depend on storage at the moment they are requested.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     /// `tables["orders"]` opens the table; a missing one is a `KeyError`
     /// carrying the native message.
     ///

@@ -237,9 +237,17 @@ assert_eq!(handle.size(), plain.len() as u64);
 assert_eq!(zlib::load(handle.handle().as_slice())?, plain);
 ```
 
-A coding cannot be written positionally, so the decoded value is materialized
-on first use and published on `flush` or `close`. `into_handle` publishes the
-pending write and hands back what it wrapped.
+A coding cannot be written positionally, so writes and opened sessions
+materialize the decoded value and publish it on `flush` or `close`.
+`into_handle` publishes the pending write and hands back what it wrapped.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): zlib is
+decoded directly from the wrapped handle into bounded arrays, without opening
+the handle or retaining earlier decoded pages. A non-zero start decodes and
+discards the prefix because a zlib stream has no decoded seek. A surrounding
+`Buffered` cache stays empty on this path. The
+[stream benchmark](io.md#measured-streamed-byte-behavior) records first-chunk,
+full-drain, and whole-value costs beside gzip and zstd.
 
 ```rust
 use yggdryl::io::{Buffer, IOBase};
@@ -263,17 +271,17 @@ assert_eq!(zlib::load(inner.as_slice())?, plain);
 A transparent handle is chosen from what a payload declares -- a filename
 suffix, a media type, a content coding. Raw DEFLATE declares nothing: it has no
 framing to detect and no customary suffix. So it has no handle, and asking for
-one through [`generic::Codec`](generic.md) gives the zlib handle, which is the
+one through [`generic::Coded`](generic.md) gives the zlib handle, which is the
 framed form of the same algorithm.
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::zlib;
 
 let plain: &[u8] = b"symbol,price\nAAPL,1\n";
 
-let mut handle = Codec::wrap(Buffer::new(), yggdryl::Codec::Deflate);
+let mut handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Deflate);
 assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 
 handle.write_all_bytes(plain)?;
@@ -287,7 +295,7 @@ assert_eq!(yggdryl::Codec::Zlib.extension(), Some("zz"));
 ```
 
 The buffer and stream operations keep the distinction, because there the caller
-already knows which form the bytes are in. [`Codec`](enums.md) dispatches to
+already knows which form the bytes are in. [`Codec`](generic.md) dispatches to
 this module for both.
 
 ```rust

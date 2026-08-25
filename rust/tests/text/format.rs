@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use yggdryl::{Format, Value, json, text, toml};
+use yggdryl::{Format, Scalar, json, text, toml};
 
 #[test]
 fn format_names_and_extensions_are_inferred() {
@@ -41,22 +41,21 @@ fn format_serde_uses_stable_tokens() {
 }
 
 #[test]
-fn codec_namespace_remains_a_thin_compatible_facade() {
-    let value = Value::from(42_i64);
-    let direct = text::to_vec(&value, Format::Json).unwrap();
-    let compatible = text::to_vec(&value, Format::Json).unwrap();
-    assert_eq!(compatible, direct);
-    assert_eq!(text::from_str("42", Format::Json).unwrap(), value);
+fn format_dispatch_uses_the_same_natural_codec() {
+    let value = Scalar::from(42_i64);
+    let direct = text::into_bytes(&value, Format::Json).unwrap();
+    assert_eq!(text::from_utf8("42", Format::Json).unwrap(), value);
     assert_eq!(
-        text::from_str_all_with_limits(
+        text::from_utf8_all_with_limits(
             "1\n2\n",
             Format::JsonLines,
             yggdryl::Limits::new(1, 4, 1, 2),
         )
         .unwrap(),
-        vec![Value::from(1_u64), Value::from(2_u64)]
+        vec![Scalar::from(1_u64), Scalar::from(2_u64)]
     );
-    assert_eq!(json::from_slice(&compatible).unwrap(), value);
-    let toml = toml::to_vec(&value).unwrap();
-    assert_eq!(toml::from_slice(&toml).unwrap(), value);
+    assert_eq!(json::from_bytes(&direct).unwrap(), value);
+    let table = Scalar::from_record([("value", value)]).unwrap();
+    let encoded = toml::into_bytes(&table).unwrap();
+    assert_eq!(toml::from_bytes(&encoded).unwrap(), table);
 }

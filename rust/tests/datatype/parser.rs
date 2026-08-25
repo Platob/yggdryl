@@ -126,12 +126,12 @@ fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
             DataType::Time64(TimeUnit::Microsecond),
         ),
         (
-            "duration(MILLIS)",
-            DataType::Duration(TimeUnit::Millisecond),
+            "duration32(MILLIS)",
+            DataType::Duration32(TimeUnit::Millisecond),
         ),
         (
-            "duration(micro seconds)",
-            DataType::Duration(TimeUnit::Microsecond),
+            "duration64(micro seconds)",
+            DataType::Duration64(TimeUnit::Microsecond),
         ),
         (
             "interval(YearMonth)",
@@ -159,7 +159,9 @@ fn datatype_parser_rejects_time_unit_category_mismatches() {
         "timestamp(year_month)",
         "time32(day_time)",
         "time64(month_day_nano)",
-        "duration(year_month)",
+        "duration32(year_month)",
+        "duration64(year_month)",
+        "duration(ns)",
         "interval(ns)",
         "interval(fortnight)",
         "interval fortnight",

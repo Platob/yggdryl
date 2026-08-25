@@ -140,8 +140,11 @@ function createFields(DataType, Field, native) {
     time64(name, unit = 'microsecond', value) {
       return temporalField('time64', 'microsecond', name, unit, value)
     },
-    duration(name, unit = 'microsecond', value) {
-      return temporalField('duration', 'microsecond', name, unit, value)
+    duration32(name, unit = 'millisecond', value) {
+      return temporalField('duration32', 'millisecond', name, unit, value)
+    },
+    duration64(name, unit = 'microsecond', value) {
+      return temporalField('duration64', 'microsecond', name, unit, value)
     },
     interval(name, unit = 'month_day_nano', value) {
       return temporalField('interval', 'month_day_nano', name, unit, value)

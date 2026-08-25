@@ -18,7 +18,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::IOBase;
+use yggdryl::io::IOMedia;
 
 use super::{materialized, narrow, stored};
 
@@ -35,17 +35,17 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
         }
         let handle = stored(name);
         let whole_options = handle.record_options().expect("an implemented encoding");
-        let subset_options = whole_options.clone().with_schema(narrow());
+        let subset_options = whole_options.clone().with_field(narrow());
 
         // Measured once, outside the loop: the fixture never changes.
         let whole_bytes = materialized(
             handle
-                .read_arrow_batch_reader(&whole_options)
+                .read_arrow_reader(&whole_options)
                 .expect("the fixture must read"),
         );
         let subset_bytes = materialized(
             handle
-                .read_arrow_batch_reader(&subset_options)
+                .read_arrow_reader(&subset_options)
                 .expect("the fixture must read"),
         );
         assert!(
@@ -59,7 +59,7 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| {
                 materialized(
                     handle
-                        .read_arrow_batch_reader(black_box(&whole_options))
+                        .read_arrow_reader(black_box(&whole_options))
                         .expect("the fixture must read"),
                 )
             });
@@ -70,7 +70,7 @@ pub(crate) fn projection_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| {
                 materialized(
                     handle
-                        .read_arrow_batch_reader(black_box(&subset_options))
+                        .read_arrow_reader(black_box(&subset_options))
                         .expect("the fixture must read"),
                 )
             });

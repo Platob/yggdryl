@@ -112,7 +112,7 @@ zstd::reader(encoded.as_slice()).read_to_end(&mut decoded)?;
 assert_eq!(decoded, payload.as_bytes());
 ```
 
-`writer` returns an [`Encoder`](enums.md), which **must** be finished. Dropping it without calling `finish` omits the frame epilogue, and what was written is then not a valid Zstandard frame.
+`writer` returns an [`Encoder`](generic.md), which **must** be finished. Dropping it without calling `finish` omits the frame epilogue, and what was written is then not a valid Zstandard frame.
 
 `reader` returns `Box<dyn Read>` rather than a `Result`. The decoder can only fail to construct when it cannot allocate its window; that failure is held and surfaced on the first `read` instead of panicking, so the reader is always usable as a value.
 
@@ -149,7 +149,7 @@ encoder.finish()?;
 assert_eq!(zstd::load(&encoded)?, payload.as_bytes());
 ```
 
-[`Level`](enums.md) is one 0-to-9 scale shared by every codec, so raising compression does not mean learning three numbering schemes. Zstandard's own range is 1 to 19, and the shared scale maps onto it by rounding `level * 19 / 9` up:
+[`Level`](generic.md) is one 0-to-9 scale shared by every codec, so raising compression does not mean learning three numbering schemes. Zstandard's own range is 1 to 19, and the shared scale maps onto it by rounding `level * 19 / 9` up:
 
 | `Level` | zstd |
 | --- | --- |
@@ -189,7 +189,16 @@ assert_eq!(
 
 `Zstd<H>` is an [`IOBase`](io.md) over another `IOBase`. Reads decompress and writes compress, so anything that takes a handle - a media reader, another coding - sees the decoded bytes while the wrapped handle keeps the Zstandard form. `size` follows the same rule: it is the decoded length, not the frame length.
 
-A coding is not seekable, so the decoded value is materialized once on first use and the pending write is published on `flush` or `close`, not on every `pwrite`. That is what makes positional reads and writes work at all over a compressed payload.
+A coding is not seekable, so writes and opened sessions materialize the decoded
+value and publish pending changes on `flush` or `close`, not on every `pwrite`.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): Zstandard
+is decoded directly from the wrapped handle into bounded arrays, without
+opening the handle or retaining earlier decoded pages. A non-zero start decodes
+and discards the prefix because a frame has no decoded seek. A surrounding
+`Buffered` cache stays empty on this path. The
+[stream benchmark](io.md#measured-streamed-byte-behavior) records first-chunk,
+full-drain, and whole-value costs beside gzip and zlib.
 
 ```rust
 use yggdryl::io::{Buffer, IOBase};
@@ -221,7 +230,7 @@ assert_eq!(zstd::load(inner.as_slice())?, payload.as_bytes());
 
 `with_level` sets the level writes encode at; it changes nothing about reads, since a frame carries what a decoder needs. `into_handle` returns the wrapped handle with any pending write already published, which is the way to hand the compressed bytes to something else without going through `flush` first.
 
-When the coding is chosen at runtime rather than written into the type, [`Codec::Zstd`](enums.md) names it for whole-buffer and stream operations, and [`generic::Codec`](generic.md) wraps a handle in a coding decided at run time.
+When the coding is chosen at runtime, `Codec::Zstd` names it and [`generic::Coded`](generic.md) applies it to a handle.
 
 ## Against the standard library
 

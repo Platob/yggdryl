@@ -49,21 +49,24 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
     compatibility.bench_function("arrow_noop_wide_struct", |bencher| {
         bencher.iter(|| {
             black_box(&spark_wide)
-                .to_scheme_compat(&Scheme::ARROW)
+                .clone()
+                .into_scheme_compat(&Scheme::ARROW)
                 .unwrap()
         });
     });
     compatibility.bench_function("spark_noop_wide_struct", |bencher| {
         bencher.iter(|| {
             black_box(&spark_wide)
-                .to_scheme_compat(&Scheme::SPARK)
+                .clone()
+                .into_scheme_compat(&Scheme::SPARK)
                 .unwrap()
         });
     });
     compatibility.bench_function("spark_changed_last_wide_struct", |bencher| {
         bencher.iter(|| {
             black_box(&arrow_wide)
-                .to_scheme_compat(&Scheme::SPARK)
+                .clone()
+                .into_scheme_compat(&Scheme::SPARK)
                 .unwrap()
         });
     });

@@ -88,6 +88,10 @@ struct Counting {
     reads: AtomicUsize,
 }
 
+impl yggdryl::io::IOMedia for Counting {
+    yggdryl::delegate_iomedia!(handle);
+}
+
 impl IOBase for Counting {
     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate,
         url, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
@@ -211,16 +215,16 @@ pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
 /// a positional read by decoding the value. Which decode you pay depends on
 /// whether the handle is open, and that is the whole table:
 ///
-/// - `closed` is the trap: nothing may be cached as a side effect of an
-///   ordinary read, so a handle nobody opened decodes the **whole payload for
-///   every `pread`**. Sixty-four reads, sixty-four decodes.
+/// - `closed` retains nothing: every `pread` starts a decoder and stops after
+///   its requested range. Sixty-four progressive reads still mean sixty-four
+///   decoder starts and repeatedly discarded prefixes.
 /// - `open` is the cure the coding already ships: `open` materializes the
 ///   decoded value and `close` releases it, so each read is a range copy out
 ///   of it. This is the path a caller who knows they are reading a compressed
 ///   value should take.
 /// - `buffered` is what the page cache buys when the handle is *not* opened -
 ///   the case a caller who does not know what they were handed is in. The
-///   cache turns one decode per read into one decode per page miss, and here
+///   cache turns one decoder start per read into one per page miss, and here
 ///   the whole value is four pages, so after the first pass there are none.
 ///
 /// The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the

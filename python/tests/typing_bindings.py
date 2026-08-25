@@ -10,6 +10,7 @@ import pyarrow as pa  # type: ignore[import-untyped]
 
 from yggdryl import (
     Bound,
+    BoundStatement,
     DataType,
     Expression,
     Field,
@@ -17,12 +18,14 @@ from yggdryl import (
     MediaType,
     MimeType,
     ProtocolMetadata,
-    Record,
     RecordOptions,
     Statement,
+    Timezone,
     Uri,
     Url,
     Urn,
+    Scalar,
+    avro,
     fields,
     gzip,
     iceberg,
@@ -31,6 +34,16 @@ from yggdryl import (
     yaml,
     zlib,
     zstd,
+)
+from yggdryl._native import (
+    ByteIterator,
+    FieldMetadata,
+    IOCursor,
+    IcebergNames,
+    LineIterator,
+    Listing,
+    ScalarEntryIterator,
+    ScalarIterator,
 )
 from yggdryl.fields import (
     DenseUnionField,
@@ -44,12 +57,14 @@ from yggdryl.fields import (
 )
 
 file_uri: Uri = Uri.from_path(Path("data/events.parquet"))
-file_url: Url = file_uri.to_url()
-path: str = file_uri.to_path()
+file_url: Url = file_uri.into_url()
+joined_uri: Uri = file_uri.joinpath("archive", Path("events.parquet"))
+divided_uri: Uri = file_uri / "child"
+path: str = file_uri.into_path()
 path_protocol: str = os.fspath(file_url)
 
-urn: Urn = Uri("urn:isbn:9780131103627").to_urn()
-uri_again: Uri = urn.to_uri()
+urn: Urn = Uri("urn:isbn:9780131103627").into_urn()
+uri_again: Uri = urn.into_uri()
 mime_type: MimeType = file_uri.mime_type
 media_type: MediaType = file_uri.media_type
 mime_format: Literal["json", "json_lines", "yaml", "toml"] | None = mime_type.format
@@ -57,6 +72,11 @@ content_coding: Literal["gzip", "compress", "deflate", "br", "zstd"] | None = (
     MimeType.GZIP.content_coding
 )
 stem: str | None = file_uri.stem
+uri_user: str | None = file_uri.user
+uri_password: str | None = file_uri.password
+uri_hostname: str | None = file_uri.hostname
+uri_bucket: str | None = file_uri.bucket
+uri_region: str | None = file_uri.region
 file_uri.set_file_name("events.parquet")
 file_uri.set_stem("events")
 file_uri.set_extension("json")
@@ -67,6 +87,35 @@ removed_extension: bool = file_uri.remove_extension()
 cleared_extensions: bool = file_uri.clear_extensions()
 
 field = Field("event", "string", nullable=False)
+field_reduce: tuple[object, tuple[str, bool]] = field.__reduce__()
+field_metadata: FieldMetadata = field.metadata
+field_metadata_equal: bool = field_metadata == Field(
+    "other", "string", metadata={}
+).metadata
+timezone_ordered: bool = Timezone.UTC <= Timezone("Europe/Paris")
+timezone_reduce: tuple[object, tuple[str]] = Timezone.UTC.__reduce__()
+
+# Live handles, views, and consuming iterators opt out of Python's inherited
+# object-identity hash. These assignments make their stub slots testable.
+field_metadata_hash: None = FieldMetadata.__hash__
+protocol_metadata_hash: None = ProtocolMetadata.__hash__
+io_hash: None = IOBase.__hash__
+cursor_hash: None = IOCursor.__hash__
+line_iterator_hash: None = LineIterator.__hash__
+byte_iterator_hash: None = ByteIterator.__hash__
+listing_hash: None = Listing.__hash__
+value_iterator_hash: None = ScalarIterator.__hash__
+value_entry_iterator_hash: None = ScalarEntryIterator.__hash__
+iceberg_names_hash: None = IcebergNames.__hash__
+bound_hash: None = Bound.__hash__
+bound_statement_hash: None = BoundStatement.__hash__
+catalog_hash: None = iceberg.Catalog.__hash__
+namespace_hash: None = iceberg.Namespace.__hash__
+namespaces_hash: None = iceberg.Namespaces.__hash__
+tables_hash: None = iceberg.Tables.__hash__
+table_hash: None = iceberg.Table.__hash__
+schema_update_hash: None = iceberg.SchemaUpdate.__hash__
+
 field.set_alias("payload")
 field.set_catalog_name("analytics")
 field.set_schema_name("public")
@@ -111,11 +160,11 @@ default_data_type_value: object = DataType("int32").default_pyvalue()
 default_field_value: object = field.default_pyvalue()
 default_data_type_hint: object = DataType("int32").default_pyhint()
 default_field_hint: object = field.default_pyhint()
-arrow_compatible: DataType = DataType("uint32").to_scheme_compat("arrow")
-spark_compatible: Field = field.to_scheme_compat("spark")
-polars_compatible: Field = field.to_scheme_compat("polars")
-pandas_compatible: Field = field.to_scheme_compat("pandas")
-iceberg_compatible: Field = field.to_scheme_compat("iceberg")
+arrow_compatible: DataType = DataType("uint32").into_scheme_compat("arrow")
+spark_compatible: Field = field.into_scheme_compat("spark")
+polars_compatible: Field = field.into_scheme_compat("polars")
+pandas_compatible: Field = field.into_scheme_compat("pandas")
+iceberg_compatible: Field = field.into_scheme_compat("iceberg")
 typed_id: Int32Field = fields.int32("id", nullable=False)
 typed_id_kind: Literal["int32"] = typed_id.data_type.id
 typed_id_value: int | None = typed_id.default_pyvalue()
@@ -133,12 +182,62 @@ typed_fixed_data_type_value: list[int | None] = (
     typed_fixed.data_type.default_pyvalue()
 )
 typed_struct = fields.struct("row", [typed_id], nullable=False)
-typed_struct_value: Record | Mapping[str, object] | None = (
+typed_struct_value: object | Mapping[str, object] | None = (
     typed_struct.default_pyvalue()
 )
-typed_struct_data_type_value: Record | Mapping[str, object] = (
+
+avro_schema: avro.Schema = avro.Schema(
+    "long", max_depth=8, max_input_bytes=1_024, max_nodes=32
+)
+avro_schema_again: avro.Schema = avro.Schema.from_value(
+    "long", max_depth=8, max_input_bytes=1_024, max_nodes=32
+)
+avro_single: bytes = avro.dumps_single(1, avro_schema)
+avro_blocks: avro.BlockIterator = avro.blocks(
+    avro.dumps([1], avro_schema),
+    max_depth=8,
+    max_input_bytes=1_024,
+    max_nodes=32,
+)
+avro_block: avro.Block = next(avro_blocks)
+avro_rows: list[Any] = avro_block.rows()
+avro_value: Any = avro.loads_single(
+    avro_single,
+    avro_schema_again,
+    max_depth=8,
+    max_input_bytes=1_024,
+    max_nodes=32,
+)
+assert avro_value == 1
+assert avro_rows == [1]
+
+value_handle = IOBase("value.json.gz")
+value_handle.write_scalar({"id": 1})
+loaded_value: Any = value_handle.read_scalar()
+typed_loaded_value: Any = value_handle.read_scalar("row: struct<id: int64 not null> not null")
+native_loaded_value: Scalar = value_handle.read_scalar(cls=Scalar)
+native_typed_loaded_value: Scalar = value_handle.read_scalar(
+    "row: struct<id: int64 not null> not null",
+    cls=Scalar,
+)
+native_json_value: Scalar = json.loads("1.5", cls=Scalar)
+typed_struct_data_type_value: object | Mapping[str, object] = (
     typed_struct.data_type.default_pyvalue()
 )
+native_instant = Scalar.datetime64(0, "us", "UTC")
+native_decimal = Scalar.d256("1234567890123456789012345678901234567890", 2)
+native_enum = Scalar.from_enum("io_mode", "append")
+native_scalar_field: Field = Scalar.from_py(1).into_field()
+native_array_field: Field = Scalar.from_py([1]).into_array_field()
+native_struct_field: Field = Scalar.from_py([{"id": 1}]).into_struct_field()
+temporal_count: int | None = native_instant.count
+temporal_unit: str | None = native_instant.unit
+temporal_zone: str | None = native_instant.zone
+decimal_coefficient: int | None = native_decimal.unscaled
+decimal_scale: int | None = native_decimal.scale
+enum_kind: str | None = native_enum.enum_kind
+enum_value: str | None = native_enum.enum_value
+enum_ordinal: int | None = native_enum.enum_ordinal
 dense_union_data_type: DataType = DataType.variant(
     [
         fields.int64("integer", nullable=False),
@@ -167,9 +266,19 @@ typed_geography: GeographyField = fields.geography("region", "OGC:CRS84", "vince
 typed_geography_kind: Literal["geography"] = typed_geography.data_type.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 
+byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
+    position=1, batch_size=3
+)
+io_kind: Literal[
+    "memory", "file", "directory", "table", "namespace", "catalog", "unknown"
+] = IOBase.from_bytes().kind
+cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_bytes(
+    batch_size=3
+)
+
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /
-# Record branch.
+# generated-dataclass branch.
 field_default_cannot_be_assumed_present: int = (
     nullable_item.default_pyvalue()  # type: ignore[assignment]
 )
@@ -190,7 +299,7 @@ hint_is_a_runtime_typing_object: type[int] = (
 )
 invalid_time_unit = DataType.time(1)  # type: ignore[arg-type]
 # ``mysql`` is a metadata namespace, not one of the five compatibility targets.
-invalid_compatibility_target = field.to_scheme_compat("mysql")  # type: ignore[arg-type]
+invalid_compatibility_target = field.into_scheme_compat("mysql")  # type: ignore[arg-type]
 inferred_dictionary: Field = fields.dictionary("labels", int, str)
 inferred_mapping: Field = fields.map_of("counts", str, pa.int32())
 field_differences: list[str] = list(field.show_diffs(typed_id, False))
@@ -203,12 +312,20 @@ toml_destination: toml.Destination = io.StringIO()
 decoded_json: dict[str, int] = json.load(json_source)
 decoded_yaml: dict[str, int] = yaml.loads(yaml_source)
 decoded_toml: dict[str, int] = toml.load(toml_source)
+typed_json: object = json.loads("42", field=field)
+typed_yaml: object = yaml.loads("42\n", field=field)
+typed_toml: object = toml.loads("value = 42\n", field=typed_struct)
 encoded_json: bytes = json.dumps(decoded_json)
 encoded_yaml: bytes = yaml.dumps(decoded_yaml)
 encoded_toml: bytes = toml.dumps(decoded_toml)
+returned_json: bytes = json.dump(decoded_json)
+returned_yaml: str = yaml.dump(decoded_yaml, utf8=True)
+returned_toml: bytes = toml.dump(decoded_toml)
 json.dump(decoded_json, json_destination)
 yaml.dump(decoded_yaml, yaml_destination)
 toml.dump(decoded_toml, toml_destination)
+assert typed_json is not None and typed_yaml is not None and typed_toml is not None
+assert returned_json and returned_yaml and returned_toml
 
 alias: str | None = field.alias
 location: Url | None = field.location
@@ -299,21 +416,66 @@ assert encoded_yaml
 assert encoded_toml
 
 record_handle: IOBase = IOBase(Path("trades.arrows"))
+parquet_statistics = IOBase(Path("trades.parquet")).read_parquet_statistics()
+parquet_rows: int = parquet_statistics["num_rows"]
+parquet_created_by: str | None = parquet_statistics["created_by"]
+parquet_minimum: bytes | None = parquet_statistics["row_groups"][0]["columns"][0][
+    "min_bytes"
+]
+parquet_geospatial = IOBase(
+    Path("shapes.parquet")
+).read_parquet_geospatial_statistics("shape")
+parquet_geometry_types: list[int] = parquet_geospatial["geometry_types"]
+
+
+class ForeignArrowReader:
+    def __arrow_c_stream__(self, requested_schema: object | None = None, /) -> object:
+        return object()
+
+
+class NotArrowReader:
+    pass
+
+
 record_options: RecordOptions = record_handle.record_options()
+hashable_record_options = RecordOptions("trades.arrows")
+record_options_stable_hash: int = hashable_record_options.stable_hash()
+record_options_hash: int = hash(hashable_record_options)
+record_options_ordered: bool = hashable_record_options <= RecordOptions("trades.arrows")
+record_options_reduce: tuple[object, tuple[dict[str, Any]]] = (
+    hashable_record_options.__reduce__()
+)
+record_options_copy: RecordOptions = hashable_record_options.__copy__()
+record_options_deepcopy: RecordOptions = hashable_record_options.__deepcopy__({})
 record_options.batch_size = 1024
+record_options.commit_row_size = 10_000
 record_options.root_name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
-declared_schema: Field | None = record_options.schema
-record_options.schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-record_options.merge_by_names = ["id"]
-record_match_key: list[str] = record_options.merge_by_names
-record_batches: pa.RecordBatchReader = record_handle.read_arrow_batch_reader(
+declared_field: Field | None = record_options.field
+record_options.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+record_batches: pa.RecordBatchReader = record_handle.read_arrow_reader(
     options=record_options,
 )
 stored_root: Field = record_handle.read_arrow_field()
-record_handle.write_arrow_batch_reader(record_batches, options=record_options)
-record_handle.append_arrow_batch_reader(record_batches, options=record_options)
+logical_rows: int = record_handle.row_size
+logical_columns: int = record_handle.column_size
+io_capable: bool = record_handle.is_io()
+record_handle.overwrite_arrow_reader(record_batches, options=record_options)
+record_handle.append_arrow_reader(record_batches, options=record_options)
+record_handle.write_arrow_reader(record_batches, "overwrite", options=record_options)
+record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
+record_handle.overwrite_arrow_reader(ForeignArrowReader())
+record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
+record_options.merge_by_names = ["id"]
+avro_record_options = RecordOptions("trades.avro")
+avro_block_codec: str | None = avro_record_options.block_codec
+avro_record_options.block_codec = "zstandard"
+avro_sync_marker: bytes | None = avro_record_options.sync_marker
+avro_record_options.sync_marker = memoryview(b"0123456789abcdef")
+avro_record_options.sync_marker = None
+record_match_key: list[str] = record_options.merge_by_names
+record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 line_batches: pa.RecordBatchReader = record_handle.read_arrow_lines(
     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<level>[^\]]+)\]",
@@ -322,18 +484,61 @@ line_batches: pa.RecordBatchReader = record_handle.read_arrow_lines(
     timestamp_capture=None,
 )
 
-generic_batches: pa.RecordBatchReader = record_handle.read_arrow(options=record_options)
-record_handle.write_arrow(pa.table({"id": [1]}))
-record_handle.write_arrow([{"id": 1}], options=record_options)
-record_handle.append_arrow(generic_batches)
+generic_batches: pa.RecordBatchReader = record_handle.read_arrow_reader(options=record_options)
+arrow_table: pa.Table = pa.table({"id": [1]})
+arrow_batch: pa.RecordBatch = arrow_table.to_batches()[0]
+record_handle.overwrite_arrow_table(arrow_table)
+record_handle.append_arrow_table(arrow_table)
+record_handle.merge_arrow_table(arrow_table, options=record_options)
+record_handle.write_arrow_table(arrow_table, "append")
+record_handle.overwrite_arrow_batch(arrow_batch)
+record_handle.append_arrow_batch(arrow_batch)
+record_handle.merge_arrow_batch(arrow_batch, options=record_options)
+record_handle.write_arrow_batch(arrow_batch, "overwrite")
+record_options.merge_by_names = []
+record_handle.overwrite_records([{"id": 1}], options=record_options)
+record_handle.append_records([{"id": 2}], options=record_options)
+record_options.merge_by_names = ["id"]
+record_handle.merge_records([{"id": 2}], options=record_options)
+record_handle.write_records([{"id": 3}], "merge", options=record_options)
+plain_records: Iterator[dict[str, Any]] = record_handle.read_records(
+    options=record_options
+)
+
+
+class TypedRecord:
+    id: int
+
+
+typed_records: Iterator[TypedRecord] = record_handle.read_records(TypedRecord)
+record_options.merge_by_names = []
+record_handle.append_arrow_reader(generic_batches)
 pandas_frames: Iterator[Any] = record_handle.read_pandas()
 pandas_frame: Any = record_handle.read_pandas_frame(options=record_options)
-record_handle.write_pandas(pandas_frames)
-record_handle.write_pandas_frame(pandas_frame, options=record_options)
+record_handle.overwrite_pandas(pandas_frames)
+record_handle.append_pandas(pandas_frames)
+record_options.merge_by_names = ["id"]
+record_handle.merge_pandas(pandas_frames, options=record_options)
+record_handle.write_pandas(pandas_frames, "merge", options=record_options)
+record_options.merge_by_names = []
+record_handle.overwrite_pandas_frame(pandas_frame, options=record_options)
+record_handle.append_pandas_frame(pandas_frame)
+record_options.merge_by_names = ["id"]
+record_handle.merge_pandas_frame(pandas_frame, options=record_options)
+record_handle.write_pandas_frame(pandas_frame, "append")
 polars_frames: Iterator[Any] = record_handle.read_polars()
 polars_frame: Any = record_handle.read_polars_frame(options=record_options)
-record_handle.write_polars(polars_frames)
-record_handle.write_polars_frame(polars_frame, options=record_options)
+record_handle.overwrite_polars(polars_frames)
+record_handle.append_polars(polars_frames)
+record_options.merge_by_names = ["id"]
+record_handle.merge_polars(polars_frames, options=record_options)
+record_handle.write_polars(polars_frames, "overwrite")
+record_options.merge_by_names = []
+record_handle.overwrite_polars_frame(polars_frame, options=record_options)
+record_handle.append_polars_frame(polars_frame)
+record_options.merge_by_names = ["id"]
+record_handle.merge_polars_frame(polars_frame, options=record_options)
+record_handle.write_polars_frame(polars_frame, "merge", options=record_options)
 parquet_options: RecordOptions = RecordOptions("trades.parquet")
 row_group_size: int | None = parquet_options.max_row_group_size
 footer_metadata: dict[str, str] | None = parquet_options.key_value_metadata
@@ -354,10 +559,11 @@ iceberg_manifests: list[iceberg.ManifestFile] = iceberg_table.manifests()
 iceberg_evolved: int = iceberg_table.evolve_schema(iceberg_schema)
 
 assert record_mime_type
-assert declared_schema is None or declared_schema
+assert declared_field is None or declared_field
 assert stored_root
 assert row_group_size
 assert footer_metadata is None or footer_metadata == {}
+assert plain_records
 assert iceberg_spec.is_unpartitioned()
 assert iceberg_scan
 assert iceberg_snapshot is None or iceberg_snapshot.operation
@@ -371,30 +577,17 @@ iceberg_reread: Field = iceberg.schema_from_json("row", iceberg_document)
 assert iceberg_document
 assert iceberg_reread
 
-# The flattened record-option keywords type-check as real named parameters.
-record_handle.write_arrow(
-    pa.table({"id": [1]}),
-    merge_by_names=["id"],
-    select_by_names=["id"],
-    batch_size=1024,
-    safe=False,
-    root_name="record",
+# Record configuration crosses through the one options object.
+selected_options: RecordOptions = record_handle.record_options()
+selected_options.select_by_names = ["id"]
+selected_options.batch_size = 1024
+selected_reader: pa.RecordBatchReader = record_handle.read_arrow_reader(
+    options=selected_options
 )
-record_handle.append_arrow(pa.table({"id": [1]}), filter_partitions={"venue": "XNAS"})
-kwargs_reader: pa.RecordBatchReader = record_handle.read_arrow(
-    select_by_names=["id"], batch_size=1024
-)
-kwargs_root: Field = record_handle.read_arrow_field(root_name="record")
-record_handle.write_arrow_batch_reader(
-    pa.table({"id": [1]}),
-    options=record_options,
-    compression="zstd(3)",
-    max_row_group_size=1024,
-    key_value_metadata={"writer": "typing"},
-)
+selected_root: Field = record_handle.read_arrow_field(options=selected_options)
 
-assert kwargs_reader
-assert kwargs_root
+assert selected_reader
+assert selected_root
 
 # Iceberg keeps its own options type, flattened the same way.
 iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
@@ -552,7 +745,7 @@ expression_schema: Field = Field(
 )
 expression: Expression = Expression("ccy = 'EUR' and price > 100")
 expression_parsed: Expression = Expression.parse("ccy = 'EUR'")
-expression_restored: Expression = Expression.from_json(expression.to_json())
+expression_restored: Expression = Expression.from_json(expression.into_json())
 expression_named: Expression = Expression.column("ccy")
 expression_constant: Expression = Expression.literal("EUR")
 expression_held: Expression = Expression.attribute("partition", "year")
@@ -565,7 +758,7 @@ expression_attributes: list[str] = expression_held.attributes()
 expression_parameters: list[str] = expression_late.parameters()
 expression_conjuncts: list[Expression] = expression.conjuncts()
 expression_depth: int = expression.depth()
-expression_document: str = expression.to_json()
+expression_document: str = expression.into_json()
 expression_both: Expression = expression_named & expression_constant
 expression_either: Expression = expression_named | "price > 1"
 expression_negated: Expression = ~expression_named
@@ -581,10 +774,31 @@ expression_value: object = expression_bound.eval({"ccy": "EUR"})
 expression_split: tuple[Expression, Expression] = expression_bound.partition_split()
 
 statement: Statement = Statement("select ccy where ccy = 'EUR' limit 10")
-statement_restored: Statement = Statement.from_json(statement.to_json())
+statement_restored: Statement = Statement.from_json(statement.into_json())
 statement_projections: list[str] = statement.projections
 statement_predicate: Expression | None = statement.predicate
+statement_ordering: list[
+    tuple[Expression, Literal["ascending", "descending"], Literal["first", "last"] | None]
+] = statement.ordering
 statement_limit: int | None = statement.limit
+statement_is_all: bool = statement.is_all
+bound_statement: BoundStatement = statement.bind(expression_schema)
+bound_statement_schema: Field = bound_statement.schema
+bound_statement_output: Field = bound_statement.output
+bound_statement_projections: list[Bound] = bound_statement.projections
+bound_statement_predicate: Bound | None = bound_statement.predicate
+bound_statement_ordering: list[
+    tuple[Bound, Literal["ascending", "descending"], Literal["first", "last"] | None]
+] = bound_statement.ordering
+bound_statement_limit: int | None = bound_statement.limit
+bound_statement_is_all: bool = bound_statement.is_all
+statement_batch = pa.record_batch({"ccy": ["EUR"], "price": [1]})
+projected_statement_batch: pa.RecordBatch = bound_statement.project_arrow(statement_batch)
+projected_statement_table: pa.Table = bound_statement.project_arrow(pa.Table.from_batches([statement_batch]))
+projected_statement_reader: pa.RecordBatchReader = bound_statement.project_arrow(
+    pa.RecordBatchReader.from_batches(statement_batch.schema, [statement_batch])
+)
+sorted_statement_batch: pa.RecordBatch = bound_statement.sort_arrow_batch(statement_batch)
 
 expression_matched: list[IOBase] = list(
     IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
@@ -606,5 +820,15 @@ assert expression_value is None or expression_value
 assert expression_split
 assert statement_restored and statement_projections
 assert statement_predicate is None or statement_predicate
+assert statement_ordering == [] or statement_ordering
 assert statement_limit is None or statement_limit
+assert statement_is_all or not statement_is_all
+assert bound_statement and bound_statement_schema and bound_statement_output
+assert bound_statement_projections == [] or bound_statement_projections
+assert bound_statement_predicate is None or bound_statement_predicate
+assert bound_statement_ordering == [] or bound_statement_ordering
+assert bound_statement_limit is None or bound_statement_limit
+assert bound_statement_is_all or not bound_statement_is_all
+assert projected_statement_batch and projected_statement_table
+assert projected_statement_reader and sorted_statement_batch
 assert expression_matched == [] or expression_matched

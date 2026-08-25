@@ -1,6 +1,7 @@
 //! Allocation-free helpers for canonical text representations.
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -82,6 +83,79 @@ pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
     let result = fmt::write(&mut hasher, format_args!("{value}"));
     debug_assert!(result.is_ok(), "the stable hash sink is infallible");
     hasher.0
+}
+
+/// Hash a native structural [`Hash`] implementation with the stable FNV sink.
+pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
+    let mut hasher = StableHash::default();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+struct StableHash(u64);
+
+impl Default for StableHash {
+    fn default() -> Self {
+        Self(FNV_OFFSET_BASIS)
+    }
+}
+
+impl Hasher for StableHash {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        self.0 = fnv1a_fold(self.0, bytes);
+    }
+
+    fn write_u8(&mut self, value: u8) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_u16(&mut self, value: u16) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_u32(&mut self, value: u32) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_u128(&mut self, value: u128) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.write_u64(value as u64);
+    }
+
+    fn write_i8(&mut self, value: i8) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_i16(&mut self, value: i16) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_i32(&mut self, value: i32) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_i64(&mut self, value: i64) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_i128(&mut self, value: i128) {
+        self.write(&value.to_le_bytes());
+    }
+
+    fn write_isize(&mut self, value: isize) {
+        self.write_i64(value as i64);
+    }
 }
 
 /// Borrow caller text for bounded interpolation into an error message.

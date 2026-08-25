@@ -59,7 +59,7 @@ carry - a caller who sees `loads` there is never left wondering where `load` wen
 
 The same four operations - `load`, `dump`, `reader`, `writer` - exist under
 [zlib](zlib.md) and [zstd](zstd.md) with identical signatures, and
-[`Codec`](enums.md) selects between them at runtime.
+[`Codec`](generic.md) selects between them at runtime.
 
 ## Levels
 
@@ -189,10 +189,16 @@ assert_eq!(gzip::load(inner.as_slice())?, b"symbol,price\nAAPL,1\n");
 and everything downstream sees the decoded bytes. That is what lets a record encoding or
 a text codec work over a compressed resource without knowing it is compressed.
 
-A coding is not seekable, so positional reads and writes cannot go straight through. The
-decoded value is materialized on first use and the encoded form is republished on
-`flush`, on `close`, or by `into_handle` - not on every `pwrite`. Skipping that flush
-loses the write.
+A coding is not seekable, so positional writes and opened sessions materialize the
+decoded value. The encoded form is republished on `flush`, on `close`, or by
+`into_handle` - not on every `pwrite`. Skipping that flush loses the write.
+
+Sequential reads use [`IOBase::pstream_bytes`](io.md#streamed-bytes): gzip is decoded
+directly from the wrapped handle into bounded arrays, without opening the handle or
+retaining earlier decoded pages. Starting after byte zero decodes and discards the
+prefix because a gzip member has no decoded seek. A surrounding `Buffered` cache stays
+empty on this path. The [stream benchmark](io.md#measured-streamed-byte-behavior)
+records first-chunk, full-drain, and whole-value costs beside zlib and zstd.
 
 A level set on the handle reaches the encoder that publishes it:
 
@@ -212,7 +218,7 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 ## A `.gz` name is enough
 
 ```rust
-use yggdryl::generic::Codec;
+use yggdryl::generic::Coded;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::{MediaType, MimeType};
 
@@ -222,7 +228,7 @@ assert_eq!(named.base(), &MimeType::CSV);
 assert_eq!(yggdryl::Codec::from_media_type(&named), yggdryl::Codec::Gzip);
 
 // A handle that declares that media type picks its own coding.
-let mut handle = Codec::infer(Buffer::new().with_media_type(named));
+let mut handle = Coded::infer(Buffer::new().with_media_type(named));
 assert_eq!(handle.codec(), yggdryl::Codec::Gzip);
 
 handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;

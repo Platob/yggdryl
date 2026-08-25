@@ -2,18 +2,22 @@
 //!
 //! Everything here is plumbing: bytes in, bytes out, and the stream adapters
 //! that let the core read from and write to a caller-owned Python file object.
-//! The value conversion itself belongs to [`crate::value`], so a document is
+//! The value conversion itself belongs to [`crate::scalar`], so a document is
 //! read and written through exactly one pair of functions.
 
+use std::cell::RefCell;
 use std::io::{self, BufWriter, Read, Write};
 use std::path::Path;
+use std::rc::Rc;
 
 use pyo3::exceptions::{PyOSError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyIterator, PyMemoryView, PyString};
-use yggdryl::text::{Format, Value};
+use yggdryl::Field as CoreField;
+use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 
-use crate::value::{as_py, from_py};
+use crate::field::core_field_from_value;
+use crate::scalar::{PyScalar, as_py, as_py_with_field, from_py};
 use crate::value_error;
 
 /// How many documents one multi-document call may encode.
@@ -43,6 +47,43 @@ fn with_python_bytes<T>(
 /// Parse one public codec alias through the core `Format` parser.
 fn format_from_str(value: &str) -> PyResult<Format> {
     Format::from_str(value).map_err(value_error)
+}
+
+/// Build one core formatting value from the private boundary code.
+///
+/// `-2` is omitted/default, `-1` is explicitly unindented, `-3` is tabs,
+/// and non-negative values are spaces per nesting level.
+fn formatting_from_code(indent: i16) -> PyResult<Formatting> {
+    let indent = match indent {
+        -2 => Indent::Default,
+        -1 => Indent::None,
+        -3 => Indent::Tabs,
+        0..=255 => Indent::Spaces(
+            u8::try_from(indent).map_err(|error| PyValueError::new_err(error.to_string()))?,
+        ),
+        _ => {
+            return Err(PyValueError::new_err(
+                "indent must be None, a non-negative integer up to 255, or '\\t'",
+            ));
+        }
+    };
+    Ok(Formatting::default().with_indent(indent))
+}
+
+/// Resolve nullable Python parser bounds against the core defaults.
+fn limits_from(
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
+) -> Limits {
+    let defaults = Limits::default();
+    Limits::new(
+        max_depth.unwrap_or(defaults.max_depth()),
+        max_input_bytes.unwrap_or(defaults.max_input_bytes()),
+        max_nodes.unwrap_or(defaults.max_nodes()),
+        max_documents.unwrap_or(defaults.max_documents()),
+    )
 }
 
 /// Adapt a caller-owned Python text or binary stream to Rust's byte reader.
@@ -160,6 +201,190 @@ impl Read for PythonReader<'_> {
         Err(self.fail(PyTypeError::new_err(
             "file read() must return str or bytes-like data",
         )))
+    }
+}
+
+/// The owned reader used by a Python iterator that outlives one extension call.
+///
+/// The core parsers own this adapter, so JSON Lines and YAML framing remains in
+/// Rust while Python contributes only its native `read`/`readline` protocol.
+/// A saved Python exception crosses back unchanged on the pull that observed
+/// it; parser errors continue through the core's byte-position diagnostics.
+struct OwnedPythonReader {
+    source: Py<PyAny>,
+    method: &'static str,
+    pending: Vec<u8>,
+    pending_offset: usize,
+    error: Rc<RefCell<Option<PyErr>>>,
+}
+
+enum OwnedPythonChunk {
+    Binary(Vec<u8>),
+    Text { bytes: Vec<u8>, characters: usize },
+}
+
+impl OwnedPythonReader {
+    fn new(source: Py<PyAny>, method: &'static str, error: Rc<RefCell<Option<PyErr>>>) -> Self {
+        Self {
+            source,
+            method,
+            pending: Vec::new(),
+            pending_offset: 0,
+            error,
+        }
+    }
+
+    fn fail(&self, error: PyErr) -> io::Error {
+        *self.error.borrow_mut() = Some(error);
+        io::Error::other("Python stream read failed")
+    }
+
+    fn copy_chunk(&mut self, chunk: &[u8], output: &mut [u8]) -> usize {
+        let count = output.len().min(chunk.len());
+        output[..count].copy_from_slice(&chunk[..count]);
+        if count < chunk.len() {
+            self.pending.clear();
+            self.pending.extend_from_slice(&chunk[count..]);
+            self.pending_offset = 0;
+        }
+        count
+    }
+
+    fn read_python_chunk(&self, requested: usize) -> PyResult<OwnedPythonChunk> {
+        Python::attach(|py| {
+            let value = self
+                .source
+                .bind(py)
+                .call_method1(self.method, (requested,))?;
+            if let Ok(value) = value.cast::<PyBytes>() {
+                return Ok(OwnedPythonChunk::Binary(value.as_bytes().to_vec()));
+            }
+            if let Ok(value) = value.cast::<PyString>() {
+                let value = value.to_str()?;
+                return Ok(OwnedPythonChunk::Text {
+                    bytes: value.as_bytes().to_vec(),
+                    characters: value.chars().count(),
+                });
+            }
+            if let Ok(value) = value.cast::<PyByteArray>() {
+                return Ok(OwnedPythonChunk::Binary(value.to_vec()));
+            }
+            if let Ok(value) = value.cast::<PyMemoryView>() {
+                let value = value.call_method0("tobytes")?.cast_into::<PyBytes>()?;
+                return Ok(OwnedPythonChunk::Binary(value.as_bytes().to_vec()));
+            }
+            Err(PyTypeError::new_err(format!(
+                "file {}() must return str or bytes-like data",
+                self.method
+            )))
+        })
+    }
+}
+
+impl Read for OwnedPythonReader {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        if self.error.borrow().is_some() {
+            return Err(io::Error::other("Python stream read already failed"));
+        }
+        if output.is_empty() {
+            return Ok(0);
+        }
+        if self.pending_offset < self.pending.len() {
+            let available = &self.pending[self.pending_offset..];
+            let count = output.len().min(available.len());
+            output[..count].copy_from_slice(&available[..count]);
+            self.pending_offset += count;
+            if self.pending_offset == self.pending.len() {
+                self.pending.clear();
+                self.pending_offset = 0;
+            }
+            return Ok(count);
+        }
+
+        let chunk = self
+            .read_python_chunk(output.len())
+            .map_err(|error| self.fail(error))?;
+        match chunk {
+            OwnedPythonChunk::Binary(bytes) => {
+                if bytes.len() > output.len() {
+                    return Err(self.fail(PyOSError::new_err(format!(
+                        "binary file {}() returned more data than requested",
+                        self.method
+                    ))));
+                }
+                Ok(self.copy_chunk(&bytes, output))
+            }
+            OwnedPythonChunk::Text { bytes, characters } => {
+                if characters > output.len() {
+                    return Err(self.fail(PyOSError::new_err(format!(
+                        "text file {}() returned more characters than requested",
+                        self.method
+                    ))));
+                }
+                Ok(self.copy_chunk(&bytes, output))
+            }
+        }
+    }
+}
+
+/// Lazy native iterator over a caller-owned Python byte or text reader.
+#[pyclass(name = "_CodecScalarIterator", module = "yggdryl._native", unsendable)]
+pub(crate) struct PyCodecScalarIterator {
+    inner: Box<dyn Iterator<Item = yggdryl::Result<Scalar>>>,
+    field: Option<CoreField>,
+    native_scalar: bool,
+    reader_error: Rc<RefCell<Option<PyErr>>>,
+    finished: bool,
+}
+
+#[pymethods]
+impl PyCodecScalarIterator {
+    // Consumption changes decoder and stream state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        if self.finished {
+            return Ok(None);
+        }
+        match self.inner.next() {
+            None => {
+                self.finished = true;
+                Ok(None)
+            }
+            Some(Ok(value)) => {
+                let value = match self.field.as_ref() {
+                    Some(field) => field.from_natural_value(value),
+                    None => Ok(value),
+                };
+                let value = match value {
+                    Ok(value) => value,
+                    Err(error) => {
+                        self.finished = true;
+                        return Err(value_error(error));
+                    }
+                };
+                match decoded_into_py(py, value, self.field.as_ref(), self.native_scalar) {
+                    Ok(value) => Ok(Some(value)),
+                    Err(error) => {
+                        self.finished = true;
+                        Err(error)
+                    }
+                }
+            }
+            Some(Err(error)) => {
+                self.finished = true;
+                if let Some(error) = self.reader_error.borrow_mut().take() {
+                    Err(error)
+                } else {
+                    Err(value_error(error))
+                }
+            }
+        }
     }
 }
 
@@ -372,53 +597,114 @@ pub(crate) fn codec_infer_path(value: &str) -> PyResult<&'static str> {
 }
 
 #[pyfunction(name = "_codec_decode_inferred")]
+#[pyo3(signature = (
+    data,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_inferred(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
+    let field = field.map(core_field_from_value).transpose()?;
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
     let (_, value) = with_python_bytes(data, |data| {
-        yggdryl::text::from_slice_inferred(data).map_err(value_error)
+        let (format, value) =
+            yggdryl::text::from_bytes_inferred_with_limits(data, limits).map_err(value_error)?;
+        let value = field
+            .as_ref()
+            .map_or(Ok(value.clone()), |field| field.from_natural_value(value))
+            .map_err(value_error)?;
+        Ok((format, value))
     })?;
-    as_py(py, &value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_inferred_text")]
-pub(crate) fn codec_decode_inferred_text(py: Python<'_>, data: &str) -> PyResult<Py<PyAny>> {
-    let (_, value) = yggdryl::text::from_str_inferred(data).map_err(value_error)?;
-    as_py(py, &value)
+#[pyo3(signature = (
+    data,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn codec_decode_inferred_text(
+    py: Python<'_>,
+    data: &str,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let field = field.map(core_field_from_value).transpose()?;
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
+    let (_, value) =
+        yggdryl::text::from_utf8_inferred_with_limits(data, limits).map_err(value_error)?;
+    let value = field
+        .as_ref()
+        .map_or(Ok(value.clone()), |field| field.from_natural_value(value))
+        .map_err(value_error)?;
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_encode")]
+#[pyo3(signature = (value, format, indent = -2))]
 pub(crate) fn codec_encode<'py>(
     py: Python<'py>,
     value: &Bound<'py, PyAny>,
     format: &str,
+    indent: i16,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let value = from_py(value)?;
-    let encoded = yggdryl::text::to_vec(&value, format_from_str(format)?).map_err(value_error)?;
+    let encoded = yggdryl::text::into_bytes_with_formatting(
+        &value,
+        format_from_str(format)?,
+        formatting_from_code(indent)?,
+    )
+    .map_err(value_error)?;
     Ok(PyBytes::new(py, &encoded))
 }
 
 #[pyfunction(name = "_codec_encode_writer")]
+#[pyo3(signature = (value, destination, format, indent = -2))]
 pub(crate) fn codec_encode_writer(
     value: &Bound<'_, PyAny>,
     destination: &Bound<'_, PyAny>,
     format: &str,
+    indent: i16,
 ) -> PyResult<()> {
     let value = from_py(value)?;
     let format = format_from_str(format)?;
-    encode_value_to_python_writer(&value, destination, format)
+    encode_value_to_python_writer(&value, destination, format, formatting_from_code(indent)?)
 }
 
 fn encode_value_to_python_writer(
-    value: &Value,
+    value: &Scalar,
     destination: &Bound<'_, PyAny>,
     format: Format,
+    formatting: Formatting,
 ) -> PyResult<()> {
     let mut writer = PythonWriter::new(destination);
     let (encode_result, flush_result) = {
         let mut buffered = BufWriter::new(&mut writer);
-        let encode_result = yggdryl::text::to_writer(&mut buffered, value, format);
+        let encode_result =
+            yggdryl::text::into_writer_with_formatting(value, &mut buffered, format, formatting);
         let flush_result = buffered.flush();
         (encode_result, flush_result)
     };
@@ -429,11 +715,13 @@ fn encode_value_to_python_writer(
 }
 
 #[pyfunction(name = "_codec_encode_path")]
+#[pyo3(signature = (value, destination, format, indent = -2))]
 pub(crate) fn codec_encode_path(
     py: Python<'_>,
     value: &Bound<'_, PyAny>,
     destination: &Bound<'_, PyAny>,
     format: &str,
+    indent: i16,
 ) -> PyResult<()> {
     let format = format_from_str(format)?;
     let value = from_py(value)?;
@@ -448,7 +736,8 @@ pub(crate) fn codec_encode_path(
         .import("builtins")?
         .getattr("open")?
         .call1((destination, "wb"))?;
-    let result = encode_value_to_python_writer(&value, &stream, format);
+    let result =
+        encode_value_to_python_writer(&value, &stream, format, formatting_from_code(indent)?);
     let close_result = stream.call_method0("close");
     match (result, close_result) {
         (Err(error), _) | (Ok(()), Err(error)) => Err(error),
@@ -466,75 +755,220 @@ pub(crate) fn codec_encode_path(
 fn loading_from(
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
+    field: Option<CoreField>,
+    limits: Limits,
 ) -> PyResult<yggdryl::text::Loading> {
-    if placeholders.is_none() && !environment {
-        return Ok(yggdryl::text::Loading::new());
+    let mut loading = yggdryl::text::Loading::new().with_limits(limits);
+    if placeholders.is_some() || environment {
+        let variables = match placeholders {
+            Some(mapping) => yggdryl::text::Placeholders::from_variables(&from_py(mapping)?)
+                .map_err(value_error)?,
+            None => yggdryl::text::Placeholders::new(),
+        };
+        loading = loading.with_placeholders(variables.with_environment(environment));
     }
-    let variables = match placeholders {
-        Some(mapping) => {
-            yggdryl::text::Placeholders::from_variables(&from_py(mapping)?).map_err(value_error)?
-        }
-        None => yggdryl::text::Placeholders::new(),
-    };
-    Ok(yggdryl::text::Loading::new().with_placeholders(variables.with_environment(environment)))
+    if let Some(field) = field {
+        loading = loading.with_field(field);
+    }
+    Ok(loading)
 }
 
 #[pyfunction(name = "_codec_decode")]
-#[pyo3(signature = (data, format, placeholders = None, environment = false))]
+#[pyo3(signature = (
+    data,
+    format,
+    placeholders = None,
+    environment = false,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
     format: &str,
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
     let format = format_from_str(format)?;
-    let loading = loading_from(placeholders, environment)?;
+    let field = field.map(core_field_from_value).transpose()?;
+    let loading = loading_from(
+        placeholders,
+        environment,
+        field.clone(),
+        limits_from(max_depth, max_input_bytes, max_nodes, max_documents),
+    )?;
     let value = with_python_bytes(data, |data| {
-        yggdryl::text::from_slice_with(data, format, &loading).map_err(value_error)
+        yggdryl::text::from_bytes_with(data, format, &loading).map_err(value_error)
     })?;
-    as_py(py, &value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_text")]
-#[pyo3(signature = (data, format, placeholders = None, environment = false))]
+#[pyo3(signature = (
+    data,
+    format,
+    placeholders = None,
+    environment = false,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_text(
     py: Python<'_>,
     data: &str,
     format: &str,
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
-    let loading = loading_from(placeholders, environment)?;
-    let value = yggdryl::text::from_str_with(data, format_from_str(format)?, &loading)
+    let field = field.map(core_field_from_value).transpose()?;
+    let loading = loading_from(
+        placeholders,
+        environment,
+        field.clone(),
+        limits_from(max_depth, max_input_bytes, max_nodes, max_documents),
+    )?;
+    let value = yggdryl::text::from_utf8_with(data, format_from_str(format)?, &loading)
         .map_err(value_error)?;
-    as_py(py, &value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
 }
 
 #[pyfunction(name = "_codec_decode_reader")]
-#[pyo3(signature = (source, format, placeholders = None, environment = false))]
+#[pyo3(signature = (
+    source,
+    format,
+    placeholders = None,
+    environment = false,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_reader(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
     format: &str,
     placeholders: Option<&Bound<'_, PyAny>>,
     environment: bool,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Py<PyAny>> {
-    let loading = loading_from(placeholders, environment)?;
+    let field = field.map(core_field_from_value).transpose()?;
+    let loading = loading_from(
+        placeholders,
+        environment,
+        field.clone(),
+        limits_from(max_depth, max_input_bytes, max_nodes, max_documents),
+    )?;
     let mut reader = PythonReader::new(source);
     let decoded = yggdryl::text::from_reader_with(&mut reader, format_from_str(format)?, &loading);
     if let Some(error) = reader.take_error() {
         return Err(error);
     }
     let value = decoded.map_err(value_error)?;
-    as_py(py, &value)
+    decoded_into_py(py, value, field.as_ref(), native_scalar)
+}
+
+/// Start one lazy core decoder over a caller-owned Python reader.
+///
+/// Python selects the language protocol (`read` or `readline`) and performs
+/// target-class materialization after each pull. Document boundaries, limits,
+/// and cumulative byte positions all remain properties of the Rust parser.
+#[pyfunction(name = "_codec_decode_iter")]
+#[pyo3(signature = (
+    source,
+    format,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+    field = None,
+    native_scalar = false,
+))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn codec_decode_iter(
+    source: &Bound<'_, PyAny>,
+    format: &str,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+) -> PyResult<PyCodecScalarIterator> {
+    let format = format_from_str(format)?;
+    if format == Format::Toml {
+        return Err(PyValueError::new_err(
+            "TOML supports exactly one document; use loads()",
+        ));
+    }
+    let methods = if format == Format::JsonLines {
+        ["readline", "read"]
+    } else {
+        ["read", "readline"]
+    };
+    let method = if source.hasattr(methods[0])? {
+        methods[0]
+    } else if source.hasattr(methods[1])? {
+        methods[1]
+    } else {
+        return Err(PyTypeError::new_err(
+            "source must provide read(size) or readline(size)",
+        ));
+    };
+
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
+    let reader_error = Rc::new(RefCell::new(None));
+    let reader = OwnedPythonReader::new(source.clone().unbind(), method, Rc::clone(&reader_error));
+    let inner: Box<dyn Iterator<Item = yggdryl::Result<Scalar>>> = match format {
+        Format::Json => Box::new(yggdryl::json::Reader::with_limits(reader, limits)),
+        Format::JsonLines => Box::new(yggdryl::json::LinesReader::with_limits(reader, limits)),
+        Format::Yaml => Box::new(yggdryl::yaml::Reader::with_limits(reader, limits)),
+        Format::Toml => unreachable!("TOML was rejected before reader construction"),
+    };
+    Ok(PyCodecScalarIterator {
+        inner,
+        field: field.map(core_field_from_value).transpose()?,
+        native_scalar,
+        reader_error,
+        finished: false,
+    })
 }
 
 #[pyfunction(name = "_codec_encode_all")]
+#[pyo3(signature = (values, format, indent = -2))]
 pub(crate) fn codec_encode_all<'py>(
     py: Python<'py>,
     values: &Bound<'py, PyAny>,
     format: &str,
+    indent: i16,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let iterator = values.try_iter()?;
     let closer = iterator.clone();
@@ -556,18 +990,26 @@ pub(crate) fn codec_encode_all<'py>(
         encoded_values.push(value);
     }
     let mut output = Vec::new();
-    yggdryl::text::to_writer_all(&mut output, &encoded_values, format_from_str(format)?)
-        .map_err(value_error)?;
+    yggdryl::text::into_writer_all_with_formatting(
+        &encoded_values,
+        &mut output,
+        format_from_str(format)?,
+        formatting_from_code(indent)?,
+    )
+    .map_err(value_error)?;
     Ok(PyBytes::new(py, &output))
 }
 
 #[pyfunction(name = "_codec_encode_all_writer")]
+#[pyo3(signature = (values, destination, format, indent = -2))]
 pub(crate) fn codec_encode_all_writer(
     values: &Bound<'_, PyAny>,
     destination: &Bound<'_, PyAny>,
     format: &str,
+    indent: i16,
 ) -> PyResult<()> {
     let format = format_from_str(format)?;
+    let formatting = formatting_from_code(indent)?;
     let iterator = values.try_iter()?;
     let closer = iterator.clone();
     let mut writer = PythonWriter::new(destination);
@@ -597,12 +1039,16 @@ pub(crate) fn codec_encode_all_writer(
                     Ok(())
                 }
                 .and_then(|()| {
-                    yggdryl::yaml::to_writer(&mut buffered, &value).map_err(value_error)
-                }),
-                Format::Json | Format::JsonLines => {
-                    yggdryl::text::to_writer(&mut buffered, &value, Format::JsonLines)
+                    yggdryl::yaml::into_writer_with_formatting(&value, &mut buffered, formatting)
                         .map_err(value_error)
-                }
+                }),
+                Format::Json | Format::JsonLines => yggdryl::text::into_writer_with_formatting(
+                    &value,
+                    &mut buffered,
+                    Format::JsonLines,
+                    formatting,
+                )
+                .map_err(value_error),
                 Format::Toml => Err(PyValueError::new_err(
                     "TOML supports exactly one document; use dump()",
                 )),
@@ -633,47 +1079,148 @@ fn close_iterator(iterator: &Bound<'_, PyIterator>) {
 }
 
 #[pyfunction(name = "_codec_decode_all")]
+#[pyo3(signature = (
+    data,
+    format,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_all(
     py: Python<'_>,
     data: &Bound<'_, PyAny>,
     format: &str,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Vec<Py<PyAny>>> {
     let format = format_from_str(format)?;
+    let field = field.map(core_field_from_value).transpose()?;
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
     with_python_bytes(data, |data| {
-        yggdryl::text::from_slice_all(data, format).map_err(value_error)
+        field
+            .as_ref()
+            .map_or_else(
+                || yggdryl::text::from_bytes_all_with_limits(data, format, limits),
+                |field| {
+                    yggdryl::text::from_bytes_all_with_field_and_limits(data, format, field, limits)
+                },
+            )
+            .map_err(value_error)
     })?
-    .iter()
-    .map(|value| as_py(py, value))
+    .into_iter()
+    .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
     .collect()
 }
 
 #[pyfunction(name = "_codec_decode_all_text")]
+#[pyo3(signature = (
+    data,
+    format,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_all_text(
     py: Python<'_>,
     data: &str,
     format: &str,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Vec<Py<PyAny>>> {
-    yggdryl::text::from_str_all(data, format_from_str(format)?)
+    let format = format_from_str(format)?;
+    let field = field.map(core_field_from_value).transpose()?;
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
+    field
+        .as_ref()
+        .map_or_else(
+            || yggdryl::text::from_utf8_all_with_limits(data, format, limits),
+            |field| yggdryl::text::from_utf8_all_with_field_and_limits(data, format, field, limits),
+        )
         .map_err(value_error)?
-        .iter()
-        .map(|value| as_py(py, value))
+        .into_iter()
+        .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
         .collect()
 }
 
 #[pyfunction(name = "_codec_decode_all_reader")]
+#[pyo3(signature = (
+    source,
+    format,
+    field = None,
+    native_scalar = false,
+    max_depth = None,
+    max_input_bytes = None,
+    max_nodes = None,
+    max_documents = None,
+))]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn codec_decode_all_reader(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
     format: &str,
+    field: Option<&Bound<'_, PyAny>>,
+    native_scalar: bool,
+    max_depth: Option<usize>,
+    max_input_bytes: Option<usize>,
+    max_nodes: Option<usize>,
+    max_documents: Option<usize>,
 ) -> PyResult<Vec<Py<PyAny>>> {
+    let format = format_from_str(format)?;
+    let field = field.map(core_field_from_value).transpose()?;
+    let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
     let mut reader = PythonReader::new(source);
-    let decoded = yggdryl::text::from_reader_all(&mut reader, format_from_str(format)?);
+    let decoded = match field.as_ref() {
+        Some(field) => {
+            yggdryl::text::from_reader_all_with_field_and_limits(&mut reader, format, field, limits)
+        }
+        None => yggdryl::text::from_reader_all_with_limits(&mut reader, format, limits),
+    };
     if let Some(error) = reader.take_error() {
         return Err(error);
     }
     decoded
         .map_err(value_error)?
-        .iter()
-        .map(|value| as_py(py, value))
+        .into_iter()
+        .map(|value| decoded_into_py(py, value, field.as_ref(), native_scalar))
         .collect()
+}
+
+/// Cross one decoded core value without materializing a lossy Python view.
+pub(crate) fn decoded_into_py(
+    py: Python<'_>,
+    value: Scalar,
+    field: Option<&CoreField>,
+    native_scalar: bool,
+) -> PyResult<Py<PyAny>> {
+    if native_scalar {
+        return Ok(Py::new(py, PyScalar::from_inner(value))?.into_any());
+    }
+    decoded_as_py(py, &value, field)
+}
+
+pub(crate) fn decoded_as_py(
+    py: Python<'_>,
+    value: &Scalar,
+    field: Option<&CoreField>,
+) -> PyResult<Py<PyAny>> {
+    match field {
+        Some(field) => as_py_with_field(py, value, field),
+        None => as_py(py, value),
+    }
 }

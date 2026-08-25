@@ -153,7 +153,7 @@ impl JsField {
         let safe = safe.unwrap_or(true);
         let reader = StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
             .map_err(napi_error)?;
-        let schema = yggdryl::arrow::schema_from_field(&self.inner).map_err(napi_error)?;
+        let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
         let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
         for batch in reader {
             let cast = self
@@ -164,6 +164,21 @@ impl JsField {
         }
         writer.finish().map_err(napi_error)?;
         Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
+    }
+
+    /// Build an empty native reader carrying exactly this Field's Arrow schema.
+    ///
+    /// The JavaScript records adapter captures and removes this private bridge;
+    /// it lets an empty record iterable publish a declared schema without a
+    /// second datatype-to-Arrow implementation in JavaScript.
+    #[napi(js_name = "_emptyArrowReaderNative", skip_typescript)]
+    pub fn empty_arrow_reader(&self) -> Result<crate::arrow::JsBatchReader> {
+        let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
+        let reader = yggdryl::arrow::batch_reader(schema, []);
+        Ok(crate::arrow::JsBatchReader::from_core(
+            reader,
+            self.inner.name(),
+        ))
     }
 
     /// Deserialize the native structural JSON representation.
@@ -1163,7 +1178,7 @@ impl JsField {
         self.inner.stable_hash()
     }
 
-    /// Materialize the bounded canonical Field default through Record's exact
+    /// Materialize the bounded canonical Field default through the exact native
     /// schema-guided JavaScript scalar projection.
     #[napi(js_name = "_defaultJSValueNative", skip_typescript)]
     pub fn default_js_value_native<'env>(
@@ -1192,11 +1207,12 @@ impl JsField {
 
     /// Recursively normalize this exact Field for one closed compatibility
     /// target without changing the current wrapper.
-    #[napi(js_name = "toSchemeCompat", skip_typescript)]
-    pub fn to_scheme_compat(&self, target: String) -> Result<Self> {
+    #[napi(js_name = "intoSchemeCompat", skip_typescript)]
+    pub fn into_scheme_compat(&self, target: String) -> Result<Self> {
         let target = CoreScheme::from_str(&target).map_err(napi_error)?;
         self.inner
-            .to_scheme_compat(&target)
+            .clone()
+            .into_scheme_compat(&target)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1208,14 +1224,14 @@ impl JsField {
     }
 
     /// Return canonical syntax accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }
@@ -1352,14 +1368,14 @@ impl JsProtocolMetadata {
     }
 
     /// Render this protocol's bare names as the native JSON object text.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.view().to_string()
     }
 
     /// Serialize this protocol's bare names as a JSON object.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> serde_json::Value {
+    pub fn js_json(&self) -> serde_json::Value {
         serde_json::Value::Object(
             self.view()
                 .iter()

@@ -1,8 +1,8 @@
 //! One value naming every structured text format.
 
 use crate::io::IOBase;
-use crate::text::{Format, Json, Jsonl, Limits, TextCodec, Toml, Value, Yaml};
-use crate::{Level, MediaType, MimeType, Result, Url};
+use crate::text::{Format, Json, Jsonl, Limits, TextCodec, Toml, Yaml};
+use crate::{MediaType, MimeType, Result, Url};
 
 /// A structured text format chosen at runtime.
 ///
@@ -21,8 +21,8 @@ use crate::{Level, MediaType, MimeType, Result, Url};
 /// let format = Text::for_url(&Url::from_str("file:///trades.yaml.gz")?)?;
 /// assert_eq!(format, Text::Yaml);
 ///
-/// let value = format.loads("symbol: AAPL\n")?;
-/// assert_eq!(value.get_key_str("symbol").and_then(yggdryl::Value::as_str), Some("AAPL"));
+/// let value = format.from_utf8("symbol: AAPL\n")?;
+/// assert_eq!(value.get_key_str("symbol").and_then(yggdryl::Scalar::as_utf8), Some("AAPL"));
 /// # Ok(())
 /// # }
 /// ```
@@ -88,25 +88,6 @@ impl Text {
     pub fn for_handle<H: IOBase + ?Sized>(handle: &H) -> Result<Self> {
         Self::for_media_type(handle.media_type())
     }
-
-    /// Read one value from a handle, choosing the format from its media type.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or parser failure, or an unnamed format.
-    pub fn load_inferred<H: IOBase + ?Sized>(handle: &H) -> Result<Value> {
-        Self::for_handle(handle)?.load(handle)
-    }
-
-    /// Write one value to a handle, choosing the format from its media type.
-    ///
-    /// # Errors
-    ///
-    /// Returns a representation, encoding, or write failure, or an unnamed
-    /// format.
-    pub fn dump_inferred<H: IOBase + ?Sized>(handle: &mut H, value: &Value) -> Result<()> {
-        Self::for_handle(handle)?.dump(handle, value)
-    }
 }
 
 impl TextCodec for Text {
@@ -157,23 +138,6 @@ impl From<Toml> for Text {
 impl From<Yaml> for Text {
     fn from(_: Yaml) -> Self {
         Self::Yaml
-    }
-}
-
-/// The level a coded write uses when a caller states none.
-impl Text {
-    /// Write one value at an explicit compression level.
-    ///
-    /// # Errors
-    ///
-    /// Returns a representation, encoding, or write failure.
-    pub fn dump_at<H: IOBase + ?Sized>(
-        self,
-        handle: &mut H,
-        value: &Value,
-        level: Level,
-    ) -> Result<()> {
-        self.dump_with_level(handle, value, level)
     }
 }
 

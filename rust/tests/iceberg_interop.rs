@@ -18,7 +18,7 @@ use std::sync::Arc;
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::generic::IORecordOptions;
 use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::io::IOBase;
+use yggdryl::io::IOMedia;
 use yggdryl::local::Folder;
 use yggdryl::{DataType, Field};
 
@@ -51,7 +51,7 @@ fn schema() -> Field {
 /// The rows both sides exchange, including a null partition value.
 fn rows() -> RecordBatch {
     RecordBatch::try_new(
-        schema().to_arrow_schema().expect("an Arrow schema"),
+        schema().into_arrow_schema().expect("an Arrow schema"),
         vec![
             Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4])),
             Arc::new(StringArray::from(vec![
@@ -78,7 +78,7 @@ fn rows() -> RecordBatch {
 /// has carried-over `existing` manifest entries to read back.
 fn upserted() -> RecordBatch {
     RecordBatch::try_new(
-        schema().to_arrow_schema().expect("an Arrow schema"),
+        schema().into_arrow_schema().expect("an Arrow schema"),
         vec![
             Arc::new(Int64Array::from(vec![4_i64, 5])),
             Arc::new(StringArray::from(vec![Some("GOOG"), Some("BP")])),
@@ -182,7 +182,7 @@ fn a_table_written_here_is_left_for_an_external_reader() {
         .with_merge_by_names(["id"]);
     let batch = upserted();
     folder
-        .write_arrow_batch_reader(
+        .merge_arrow_reader(
             yggdryl::arrow::batch_reader(batch.schema(), [batch]),
             &options,
         )
@@ -349,7 +349,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
                 7_001,
                 DataFile {
                     file_path: format!("file:///bench/data/part-{index:05}.parquet").into(),
-                    partition: vec![yggdryl::Value::from(["XNAS", "XNYS"][index as usize % 2])],
+                    partition: vec![yggdryl::Scalar::from(["XNAS", "XNYS"][index as usize % 2])],
                     record_count: 100 + index,
                     file_size_in_bytes: 4_096,
                     column_sizes: vec![(1, 512), (2, 256), (3, 128)],

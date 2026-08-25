@@ -43,8 +43,8 @@ fn uri_from_input(
 ) -> Result<CoreUri> {
     match value {
         Either4::A(value) => Ok(value.inner.clone()),
-        Either4::B(value) => Ok(value.inner.to_uri()),
-        Either4::C(value) => Ok(value.inner.to_uri()),
+        Either4::B(value) => Ok(value.inner.clone().into_uri()),
+        Either4::C(value) => Ok(value.inner.clone().into_uri()),
         Either4::D(value) => CoreUri::from_str(&value).map_err(napi_error),
     }
 }
@@ -119,27 +119,30 @@ impl JsUri {
 
     /// Validate and project this general URI as a hierarchical URL.
     #[napi]
-    pub fn to_url(&self) -> Result<JsUrl> {
+    pub fn into_url(&self) -> Result<JsUrl> {
         self.inner
-            .to_url()
+            .clone()
+            .into_url()
             .map(JsUrl::from_core)
             .map_err(napi_error)
     }
 
     /// Validate and project this general URI as a URN.
     #[napi]
-    pub fn to_urn(&self) -> Result<JsUrn> {
+    pub fn into_urn(&self) -> Result<JsUrn> {
         self.inner
-            .to_urn()
+            .clone()
+            .into_urn()
             .map(JsUrn::from_core)
             .map_err(napi_error)
     }
 
     /// Decode this file URI as a host-independent forward-slash path.
     #[napi]
-    pub fn to_path(&self) -> Result<String> {
+    pub fn into_path(&self) -> Result<String> {
         self.inner
-            .to_path()
+            .clone()
+            .into_path()
             .map_err(napi_error)
             .and_then(path_string_from_core)
     }
@@ -162,6 +165,36 @@ impl JsUri {
     #[napi(getter)]
     pub fn authority(&self) -> String {
         self.inner.authority().as_str().to_owned()
+    }
+
+    /// User name from URI user information.
+    #[napi(getter)]
+    pub fn user(&self) -> Option<String> {
+        self.inner.user().map(ToOwned::to_owned)
+    }
+
+    /// Password after the first user-information colon.
+    #[napi(getter)]
+    pub fn password(&self) -> Option<String> {
+        self.inner.password().map(ToOwned::to_owned)
+    }
+
+    /// Network hostname under the core S3-aware rules.
+    #[napi(getter)]
+    pub fn hostname(&self) -> Option<String> {
+        self.inner.hostname().map(ToOwned::to_owned)
+    }
+
+    /// S3 bucket name, or `null` for another scheme.
+    #[napi(getter)]
+    pub fn bucket(&self) -> Option<String> {
+        self.inner.bucket().map(ToOwned::to_owned)
+    }
+
+    /// AWS region inferred from a recognized S3 hostname.
+    #[napi(getter)]
+    pub fn region(&self) -> Option<String> {
+        self.inner.region().map(ToOwned::to_owned)
     }
 
     /// Normalized slash-separated URI path.
@@ -276,6 +309,19 @@ impl JsUri {
         self.inner.path_segments().map(ToOwned::to_owned).collect()
     }
 
+    /// Join path components through the generic URI core.
+    ///
+    /// JavaScript has no `/` operator protocol for objects, so `joinPath` is
+    /// the explicit spelling of Rust and Python's path-composition idiom.
+    #[napi]
+    pub fn join_path(&self, others: Vec<String>) -> Result<Self> {
+        let mut joined = self.inner.clone();
+        for other in &others {
+            joined = joined.joinpath(other).map_err(napi_error)?;
+        }
+        Ok(Self::from_core(joined))
+    }
+
     /// Number of path segments exposed through iteration.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
@@ -318,14 +364,14 @@ impl JsUri {
     }
 
     /// Return canonical syntax accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }
@@ -341,7 +387,7 @@ pub(crate) fn url_from_input(
     match value {
         Either4::A(value) => Ok(value.inner.clone()),
         Either4::B(value) => CoreUrl::from_uri(value.inner.clone()).map_err(napi_error),
-        Either4::C(value) => CoreUrl::from_uri(value.inner.to_uri()).map_err(napi_error),
+        Either4::C(value) => CoreUrl::from_uri(value.inner.clone().into_uri()).map_err(napi_error),
         Either4::D(value) => CoreUrl::from_str(&value).map_err(napi_error),
     }
 }
@@ -416,9 +462,10 @@ impl JsUrl {
 
     /// Decode this file URL as a host-independent forward-slash path.
     #[napi]
-    pub fn to_path(&self) -> Result<String> {
+    pub fn into_path(&self) -> Result<String> {
         self.inner
-            .to_path()
+            .clone()
+            .into_path()
             .map_err(napi_error)
             .and_then(path_string_from_core)
     }
@@ -449,6 +496,36 @@ impl JsUrl {
     #[napi(getter)]
     pub fn authority(&self) -> String {
         self.inner.authority().as_str().to_owned()
+    }
+
+    /// User name from URL user information.
+    #[napi(getter)]
+    pub fn user(&self) -> Option<String> {
+        self.inner.user().map(ToOwned::to_owned)
+    }
+
+    /// Password after the first user-information colon.
+    #[napi(getter)]
+    pub fn password(&self) -> Option<String> {
+        self.inner.password().map(ToOwned::to_owned)
+    }
+
+    /// Network hostname under the core S3-aware rules.
+    #[napi(getter)]
+    pub fn hostname(&self) -> Option<String> {
+        self.inner.hostname().map(ToOwned::to_owned)
+    }
+
+    /// S3 bucket name, or `null` for another scheme.
+    #[napi(getter)]
+    pub fn bucket(&self) -> Option<String> {
+        self.inner.bucket().map(ToOwned::to_owned)
+    }
+
+    /// AWS region inferred from a recognized S3 hostname.
+    #[napi(getter)]
+    pub fn region(&self) -> Option<String> {
+        self.inner.region().map(ToOwned::to_owned)
     }
 
     /// Normalized slash-separated URL path.
@@ -582,8 +659,8 @@ impl JsUrl {
 
     /// Convert this URL to its general URI representation.
     #[napi]
-    pub fn to_uri(&self) -> JsUri {
-        JsUri::from_core(self.inner.to_uri())
+    pub fn into_uri(&self) -> JsUri {
+        JsUri::from_core(self.inner.clone().into_uri())
     }
 
     // ---------------------------------------------------------------------
@@ -817,14 +894,14 @@ impl JsUrl {
     }
 
     /// Return canonical syntax accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }
@@ -840,7 +917,7 @@ fn urn_from_input(
     match value {
         Either4::A(value) => Ok(value.inner.clone()),
         Either4::B(value) => CoreUrn::from_uri(value.inner.clone()).map_err(napi_error),
-        Either4::C(value) => CoreUrn::from_uri(value.inner.to_uri()).map_err(napi_error),
+        Either4::C(value) => CoreUrn::from_uri(value.inner.clone().into_uri()).map_err(napi_error),
         Either4::D(value) => CoreUrn::from_str(&value).map_err(napi_error),
     }
 }
@@ -1076,8 +1153,8 @@ impl JsUrn {
 
     /// Convert this URN to its general URI representation.
     #[napi]
-    pub fn to_uri(&self) -> JsUri {
-        JsUri::from_core(self.inner.to_uri())
+    pub fn into_uri(&self) -> JsUri {
+        JsUri::from_core(self.inner.clone().into_uri())
     }
 
     /// Exact normalized native equality.
@@ -1105,14 +1182,14 @@ impl JsUrn {
     }
 
     /// Return canonical syntax accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import pathlib
+import gzip as stdlib_gzip
 
+import pyarrow as pa
+import pyarrow.fs as pafs
 import pytest
 
 from yggdryl import IOBase, Url
@@ -66,6 +69,64 @@ class TestConstructionFromWhatIsAlreadyHeld:
         assert captured.read_bytes() == b'{"symbol": "AAPL"}'
 
 
+class TestNativeHandleLayers:
+    def test_buffered_reconfigures_one_core_page_cache_in_place(self) -> None:
+        payload = bytes(range(256)) * 8
+        handle = IOBase.from_bytes(payload)
+
+        returned = handle.buffered(page_size=65, max_bytes=1, ttl=0.0)
+        assert returned is handle
+        assert handle.pread(60, 140) == payload[60:200]
+
+        # Reconfiguration unwraps the first cache before installing the next,
+        # and keeps the in-memory handle and its writes intact.
+        assert handle.buffered(page_size=128, max_bytes=256, ttl=1.0) is handle
+        handle.pwrite(127, b"updated")
+        expected = payload[:127] + b"updated" + payload[134:]
+        assert handle.read_bytes() == expected
+
+        with pytest.raises(ValueError, match="ttl"):
+            handle.buffered(ttl=float("nan"))
+        assert handle.read_bytes() == expected
+
+    def test_open_retains_media_metadata_until_close_then_refreshes(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        location = tmp_path / "opened.arrows"
+        replacement = tmp_path / "replacement.arrows"
+        original = pa.table({"id": pa.array([1, 2], type=pa.int32())})
+        changed = pa.table(
+            {
+                "id": pa.array([1, 2, 3], type=pa.int64()),
+                "symbol": ["A", "B", "C"],
+            }
+        )
+        filesystem = pafs.LocalFileSystem()
+        handle = IOBase.from_arrow_fs(filesystem, location)
+        handle.overwrite_arrow_table(original)
+        IOBase(replacement).overwrite_arrow_table(changed)
+
+        handle.open()
+        assert handle.opened
+        first = handle.read_arrow_field()
+        assert [child.name for child in first.data_type] == ["id"]
+        assert handle.row_size == 2
+
+        # Replace the resource outside this handle. Repeated metadata reads in
+        # the opened scope stay on the retained native media cache.
+        IOBase.from_arrow_fs(filesystem, location).write_bytes(replacement.read_bytes())
+        assert [child.name for child in handle.read_arrow_field().data_type] == ["id"]
+        assert handle.row_size == 2
+
+        handle.close()
+        assert handle.closed
+        assert [child.name for child in handle.read_arrow_field().data_type] == [
+            "id",
+            "symbol",
+        ]
+        assert handle.row_size == 3
+
+
 class TestPathlibParity:
     """The same calls a ``Path`` answers, answered by the core."""
 
@@ -104,6 +165,55 @@ class TestPathlibParity:
         handle = IOBase(lake)
         assert not handle.is_atomic()
         assert handle.is_tabular()
+
+    def test_io_capability_and_dimensions_come_from_core_media(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        empty_folder = IOBase(tmp_path / "empty")
+        empty_folder.mkdir()
+        assert IOBase.from_bytes().kind == "memory"
+        assert empty_folder.kind == "directory"
+        assert IOBase(tmp_path / "missing").kind == "unknown"
+        assert not empty_folder.is_io()
+        assert IOBase(tmp_path / "notes.txt").is_io()
+
+        def table(ids: list[int], wide: bool = False) -> pa.Table:
+            columns: dict[str, list[object]] = {
+                "id": ids,
+                "venue": ["XNAS"] * len(ids),
+            }
+            if wide:
+                columns["quantity"] = [10] * len(ids)
+            return pa.table(columns)
+
+        handle = IOBase(tmp_path / "dimensions.arrows")
+        handle.overwrite_arrow_table(table([1, 2, 3, 4]))
+        assert handle.kind == "file"
+        assert handle.is_io()
+        assert handle.row_size == 4
+        assert handle.column_size == 2
+
+        # A publication through an opened handle refreshes its row metadata.
+        # Overwrite replaces rows, not the stored field: an extra incoming
+        # column is safely completed onto the existing two-column shape.
+        handle.open()
+        assert (handle.row_size, handle.column_size) == (4, 2)
+        handle.overwrite_arrow_table(table([9], wide=True))
+        assert (handle.row_size, handle.column_size) == (1, 2)
+        handle.close()
+
+        typed_empty = IOBase(tmp_path / "typed-empty.arrows")
+        typed_empty.overwrite_arrow_table(table([]))
+        assert (typed_empty.row_size, typed_empty.column_size) == (0, 2)
+
+        # A folder aggregates only leaves of its selected record encoding;
+        # unrelated text never becomes a row in the table.
+        lake = tmp_path / "dimensions-lake"
+        IOBase(lake / "a.arrows").overwrite_arrow_table(table([1, 2]))
+        IOBase(lake / "b.arrows").overwrite_arrow_table(table([3]))
+        IOBase(lake / "notes.txt").write_text("not a table row")
+        folder = IOBase(lake)
+        assert (folder.row_size, folder.column_size) == (3, 2)
 
     def test_children_are_resolved_the_way_paths_are(self, lake: pathlib.Path) -> None:
         by_operator = IOBase(lake) / "year=2024" / "month=01" / "part-0.parquet"
@@ -170,6 +280,8 @@ class TestPathlibParity:
         leaf.touch()
         # `touch` never truncates an existing leaf, as it does not for a Path.
         assert leaf.read_text() == "kept"
+        with pytest.raises(IsADirectoryError, match="got the directory"):
+            folder.touch()
 
     def test_a_memory_handle_needs_no_location(self) -> None:
         handle = IOBase.from_bytes(b"AAPL")
@@ -316,10 +428,12 @@ class TestReadLines:
         self, tmp_path: pathlib.Path
     ) -> None:
         target = tmp_path / "app.log"
-        target.write_text(
-            "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
-            "  at frame one\n"
-            "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
+        target.write_bytes(
+            (
+                "2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n"
+                "  at frame one\n"
+                "2024-02-01 10:00:01.000_000 [ii] [beta] fine\n"
+            ).encode()
         )
         entries = list(
             IOBase(target).read_lines(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
@@ -350,7 +464,7 @@ class TestReadArrowLines:
         import pyarrow as pa
 
         target = tmp_path / "app.log"
-        target.write_text(self.LOG)
+        target.write_bytes(self.LOG.encode())
         reader = IOBase(target).read_arrow_lines(LINE_PATTERN)
         assert isinstance(reader, pa.RecordBatchReader)
         table = reader.read_all()
@@ -386,7 +500,7 @@ class TestReadArrowLines:
         import gzip as stdlib_gzip
 
         plain = tmp_path / "app.log"
-        plain.write_text(self.LOG)
+        plain.write_bytes(self.LOG.encode())
         coded = tmp_path / "app.log.gz"
         coded.write_bytes(stdlib_gzip.compress(self.LOG.encode()))
 
@@ -459,10 +573,10 @@ class TestReadArrowLines:
     def test_the_schema_builder_answers_without_a_reader(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from yggdryl import schema_from_pattern
+        from yggdryl import field_from_pattern
 
         pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\]"
-        schema = schema_from_pattern(pattern, custom_fields={"venue": "XNAS"})
+        schema = field_from_pattern(pattern, custom_fields={"venue": "XNAS"})
         assert schema.name == "row"
         assert str(schema.data_type["thread_id"].data_type) == "int64"
         assert str(schema.data_type["venue"].data_type) == "utf8"
@@ -524,7 +638,7 @@ class TestScans:
         import pyarrow as pa
 
         handle = IOBase(tmp_path / "trades.parquet")
-        handle.write_arrow(pa.table({"id": [1, 2], "venue": ["XNAS", "XPAR"]}))
+        handle.overwrite_arrow_table(pa.table({"id": [1, 2], "venue": ["XNAS", "XPAR"]}))
 
         lazy = handle.scan_polars()
         assert isinstance(lazy, pl.LazyFrame)
@@ -543,13 +657,13 @@ class TestScans:
         # An Arrow *stream* is not a dataset format, so it streams through
         # the native reader; the file format scans natively.
         stream = IOBase(tmp_path / "trades.arrows")
-        stream.write_arrow(pa.table({"id": [3, 4]}))
+        stream.overwrite_arrow_table(pa.table({"id": [3, 4]}))
         scanner = stream.scan_arrow()
         assert isinstance(scanner, pads.Scanner)
         assert scanner.to_table().num_rows == 2
 
         handle = IOBase(tmp_path / "trades.parquet")
-        handle.write_arrow(pa.table({"id": [5, 6, 7]}))
+        handle.overwrite_arrow_table(pa.table({"id": [5, 6, 7]}))
         native = handle.scan_arrow()
         assert isinstance(native, pads.Scanner)
         assert native.to_table().num_rows == 3
@@ -568,7 +682,7 @@ class TestScans:
         import pyarrow as pa
 
         handle = IOBase(tmp_path / "trades.parquet")
-        handle.write_arrow(
+        handle.overwrite_arrow_table(
             pa.table(
                 {
                     "venue": ["XNAS", "XPAR", "XNAS"],
@@ -577,19 +691,22 @@ class TestScans:
             )
         )
 
-        assert handle.scan_arrow(select_by_names=["id"]).to_table().schema.names == [
-            "id"
-        ]
+        selected = handle.record_options()
+        selected.select_by_names = ["id"]
+        assert handle.scan_arrow(options=selected).to_table().schema.names == ["id"]
+        filtered = handle.record_options()
+        filtered.filter_partitions = [("venue", "XNAS")]
         assert (
-            handle.scan_arrow(filter_partitions={"venue": "XNAS"}).to_table().num_rows
-            == 2
+            handle.scan_arrow(options=filtered).to_table().num_rows == 2
         )
         # The same refusal the eager read gives, rather than every column.
+        absent = handle.record_options()
+        absent.select_by_names = ["absent"]
         with pytest.raises(ValueError, match="absent"):
-            handle.scan_arrow(select_by_names=["absent"]).to_table()
+            handle.scan_arrow(options=absent).to_table()
 
         pl = pytest.importorskip("polars")
-        lazy = handle.scan_polars(select_by_names=["id"])
+        lazy = handle.scan_polars(options=selected)
         assert isinstance(lazy, pl.LazyFrame)
         assert lazy.collect().columns == ["id"]
 
@@ -617,3 +734,110 @@ class TestCursor:
         ahead = handle.cursor(7)
         assert ahead.read(5) == b"price"
         assert cursor.tell() == 13
+
+
+class TestByteStreams:
+    """Byte streams stay lazy, bounded, and tied to their native source."""
+
+    def test_the_default_stream_starts_at_zero_and_uses_64_kib_chunks(self) -> None:
+        import inspect
+
+        payload = bytes(range(256)) * 257
+        chunks = list(IOBase.from_bytes(payload).pstream_bytes())
+
+        assert inspect.signature(IOBase.pstream_bytes).parameters[
+            "batch_size"
+        ].default == 65536
+        assert [len(chunk) for chunk in chunks] == [64 * 1024, 256]
+        assert b"".join(chunks) == payload
+
+    def test_an_explicit_position_and_batch_size_shape_the_chunks(self) -> None:
+        handle = IOBase.from_bytes(b"0123456789")
+
+        assert list(handle.pstream_bytes(2, 3)) == [b"234", b"567", b"89"]
+        assert list(handle.pstream_bytes(100, 3)) == []
+
+    def test_construction_is_lazy_and_the_iterator_keeps_its_handle_alive(self) -> None:
+        handle = IOBase.from_bytes(b"before")
+        stream = handle.pstream_bytes(batch_size=3)
+
+        # Construction retained the handle but did not read or snapshot it.
+        handle.write_bytes(b"after")
+        del handle
+
+        assert list(stream) == [b"aft", b"er"]
+
+    def test_a_zero_batch_is_rejected_before_iteration(self) -> None:
+        handle = IOBase.from_bytes(b"unread")
+
+        with pytest.raises(ValueError, match="batch_size.*greater than zero"):
+            handle.pstream_bytes(batch_size=0)
+        with pytest.raises(ValueError, match="batch_size.*greater than zero"):
+            handle.cursor().stream_bytes(0)
+
+    def test_a_cursor_advances_as_chunks_are_consumed_then_can_be_reused(self) -> None:
+        import inspect
+
+        cursor = IOBase.from_bytes(b"0123456789").cursor(2)
+        stream = cursor.stream_bytes(3)
+
+        assert inspect.signature(cursor.stream_bytes).parameters[
+            "batch_size"
+        ].default == 65536
+        assert cursor.tell() == 2
+        assert next(stream) == b"234"
+        assert cursor.tell() == 5
+
+        # Each dynamic-language pull borrows the shared cursor anew, so an
+        # explicit seek between pulls becomes the next chunk's start.
+        cursor.seek(7)
+        assert next(stream) == b"789"
+        assert cursor.tell() == 10
+
+        # Dropping an unfinished stream releases no hidden cursor state. The
+        # ordinary cursor protocol resumes from the last yielded byte.
+        cursor.seek(5)
+        del stream
+        assert cursor.read(2) == b"56"
+        assert list(cursor.stream_bytes(2)) == [b"78", b"9"]
+        assert cursor.tell() == 10
+
+    def test_end_of_stream_stays_fused(self) -> None:
+        stream = IOBase.from_bytes(b"abc").pstream_bytes(batch_size=2)
+
+        assert list(stream) == [b"ab", b"c"]
+        with pytest.raises(StopIteration):
+            next(stream)
+        with pytest.raises(StopIteration):
+            next(stream)
+
+
+class TestStructuredValues:
+    """Structured values cross through the native core, including codings."""
+
+    def test_a_handle_infers_json_and_gzip(self, tmp_path: pathlib.Path) -> None:
+        path = tmp_path / "trade.json.gz"
+        handle = IOBase(path)
+        expected = {"quantity": 2, "symbol": "AAPL"}
+
+        handle.write_scalar(expected)
+
+        assert stdlib_gzip.decompress(path.read_bytes()) == (
+            b'{"quantity":2,"symbol":"AAPL"}'
+        )
+        assert handle.read_scalar() == expected
+
+    def test_a_field_directs_the_native_parse(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "trade.yaml.zst")
+        handle.write_scalar({"quantity": 2, "symbol": "AAPL"})
+        field = (
+            "trade: struct<quantity: int32 not null, "
+            "symbol: utf8 not null> not null"
+        )
+
+        assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
+
+        invalid = IOBase(tmp_path / "invalid.json")
+        invalid.write_text('{"quantity":"many","symbol":"AAPL"}')
+        with pytest.raises(ValueError, match="quantity"):
+            invalid.read_scalar(field)

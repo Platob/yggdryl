@@ -166,7 +166,7 @@ fn geospatial_batch(data_type: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_a
         DataType::from_fields([Field::new("shape", data_type, true)]).unwrap(),
         false,
     );
-    let schema = crate::arrow::schema_from_field(&root).unwrap();
+    let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
     let values: Vec<Option<&[u8]>> = cells.iter().map(|cell| cell.as_deref()).collect();
     arrow_array::RecordBatch::try_new(schema, vec![Arc::new(BinaryArray::from(values))]).unwrap()
 }
@@ -340,7 +340,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
         DataType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
         false,
     );
-    let schema = crate::arrow::schema_from_field(&root).unwrap();
+    let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
     let batch = arrow_array::RecordBatch::try_new(schema, vec![variant_storage_array(1)]).unwrap();
     let target = Field::new(
         "row",

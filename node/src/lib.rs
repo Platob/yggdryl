@@ -11,6 +11,7 @@
 
 mod arrow;
 mod arrowfs;
+mod avro;
 mod codec;
 pub mod codings;
 mod datatype;
@@ -39,9 +40,13 @@ use yggdryl::OwnedDifferences;
 
 pub use arrow::JsBatchReader;
 pub use arrowfs::ArrowFileInfo;
+pub use avro::{
+    AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
+    avro_dumps_native, avro_loads_native,
+};
 pub use codec::{
-    JsCodecValue, codec_infer_format, codec_loads_inferred_native, codec_normalize_format,
-    json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
+    CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
+    codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
     json_lines_dump_path_native, json_lines_load_path_native, json_lines_loads_native,
     json_load_path_native, json_loads_native, toml_dump_path_native, toml_dumps_native,
     toml_load_path_native, toml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
@@ -49,13 +54,15 @@ pub use codec::{
     yaml_loads_all_native, yaml_loads_native,
 };
 pub use datatype::JsDataType;
-pub use expression::{JsBound, JsExpression, JsStatement};
+pub use expression::{
+    BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
+};
 pub use field::{JsField, JsProtocolMetadata, MetadataEntry};
 pub use generic::JsRecordOptions;
 pub use iceberg::{
-    Compaction, FieldBound, FieldCount, IcebergOptionsInput, JsCatalog, JsDataFile,
-    JsIcebergOptions, JsNamespace, JsNamespaces, JsPartitionSpec, JsScanPlan, JsSchemaUpdate,
-    JsTable, JsTables, ManifestFileView, PartitionFieldView, SnapshotRefView, SnapshotView,
+    FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
+    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
+    JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
     iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
     iceberg_schema_to_json,
 };

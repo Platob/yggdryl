@@ -36,7 +36,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::GeospatialType;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::datatype::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-use crate::enums::EdgeAlgorithm;
+use crate::generic::EdgeAlgorithm;
 use crate::generic::wkb;
 use crate::io::IOBase;
 
@@ -48,7 +48,7 @@ use crate::io::IOBase;
 /// `1001`). It comes from two places that must agree: the footer a write
 /// recorded, exposed on [`super::ColumnStatistics::geospatial`], and a fresh
 /// scan of the stored WKB through [`read_geospatial_statistics`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct GeospatialStatistics {
     /// The box bounding every position, absent when no position bounded one.
     pub bounding_box: Option<wkb::BoundingBox>,

@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::enums::{DataTypeId, DataTypeKind};
+use crate::generic::{DataTypeId, DataTypeKind};
 use crate::{Error, Field, Result};
 
 use super::DataType;
@@ -13,7 +13,7 @@ use super::nested::{
     cmp_fields, validate_dictionary_key, validate_fields, validate_map_entries, validate_run_ends,
     validate_union_fields,
 };
-use super::temporal::{validate_time32_unit, validate_time64_unit};
+use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 
 impl DataType {
     /// Returns a deterministic cross-process hash of the canonical display.
@@ -45,7 +45,8 @@ impl DataType {
             Self::Date64 => DataTypeId::Date64,
             Self::Time32(_) => DataTypeId::Time32,
             Self::Time64(_) => DataTypeId::Time64,
-            Self::Duration(_) => DataTypeId::Duration,
+            Self::Duration32(_) => DataTypeId::Duration32,
+            Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
             Self::Binary => DataTypeId::Binary,
             Self::FixedSizeBinary(_) => DataTypeId::FixedSizeBinary,
@@ -143,11 +144,13 @@ impl DataType {
     /// enum variants cannot bypass an interop boundary.
     pub fn validate(&self) -> Result<()> {
         match self {
-            Self::Timestamp(unit, _) | Self::Duration(unit) if !unit.is_temporal() => {
+            Self::Timestamp(unit, _) if !unit.is_arrow_time() => {
                 Err(invalid(self.name(), "unit must be a temporal resolution"))
             }
             Self::Time32(unit) => validate_time32_unit(*unit),
             Self::Time64(unit) => validate_time64_unit(*unit),
+            Self::Duration32(unit) => validate_duration_unit("Duration32", *unit),
+            Self::Duration64(unit) => validate_duration_unit("Duration64", *unit),
             Self::Interval(unit) if !unit.is_interval() => {
                 Err(invalid("Interval", "unit must be an interval layout"))
             }
@@ -209,7 +212,8 @@ impl Ord for DataType {
             }
             (D::Time32(left), D::Time32(right))
             | (D::Time64(left), D::Time64(right))
-            | (D::Duration(left), D::Duration(right)) => left.cmp(right),
+            | (D::Duration32(left), D::Duration32(right))
+            | (D::Duration64(left), D::Duration64(right)) => left.cmp(right),
             (D::Interval(left), D::Interval(right)) => left.cmp(right),
             (D::FixedSizeBinary(left), D::FixedSizeBinary(right)) => left.cmp(right),
             (D::List(left), D::List(right))
@@ -301,32 +305,33 @@ fn data_type_rank(value: &DataType) -> u8 {
         DataType::Date64 => 15,
         DataType::Time32(_) => 16,
         DataType::Time64(_) => 17,
-        DataType::Duration(_) => 18,
-        DataType::Interval(_) => 19,
-        DataType::Binary => 20,
-        DataType::FixedSizeBinary(_) => 21,
-        DataType::LargeBinary => 22,
-        DataType::BinaryView => 23,
-        DataType::Utf8 => 24,
-        DataType::LargeUtf8 => 25,
-        DataType::Utf8View => 26,
-        DataType::List(_) => 27,
-        DataType::ListView(_) => 28,
-        DataType::FixedSizeList(..) => 29,
-        DataType::LargeList(_) => 30,
-        DataType::LargeListView(_) => 31,
-        DataType::Struct(_) => 32,
-        DataType::Union(..) => 33,
-        DataType::Dictionary(_) => 34,
-        DataType::Decimal32 { .. } => 35,
-        DataType::Decimal64 { .. } => 36,
-        DataType::Decimal128 { .. } => 37,
-        DataType::Decimal256 { .. } => 38,
-        DataType::Map(_) => 39,
-        DataType::RunEndEncoded(_) => 40,
-        DataType::Variant => 41,
-        DataType::Geometry(_) => 42,
-        DataType::Geography(_) => 43,
+        DataType::Duration32(_) => 18,
+        DataType::Duration64(_) => 19,
+        DataType::Interval(_) => 20,
+        DataType::Binary => 21,
+        DataType::FixedSizeBinary(_) => 22,
+        DataType::LargeBinary => 23,
+        DataType::BinaryView => 24,
+        DataType::Utf8 => 25,
+        DataType::LargeUtf8 => 26,
+        DataType::Utf8View => 27,
+        DataType::List(_) => 28,
+        DataType::ListView(_) => 29,
+        DataType::FixedSizeList(..) => 30,
+        DataType::LargeList(_) => 31,
+        DataType::LargeListView(_) => 32,
+        DataType::Struct(_) => 33,
+        DataType::Union(..) => 34,
+        DataType::Dictionary(_) => 35,
+        DataType::Decimal32 { .. } => 36,
+        DataType::Decimal64 { .. } => 37,
+        DataType::Decimal128 { .. } => 38,
+        DataType::Decimal256 { .. } => 39,
+        DataType::Map(_) => 40,
+        DataType::RunEndEncoded(_) => 41,
+        DataType::Variant => 42,
+        DataType::Geometry(_) => 43,
+        DataType::Geography(_) => 44,
     }
 }
 

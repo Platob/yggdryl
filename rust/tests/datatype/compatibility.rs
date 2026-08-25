@@ -12,11 +12,12 @@ fn arrow_is_a_cache_preserving_validated_noop() {
         [("owner", "yggdryl")],
     )
     .unwrap();
-    let cached = field.to_arrow_ref().unwrap();
-    let compatible = field.to_scheme_compat(&Scheme::ARROW).unwrap();
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let compatible = field.clone().into_scheme_compat(&Scheme::ARROW).unwrap();
 
     assert_eq!(compatible, field);
-    assert!(Arc::ptr_eq(&cached, &compatible.to_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(&cached, &compatible.into_arrow_ref().unwrap()));
 }
 
 #[test]
@@ -36,7 +37,7 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
         ),
     ])
     .unwrap();
-    let transformed = source.to_scheme_compat(&Scheme::SPARK).unwrap();
+    let transformed = source.into_scheme_compat(&Scheme::SPARK).unwrap();
     let fields = transformed.as_fields().unwrap();
     assert_eq!(fields[0].data_type(), &DataType::Int16);
     assert_eq!(fields[1].data_type(), &DataType::decimal128(20, 0).unwrap());
@@ -83,7 +84,7 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
     ];
     for (source, expected) in cases {
         assert_eq!(
-            source.to_scheme_compat(&Scheme::SPARK).unwrap(),
+            source.clone().into_scheme_compat(&Scheme::SPARK).unwrap(),
             expected,
             "unexpected Spark projection for {source:?}"
         );
@@ -99,7 +100,7 @@ fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
     )])
     .unwrap();
     let error = source
-        .to_scheme_compat(&Scheme::SPARK)
+        .into_scheme_compat(&Scheme::SPARK)
         .unwrap_err()
         .to_string();
     assert!(error.contains("$[\"a.b\"]"), "{error}");
@@ -112,7 +113,10 @@ fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
     )
     .unwrap();
     let before = extension.clone();
-    let error = extension.to_scheme_compat(&Scheme::SPARK).unwrap_err();
+    let error = extension
+        .clone()
+        .into_scheme_compat(&Scheme::SPARK)
+        .unwrap_err();
     assert!(matches!(error, Error::InvalidDataType { .. }));
     assert_eq!(extension, before);
 
@@ -124,7 +128,10 @@ fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
     )
     .unwrap();
     assert_eq!(
-        no_op_extension.to_scheme_compat(&Scheme::SPARK).unwrap(),
+        no_op_extension
+            .clone()
+            .into_scheme_compat(&Scheme::SPARK)
+            .unwrap(),
         no_op_extension
     );
 }
@@ -164,7 +171,7 @@ fn a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing() {
 
     // Rejection happens where the target is actually used, and the message
     // names both the accepted vocabulary and the offending value.
-    let error = DataType::Int32.to_scheme_compat(&duckdb).unwrap_err();
+    let error = DataType::Int32.into_scheme_compat(&duckdb).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("\"duckdb\""), "{message}");
     assert!(message.contains("arrow"), "{message}");
@@ -181,7 +188,7 @@ fn a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing() {
     ));
 
     let field_error = Field::new("value", DataType::Int32, true)
-        .to_scheme_compat(&duckdb)
+        .into_scheme_compat(&duckdb)
         .unwrap_err();
     assert!(matches!(
         field_error,
@@ -196,19 +203,24 @@ fn a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing() {
 fn polars_keeps_unsigned_integers_and_fixed_size_lists() {
     // Spark widens unsigned integers; Polars has them natively.
     assert_eq!(
-        DataType::UInt32.to_scheme_compat(&Scheme::POLARS).unwrap(),
+        DataType::UInt32
+            .into_scheme_compat(&Scheme::POLARS)
+            .unwrap(),
         DataType::UInt32
     );
     assert_eq!(
-        DataType::UInt32.to_scheme_compat(&Scheme::SPARK).unwrap(),
+        DataType::UInt32.into_scheme_compat(&Scheme::SPARK).unwrap(),
         DataType::Int64
     );
 
     // Polars `Array` keeps the fixed-length layout; Spark degrades to a list.
     let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 3).unwrap();
-    assert_eq!(fixed.to_scheme_compat(&Scheme::POLARS).unwrap(), fixed);
     assert_eq!(
-        fixed.to_scheme_compat(&Scheme::SPARK).unwrap(),
+        fixed.clone().into_scheme_compat(&Scheme::POLARS).unwrap(),
+        fixed
+    );
+    assert_eq!(
+        fixed.into_scheme_compat(&Scheme::SPARK).unwrap(),
         DataType::list(Field::new("item", DataType::Int32, false))
     );
 }
@@ -230,10 +242,14 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
     .unwrap();
 
     // Spark has a first-class map and keeps it.
-    assert!(map.to_scheme_compat(&Scheme::SPARK).is_ok());
+    assert!(map.clone().into_scheme_compat(&Scheme::SPARK).is_ok());
 
     for target in [Scheme::POLARS, Scheme::PANDAS] {
-        let message = map.to_scheme_compat(&target).unwrap_err().to_string();
+        let message = map
+            .clone()
+            .into_scheme_compat(&target)
+            .unwrap_err()
+            .to_string();
         assert!(message.contains("no first-class map type"), "{message}");
         assert!(message.contains("key/value structs"), "{message}");
     }
@@ -245,11 +261,14 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
 
     // pandas is nanosecond-native, Spark is microsecond-native.
     assert_eq!(
-        nanosecond.to_scheme_compat(&Scheme::PANDAS).unwrap(),
+        nanosecond
+            .clone()
+            .into_scheme_compat(&Scheme::PANDAS)
+            .unwrap(),
         nanosecond
     );
     let message = nanosecond
-        .to_scheme_compat(&Scheme::SPARK)
+        .into_scheme_compat(&Scheme::SPARK)
         .unwrap_err()
         .to_string();
     assert!(message.contains("expected timestamp of us"), "{message}");
@@ -258,7 +277,7 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
 
     let second = DataType::Timestamp(TimeUnit::Second, None);
     let polars_message = second
-        .to_scheme_compat(&Scheme::POLARS)
+        .into_scheme_compat(&Scheme::POLARS)
         .unwrap_err()
         .to_string();
     assert!(polars_message.contains("got s"), "{polars_message}");
@@ -279,7 +298,11 @@ fn every_target_reports_a_path_for_a_nested_failure() {
     .unwrap();
 
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
-        let message = nested.to_scheme_compat(&target).unwrap_err().to_string();
+        let message = nested
+            .clone()
+            .into_scheme_compat(&target)
+            .unwrap_err()
+            .to_string();
         assert!(message.contains("outer"), "{target}: {message}");
         assert!(message.contains("[]"), "{target}: {message}");
         assert!(message.contains("got s"), "{target}: {message}");
@@ -293,7 +316,11 @@ fn negative_decimal_scale_names_the_offending_scale() {
         scale: -2,
     };
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
-        let message = negative.to_scheme_compat(&target).unwrap_err().to_string();
+        let message = negative
+            .clone()
+            .into_scheme_compat(&target)
+            .unwrap_err()
+            .to_string();
         assert!(
             message.contains("expected a non-negative decimal scale, got -2"),
             "{target}: {message}"
@@ -314,7 +341,7 @@ fn compatibility_preflight_reports_its_own_operation_kind() {
         (Scheme::PANDAS, "PandasCompatibility"),
         (Scheme::ICEBERG, "IcebergCompatibility"),
     ] {
-        let error = nested.to_scheme_compat(&scheme).unwrap_err();
+        let error = nested.clone().into_scheme_compat(&scheme).unwrap_err();
         assert!(matches!(
             error,
             Error::InvalidDataType { kind, .. } if kind == expected_kind
@@ -326,18 +353,23 @@ fn compatibility_preflight_reports_its_own_operation_kind() {
 fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
     for accepted in [
         DataType::Timestamp(TimeUnit::Microsecond, Some(Timezone::UTC)),
-        DataType::Duration(TimeUnit::Microsecond),
+        DataType::Duration32(TimeUnit::Microsecond),
+        DataType::Duration64(TimeUnit::Microsecond),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::decimal128(38, 0).unwrap(),
     ] {
-        assert_eq!(accepted.to_scheme_compat(&Scheme::SPARK).unwrap(), accepted);
+        assert_eq!(
+            accepted.clone().into_scheme_compat(&Scheme::SPARK).unwrap(),
+            accepted
+        );
     }
     for rejected in [
         DataType::Timestamp(TimeUnit::Nanosecond, None),
         DataType::Date64,
         DataType::Time32(TimeUnit::Second),
         DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration(TimeUnit::Nanosecond),
+        DataType::Duration32(TimeUnit::Nanosecond),
+        DataType::Duration64(TimeUnit::Nanosecond),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
         DataType::decimal128(9, -1).unwrap(),
@@ -349,7 +381,7 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
         .unwrap(),
     ] {
         assert!(
-            rejected.to_scheme_compat(&Scheme::SPARK).is_err(),
+            rejected.clone().into_scheme_compat(&Scheme::SPARK).is_err(),
             "{rejected:?}"
         );
     }
@@ -358,7 +390,7 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
 #[test]
 fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     let map = DataType::map_of(DataType::Utf8View, DataType::UInt8, true).unwrap();
-    let transformed = map.to_scheme_compat(&Scheme::SPARK).unwrap();
+    let transformed = map.into_scheme_compat(&Scheme::SPARK).unwrap();
     let DataType::Map(map) = transformed else {
         panic!("expected map");
     };
@@ -372,7 +404,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
         DataType::list(Field::new("item", DataType::UInt16, true)),
     )
     .unwrap();
-    let transformed = dictionary.to_scheme_compat(&Scheme::SPARK).unwrap();
+    let transformed = dictionary.into_scheme_compat(&Scheme::SPARK).unwrap();
     let DataType::List(item) = transformed else {
         panic!("expected logical dictionary list");
     };
@@ -384,7 +416,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     )
     .unwrap();
     assert_eq!(
-        encoded.to_scheme_compat(&Scheme::SPARK).unwrap(),
+        encoded.into_scheme_compat(&Scheme::SPARK).unwrap(),
         DataType::Utf8
     );
 }
@@ -399,15 +431,18 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     )
     .unwrap();
     field.set_dictionary_options(42, true).unwrap();
-    let cached = field.to_arrow_ref().unwrap();
-    let transformed = field.to_scheme_compat(&Scheme::SPARK).unwrap();
+    let cached = field.clone().into_arrow_ref().unwrap();
+    let transformed = field.clone().into_scheme_compat(&Scheme::SPARK).unwrap();
     assert_eq!(transformed.name(), field.name());
     assert!(transformed.is_nullable());
     assert_eq!(transformed.get_metadata("owner"), Some("yggdryl"));
     assert_eq!(transformed.data_type(), &DataType::Int16);
     assert_eq!(transformed.dictionary_id(), None);
     assert_eq!(transformed.dictionary_is_ordered(), None);
-    assert!(!Arc::ptr_eq(&cached, &transformed.to_arrow_ref().unwrap()));
+    assert!(!Arc::ptr_eq(
+        &cached,
+        &transformed.into_arrow_ref().unwrap()
+    ));
 }
 
 #[test]
@@ -421,7 +456,7 @@ fn spark_rejects_nested_extension_storage_before_rewriting() {
     .unwrap();
     let source = DataType::list(child);
     let error = source
-        .to_scheme_compat(&Scheme::SPARK)
+        .into_scheme_compat(&Scheme::SPARK)
         .unwrap_err()
         .to_string();
     assert!(error.contains("$[].item"), "{error}");
@@ -457,7 +492,7 @@ fn spark_rejects_both_run_end_extension_children_at_exact_paths() {
         };
         let encoded = DataType::run_end_encoded(run_ends, values).unwrap();
         let error = encoded
-            .to_scheme_compat(&Scheme::SPARK)
+            .into_scheme_compat(&Scheme::SPARK)
             .unwrap_err()
             .to_string();
         assert!(error.contains(expected_path), "{error}");
@@ -492,7 +527,7 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
     ];
     for (source, expected) in widened {
         assert_eq!(
-            source.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            source.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap(),
             expected,
             "unexpected Iceberg projection for {source:?}"
         );
@@ -522,7 +557,7 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         DataType::decimal128(38, 9).unwrap(),
     ] {
         assert_eq!(
-            kept.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            kept.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap(),
             kept,
             "{kept:?}"
         );
@@ -549,8 +584,12 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
             vec!["date64 milliseconds", "Iceberg date32 days"],
         ),
         (
-            DataType::Duration(TimeUnit::Microsecond),
-            vec!["no elapsed-time type", "got duration(us)"],
+            DataType::Duration32(TimeUnit::Microsecond),
+            vec!["no elapsed-time type", "got duration32(us)"],
+        ),
+        (
+            DataType::Duration64(TimeUnit::Microsecond),
+            vec!["no elapsed-time type", "got duration64(us)"],
         ),
         (
             DataType::Interval(TimeUnit::MonthDayNano),
@@ -571,7 +610,7 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
     for (rejected, fragments) in cases {
         let source =
             DataType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap();
-        let error = source.to_scheme_compat(&Scheme::ICEBERG).unwrap_err();
+        let error = source.into_scheme_compat(&Scheme::ICEBERG).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("$.created"), "{rejected:?}: {message}");
         for fragment in fragments {
@@ -609,7 +648,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         ),
     ])
     .unwrap();
-    let transformed = source.to_scheme_compat(&Scheme::ICEBERG).unwrap();
+    let transformed = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
     let fields = transformed.as_fields().unwrap();
 
     assert_eq!(fields[0].data_type(), &DataType::Int32);
@@ -633,7 +672,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     // A fixed-size list has no Iceberg equivalent, so it degrades to a list.
     let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 3).unwrap();
     assert_eq!(
-        fixed.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+        fixed.into_scheme_compat(&Scheme::ICEBERG).unwrap(),
         DataType::list(Field::new("item", DataType::Int32, false))
     );
 
@@ -649,7 +688,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     )])
     .unwrap();
     let message = union
-        .to_scheme_compat(&Scheme::ICEBERG)
+        .into_scheme_compat(&Scheme::ICEBERG)
         .unwrap_err()
         .to_string();
     assert!(message.contains("$.choice"), "{message}");
@@ -665,18 +704,27 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
     // them itself, so they pass unchanged.
     let geometry = Field::new("shape", DataType::geometry(None).unwrap(), true);
     assert_eq!(
-        geometry.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+        geometry
+            .clone()
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap(),
         geometry
     );
     let variant = Field::new("payload", DataType::variant(), true);
-    assert_eq!(variant.to_scheme_compat(&Scheme::ICEBERG).unwrap(), variant);
+    assert_eq!(
+        variant
+            .clone()
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap(),
+        variant
+    );
 
     // An imported geometry no longer carries its extension keys - they are
     // stripped as transport - so nothing trips the extension-storage rule.
-    let imported = Field::from_arrow(&geometry.to_arrow().unwrap()).unwrap();
+    let imported = Field::from_arrow(&geometry.clone().into_arrow().unwrap()).unwrap();
     assert!(!imported.has_metadata("ARROW:extension:name"));
     assert_eq!(
-        imported.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+        imported.into_scheme_compat(&Scheme::ICEBERG).unwrap(),
         geometry
     );
 
@@ -689,7 +737,7 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
     )
     .unwrap();
     let refused = foreign
-        .to_scheme_compat(&Scheme::ICEBERG)
+        .into_scheme_compat(&Scheme::ICEBERG)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("extension storage"), "{refused}");

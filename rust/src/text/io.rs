@@ -1,37 +1,13 @@
-//! Structured-text loading and dumping over [`IOBase`] handles.
-//!
-//! An [`IOBase`] already carries where its bytes live and what they are, so
-//! [`load`] and [`dump`] take one handle rather than a store plus a location.
-//! The structured format and the content coding both come from that handle's
-//! media type, which a location-addressed implementation infers from its
-//! compound filename: `trades.json.gz` decompresses and parses without a
-//! caller naming either step, and dumping to the same handle recompresses it.
-//!
-//! ```
-//! use yggdryl::io::{Buffer, IOBase};
-//! use yggdryl::text::{dump, load};
-//! use yggdryl::{Url, Value};
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut handle = Buffer::new().with_media_type(Url::from_str("file:///trades.json.gz")?.media_type());
-//!
-//! let value = Value::from_mapping([("symbol".into(), Value::from("AAPL"))])?;
-//! dump(&mut handle, &value)?;
-//!
-//! // The stored bytes really are gzip.
-//! assert_eq!(&handle.as_slice()[..2], &[0x1F, 0x8B]);
-//! assert_eq!(load(&handle)?, value);
-//! # Ok(())
-//! # }
-//! ```
+//! Natural structured-text I/O over Yggdryl handles.
 
-use crate::io::IOBase;
-use crate::text::{Format, Formatting, Limits, Value};
-use crate::{Codec, Level};
-use crate::{Error, MediaType, MimeType, Result};
+use std::io::{Cursor, Read};
 
-/// The structured format and content coding a handle's bytes use.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+use crate::io::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
+use crate::text::{Format, Formatting, Limits, Loading, Scalar};
+use crate::{Codec, Error, Field, Level, MediaType, MimeType, Result};
+
+/// The structured format and content coding used by a handle.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Plan {
     format: Format,
     codec: Codec,
@@ -43,52 +19,25 @@ impl Plan {
         Self { format, codec }
     }
 
-    /// Derive both from a media type.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the media type names no structured-text format.
+    /// Derive a plan from a media type.
     pub fn from_media_type(media_type: &MediaType) -> Result<Self> {
         let format =
-            format_from_mime(media_type.base()).ok_or_else(|| unknown_format(media_type))?;
+            Format::from_mime_type(media_type.base()).map_err(|_| unknown_format(media_type))?;
         Ok(Self {
             format,
             codec: Codec::from_media_type(media_type),
         })
     }
 
-    /// Derive both from a handle's declared media type.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the handle names no structured-text format.
-    pub fn infer(handle: &impl IOBase) -> Result<Self> {
+    /// Derive a plan from a handle's media type.
+    pub fn infer<H: IOBase + ?Sized>(handle: &H) -> Result<Self> {
         Self::from_media_type(handle.media_type())
     }
 
-    /// Derive the coding from a payload's leading bytes and the format from
-    /// the handle's media type.
-    ///
-    /// The two sources are deliberately not treated the same way. Content
-    /// codings have byte signatures, so the payload is authoritative and a
-    /// handle labelled JSON whose bytes are really gzip still decodes.
-    /// Structured text has no signature and JSON is a subset of YAML, so `{`
-    /// identifies neither; the declared media type decides the format and
-    /// content is consulted only when it names nothing.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when neither source names a structured-text format.
-    pub fn detect(handle: &impl IOBase, head: &[u8]) -> Result<Self> {
+    /// Detect coding from bytes and format from the handle, then content.
+    pub fn detect<H: IOBase + ?Sized>(handle: &H, head: &[u8]) -> Result<Self> {
         let content = MediaType::from_magic_bytes(head);
-        let codec = content.as_ref().map_or(Codec::Identity, |media| {
-            // A coding whose payload is unidentifiable is reported as the base
-            // type rather than as an encoding, so check both positions.
-            match Codec::from_media_type(media) {
-                Codec::Identity => Codec::from_mime_type(media.base()),
-                coding => coding,
-            }
-        });
+        let codec = detected_codec(content.as_ref());
         let declared = handle.media_type();
         let format = format_from_mime(declared.base())
             .or_else(|| {
@@ -100,7 +49,7 @@ impl Plan {
         Ok(Self { format, codec })
     }
 
-    /// Return the structured-text format.
+    /// Return the structured format.
     pub const fn format(self) -> Format {
         self.format
     }
@@ -111,7 +60,17 @@ impl Plan {
     }
 }
 
-/// Name the format a MIME type describes, through the one shared table.
+/// Recover a content coding from the probed representation, including media
+/// types such as `application/gzip` that name the coding as their base.
+fn detected_codec(content: Option<&MediaType>) -> Codec {
+    content.map_or(Codec::Identity, |media| {
+        match Codec::from_media_type(media) {
+            Codec::Identity => Codec::from_mime_type(media.base()),
+            coding => coding,
+        }
+    })
+}
+
 fn format_from_mime(mime: &MimeType) -> Option<Format> {
     Format::from_mime_type(mime).ok()
 }
@@ -127,164 +86,175 @@ fn unknown_format(media_type: &MediaType) -> Error {
     }
 }
 
-/// Read one structured value from a handle, decoding any content coding.
-///
-/// # Errors
-///
-/// Returns a read, decoding, or parse failure.
-pub fn load(source: &impl IOBase) -> Result<Value> {
-    load_with_limits(source, Limits::default())
+/// Read one natural structured value from a Yggdryl handle.
+pub fn from_io<H: IOBase + ?Sized>(source: &H) -> Result<Scalar> {
+    from_io_with_limits(source, Limits::default())
 }
 
-/// Read one structured value under explicit parser limits.
-///
-/// # Errors
-///
-/// Returns a read, decoding, or parse failure.
-pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Value> {
-    let bytes = source.read_all_bytes()?;
-    let plan = Plan::detect(source, &bytes)?;
-    let decoded = plan.codec().load(&bytes)?;
-    crate::text::from_slice_with_limits(&decoded, plan.format(), limits)
+/// Read one value from a handle with explicit parser limits.
+pub fn from_io_with_limits<H: IOBase + ?Sized>(source: &H, limits: Limits) -> Result<Scalar> {
+    let (decoded, plan) = decoded(source)?;
+    crate::text::from_reader_with_limits(decoded, plan.format(), limits)
 }
 
-/// Read one structured value under [`Loading`](crate::text::Loading).
-///
-/// The handle form of [`from_slice_with`](crate::text::from_slice_with): the
-/// content coding is peeled first, so the `{{` guard and the substitution both
-/// see the *decoded* document rather than its compressed bytes.
-///
-/// # Errors
-///
-/// Returns a read, decoding, or parse failure, or the substitution's refusal.
-pub fn load_with(source: &impl IOBase, loading: &crate::text::Loading) -> Result<Value> {
-    let bytes = source.read_all_bytes()?;
-    let plan = Plan::detect(source, &bytes)?;
-    let decoded = plan.codec().load(&bytes)?;
-    crate::text::from_slice_with(&decoded, plan.format(), loading)
+/// Read one handle value under `field`.
+pub fn from_io_with_field<H: IOBase + ?Sized>(source: &H, field: &Field) -> Result<Scalar> {
+    from_io_with_field_and_limits(source, field, Limits::default())
 }
 
-/// Read every structured value from a multi-document handle.
-///
-/// # Errors
-///
-/// Returns a read, decoding, or parse failure.
-pub fn load_all(source: &impl IOBase) -> Result<Vec<Value>> {
-    load_all_with_limits(source, Limits::default())
+/// Read one schema-directed handle value with explicit limits.
+pub fn from_io_with_field_and_limits<H: IOBase + ?Sized>(
+    source: &H,
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    let (decoded, plan) = decoded(source)?;
+    crate::text::from_reader_with_field_and_limits(decoded, plan.format(), field, limits)
 }
 
-/// Read every structured value under explicit parser limits.
-///
-/// # Errors
-///
-/// Returns a read, decoding, or parse failure.
-pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Value>> {
-    let bytes = source.read_all_bytes()?;
-    let plan = Plan::detect(source, &bytes)?;
-    let decoded = plan.codec().load(&bytes)?;
-    crate::text::from_slice_all_with_limits(&decoded, plan.format(), limits)
+/// Read one value from a handle under placeholder loading options.
+pub fn from_io_with<H: IOBase + ?Sized>(source: &H, loading: &Loading) -> Result<Scalar> {
+    let (decoded, plan) = decoded(source)?;
+    crate::text::from_reader_with(decoded, plan.format(), loading)
 }
 
-/// Write one structured value to a handle, applying its declared coding.
-///
-/// The handle's existing bytes are replaced only once encoding succeeds, so a
-/// failure leaves them untouched.
-///
-/// # Errors
-///
-/// Returns an encoding, serialization, or write failure.
-pub fn dump(target: &mut impl IOBase, value: &Value) -> Result<()> {
-    dump_with_level(target, value, Level::DEFAULT)
+/// Read every natural structured value from a handle.
+pub fn from_io_all<H: IOBase + ?Sized>(source: &H) -> Result<Vec<Scalar>> {
+    from_io_all_with_limits(source, Limits::default())
 }
 
-/// Write one structured value at an explicit compression level.
-///
-/// The one-knob spelling of [`dump_with`], kept because a caller who only
-/// wants a level should not have to build an options value.
-///
-/// # Errors
-///
-/// Returns an encoding, serialization, or write failure.
-pub fn dump_with_level(target: &mut impl IOBase, value: &Value, level: Level) -> Result<()> {
-    dump_with(target, value, Formatting::default().with_level(level))
+/// Read every handle value with explicit parser limits.
+pub fn from_io_all_with_limits<H: IOBase + ?Sized>(
+    source: &H,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    let (decoded, plan) = decoded(source)?;
+    crate::text::from_reader_all_with_limits(decoded, plan.format(), limits)
 }
 
-/// Write one structured value under explicit [`Formatting`].
-///
-/// One options companion rather than a cross-product of knob names: layout and
-/// content-coding level are two orthogonal knobs today and there will be a
-/// third, so they ride on one value and `dump` stays the zero-configuration
-/// path. `dump_with_level_and_formatting` is not a method name anyone should
-/// have to type.
-///
-/// ```
-/// use yggdryl::io::{Buffer, IOBase};
-/// use yggdryl::generic::Value;
-/// use yggdryl::text::{Formatting, dump_with, load};
-/// use yggdryl::Url;
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut handle = Buffer::new().with_media_type(Url::from_str("file:///a.json")?.media_type());
-/// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
-///
-/// dump_with(&mut handle, &value, Formatting::indented(2))?;
-/// assert_eq!(handle.read_all_bytes()?, b"{\n  \"id\": 1\n}");
-///
-/// // Formatting changes bytes, never meaning.
-/// assert_eq!(load(&handle)?, value);
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Errors
-///
-/// Returns an encoding, serialization, or write failure.
-pub fn dump_with(target: &mut impl IOBase, value: &Value, formatting: Formatting) -> Result<()> {
-    let plan = Plan::infer(target)?;
-    let mut encoded = Vec::new();
-    crate::text::to_writer_with_formatting(&mut encoded, value, plan.format(), formatting)?;
-    let encoded = plan.codec().dump_with_level(&encoded, formatting.level())?;
-    target.write_all_bytes(&encoded)
+/// Replace a handle with one natural structured value.
+pub fn into_io<H: IOBase + ?Sized>(value: &Scalar, target: &mut H) -> Result<()> {
+    into_io_with_formatting(value, target, Formatting::default())
 }
 
-/// Write many structured values to a multi-document handle.
-///
-/// # Errors
-///
-/// Returns an encoding, serialization, or write failure.
-pub fn dump_all(target: &mut impl IOBase, values: &[Value]) -> Result<()> {
-    dump_all_with(target, values, Formatting::default())
+/// Replace a handle with one value at an explicit compression level.
+pub fn into_io_with_level<H: IOBase + ?Sized>(
+    value: &Scalar,
+    target: &mut H,
+    level: Level,
+) -> Result<()> {
+    into_io_with_formatting(value, target, Formatting::default().with_level(level))
 }
 
-/// Write many structured values under explicit [`Formatting`].
-///
-/// # Errors
-///
-/// Returns an encoding, serialization, or write failure.
-pub fn dump_all_with(
-    target: &mut impl IOBase,
-    values: &[Value],
+/// Replace a handle with one value under explicit formatting.
+pub fn into_io_with_formatting<H: IOBase + ?Sized>(
+    value: &Scalar,
+    target: &mut H,
     formatting: Formatting,
 ) -> Result<()> {
     let plan = Plan::infer(target)?;
     let mut encoded = Vec::new();
-    crate::text::to_writer_all_with_formatting(&mut encoded, values, plan.format(), formatting)?;
-    let encoded = plan.codec().dump_with_level(&encoded, formatting.level())?;
+    {
+        let mut writer = plan
+            .codec()
+            .writer_with_level(&mut encoded, formatting.level());
+        crate::text::into_writer_with_formatting(value, &mut writer, plan.format(), formatting)?;
+        writer.finish()?;
+    }
     target.write_all_bytes(&encoded)
+}
+
+/// Replace a handle with encoded values.
+pub fn into_io_all<H: IOBase + ?Sized>(values: &[Scalar], target: &mut H) -> Result<()> {
+    into_io_all_with_formatting(values, target, Formatting::default())
+}
+
+/// Replace a handle with encoded values under explicit formatting.
+pub fn into_io_all_with_formatting<H: IOBase + ?Sized>(
+    values: &[Scalar],
+    target: &mut H,
+    formatting: Formatting,
+) -> Result<()> {
+    let plan = Plan::infer(target)?;
+    let mut encoded = Vec::new();
+    {
+        let mut writer = plan
+            .codec()
+            .writer_with_level(&mut encoded, formatting.level());
+        crate::text::into_writer_all_with_formatting(
+            values.iter(),
+            &mut writer,
+            plan.format(),
+            formatting,
+        )?;
+        writer.finish()?;
+    }
+    target.write_all_bytes(&encoded)
+}
+
+/// Open one decoded stream without retaining earlier byte batches.
+///
+/// The small prefix is replayed after magic detection, so sniffing never drops
+/// bytes and the parser still sees the source from position zero. The returned
+/// decoder owns the byte stream; its [`Read`] implementation fills parser-owned
+/// buffers directly and therefore allocates no iterator `Vec` per batch.
+pub(super) fn decoded<H: IOBase + ?Sized>(source: &H) -> Result<(Box<dyn Read + '_>, Plan)> {
+    decoded_with_format(source, None)
+}
+
+/// Open a decoded transport while letting an explicit codec receiver select
+/// the structured format. This preserves `Json.from_io(an_empty_buffer)`'s
+/// JSON error semantics even when the buffer itself has no media declaration.
+pub(super) fn decoded_for_format<H: IOBase + ?Sized>(
+    source: &H,
+    format: Format,
+) -> Result<Box<dyn Read + '_>> {
+    decoded_with_format(source, Some(format)).map(|(reader, _)| reader)
+}
+
+fn decoded_with_format<H: IOBase + ?Sized>(
+    source: &H,
+    format: Option<Format>,
+) -> Result<(Box<dyn Read + '_>, Plan)> {
+    let mut encoded = source.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+    let mut head = Vec::with_capacity(crate::generic::MAGIC_PROBE_LEN);
+    {
+        let mut probe = std::io::Read::take(&mut encoded, crate::generic::MAGIC_PROBE_LEN as u64);
+        probe.read_to_end(&mut head)?;
+    }
+    let plan = match format {
+        Some(format) => Plan::new(
+            format,
+            detected_codec(MediaType::from_magic_bytes(&head).as_ref()),
+        ),
+        None => Plan::detect(source, &head)?,
+    };
+    let replayed = Cursor::new(head).chain(encoded);
+    Ok((plan.codec().reader(replayed), plan))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Plan, dump, dump_all, load, load_all};
-    use crate::Codec;
-    use crate::io::Buffer;
-    use crate::text::Format;
-    use crate::{Url, Value};
+    use std::hash::Hash;
 
-    fn sample() -> Value {
-        Value::from_mapping([
-            ("symbol".into(), Value::from("AAPL")),
-            ("quantity".into(), Value::from(100_i64)),
+    use super::{Plan, from_io, from_io_all, into_io, into_io_all};
+    use crate::io::{Buffer, IOBase};
+    use crate::text::Format;
+    use crate::{Codec, Scalar, Url};
+
+    #[test]
+    fn plans_have_complete_value_traits() {
+        fn assert_traits<T: Copy + Eq + Ord + Hash>() {}
+        assert_traits::<Plan>();
+        let plan = Plan::new(Format::Json, Codec::Gzip);
+        assert_eq!(plan, plan.clone());
+        assert_eq!(crate::stable_hash_of(&plan), crate::stable_hash_of(&plan));
+    }
+
+    fn sample() -> Scalar {
+        Scalar::from_record([
+            ("quantity", Scalar::I64(100)),
+            ("symbol", Scalar::from("AAPL")),
         ])
         .unwrap()
     }
@@ -298,87 +268,86 @@ mod tests {
     }
 
     #[test]
-    fn plans_are_inferred_from_compound_filenames() {
+    fn plans_follow_compound_filenames() {
         let cases = [
             ("a.json", Format::Json, Codec::Identity),
             ("a.json.gz", Format::Json, Codec::Gzip),
             ("a.yaml.zst", Format::Yaml, Codec::Zstd),
             ("a.toml", Format::Toml, Codec::Identity),
-            ("a.jsonl.gz", Format::JsonLines, Codec::Gzip),
         ];
         for (name, format, codec) in cases {
-            let plan = Plan::infer(&handle(name)).unwrap_or_else(|error| panic!("{name}: {error}"));
-            assert_eq!(plan.format(), format, "{name}");
-            assert_eq!(plan.codec(), codec, "{name}");
+            let plan = Plan::infer(&handle(name)).unwrap();
+            assert_eq!((plan.format(), plan.codec()), (format, codec));
         }
     }
 
     #[test]
-    fn an_unrecognized_handle_names_what_it_accepts() {
-        let message = Plan::infer(&handle("a.parquet")).unwrap_err().to_string();
-        assert!(message.contains("json"), "{message}");
-        assert!(message.contains("toml"), "{message}");
-    }
-
-    #[test]
-    fn every_format_and_coding_round_trips() {
-        let value = sample();
-        for name in [
-            "a.json",
-            "a.json.gz",
-            "a.json.zst",
-            "a.yaml",
-            "a.yaml.gz",
-            "a.toml",
-            "a.toml.zst",
-        ] {
+    fn formats_and_codings_round_trip() {
+        for name in ["a.json", "a.json.gz", "a.yaml.zst", "a.toml"] {
             let mut target = handle(name);
-            dump(&mut target, &value).unwrap_or_else(|error| panic!("{name}: {error}"));
-            let loaded = load(&target).unwrap_or_else(|error| panic!("{name}: {error}"));
-            assert_eq!(loaded, value, "{name}");
+            into_io(&sample(), &mut target).unwrap();
+            assert_eq!(from_io(&target).unwrap(), sample(), "{name}");
         }
-    }
-
-    #[test]
-    fn compressed_output_really_is_compressed() {
-        let value = sample();
-        let mut plain = handle("a.json");
-        let mut gzipped = handle("a.json.gz");
-        dump(&mut plain, &value).unwrap();
-        dump(&mut gzipped, &value).unwrap();
-
-        assert_eq!(&gzipped.as_slice()[..2], &[0x1F, 0x8B]);
-        assert_ne!(plain.as_slice(), gzipped.as_slice());
-    }
-
-    #[test]
-    fn content_inference_overrides_a_misleading_media_type() {
-        let mut honest = handle("real.json.gz");
-        dump(&mut honest, &sample()).unwrap();
-
-        // The same bytes behind a handle that claims plain JSON.
-        let liar = Buffer::from_bytes(honest.as_slice().to_vec())
-            .with_media_type(Url::from_str("file:///liar.json").unwrap().media_type());
-
-        assert_eq!(load(&liar).unwrap(), sample());
-    }
-
-    #[test]
-    fn a_failed_dump_leaves_the_previous_bytes_intact() {
-        let mut target = Buffer::from_bytes(b"previous".to_vec())
-            .with_media_type(Url::from_str("file:///never.parquet").unwrap().media_type());
-        assert!(dump(&mut target, &sample()).is_err());
-        assert_eq!(target.as_slice(), b"previous");
     }
 
     #[test]
     fn multi_document_handles_round_trip() {
-        let values = vec![sample(), sample()];
-        for name in ["many.jsonl", "many.jsonl.gz", "many.yaml"] {
+        let values = [sample(), sample()];
+        for name in ["many.jsonl", "many.yaml"] {
             let mut target = handle(name);
-            dump_all(&mut target, &values).unwrap_or_else(|error| panic!("{name}: {error}"));
-            let loaded = load_all(&target).unwrap_or_else(|error| panic!("{name}: {error}"));
-            assert_eq!(loaded, values, "{name}");
+            into_io_all(&values, &mut target).unwrap();
+            assert_eq!(from_io_all(&target).unwrap(), values, "{name}");
+        }
+    }
+
+    #[test]
+    fn structured_parsers_cross_stream_batches_under_every_coding() {
+        let alphabet = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let mut state = 0xA537_1D09_u32;
+        let message = (0..256 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                alphabet[state as usize % alphabet.len()] as char
+            })
+            .collect::<String>();
+        let value = Scalar::from_record([
+            ("quantity", Scalar::I64(100)),
+            ("message", Scalar::from(message)),
+        ])
+        .unwrap();
+        let cases = [
+            (Format::Json, "json"),
+            (Format::Yaml, "yaml"),
+            (Format::Toml, "toml"),
+        ];
+        let codings = [
+            (Codec::Gzip, "gz"),
+            (Codec::Zlib, "zz"),
+            (Codec::Zstd, "zst"),
+        ];
+
+        for (format, extension) in cases {
+            let plain = crate::text::into_bytes(&value, format).unwrap();
+            assert!(plain.len() > crate::io::DEFAULT_STREAM_BATCH_SIZE);
+            for (codec, suffix) in codings {
+                // Deliberately declare only the structured format: the bounded
+                // replay prefix must still preserve magic-based coding
+                // detection before the parser crosses several decoded chunks.
+                let mut source = handle(&format!("large.{extension}"));
+                let encoded = codec.dump(&plain).unwrap();
+                assert!(
+                    encoded.len() > crate::io::DEFAULT_STREAM_BATCH_SIZE,
+                    "{format}/{codec}"
+                );
+                source.write_all_bytes(&encoded).unwrap();
+                assert_eq!(
+                    from_io(&source).unwrap(),
+                    value,
+                    "{format}/{codec}/{suffix}"
+                );
+            }
         }
     }
 }

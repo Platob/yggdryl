@@ -1,19 +1,30 @@
-//! Arrow array and IPC interoperability for [`crate::Value`].
+//! Arrow array and IPC interoperability for [`crate::Scalar`].
 //!
 //! Conversion is schema-directed and never serializes values through JSON.
 
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Field, Value};
-use arrow_array::{Array, ArrayRef, RecordBatch, Scalar, StructArray};
+use crate::{DataType, Field, Scalar};
+use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
+pub(crate) mod rows;
 pub(crate) mod value;
+
+/// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
+///
+/// The C schema represents dictionary ordering but has no slot for Arrow's
+/// deprecated per-field dictionary ID.  This entry is therefore emitted only
+/// by [`Field::into_arrow_exchange_schema`] and consumed by
+/// [`Field::from_arrow_schema`];
+/// it never becomes root [`Field`] metadata.
+pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
 
 /// A failure at the Yggdryl/Arrow runtime boundary.
 #[derive(Debug)]
@@ -260,7 +271,7 @@ impl From<ArrowError> for Error {
 /// # Errors
 ///
 /// Returns an error unless `field` is a bounded, non-nullable Struct root.
-pub fn schema_from_field(field: &Field) -> Result<SchemaRef> {
+pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
     field.validate_bounded()?;
     if field.is_nullable() {
         return Err(Error::IncompatibleSchema(
@@ -276,9 +287,10 @@ pub fn schema_from_field(field: &Field) -> Result<SchemaRef> {
     Ok(Arc::new(Schema::new_with_metadata(
         fields
             .iter()
-            .map(Field::to_arrow_ref)
+            .cloned()
+            .map(Field::into_arrow_ref)
             .collect::<crate::Result<Vec<_>>>()?,
-        field.as_metadata().to_arrow(),
+        field.as_metadata().clone().into_arrow(),
     )))
 }
 
@@ -305,7 +317,7 @@ pub type BatchReader = Box<dyn arrow_array::RecordBatchReader + Send>;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
 ///     .required_field("row");
-/// let arrow_schema = schema.to_arrow_schema()?;
+/// let arrow_schema = schema.into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
 ///     Arc::clone(&arrow_schema),
 ///     vec![Arc::new(Int64Array::from(vec![1, 2]))],
@@ -374,7 +386,7 @@ pub(crate) fn appended(
     Ok(Box::new(Chained {
         first: stored,
         second: cast_reader(incoming, field, safe)?,
-        schema: schema_from_field(field)?,
+        schema: arrow_schema_from_field(field)?,
     }))
 }
 
@@ -397,7 +409,7 @@ pub(crate) fn appended(
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
 ///     .required_field("row");
-/// let schema = yggdryl::arrow::schema_from_field(&root)?;
+/// let schema = root.clone().into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
 ///     Arc::clone(&schema),
 ///     vec![Arc::new(Int64Array::from(vec![1_i64]))],
@@ -424,7 +436,7 @@ pub fn combined_as(
     Ok(Box::new(Chained {
         first: cast_reader(left, field, safe)?,
         second: cast_reader(right, field, safe)?,
-        schema: schema_from_field(field)?,
+        schema: arrow_schema_from_field(field)?,
     }))
 }
 
@@ -477,8 +489,8 @@ pub fn combined_as(
 /// ])?
 /// .required_field("row");
 ///
-/// let left_schema = yggdryl::arrow::schema_from_field(&left_root)?;
-/// let right_schema = yggdryl::arrow::schema_from_field(&right_root)?;
+/// let left_schema = left_root.into_arrow_schema()?;
+/// let right_schema = right_root.into_arrow_schema()?;
 /// let left = yggdryl::arrow::batch_reader(
 ///     Arc::clone(&left_schema),
 ///     [RecordBatch::try_new(left_schema, vec![Arc::new(Int64Array::from(vec![1_i64]))])?],
@@ -510,8 +522,8 @@ pub fn combined_as(
 pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader> {
     // Both schemas are answered without pulling a batch, so the merge costs no
     // rows and the result stays lazy.
-    let left_root = record_schema_from_arrow("row", left.schema().as_ref())?;
-    let right_root = record_schema_from_arrow("row", right.schema().as_ref())?;
+    let left_root = field_from_arrow_schema("row", left.schema().as_ref())?;
+    let right_root = field_from_arrow_schema("row", right.schema().as_ref())?;
     let merged = merged_root(&left_root, &right_root)?;
     // Safe casting: a merge never widens, so a value that will not fit is a
     // disagreement worth raising rather than a null worth inventing.
@@ -624,7 +636,7 @@ impl arrow_array::RecordBatchReader for Cast {
 ///
 /// Returns an error unless `field` is a bounded, non-nullable Struct root.
 pub fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader> {
-    let schema = schema_from_field(field)?;
+    let schema = arrow_schema_from_field(field)?;
     if inner.schema() == schema {
         // An exact reader is already the declared shape, so casting each batch
         // would only rebuild arrays it would then hand back unchanged.
@@ -697,16 +709,71 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// same schema-directed walk every row value takes - the exact Field is the
 /// authority on nullability, dictionary options, and extension identity - and
 /// then materialized under the shared physical budgets. A caller holding a
-/// [`crate::TypedValue`] with no Field around it uses
-/// [`crate::TypedValue::to_arrow_array`] instead.
+/// [`crate::TypedScalar`] with no Field around it uses
+/// [`crate::TypedScalar::into_arrow_array`] instead.
 ///
 /// # Errors
 ///
 /// Returns an error when the value violates the Field or the physical Arrow
 /// layout cannot represent it.
-pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef> {
+pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
     let value = validate_scalar_value(field, value.clone())?;
     value::array_from_values(field, &[&value])
+}
+
+/// Materialize a sequence of native values as one Arrow array.
+///
+/// Each element is validated and canonicalized by `field`; materialization is
+/// a single array build, not a concatenation of scalar arrays.
+///
+/// # Errors
+///
+/// Returns an error when `values` is not a sequence or an element violates
+/// `field`.
+pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
+    let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
+        path: SmolStr::new_static("$"),
+        expected: SmolStr::new_static("a sequence of array values"),
+        actual: SmolStr::new(values.kind()),
+    })?;
+    let root = DataType::from_fields([field.clone()])?.required_field("row");
+    let mut canonical = Vec::with_capacity(values.len());
+    for value in values {
+        let row = Scalar::from_sequence([value.clone()]);
+        let row = root.canonicalize_value(row)?;
+        canonical.push(
+            row.as_sequence()
+                .and_then(|row| row.first())
+                .cloned()
+                .ok_or_else(|| Error::internal("arrow::array_from_value"))?,
+        );
+    }
+    let borrowed = canonical.iter().collect::<Vec<_>>();
+    value::array_from_values(field, &borrowed)
+}
+
+/// Materialize a sequence of native struct rows as one Arrow record batch.
+///
+/// The outer value is a sequence and each child is an ordered row sequence or
+/// a named [`Scalar::Record`]. The root Field validates and canonicalizes every
+/// row before one columnar build.
+///
+/// # Errors
+///
+/// Returns an error when `root` is not a record root, `rows` is not a
+/// sequence, or a row violates the schema.
+pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
+    let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
+        path: SmolStr::new_static("$"),
+        expected: SmolStr::new_static("a sequence of record values"),
+        actual: SmolStr::new(rows.kind()),
+    })?;
+    let schema = arrow_schema_from_field(root)?;
+    let mut canonical = Vec::with_capacity(rows.len());
+    for row in rows {
+        canonical.push(root.canonicalize_value(row.clone())?);
+    }
+    self::rows::batch_from_values(root, schema, &canonical)
 }
 
 /// Validate one external one-row Arrow array and decode its canonical value.
@@ -721,7 +788,7 @@ pub fn scalar_array(field: &Field, value: &Value) -> Result<ArrayRef> {
 /// such as null-only dictionaries, unions, and run-end encodings closed under
 /// [`scalar_array`] followed by this function without admitting arbitrary
 /// selected-null values.
-pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value> {
+pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     if array.len() != 1 {
         return Err(Error::IncompatibleSchema(format!(
             "Arrow scalar must contain exactly one value, got {}",
@@ -733,7 +800,7 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Value> {
     // malformed foreign scalar reports a normal schema error rather than
     // exhausting the native stack.
     field.data_type().validate_bounded()?;
-    let expected = field.to_arrow_ref()?.data_type().clone();
+    let expected = field.clone().into_arrow_ref()?.data_type().clone();
     if array.data_type() != &expected {
         return Err(Error::IncompatibleSchema(format!(
             "Arrow scalar datatype {:?} differs from expected {expected:?}",
@@ -768,16 +835,15 @@ pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
     let value = field.default_value()?;
     // The core planner has already bounded and recursively validated this
     // exact Field/value pair. Keep public [`scalar_array`] defensive for
-    // caller input without paying for a second Value validation here.
+    // caller input without paying for a second Scalar validation here.
     value::array_from_values(field, &[&value])
 }
 
-pub(crate) fn validate_scalar_value(field: &Field, value: Value) -> Result<Value> {
+pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {
     // Wrap the single value in a one-column row so it goes through exactly the
     // same schema-directed validator every other value does.
     let root = Field::new("scalar", DataType::from_fields([field.clone()])?, false);
-    let row = root.canonicalize_value(Value::from_sequence([value]))?;
-    root.validate_value(&row)?;
+    let row = root.canonicalize_value(Scalar::from_sequence([value]))?;
     row.as_sequence()
         .and_then(|values| values.first())
         .cloned()
@@ -787,7 +853,7 @@ pub(crate) fn validate_scalar_value(field: &Field, value: Value) -> Result<Value
 /// One real Arrow struct scalar paired with its exact Yggdryl root field.
 #[derive(Clone, Debug)]
 pub struct StructScalar {
-    schema: Field,
+    field: Field,
     array: StructArray,
 }
 
@@ -807,21 +873,19 @@ impl StructScalar {
         }
         if array.is_null(0) {
             return Err(Error::IncompatibleSchema(
-                "a native Value cannot represent a null root struct".to_owned(),
+                "a native Scalar cannot represent a null root struct".to_owned(),
             ));
         }
         ensure_struct_compatible(&schema, &array)?;
-        Ok(Self { schema, array })
-    }
-
-    /// Returns the shared native schema plan.
-    pub const fn schema(&self) -> &Field {
-        &self.schema
+        Ok(Self {
+            field: schema,
+            array,
+        })
     }
 
     /// Returns the exact root field.
-    pub fn field(&self) -> &Field {
-        &self.schema
+    pub const fn field(&self) -> &Field {
+        &self.field
     }
 
     /// Borrows the one-row Arrow struct array.
@@ -839,45 +903,31 @@ impl StructScalar {
 
     /// Returns a zero-copy one-element slice by exact field name.
     pub fn get_by_name(&self, name: &str) -> Option<ArrayRef> {
-        self.schema.index_of(name).and_then(|index| self.get(index))
+        self.field.index_of(name).and_then(|index| self.get(index))
     }
 
     /// Returns the exact Field and its zero-copy one-element Arrow slice.
     pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)> {
-        Some((self.schema.get_field(index)?, self.get(index)?))
-    }
-
-    /// Makes a shallow Arrow scalar clone.
-    pub fn to_arrow_scalar(&self) -> Scalar<StructArray> {
-        Scalar::new(self.array.clone())
+        Some((self.field.get_field(index)?, self.get(index)?))
     }
 
     /// Consumes this value into Arrow's scalar marker.
-    pub fn into_arrow_scalar(self) -> Scalar<StructArray> {
-        Scalar::new(self.array)
+    pub fn into_arrow_scalar(self) -> ArrowScalar<StructArray> {
+        ArrowScalar::new(self.array)
     }
 }
 
-/// Imports one Arrow Schema as a non-null Struct root Field.
-///
-/// Every Arrow field becomes one child, and the schema's own metadata becomes
-/// the root's, so field identifiers written as `PARQUET:field_id` survive the
-/// import. Dictionary identifiers stay as the transport delivered them.
-///
-/// # Errors
-///
-/// Returns an error when the Arrow fields cannot form a non-null Struct root.
 /// Read one Arrow array as a sequence of values, typed by `field`.
 ///
-/// Every row becomes the [`Value`] its datatype spells - a null slot is
-/// [`Value::Null`] - so the result serializes through any text format exactly
+/// Every row becomes the [`Scalar`] its datatype spells - a null slot is
+/// [`Scalar::Null`] - so the result serializes through any text format exactly
 /// as the rest of the value model does.
 ///
 /// # Errors
 ///
 /// Returns an error when the array does not hold the field's datatype or a
 /// value cannot be represented.
-pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
+pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     let mut rows = Vec::with_capacity(array.len());
     for index in 0..array.len() {
         rows.push(super::arrow::value::value_from_array(
@@ -886,24 +936,23 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Value> {
             index,
         )?);
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
-/// Read one record batch as a sequence of typed records.
+/// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`Value::Record`] holding the batch's struct datatype
-/// and one value per column, in column order, so `json`, `yaml`, and `toml`
-/// serialize a batch through their ordinary entry points: a record spells as
-/// the mapping of its field names to its values.
+/// Each row becomes a [`Scalar::Sequence`] with one value per column, in schema
+/// order. The batch schema remains the [`RecordBatch`]'s schema rather than
+/// being duplicated inside every row.
 ///
 /// # Errors
 ///
 /// Returns an error when the batch's schema does not project to a record root
 /// or a value cannot be represented.
-pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
-    let root = record_schema_from_arrow("row", batch.schema().as_ref())?;
-    let data_type = root.data_type().clone();
-    let fields: Vec<Field> = data_type
+pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar> {
+    let root = field_from_arrow_schema("row", batch.schema().as_ref())?;
+    let fields: Vec<Field> = root
+        .data_type()
         .as_fields()
         .ok_or_else(|| Error::IncompatibleSchema("a batch projects to a struct root".to_owned()))?
         .to_vec();
@@ -917,9 +966,9 @@ pub fn batch_to_value(batch: &RecordBatch) -> Result<Value> {
                 index,
             )?);
         }
-        rows.push(Value::record(data_type.clone(), values)?);
+        rows.push(Scalar::from_sequence(values));
     }
-    Ok(Value::from_sequence(rows))
+    Ok(Scalar::from_sequence(rows))
 }
 
 /// Build the root a `select_by_names` selection narrows `root` to.
@@ -957,14 +1006,220 @@ pub(crate) fn selected_root(
     ))
 }
 
-pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field> {
+type DictionaryIds = BTreeMap<Vec<usize>, i64>;
+
+fn dictionary_ids_error(reason: impl Into<SmolStr>) -> Error {
+    Error::Core(crate::Error::InvalidMetadataValue {
+        key: SmolStr::new_static(IPC_DICTIONARY_IDS_KEY),
+        reason: reason.into(),
+    })
+}
+
+fn dictionary_path_text(path: &[usize]) -> String {
+    path.iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+/// Collect non-default dictionary IDs by field position.
+///
+/// A dictionary's value datatype is transparent to the path: it introduces no
+/// Field of its own, while any Struct/List/Map/Union/RunEndEncoded fields below
+/// that value do.  Thus every path component always means "the child Field at
+/// this position", including the uncommon dictionary-of-struct shape.
+fn collect_dictionary_ids_in_data_type(
+    data_type: &DataType,
+    path: &mut Vec<usize>,
+    ids: &mut DictionaryIds,
+) {
+    if let DataType::Dictionary(dictionary) = data_type {
+        collect_dictionary_ids_in_data_type(dictionary.value(), path, ids);
+        return;
+    }
+    for index in 0..data_type.field_len() {
+        let child = data_type
+            .get_field(index)
+            .expect("an index below a datatype's declared field count");
+        path.push(index);
+        if let Some(id) = child.dictionary_id().filter(|id| *id != 0) {
+            ids.insert(path.clone(), id);
+        }
+        collect_dictionary_ids_in_data_type(child.data_type(), path, ids);
+        path.pop();
+    }
+}
+
+fn encode_dictionary_ids(ids: &DictionaryIds) -> String {
+    let mut encoded = String::from("v1");
+    for (path, id) in ids {
+        encoded.push(';');
+        encoded.push_str(&dictionary_path_text(path));
+        encoded.push('=');
+        encoded.push_str(&id.to_string());
+    }
+    encoded
+}
+
+fn parse_dictionary_ids(encoded: &str) -> Result<DictionaryIds> {
+    let Some(entries) = encoded.strip_prefix("v1;") else {
+        return Err(dictionary_ids_error(
+            "expected canonical v1 dictionary-ID entries such as v1;0=42;1.0=-7",
+        ));
+    };
+    if entries.is_empty() {
+        return Err(dictionary_ids_error(
+            "expected at least one non-zero dictionary-ID entry after v1;",
+        ));
+    }
+
+    let mut ids = DictionaryIds::new();
+    let mut previous: Option<Vec<usize>> = None;
+    for entry in entries.split(';') {
+        let Some((raw_path, raw_id)) = entry.split_once('=') else {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "expected one path=id entry, got {entry:?}"
+            )));
+        };
+        if raw_path.is_empty() || raw_id.is_empty() || raw_id.contains('=') {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "expected one non-empty path=id entry, got {entry:?}"
+            )));
+        }
+
+        let mut path = Vec::new();
+        for raw_index in raw_path.split('.') {
+            let index = raw_index.parse::<usize>().map_err(|_| {
+                dictionary_ids_error(format_smolstr!(
+                    "expected an unsigned positional path, got {raw_path:?}"
+                ))
+            })?;
+            if raw_index != index.to_string() {
+                return Err(dictionary_ids_error(format_smolstr!(
+                    "expected a canonical unsigned positional path, got {raw_path:?}"
+                )));
+            }
+            path.push(index);
+        }
+
+        let id = raw_id.parse::<i64>().map_err(|_| {
+            dictionary_ids_error(format_smolstr!(
+                "expected a signed 64-bit dictionary ID, got {raw_id:?} at path {raw_path}"
+            ))
+        })?;
+        if id == 0 || raw_id != id.to_string() {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "expected a canonical non-zero dictionary ID, got {raw_id:?} at path {raw_path}"
+            )));
+        }
+        if previous.as_ref().is_some_and(|held| held >= &path) {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "expected strictly increasing unique positional paths, got {raw_path:?} after {:?}",
+                previous
+                    .as_deref()
+                    .map(dictionary_path_text)
+                    .unwrap_or_default()
+            )));
+        }
+        previous = Some(path.clone());
+        ids.insert(path, id);
+    }
+    Ok(ids)
+}
+
+fn restore_dictionary_ids_in_field(
+    mut field: Field,
+    path: &mut Vec<usize>,
+    ids: &mut DictionaryIds,
+) -> Result<Field> {
+    if let Some(id) = ids.remove(path.as_slice()) {
+        let Some(actual) = field.dictionary_id() else {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "positional path {} names a {} field, not a dictionary field",
+                dictionary_path_text(path),
+                field.data_type().name()
+            )));
+        };
+        if actual != 0 && actual != id {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "positional path {} carries dictionary ID {actual} in Arrow but {id} in the sidecar",
+                dictionary_path_text(path)
+            )));
+        }
+        let is_ordered = field
+            .dictionary_is_ordered()
+            .expect("a dictionary field has an ordering flag");
+        field.set_dictionary_options(id, is_ordered)?;
+    }
+
+    let data_type = restore_dictionary_ids_in_data_type(field.data_type(), path, ids)?;
+    field.set_data_type(data_type)?;
+    Ok(field)
+}
+
+fn restore_dictionary_ids_in_data_type(
+    data_type: &DataType,
+    path: &mut Vec<usize>,
+    ids: &mut DictionaryIds,
+) -> Result<DataType> {
+    if let DataType::Dictionary(dictionary) = data_type {
+        let value = restore_dictionary_ids_in_data_type(dictionary.value(), path, ids)?;
+        return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
+    }
+
+    let mut children = Vec::with_capacity(data_type.field_len());
+    for index in 0..data_type.field_len() {
+        let child = data_type
+            .get_field(index)
+            .expect("an index below a datatype's declared field count")
+            .clone();
+        path.push(index);
+        children.push(restore_dictionary_ids_in_field(child, path, ids)?);
+        path.pop();
+    }
+    data_type.with_fields(children).map_err(Error::Core)
+}
+
+/// Imports one Arrow Schema as a non-null Struct root Field.
+///
+/// Every Arrow field becomes one child, and ordinary schema metadata becomes
+/// root metadata.  [`IPC_DICTIONARY_IDS_KEY`] restores the nested dictionary
+/// IDs that the Arrow C Data Interface cannot carry, then is removed rather
+/// than becoming part of the logical root Field.
+///
+/// # Errors
+///
+/// Returns an error when the Arrow fields cannot form a non-null Struct root,
+/// or when a dictionary-ID sidecar is malformed, conflicts with Arrow state,
+/// or addresses anything other than an existing dictionary field.
+pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Field> {
+    let mut metadata = schema.metadata().clone();
+    let mut dictionary_ids = metadata
+        .remove(IPC_DICTIONARY_IDS_KEY)
+        .map(|encoded| parse_dictionary_ids(&encoded))
+        .transpose()?
+        .unwrap_or_default();
     let fields = schema
         .fields()
         .iter()
         .map(|field| Field::from_arrow_ref(field.clone()).map_err(Error::Core))
         .collect::<Result<Vec<_>>>()?;
     let data_type = DataType::from_fields(fields)?;
-    let field = Field::from_parts(name, data_type, false, schema.metadata().clone())?;
+    let mut field = Field::from_parts(name, data_type, false, metadata)?;
+    if !dictionary_ids.is_empty() {
+        let data_type = restore_dictionary_ids_in_data_type(
+            field.data_type(),
+            &mut Vec::new(),
+            &mut dictionary_ids,
+        )?;
+        field.set_data_type(data_type)?;
+        if let Some((path, _)) = dictionary_ids.first_key_value() {
+            return Err(dictionary_ids_error(format_smolstr!(
+                "positional path {} does not name an existing dictionary field",
+                dictionary_path_text(path)
+            )));
+        }
+    }
     field.validate_struct_root()?;
     Ok(field)
 }
@@ -975,7 +1230,7 @@ pub fn record_schema_from_arrow(name: &str, schema: &Schema) -> Result<Field> {
 ///
 /// Returns an error naming both schemas when they disagree.
 fn ensure_struct_compatible(schema: &Field, array: &StructArray) -> Result<()> {
-    let expected = schema_from_field(schema)?;
+    let expected = arrow_schema_from_field(schema)?;
     let actual = array.fields();
     if expected.fields().as_ref() != actual.as_ref() {
         return Err(Error::IncompatibleSchema(format!(
@@ -989,10 +1244,34 @@ fn ensure_struct_compatible(schema: &Field, array: &StructArray) -> Result<()> {
 
 /// Projects a non-null Struct root Field as an Arrow schema.
 ///
+/// Non-zero dictionary IDs are also recorded by positional path in the
+/// transport-only [`IPC_DICTIONARY_IDS_KEY`] metadata entry.  Arrow's C Data
+/// Interface preserves that metadata while omitting the deprecated ID slot,
+/// so an outside runtime can return the schema without losing identity.
+///
 /// # Errors
 ///
 /// Returns an error when the Field is not a non-null Struct root or a child
-/// cannot be projected to Arrow.
-pub fn record_schema_to_arrow(schema: &Field) -> Result<Schema> {
-    Ok(schema_from_field(schema)?.as_ref().clone())
+/// cannot be projected to Arrow, or when caller-owned root metadata uses the
+/// reserved dictionary-ID key.
+pub(crate) fn arrow_exchange_schema_from_field(schema: &Field) -> Result<Schema> {
+    let projected = arrow_schema_from_field(schema)?;
+    if schema.has_metadata(IPC_DICTIONARY_IDS_KEY) {
+        return Err(dictionary_ids_error(
+            "this key is transport-owned; remove the caller-set root metadata entry",
+        ));
+    }
+
+    let mut ids = DictionaryIds::new();
+    collect_dictionary_ids_in_data_type(schema.data_type(), &mut Vec::new(), &mut ids);
+    if ids.is_empty() {
+        return Ok(projected.as_ref().clone());
+    }
+
+    let mut metadata = projected.metadata().clone();
+    metadata.insert(
+        IPC_DICTIONARY_IDS_KEY.to_owned(),
+        encode_dictionary_ids(&ids),
+    );
+    Ok(projected.as_ref().clone().with_metadata(metadata))
 }

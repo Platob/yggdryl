@@ -21,6 +21,8 @@ const compound: MediaType = MediaType.fromParts(MimeType.CSV, new Set([MimeType.
 const inferred: MediaType = MediaType.fromExtensions(new Set(['json', 'gz']))
 const encodings: MimeType[] = compound.encodings
 const iterated: MimeType[] = [...compound]
+const mimeIsIo: boolean = mime.isIo()
+const mediaIsIo: boolean = compound.isIo()
 compound.setBase('application/json')
 compound.setEncodings(new Set<MimeTypeInput>([MimeType.GZIP, 'zstd']))
 compound.pushEncoding(MimeType.BROTLI)
@@ -34,3 +36,5 @@ void parsedMedia
 void inferred
 void encodings
 void iterated
+void mimeIsIo
+void mediaIsIo

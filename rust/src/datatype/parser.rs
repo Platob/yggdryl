@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionMode};
-use crate::enums::EdgeAlgorithm;
+use crate::generic::EdgeAlgorithm;
 
 impl DataType {
     /// Maximum nesting accepted by the recursive string parser.
@@ -66,7 +66,8 @@ impl fmt::Display for DataType {
             D::Date64 => formatter.write_str("date64"),
             D::Time32(unit) => write!(formatter, "time32({unit})"),
             D::Time64(unit) => write!(formatter, "time64({unit})"),
-            D::Duration(unit) => write!(formatter, "duration({unit})"),
+            D::Duration32(unit) => write!(formatter, "duration32({unit})"),
+            D::Duration64(unit) => write!(formatter, "duration64({unit})"),
             D::Interval(unit) => write!(formatter, "interval({unit})"),
             D::Binary => formatter.write_str("binary"),
             D::FixedSizeBinary(width) => write!(formatter, "fixed_size_binary({width})"),
@@ -314,7 +315,15 @@ impl<'a> Parser<'a> {
                 DataType::time64(unit)
                     .map_err(|error| self.error_at(unit_start, format_smolstr!("{error}")))?
             }
-            "duration" => DataType::Duration(self.parse_required_time_unit(depth)?.0),
+            "duration32" => DataType::duration32(self.parse_required_time_unit(depth)?.0)?,
+            // Arrow's Debug form is exactly `Duration(unit)` and has no width
+            // because Arrow stores every duration in i64. Preserve that
+            // foreign round-trip without reviving lowercase `duration(...)`
+            // as a public width-ambiguous alias.
+            "duration" if word == "Duration" => {
+                DataType::duration64(self.parse_required_time_unit(depth)?.0)?
+            }
+            "duration64" => DataType::duration64(self.parse_required_time_unit(depth)?.0)?,
             "interval" => DataType::Interval(self.parse_interval_unit(depth)?),
             "binary" | "bytes" | "varbinary" | "blob" | "bytea" => {
                 self.ignore_optional_length()?;
@@ -342,7 +351,7 @@ impl<'a> Parser<'a> {
             "largelistview" | "largearrayview" => {
                 self.parse_list(ListKind::LargeListView, depth + 1)?
             }
-            "struct" | "row" | "record" => self.parse_struct(depth + 1)?,
+            "struct" | "row" => self.parse_struct(depth + 1)?,
             "union" | "denseunion" | "sparseunion" => self.parse_union(&keyword, depth + 1)?,
             // The parenthesis disambiguates, deterministically: bare `variant`
             // is the self-describing semi-structured datatype, and
@@ -431,7 +440,7 @@ impl<'a> Parser<'a> {
                     let (parsed, unit_start) =
                         self.parse_time_unit_span(Some(close), "timestamp unit")?;
                     unit = parsed;
-                    if !unit.is_temporal() {
+                    if !unit.is_arrow_time() {
                         return Err(self.error_at(
                             unit_start,
                             "timestamp requires a temporal resolution unit",
@@ -497,7 +506,7 @@ impl<'a> Parser<'a> {
             .consume_opening()
             .ok_or_else(|| self.error_here("expected a temporal unit parameter"))?;
         let (unit, unit_start) = self.parse_time_unit_span(Some(close), "temporal unit")?;
-        if !unit.is_temporal() {
+        if !unit.is_arrow_time() {
             return Err(self.error_at(unit_start, "expected a temporal resolution"));
         }
         self.expect_symbol(close)?;
@@ -506,18 +515,27 @@ impl<'a> Parser<'a> {
 
     fn parse_interval_unit(&mut self, depth: usize) -> Result<TimeUnit> {
         self.check_depth(depth)?;
-        let (unit, unit_start) = if self
+        let (unit, unit_start, sql_style) = if self
             .tokens
             .get(self.index)
             .is_none_or(|_| self.is_time_unit_boundary(self.index, None))
         {
-            (TimeUnit::MonthDayNano, self.current_position())
+            (TimeUnit::MonthDayNano, self.current_position(), false)
         } else if let Some(close) = self.consume_opening() {
-            let parsed = self.parse_time_unit_span(Some(close), "interval unit")?;
+            let (unit, unit_start) = self.parse_time_unit_span(Some(close), "interval unit")?;
             self.expect_symbol(close)?;
-            parsed
+            (unit, unit_start, false)
         } else {
-            self.parse_time_unit_span(None, "interval unit")?
+            let (unit, unit_start) = self.parse_time_unit_span(None, "interval unit")?;
+            (unit, unit_start, true)
+        };
+        // In SQL, bare `INTERVAL DAY` names the day-time interval family;
+        // parenthesized `interval(day)` remains the scalar Date32 unit and is
+        // rejected below rather than contextually reinterpreted.
+        let unit = if sql_style && unit == TimeUnit::Day {
+            TimeUnit::DayTime
+        } else {
+            unit
         };
         if unit.is_interval() {
             Ok(unit)

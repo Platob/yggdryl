@@ -3,12 +3,19 @@ import { MediaType, MimeType, Uri, Url, Urn, type PartitionEntry } from '..'
 const uri = Uri.from('https://example.com/data/file.tar.gz?q=1#part')
 const uriClone: Uri = Uri.from(uri)
 const fileUri: Uri = Uri.fromPath('C:\\data\\file.parquet')
-const filePath: string = fileUri.toPath()
+const filePath: string = fileUri.intoPath()
 const uriJson: unknown = uri.toJSON()
 const uriSegments: string[] = [...uri]
+const uriJoined: Uri = uri.joinPath('nested', 'file.parquet')
+const uriJoinedArray: Uri = uri.joinPath(['nested', 'file.parquet'])
 const uriExtension: string | null = uri.extension
 const uriExtensions: string[] = uri.extensions
 const uriStem: string | null = uri.stem
+const uriUser: string | null = uri.user
+const uriPassword: string | null = uri.password
+const uriHostname: string | null = uri.hostname
+const uriBucket: string | null = uri.bucket
+const uriRegion: string | null = uri.region
 uri.setFileName('renamed.csv')
 uri.setStem('renamed')
 uri.setExtension('json')
@@ -23,24 +30,29 @@ uri.setMediaType('text/csv;encodings=application/gzip')
 uri.setMediaType(MediaType.fromParts('text/csv', ['application/gzip']))
 
 const url = Url.fromUri(uri)
-const inferredUrl: Url = uri.toUrl()
+const inferredUrl: Url = uri.intoUrl()
 const urlClone: Url = Url.from(url)
 const fileUrl: Url = Url.fromPath('C:\\data\\file.parquet')
-const fileUrlPath: string = fileUrl.toPath()
-const urlUri: Uri = url.toUri()
+const fileUrlPath: string = fileUrl.intoPath()
+const urlUri: Uri = url.intoUri()
 const uriFromUrl: Uri = Uri.from(url)
 const urlSegments: string[] = [...url]
 const urlStem: string | null = url.stem
+const urlUser: string | null = url.user
+const urlPassword: string | null = url.password
+const urlHostname: string | null = url.hostname
+const urlBucket: string | null = url.bucket
+const urlRegion: string | null = url.region
 const urlMimeType: MimeType = url.mimeType
 const urlMediaType: MediaType = url.mediaType
 url.setExtension('csv')
 
 const urn = Urn.fromString('urn:isbn:9780131103627')
-const inferredUrn: Urn = urn.toUri().toUrn()
+const inferredUrn: Urn = urn.intoUri().intoUrn()
 const urnClone: Urn = Urn.from(urn)
 const invalidUrlAtRuntime: Url = Url.from(urn)
 const invalidUrnAtRuntime: Urn = Urn.from(url)
-const urnUri: Uri = urn.toUri()
+const urnUri: Uri = urn.intoUri()
 const uriFromUrn: Uri = Uri.from(urn)
 const namespace: string = urn.namespace
 const namespaceSpecific: string = urn.namespaceSpecific
@@ -55,9 +67,16 @@ void fileUri
 void filePath
 void uriJson
 void uriSegments
+void uriJoined
+void uriJoinedArray
 void uriExtension
 void uriExtensions
 void uriStem
+void uriUser
+void uriPassword
+void uriHostname
+void uriBucket
+void uriRegion
 void removedExtension
 void clearedExtensions
 void uriMimeType
@@ -71,6 +90,11 @@ void urlUri
 void uriFromUrl
 void urlSegments
 void urlStem
+void urlUser
+void urlPassword
+void urlHostname
+void urlBucket
+void urlRegion
 void urlMimeType
 void urlMediaType
 void urnClone

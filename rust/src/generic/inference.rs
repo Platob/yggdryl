@@ -1,6 +1,6 @@
 //! The datatype a value already is.
 //!
-//! Every [`Value`] variant carries the parts its Arrow datatype needs - the
+//! Every [`Scalar`] variant carries the parts its Arrow datatype needs - the
 //! width of an integer, the unit and zone of a timestamp, the scale of a
 //! decimal - so naming that datatype is a read, not a guess. This module is
 //! where the read lives, because a caller holding rows and no schema has
@@ -20,17 +20,17 @@
 //! value's.
 //!
 //! ```
-//! use yggdryl::{DataType, TimeUnit, Value};
+//! use yggdryl::{DataType, TimeUnit, Timezone, Scalar};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! assert_eq!(Value::from(u64::MAX).data_type()?, DataType::UInt64);
-//! assert_eq!(Value::decimal(1_050, 2).data_type()?, DataType::decimal(4, 2)?);
+//! assert_eq!(Scalar::from(u64::MAX).data_type()?, DataType::UInt64);
+//! assert_eq!(Scalar::d128(1_050, 2).data_type()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
-//!     Value::timestamp(0, TimeUnit::Microsecond, None)?.data_type()?,
+//!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.data_type()?,
 //!     DataType::Timestamp(TimeUnit::Microsecond, None),
 //! );
 //! assert_eq!(
-//!     Value::from_sequence([Value::from("AAPL"), Value::Null]).data_type()?,
+//!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).data_type()?,
 //!     DataType::list(yggdryl::Field::new("item", DataType::Utf8, true)),
 //! );
 //! # Ok(())
@@ -39,13 +39,13 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::value::Value;
-use crate::{DataType, Error, Field, Result, TimeUnit};
+use super::scalar::Scalar;
+use crate::{DataType, Error, Field, I256, Result, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
-const MAX_DECIMAL_PRECISION: u32 = 76;
+const MAX_DECIMAL_PRECISION: usize = 76;
 
-impl Value {
+impl Scalar {
     /// Return the datatype this value materializes into.
     ///
     /// The name is read off the variant, so a timestamp keeps its unit and
@@ -61,6 +61,73 @@ impl Value {
     /// nests past the shared recursion limit.
     pub fn data_type(&self) -> Result<DataType> {
         self.data_type_at(0)
+    }
+
+    /// Infer the exact Field for one scalar value.
+    ///
+    /// The stable name is `value`; a null value names a nullable Null field.
+    pub fn inferred_scalar_field(&self) -> Result<Field> {
+        Ok(Field::new("value", self.data_type()?, self.is_null()))
+    }
+
+    /// Infer the exact item Field for one outer Sequence.
+    ///
+    /// The stable name is `item`, matching the child name [`Self::data_type`]
+    /// gives an inferred List. Empty sequences are ambiguous and require a
+    /// declared Field.
+    pub fn inferred_array_field(&self) -> Result<Field> {
+        let Some(values) = self.as_sequence() else {
+            return Err(unnameable(format_smolstr!(
+                "expected an outer Sequence to infer an array item Field, got {}",
+                self.kind()
+            )));
+        };
+        if values.is_empty() {
+            return Err(unnameable(SmolStr::new_static(
+                "cannot infer an array item Field from an empty Sequence; pass a Field",
+            )));
+        }
+        self.data_type()?
+            .get_field(0)
+            .cloned()
+            .map(|field| field.with_name("item"))
+            .ok_or_else(|| {
+                unnameable(SmolStr::new_static(
+                    "an outer Sequence did not infer one List item Field",
+                ))
+            })
+    }
+
+    /// Infer one non-null Struct root from named Record rows.
+    ///
+    /// Positional Sequence rows carry no column names and empty rows carry no
+    /// datatype, so both require a declared Field. The stable root name is
+    /// `row` in Rust, Python, and JavaScript.
+    pub fn inferred_struct_field(&self) -> Result<Field> {
+        let Some(rows) = self.as_sequence() else {
+            return Err(unnameable(format_smolstr!(
+                "expected a non-empty Sequence of named Record rows to infer a Struct Field, got {}",
+                self.kind()
+            )));
+        };
+        if rows.is_empty() {
+            return Err(unnameable(SmolStr::new_static(
+                "cannot infer a Struct Field from empty rows; pass a Struct Field",
+            )));
+        }
+        if rows.iter().any(|row| !matches!(row, Self::Record(_))) {
+            return Err(unnameable(SmolStr::new_static(
+                "positional Sequence rows cannot infer field names; pass a Struct Field",
+            )));
+        }
+        let item = self.data_type()?.get_field(0).cloned().ok_or_else(|| {
+            unnameable(SmolStr::new_static(
+                "named Record rows did not infer one List item Field",
+            ))
+        })?;
+        let root = item.with_name("row").with_nullable(false);
+        root.validate_struct_root()?;
+        Ok(root)
     }
 
     /// Name this value's datatype, refusing to recurse past the shared limit.
@@ -90,30 +157,61 @@ impl Value {
             // zero is an integer, so that is what a wide integer becomes.
             Self::I128(value) => integer_decimal(digits(value.unsigned_abs())),
             Self::U128(value) => integer_decimal(digits(*value)),
+            Self::F16(_) => Ok(DataType::Float16),
             Self::F32(_) => Ok(DataType::Float32),
             Self::F64(_) => Ok(DataType::Float64),
-            Self::Decimal(unscaled, scale) => decimal_data_type(*unscaled, *scale),
+            Self::D128(unscaled, scale) => {
+                decimal_data_type(I256::from_i128(*unscaled), *scale, DecimalWidth::D128)
+            }
+            Self::D256(unscaled, scale) => decimal_data_type(*unscaled, *scale, DecimalWidth::D256),
             Self::String(_) => Ok(DataType::Utf8),
-            Self::Bytes(_) => Ok(DataType::Binary),
+            Self::Enum(_) => Ok(DataType::Utf8),
             // The datatype model has no geospatial family yet, so a geometry
             // names what it stores: the WKB bytes.
-            Self::Geospatial(_) => Ok(DataType::Binary),
-            Self::Date(_) => Ok(DataType::Date32),
-            Self::Time(_, unit) => DataType::time(*unit),
-            Self::Timestamp(_, unit, zone) => {
-                resolution(*unit, "timestamp")?;
-                Ok(DataType::Timestamp(*unit, Some(zone.clone())))
+            Self::Bytes(_) | Self::Geospatial(_) => Ok(DataType::Binary),
+            Self::Date32(_, unit, zone) => {
+                require(
+                    *unit == TimeUnit::Day && zone.is_naive(),
+                    "invalid Date32 parts",
+                )?;
+                Ok(DataType::Date32)
             }
-            Self::DateTime(_, unit) => {
-                resolution(*unit, "timestamp")?;
-                Ok(DataType::Timestamp(*unit, None))
+            Self::Date64(_, unit, zone) => {
+                require(
+                    *unit == TimeUnit::Millisecond && zone.is_naive(),
+                    "invalid Date64 parts",
+                )?;
+                Ok(DataType::Date64)
             }
-            Self::Duration(_, unit) => {
-                resolution(*unit, "duration")?;
-                Ok(DataType::Duration(*unit))
+            Self::Time32(_, unit, zone) => {
+                require(zone.is_naive(), "Time32 cannot carry a timezone")?;
+                DataType::time32(*unit)
             }
-            // A record carries its type; inference is what it already knows.
-            Self::Record(data_type, _) => Ok((**data_type).clone()),
+            Self::Time64(_, unit, zone) => {
+                require(zone.is_naive(), "Time64 cannot carry a timezone")?;
+                DataType::time64(*unit)
+            }
+            Self::DateTime64(_, unit, zone) => {
+                resolution(*unit, "datetime64")?;
+                Ok(DataType::Timestamp(
+                    *unit,
+                    (!zone.is_naive()).then(|| zone.clone()),
+                ))
+            }
+            Self::Duration32(_, unit, zone) => {
+                require(
+                    unit.is_arrow_time() && zone.is_naive(),
+                    "invalid Duration32 parts",
+                )?;
+                Ok(DataType::Duration32(*unit))
+            }
+            Self::Duration64(_, unit, zone) => {
+                require(
+                    unit.is_arrow_time() && zone.is_naive(),
+                    "invalid Duration64 parts",
+                )?;
+                Ok(DataType::Duration64(*unit))
+            }
             Self::Sequence(values) => {
                 let (data_type, nullable) = agreed(values.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", data_type, nullable)))
@@ -130,13 +228,24 @@ impl Value {
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
+            Self::Record(entries) => DataType::from_fields(
+                entries
+                    .iter()
+                    .map(|(name, value)| {
+                        let nullable = value.is_null();
+                        value
+                            .data_type_at(depth + 1)
+                            .map(|data_type| Field::new(name.as_str(), data_type, nullable))
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+            ),
         }
     }
 }
 
 /// Return the one datatype every non-null value names, and whether any was null.
 fn agreed<'a>(
-    values: impl IntoIterator<Item = &'a Value>,
+    values: impl IntoIterator<Item = &'a Scalar>,
     role: &'static str,
     depth: usize,
 ) -> Result<(DataType, bool)> {
@@ -148,15 +257,17 @@ fn agreed<'a>(
             continue;
         }
         let data_type = value.data_type_at(depth + 1)?;
-        match &agreed {
-            Some(existing) if existing != &data_type => {
-                return Err(unnameable(format_smolstr!(
-                    "every {role} must name one datatype, got {} and {}",
-                    crate::text::elide_display(existing),
-                    crate::text::elide_display(&data_type),
-                )));
-            }
-            Some(_) => {}
+        match agreed.take() {
+            Some(existing) => match merge_inferred(&existing, &data_type) {
+                Some(merged) => agreed = Some(merged),
+                None => {
+                    return Err(unnameable(format_smolstr!(
+                        "every {role} must name one datatype, got {} and {}",
+                        crate::text::elide_display(&existing),
+                        crate::text::elide_display(&data_type),
+                    )));
+                }
+            },
             None => agreed = Some(data_type),
         }
     }
@@ -164,17 +275,69 @@ fn agreed<'a>(
     Ok(agreed.map_or((DataType::Null, true), |data_type| (data_type, nullable)))
 }
 
+/// Merge nullability inside inferred records without widening scalar types.
+fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
+    if left == right {
+        return Some(left.clone());
+    }
+    if matches!(left, DataType::Null) {
+        return Some(right.clone());
+    }
+    if matches!(right, DataType::Null) {
+        return Some(left.clone());
+    }
+    let (DataType::Struct(left), DataType::Struct(right)) = (left, right) else {
+        return None;
+    };
+    if left.len() != right.len()
+        || left
+            .iter()
+            .zip(right.iter())
+            .any(|(left, right)| left.name() != right.name())
+    {
+        return None;
+    }
+    let fields = left
+        .iter()
+        .zip(right.iter())
+        .map(|(left, right)| {
+            Some(Field::new(
+                left.name(),
+                merge_inferred(left.data_type(), right.data_type())?,
+                left.is_nullable()
+                    || right.is_nullable()
+                    || matches!(left.data_type(), DataType::Null)
+                    || matches!(right.data_type(), DataType::Null),
+            ))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    DataType::from_fields(fields).ok()
+}
+
 /// Return the exact decimal a coefficient and scale name.
-fn decimal_data_type(unscaled: i128, scale: i8) -> Result<DataType> {
+enum DecimalWidth {
+    D128,
+    D256,
+}
+
+fn decimal_data_type(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataType> {
     // Arrow requires a positive scale to fit inside the precision, so a
     // coefficient of 5 at scale 3 is `0.005` and needs three digits, not one.
-    let precision = digits(unscaled.unsigned_abs()).max(u32::try_from(scale.max(0)).unwrap_or(0));
+    let precision = unscaled
+        .to_string()
+        .trim_start_matches('-')
+        .len()
+        .max(usize::try_from(scale.max(0)).unwrap_or(0));
     if precision > MAX_DECIMAL_PRECISION {
         return Err(unnameable(format_smolstr!(
             "a decimal of {precision} digits exceeds Arrow's maximum precision of {MAX_DECIMAL_PRECISION}"
         )));
     }
-    DataType::decimal(u8::try_from(precision.max(1)).unwrap_or(1), scale)
+    let precision = u8::try_from(precision.max(1)).unwrap_or(76);
+    match width {
+        DecimalWidth::D128 => DataType::decimal128(precision, scale),
+        DecimalWidth::D256 => DataType::decimal256(precision, scale),
+    }
 }
 
 /// Return the exact decimal a 128-bit integer of `digits` digits needs.
@@ -184,13 +347,17 @@ fn integer_decimal(digits: u32) -> Result<DataType> {
 
 /// Reject a calendar interval layout where a temporal resolution is required.
 fn resolution(unit: TimeUnit, kind: &'static str) -> Result<()> {
-    if unit.is_temporal() {
+    if unit.is_arrow_time() {
         Ok(())
     } else {
         Err(unnameable(format_smolstr!(
             "a {kind} unit must be a temporal resolution, got {unit}"
         )))
     }
+}
+
+fn require(valid: bool, reason: &'static str) -> Result<()> {
+    valid.then_some(()).ok_or_else(|| unnameable(reason.into()))
 }
 
 /// Return how many decimal digits a magnitude is written with.

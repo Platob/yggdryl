@@ -16,6 +16,7 @@ arrow-array.workspace = true
 arrow-ipc.workspace = true
 arrow-schema.workspace = true
 base64 = "0.22"
+half.workspace = true
 napi = { workspace = true, features = ["serde-json"] }
 napi-derive.workspace = true
 # Only for naming a page compression: the codec value is a Parquet type, and

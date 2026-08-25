@@ -5,7 +5,9 @@ const os = require('node:os')
 const path = require('node:path')
 const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
-const { Value, codec, json, toml, yaml } = require('yggdryl')
+const { pathToFileURL } = require('node:url')
+const arrow = require('apache-arrow')
+const { Field, Scalar, avro, codec, json, toml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({
@@ -16,23 +18,59 @@ const value = {
 }
 const exotic = {
   bytes: Buffer.from([0, 1, 127, 255]),
-  map: new Map([[{ venue: 'XPAR' }, new Set([1n, 2n])]]),
-  nan: Number.NaN,
+  map: new Map([['venues', new Set(['XPAR', 'XNAS'])]]),
+  ratio: Math.PI,
   regexp: /a\/b/giu,
   typed: new Uint16Array([0, 65535]),
 }
 // The temporal and decimal boundary is its own cost: each value crosses as
 // parts rather than as one number, and a Date is rebuilt on the way back.
 const temporal = {
-  at: Value.timestamp(1700000000000000n, 'us', 'UTC'),
+  at: Scalar.datetime64(1700000000000000n, 'us', 'UTC'),
   date: new Date('2026-08-15T12:30:00.000Z'),
-  on: Value.date(19723),
-  price: Value.decimal(-1050n, 2),
-  sinceMidnight: Value.time(45296000000n, 'us'),
-  took: Value.duration(90n, 's'),
+  on: Scalar.date32(19723),
+  price: Scalar.d256(-(2n ** 160n), 2),
+  sinceMidnight: Scalar.time64(45296000000n, 'us'),
+  took: Scalar.duration32(90, 's'),
 }
 let deep = { leaf: true }
 for (let depth = 0; depth < 24; depth += 1) deep = { nested: deep }
+
+// Raw Avro fixtures are built once. Timed operations cross only the public
+// JavaScript/native boundary; setup and fixture generation stay outside every
+// measured loop.
+const avroSchemaDocument = {
+  type: 'record',
+  name: 'trade',
+  fields: [
+    { name: 'id', type: 'long' },
+    { name: 'price', type: 'double' },
+    { name: 'symbol', type: 'string' },
+  ],
+}
+const avroReaderDocument = {
+  type: 'record',
+  name: 'trade',
+  fields: [
+    { name: 'id', type: 'long' },
+    { name: 'ticker', aliases: ['symbol'], type: 'string' },
+  ],
+}
+const avroSchema = new avro.Schema(avroSchemaDocument)
+const avroReader = new avro.Schema(avroReaderDocument)
+const avroRows = value.trades.map((row, index) => ({
+  ...row,
+  // Every value stays physically double; an integral JavaScript number is
+  // deliberately inferred as an integer by the shared Scalar pivot.
+  price: index + 0.5,
+}))
+const avroContainer = avro.dumps(avroRows, avroSchema, { source: 'benchmark' })
+const avroSingle = avro.dumpsSingle(avroRows[0], avroSchema)
+const avroSchemaBytes = Buffer.byteLength(JSON.stringify(avroSchemaDocument))
+const avroBlock = avro.blocks(avroContainer).next().value
+const avroResolvedBlock = avro.blocks(avroContainer, {
+  readerSchema: avroReader,
+}).next().value
 
 function measure(name, bytes, iterations, operation) {
   for (let index = 0; index < 5; index += 1) operation()
@@ -77,10 +115,26 @@ async function main() {
 
       // Keep these group spellings stable so before/after runs remain comparable.
       measure(`${name}/slice`, encoded.length, 100, () => format.loads(encoded))
+      measure(`${name}/exact_value`, encoded.length, 100, () =>
+        format.loads(encoded, { scalar: true }),
+      )
       measure(`${name}/string`, encoded.length, 100, () => format.loads(text))
       measure(`${name}/offset_view`, encoded.length, 100, () => format.loads(view))
-      measure(`${name}/reader_path`, encoded.length, 100, () => format.load(file))
+      measure(`${name}/reader_path`, encoded.length, 100, () =>
+        format.load(pathToFileURL(file)),
+      )
       measure(`${name}/vector_emit`, encoded.length, 100, () => format.dumps(value))
+      measure(`${name}/formatted_emit`, encoded.length, 100, () =>
+        format.dumps(value, { indent: 2 }),
+      )
+      measure(`${name}/explicit_limits`, encoded.length, 100, () =>
+        format.loads(encoded, {
+          maxDepth: 48,
+          maxInputBytes: encoded.length,
+          maxNodes: 10_000,
+          maxDocuments: 1,
+        }),
+      )
       measure(`${name}/writer_path`, encoded.length, 100, () => format.dump(value, file))
       await measureAsync(`${name}/reader_stream`, encoded.length, 25, () =>
         format.load(Readable.from([encoded])),
@@ -109,9 +163,62 @@ async function main() {
     // The pivot is the conversion every load and dump crosses, measured on its
     // own against the same payload so a codec number can be read against it.
     const pivotBytes = json.dumps(value).length
-    measure('pivot/from_js', pivotBytes, 100, () => Value.fromJs(value))
-    const pivot = Value.fromJs(value)
+    measure('pivot/from_js', pivotBytes, 100, () => Scalar.fromJs(value))
+    const pivot = Scalar.fromJs(value)
     measure('pivot/as_js', pivotBytes, 100, () => pivot.asJs())
+    measure('pivot/equals_native', pivotBytes, 1_000, () => pivot.equals(pivot))
+    measure('pivot/compare_native', pivotBytes, 1_000, () => pivot.compare(pivot))
+    measure('pivot/stable_hash', pivotBytes, 1_000, () => pivot.stableHash())
+    measure('pivot/clone_native', pivotBytes, 1_000, () => pivot.clone())
+    const enumScalar = Scalar.fromEnum('io_mode', 'append')
+    measure('pivot/enum_from', 1, 10_000, () => Scalar.fromEnum('io_mode', 'append'))
+    measure('pivot/enum_kind', 1, 10_000, () => enumScalar.enumKind)
+    measure('pivot/enum_value', 1, 10_000, () => enumScalar.enumValue)
+    measure('pivot/enum_ordinal', 1, 10_000, () => enumScalar.enumOrdinal)
+    const traversed = Scalar.fromJs({ trades: value.trades })
+    measure('pivot/native_path', 1, 10_000, () => traversed.path('trades.500.price'))
+    measure('pivot/native_get', 1, 10_000, () => traversed.get('trades').at(500))
+    measure('pivot/persistent_set', 1, 2_000, () => traversed.set('version', 1))
+    const scalarValue = Scalar.fromJs(42)
+    const arrayValue = Scalar.fromJs([1, null])
+    const rowValue = Scalar.fromJs([{ id: 1, symbol: 'AAPL' }])
+    measure('pivot/infer_scalar_field', 1, 1_000, () => scalarValue.intoField())
+    measure('pivot/infer_array_field', 2, 1_000, () => arrayValue.intoArrayField())
+    measure('pivot/infer_struct_field', 2, 1_000, () => rowValue.intoStructField())
+    const arithmeticLeft = Scalar.d128(123456n, 2)
+    const arithmeticRight = Scalar.d128(25n, 2)
+    measure('pivot/add_native', 1, 10_000, () => arithmeticLeft.add(arithmeticRight))
+    measure('pivot/add_inferred_js', 1, 10_000, () => scalarValue.add(1))
+    measure('pivot/subtract_native', 1, 10_000, () =>
+      arithmeticLeft.subtract(arithmeticRight),
+    )
+    measure('pivot/multiply_native', 1, 10_000, () =>
+      arithmeticLeft.multiply(arithmeticRight),
+    )
+    measure('pivot/divide_native', 1, 10_000, () =>
+      arithmeticLeft.divide(arithmeticRight),
+    )
+    measure('pivot/remainder_native', 1, 10_000, () =>
+      arithmeticLeft.remainder(arithmeticRight),
+    )
+    measure('pivot/negate_native', 1, 10_000, () => arithmeticLeft.negate())
+    const arithmeticNegative = arithmeticLeft.negate()
+    measure('pivot/absolute_native', 1, 10_000, () => arithmeticNegative.absolute())
+
+    const decimalField = new Field('price', 'decimal256(40,2)', false)
+    const decimalJson = Buffer.from('"123456789012345678901234567890.50"')
+    measure('json/field_d256', decimalJson.length, 100, () =>
+      json.loads(decimalJson, { field: decimalField }),
+    )
+
+    const arrowVector = arrow.vectorFromArray(Int32Array.from({ length: 1_000 }, (_, i) => i))
+    const arrowValues = Scalar.fromArrowArray(arrowVector)
+    measure('arrow/from_array_ipc', arrowVector.length * 4, 50, () =>
+      Scalar.fromArrowArray(arrowVector),
+    )
+    measure('arrow/into_array_ipc', arrowVector.length * 4, 50, () =>
+      arrowValues.intoArrowArray(),
+    )
 
     const inferred = json.dumps(value)
     measure('generic/content_sniff', inferred.length, 100, () => codec.from(inferred))
@@ -121,6 +228,49 @@ async function main() {
     const inferredToml = toml.dumps(value)
     measure('generic/content_infer_toml', inferredToml.length, 50, () =>
       codec.from(inferredToml),
+    )
+
+    measure('avro/schema_parse', avroSchemaBytes, 100, () =>
+      new avro.Schema(avroSchemaDocument),
+    )
+    measure('avro/schema_canonical', avroSchemaBytes, 100, () =>
+      avroSchema.intoCanonicalForm(),
+    )
+    measure('avro/schema_equals', avroSchemaBytes, 1_000, () =>
+      avroSchema.equals(avroSchema),
+    )
+    measure('avro/schema_compare', avroSchemaBytes, 1_000, () =>
+      avroSchema.compare(avroSchema),
+    )
+    measure('avro/schema_stable_hash', avroSchemaBytes, 1_000, () =>
+      avroSchema.stableHash(),
+    )
+    measure('avro/schema_clone', avroSchemaBytes, 1_000, () => avroSchema.clone())
+    measure('avro/container_decode', avroContainer.length, 50, () =>
+      avro.loads(avroContainer),
+    )
+    measure('avro/container_resolve', avroContainer.length, 50, () =>
+      avro.loads(avroContainer, { readerSchema: avroReader }),
+    )
+    // Measure the lazy contract at its useful boundary: header parse plus
+    // time to the first still-compressed block, without decoding its rows.
+    measure('avro/blocks_first', avroContainer.length, 100, () =>
+      avro.blocks(avroContainer).next(),
+    )
+    measure('avro/block_decode', avroContainer.length, 50, () =>
+      avroBlock.rows(),
+    )
+    measure('avro/block_resolve', avroContainer.length, 50, () =>
+      avroResolvedBlock.rows(),
+    )
+    measure('avro/container_encode', avroContainer.length, 50, () =>
+      avro.dumps(avroRows, avroSchema, { source: 'benchmark' }),
+    )
+    measure('avro/single_decode', avroSingle.length, 100, () =>
+      avro.loadsSingle(avroSingle, avroSchema),
+    )
+    measure('avro/single_encode', avroSingle.length, 100, () =>
+      avro.dumpsSingle(avroRows[0], avroSchema),
     )
   } finally {
     fs.rmSync(directory, { force: true, recursive: true })

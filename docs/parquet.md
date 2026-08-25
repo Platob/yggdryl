@@ -2,11 +2,20 @@
 
 Read and write Apache Parquet files, and their footer statistics, over any handle.
 
+At handle level, overwrite, append, and keyed merge use the shared
+[canonical record-write signatures](io.md#canonical-record-write-signatures).
+The free `parquet::overwrite_arrow_reader` function below remains the one
+complete-file encoder those intents publish through; the stateful wrapper uses
+`overwrite_arrow_reader` like every other media handle.
+
 !!! note "All three"
     Python and JavaScript reach the encoding through [`IOBase`](io.md)'s record
     methods, which cover reading, writing, column pushdown, row groups, and
-    footer metadata; the statistics reader and the stateful `Parquet` wrapper
-    stay in Rust, and each section below says so.
+    footer statistics. The stateful `Parquet` wrapper and encoding free
+    functions stay Rust-only; the inferred handle surface is shared by all
+    three languages.
+
+## Arrow batch reads and writes
 
 === "Rust"
 
@@ -14,35 +23,57 @@ Read and write Apache Parquet files, and their footer statistics, over any handl
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::io::Buffer;
-    use yggdryl::parquet::Parquet;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::{DataType, Url};
 
-    // A non-null struct Field is the schema.
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
     ])?
     .required_field("row");
+    let schema = field.into_arrow_schema()?;
+    let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(StringArray::from(symbols)),
+            ],
+        )
+    };
 
-    let arrow_schema = field.to_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2, 3])),
-            Arc::new(StringArray::from(vec![Some("AAPL"), None, Some("MSFT")])),
-        ],
+    // The name decides Parquet; the methods name the write intent.
+    let mut handle =
+        Buffer::new().with_media_type(Url::from_str("file:///trades.parquet")?.media_type());
+    let options = handle.record_options()?;
+    handle.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])?],
+        ),
+        &options,
+    )?;
+    handle.append_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![3], vec![Some("GOOG")])?],
+        ),
+        &options,
+    )?;
+    handle.merge_arrow_reader(
+        yggdryl::arrow::batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![2, 4], vec![Some("NVDA"), None])?],
+        ),
+        &options.clone().with_merge_by_names(["id"]),
     )?;
 
-    let url = Url::from_str("file:///trades.parquet")?;
-    let mut media = Parquet::new(Buffer::new().with_media_type(url.media_type()));
-    media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch.clone()]))?;
-
-    // Reading streams: one batch at a time, never one materialized table.
-    let read = media.read_batch_reader(None)?.collect::<Result<Vec<_>, _>>()?;
-    assert_eq!(read, [batch]);
-    assert_eq!(read[0].num_rows(), 3);
+    let rows = handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<usize, _>>()?;
+    assert_eq!(rows, 4);
     ```
 
 === "Python"
@@ -60,21 +91,24 @@ Read and write Apache Parquet files, and their footer statistics, over any handl
         pa.field("id", pa.int64(), nullable=False),
         pa.field("symbol", pa.string()),
     ])
-    batch = pa.record_batch(
-        {"id": [1, 2, 3], "symbol": ["AAPL", None, "MSFT"]}, schema=schema
+    batch = lambda ids, symbols: pa.record_batch(
+        {"id": ids, "symbol": symbols}, schema=schema
     )
 
-    # The name says Parquet, so no call names an encoding.
     path = pathlib.Path(tempfile.mkdtemp()) / "trades.parquet"
     with IOBase(path) as handle:
-        handle.write_arrow_batch_reader(batch)
+        handle.overwrite_arrow_batch(batch([1, 2], ["AAPL", "MSFT"]))
+        handle.append_arrow_batch(batch([3], ["GOOG"]))
 
-        # Reading streams: one batch at a time, never one materialized table.
-        assert handle.read_arrow_batch_reader().read_all().num_rows == 3
+        merging = handle.record_options()
+        merging.merge_by_names = ["id"]
+        handle.merge_arrow_batch(
+            batch([2, 4], ["NVDA", None]), options=merging
+        )
 
-    # The scope published the file at its exact length, so PyArrow's own reader
-    # finds the footer where the format says it is.
-    assert pq.read_table(path) == pa.Table.from_batches([batch])
+        assert handle.read_arrow_reader().read_all().num_rows == 4
+
+    assert pq.read_table(path).num_rows == 4
     ```
 
 === "JavaScript"
@@ -87,22 +121,125 @@ Read and write Apache Parquet files, and their footer statistics, over any handl
     const arrow = require('apache-arrow')
     const { IOBase } = require('yggdryl')
 
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', null, 'MSFT'], new arrow.Utf8()),
+    const rows = (ids, symbols) => new arrow.Table({
+      id: arrow.vectorFromArray(ids.map(BigInt), new arrow.Int64()),
+      symbol: arrow.vectorFromArray(symbols, new arrow.Utf8()),
     })
 
-    // The name says Parquet, so no call names an encoding.
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.parquet'))
-    handle.writeArrowBatchReader(table)
+    handle.overwriteArrowTable(rows([1, 2], ['AAPL', 'MSFT']))
+    handle.appendArrowTable(rows([3], ['GOOG']))
+    handle.mergeArrowTable(
+      rows([2, 4], ['NVDA', null]),
+      handle.recordOptions().withMergeByNames(['id']),
+    )
 
-    // Reading streams: one batch at a time, never one materialized table.
-    assert.equal(handle.readArrowBatchReader().toTable().numRows, 3)
+    assert.equal(handle.readArrowReader().intoTable().numRows, 4)
     assert.deepEqual([...handle.readBytes().subarray(0, 4)], [...Buffer.from('PAR1')])
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
+
+Parquet answers the same explicit overwrite, append, and keyed merge intents
+as every other encoding. Their [canonical signatures and streaming
+rules](io.md#canonical-record-write-signatures) apply without a format
+argument: the handle's media type selects Parquet, while `merge_by_names`
+supplies row-identity keys only.
+
+### Measured batch operations
+
+The read fixture contains 65,536 rows and four columns. The write fixture contains 4,096 rows;
+Criterion prepares the stored side for append and keyed merge outside the timer. Keyed merge is
+the upsert operation: matching `id` rows are updated and misses are inserted.
+
+| batch operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| read and drain `read_arrow_reader` | 65,536 | 18.6 ms | 3.52M rows/s |
+| `overwrite_arrow_reader` | 4,096 | 3.91 ms | 1.05M rows/s |
+| `append_arrow_reader` | 4,096 | 8.06 ms | 508k rows/s |
+| keyed `merge_arrow_reader` (upsert) | 4,096 | 9.03 ms | 453k rows/s |
+
+These are Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5
+150 with rustc 1.96.1 (2026-08-23). Regenerate them on the deployment host with
+`io_dimensions/parquet/read_rows` and `io_write_stateful/parquet`; the longer PyArrow comparison
+remains in [Against PyArrow](#against-pyarrow).
+
+### Dimensions and opened sessions
+
+`row_size` and `column_size` range-read only the eight-byte tail and footer; no row group or column
+page is decoded. They describe the whole file, ignoring selection, filters, and limits. Closed calls
+read a fresh footer; `open` retains the inferred Parquet wrapper and footer until `close`, and writes
+invalidate it.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::generic::Holder;
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{DataType, MimeType};
+
+    let field = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let schema = field.clone().into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1, 2]))],
+    )?;
+    let mut handle = Holder::buffer(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+    let options = handle.record_options()?;
+    handle.overwrite_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]), &options)?;
+
+    handle.open()?;
+    assert_eq!(handle.read_arrow_field(&options)?, field);
+    assert_eq!((handle.row_size()?, handle.column_size()?), (2, 1));
+    handle.close()?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "dimensions.parquet")
+    handle.overwrite_arrow_table(pa.table({"id": [1, 2]}))
+    with handle:
+        assert (handle.row_size, handle.column_size) == (2, 1)
+        assert handle.read_arrow_field().name == "row"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'dimensions.parquet'))
+    handle.overwriteArrowTable(arrow.tableFromArrays({ id: [1, 2] }))
+    handle.open()
+    assert.deepEqual([handle.rowSize, handle.columnSize], [2, 1])
+    assert.equal(handle.readArrowField().name, 'row')
+    handle.close()
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+The same 65,536-row fixture measured fresh/opened `row_size` at 8.95 us/9.12 ns,
+fresh/opened `column_size` at 18.1 us/6.86 ns, and fresh/opened `read_arrow_field` at
+297 us/119 us. Regenerate with
+`cargo bench -p yggdryl --bench io --all-features -- io_dimensions/parquet`.
 
 Everything on this page is behind the non-default `parquet` feature. The codec is version-locked to
 the pinned Arrow release and pulls in a thrift and compression stack a schema-only consumer never
@@ -110,22 +247,22 @@ touches, so it is opted into rather than carried. Without it the module does not
 [`RecordOptions::for_mime_type`](generic.md) reports `application/vnd.apache.parquet` as an encoding
 this build does not implement instead of guessing one.
 
-`Parquet<H>` binds one file to one handle and owns every setting, so neither is passed again at each
-call. Streaming is the only shape: `Parquet::write_batch_reader` consumes an
-[`arrow::BatchReader`](arrow.md) and replaces the file, and `Parquet::read_batch_reader` returns one.
-`arrow::batch_reader` is the constructor that turns batches a caller already has into one. There is
-no row-level read or write anywhere here - a batch is the unit - and every batch a write pulls must
-match the schema its reader declares, which is checked per batch and reported with the index that
-disagreed.
+`Parquet<H>` binds one file to its handle, default settings, and opened footer
+cache. `record_options` returns those defaults for the canonical `IOMedia`
+calls: `overwrite_arrow_reader` consumes an [`arrow::BatchReader`](arrow.md),
+while `read_arrow_reader` returns one and `read_arrow_field` returns its
+canonical non-null struct root [`Field`](field.md). `arrow::batch_reader` turns
+batches already in hand into the same streaming shape; every pulled batch is
+checked against the reader's field and errors name its index.
 
-`Parquet::read_batch_reader` takes the columns to keep, `read_schema` returns the Arrow schema, `read_field`
-and `schema` return the canonical non-null struct root [`Field`](field.md), and `read_statistics`
-returns the footer. Each of these exists as a free function too - `parquet::read_schema`,
-`read_field`, `read_batch_reader`, `write_batch_reader`, `read_statistics` - taking the handle
+The specialized `read_arrow_schema` returns the Arrow schema and
+`read_statistics` returns the footer. The encoding seams also exist as free functions - `parquet::read_arrow_schema`,
+`read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics` - taking the handle
 explicitly, and a `&ParquetOptions` where the settings matter.
 
-Both bindings call the same operations on the handle itself - `read_arrow_batch_reader` and
-`write_arrow_batch_reader` - so a file this large never becomes a table on either side unless a caller asks
+Both bindings call the same operations on the handle itself - Python's
+`read_arrow_reader` / `overwrite_arrow_reader` and JavaScript's
+`readArrowReader` / `overwriteArrowReader` - so a file this large never becomes a table on either side unless a caller asks
 for one. Python exchanges `pyarrow.RecordBatchReader` values across the Arrow C Stream interface;
 JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, one batch per stream.
 `record_options()`/`recordOptions()` is the Parquet settings value, carrying `compression`,
@@ -140,7 +277,8 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
 
     use arrow_array::{Float64Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::generic::IORecordOptions;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
@@ -151,7 +289,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
         DataType::Utf8.required_field("venue"),
     ])?
     .required_field("row");
-    let arrow_schema = stored.to_arrow_schema()?;
+    let arrow_schema = stored.into_arrow_schema()?;
 
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -164,7 +302,8 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     )?;
 
     let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
-    media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // Two of the four columns, named by a root Field of its own.
     let wanted = DataType::from_fields([
@@ -173,13 +312,13 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     ])?
     .required_field("row");
 
-    let projected = media.read_batch_reader(Some(&wanted))?;
+    let projected = media.read_arrow_reader(&options.clone().with_field(wanted))?;
     assert_eq!(projected.schema().fields().len(), 2);
     let read = projected.collect::<Result<Vec<_>, _>>()?;
     assert_eq!(read[0].num_columns(), 2);
 
     // The file is unchanged: it still stores all four.
-    assert_eq!(media.read_schema()?.fields().len(), 4);
+    assert_eq!(media.read_arrow_schema()?.fields().len(), 4);
     ```
 
 === "Python"
@@ -210,20 +349,19 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     )
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
-    handle.write_arrow_batch_reader(batch)
+    handle.overwrite_arrow_batch(batch)
 
-    # Two of the four columns, declared as this read's schema - a single
-    # setting is its own keyword, no options object needed.
-    projected = handle.read_arrow_batch_reader(
-        schema=pa.schema([
-            pa.field("id", pa.int64(), nullable=False),
-            pa.field("price", pa.float64(), nullable=False),
-        ])
-    ).read_all()
+    # Two of the four columns, declared through the centralized options field.
+    options = handle.record_options()
+    options.field = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("price", pa.float64(), nullable=False),
+    ])
+    projected = handle.read_arrow_reader(options=options).read_all()
     assert projected.column_names == ["id", "price"]
 
     # Less is read, and the bytes say so rather than the clock.
-    whole = handle.read_arrow_batch_reader().read_all()
+    whole = handle.read_arrow_reader().read_all()
     assert projected.nbytes * 2 <= whole.nbytes
 
     # The file is unchanged: it still stores all four.
@@ -242,7 +380,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.parquet'))
-    handle.writeArrowBatchReader(
+    handle.overwriteArrowTable(
       new arrow.Table({
         id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
         symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
@@ -258,8 +396,8 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
       { nullable: false },
     )
 
-    const options = handle.recordOptions().withSchema(wanted)
-    const projected = handle.readArrowBatchReader(options).toTable()
+    const options = handle.recordOptions().withField(wanted)
+    const projected = handle.readArrowReader(options).intoTable()
     assert.equal(projected.numCols, 2)
     assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id', 'price'])
 
@@ -291,12 +429,12 @@ types, so a caller wanting a different shape casts afterwards.
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
     use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, Level, MimeType};
 
     let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = field.to_arrow_schema()?;
+    let arrow_schema = field.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![Arc::new(Int64Array::from((0..1_000).collect::<Vec<i64>>()))],
@@ -323,11 +461,15 @@ types, so a caller wanting a different shape casts afterwards.
 
     let mut media =
         Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into())).with_options(options);
-    media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let call_options = media.record_options()?;
+    media.overwrite_arrow_reader(
+        arrow::batch_reader(arrow_schema, [batch]),
+        &call_options,
+    )?;
 
     // batch_size bounds the reader, so no batch holds all 1,000 rows.
     let rows: Vec<usize> = media
-        .read_batch_reader(None)?
+        .read_arrow_reader(&call_options)?
         .collect::<Result<Vec<_>, _>>()?
         .iter()
         .map(arrow_array::RecordBatch::num_rows)
@@ -336,12 +478,13 @@ types, so a caller wanting a different shape casts afterwards.
     assert!(rows.iter().all(|count| *count <= 256), "{rows:?}");
 
     // The root name names the Field recovered from the footer.
-    assert_eq!(media.read_field()?.name(), "trade");
+    assert_eq!(media.read_arrow_field(&call_options)?.name(), "trade");
 
     // A declared schema is returned as-is, so an empty handle answers without a footer.
     let declared =
-        Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into())).with_schema(field.clone());
-    assert_eq!(declared.read_field()?, field);
+        Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into())).with_field(field.clone());
+    let declared_options = declared.record_options()?;
+    assert_eq!(declared.read_arrow_field(&declared_options)?, field);
     ```
 
 === "Python"
@@ -372,10 +515,10 @@ types, so a caller wanting a different shape casts afterwards.
     assert options.root_name == "trade"
     assert not options.safe
 
-    handle.write_arrow_batch_reader(batch, options=options)
+    handle.overwrite_arrow_batch(batch, options=options)
 
     # batch_size bounds the reader, so no batch holds all 1,000 rows.
-    counts = [part.num_rows for part in handle.read_arrow_batch_reader(options=options)]
+    counts = [part.num_rows for part in handle.read_arrow_reader(options=options)]
     assert sum(counts) == 1_000
     assert all(count <= 256 for count in counts), counts
 
@@ -411,13 +554,13 @@ types, so a caller wanting a different shape casts afterwards.
     assert.equal(options.safe, false)
 
     const ids = Array.from({ length: 1_000 }, (_, index) => BigInt(index))
-    handle.writeArrowBatchReader(
+    handle.overwriteArrowTable(
       new arrow.Table({ id: arrow.vectorFromArray(ids, new arrow.Int64()) }),
       options,
     )
 
     // batchSize bounds the reader, so no batch holds all 1,000 rows.
-    const counts = [...handle.readArrowBatchReader(options)].map((batch) => batch.numRows)
+    const counts = [...handle.readArrowReader(options)].map((batch) => batch.numRows)
     assert.equal(counts.reduce((total, count) => total + count, 0), 1_000)
     assert.ok(counts.every((count) => count <= 256), counts.join())
 
@@ -431,14 +574,16 @@ types, so a caller wanting a different shape casts afterwards.
 `max_row_group_size`, the row bound that decides how many row groups the file gets; and
 `key_value_metadata`, entries written into the footer next to the ones the writer adds itself. The
 rest are the flat shared fields every record encoding stores under the same names, reached through
-[`IORecordOptions`](generic.md): `schema`, `root_name`, `safe`, `batch_size`, and `level`.
+[`IORecordOptions`](generic.md): `field`, `root_name`, `safe`, `batch_size`, `max_row_size`,
+`max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and
+`filter_partitions`.
 
 `level` is the one that does nothing here. It is the compression level of a declared content coding,
 and Parquet has no outer coding to apply it to; `compression` is the setting that decides how the
 file compresses.
 
-`Parquet::with_options` replaces the whole set, while `with_schema` and `with_root_name` reach
-through to the two most commonly changed. A declared schema short-circuits `read_field` - it is
+`Parquet::with_options` replaces the whole set, while `with_field` and `with_root_name` reach
+through to the two most commonly changed. A declared field short-circuits `field` - it is
 returned as it was given, without reading the file - and `root_name` only names a root recovered
 from the footer when no schema was declared.
 
@@ -459,7 +604,7 @@ from the footer when no schema was declared.
     use parquet::basic::Compression;
     use yggdryl::arrow;
     use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, MimeType};
 
@@ -471,7 +616,7 @@ from the footer when no schema was declared.
 
     let ids: Vec<i64> = (0..4_000).collect();
     let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
-    let arrow_schema = field.to_arrow_schema()?;
+    let arrow_schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![
@@ -493,10 +638,16 @@ from the footer when no schema was declared.
                     .with_compression(compression)
                     .with_batch_size(batch.num_rows()),
             );
-        media.write_batch_reader(arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]))?;
+        let options = media.record_options()?;
+        media.overwrite_arrow_reader(
+            arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]),
+            &options,
+        )?;
 
         // Nothing on the read side names the compression: the footer records it.
-        let read = media.read_batch_reader(None)?.collect::<Result<Vec<_>, _>>()?;
+        let read = media
+            .read_arrow_reader(&options)?
+            .collect::<Result<Vec<_>, _>>()?;
         assert_eq!(read, [batch.clone()], "{compression:?}");
         sizes.push(media.handle().size());
     }
@@ -531,10 +682,10 @@ from the footer when no schema was declared.
         options = handle.record_options()
         options.compression = compression
         options.batch_size = rows
-        handle.write_arrow_batch_reader(table, options=options)
+        handle.overwrite_arrow_table(table, options=options)
 
         # Nothing on the read side names the compression: the footer records it.
-        read = handle.read_arrow_batch_reader(options=options).read_all()
+        read = handle.read_arrow_reader(options=options).read_all()
         assert read.num_rows == rows, compression
         sizes.append(handle.size)
 
@@ -566,10 +717,10 @@ from the footer when no schema was declared.
         .recordOptions()
         .withCompression(compression)
         .withBatchSize(table.numRows)
-      handle.writeArrowBatchReader(table, options)
+      handle.overwriteArrowTable(table, options)
 
       // Nothing on the read side names the compression: the footer records it.
-      const read = handle.readArrowBatchReader(options).toTable()
+      const read = handle.readArrowReader(options).intoTable()
       assert.equal(read.numRows, 4_000, compression)
       sizes.push(handle.size)
     }
@@ -581,7 +732,7 @@ from the footer when no schema was declared.
 
 Compression is a write setting and never a read one. The codec each column chunk was written with is
 recorded in the file's own metadata, so a reader recovers it from the footer and the same
-`read_batch_reader` call decodes any of these files. The default is Zstandard at its default level, with
+`read_arrow_reader` call decodes any of these files. The default is Zstandard at its default level, with
 1,048,576-row groups.
 
 ## Coded handles are rejected
@@ -591,7 +742,7 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
     ```rust
     use arrow_array::RecordBatch;
     use yggdryl::arrow;
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::io::{Buffer, IOBase, IOMedia};
     use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, Url};
 
@@ -601,8 +752,12 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
     let url = Url::from_str("file:///trades.parquet.gz")?;
     let mut media = Parquet::new(Buffer::new().with_media_type(url.media_type()));
 
-    let empty = arrow::batch_reader(field.to_arrow_schema()?, std::iter::empty::<RecordBatch>());
-    let message = media.write_batch_reader(empty).unwrap_err().to_string();
+    let empty = arrow::batch_reader(field.into_arrow_schema()?, std::iter::empty::<RecordBatch>());
+    let options = media.record_options()?;
+    let message = media
+        .overwrite_arrow_reader(empty, &options)
+        .unwrap_err()
+        .to_string();
     assert!(message.contains("parquet compresses"), "{message}");
     assert!(message.contains("ParquetOptions::compression"), "{message}");
 
@@ -627,7 +782,7 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet.gz")
 
     with pytest.raises(ValueError, match="parquet compresses"):
-        handle.write_arrow_batch_reader(pa.record_batch({"id": [1]}, schema=schema))
+        handle.overwrite_arrow_batch(pa.record_batch({"id": [1]}, schema=schema))
 
     # Nothing was published.
     assert handle.size == 0
@@ -650,7 +805,7 @@ recorded in the file's own metadata, so a reader recovers it from the footer and
 
     assert.throws(
       () =>
-        handle.writeArrowBatchReader(
+        handle.overwriteArrowTable(
           new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }),
         ),
       /parquet compresses/,
@@ -680,7 +835,7 @@ handle untouched.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
@@ -690,7 +845,7 @@ handle untouched.
     ])?
     .required_field("row");
 
-    let arrow_schema = field.to_arrow_schema()?;
+    let arrow_schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![
@@ -700,17 +855,18 @@ handle untouched.
     )?;
 
     let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
-    media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // The ids went into the file, so the Arrow schema carries them back.
-    let schema = media.read_schema()?;
+    let schema = media.read_arrow_schema()?;
     assert_eq!(
         schema.field(0).metadata().get("PARQUET:field_id"),
         Some(&"1".to_owned())
     );
 
     // And the recovered Field answers by id rather than by position.
-    let recovered = media.read_field()?;
+    let recovered = media.read_arrow_field(&options)?;
     assert_eq!(recovered.fields()[0].parquet_field_id()?, Some(1));
     assert_eq!(recovered.fields()[1].parquet_field_id()?, Some(2));
     ```
@@ -732,7 +888,7 @@ handle untouched.
     batch = pa.record_batch({"id": [1], "symbol": ["AAPL"]}, schema=schema)
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
-    handle.write_arrow_batch_reader(batch)
+    handle.overwrite_arrow_batch(batch)
 
     # The ids went into the file, so the recovered Field answers by id rather
     # than by position.
@@ -770,7 +926,7 @@ handle untouched.
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const handle = new IOBase(path.join(root, 'trades.parquet'))
-    handle.writeArrowBatchReader(new arrow.Table(schema, rows.batches[0].data))
+    handle.overwriteArrowTable(new arrow.Table(schema, rows.batches[0].data))
 
     // The ids went into the file, so the recovered Field answers by id rather
     // than by position.
@@ -790,103 +946,137 @@ been renamed or moved: the id is in the data file, not just in the catalog.
 
 ## Footer statistics
 
-!!! note "Rust only"
-    The bindings read a file's schema and rows but not its footer statistics
-    yet.
+The inferred handle methods validate that the leaf is Parquet, range-read its footer, and decode no
+rows. Rust receives the typed `FileStatistics`; Python and JavaScript receive the same shape through
+the shared `Scalar` conversion, so integers, byte bounds, nulls, lists, and records become native
+language values without binding-side DTO logic.
 
-```rust
-use std::sync::Arc;
+=== "Rust"
 
-use arrow_array::{Int64Array, RecordBatch, StringArray};
-use yggdryl::arrow;
-use yggdryl::io::Buffer;
-use yggdryl::parquet::{Parquet, ParquetOptions};
-use yggdryl::{DataType, MimeType};
+    ```rust
+    use std::sync::Arc;
 
-let field = DataType::from_fields([
-    DataType::Int64.required_field("id"),
-    DataType::Utf8.nullable_field("symbol"),
-])?
-.required_field("row");
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow;
+    use yggdryl::io::{Buffer, IOMedia};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
+    use yggdryl::{DataType, MimeType, Scalar};
 
-let ids: Vec<i64> = (0..2_048).collect();
-let symbols: Vec<Option<&str>> = ids
-    .iter()
-    .map(|index| (index % 2 == 0).then_some("AAPL"))
-    .collect();
-let arrow_schema = field.to_arrow_schema()?;
-let batch = RecordBatch::try_new(
-    Arc::clone(&arrow_schema),
-    vec![
-        Arc::new(Int64Array::from(ids)),
-        Arc::new(StringArray::from(symbols)),
-    ],
-)?;
+    let field = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?.required_field("row");
+    let schema = field.into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2, 3, 4])),
+            Arc::new(StringArray::from(vec![Some("AAPL"), None, Some("MSFT"), None])),
+        ],
+    )?;
+    let mut media = Parquet::new(
+        Buffer::new().with_media_type(MimeType::PARQUET.into()),
+    ).with_options(
+        ParquetOptions::new()
+            .with_max_row_group_size(2)
+            .with_key_value("writer", "rust"),
+    );
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(arrow::batch_reader(schema, [batch]), &options)?;
 
-let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into())).with_options(
-    ParquetOptions::new()
-        .with_max_row_group_size(512)
-        .with_key_value("iceberg.schema-id", "7"),
-);
-media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let statistics = IOMedia::read_parquet_statistics(&media)?;
+    assert_eq!(statistics.num_rows, 4);
+    assert_eq!(statistics.row_groups.len(), 2);
+    assert_eq!(statistics.null_count("symbol"), Some(2));
+    let native = Scalar::from(statistics);
+    assert_eq!(native.get_key_str("num_rows").and_then(Scalar::as_i64), Some(4));
+    ```
 
-let statistics = media.read_statistics()?;
-assert_eq!(statistics.num_rows, 2_048);
-assert_eq!(statistics.row_groups.len(), 4);
-assert!(statistics.created_by.is_some());
-assert!(
-    statistics
-        .key_value_metadata
-        .iter()
-        .any(|(key, value)| key == "iceberg.schema-id" && value == "7"),
-    "{:?}",
-    statistics.key_value_metadata
-);
+=== "Python"
 
-// Null counts are summed over every row group; an unknown path is None, not zero.
-assert_eq!(statistics.null_count("symbol"), Some(1_024));
-assert_eq!(statistics.null_count("id"), Some(0));
-assert_eq!(statistics.null_count("absent"), None);
+    ```python
+    import pathlib
+    import tempfile
 
-// One offset per row group, ascending.
-let offsets = statistics.split_offsets();
-assert_eq!(offsets.len(), 4);
-assert!(offsets.windows(2).all(|pair| pair[0] < pair[1]), "{offsets:?}");
+    import pyarrow as pa
 
-let first = &statistics.row_groups[0];
-assert_eq!(first.num_rows, 512);
-assert!(first.compressed_size > 0);
-assert!(
-    first
-        .columns
-        .iter()
-        .any(|column| column.path == "id" && column.min_bytes.is_some())
-);
-```
+    from yggdryl import IOBase
 
-`read_statistics` parses the footer and decodes no rows. `FileStatistics` carries the whole-file row
-count, the writer that produced the file, the footer's key/value entries - the ones written through
-`with_key_value` alongside the ones the writer adds itself - and one `RowGroupStatistics` per row
-group in file order. Each of those carries its row count, its total compressed size, its byte offset
-in the file when the writer recorded one, and one `ColumnStatistics` per leaf column - compressed and
-uncompressed size, null count, bounds - keyed by dotted path, so a nested column appears as
-`address.zip`.
+    scratch = tempfile.TemporaryDirectory()
+    handle = IOBase(pathlib.Path(scratch.name) / "trades.parquet")
+    options = handle.record_options()
+    options.max_row_group_size = 2
+    options.key_value_metadata = {"writer": "python"}
+    handle.overwrite_arrow_table(pa.table({"id": [1, 2, 3, 4]}), options=options)
+
+    statistics = handle.read_parquet_statistics()
+    assert statistics["num_rows"] == 4
+    assert len(statistics["row_groups"]) == 2
+    assert next(
+        entry for entry in statistics["key_value_metadata"] if entry["key"] == "writer"
+    ) == {
+        "key": "writer",
+        "value": "python",
+    }
+    assert isinstance(statistics["row_groups"][0]["columns"][0]["min_bytes"], bytes)
+    scratch.cleanup()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-parquet-stats-'))
+    const handle = new IOBase(path.join(root, 'trades.parquet'))
+    const options = handle
+      .recordOptions()
+      .withMaxRowGroupSize(2)
+      .withKeyValue('writer', 'javascript')
+    handle.overwriteArrowTable(arrow.tableFromArrays({ id: [1, 2, 3, 4] }), options)
+
+    const statistics = handle.readParquetStatistics()
+    assert.equal(statistics.num_rows, 4)
+    assert.equal(statistics.row_groups.length, 2)
+    assert.deepEqual(statistics.key_value_metadata.find(({ key }) => key === 'writer'), {
+      key: 'writer',
+      value: 'javascript',
+    })
+    assert.ok(Buffer.isBuffer(statistics.row_groups[0].columns[0].min_bytes))
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`FileStatistics` carries the whole-file row count, writer, ordered footer key/value entries, and
+row groups in file order. A row group carries counts, sizes, an optional split offset, and one column
+entry per leaf path (`address.zip` for a nested leaf). Key/value metadata stays an entry list because
+Parquet permits duplicate keys.
 
 Bounds and null counts are optional because they are optional in the format: a writer records them
 per column chunk, and `min_bytes` and `max_bytes` are the encoded values as Parquet stored them, not
 decoded scalars. `null_count` sums one column's counts across row groups and returns `None` when no
 row group recorded any, which is what distinguishes "no nulls" from "nobody counted".
 
-`split_offsets` exists because [Iceberg](iceberg.md) records exactly that sequence for a data file,
-and the per-column null counts and bounds are what a manifest entry stores next to it, so a planner
-can skip whole files it never has to open.
+Rust's `null_count` and `split_offsets` aggregate the same footer data Iceberg manifests use to skip
+files. In every language `min_bytes` and `max_bytes` remain Parquet's encoded bounds, not guessed
+scalars; missing bounds and counts remain null rather than becoming zero.
+
+A local release boundary spot-check measured footer-to-native-record conversion at 504 us in
+Python for 65,536 rows and 728 us in JavaScript for 10,000 rows. The fixtures differ, so these are
+per-runtime regression anchors, not a language comparison. Regenerate with the
+`parquet read statistics` filter in `python/benchmarks/records_io.py` and
+`records/read_parquet_statistics` in `npm run --prefix node bench:records`.
 
 ## Geospatial and variant columns
 
-!!! note "Rust only"
-    The bindings declare [geometry, geography, and variant fields](datatype.md)
-    and write them through the same record methods, but the statistics surface
-    below is Rust only, like the rest of the footer above.
+Footer geospatial data crosses with the rest of `read_parquet_statistics`. A fresh projected scan is
+`read_parquet_geospatial_statistics(column)` in Python and
+`readParquetGeospatialStatistics(column)` in JavaScript; both return native records with
+`bounding_box` and `geometry_types` through the same shared `Scalar` shape.
 
 A column whose schema declares [geometry or geography](datatype.md) writes Parquet's own `GEOMETRY`
 or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB, from the schema's own declaration: the CRS and,
@@ -901,74 +1091,143 @@ it - a bound would be a lie - while sibling columns keep theirs, and a min/max a
 recorded anyway is ignored on read rather than surfaced. What a geometry records instead is the
 format's own geospatial statistics: the WKB bounding box and the sorted ISO geometry type codes
 present, in the footer, readable from `ColumnStatistics::geospatial` and recomputable by scanning
-the stored WKB through `read_geospatial_statistics` - which also answers for files whose writer
-recorded none. A geography records no box at all: its bounds are edge-algorithm-aware, and a planar
-fold of the vertices would under-cover them.
+the stored WKB through Rust's `read_geospatial_statistics` (the inferred handle methods above in the
+bindings), which also answers for files whose writer recorded none. A geography records no box at
+all: its bounds are edge-algorithm-aware, and a planar fold of the vertices would under-cover them.
 
-```rust
-use std::sync::Arc;
+=== "Rust"
 
-use arrow_array::{BinaryArray, Int64Array, RecordBatch};
-use yggdryl::arrow;
-use yggdryl::io::Buffer;
-use yggdryl::parquet::Parquet;
-use yggdryl::{DataType, MimeType};
+    ```rust
+    use std::sync::Arc;
 
-/// One little-endian ISO WKB point.
-fn wkb_point(x: f64, y: f64) -> Vec<u8> {
-    let mut bytes = vec![1u8];
-    bytes.extend_from_slice(&1u32.to_le_bytes());
-    bytes.extend_from_slice(&x.to_le_bytes());
-    bytes.extend_from_slice(&y.to_le_bytes());
-    bytes
-}
+    use arrow_array::{BinaryArray, Int64Array, RecordBatch};
+    use yggdryl::arrow;
+    use yggdryl::io::{Buffer, IOMedia};
+    use yggdryl::parquet::Parquet;
+    use yggdryl::{DataType, MimeType};
 
-// The declaration is the schema's own: `None` fills the `OGC:CRS84` default,
-// which folds to Parquet's bare `GEOMETRY` spelling.
-let field = DataType::from_fields([
-    DataType::Int64.required_field("id"),
-    DataType::geometry(None)?.nullable_field("shape"),
-])?
-.required_field("row");
+    fn wkb_point(x: f64, y: f64) -> Vec<u8> {
+        let mut bytes = vec![1u8];
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&x.to_le_bytes());
+        bytes.extend_from_slice(&y.to_le_bytes());
+        bytes
+    }
 
-let arrow_schema = field.to_arrow_schema()?;
-let batch = RecordBatch::try_new(
-    Arc::clone(&arrow_schema),
-    vec![
-        Arc::new(Int64Array::from(vec![1, 2, 3])),
-        Arc::new(BinaryArray::from_opt_vec(vec![
-            Some(&wkb_point(1.0, 2.0)[..]),
-            None,
-            Some(&wkb_point(-3.0, 7.0)[..]),
-        ])),
-    ],
-)?;
+    let field = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::geometry(None)?.nullable_field("shape"),
+    ])?
+    .required_field("row");
+    let schema = field.into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2, 3])),
+            Arc::new(BinaryArray::from_opt_vec(vec![
+                Some(&wkb_point(1.0, 2.0)[..]),
+                None,
+                Some(&wkb_point(-3.0, 7.0)[..]),
+            ])),
+        ],
+    )?;
+    let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(arrow::batch_reader(schema, [batch]), &options)?;
 
-let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
-media.write_batch_reader(arrow::batch_reader(arrow_schema, [batch]))?;
+    let statistics = media.read_statistics()?;
+    let columns = &statistics.row_groups[0].columns;
+    let id = columns.iter().find(|column| column.path == "id").unwrap();
+    let shape = columns.iter().find(|column| column.path == "shape").unwrap();
+    assert!(id.min_bytes.is_some() && id.max_bytes.is_some());
+    assert!(shape.min_bytes.is_none() && shape.max_bytes.is_none());
+    assert_eq!(shape.null_count, Some(1));
 
-let statistics = media.read_statistics()?;
-let columns = &statistics.row_groups[0].columns;
-let id = columns.iter().find(|column| column.path == "id").unwrap();
-let shape = columns.iter().find(|column| column.path == "shape").unwrap();
+    let geospatial = shape.geospatial.as_ref().unwrap();
+    let bounds = geospatial.bounding_box.unwrap();
+    assert_eq!(
+        (bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax),
+        (-3.0, 1.0, 2.0, 7.0)
+    );
+    assert_eq!(geospatial.geometry_types, vec![1]);
+    assert_eq!(
+        IOMedia::read_parquet_geospatial_statistics(&media, "shape")?,
+        *geospatial,
+    );
+    ```
 
-// The sibling keeps its value bounds; the geometry never records any.
-assert!(id.min_bytes.is_some() && id.max_bytes.is_some());
-assert!(shape.min_bytes.is_none() && shape.max_bytes.is_none());
-assert_eq!(shape.null_count, Some(1));
+=== "Python"
 
-// What a geometry records instead: the WKB bounds and type codes.
-let geospatial = shape.geospatial.as_ref().unwrap();
-let bounds = geospatial.bounding_box.unwrap();
-assert_eq!(
-    (bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax),
-    (-3.0, 1.0, 2.0, 7.0)
-);
-assert_eq!(geospatial.geometry_types, vec![1]); // an XY point is code 1
+    ```python
+    import pathlib
+    import struct
+    import tempfile
 
-// A fresh scan of the stored WKB answers the same statistics.
-assert_eq!(media.read_geospatial_statistics("shape")?, *geospatial);
-```
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    def point(x: float, y: float) -> bytes:
+        return b"\x01\x01\x00\x00\x00" + struct.pack("<dd", x, y)
+
+    schema = pa.schema([
+        pa.field(
+            "shape",
+            pa.binary(),
+            metadata={
+                b"ARROW:extension:name": b"geoarrow.wkb",
+                b"ARROW:extension:metadata": b'{"crs":"OGC:CRS84"}',
+            },
+        )
+    ])
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "shapes.parquet")
+    handle.overwrite_arrow_table(
+        pa.table({"shape": [point(1, 2), None, point(-3, 7)]}, schema=schema)
+    )
+
+    scanned = handle.read_parquet_geospatial_statistics("shape")
+    footer = handle.read_parquet_statistics()["row_groups"][0]["columns"][0][
+        "geospatial"
+    ]
+    assert scanned == footer
+    assert scanned["geometry_types"] == [1]
+    assert scanned["bounding_box"]["xmin"] == -3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const point = (x, y) => {
+      const bytes = Buffer.allocUnsafe(21)
+      bytes.writeUInt8(1, 0)
+      bytes.writeUInt32LE(1, 1)
+      bytes.writeDoubleLE(x, 5)
+      bytes.writeDoubleLE(y, 13)
+      return bytes
+    }
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-geo-'))
+    const handle = new IOBase(path.join(root, 'shapes.parquet'))
+    handle.overwriteArrowTable(new arrow.Table({
+      shape: arrow.vectorFromArray(
+        [point(1, 2), null, point(-3, 7)],
+        new arrow.Binary(),
+      ),
+    }))
+
+    const scanned = handle.readParquetGeospatialStatistics('shape')
+    assert.deepEqual(scanned.geometry_types, [1])
+    assert.equal(scanned.bounding_box.xmin, -3)
+    assert.equal(scanned.bounding_box.ymax, 7)
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 One read-side limit is named rather than hidden: a *foreign* file whose columns carry
 `GEOMETRY`/`GEOGRAPHY`/`VARIANT` surfaces plain `Binary`/`Struct` Arrow types without extension
@@ -977,23 +1236,29 @@ crate features that pull new dependencies; files written here round-trip their e
 through the embedded Arrow schema. And GeoArrow's own documents say the specification is not
 finalized, so the `geoarrow.wkb` spelling the writer reads is revisitable if it changes.
 
+The projected WKB-to-native-record boundary measured 2.64 ms in Python for 8,192 rows and
+3.26 ms in JavaScript for 10,000 rows in the same local release spot-check. Regenerate with the
+`parquet read geospatial stats` filter in `python/benchmarks/records_io.py` and
+`records/read_parquet_geospatial_statistics` in `npm run --prefix node bench:records`.
+
 ## The handle underneath
 
-!!! note "Rust only"
-    The bindings call the record methods on the handle directly, so there is no
-    wrapper to reach through.
+!!! note "Rust encoding seam"
+    The named `Parquet<H>` wrapper and free functions are Rust's typed encoding
+    seam. Python and JavaScript infer and retain the same wrapper inside an
+    opened `IOBase`; callers keep one generic handle surface.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::{Buffer, IOBase, IOMedia};
 use yggdryl::parquet::{self, Parquet, ParquetOptions};
 use yggdryl::{DataType, MimeType};
 
 let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-let arrow_schema = field.to_arrow_schema()?;
+let arrow_schema = field.into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
     vec![Arc::new(Int64Array::from(vec![1, 2]))],
@@ -1002,13 +1267,13 @@ let batch = RecordBatch::try_new(
 // The free functions take a handle and options; nothing is bound.
 let options = ParquetOptions::new();
 let mut handle = Buffer::new().with_media_type(MimeType::PARQUET.into());
-parquet::write_batch_reader(
+parquet::overwrite_arrow_reader(
     &mut handle,
     arrow::batch_reader(arrow_schema, [batch]),
     &options,
 )?;
 
-assert_eq!(parquet::read_schema(&handle)?.fields().len(), 1);
+assert_eq!(parquet::read_arrow_schema(&handle)?.fields().len(), 1);
 assert_eq!(parquet::read_field(&handle, &options)?.name(), "row");
 assert_eq!(parquet::read_batch_reader(&handle, None, &options)?.count(), 1);
 assert_eq!(parquet::read_statistics(&handle)?.num_rows, 2);
@@ -1022,6 +1287,8 @@ assert!(!media.opened());
 media.open()?;
 assert!(media.opened());
 assert_eq!(media.read_statistics()?.num_rows, 2);
+assert_eq!(media.row_size()?, 2);
+assert_eq!(media.column_size()?, 1);
 media.close()?;
 assert!(!media.opened());
 ```
@@ -1032,14 +1299,8 @@ byte method to the handle and keeps `open`, `opened`, and `close` for itself: `o
 footer once and caches it, so repeated statistics reads do not re-parse it, `close` drops it, and any
 write invalidates it.
 
-Reads currently fetch the handle's bytes whole. Parquet's footer is at the end of the file, so a
-partial read has to be a range read against [`IOBase::pread`](io.md); until that path exists this is
-buffered rather than pretending otherwise. That is also the bound on what column pushdown saves
-today: the projection mask skips locating, decompressing, and decoding the columns it drops, but the
-file's bytes still arrive in one piece.
-
 When the encoding is decided at run time rather than written into the type,
-[`Media::parquet`](generic.md) names this variant and [`IOBase::record_options`](io.md) derives
+[`Media::parquet`](generic.md) names this variant and [`IOMedia::record_options`](io.md) derives
 `ParquetOptions` from a handle's own media type, so a file named `trades.parquet` is read as Parquet
 without a format argument.
 
@@ -1048,7 +1309,7 @@ without a format argument.
     ```rust
     use arrow_array::{RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::io::Buffer;
+    use yggdryl::io::{Buffer, IOMedia};
     use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
@@ -1056,18 +1317,24 @@ without a format argument.
 
     // Nothing has been written, so there is nothing to read.
     let empty = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
-        .with_schema(field.clone());
-    assert_eq!(empty.read_batch_reader(None)?.count(), 0);
-    assert_eq!(empty.read_batch_reader(None)?.schema().fields().len(), 1);
+        .with_field(field.clone());
+    let options = empty.record_options()?;
+    let reader = empty.read_arrow_reader(&options)?;
+    assert_eq!(reader.schema().fields().len(), 1);
+    assert_eq!(reader.count(), 0);
 
     // An empty write still publishes a readable file with the schema in its footer.
     let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
-    media.write_batch_reader(arrow::batch_reader(
-        field.to_arrow_schema()?,
-        std::iter::empty::<RecordBatch>(),
-    ))?;
-    assert_eq!(media.read_batch_reader(None)?.count(), 0);
-    assert_eq!(media.read_schema()?.fields().len(), 1);
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(
+        arrow::batch_reader(
+            field.into_arrow_schema()?,
+            std::iter::empty::<RecordBatch>(),
+        ),
+        &options,
+    )?;
+    assert_eq!(media.read_arrow_reader(&options)?.count(), 0);
+    assert_eq!(media.read_arrow_schema()?.fields().len(), 1);
     assert_eq!(media.read_statistics()?.num_rows, 0);
     ```
 
@@ -1086,13 +1353,13 @@ without a format argument.
 
     # Nothing has been written, so there is nothing to read.
     empty = IOBase(root / "absent.parquet")
-    assert empty.read_arrow_batch_reader().read_all().num_rows == 0
+    assert empty.read_arrow_reader().read_all().num_rows == 0
 
     # An empty write still publishes a readable file with the schema in its footer.
     handle = IOBase(root / "written.parquet")
-    handle.write_arrow_batch_reader(pa.Table.from_batches([], schema=schema))
+    handle.overwrite_arrow_table(pa.Table.from_batches([], schema=schema))
     assert handle.size > 0
-    assert handle.read_arrow_batch_reader().read_all().num_rows == 0
+    assert handle.read_arrow_reader().read_all().num_rows == 0
     assert len(handle.read_arrow_field().data_type) == 1
     ```
 
@@ -1110,14 +1377,14 @@ without a format argument.
 
     // Nothing has been written, so there is nothing to read.
     const empty = new IOBase(path.join(root, 'absent.parquet'))
-    assert.equal(empty.readArrowBatchReader().toTable().numRows, 0)
+    assert.equal(empty.readArrowReader().intoTable().numRows, 0)
 
     // An empty write still publishes a readable file with the schema in its footer.
     const schema = new arrow.Schema([new arrow.Field('id', new arrow.Int64(), true)])
     const handle = new IOBase(path.join(root, 'written.parquet'))
-    handle.writeArrowBatchReader(new arrow.Table(schema))
+    handle.overwriteArrowTable(new arrow.Table(schema))
     assert.ok(handle.size > 0)
-    assert.equal(handle.readArrowBatchReader().toTable().numRows, 0)
+    assert.equal(handle.readArrowReader().intoTable().numRows, 0)
     assert.equal(handle.readArrowField().dataType.length, 1)
 
     fs.rmSync(root, { recursive: true, force: true })

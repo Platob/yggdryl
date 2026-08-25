@@ -46,6 +46,8 @@ mod buffer;
 mod coding;
 mod cursor;
 mod listing;
+mod media;
+mod stream;
 /// How a directory name spells a value that is not there.
 ///
 /// A path cannot distinguish the absence of a value from the four letters, so
@@ -71,22 +73,26 @@ pub use buffer::Buffer;
 pub use coding::Coded;
 pub use cursor::{Cursor, IOCursor};
 pub use listing::Listing;
+pub use media::IOMedia;
 pub use roles::{IOFile, IOFolder, IOPath};
+pub use stream::ByteStream;
 
 use crate::generic::Holder;
 #[cfg(feature = "arrow")]
 use crate::generic::RecordOptions;
 
+/// Default byte-stream batch size used by core readers and language bindings.
+pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
+
 /// Bytes copied per step when moving between two handles.
-const TRANSFER_CHUNK: usize = 64 * 1024;
+const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 
 /// Implement [`IOBase`] methods by forwarding them to an inner handle.
 ///
 /// A type that wraps a handle - a media reader, a page cache, a test double -
 /// mirrors that handle rather than owning bytes of its own. The macro expands
-/// to the forwarding bodies inside an `impl IOBase for` block, so anything the
-/// wrapper wants to override (typically [`IOBase::open`] and [`IOBase::close`],
-/// which usually also manage a cache) is simply written after the invocation.
+/// to the forwarding bodies inside an `impl IOBase for` block. A wrapper that
+/// changes one method uses the list form below and leaves that method out.
 ///
 /// [`IOBase::clear`] and [`IOBase::remove`] are delegated too, so a wrapper
 /// empties and deletes the resource it wraps - not merely its own view of it -
@@ -95,11 +101,15 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// overridden, so it invokes the second form and writes the pair itself:
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::io::{Buffer, IOBase, IOMedia};
 ///
 /// struct Cached {
 ///     handle: Buffer,
 ///     schema: Option<String>,
+/// }
+///
+/// impl IOMedia for Cached {
+///     yggdryl::delegate_iomedia!(handle);
 /// }
 ///
 /// impl IOBase for Cached {
@@ -129,10 +139,14 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// ```
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::io::{Buffer, IOBase, IOMedia};
 ///
 /// struct Wrapper {
 ///     handle: Buffer,
+/// }
+///
+/// impl IOMedia for Wrapper {
+///     yggdryl::delegate_iomedia!(handle);
 /// }
 ///
 /// impl IOBase for Wrapper {
@@ -162,7 +176,7 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 /// ```
 /// use std::sync::atomic::{AtomicUsize, Ordering};
 ///
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::io::{Buffer, IOBase, IOMedia};
 ///
 /// /// A handle that counts the reads reaching the one it wraps.
 /// struct Counted {
@@ -170,10 +184,14 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 ///     reads: AtomicUsize,
 /// }
 ///
+/// impl IOMedia for Counted {
+///     yggdryl::delegate_iomedia!(handle);
+/// }
+///
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
 ///         truncate, url, media_type, set_media_type, flush, parent, child_by_path,
-///         ls, kind, clear, remove, is_atomic, is_tabular);
+///         ls, kind, clear, remove, is_atomic, is_tabular, is_io);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
 ///     // the trait is `Send`, and a double is held across threads like any
@@ -198,9 +216,9 @@ const TRANSFER_CHUNK: usize = 64 * 1024;
 macro_rules! delegate_iobase {
     // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
-        $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
-            ls, kind, clear, remove, is_atomic, is_tabular);
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            ls, kind, clear, remove, is_atomic, is_tabular, is_io);
     };
 
     // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
@@ -210,18 +228,32 @@ macro_rules! delegate_iobase {
     // mirroring the bytes underneath. The same list, named once instead of at
     // five call sites.
     ($handle:ident, except_lifecycle) => {
-        $crate::delegate_iobase!($handle: pread, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, parent, child_by_path,
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
+            truncate, url, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
+        $crate::delegate_iobase!(@methods $handle: $($method),+);
+    };
+
+    (@methods $handle:ident: $($method:ident),+ $(,)?) => {
         $($crate::delegate_iobase!(@method $handle, $method);)+
     };
 
     (@method $handle:ident, pread) => {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
             $crate::io::IOBase::pread(&self.$handle, offset, buffer)
+        }
+    };
+
+    (@method $handle:ident, pstream_bytes) => {
+        fn pstream_bytes(
+            &self,
+            position: u64,
+            batch_size: usize,
+        ) -> $crate::Result<$crate::io::ByteStream<'_>> {
+            $crate::io::IOBase::pstream_bytes(&self.$handle, position, batch_size)
         }
     };
 
@@ -279,6 +311,24 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, open) => {
+        fn open(&mut self) -> $crate::Result<()> {
+            $crate::io::IOBase::open(&mut self.$handle)
+        }
+    };
+
+    (@method $handle:ident, opened) => {
+        fn opened(&self) -> bool {
+            $crate::io::IOBase::opened(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, close) => {
+        fn close(&mut self) -> $crate::Result<()> {
+            $crate::io::IOBase::close(&mut self.$handle)
+        }
+    };
+
     (@method $handle:ident, parent) => {
         fn parent(&self) -> Option<$crate::generic::Holder> {
             $crate::io::IOBase::parent(&self.$handle)
@@ -324,6 +374,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, is_tabular) => {
         fn is_tabular(&self) -> bool {
             $crate::io::IOBase::is_tabular(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, is_io) => {
+        fn is_io(&self) -> bool {
+            $crate::io::IOBase::is_io(&self.$handle)
         }
     };
 }
@@ -468,13 +524,28 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
 /// - [`Self::pwrite`] grows the value when the write extends past the end, and
 ///   zero-fills any gap an offset beyond the current size creates.
 /// - [`Self::size`] never exceeds [`Self::capacity`].
-pub trait IOBase: Send {
+pub trait IOBase: Send + IOMedia {
     /// Read into `buffer` starting at `offset`, returning the bytes read.
     ///
     /// # Errors
     ///
     /// Returns the backing store's read failure.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize>;
+
+    /// Stream byte arrays from `position`, reading at most `batch_size` bytes
+    /// at a time.
+    ///
+    /// Construction performs no read and never asks for the value's size. Each
+    /// item is a [`Result<Vec<u8>>`], so a backend failure arrives after every
+    /// prefix already yielded and then the iterator stays fused. The final
+    /// array may be short; an empty array is never yielded.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`std::io::ErrorKind::InvalidInput`] when `batch_size` is zero.
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
+        ByteStream::from_handle(self, position, batch_size)
+    }
 
     /// Write `bytes` at `offset`, returning the bytes written.
     ///
@@ -877,11 +948,11 @@ pub trait IOBase: Send {
     /// Return whether this resource holds rows and columns.
     ///
     /// *Tabular* names the record surface: what
-    /// [`read_arrow_batch_reader`](Self::read_arrow_batch_reader) decodes and
+    /// [`read_arrow_reader`](IOMedia::read_arrow_reader) decodes and
     /// what its two writing siblings encode. The question is about the
     /// representation rather than about this build - a `.parquet` leaf is
     /// tabular whether or not the `parquet` feature is compiled in, and
-    /// [`record_options`](Self::record_options) is the call that reports an
+    /// [`record_options`](IOMedia::record_options) is the call that reports an
     /// encoding this build cannot decode, naming it.
     ///
     /// Cost drives the order, so the cheapest evidence answers first:
@@ -918,6 +989,14 @@ pub trait IOBase: Send {
             IOKind::Directory => container_is_tabular(self),
             _ => false,
         }
+    }
+
+    /// Return whether this handle exposes bytes or rows.
+    ///
+    /// A container holding neither surface answers `false`; byte leaves and
+    /// tabular values answer `true` through their existing shape methods.
+    fn is_io(&self) -> bool {
+        self.is_atomic() || self.is_tabular()
     }
 
     /// Return whether the value holds no bytes.
@@ -958,7 +1037,7 @@ pub trait IOBase: Send {
     /// This is the reading half of the whole-value byte pair whose writing half
     /// is [`Self::write_all_bytes`]; both name `bytes` because both are about
     /// the bytes rather than the rows, which
-    /// [`read_arrow_batch_reader`](Self::read_arrow_batch_reader) and its
+    /// [`read_arrow_reader`](IOMedia::read_arrow_reader) and its
     /// siblings answer. [`Self::is_atomic`] is how a caller asks which of the
     /// two surfaces a handle is for.
     ///
@@ -970,6 +1049,54 @@ pub trait IOBase: Send {
         let mut bytes = vec![0_u8; size];
         self.pread_exact(0, &mut bytes)?;
         Ok(bytes)
+    }
+
+    /// Decode one structured [`Scalar`](crate::Scalar) from this handle.
+    ///
+    /// The media type selects JSON, YAML, or TOML and its content coding. A
+    /// `field` directs parsing and casting; without one the value is inferred.
+    /// Reading stays streamed through [`Self::pstream_bytes`], including for a
+    /// compressed handle.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{Field, Url, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let media = Url::from_str("file:///trade.json.gz")?.media_type();
+    /// let mut handle = Buffer::new().with_media_type(media);
+    /// let value = Scalar::from_record([("quantity", Scalar::I64(2))])?;
+    /// handle.write_scalar(&value)?;
+    ///
+    /// let field = Field::from_str("trade: struct<quantity: int64 not null> not null")?;
+    /// assert_eq!(handle.read_scalar(None)?, value);
+    /// assert_eq!(
+    ///     handle.read_scalar(Some(&field))?,
+    ///     Scalar::from_sequence([Scalar::I64(2)])
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a read, decompression, format, parse, or field-cast failure.
+    fn read_scalar(&self, field: Option<&crate::Field>) -> Result<crate::Scalar> {
+        match field {
+            Some(field) => crate::text::from_io_with_field(self, field),
+            None => crate::text::from_io(self),
+        }
+    }
+
+    /// Encode one structured [`Scalar`](crate::Scalar), replacing this handle.
+    ///
+    /// The media type selects JSON, YAML, or TOML and its content coding.
+    ///
+    /// # Errors
+    ///
+    /// Returns a format, representation, compression, or write failure.
+    fn write_scalar(&mut self, value: &crate::Scalar) -> Result<()> {
+        crate::text::into_io(value, self)
     }
 
     /// Read `length` bytes starting at `offset`.
@@ -1182,18 +1309,21 @@ pub trait IOBase: Send {
     /// Returns the first read or write failure.
     fn copy_into(&self, target: &mut dyn IOBase) -> Result<u64> {
         target.truncate(0)?;
-        target.reserve(self.size())?;
+        let mut source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
         let mut chunk = vec![0_u8; TRANSFER_CHUNK];
-        let mut offset = 0;
+        let mut offset = 0_u64;
         loop {
-            let read = self.pread(offset, &mut chunk)?;
+            let read = source.read(&mut chunk)?;
             if read == 0 {
                 break;
             }
             target.pwrite_all(offset, &chunk[..read])?;
-            offset += read as u64;
+            offset = offset.checked_add(read as u64).ok_or_else(|| {
+                Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+            })?;
         }
         target.set_media_type(self.media_type().clone());
+        target.flush()?;
         Ok(offset)
     }
 
@@ -1221,14 +1351,27 @@ pub trait IOBase: Send {
         level: Level,
     ) -> Result<u64> {
         target.truncate(0)?;
-        let encoded = codec.dump_with_level(&self.read_all_bytes()?, level)?;
-        target.pwrite_all(0, &encoded)?;
+        {
+            let writer = Writer { target, offset: 0 };
+            let mut encoder = codec.writer_with_level(writer, level);
+            let mut source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
+            let mut chunk = vec![0_u8; TRANSFER_CHUNK];
+            loop {
+                let read = source.read(&mut chunk)?;
+                if read == 0 {
+                    break;
+                }
+                encoder.write_all(&chunk[..read])?;
+            }
+            encoder.finish()?;
+        }
+        target.flush()?;
         let media_type = self
             .media_type()
             .clone()
             .try_with_encodings(coding_mime(codec))?;
         target.set_media_type(media_type);
-        Ok(encoded.len() as u64)
+        Ok(target.size())
     }
 
     /// Decode this value into `target`, replacing its contents.
@@ -1250,8 +1393,23 @@ pub trait IOBase: Send {
     /// Returns the first read, decode, or write failure.
     fn decompress_into_with(&self, target: &mut dyn IOBase, codec: Codec) -> Result<u64> {
         target.truncate(0)?;
-        let decoded = codec.load(&self.read_all_bytes()?)?;
-        target.pwrite_all(0, &decoded)?;
+        let source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
+        let mut decoder = codec.reader(source);
+        let mut decoded = vec![0_u8; TRANSFER_CHUNK];
+        let mut offset = 0_u64;
+        loop {
+            let read = decoder.read(&mut decoded)?;
+            if read == 0 {
+                break;
+            }
+            target.pwrite_all(offset, &decoded[..read])?;
+            offset = offset.checked_add(read as u64).ok_or_else(|| {
+                Error::Io(std::io::Error::other(
+                    "decoded byte stream exceeds u64::MAX",
+                ))
+            })?;
+        }
+        target.flush()?;
         // The decoded bytes carry the base representation with the coding
         // removed, which is exactly the media type minus its last encoding.
         let mut media_type = self.media_type().clone();
@@ -1259,7 +1417,7 @@ pub trait IOBase: Send {
         encodings.pop();
         media_type.set_encodings(encodings)?;
         target.set_media_type(media_type);
-        Ok(decoded.len() as u64)
+        Ok(offset)
     }
 
     /// Borrow a streaming reader positioned at `offset`.
@@ -1473,12 +1631,13 @@ pub trait IOBase: Send {
     /// Project the resource's text records into Arrow batches.
     ///
     /// The extractor-first spelling of the record surface: text is a record
-    /// encoding like any other, and [`Self::read_arrow_batch_reader`] under
+    /// encoding like any other, and [`IOMedia::read_arrow_reader`] under
     /// [`RecordOptions::Text`] reaches
     /// this very method - **not a fourth record method**. Decoding views
     /// (a [`Coded`] handle, [`Gzip`](crate::gzip::Gzip) and its siblings)
-    /// override it to project a snapshot of the value they *present*, which
-    /// is what keeps a pending write visible to the record surface too. The
+    /// override it to own the encoded location behind one streaming decoder;
+    /// an opened or dirty view snapshots only the presented value it already
+    /// holds. The
     /// columns are described on [`TextLineOptions`](crate::text::TextLineOptions).
     ///
     /// # Errors
@@ -1512,266 +1671,903 @@ pub trait IOBase: Send {
     {
         crate::text::line::arrow::into_arrow_lines(self, options)
     }
+}
 
-    /// Return the record options this resource's encoding names.
-    ///
-    /// This is what a caller supplies when they have no options of their own,
-    /// so the encoding is never guessed: it is whatever the handle already says
-    /// it holds. A container has no bytes and therefore no media type of its
-    /// own, so it answers with the encoding of the leaves beneath it - a
-    /// partitioned tree is one table in one encoding - and a container that is
-    /// an Iceberg table answers with the encoding its data files are written
-    /// in, which its metadata knows before a single file exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when no record encoding in this build covers the
-    /// handle's media type, or the media type of anything below it.
-    #[cfg(feature = "arrow")]
-    fn record_options(&self) -> Result<RecordOptions> {
-        if self.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(self)? {
-                return table.record_options();
+/// The default append implementation after an encoding-specific boundary has
+/// validated its option variant.
+///
+/// Stateful media override the trait method only to perform that validation
+/// before the source reader is pulled, then call this shared implementation.
+#[cfg(feature = "arrow")]
+pub(crate) fn append_arrow_reader_default(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
+    options.require_write_mode(crate::IOMode::Append)?;
+    let commit_row_size = options.require_commit_row_size()?;
+    options.require_write_limits()?;
+    if options.write_limit_is_zero() {
+        return Ok(());
+    }
+    // An empty append is a true no-op: discover it before asking the handle
+    // whether it is a table or folder, so no location probe or listing runs.
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    let container = handle.is_container();
+    if container {
+        #[cfg(feature = "iceberg")]
+        if let Some(mut table) = crate::iceberg::located(handle)? {
+            return table.append_arrow_reader(batches, options);
+        }
+        return append_arrow_reader_folder(handle, batches, options, commit_row_size);
+    }
+    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    if commit_row_size.is_some() {
+        for commit in options.commit_arrow_readers(batches)? {
+            match &target {
+                Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
+                None => append_leaf(handle, commit?, &delegated)?,
             }
-            // The listing is lazy, so a lake costs the walk to its first
-            // structured leaf and stops there. Text answers last: plain text
-            // maps to the line projection, so a stray README or marker file
-            // must not re-type a lake whose data files are a structured
-            // encoding.
-            let mut lines = None;
-            for child in self.children_where(&[], false)? {
-                if let Ok(options) = RecordOptions::for_media_type(child?.media_type()) {
-                    if matches!(options, RecordOptions::Text(_)) {
-                        lines.get_or_insert(options);
-                        continue;
+        }
+        return Ok(());
+    }
+    match target {
+        Some(target) => append_leaf_onto(handle, batches, &delegated, &target),
+        None => append_leaf(handle, batches, &delegated),
+    }
+}
+
+/// The default merge implementation after an encoding-specific boundary has
+/// validated its option variant.
+#[cfg(feature = "arrow")]
+pub(crate) fn merge_arrow_reader_default(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
+    options.require_write_mode(crate::IOMode::Merge)?;
+    let commit_row_size = options.require_commit_row_size()?;
+    options.require_write_limits()?;
+    // Key and limit intent is deterministic and has already been validated;
+    // only then may an empty merge end without touching its destination.
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    let container = handle.is_container();
+    if container {
+        #[cfg(feature = "iceberg")]
+        if let Some(mut table) = crate::iceberg::located(handle)? {
+            return table.merge_arrow_reader(batches, options);
+        }
+        return merge_arrow_reader_folder(handle, batches, options, commit_row_size);
+    }
+    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    if commit_row_size.is_some() {
+        for commit in options.commit_arrow_readers(batches)? {
+            match &target {
+                Some(target) => merge_leaf_onto(
+                    handle,
+                    commit?,
+                    &delegated,
+                    options.merge_by_names(),
+                    target,
+                )?,
+                None => merge_leaf(handle, commit?, &delegated, options.merge_by_names())?,
+            }
+        }
+        return Ok(());
+    }
+    match target {
+        Some(target) => merge_leaf_onto(
+            handle,
+            batches,
+            &delegated,
+            options.merge_by_names(),
+            &target,
+        ),
+        None => merge_leaf(handle, batches, &delegated, options.merge_by_names()),
+    }
+}
+
+/// The common overwrite implementation for byte and folder handles.
+///
+/// [`crate::io::IOMedia::overwrite_arrow_reader`] is required so a media or table format
+/// can make publication one native operation. Implementations whose only
+/// publication primitive is the byte surface call this function; it performs
+/// all generic shaping and reaches exactly one encoding writer.
+///
+/// # Errors
+///
+/// Returns a field, cast, listing, encoding, or write failure. A non-empty
+/// match key is refused because overwrite never guesses merge intent.
+#[cfg(feature = "arrow")]
+#[doc(hidden)]
+pub fn overwrite_arrow_reader_default(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<()> {
+    overwrite_arrow_reader_default_with_field(handle, batches, options).map(|_| ())
+}
+
+/// Run the default overwrite and return the logical field actually published.
+///
+/// Stateful media use this to refresh an already-open metadata cache without
+/// rereading the encoded value. The field is resolved by the same shaping pass
+/// that consumes `batches`: declared-field casting and selection happen once,
+/// then an existing stored field completes the result. `None` is reserved for
+/// a table-format redirection whose own commit owns its metadata cache.
+#[cfg(feature = "arrow")]
+pub(crate) fn overwrite_arrow_reader_default_with_field(
+    handle: &mut (impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<Option<crate::Field>> {
+    use crate::generic::IORecordOptions;
+
+    options.require_write_mode(crate::IOMode::Overwrite)?;
+    let commit_row_size = options.require_commit_row_size()?;
+    let container = handle.is_container();
+    if container {
+        #[cfg(feature = "iceberg")]
+        if let Some(mut table) = crate::iceberg::located(handle)? {
+            table.overwrite_arrow_reader(batches, options)?;
+            return Ok(None);
+        }
+        return overwrite_arrow_reader_folder(handle, batches, options, commit_row_size).map(Some);
+    }
+    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let schema = batches.schema();
+    let published = target
+        .clone()
+        .or(Some(crate::arrow::field_from_arrow_schema(
+            delegated.root_name(),
+            schema.as_ref(),
+        )?));
+    if commit_row_size.is_some() {
+        let mut commits = options.commit_arrow_readers(batches)?;
+        let Some(first) = commits.next() else {
+            // Overwrite is the one intent for which an empty input still
+            // publishes its shaped schema and clears the prior rows.
+            handle.overwrite_prepared_arrow_reader(
+                crate::arrow::batch_reader(schema, []),
+                &delegated,
+            )?;
+            return Ok(published);
+        };
+        handle.overwrite_prepared_arrow_reader(first?, &delegated)?;
+        // Replacing every cadence would retain only the last one. Once the
+        // first prefix is visible, later overwrite cadences are appends.
+        for commit in commits {
+            match &target {
+                Some(target) => append_leaf_onto(handle, commit?, &delegated, target)?,
+                None => append_leaf(handle, commit?, &delegated)?,
+            }
+        }
+        return Ok(published);
+    }
+    handle.overwrite_prepared_arrow_reader(batches, &delegated)?;
+    Ok(published)
+}
+
+/// Append through one folder routing plan shared by every publication cadence.
+#[cfg(feature = "arrow")]
+fn append_arrow_reader_folder(
+    folder: &(impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    commit_row_size: Option<usize>,
+) -> Result<()> {
+    let mut writer = partition::FolderWriter::new(folder, options)?;
+    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    writer.set_options(routing_options(delegated, declared))?;
+    if commit_row_size.is_some() {
+        for commit in options.commit_arrow_readers(batches)? {
+            writer.append(folder, commit?)?;
+        }
+        return Ok(());
+    }
+    writer.append(folder, batches)
+}
+
+/// Merge through one folder routing plan shared by every publication cadence.
+#[cfg(feature = "arrow")]
+fn merge_arrow_reader_folder(
+    folder: &(impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    commit_row_size: Option<usize>,
+) -> Result<()> {
+    // Layout resolves before shaping or mutation because it decides whether
+    // at least one merge key remains inside each leaf. The top-level no-op
+    // peek has retained the first row-bearing batch without advancing past it.
+    let mut writer = partition::FolderWriter::new(folder, options)?;
+    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let Some(batches) = non_empty_arrow_reader(batches)? else {
+        return Ok(());
+    };
+    writer.set_options(routing_options(delegated, declared))?;
+    if commit_row_size.is_some() {
+        for commit in options.commit_arrow_readers(batches)? {
+            writer.merge(folder, commit?)?;
+        }
+        return Ok(());
+    }
+    writer.merge(folder, batches)
+}
+
+/// Overwrite through one folder routing plan shared by every publication cadence.
+#[cfg(feature = "arrow")]
+fn overwrite_arrow_reader_folder(
+    folder: &(impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    commit_row_size: Option<usize>,
+) -> Result<crate::Field> {
+    use crate::generic::IORecordOptions;
+
+    let mut writer = partition::FolderWriter::new(folder, options)?;
+    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let schema = batches.schema();
+    let published = crate::arrow::field_from_arrow_schema(delegated.root_name(), schema.as_ref())?;
+    writer.set_options(routing_options(delegated, declared))?;
+    if commit_row_size.is_none() {
+        writer.overwrite(folder, batches)?;
+        return Ok(published);
+    }
+
+    let mut commits = options.commit_arrow_readers(batches)?;
+    let Some(first) = commits.next() else {
+        writer.overwrite(folder, crate::arrow::batch_reader(schema, []))?;
+        return Ok(published);
+    };
+    writer.overwrite(folder, first?)?;
+    // Only the first cadence replaces the addressed tree. Every later prefix
+    // extends the same top-level overwrite using the routing plan above.
+    for commit in commits {
+        writer.append(folder, commit?)?;
+    }
+    Ok(published)
+}
+
+/// Shape one incoming write stream and return options safe for delegation.
+///
+/// The declared field and selection are applied before the limits. The field
+/// is then *taken* from the clone, and every other consumed shaping option is
+/// cleared - including `commit_row_size` - so a default append or merge can
+/// publish through an implementor's required overwrite hook without applying
+/// an incoming-only transform to the stored rows, splitting recursively, or
+/// casting the incoming rows twice.
+#[cfg(feature = "arrow")]
+pub(crate) fn prepare_arrow_write(
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<(
+    crate::arrow::BatchReader,
+    RecordOptions,
+    Option<crate::Field>,
+)> {
+    prepare_arrow_write_onto(batches, options, None)
+}
+
+/// Shape one incoming stream and safely complete it onto a stored field once.
+///
+/// Table formats use this seam before splitting publication cadences. Their
+/// native commit may defensively inspect the exact shape again, but every
+/// declared cast, selection, limit, and safe stored-field completion has
+/// already happened here over the one streaming reader.
+#[cfg(feature = "arrow")]
+pub(crate) fn prepare_arrow_write_onto(
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    existing: Option<&crate::Field>,
+) -> Result<(
+    crate::arrow::BatchReader,
+    RecordOptions,
+    Option<crate::Field>,
+)> {
+    use crate::generic::IORecordOptions;
+
+    let batches = options.cast_arrow_reader(batches, existing)?;
+    let batches = options.limit_arrow_reader(batches)?;
+    let mut delegated = options.clone();
+    let declared = delegated.take_field();
+    delegated.set_select_by_names(Vec::new());
+    delegated.set_max_row_size(None);
+    delegated.set_max_byte_size(None);
+    delegated.set_commit_row_size(None);
+    Ok((batches, delegated, declared))
+}
+
+/// Shape one leaf stream onto a target resolved exactly once for the write.
+///
+/// A stored field completes the cast before global limits are applied. A
+/// missing leaf takes the shaped reader's field as its target; text remains
+/// schema-less and uses its native append implementation. The returned
+/// options have every incoming-only transform removed and are safe for the
+/// prepared publication hook.
+#[cfg(feature = "arrow")]
+fn prepare_leaf_arrow_write(
+    handle: &(impl IOBase + ?Sized),
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+) -> Result<(
+    crate::arrow::BatchReader,
+    RecordOptions,
+    Option<crate::Field>,
+)> {
+    use crate::generic::IORecordOptions;
+
+    let stored = if matches!(options, RecordOptions::Text(_)) {
+        None
+    } else {
+        stored_field(handle, options)?
+    };
+    let (batches, delegated, _) = prepare_arrow_write_onto(batches, options, stored.as_ref())?;
+    let target = match stored {
+        Some(stored) => Some(stored),
+        None if matches!(options, RecordOptions::Text(_)) => None,
+        None => Some(crate::arrow::field_from_arrow_schema(
+            delegated.root_name(),
+            batches.schema().as_ref(),
+        )?),
+    };
+    Ok((batches, delegated, target))
+}
+
+/// One resumable, cadence-bounded Arrow write used by asynchronous bindings.
+///
+/// The session owns option shaping, global row/byte counters, the incomplete
+/// cadence, and any folder or table routing plan. It deliberately does not
+/// borrow the destination: a binding may leave Rust while awaiting its next
+/// source chunk, then temporarily pass the same handle back to [`push`](Self::push)
+/// or [`finish`](Self::finish). Complete cadences publish synchronously before
+/// either method returns; [`abort`](Self::abort) drops only the unpublished
+/// remainder.
+///
+/// This is hidden because it is a narrow runtime bridge, not another write
+/// operation. Its mode is the same public [`crate::IOMode`] accepted by the
+/// generic media entry points.
+#[cfg(feature = "arrow")]
+#[doc(hidden)]
+pub struct ArrowWriteSession {
+    mode: crate::IOMode,
+    options: RecordOptions,
+    delegated: RecordOptions,
+    declared: Option<crate::Field>,
+    limit: crate::generic::WriteLimitState,
+    commit_row_size: usize,
+    input_schema: Option<arrow_schema::SchemaRef>,
+    shaped_schema: Option<arrow_schema::SchemaRef>,
+    buffer: Option<crate::generic::CommitBuffer>,
+    target: Option<ArrowWriteTarget>,
+    published: bool,
+    input_complete: bool,
+    terminal: bool,
+}
+
+/// Destination state that must stay stable while an async source is awaited.
+#[cfg(feature = "arrow")]
+enum ArrowWriteTarget {
+    /// A schema-bearing leaf after its one stable target is resolved.
+    Leaf { stored: crate::Field },
+    /// A missing schema-bearing leaf before the input schema is shaped.
+    EmptyLeaf,
+    /// Text lines have no stored field; append remains their native operation.
+    TextLeaf,
+    Folder {
+        writer: Box<partition::FolderWriter>,
+    },
+    #[cfg(feature = "iceberg")]
+    Iceberg {
+        located: Box<crate::iceberg::Located>,
+        stored: crate::Field,
+    },
+}
+
+#[cfg(feature = "arrow")]
+impl ArrowWriteSession {
+    /// Start an overwrite session without touching a destination or source.
+    pub fn overwrite(options: &RecordOptions) -> Result<Self> {
+        Self::new(crate::IOMode::Overwrite, options)
+    }
+
+    /// Start an append session without touching a destination or source.
+    pub fn append(options: &RecordOptions) -> Result<Self> {
+        Self::new(crate::IOMode::Append, options)
+    }
+
+    /// Start a merge session without touching a destination or source.
+    pub fn merge(options: &RecordOptions) -> Result<Self> {
+        Self::new(crate::IOMode::Merge, options)
+    }
+
+    /// Start a session for one explicit write mode.
+    pub fn new(mode: crate::IOMode, options: &RecordOptions) -> Result<Self> {
+        use crate::generic::IORecordOptions;
+
+        options.require_write_mode(mode)?;
+        let commit_row_size =
+            options
+                .require_commit_row_size()?
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$.commit_row_size"),
+                    reason: crate::text::expected_got(
+                        "a non-zero commit_row_size for a resumable write session",
+                        "an unset commit_row_size",
+                    ),
+                })?;
+        options.require_write_limits()?;
+        let mut delegated = options.clone();
+        let declared = delegated.take_field();
+        delegated.set_select_by_names(Vec::new());
+        delegated.set_max_row_size(None);
+        delegated.set_max_byte_size(None);
+        delegated.set_commit_row_size(None);
+        Ok(Self {
+            mode,
+            options: options.clone(),
+            delegated,
+            declared,
+            limit: crate::generic::WriteLimitState::new(
+                options.max_row_size(),
+                options.max_byte_size(),
+            ),
+            commit_row_size,
+            input_schema: None,
+            shaped_schema: None,
+            buffer: None,
+            target: None,
+            published: false,
+            input_complete: false,
+            terminal: false,
+        })
+    }
+
+    /// Admit one Arrow chunk, publishing every complete cadence before return.
+    ///
+    /// The boolean is `true` while the binding should request another chunk.
+    /// `false` means a global row or byte limit completed the logical input;
+    /// no later source item may be inspected.
+    pub fn push(
+        &mut self,
+        handle: &mut (impl IOBase + ?Sized),
+        mut batches: crate::arrow::BatchReader,
+    ) -> Result<bool> {
+        use crate::generic::IORecordOptions as _;
+        use arrow_array::RecordBatchReader as _;
+
+        self.require_live()?;
+        if self.input_complete {
+            return Ok(false);
+        }
+        let input_schema = batches.schema();
+        if let Some(expected) = &self.input_schema {
+            if expected.as_ref() != input_schema.as_ref() {
+                let expected = format!("{expected:?}");
+                let got = format!("{input_schema:?}");
+                self.abort();
+                return Err(Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        format_args!("the first asynchronous chunk schema {expected}"),
+                        format_args!("a later chunk schema {got}"),
+                    ),
+                });
+            }
+        } else {
+            self.input_schema = Some(std::sync::Arc::clone(&input_schema));
+        }
+        if let Err(error) = self.ensure_shaped_schema(handle, input_schema) {
+            self.abort();
+            return Err(error);
+        }
+
+        while !self.limit.satisfied() {
+            let batch = match batches.next() {
+                Some(Ok(batch)) => batch,
+                Some(Err(error)) => {
+                    self.abort();
+                    return Err(crate::arrow::from_reader_error(error).into());
+                }
+                None => break,
+            };
+            let batch = match self.options.cast_arrow_batch(batch, self.target_field()) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    self.abort();
+                    return Err(error);
+                }
+            };
+            let Some(batch) = self.limit.apply(batch) else {
+                break;
+            };
+            if batch.num_rows() != 0 {
+                if let Some(reader) = self
+                    .buffer
+                    .as_mut()
+                    .expect("a shaped session owns a commit buffer")
+                    .push(batch)
+                {
+                    if let Err(error) = self.publish(handle, reader) {
+                        self.abort();
+                        return Err(error);
                     }
-                    return Ok(options);
+                }
+                if let Err(error) = self.publish_ready(handle) {
+                    self.abort();
+                    return Err(error);
                 }
             }
-            if let Some(options) = lines {
-                return Ok(options);
+            if self.limit.satisfied() {
+                if let Err(error) = self.complete_input(handle) {
+                    self.abort();
+                    return Err(error);
+                }
+                return Ok(false);
             }
         }
-        RecordOptions::for_media_type(self.media_type())
-    }
-
-    /// Read the canonical non-null Struct root Field of this resource.
-    ///
-    /// A declared schema is returned as it stands; otherwise this is the shape
-    /// [`Self::read_arrow_batch_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or schema-projection failure.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
-        use crate::generic::IORecordOptions;
-
-        if let Some(schema) = options.schema() {
-            return Ok(schema.clone());
+        if self.limit.satisfied() {
+            if let Err(error) = self.complete_input(handle) {
+                self.abort();
+                return Err(error);
+            }
+            return Ok(false);
         }
-        let schema = self.read_arrow_batch_reader(options)?.schema();
-        Ok(crate::arrow::record_schema_from_arrow(
-            options.root_name(),
-            schema.as_ref(),
-        )?)
+        Ok(true)
     }
 
-    /// Read this resource's rows as one [`BatchReader`](crate::arrow::BatchReader).
-    ///
-    /// This is the one read path, so an encoding is decoded in exactly one
-    /// place, and the result streams: one batch at a time, never a materialized
-    /// vector.
-    ///
-    /// **A declared schema selects and casts during the read.** The columns it
-    /// names that the resource stores become the encoding's own projection - a
-    /// Parquet projection mask, an Arrow IPC projection - so the rest are
-    /// skipped rather than read and discarded, and what comes back is then cast
-    /// to the declared shape as each batch arrives. Ordering, conversion, and a
-    /// column the resource does not hold are the cast's business, because a
-    /// projection can only drop columns, never reorder or invent them. Say
-    /// plainly what each encoding's projection saves: Parquet skips locating and
-    /// decoding a column chunk, while an Arrow IPC record batch is one
-    /// contiguous message, so its projection saves the decode and the
-    /// allocation but not the bytes. With no declared schema the stored shape is
-    /// preserved exactly.
-    ///
-    /// **A folder reads as the table beneath it.** When this handle addresses a
-    /// container, every leaf holding this encoding is read in turn, the columns
-    /// its `column=value` directories spell out are restored, and each batch is
-    /// cast to one root - so a caller never has to know whether they addressed
-    /// one file or a partitioned tree. A container holding a *table format*
-    /// reads through that format instead: an Iceberg table's current snapshot
-    /// says which data files are live and which of them a filtered read can
-    /// skip, so the folder is never listed and a file an overwrite replaced is
-    /// never read back.
-    ///
-    /// Per the laziness contract, a resource that does not exist yet holds no
-    /// batches rather than failing.
-    ///
-    /// The shaping order is fixed: declared schema, then selection, then
-    /// completion cast, then partition filter, then
-    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
-    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size)
-    /// last - so a limit counts result rows, and a limit of ten with a filter
-    /// means the first ten matching rows. A satisfied limit stops pulling, so
-    /// the rest of the resource is never decoded.
-    ///
-    /// # Errors
-    ///
-    /// Returns a listing, read, decoding, or cast failure.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_batch_reader(
-        &self,
-        options: &RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        use crate::generic::IORecordOptions;
+    /// Publish the final incomplete cadence and complete the session.
+    pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
+        use crate::generic::IORecordOptions as _;
 
-        let reader = if self.is_container() {
+        self.require_live()?;
+        if !self.input_complete {
+            if let Err(error) = self.complete_input(handle) {
+                self.abort();
+                return Err(error);
+            }
+        }
+        if self.mode == crate::IOMode::Overwrite && !self.published {
+            if self.shaped_schema.is_none() {
+                let field = match self.options.require_field() {
+                    Ok(field) => field.clone(),
+                    Err(error) => {
+                        self.abort();
+                        return Err(error);
+                    }
+                };
+                let schema = match field.into_arrow_schema() {
+                    Ok(schema) => schema,
+                    Err(error) => {
+                        self.abort();
+                        return Err(error.into());
+                    }
+                };
+                self.input_schema = Some(std::sync::Arc::clone(&schema));
+                if let Err(error) = self.ensure_shaped_schema(handle, schema) {
+                    self.abort();
+                    return Err(error);
+                }
+            }
+            let schema = std::sync::Arc::clone(
+                self.shaped_schema
+                    .as_ref()
+                    .expect("an empty overwrite has a shaped schema"),
+            );
+            if let Err(error) = self.publish(
+                handle,
+                crate::arrow::batch_reader(schema, std::iter::empty()),
+            ) {
+                self.abort();
+                return Err(error);
+            }
+        }
+        self.terminal = true;
+        Ok(())
+    }
+
+    /// Drop the unpublished partial cadence while retaining prior commits.
+    pub fn abort(&mut self) {
+        if let Some(buffer) = &mut self.buffer {
+            buffer.clear();
+        }
+        self.terminal = true;
+    }
+
+    fn require_live(&self) -> Result<()> {
+        if self.terminal {
+            return Err(Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$"),
+                reason: smol_str::SmolStr::new_static(
+                    "an Arrow write session cannot be reused after finish, abort, or failure",
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn ensure_target(&mut self, handle: &(impl IOBase + ?Sized)) -> Result<()> {
+        if self.target.is_some() {
+            return Ok(());
+        }
+        if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(self)? {
-                let filtered = partition::filtered_reader(table.read(options)?, options)?;
-                return options.limit_arrow_reader(select_reader(filtered, options)?);
+            if let Some(located) = crate::iceberg::located(handle)? {
+                let stored = located.stored_field()?;
+                self.target = Some(ArrowWriteTarget::Iceberg {
+                    located: Box::new(located),
+                    stored,
+                });
+                return Ok(());
             }
-            partition::folder_reader(self, options)?
+            let mut writer = partition::FolderWriter::new(handle, &self.options)?;
+            writer.set_options(routing_options(
+                self.delegated.clone(),
+                self.declared.clone(),
+            ))?;
+            self.target = Some(ArrowWriteTarget::Folder {
+                writer: Box::new(writer),
+            });
+        } else if matches!(self.delegated, RecordOptions::Text(_)) {
+            self.target = Some(ArrowWriteTarget::TextLeaf);
         } else {
-            leaf_reader(self, options)?
+            self.target = Some(match stored_field(handle, &self.delegated)? {
+                Some(stored) => ArrowWriteTarget::Leaf { stored },
+                None => ArrowWriteTarget::EmptyLeaf,
+            });
+        }
+        Ok(())
+    }
+
+    fn target_field(&self) -> Option<&crate::Field> {
+        match self.target.as_ref() {
+            Some(ArrowWriteTarget::Leaf { stored }) => Some(stored),
+            Some(ArrowWriteTarget::EmptyLeaf)
+            | Some(ArrowWriteTarget::TextLeaf)
+            | Some(ArrowWriteTarget::Folder { .. })
+            | None => None,
+            #[cfg(feature = "iceberg")]
+            Some(ArrowWriteTarget::Iceberg { stored, .. }) => Some(stored),
+        }
+    }
+
+    fn ensure_shaped_schema(
+        &mut self,
+        handle: &(impl IOBase + ?Sized),
+        input_schema: arrow_schema::SchemaRef,
+    ) -> Result<()> {
+        self.ensure_target(handle)?;
+        if self.shaped_schema.is_some() {
+            return Ok(());
+        }
+        use crate::generic::IORecordOptions as _;
+        let empty = arrow_array::RecordBatch::new_empty(input_schema);
+        let shaped = self.options.cast_arrow_batch(empty, self.target_field())?;
+        let schema = shaped.schema();
+        // A missing leaf acquires the first shaped schema as this session's
+        // target. Unlike an ordinary one-shot call, resumed cadences must not
+        // re-plan against a resource another handle changed between awaits.
+        if matches!(self.target, Some(ArrowWriteTarget::EmptyLeaf)) {
+            self.target = Some(ArrowWriteTarget::Leaf {
+                stored: crate::arrow::field_from_arrow_schema(
+                    self.delegated.root_name(),
+                    schema.as_ref(),
+                )?,
+            });
+        }
+        self.buffer = Some(crate::generic::CommitBuffer::new(
+            std::sync::Arc::clone(&schema),
+            self.commit_row_size,
+        ));
+        self.shaped_schema = Some(schema);
+        Ok(())
+    }
+
+    fn publish_ready(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
+        loop {
+            let ready = self
+                .buffer
+                .as_mut()
+                .and_then(crate::generic::CommitBuffer::next_ready);
+            let Some(reader) = ready else { return Ok(()) };
+            self.publish(handle, reader)?;
+        }
+    }
+
+    fn complete_input(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
+        if self.input_complete {
+            return Ok(());
+        }
+        self.publish_ready(handle)?;
+        let remainder = self
+            .buffer
+            .as_mut()
+            .and_then(crate::generic::CommitBuffer::finish);
+        if let Some(reader) = remainder {
+            self.publish(handle, reader)?;
+        }
+        self.input_complete = true;
+        Ok(())
+    }
+
+    fn publish(
+        &mut self,
+        handle: &mut (impl IOBase + ?Sized),
+        batches: crate::arrow::BatchReader,
+    ) -> Result<()> {
+        use crate::generic::IORecordOptions as _;
+
+        let mode = match (self.mode, self.published) {
+            (crate::IOMode::Overwrite, true) => crate::IOMode::Append,
+            (mode, _) => mode,
         };
-        let reader = partition::filtered_reader(reader, options)?;
-        options.limit_arrow_reader(select_reader(reader, options)?)
-    }
-
-    /// Replace or merge this resource's rows with every batch `batches` yields.
-    ///
-    /// This is the one write path, so an encoding is encoded in exactly one
-    /// place. Which of the two it is comes from
-    /// [`IORecordOptions::merge_by_names`](crate::generic::IORecordOptions::merge_by_names):
-    ///
-    /// - **An empty match key overwrites.** A declared schema is applied to the
-    ///   incoming rows first; the result is then cast to the schema the resource
-    ///   already stores, if it stores one, so an overwrite replaces rows rather
-    ///   than redefining columns. A resource that holds nothing yet takes the
-    ///   incoming shape as it stands, and a caller who really means to change a
-    ///   stored schema clears the handle first.
-    /// - **A non-empty match key merges.** The stored rows are read, the
-    ///   incoming reader is joined against them one batch at a time, a row whose
-    ///   key is already stored updates it, a row whose key is not appends, and
-    ///   the merged contents are rewritten. The join is streamed over the
-    ///   incoming side: one batch is pulled, matched, folded in, and dropped
-    ///   before the next is pulled. What has to be held is the stored side,
-    ///   because updating a row means finding it by key and a reader cannot be
-    ///   rewound to a row it has already yielded.
-    ///
-    /// A folder routes each row to the leaf its partition values name, creating
-    /// the `column=value` directory when the layout has one and no leaf holds
-    /// that value yet. A folder holding a table format commits instead: an
-    /// Iceberg table writes one snapshot, whose merge reads only the data files
-    /// whose statistics say they can hold an incoming key and carries the rest
-    /// forward untouched.
-    ///
-    /// A limited write truncates data the caller offered:
-    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
-    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
-    /// the incoming reader exactly as they bound a read, and what they cut off
-    /// is never pulled from it. A limit combined with a non-empty match key is
-    /// refused naming both settings, because a truncated merge would update
-    /// some matched keys and silently drop the rest.
-    ///
-    /// # Errors
-    ///
-    /// Returns a listing, read, schema, cast, encoding, or write failure.
-    #[cfg(feature = "arrow")]
-    fn write_arrow_batch_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<()> {
-        use crate::generic::IORecordOptions;
-
-        // The limit sits on the incoming side, before anything else pulls, so
-        // a satisfied write stops consuming the caller's reader; the same call
-        // refuses a limit combined with a match key.
-        let batches = options.limit_arrow_reader(batches)?;
-        // The selection narrows what a write is about before any encoding or
-        // matching sees the rows, so the columns it drops can never land.
-        let batches = select_reader(batches, options)?;
-        if self.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(mut table) = crate::iceberg::located(self)? {
-                return table.write(batches, options);
+        match self
+            .target
+            .as_mut()
+            .expect("a publishing session has resolved its target")
+        {
+            ArrowWriteTarget::Leaf { stored } => match mode {
+                crate::IOMode::Overwrite => {
+                    handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
+                }
+                crate::IOMode::Append => {
+                    append_leaf_onto(handle, batches, &self.delegated, stored)?
+                }
+                crate::IOMode::Merge => merge_leaf_onto(
+                    handle,
+                    batches,
+                    &self.delegated,
+                    self.delegated.merge_by_names(),
+                    stored,
+                )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
+            },
+            ArrowWriteTarget::TextLeaf => match mode {
+                crate::IOMode::Overwrite => {
+                    handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
+                }
+                crate::IOMode::Append => append_leaf(handle, batches, &self.delegated)?,
+                crate::IOMode::Merge => merge_leaf(
+                    handle,
+                    batches,
+                    &self.delegated,
+                    self.delegated.merge_by_names(),
+                )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
+            },
+            ArrowWriteTarget::EmptyLeaf => {
+                unreachable!("a shaped session has resolved an empty leaf field")
             }
-            return partition::write_folder(self, batches, options, false);
-        }
-        if options.merge_by_names().is_empty() {
-            return overwrite_leaf(self, batches, options);
-        }
-        merge_leaf(self, batches, options)
-    }
-
-    /// Add every batch `batches` yields after the rows this resource holds.
-    ///
-    /// The encodings here are whole-value containers - an Arrow IPC stream and a
-    /// Parquet file each carry one schema and one footer - so appending means
-    /// reading what is there, adding to it, and rewriting. The current rows are
-    /// read as the declared schema when there is one and as the stored schema
-    /// otherwise, a resource holding nothing is skipped rather than decoded, and
-    /// the incoming batches are cast to that same shape, so a caller may append
-    /// data whose schema merely *fits*. Both sides stream: the stored batches
-    /// are chained ahead of the incoming ones and encoded as they arrive, so
-    /// neither is collected.
-    ///
-    /// A folder appends into each partition the incoming rows name, leaving
-    /// every other partition untouched. A folder holding a table format appends
-    /// the way that format does: an Iceberg table writes new data files and
-    /// commits a snapshot that keeps every manifest the last one had, so nothing
-    /// already stored is read, rewritten, or even listed.
-    ///
-    /// A limited write truncates data the caller offered: an append is a
-    /// write, so
-    /// [`max_row_size`](crate::generic::IORecordOptions::max_row_size) and
-    /// [`max_byte_size`](crate::generic::IORecordOptions::max_byte_size) bound
-    /// the incoming reader here exactly as they do on
-    /// [`write_arrow_batch_reader`](Self::write_arrow_batch_reader), and a
-    /// limit combined with a non-empty match key is refused the same way.
-    ///
-    /// # Errors
-    ///
-    /// Returns a listing, read, cast, encoding, or write failure. A failure
-    /// leaves the resource unchanged, because nothing is written until the new
-    /// contents are complete.
-    #[cfg(feature = "arrow")]
-    fn append_arrow_batch_reader(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        options: &RecordOptions,
-    ) -> Result<()> {
-        use crate::generic::IORecordOptions;
-
-        // The limit sits on the incoming side for the same reason it does on
-        // a write: a satisfied append stops consuming the caller's reader.
-        let batches = options.limit_arrow_reader(batches)?;
-        // The same narrowing a write applies: an append is a write that keeps.
-        let batches = select_reader(batches, options)?;
-        if self.is_container() {
+            ArrowWriteTarget::Folder { writer } => match mode {
+                crate::IOMode::Overwrite => writer.overwrite(handle, batches)?,
+                crate::IOMode::Append => writer.append(handle, batches)?,
+                crate::IOMode::Merge => writer.merge(handle, batches)?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
+            },
             #[cfg(feature = "iceberg")]
-            if let Some(mut table) = crate::iceberg::located(self)? {
-                return table.append(batches);
-            }
-            return partition::write_folder(self, batches, options, true);
+            ArrowWriteTarget::Iceberg { located, .. } => match mode {
+                crate::IOMode::Overwrite => {
+                    located.overwrite_prepared(batches, self.delegated.safe())?
+                }
+                crate::IOMode::Append => located.append_prepared(batches)?,
+                crate::IOMode::Merge => located.merge_prepared(
+                    batches,
+                    self.delegated.merge_by_names(),
+                    self.delegated.safe(),
+                )?,
+                crate::IOMode::ReadOnly | crate::IOMode::Random => {
+                    return Err(crate::Error::InvalidRecord {
+                        path: smol_str::SmolStr::new_static("$.mode"),
+                        reason: smol_str::SmolStr::new_static(
+                            "write mode readonly or random is not supported for this operation",
+                        ),
+                    });
+                }
+            },
         }
-        // A merge key means "update the row that already has this key" - the
-        // folder path above has always honoured it, so a leaf that ignored it
-        // made one option mean two things depending on what the handle
-        // happened to address, and stored a second row under a key the caller
-        // said identifies one. Merging already keeps every stored row the
-        // incoming keys do not name, which is what makes it the append.
-        if options.merge_by_names().is_empty() {
-            return append_leaf(self, batches, options);
-        }
-        merge_leaf(self, batches, options)
+        self.published = true;
+        Ok(())
     }
+}
+
+/// Peek until the first row-bearing batch without losing it or its schema.
+///
+/// Append and merge use this before touching a handle. A reader that ends (or
+/// yields only zero-row batches) is a true no-op, while a first real batch is
+/// returned ahead of the untouched remainder. At most that one batch is held.
+#[cfg(feature = "arrow")]
+pub(crate) fn non_empty_arrow_reader(
+    mut batches: crate::arrow::BatchReader,
+) -> Result<Option<crate::arrow::BatchReader>> {
+    use arrow_array::RecordBatchReader as _;
+
+    let schema = batches.schema();
+    loop {
+        let Some(batch) = batches.next() else {
+            return Ok(None);
+        };
+        let batch = batch.map_err(crate::arrow::from_reader_error)?;
+        if batch.num_rows() == 0 {
+            continue;
+        }
+        return Ok(Some(Box::new(PrefixedBatchReader {
+            schema,
+            first: Some(batch),
+            rest: batches,
+        })));
+    }
+}
+
+/// One peeked batch followed by the source it came from.
+#[cfg(feature = "arrow")]
+struct PrefixedBatchReader {
+    schema: arrow_schema::SchemaRef,
+    first: Option<arrow_array::RecordBatch>,
+    rest: crate::arrow::BatchReader,
+}
+
+#[cfg(feature = "arrow")]
+impl Iterator for PrefixedBatchReader {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.first.take().map(Ok).or_else(|| self.rest.next())
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl arrow_array::RecordBatchReader for PrefixedBatchReader {
+    fn schema(&self) -> arrow_schema::SchemaRef {
+        std::sync::Arc::clone(&self.schema)
+    }
+}
+
+/// Restore a declared field only for partition-layout discovery.
+#[cfg(feature = "arrow")]
+fn routing_options(mut delegated: RecordOptions, declared: Option<crate::Field>) -> RecordOptions {
+    use crate::generic::IORecordOptions;
+
+    if let Some(field) = declared {
+        delegated.set_field(field);
+    }
+    delegated
 }
 
 /// Decode one leaf, pushing the declared schema down and casting what returns.
@@ -1799,7 +2595,7 @@ pub(crate) fn select_reader(
         return Ok(reader);
     }
     let root =
-        crate::arrow::record_schema_from_arrow(options.root_name(), reader.schema().as_ref())?;
+        crate::arrow::field_from_arrow_schema(options.root_name(), reader.schema().as_ref())?;
     match crate::arrow::selected_root(&root, names, options.root_name())? {
         Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
         None => Ok(reader),
@@ -1813,7 +2609,7 @@ pub(crate) fn leaf_reader(
 ) -> Result<crate::arrow::BatchReader> {
     use crate::generic::IORecordOptions;
 
-    let declared = options.schema();
+    let declared = options.field();
     let reader = match options {
         RecordOptions::Ipc(ipc) => crate::ipc::read_batch_reader(handle, declared, ipc)?,
         #[cfg(feature = "parquet")]
@@ -1832,24 +2628,63 @@ pub(crate) fn leaf_reader(
     }
 }
 
+/// Count one encoded leaf from format metadata without decoding row arrays.
+#[cfg(feature = "arrow")]
+pub(crate) fn leaf_row_size(
+    handle: &(impl IOBase + ?Sized),
+    options: &RecordOptions,
+) -> Result<u64> {
+    match options {
+        RecordOptions::Ipc(ipc) => crate::ipc::row_size(handle, ipc),
+        #[cfg(feature = "parquet")]
+        RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
+        RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
+        RecordOptions::Text(text) => crate::text::line::row_size(handle, &text.lines),
+    }
+}
+
+/// Read one encoded leaf's canonical Struct field from format metadata.
+///
+/// Unlike asking a batch reader for its schema, each binary encoding reaches
+/// its header or footer directly, so discovering a large Avro container's
+/// width never fetches or decodes its block payloads.
+#[cfg(feature = "arrow")]
+pub(crate) fn leaf_field(
+    handle: &(impl IOBase + ?Sized),
+    options: &RecordOptions,
+) -> Result<crate::Field> {
+    use crate::generic::IORecordOptions;
+
+    if let Some(field) = options.field() {
+        return Ok(field.clone());
+    }
+    match options {
+        RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
+        #[cfg(feature = "parquet")]
+        RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
+        RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
+        RecordOptions::Text(text) => Ok(text.lines().field().clone()),
+    }
+}
+
 /// Encode one leaf's complete contents.
 ///
 /// This is the only place a record write reaches an encoding. Nothing reaches
 /// the handle until the last batch has been encoded, so a failure leaves the
 /// resource exactly as it was.
 #[cfg(feature = "arrow")]
-fn leaf_writer(
+pub(crate) fn leaf_writer(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<()> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::write_batch_reader(handle, batches, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::parquet::write_batch_reader(handle, batches, parquet)?;
+            crate::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
         }
-        RecordOptions::Avro(avro) => crate::avro::write_batch_reader(handle, batches, avro)?,
+        RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
         RecordOptions::Text(text) => {
             crate::text::line::arrow::write_arrow_lines(handle, batches, text)?;
         }
@@ -1879,29 +2714,7 @@ pub(crate) fn stored_field(
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
     probe.set_root_name(smol_str::SmolStr::new(options.root_name()));
-    let schema = leaf_reader(handle, &probe)?.schema();
-    Ok(Some(crate::arrow::record_schema_from_arrow(
-        probe.root_name(),
-        schema.as_ref(),
-    )?))
-}
-
-/// Replace a leaf's complete contents with `batches`.
-#[cfg(feature = "arrow")]
-fn overwrite_leaf(
-    handle: &mut (impl IOBase + ?Sized),
-    batches: crate::arrow::BatchReader,
-    options: &RecordOptions,
-) -> Result<()> {
-    use crate::generic::IORecordOptions;
-
-    // One definition of option-driven casting: the declared schema first,
-    // then the selection, then completion onto the stored shape, so a value
-    // that will not convert into a stored column becomes null rather than
-    // quietly redefining that column for every reader of the resource.
-    let stored = stored_field(handle, options)?;
-    let batches = options.cast_arrow_reader(batches, stored.as_ref())?;
-    leaf_writer(handle, batches, options)
+    Ok(Some(leaf_field(handle, &probe)?))
 }
 
 /// Merge `incoming` into a leaf's rows on the options' match key.
@@ -1910,9 +2723,8 @@ fn merge_leaf(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
     options: &RecordOptions,
+    merge_by_names: &[String],
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
-
     // A text line has no row identity: re-parsing the resource yields
     // projection rows, not the rows a caller wrote, so a key match would
     // silently compare against the wrong thing. Refused rather than guessed.
@@ -1921,27 +2733,38 @@ fn merge_leaf(
             path: smol_str::SmolStr::new_static("$.merge_by_names"),
             reason: crate::text::expected_got(
                 "a record encoding with row identity to merge by (Arrow IPC, Parquet, Avro)",
-                "text lines, which have none - use write or append",
+                "text lines, which have none - use overwrite or append",
             ),
         });
     }
     let target = target_field(handle, &incoming, options)?;
+    merge_leaf_onto(handle, incoming, options, merge_by_names, &target)
+}
+
+/// Merge an already-shaped cadence under one target fixed for the operation.
+#[cfg(feature = "arrow")]
+fn merge_leaf_onto(
+    handle: &mut (impl IOBase + ?Sized),
+    incoming: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    merge_by_names: &[String],
+    target: &crate::Field,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
     // The stored side is read as the target so both sides of the match agree
     // column for column before a single key is compared.
     let mut rewrite = options.clone();
-    rewrite.set_schema(target.clone());
+    rewrite.set_field(target.clone());
     let stored = leaf_reader(handle, &rewrite)?;
-    let merged = merge::merged(
-        stored,
-        incoming,
-        &target,
-        options.merge_by_names(),
-        options.safe(),
-    )?;
-    // The merged contents are the whole new value, so what publishes them is a
-    // plain write: merging again would match the result against itself.
+    let merged = merge::merged(stored, incoming, target, merge_by_names, options.safe())?;
+    // The merged contents are the whole new value. The cloned options already
+    // had its declared field popped by `prepare_arrow_write`; clear the key as
+    // well so the required overwrite hook sees exactly one publication and
+    // cannot recursively merge the result against itself.
+    rewrite.take_field();
     rewrite.set_merge_by_names(Vec::new());
-    leaf_writer(handle, merged, &rewrite)
+    handle.overwrite_prepared_arrow_reader(merged, &rewrite)
 }
 
 /// Add `incoming` after a leaf's current rows.
@@ -1951,27 +2774,38 @@ fn append_leaf(
     incoming: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
-
     // Text lines append natively: rows render after the current last line,
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
-        let incoming = options.cast_arrow_reader(incoming, None)?;
         return crate::text::line::arrow::append_arrow_lines(handle, incoming, text);
     }
     let target = target_field(handle, &incoming, options)?;
+    append_leaf_onto(handle, incoming, options, &target)
+}
+
+/// Append an already-shaped cadence under one target fixed for the operation.
+#[cfg(feature = "arrow")]
+fn append_leaf_onto(
+    handle: &mut (impl IOBase + ?Sized),
+    incoming: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    target: &crate::Field,
+) -> Result<()> {
+    use crate::generic::IORecordOptions;
+
     let mut rewrite = options.clone();
-    rewrite.set_schema(target.clone());
+    rewrite.set_field(target.clone());
     let current = if handle.is_empty() {
         // Per the laziness contract, a resource that holds nothing is skipped
         // rather than decoded.
-        crate::arrow::batch_reader(crate::arrow::schema_from_field(&target)?, [])
+        crate::arrow::batch_reader(crate::arrow::arrow_schema_from_field(target)?, [])
     } else {
         leaf_reader(handle, &rewrite)?
     };
-    let appended = crate::arrow::appended(current, incoming, &target, options.safe())?;
+    let appended = crate::arrow::appended(current, incoming, target, options.safe())?;
+    rewrite.take_field();
     rewrite.set_merge_by_names(Vec::new());
-    leaf_writer(handle, appended, &rewrite)
+    handle.overwrite_prepared_arrow_reader(appended, &rewrite)
 }
 
 /// Resolve the root Field a merge or an append produces.
@@ -1987,13 +2821,13 @@ fn target_field(
 ) -> Result<crate::Field> {
     use crate::generic::IORecordOptions;
 
-    if let Some(field) = options.schema() {
+    if let Some(field) = options.field() {
         return Ok(field.clone());
     }
     if let Some(field) = stored_field(handle, options)? {
         return Ok(field);
     }
-    Ok(crate::arrow::record_schema_from_arrow(
+    Ok(crate::arrow::field_from_arrow_schema(
         options.root_name(),
         incoming.schema().as_ref(),
     )?)
@@ -2065,9 +2899,132 @@ impl Write for Writer<'_> {
     }
 }
 
+impl IOMedia for Box<dyn IOBase> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self.as_ref()
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self.as_mut()
+    }
+
+    #[cfg(feature = "arrow")]
+    fn row_size(&self) -> Result<u64> {
+        IOMedia::row_size(self.as_ref())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn column_size(&self) -> Result<usize> {
+        IOMedia::column_size(self.as_ref())
+    }
+
+    #[cfg(feature = "arrow")]
+    fn record_options(&self) -> Result<RecordOptions> {
+        IOMedia::record_options(self.as_ref())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+        IOMedia::read_parquet_statistics(self.as_ref())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn read_parquet_geospatial_statistics(
+        &self,
+        column: &str,
+    ) -> Result<crate::parquet::GeospatialStatistics> {
+        IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
+        IOMedia::read_arrow_field(self.as_ref(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
+        IOMedia::read_arrow_reader(self.as_ref(), options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::overwrite_prepared_arrow_reader(self.as_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn overwrite_arrow_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::append_arrow_reader(self.as_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn append_arrow_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::append_arrow_batch(self.as_mut(), batch, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn merge_arrow_batch(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        IOMedia::merge_arrow_batch(self.as_mut(), batch, options)
+    }
+}
+
 impl IOBase for Box<dyn IOBase> {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_ref().pread(offset, buffer)
+    }
+
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
+        self.as_ref().pstream_bytes(position, batch_size)
+    }
+
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.as_ref().read_all_bytes()
+    }
+
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_ref().read_range(offset, length)
     }
 
     fn clear(&mut self) -> Result<()> {
@@ -2114,6 +3071,34 @@ impl IOBase for Box<dyn IOBase> {
         self.as_mut().flush()
     }
 
+    fn open(&mut self) -> Result<()> {
+        self.as_mut().open()
+    }
+
+    fn opened(&self) -> bool {
+        self.as_ref().opened()
+    }
+
+    fn close(&mut self) -> Result<()> {
+        self.as_mut().close()
+    }
+
+    fn parent(&self) -> Option<Holder> {
+        self.as_ref().parent()
+    }
+
+    fn child_by_path(&self, path: &str) -> Result<Holder> {
+        self.as_ref().child_by_path(path)
+    }
+
+    fn ls(&self, recursive: bool, include_private: bool) -> Listing {
+        self.as_ref().ls(recursive, include_private)
+    }
+
+    fn kind(&self) -> IOKind {
+        self.as_ref().kind()
+    }
+
     // The shape questions forward rather than deriving from this box's own
     // answers: a boxed folder is a folder, and the default would read the
     // trait's `kind` here rather than the one the value inside answers.
@@ -2123,6 +3108,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn is_tabular(&self) -> bool {
         self.as_ref().is_tabular()
+    }
+
+    fn is_io(&self) -> bool {
+        self.as_ref().is_io()
     }
 }
 

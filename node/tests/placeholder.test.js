@@ -9,6 +9,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
+const { pathToFileURL } = require('node:url')
 
 const { json, toml, yaml } = require('yggdryl')
 
@@ -111,7 +112,7 @@ test('a document without placeholders parses identically either way', (t) => {
   const target = path.join(root, 'config.yaml')
   fs.writeFileSync(target, 'a: "{{ NAME }}"\n')
   const options = { placeholders: { NAME: 'app' } }
-  assert.deepEqual(yaml.load(target, options), { a: 'app' })
+  assert.deepEqual(yaml.load(pathToFileURL(target), options), { a: 'app' })
   assert.deepEqual(yaml.loads(fs.readFileSync(target), options), { a: 'app' })
 
   // And nothing about the options is guessed for the caller.

@@ -40,10 +40,10 @@ use crate::arrow::BatchReader;
 use crate::expression::{Bound, Bounds, Selector};
 use crate::field::cast::ArrowCast;
 use crate::generic::Holder;
-use crate::{DataType, Error, Expression, Field, Result, Value};
+use crate::{DataType, Error, Expression, Field, Result, Scalar};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ScanTask {
     /// The manifest entry, with the numbers its manifest supplied filled in.
     pub entry: ManifestEntry,
@@ -54,6 +54,12 @@ pub struct ScanTask {
 }
 
 impl ScanTask {
+    /// Return a deterministic hash of this complete executable task.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Borrow the data file this task reads.
     pub const fn data_file(&self) -> &DataFile {
         &self.entry.data_file
@@ -66,7 +72,7 @@ impl ScanTask {
 /// and what it carries into the new snapshot untouched is `excluded` plus the
 /// whole of `skipped` - a manifest nobody opened does not have to be rewritten
 /// to stay true.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ScanPlan {
     /// The data files the scan will open, in manifest order.
     pub tasks: Vec<ScanTask>,
@@ -79,6 +85,12 @@ pub struct ScanPlan {
 }
 
 impl ScanPlan {
+    /// Return a deterministic hash of the ordered tasks and pruning report.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Return the rows the planned files hold, as the manifests counted them.
     pub fn record_count(&self) -> i64 {
         self.tasks
@@ -166,7 +178,7 @@ pub(super) fn manifest_bounds(
         // does not order the way a number does.
         if let (Some(low), Some(high)) = (&minimum, &maximum) {
             if low == high {
-                let text = Value::from(super::value::scalar_text(low).as_str());
+                let text = Scalar::from(super::value::scalar_text(low).as_str());
                 bounds = bounds.with_attribute(
                     Selector::Partition(column.name().into()),
                     Some(text.clone()),
@@ -207,7 +219,11 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let Some(column) = identity_column(spec, position, schema) else {
             continue;
         };
-        let value = file.partition.get(position).cloned().unwrap_or(Value::Null);
+        let value = file
+            .partition
+            .get(position)
+            .cloned()
+            .unwrap_or(Scalar::Null);
         settled.push(column.name());
         if value.is_null() {
             bounds = bounds.with_column(column.name(), None, None, rows);
@@ -215,7 +231,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         }
         // The manifest is the authority on the value, and a path spells the
         // same one, so both spellings are recorded from the same source.
-        let text = Value::from(super::value::scalar_text(&value).as_str());
+        let text = Scalar::from(super::value::scalar_text(&value).as_str());
         bounds = bounds
             .with_attribute(
                 Selector::Partition(column.name().into()),
@@ -359,7 +375,7 @@ pub(super) struct ScanPart {
     /// The file size the manifest recorded, which sizes the parallel decision.
     pub(super) size: i64,
     /// Partition columns to restore, when the file does not store them.
-    pub(super) partition: Vec<(Field, Value)>,
+    pub(super) partition: Vec<(Field, Scalar)>,
     /// The filters this file's rows still have to be tested against.
     pub(super) residual: Vec<usize>,
 }
@@ -369,7 +385,7 @@ struct Open {
     /// The file's own reader.
     reader: BatchReader,
     /// Partition columns to restore, when the file does not store them.
-    partition: Vec<(Field, Value)>,
+    partition: Vec<(Field, Scalar)>,
     /// The filters this file's rows still have to be tested against.
     residual: Vec<usize>,
 }
@@ -402,7 +418,7 @@ impl Refine {
     /// [`restore_partitions`] is about to put back.
     fn file_options(&self, part: &ScanPart) -> Result<crate::generic::RecordOptions> {
         use crate::generic::IORecordOptions;
-        use crate::io::IOBase;
+        use crate::io::IOMedia;
 
         let options = part.handle.record_options()?;
         if self.target.is_none() {
@@ -418,7 +434,7 @@ impl Refine {
         match self.read_root.without_fields(&columns) {
             Ok(stored) if stored.field_len() > 0 => {
                 let projected = file_projection(&part.handle, &options, &stored);
-                Ok(options.with_schema(projected))
+                Ok(options.with_field(projected))
             }
             // A read root that is nothing but partition columns leaves the file
             // read unprojected; there is no column left to ask it for.
@@ -429,14 +445,14 @@ impl Refine {
     /// Open one planned file with its resolved options.
     fn open(&self, part: &ScanPart) -> Result<BatchReader> {
         let options = self.file_options(part)?;
-        crate::io::IOBase::read_arrow_batch_reader(&part.handle, &options)
+        crate::io::IOMedia::read_arrow_reader(&part.handle, &options)
     }
 
     /// Restore, align, cast, filter, and project one decoded batch.
     fn batch(
         &self,
         batch: &RecordBatch,
-        partition: &[(Field, Value)],
+        partition: &[(Field, Scalar)],
         residual: &[usize],
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
@@ -490,7 +506,7 @@ pub(super) fn reader(
     predicates: Vec<Bound>,
     parallel: &super::options::ReadSettings,
 ) -> Result<BatchReader> {
-    let schema = crate::arrow::schema_from_field(&root)?;
+    let schema = crate::arrow::arrow_schema_from_field(&root)?;
     let refine = Arc::new(Refine {
         project: read_root.field_len() != root.field_len(),
         read_root,
@@ -776,7 +792,7 @@ fn file_projection(
     options: &crate::generic::RecordOptions,
     wanted: &Field,
 ) -> Field {
-    let Ok(file_root) = crate::io::IOBase::read_arrow_field(handle, options) else {
+    let Ok(file_root) = crate::io::IOMedia::read_arrow_field(handle, options) else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());
@@ -864,8 +880,8 @@ fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatc
 }
 
 /// Add the partition columns a data file left out, typed as declared.
-fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Result<RecordBatch> {
-    let missing: Vec<&(Field, Value)> = partition
+fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Result<RecordBatch> {
+    let missing: Vec<&(Field, Scalar)> = partition
         .iter()
         .filter(|(field, _)| batch.schema().index_of(field.name()).is_err())
         .collect();
@@ -880,7 +896,7 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Value)]) -> Resu
         let scalar = crate::arrow::scalar_array(field, value)
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
         columns.push(repeat(&scalar, batch.num_rows())?);
-        fields.push(field.to_arrow_ref()?);
+        fields.push(field.clone().into_arrow_ref()?);
     }
     let schema =
         Arc::new(ArrowSchema::new(fields).with_metadata(batch.schema().metadata().clone()));
@@ -905,7 +921,7 @@ pub(super) fn partition_columns(
     spec: &PartitionSpec,
     schema: &Field,
     file: &DataFile,
-) -> Result<Vec<(Field, Value)>> {
+) -> Result<Vec<(Field, Scalar)>> {
     let partition = spec.partition_field(schema)?;
     Ok(partition
         .fields()

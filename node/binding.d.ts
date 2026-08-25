@@ -1,10 +1,13 @@
 export {
   BatchReader,
   Bound,
+  BoundStatement,
+  ByteIterator,
   DataType,
   Expression,
   Field,
   IOBase,
+  IOCursor,
   LineIterator,
   Listing,
   MediaType,
@@ -16,23 +19,23 @@ export {
   Uri,
   Url,
   Urn,
-  Value,
-  type Compaction,
+  Scalar,
   type FieldBound,
   type FieldCount,
-  type ManifestFileView,
+  type FieldSummaryView,
   type MetadataEntry,
   type PartitionEntry,
-  type PartitionFieldView,
-  type SnapshotView,
   type TimezoneAlias,
 } from './index'
 
 import type {
   BatchReader,
+  BoundStatement,
+  ByteIterator,
   DataType,
   Field,
   IOBase,
+  IOCursor,
   LineIterator,
   Listing,
   MediaType,
@@ -41,23 +44,49 @@ import type {
   PartitionEntry,
   ProtocolMetadata,
   RecordOptions,
+  Statement,
   Timezone,
   Uri,
   Url,
   Urn,
-  Value,
+  Scalar,
 } from './index'
 // The Iceberg values are reached through the `iceberg` namespace, so they are
 // imported here as values to type it and re-exported as types only.
-import { Catalog, DataFile, PartitionSpec, Table } from './index'
+import {
+  Catalog,
+  Compaction,
+  DataFile,
+  IcebergOptions,
+  ManifestFile,
+  PartitionField,
+  PartitionSpec,
+  ScanPlan,
+  Snapshot,
+  SnapshotRef,
+  Table,
+} from './index'
 import type {
   RecordBatch as ArrowRecordBatch,
   Table as ArrowTable,
+  Vector as ArrowVector,
 } from 'apache-arrow'
 import type { Buffer } from 'node:buffer'
 import type { URL as NodeURL } from 'node:url'
 
-export type { Catalog, DataFile, PartitionSpec, Table }
+export type {
+  Catalog,
+  Compaction,
+  DataFile,
+  IcebergOptions,
+  ManifestFile,
+  PartitionField,
+  PartitionSpec,
+  ScanPlan,
+  Snapshot,
+  SnapshotRef,
+  Table,
+}
 
 /** A native MIME wrapper or canonical MIME/extension string. */
 export type MimeTypeInput = MimeType | string
@@ -65,6 +94,30 @@ export type MimeTypeInput = MimeType | string
 export type MediaTypeInput = MediaType | MimeType | string
 /** A native handle, a native `Url`, or anything that names a location. */
 export type LocationInput = IOBase | Url | string
+/**
+ * A class exposing its native struct shape through an actual static getter.
+ *
+ * TypeScript cannot distinguish an accessor from a readonly stored property;
+ * {@link intoField} verifies the property descriptor at runtime.
+ */
+export interface StructFieldClass {
+  readonly intoStructField: Field
+}
+/**
+ * A class instance considered for its constructor's struct-field accessor.
+ *
+ * TypeScript does not retain the static side of a class on its instance type;
+ * the converter therefore validates the static getter descriptor at runtime.
+ */
+export interface StructFieldInstance {
+  readonly constructor: Function
+  /** Prevent a constructor value from being mistaken for one of its instances. */
+  readonly prototype?: never
+}
+/** Anything the global {@link intoField} converter accepts. */
+export type FieldLike = Field | string | StructFieldClass | StructFieldInstance
+/** Convert a native field, expression, or field class to one native `Field`. */
+export declare function intoField(value: FieldLike, name?: string | null): Field
 /** A native zone wrapper or an IANA name, alias, or fixed offset. */
 export type TimezoneInput = Timezone | string
 /** Hive partition pairs as a mapping, a Map, or an entry sequence. */
@@ -89,13 +142,14 @@ export type CodecContent =
   | SharedArrayBuffer
   | ArrayBufferView
 export type CodecReadable = AsyncIterable<CodecContent>
+/** String members are content; source locations are file URLs or descriptors. */
 export type CodecSyncSource = CodecContent | number | NodeURL
 export type CodecSource = CodecSyncSource | CodecReadable
 
 /**
  * The parameter-free identity of one datatype variant.
  *
- * Mirrors `rust/src/enums/datatype_id.rs` and is what `DataType.id` returns.
+ * Mirrors `rust/src/generic/datatype_id.rs` and is what `DataType.id` returns.
  * Use it whenever the question is "which variant is this".
  */
 export type DataTypeId =
@@ -117,7 +171,8 @@ export type DataTypeId =
   | 'date64'
   | 'time32'
   | 'time64'
-  | 'duration'
+  | 'duration32'
+  | 'duration64'
   | 'interval'
   | 'binary'
   | 'fixed_size_binary'
@@ -147,7 +202,7 @@ export type DataTypeId =
 /**
  * The coarse family one datatype variant belongs to.
  *
- * Mirrors `rust/src/enums/datatype_kind.rs` and is what `DataType.kind`
+ * Mirrors `rust/src/generic/datatype_kind.rs` and is what `DataType.kind`
  * returns. Only behavior that is uniform across a whole family reads it.
  */
 export type DataTypeKind =
@@ -187,7 +242,8 @@ interface DataTypeKindById {
   date64: 'temporal'
   time32: 'temporal'
   time64: 'temporal'
-  duration: 'temporal'
+  duration32: 'temporal'
+  duration64: 'temporal'
   interval: 'temporal'
   binary: 'binary'
   fixed_size_binary: 'binary'
@@ -226,6 +282,22 @@ export type CompatibilityScheme =
   | 'pandas'
   | 'iceberg'
 
+/** Required intent for a generic record-write entry point. */
+export type IOMode = 'overwrite' | 'append' | 'merge' | 'readonly' | 'random'
+
+/** One field in the v2 Iceberg partition-spec JSON shape. */
+export interface PartitionFieldDocument {
+  name: string
+  transform: string
+  'source-id': number
+  'field-id': number
+}
+/** The v2 Iceberg partition-spec JSON shape emitted by the native core. */
+export interface PartitionSpecDocument {
+  'spec-id': number
+  fields: PartitionFieldDocument[]
+}
+
 declare const yggdrylHintValue: unique symbol
 
 /** Cached runtime hint for one canonical JavaScript scalar view. */
@@ -242,18 +314,70 @@ export interface JSValueHint<
 }
 
 declare module './index' {
+  namespace PartitionSpec {
+    /** Parse either the v1 field array or v2 object through the native core. */
+    function fromJSON(value: unknown): PartitionSpec
+  }
+
+  interface PartitionSpec {
+    /** Return the canonical v2 document as natural JavaScript data. */
+    intoJSON(): PartitionSpecDocument
+    /** Return the canonical document for JSON.stringify. */
+    toJSON(): PartitionSpecDocument
+  }
+
+  interface Expression {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+    /** Build a lazy addition, inferring ordinary JavaScript values as literals. */
+    add(other: unknown): Expression
+    /** Build a lazy subtraction, inferring ordinary JavaScript values as literals. */
+    subtract(other: unknown): Expression
+    /** Build a lazy multiplication, inferring ordinary JavaScript values as literals. */
+    multiply(other: unknown): Expression
+    /** Build a lazy division, inferring ordinary JavaScript values as literals. */
+    divide(other: unknown): Expression
+    /** Build a lazy remainder, inferring ordinary JavaScript values as literals. */
+    remainder(other: unknown): Expression
+  }
+
+  interface Statement {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+    /** Resolve every statement expression against one inferred native Field. */
+    bind(
+      schema: FieldLike,
+      parameters?: Readonly<Record<string, unknown>> | Scalar | null,
+    ): BoundStatement
+  }
+
+  interface BoundStatement {
+    /** Lazily filter, project, and limit one native reader. */
+    projectArrowReader(reader: BatchReader): BatchReader
+    /** Filter and project one Apache Arrow JS RecordBatch. */
+    projectArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    /** Filter, project, and limit one Apache Arrow JS Table. */
+    projectArrowTable(table: ArrowTable): ArrowTable
+    /** Infer an Arrow holder and preserve its runtime type. */
+    projectArrow(reader: BatchReader): BatchReader
+    projectArrow(batch: ArrowRecordBatch): ArrowRecordBatch
+    projectArrow(table: ArrowTable): ArrowTable
+    /** Sort one materialized batch by this statement's native ordering. */
+    sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+  }
+
   interface DataType {
     defaultJSValue(): unknown
     defaultJSHint(): JSValueHint
     defaultArrowScalar(): unknown
-    toSchemeCompat(target: CompatibilityScheme): DataType
+    intoSchemeCompat(target: CompatibilityScheme): DataType
   }
 
   interface Field {
     defaultJSValue(): unknown
     defaultJSHint(): JSValueHint
     defaultArrowScalar(): unknown
-    toSchemeCompat(target: CompatibilityScheme): Field
+    intoSchemeCompat(target: CompatibilityScheme): Field
     /**
      * Cast whatever Arrow JS holds - a Table, RecordBatch, BatchReader, or
      * IPC bytes - to this exact Field, batch by batch, as a Table.
@@ -333,7 +457,8 @@ export type Date64Field = FieldOf<'date64', bigint>
 export type Time32Field = FieldOf<'time32', number>
 export type Time64Field = FieldOf<'time64', bigint>
 export type TimeField = Time32Field | Time64Field
-export type DurationField = FieldOf<'duration', bigint>
+export type Duration32Field = FieldOf<'duration32', number>
+export type Duration64Field = FieldOf<'duration64', bigint>
 export type IntervalValue =
   | number
   | readonly [days: number, milliseconds: number]
@@ -418,7 +543,7 @@ type DefaultFieldInput<K extends DataTypeId, V> =
     ? number | bigint
     : K extends 'timestamp' | 'date32' | 'date64'
       ? number | bigint | Date
-      : K extends 'time32' | 'time64' | 'duration'
+      : K extends 'time32' | 'time64' | 'duration32' | 'duration64'
         ? number | bigint
         : K extends 'decimal32' | 'decimal64' | 'decimal128'
           ? number | bigint
@@ -464,8 +589,10 @@ export interface FieldsNamespace {
   time32(name: string, options: FieldOptions): Time32Field
   time64(name: string, unit?: string, options?: FieldOptions): Time64Field
   time64(name: string, options: FieldOptions): Time64Field
-  duration(name: string, unit?: string, options?: FieldOptions): DurationField
-  duration(name: string, options: FieldOptions): DurationField
+  duration32(name: string, unit?: string, options?: FieldOptions): Duration32Field
+  duration32(name: string, options: FieldOptions): Duration32Field
+  duration64(name: string, unit?: string, options?: FieldOptions): Duration64Field
+  duration64(name: string, options: FieldOptions): Duration64Field
   interval(name: string, unit?: string, options?: FieldOptions): IntervalField
   interval(name: string, options: FieldOptions): IntervalField
   binary(name: string, options?: FieldOptions): BinaryField
@@ -698,8 +825,10 @@ export interface FieldsNamespace {
   time32<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'time32', number, N, O>
   time64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'time64', bigint, N, O>
   time64<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'time64', bigint, N, O>
-  duration<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'duration', bigint, N, O>
-  duration<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'duration', bigint, N, O>
+  duration32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'duration32', number, N, O>
+  duration32<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'duration32', number, N, O>
+  duration64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'duration64', bigint, N, O>
+  duration64<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'duration64', bigint, N, O>
   interval<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'interval', IntervalValue, N, O>
   interval<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'interval', IntervalValue, N, O>
   binary<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'binary', Uint8Array, N, O>
@@ -744,11 +873,169 @@ export interface FieldsNamespace {
 
 export declare const fields: FieldsNamespace
 
+/** One JSON value accepted as an Avro schema document. */
+export type AvroSchemaDocument =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly AvroSchemaDocument[]
+  | Readonly<{ [name: string]: AvroSchemaDocument }>
+
+/** Any schema spelling normalized into the one native Avro schema graph. */
+export type AvroSchemaInput =
+  | AvroSchema
+  | Scalar
+  | CodecContent
+  | AvroSchemaDocument
+
+/** Binary input for an Avro container or single-object datum. */
+export type AvroBytes = Exclude<CodecContent, string>
+
+/** Native resource limits shared by every Avro decode path. */
+export interface AvroDecodeLimits {
+  /** Maximum structural nesting in a schema or datum. */
+  maxDepth?: number | null
+  /** Maximum encoded bytes consumed by one decode. */
+  maxInputBytes?: number | null
+  /** Maximum decoded nodes or object-container rows. */
+  maxNodes?: number | null
+}
+/** Container/block decode options, including one optional reader schema. */
+export interface AvroDecodeOptions extends AvroDecodeLimits {
+  /** Resolve writer rows onto this reader schema while decoding. */
+  readerSchema?: AvroSchemaInput | null
+}
+
+/** A parsed Avro schema backed by the native Rust schema graph. */
+export interface AvroSchema {
+  /** The root Avro kind, such as `record` or `long`. */
+  readonly kind: string
+  /** The Avro Parsing Canonical Form. */
+  readonly canonicalForm: string
+  /** The exact CRC-64-AVRO fingerprint of the canonical form. */
+  readonly fingerprint: bigint
+  /** Whether another schema retains the same behavior-affecting document. */
+  equals(other: AvroSchema): boolean
+  /** Compare schemas by the core's complete retained-schema order. */
+  compare(other: AvroSchema): number
+  /** Deterministic hash of the complete retained schema. */
+  stableHash(): bigint
+  /** Make a cheap native clone sharing the parsed schema graph. */
+  clone(): AvroSchema
+  /** Return the original schema document as natural JavaScript data. */
+  intoJSON(): AvroSchemaDocument
+  /** Return the Avro Parsing Canonical Form. */
+  intoCanonicalForm(): string
+  /** Encode one natural value with Avro single-object framing. */
+  intoSingleObject(value: unknown): Buffer
+  /** Decode one single-object datum through the shared native Scalar pivot. */
+  fromSingleObject<T = unknown>(input: AvroBytes, options?: AvroDecodeLimits | null): T
+  /** Return the canonical form for JavaScript's string protocol. */
+  toString(): string
+  /** Return the original document for JSON serialization. */
+  toJSON(): AvroSchemaDocument
+}
+
+export declare const AvroSchema: {
+  readonly prototype: AvroSchema
+  /** Parse a natural value, native Scalar, JSON text, or JSON bytes. */
+  new(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
+  /** Parse any accepted schema representation. */
+  from(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
+}
+
+/** One decoded Avro object container. */
+export interface AvroContainer<T = unknown> {
+  /** The writer schema carried in the object-container header. */
+  schema: AvroSchema
+  /** User metadata, excluding Avro's reserved header entries. */
+  metadata: Record<string, string>
+  /** Rows decoded through the shared native Scalar conversion. */
+  rows: T[]
+}
+
+/** One compressed Avro object-container block, decoded only when requested. */
+export interface AvroBlock<T = unknown> {
+  /** Row count declared by the block header. */
+  readonly count: bigint
+  /** Compressed payload size in bytes. */
+  readonly size: bigint
+  /** Decompress and decode this block through the iterator's reader schema. */
+  rows(): T[]
+}
+
+/** A fused lazy iterator retaining one bounded native read window. */
+export interface AvroBlocks<T = unknown> extends IterableIterator<AvroBlock<T>> {
+  /** Writer schema carried by the object-container header. */
+  readonly schema: AvroSchema
+  /** User metadata, excluding Avro's reserved header entries. */
+  readonly metadata: Record<string, string>
+  /** Return one metadata value without constructing the metadata object. */
+  get(key: string): string | undefined
+  next(): IteratorResult<AvroBlock<T>>
+}
+
+/** Raw native Avro schema, container, and single-object operations. */
+export interface Avro {
+  readonly Schema: typeof AvroSchema
+  /** Lazily yield still-compressed object-container blocks. */
+  blocks<T = unknown>(input: AvroBytes, options?: AvroDecodeOptions | null): AvroBlocks<T>
+  loads<T = unknown>(input: AvroBytes, options?: AvroDecodeOptions | null): AvroContainer<T>
+  dumps(
+    rows: Iterable<unknown>,
+    schema: AvroSchemaInput,
+    metadata?: FieldMetadataInput | null,
+  ): Buffer
+  loadsSingle<T = unknown>(
+    input: AvroBytes,
+    schema: AvroSchemaInput,
+    options?: AvroDecodeLimits | null,
+  ): T
+  dumpsSingle(value: unknown, schema: AvroSchemaInput): Buffer
+}
+
+/** Apache Avro operations backed entirely by the Rust core. */
+export declare const avro: Avro
+
 export interface CodecOptions {
   /** Explicit format; generic APIs otherwise infer a path suffix or content. */
   format?: SingleCodecFormat
+  /** Native schema used by the core parser to type natural values. */
+  field?: FieldLike
   /** Maximum recursive container depth in the inclusive range 1..48. */
-  maxDepth?: number
+  maxDepth?: number | null
+  /** Maximum encoded bytes consumed by one decoder invocation. */
+  maxInputBytes?: number | null
+  /** Maximum scalar and container nodes decoded per document. */
+  maxNodes?: number | null
+  /** Maximum values yielded by a multi-document decoder. */
+  maxDocuments?: number | null
+  /**
+   * Output indentation: omitted uses the format default, `null` requests no
+   * layout, a number requests spaces per level, and `"\t"` requests tabs.
+   */
+  indent?: number | '\t' | null
+  /** Return the exact native `Scalar` instead of its natural JavaScript view. */
+  scalar?: boolean | null
+}
+
+/** Options for one format-inferred `IOBase.readScalar` call. */
+export interface ScalarReadOptions {
+  /** Native schema used by the core parser to type natural values. */
+  field?: FieldLike | null
+  /** Return the exact native `Scalar` instead of its natural JavaScript view. */
+  scalar?: boolean | null
+}
+
+/** Page-cache controls for {@link IOBase.buffered}. */
+export interface BufferedOptions {
+  /** Bytes per page; rounded up to a power of two in the core. */
+  pageSize?: number | null
+  /** Total cached bytes; raised to hold the pinned first and last pages. */
+  maxBytes?: number | null
+  /** Milliseconds an untouched page remains cached. */
+  ttlMs?: number | null
 }
 
 /**
@@ -812,13 +1099,20 @@ export type CodecDestination = CodecSyncDestination | CodecWritable
 
 /** One-document byte codec. Caller-owned streams are never closed. */
 export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
+  loads(content: CodecContent, options: O & { scalar: true }): Scalar
   loads<T = unknown>(content: CodecContent, options?: O): T
+  load(source: CodecReadable, options: O & { scalar: true }): Promise<Scalar>
   load<T = unknown>(source: CodecReadable, options?: O): Promise<T>
+  load(source: CodecSyncSource, options: O & { scalar: true }): Scalar
   load<T = unknown>(source: CodecSyncSource, options?: O): T
   dumps(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, destination: CodecWritable, options?: CodecOptions): Promise<void>
   dump(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
+  loadStream(
+    stream: AsyncIterable<CodecContent>,
+    options: O & { scalar: true },
+  ): Promise<Scalar>
   loadStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options?: O,
@@ -833,8 +1127,11 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
 /** One-document operations plus JSON Lines/YAML collection operations. */
 export interface StructuredCodec<O extends CodecOptions = CodecOptions>
   extends SingleDocumentCodec<O> {
+  loadsAll(content: CodecContent, options: O & { scalar: true }): Scalar[]
   loadsAll<T = unknown>(content: CodecContent, options?: O): T[]
+  loadAll(source: CodecReadable, options: O & { scalar: true }): AsyncIterable<Scalar>
   loadAll<T = unknown>(source: CodecReadable, options?: O): AsyncIterable<T>
+  loadAll(source: CodecSyncSource, options: O & { scalar: true }): Scalar[]
   loadAll<T = unknown>(source: CodecSyncSource, options?: O): T[]
   dumpAll(values: Iterable<unknown>, options?: CodecOptions): Buffer
   dumpAll(
@@ -847,6 +1144,10 @@ export interface StructuredCodec<O extends CodecOptions = CodecOptions>
     destination: CodecSyncDestination,
     options?: CodecOptions,
   ): void
+  loadAllStream(
+    stream: AsyncIterable<CodecContent>,
+    options: O & { scalar: true },
+  ): AsyncIterable<Scalar>
   loadAllStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options?: O,
@@ -859,6 +1160,22 @@ export interface StructuredCodec<O extends CodecOptions = CodecOptions>
 }
 
 export interface GenericCodec {
+  from(
+    source: CodecReadable,
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): AsyncIterable<Scalar>
+  from(
+    source: CodecReadable,
+    options: TemplateCodecOptions & { scalar: true },
+  ): Promise<Scalar>
+  from(
+    source: CodecSyncSource,
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): Scalar[]
+  from(
+    source: CodecSyncSource,
+    options: TemplateCodecOptions & { scalar: true },
+  ): Scalar
   from<T = unknown>(source: CodecReadable, options: JsonLinesCodecOptions): AsyncIterable<T>
   from<T = unknown>(source: CodecReadable, options?: TemplateCodecOptions): Promise<T>
   from<T = unknown>(source: CodecSyncSource, options: JsonLinesCodecOptions): T[]
@@ -885,6 +1202,14 @@ export interface GenericCodec {
   ): void
   into(value: unknown, destination: CodecWritable, options?: CodecOptions): Promise<void>
   into(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
+  fromStream(
+    stream: AsyncIterable<CodecContent>,
+    options: JsonLinesCodecOptions & { scalar: true },
+  ): AsyncIterable<Scalar>
+  fromStream(
+    stream: AsyncIterable<CodecContent>,
+    options: TemplateCodecOptions & { scalar: true },
+  ): Promise<Scalar>
   fromStream<T = unknown>(
     stream: AsyncIterable<CodecContent>,
     options: JsonLinesCodecOptions,
@@ -905,9 +1230,60 @@ export interface GenericCodec {
   ): Promise<void>
 }
 
+/** A Parquet footer key/value entry; order and duplicate keys are preserved. */
+export interface ParquetKeyValue {
+  key: string
+  value: string
+}
+
+/** Axis-aligned bounds carried by Parquet geospatial statistics. */
+export interface ParquetBoundingBox {
+  xmin: number
+  xmax: number
+  ymin: number
+  ymax: number
+  zmin: number | null
+  zmax: number | null
+  mmin: number | null
+  mmax: number | null
+}
+
+/** Bounds and sorted ISO geometry type codes for one WKB column. */
+export interface ParquetGeospatialStatistics {
+  bounding_box: ParquetBoundingBox | null
+  geometry_types: number[]
+}
+
+/** Counts, encoded bounds, and optional geospatial data for one column chunk. */
+export interface ParquetColumnStatistics {
+  path: string
+  compressed_size: number | bigint
+  uncompressed_size: number | bigint
+  null_count: number | bigint | null
+  min_bytes: Buffer | null
+  max_bytes: Buffer | null
+  geospatial: ParquetGeospatialStatistics | null
+}
+
+/** Footer statistics for one row group, in file order. */
+export interface ParquetRowGroupStatistics {
+  num_rows: number | bigint
+  compressed_size: number | bigint
+  file_offset: number | bigint | null
+  columns: ParquetColumnStatistics[]
+}
+
+/** Whole-file Parquet footer statistics, decoded through the native Scalar pivot. */
+export interface ParquetFileStatistics {
+  num_rows: number | bigint
+  created_by: string | null
+  key_value_metadata: ParquetKeyValue[]
+  row_groups: ParquetRowGroupStatistics[]
+}
+
 /** Byte-first JSON codec; multi-value methods use JSON Lines. */
 export declare const json: StructuredCodec
-/** Byte-first single-document TOML codec with collision-safe typed envelopes. */
+/** Byte-first single-document TOML codec using only natural TOML shapes. */
 export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
 export declare const yaml: StructuredCodec<TemplateCodecOptions>
@@ -929,11 +1305,13 @@ export declare const enums: {
   readonly timeUnits: readonly CodecTimeUnit[]
   /** Both union modes: `'sparse'` and `'dense'`. */
   readonly unionModes: readonly ('sparse' | 'dense')[]
+  /** Every generic I/O intent. */
+  readonly ioModes: readonly IOMode[]
   /** Every content coding, e.g. `'identity'`, `'gzip'`, `'zstd'`. */
   readonly codecs: readonly string[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
-  /** The compatibility targets `toSchemeCompat` accepts, e.g. `'arrow'`. */
+  /** The compatibility targets `intoSchemeCompat` accepts, e.g. `'arrow'`. */
   readonly compatibilitySchemes: readonly CompatibilityScheme[]
   /** The named points of the shared 0-to-9 compression scale. */
   readonly levels: {
@@ -1055,15 +1433,73 @@ declare module './index' {
     /** Infer from one single-pass iterable of compound filename extensions. */
     function fromExtensions(values: Iterable<string>): MediaType
   }
-  interface Value {
+  interface Scalar extends Iterable<Scalar> {
+    /** Add an inferred JavaScript or native numeric value in Rust. */
+    add(other: unknown): Scalar
+    /** Subtract an inferred JavaScript or native numeric value in Rust. */
+    subtract(other: unknown): Scalar
+    /** Multiply by an inferred JavaScript or native numeric value in Rust. */
+    multiply(other: unknown): Scalar
+    /** Divide by an inferred JavaScript or native numeric value in Rust. */
+    divide(other: unknown): Scalar
+    /** Take the numeric remainder after one inferred conversion. */
+    remainder(other: unknown): Scalar
+    /** Negate this numeric value in Rust. */
+    negate(): Scalar
+    /** Return this numeric value's checked absolute value in Rust. */
+    absolute(): Scalar
+    /** Number of direct sequence children, mapping entries, or record fields. */
+    length: number
+    /** Whether this is an empty sequence, mapping, or record. */
+    isEmpty(): boolean
+    /** Return one non-negative sequence index without projecting the child. */
+    at(index: number): Scalar | null
+    /** Read a sequence index, mapping key, or record field. */
+    get(key: unknown): Scalar | null
+    /** Whether a sequence index, mapping key, or record field resolves. */
+    has(key: unknown): boolean
+    /** Resolve a dotted mapping/record key and sequence-index path. */
+    path(path: string): Scalar | null
+    /** Return a mapping or record with one persistent replacement. */
+    set(key: unknown, value: unknown): Scalar
+    /** Return a mapping or record without one string key. */
+    remove(key: string): Scalar
     /** The JavaScript spelling of this value, or the value itself when it has none. */
     asJs(options?: CodecOptions): unknown
+    /** Infer the exact native Field for this scalar value. */
+    intoField(): Field
+    /** Infer the exact item Field for this non-empty outer sequence. */
+    intoArrayField(): Field
+    /** Infer a non-null Struct root from named record rows. */
+    intoStructField(): Field
+    /** Materialize this value as an Apache Arrow scalar. */
+    intoArrowScalar(field?: Field): unknown
+    /** Materialize this sequence as an Apache Arrow Vector. */
+    intoArrowArray(field?: Field): ArrowVector
+    /** Materialize record values as one Apache Arrow RecordBatch. */
+    intoArrowBatch(field?: Field): ArrowRecordBatch
+    /** Materialize record values as an Apache Arrow Table. */
+    intoArrowTable(field?: Field): ArrowTable
   }
-  namespace Value {
+  namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
-    function fromJs(value: unknown, options?: CodecOptions): Value
+    function fromJs(value: unknown, options?: CodecOptions): Scalar
+    /** Read one item from a one-item Apache Arrow Vector. */
+    function fromArrowScalar(value: ArrowVector, field?: Field): Scalar
+    /** Read an Apache Arrow Vector through native Arrow IPC. */
+    function fromArrowArray(value: ArrowVector, field?: Field): Scalar
+    /** Read an Apache Arrow RecordBatch through native Arrow IPC. */
+    function fromArrowBatch(
+      value: ArrowRecordBatch,
+      field?: Field,
+    ): Scalar
+    /** Read an Apache Arrow Table through native Arrow IPC. */
+    function fromArrowTable(value: ArrowTable, field?: Field): Scalar
   }
-  interface Uri extends Iterable<string> {}
+  interface Uri extends Iterable<string> {
+    /** Join path components through the generic URI core. */
+    joinPath(...others: (string | readonly string[])[]): Uri
+  }
   interface Url extends Iterable<string> {
     /** Join path components onto this location, as `path.join`. */
     joinpath(...others: string[]): Url
@@ -1088,8 +1524,8 @@ declare module './index' {
     | readonly PartitionEntry[]
   /** A table schema: a root `Field`, an expression, or the child `Field`s. */
   type TableSchemaInput = Field | string | readonly Field[]
-  /** A native root `Field`, or the field expression naming one. */
-  type FieldInput = Field | string
+  /** Any value the canonical `intoField` boundary accepts. */
+  type FieldInput = FieldLike
   /** A native `DataType`, or the type expression naming one. */
   type DataTypeInput = DataType | string
   /** The `bigint` a snapshot reports, or a number no larger than 2^53. */
@@ -1106,17 +1542,41 @@ declare module './index' {
    */
   interface Listing extends Iterable<IOBase> {}
 
+  /** A lazy, bounded byte stream exposed through JavaScript iteration. */
+  interface ByteIterator extends IterableIterator<Buffer> {
+    next(): IteratorResult<Buffer>
+  }
+
   /** Iterating a handle lists its immediate children. */
   interface IOBase extends Iterable<IOBase>, Disposable {
+    /** The storage role this handle currently addresses. */
+    kind: string
+    /** Whether this handle exposes either its byte or record surface. */
+    isIo(): boolean
     /** Resolve a child of this resource, as `path.join`. */
     joinpath(...others: string[]): IOBase
     /** Leaves beneath this one carrying every requested partition pair. */
     childrenWhere(filters: PartitionFilters, includePrivate?: boolean): Listing
+    /** Stream bounded byte arrays from `position`, without collecting them. */
+    pstreamBytes(position?: number | null, batchSize?: number | null): ByteIterator
+    /** Add or reconfigure one native page cache and return this handle. */
+    buffered(options?: BufferedOptions | null): IOBase
+    /** Decode inferred JSON, YAML, or TOML, including its content coding. */
+    readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
+    readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T
+    /** Encode one JavaScript or native `Scalar` through the inferred format. */
+    writeScalar(value: unknown | Scalar): void
+    /** Read a Parquet leaf's footer statistics without decoding rows. */
+    readParquetStatistics(): ParquetFileStatistics
+    /** Recompute one Parquet WKB column's bounds and geometry types. */
+    readParquetGeospatialStatistics(
+      column: string,
+    ): ParquetGeospatialStatistics
 
     /** Read the canonical non-null struct root `Field` of this resource. */
     readArrowField(options?: RecordOptionsInput | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
-    readArrowBatchReader(options?: RecordOptionsInput | null): BatchReader
+    readArrowReader(options?: RecordOptionsInput | null): BatchReader
     /**
      * Iterate this resource's text records, one at a time.
      *
@@ -1141,7 +1601,7 @@ declare module './index' {
      * type-expression string), parsed strictly: a captured text the datatype
      * cannot read is an error, never a silent null. A batch closes on
      * whichever bound trips first, `byteSize` or `batchSize`.
-     * `schemaFromPattern` answers the same schema without a reader. The
+     * `fieldFromPattern` answers the same schema without a reader. The
      * boundary is the standard copied IPC one, never zero-copy.
      */
     readArrowLines(pattern: string, options?: TextLineInput | null): BatchReader
@@ -1162,63 +1622,105 @@ declare module './index' {
       lines: Iterable<string | Uint8Array>,
       options?: TextLineInput | null,
     ): void
-    /** Replace or merge this resource's rows with every batch `batches` yields. */
-    writeArrowBatchReader(
-      batches: BatchSource,
-      options?: RecordOptionsInput | null,
-    ): void
-    /** Add every batch `batches` yields after the rows this resource holds. */
-    appendArrowBatchReader(
-      batches: BatchSource,
+    /** Replace this resource's rows with one native reader. */
+    overwriteArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    /** Append one native reader after this resource's rows. */
+    appendArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    /** Merge one native reader by the non-empty `options.mergeByNames` keys. */
+    mergeArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    /** Write one native reader using the required explicit mode. */
+    writeArrowReader(
+      reader: BatchReader,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
     ): void
 
-    /** Read this resource's rows, as `readArrowBatchReader` does. */
-    readArrow(options?: RecordOptionsInput | null): BatchReader
-    /**
-     * Replace or merge this resource's rows with whatever `rows` holds.
-     *
-     * An async source returns a promise, because its rows do not exist until
-     * they are awaited; every synchronous source returns nothing.
-     */
-    writeArrow(rows: RowSource, options?: RecordOptionsInput | null): void
-    writeArrow(
-      rows: AsyncIterable<RowSource>,
+    /** Replace this resource's rows with one Apache Arrow JS table. */
+    overwriteArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    /** Append one Apache Arrow JS table after this resource's rows. */
+    appendArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    /** Merge one Apache Arrow JS table by the non-empty `options.mergeByNames` keys. */
+    mergeArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    /** Write one Apache Arrow JS table using the required explicit mode. */
+    writeArrowTable(
+      table: ArrowTable,
+      mode: IOMode,
       options?: RecordOptionsInput | null,
-    ): Promise<void>
-    /** Add whatever `rows` holds after the rows this resource holds. */
-    appendArrow(rows: RowSource, options?: RecordOptionsInput | null): void
-    appendArrow(
-      rows: AsyncIterable<RowSource>,
+    ): void
+
+    /** Replace this resource's rows with one Apache Arrow JS record batch. */
+    overwriteArrowBatch(
+      batch: ArrowRecordBatch,
       options?: RecordOptionsInput | null,
-    ): Promise<void>
+    ): void
+    /** Append one Apache Arrow JS record batch after this resource's rows. */
+    appendArrowBatch(
+      batch: ArrowRecordBatch,
+      options?: RecordOptionsInput | null,
+    ): void
+    /** Merge one Apache Arrow JS record batch by `options.mergeByNames`. */
+    mergeArrowBatch(
+      batch: ArrowRecordBatch,
+      options?: RecordOptionsInput | null,
+    ): void
+    /** Write one Apache Arrow JS record batch using the explicit mode. */
+    writeArrowBatch(
+      batch: ArrowRecordBatch,
+      mode: IOMode,
+      options?: RecordOptionsInput | null,
+    ): void
 
     /**
      * Read this resource's rows as records: plain objects, or instances of
      * the class you pass, whose constructor receives one plain row.
      */
     readRecords<T = Record<string, unknown>>(
-      cls?: (new (row: Record<string, unknown>) => T) | RecordOptionsInput | null,
       options?: RecordOptionsInput | null,
     ): IterableIterator<T>
-    /** Replace or merge this resource's rows; `writeArrow` under the record name. */
-    writeRecords(rows: RowSource, options?: RecordOptionsInput | null): void
-    writeRecords(
-      rows: AsyncIterable<RowSource>,
+    readRecords<T>(
+      cls: new (row: Record<string, unknown>) => T,
+      options?: RecordOptionsInput | null,
+    ): IterableIterator<T>
+    /** Replace this resource's rows with plain objects or field-class instances. */
+    overwriteRecords(
+      rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | null,
     ): Promise<void>
-    /** Add records after the rows this resource holds. */
-    appendRecords(rows: RowSource, options?: RecordOptionsInput | null): void
+    overwriteRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    /** Append plain objects or field-class instances after the stored rows. */
     appendRecords(
-      rows: AsyncIterable<RowSource>,
+      rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | null,
     ): Promise<void>
+    appendRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    /** Merge records by the non-empty `options.mergeByNames` keys. */
+    mergeRecords(
+      rows: AsyncIterable<StructRecord>,
+      options?: RecordOptionsInput | null,
+    ): Promise<void>
+    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    /** Write records using the required explicit mode. */
+    writeRecords(
+      rows: AsyncIterable<StructRecord>,
+      mode: IOMode,
+      options?: RecordOptionsInput | null,
+    ): Promise<void>
+    writeRecords(
+      rows: RecordSource,
+      mode: IOMode,
+      options?: RecordOptionsInput | null,
+    ): void
+  }
+
+  interface IOCursor {
+    /** Stream from this cursor and advance it only as chunks are yielded. */
+    streamBytes(batchSize?: number | null): ByteIterator
   }
 
   /** Iterating a reader yields one Apache Arrow JS record batch at a time. */
   interface BatchReader extends Iterable<ArrowRecordBatch> {
     /** Drain every remaining batch into one Apache Arrow JS table. */
-    toTable(): ArrowTable
+    intoTable(): ArrowTable
   }
   namespace BatchReader {
     /** Build a reader from a reader, an Arrow JS value, or Arrow IPC bytes. */
@@ -1281,17 +1783,10 @@ export type BatchSource =
   | Buffer
   | Uint8Array
   | ArrayBuffer
-/**
- * Anything the generic entry points build a reader from: everything
- * `BatchSource` covers, plus an Arrow JS `RecordBatchReader`, a `Vector` a
- * one-column schema names, an object of named columns, plain records, and any
- * iterable of those.
- */
-export type RowSource =
-  | BatchSource
-  | { readAll(): ArrowRecordBatch[] }
-  | { readonly [column: string]: unknown }
-  | Iterable<unknown>
+/** One row accepted by the record-specific write entry points. */
+export type StructRecord = Record<string, unknown> | StructFieldInstance
+/** One record or a synchronous sequence of records. */
+export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
 export type RecordOptionsInput = RecordOptions | MediaTypeInput
 /** A partition spec, or the column names one would be built from. */
@@ -1333,20 +1828,34 @@ type SchemaUpdateBuilder = SchemaUpdate
 export interface Iceberg {
   /** A warehouse folder of namespaces of Iceberg tables. */
   readonly Catalog: typeof Catalog
+  /** A bounded report of a completed compaction. */
+  readonly Compaction: typeof Compaction
+  /** Per-call Iceberg commit, scan, and compaction settings. */
+  readonly IcebergOptions: typeof IcebergOptions
+  /** One manifest-list row under its complete core identity. */
+  readonly ManifestFile: typeof ManifestFile
+  /** One immutable field of a partition spec. */
+  readonly PartitionField: typeof PartitionField
   /** An Iceberg table reached entirely through one container handle. */
   readonly Table: typeof Table
   /** How a table turns column values into the directories it writes. */
   readonly PartitionSpec: typeof PartitionSpec
   /** One live data file of a snapshot, with the spec that placed it. */
   readonly DataFile: typeof DataFile
+  /** A bounded five-count report of scan pruning. */
+  readonly ScanPlan: typeof ScanPlan
+  /** One immutable table snapshot. */
+  readonly Snapshot: typeof Snapshot
+  /** One immutable branch or tag definition. */
+  readonly SnapshotRef: typeof SnapshotRef
   /** Number every column of a schema, so a table can carry it. */
   assignFieldIds(schema: Field, start?: number): Field
   /** Throw the core message when a type change is not a legal promotion. */
   canPromote(fromType: DataTypeInput, toType: DataTypeInput): void
   /** Read an Iceberg schema document as a root `Field`. */
-  schemaFromJson(name: string, document: Value | unknown): Field
+  schemaFromJson(name: string, document: Scalar | unknown): Field
   /** Write a root `Field` as an Iceberg schema document. */
-  schemaToJson(schema: Field): Value
+  schemaToJson(schema: Field): Scalar
 }
 
 export declare const iceberg: Iceberg
@@ -1407,11 +1916,11 @@ export interface TextLineInput {
  * `int64`, a `captureTypes` entry declares - so a caller marks its partition
  * columns and creates the Iceberg table before the first log line exists.
  */
-export declare function schemaFromPattern(
+export declare function fieldFromPattern(
   pattern: string,
   options?: TextLineInput | null,
 ): Field
-export declare function schemaFromPattern(options: TextLineInput): Field
+export declare function fieldFromPattern(options: TextLineInput): Field
 
 /** What an Arrow file system reports one path to be. */
 export type ArrowFileKind = 'file' | 'directory' | 'unknown' | 'not-found'

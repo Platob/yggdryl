@@ -15,7 +15,7 @@ use crate::io::{IOBase, IOFolder, Listing};
 /// further [`Folder`] values for subdirectories and mapped files for leaves.
 ///
 /// Its whole state is one [`Url`]. The platform path is derived from it on
-/// demand through [`Url::to_path`], so there is exactly one spelling of the
+/// demand through [`Url::into_path`], so there is exactly one spelling of the
 /// location and no way for a stored path and URL to disagree.
 ///
 /// Like every handle it is lazy: construction touches nothing, listing a
@@ -65,7 +65,7 @@ impl Folder {
     pub fn from_url(url: Url) -> Result<Self> {
         // Converting eagerly is the one check worth paying for: it rejects a
         // URL no later call could ever resolve.
-        url.to_path()?;
+        url.clone().into_path()?;
         Ok(Self { url })
     }
 
@@ -80,7 +80,7 @@ impl Folder {
     ///
     /// Returns an error when the URL cannot be expressed as a platform path.
     pub fn path(&self) -> Result<PathBuf> {
-        self.url.to_path()
+        self.url.clone().into_path()
     }
 
     /// Return whether the directory exists yet.
@@ -103,7 +103,7 @@ impl Folder {
         if url.is_dir() {
             return Ok(Holder::Folder(Self { url: url.clone() }));
         }
-        Holder::file(url.to_path()?)
+        Holder::file(url.clone().into_path()?)
     }
 
     /// One directory's entries, sorted, as a lazy listing.
@@ -126,7 +126,7 @@ impl Folder {
 
     /// The directory read itself, issued when the listing is first polled.
     fn read_level(url: &Url, include_private: bool) -> Listing {
-        let path = match url.to_path() {
+        let path = match url.clone().into_path() {
             Ok(path) => path,
             Err(error) => return Listing::failing(error),
         };
@@ -192,7 +192,7 @@ impl IOFolder for Folder {
     /// `DirectoryNotEmpty` is what [`IOFolder::folder_remove`] turns into the
     /// refusal naming the location. Nothing is listed or stat-ed first.
     fn delete_folder(&mut self) -> Result<()> {
-        crate::io::skip_absent(std::fs::remove_dir(self.url.to_path()?))
+        crate::io::skip_absent(std::fs::remove_dir(self.url.clone().into_path()?))
     }
 
     /// Empty the directory in one call, keeping the directory itself.
@@ -214,7 +214,7 @@ impl IOFolder for Folder {
     /// removal never issues one delete per entry from here.
     fn folder_remove(&mut self, recursive: bool) -> Result<()> {
         if recursive {
-            return crate::io::skip_absent(std::fs::remove_dir_all(self.url.to_path()?));
+            return crate::io::skip_absent(std::fs::remove_dir_all(self.url.clone().into_path()?));
         }
         match self.delete_folder() {
             Err(crate::Error::Io(error))
@@ -225,6 +225,10 @@ impl IOFolder for Folder {
             other => other,
         }
     }
+}
+
+impl crate::io::IOMedia for Folder {
+    crate::impl_default_iomedia!();
 }
 
 impl IOBase for Folder {

@@ -1,6 +1,6 @@
 //! One foreign-filesystem location, whatever it turns out to be.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::generic::Holder;
 use crate::io::{IOBase, IOPath, Listing};
@@ -28,6 +28,10 @@ pub struct Path {
     /// The filesystem-relative spelling of `url`, derived once so every
     /// vtable call names the same path.
     location: String,
+    /// An explicit representation supplied by the caller.
+    declared: Option<MediaType>,
+    /// Inference from the compound filename, computed on demand.
+    inferred: OnceLock<MediaType>,
     /// The implementation this location resolved to, kept so a staged file's
     /// pending writes survive between calls.
     resolved: Mutex<Option<Resolved>>,
@@ -67,6 +71,8 @@ impl Path {
             filesystem,
             url,
             location,
+            declared: None,
+            inferred: OnceLock::new(),
             resolved: Mutex::new(None),
         }
     }
@@ -108,7 +114,11 @@ impl Path {
 
     /// Treat this location as a file, whether or not it exists yet.
     pub fn as_file(&self) -> File {
-        File::new(self.filesystem.clone(), self.url.clone())
+        let mut file = File::new(self.filesystem.clone(), self.url.clone());
+        if let Some(media_type) = &self.declared {
+            file.set_media_type(media_type.clone());
+        }
+        file
     }
 
     /// Ask the filesystem what is at this location right now.
@@ -135,6 +145,15 @@ impl Path {
         }
     }
 
+    /// Resolve a role before a specialized handle has been retained.
+    fn unresolved_kind(&self) -> IOKind {
+        if self.url.is_glob() {
+            IOKind::Directory
+        } else {
+            self.probe()
+        }
+    }
+
     /// Run `read` against the resolved implementation, or report absence.
     fn with_resolved<T>(&self, absent: T, read: impl FnOnce(&dyn IOBase) -> T) -> Result<T> {
         let mut slot = self.resolved.lock().map_err(|_| {
@@ -143,7 +162,7 @@ impl Path {
             ))
         })?;
         if slot.is_none() {
-            *slot = match self.kind() {
+            *slot = match self.unresolved_kind() {
                 IOKind::Directory => Some(Resolved::Directory(self.as_directory())),
                 IOKind::File => Some(Resolved::File(self.as_file())),
                 _ => None,
@@ -166,7 +185,7 @@ impl Path {
             ))
         })?;
         if slot.is_none() {
-            *slot = Some(match self.kind() {
+            *slot = Some(match self.unresolved_kind() {
                 IOKind::Directory => Resolved::Directory(self.as_directory()),
                 _ => Resolved::File(self.as_file()),
             });
@@ -187,12 +206,16 @@ impl IOPath for Path {
     }
 
     fn is_folder(&self) -> bool {
-        self.probe() == IOKind::Directory
+        self.kind() == IOKind::Directory
     }
 
     fn is_file(&self) -> bool {
-        self.probe() == IOKind::File
+        self.kind() == IOKind::File
     }
+}
+
+impl crate::io::IOMedia for Path {
+    crate::impl_default_iomedia!();
 }
 
 impl IOBase for Path {
@@ -201,6 +224,18 @@ impl IOBase for Path {
     /// Routing on the kind this handle already resolves is the one documented
     /// exception to the no-pre-call rule; no second probe is added here.
     fn clear(&mut self) -> Result<()> {
+        {
+            let mut resolved = self.resolved.lock().map_err(|_| {
+                Error::Io(std::io::Error::other(
+                    "the resolved handle lock was poisoned",
+                ))
+            })?;
+            if let Some(resolved) = resolved.as_mut() {
+                // Clear the retained file itself: a fresh File would not own
+                // its staged write, and a later close could republish it.
+                return resolved.as_io_mut().clear();
+            }
+        }
         match self.kind() {
             IOKind::Directory => self.as_directory().clear(),
             IOKind::Unknown => Ok(()),
@@ -268,19 +303,31 @@ impl IOBase for Path {
         if self.kind().is_container() {
             return &DIRECTORY;
         }
-        &FILE
+        if let Some(media_type) = &self.declared {
+            return media_type;
+        }
+        if self.url.extension().is_none() {
+            return &FILE;
+        }
+        self.inferred.get_or_init(|| self.url.media_type())
     }
 
-    fn set_media_type(&mut self, _media_type: MediaType) {
-        // A location is named by its URL; its type follows from what is there.
+    fn set_media_type(&mut self, media_type: MediaType) {
+        if let Ok(mut resolved) = self.resolved.lock() {
+            if let Some(resolved) = resolved.as_mut() {
+                resolved.as_io_mut().set_media_type(media_type.clone());
+            }
+        }
+        self.declared = Some(media_type);
     }
 
     fn kind(&self) -> IOKind {
-        // A glob answers container before the filesystem is touched.
-        if self.url.is_glob() {
-            return IOKind::Directory;
+        if let Ok(resolved) = self.resolved.lock() {
+            if let Some(resolved) = resolved.as_ref() {
+                return resolved.as_io().kind();
+            }
         }
-        self.probe()
+        self.unresolved_kind()
     }
 
     fn is_atomic(&self) -> bool {
@@ -317,6 +364,9 @@ impl IOBase for Path {
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
+        if self.kind() == IOKind::File {
+            return self.as_file().child_by_path(name);
+        }
         // `name` is URI-path text, exactly as the reference backend and the
         // trait's own contract resolve it; see `Folder::child_by_path`.
         Ok(Holder::ArrowPath(Self::new(

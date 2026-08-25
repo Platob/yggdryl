@@ -9,7 +9,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::Value;
+use yggdryl::Scalar;
 use yggdryl::text::{self, Format, Loading, Placeholders};
 
 /// Entries per benchmarked document, so all three are the same size.
@@ -19,7 +19,7 @@ pub fn placeholder_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/placeholder");
 
     let placeholders = (0..ENTRIES).fold(Placeholders::new(), |held, index| {
-        held.with_variable(format!("VAR_{index}"), Value::from("resolved"))
+        held.with_variable(format!("VAR_{index}"), Scalar::from("resolved"))
     });
     let off = Loading::new();
     let on = Loading::new().with_placeholders(placeholders);
@@ -35,7 +35,7 @@ pub fn placeholder_benchmarks(criterion: &mut Criterion) {
         for (state, loading) in [("off", &off), ("on", &on)] {
             group.bench_function(format!("{label}/{state}"), |bencher| {
                 bencher.iter(|| {
-                    black_box(text::from_str_with(&document, Format::Yaml, loading).unwrap())
+                    black_box(text::from_utf8_with(&document, Format::Yaml, loading).unwrap())
                 });
             });
         }

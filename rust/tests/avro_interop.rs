@@ -6,9 +6,9 @@
 //! the external file is absent - the driver fails on that word - so a skipped
 //! half can never read as a pass.
 
-use yggdryl::enums::TimeUnit;
+use yggdryl::generic::TimeUnit;
 use yggdryl::local::File;
-use yggdryl::{Timezone, Value, avro};
+use yggdryl::{Scalar, Timezone, avro};
 
 /// Where the exchange files live, shared with the Python driver.
 fn exchange_dir() -> std::path::PathBuf {
@@ -20,8 +20,8 @@ fn exchange_dir() -> std::path::PathBuf {
 }
 
 /// The writer schema both sides agree on, logical types included.
-fn schema() -> Value {
-    yggdryl::json::from_str(
+fn schema() -> Scalar {
+    yggdryl::json::from_utf8(
         r#"{"type": "record", "name": "trade", "fields": [
             {"name": "symbol", "type": "string"},
             {"name": "quantity", "type": "long"},
@@ -40,32 +40,32 @@ fn schema() -> Value {
 }
 
 /// The rows both sides assert, in file order.
-fn expected_rows() -> Vec<Value> {
+fn expected_rows() -> Vec<Scalar> {
     let row = |symbol: &str,
                quantity: i64,
-               price: Value,
+               price: Scalar,
                day: i32,
                at: i64,
                cost: i128,
                tags: &[&str],
                flag: bool| {
-        Value::from_mapping([
-            (Value::from("symbol"), Value::from(symbol)),
-            (Value::from("quantity"), Value::from(quantity)),
-            (Value::from("price"), price),
-            (Value::from("day"), Value::Date(day)),
+        Scalar::from_mapping([
+            (Scalar::from("symbol"), Scalar::from(symbol)),
+            (Scalar::from("quantity"), Scalar::from(quantity)),
+            (Scalar::from("price"), price),
+            (Scalar::from("day"), Scalar::date32(day)),
             (
-                Value::from("at"),
-                Value::Timestamp(at, TimeUnit::Microsecond, Timezone::UTC),
+                Scalar::from("at"),
+                Scalar::datetime64(at, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
             ),
-            (Value::from("cost"), Value::Decimal(cost, 2)),
+            (Scalar::from("cost"), Scalar::d128(cost, 2)),
             (
-                Value::from("tags"),
-                Value::from_sequence(tags.iter().map(|tag| Value::from(*tag))),
+                Scalar::from("tags"),
+                Scalar::from_sequence(tags.iter().map(|tag| Scalar::from(*tag))),
             ),
             (
-                Value::from("extra"),
-                Value::from_mapping([(Value::from("flag"), Value::Bool(flag))])
+                Scalar::from("extra"),
+                Scalar::from_mapping([(Scalar::from("flag"), Scalar::Bool(flag))])
                     .expect("unique keys"),
             ),
         ])
@@ -75,7 +75,7 @@ fn expected_rows() -> Vec<Value> {
         row(
             "AAPL",
             100,
-            Value::from(187.5_f64),
+            Scalar::from(187.5_f64),
             19_782,
             1_700_000_000_000_000,
             18_750,
@@ -86,7 +86,7 @@ fn expected_rows() -> Vec<Value> {
         row(
             "MSFT",
             -25,
-            Value::Null,
+            Scalar::Null,
             -3_652,
             -1_000_000,
             -99,

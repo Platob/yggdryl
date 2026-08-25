@@ -36,6 +36,7 @@ struct Mapped {
     file: StdFile,
     mapping: Option<MmapMut>,
     size: u64,
+    dirty: bool,
 }
 
 /// A lazily mapped local file addressed by offset.
@@ -175,6 +176,7 @@ impl File {
             file,
             mapping: None,
             size,
+            dirty: false,
         });
         Ok(true)
     }
@@ -204,9 +206,12 @@ impl Mapped {
         let capacity = needed.max(current * 2).max(MINIMUM_GROWTH);
         // Windows cannot resize a file with a live mapped section.
         if let Some(mapping) = self.mapping.take() {
-            mapping.flush()?;
+            if self.dirty {
+                mapping.flush()?;
+            }
         }
         self.file.set_len(capacity)?;
+        self.dirty = true;
         self.mapping = Some(map_file(&self.file)?);
         self.mapping.as_mut().ok_or_else(poisoned)
     }
@@ -224,10 +229,15 @@ impl Mapped {
 
     /// Publish the logical length, releasing the mapping so the file can shrink.
     fn publish(&mut self) -> Result<()> {
-        if let Some(mapping) = self.mapping.take() {
+        let mapping = self.mapping.take();
+        if !self.dirty {
+            return Ok(());
+        }
+        if let Some(mapping) = mapping {
             mapping.flush()?;
         }
         self.file.set_len(self.size)?;
+        self.dirty = false;
         Ok(())
     }
 }
@@ -289,6 +299,10 @@ impl IOFile for File {
     }
 }
 
+impl crate::io::IOMedia for File {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for File {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let mut state = self.state.lock().map_err(|_| poisoned())?;
@@ -333,6 +347,7 @@ impl IOBase for File {
         }
         mapping[start..finish].copy_from_slice(bytes);
         mapped.size = previous.max(end);
+        mapped.dirty = true;
         Ok(bytes.len())
     }
 
@@ -377,6 +392,7 @@ impl IOBase for File {
             mapping[from..to].fill(0);
         }
         mapped.size = size;
+        mapped.dirty = true;
         Ok(())
     }
 

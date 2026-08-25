@@ -120,6 +120,10 @@ impl Clone for Buffer {
     }
 }
 
+impl crate::io::IOMedia for Buffer {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for Buffer {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let Ok(offset) = usize::try_from(offset) else {

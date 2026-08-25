@@ -4,6 +4,8 @@ import {
   fields,
   type GeographyField,
   type GeometryField,
+  type Duration32Field,
+  type Duration64Field,
   type Int32Field,
   type ListField,
   type MapField,
@@ -29,6 +31,12 @@ const labels: MapField = fields.mapOf('labels', 'utf8', 'int32', true, {
   nullable: false,
 })
 const clock: TimeField = fields.time('clock', 'us', { nullable: false })
+const shortDuration: Duration32Field = fields.duration32('short', 'ms', {
+  nullable: false,
+})
+const longDuration: Duration64Field = fields.duration64('long', 'us', {
+  nullable: false,
+})
 const payload: VariantField = fields.variant('payload', { nullable: false })
 const payloadId: 'variant' = payload.dataType.id
 const shape: GeometryField = fields.geometry('shape', { nullable: false })
@@ -84,6 +92,8 @@ void idId
 void eventTime
 void labels
 void clock
+void shortDuration
+void longDuration
 void clockType
 void generic
 void genericItems

@@ -42,7 +42,10 @@ use smol_str::{SmolStr, format_smolstr};
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
 use super::{Comparison, Expression, Function, Operator, RECURSION_LIMIT, Safety, Segment};
-use crate::{DataType, Error, Result, TypedValue, Value};
+use crate::{
+    DataType, Error, Float16, Float32, Float64, I256, Result, Scalar, TimeUnit, Timezone,
+    TypedScalar,
+};
 
 /// Which way one ordering key sorts.
 #[derive(
@@ -89,7 +92,9 @@ pub enum NullsOrder {
 }
 
 /// One ordering key: an expression, a direction, and where nulls sit.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
+)]
 pub struct Order {
     expression: Expression,
     direction: Direction,
@@ -141,7 +146,9 @@ impl Order {
 }
 
 /// One output column: an expression and the name it is published under.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
+)]
 pub struct Projection {
     expression: Expression,
     alias: Option<SmolStr>,
@@ -205,7 +212,18 @@ impl Projection {
 /// deliberately not a query language: there is no `from`, because the relation
 /// is the handle the statement is given to, and no `join`, because there is
 /// only ever one.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Default, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+)]
 pub struct Statement {
     projections: Vec<Projection>,
     predicate: Option<Expression>,
@@ -214,6 +232,11 @@ pub struct Statement {
 }
 
 impl Statement {
+    /// Return a deterministic hash of the canonical statement text.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_display(self)
+    }
+
     /// Select every column, unfiltered.
     #[must_use]
     pub const fn all() -> Self {
@@ -1054,7 +1077,7 @@ impl<'input> Parser<'input> {
             }
             Some(Token::Text(text)) => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Value::String(text)));
+                return Ok(Expression::literal(Scalar::String(text)));
             }
             Some(Token::Quoted(name)) => {
                 self.cursor += 1;
@@ -1072,15 +1095,15 @@ impl<'input> Parser<'input> {
         match lowered.as_str() {
             "null" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Value::Null));
+                return Ok(Expression::literal(Scalar::Null));
             }
             "true" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Value::Bool(true)));
+                return Ok(Expression::literal(Scalar::Bool(true)));
             }
             "false" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Value::Bool(false)));
+                return Ok(Expression::literal(Scalar::Bool(false)));
             }
             "cast" | "try_cast" => {
                 self.cursor += 1;
@@ -1314,14 +1337,14 @@ impl<'input> Parser<'input> {
                 self.cursor += 1;
                 let value = value_from_text(&data_type, &text, position)?;
                 Ok(Some(Expression::Literal(
-                    TypedValue::from_parts(data_type, value)
+                    TypedScalar::from_parts(data_type, value)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }
             Some(Token::Word(word)) if word.eq_ignore_ascii_case("null") => {
                 self.cursor += 1;
                 Ok(Some(Expression::Literal(
-                    TypedValue::from_parts(data_type, Value::Null)
+                    TypedScalar::from_parts(data_type, Scalar::Null)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }
@@ -1369,7 +1392,7 @@ fn number_literal(text: &str, position: usize) -> Result<Expression> {
 /// The text forms are the crate's own: ISO 8601 for every temporal, an exact
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
-pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize) -> Result<Value> {
+pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize) -> Result<Scalar> {
     use crate::generic::iso;
     use DataType as D;
 
@@ -1379,59 +1402,70 @@ pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize)
             format_smolstr!("expected {expected}, got {text:?}"),
         )
     };
-    let integer = |text: &str| -> Result<Value> {
+    let integer = |text: &str| -> Result<Scalar> {
         text.parse::<i128>()
-            .map(Value::I128)
+            .map(Scalar::I128)
             .map_err(|_| fail("a whole number"))
     };
     let value = match data_type {
-        D::Null => Value::Null,
+        D::Null => Scalar::Null,
         D::Boolean => match text {
-            "true" => Value::Bool(true),
-            "false" => Value::Bool(false),
+            "true" => Scalar::Bool(true),
+            "false" => Scalar::Bool(false),
             _ => return Err(fail("`true` or `false`")),
         },
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => integer(text)?,
         // A date is an ISO date, never a raw count of days: the count is a
         // physical detail and the literal is what a person wrote.
-        D::Date32 | D::Date64 => Value::Date(iso::parse_date(text)?),
+        D::Date32 | D::Date64 => Scalar::date32(iso::parse_date(text)?),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
             .parse::<u128>()
-            .map(Value::U128)
+            .map(Scalar::U128)
             .map_err(|_| fail("a whole number that is not negative"))?,
-        D::Float16 | D::Float32 | D::Float64 => Value::F64(crate::Float::from_f64(
+        D::Float16 => Scalar::F16(Float16::from_f16(half::f16::from_f64(
+            float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
+        ))),
+        D::Float32 => Scalar::F32(Float32::from_f32(
+            float_from_text(text).ok_or_else(|| fail("a floating-point number"))? as f32,
+        )),
+        D::Float64 => Scalar::F64(Float64::from_f64(
             float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
         )),
-        D::Decimal32 { scale, .. }
-        | D::Decimal64 { scale, .. }
-        | D::Decimal128 { scale, .. }
-        | D::Decimal256 { scale, .. } => Value::Decimal(
-            decimal_from_text(text, *scale).ok_or_else(|| {
+        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
+            Scalar::d128(
+                decimal_from_text(text, *scale).ok_or_else(|| {
+                    fail("an exact decimal that fits the declared precision and scale")
+                })?,
+                *scale,
+            )
+        }
+        D::Decimal256 { scale, .. } => Scalar::d256(
+            I256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")
-            })?,
+            })?),
             *scale,
         ),
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => Value::String(SmolStr::new(text)),
+        D::Utf8 | D::LargeUtf8 | D::Utf8View => Scalar::String(SmolStr::new(text)),
         D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => {
-            Value::Bytes(Arc::from(
+            Scalar::Bytes(Arc::from(
                 bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
             ))
         }
         D::Time32(_) | D::Time64(_) => {
             let (count, unit) = iso::parse_time(text)?;
-            Value::Time(count, unit)
+            parsed_time_value(count, unit)?
         }
         D::Timestamp(_, Some(_)) => {
             let (count, unit, zone) = iso::parse_timestamp(text)?;
-            Value::Timestamp(count, unit, zone)
+            Scalar::datetime64(count, unit, zone)?
         }
         D::Timestamp(_, None) => {
             let (count, unit) = iso::parse_datetime(text)?;
-            Value::DateTime(count, unit)
+            Scalar::datetime64(count, unit, Timezone::NAIVE)?
         }
-        D::Duration(_) => {
+        D::Duration32(_) | D::Duration64(_) => {
             let (count, unit) = iso::parse_duration(text)?;
-            Value::Duration(count, unit)
+            parsed_duration_value(count, unit)?
         }
         other => {
             return Err(parse_error(
@@ -1448,6 +1482,38 @@ pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize)
     // cast value can never end up shaped differently.
     super::eval::convert(data_type, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
+}
+
+fn parsed_time_value(count: i64, unit: TimeUnit) -> Result<Scalar> {
+    match unit {
+        TimeUnit::Second | TimeUnit::Millisecond => Scalar::time32(
+            i32::try_from(count).map_err(|_| Error::InvalidRecord {
+                path: "$".into(),
+                reason: "time32 count exceeds 32 bits".into(),
+            })?,
+            unit,
+            Timezone::NAIVE,
+        ),
+        TimeUnit::Microsecond | TimeUnit::Nanosecond => {
+            Scalar::time64(count, unit, Timezone::NAIVE)
+        }
+        _ => Err(Error::InvalidRecord {
+            path: "$".into(),
+            reason: "time requires a fixed-length clock unit".into(),
+        }),
+    }
+}
+
+fn parsed_duration_value(count: i64, unit: TimeUnit) -> Result<Scalar> {
+    match unit {
+        TimeUnit::Second | TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond => {
+            Scalar::duration64(count, unit)
+        }
+        _ => Err(Error::InvalidRecord {
+            path: "$".into(),
+            reason: "duration requires a fixed-length clock unit".into(),
+        }),
+    }
 }
 
 /// Read a float, accepting the three names the finite grammar cannot spell.

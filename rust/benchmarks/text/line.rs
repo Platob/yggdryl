@@ -71,13 +71,41 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use criterion::{Criterion, Throughput};
+use yggdryl::generic::RecordOptions;
 use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::{File, Folder};
-use yggdryl::text::{TextLineOptions, stable_hash_bytes};
+use yggdryl::text::{TextLineOptions, TextOptions, stable_hash_bytes};
 use yggdryl::{DataType, Url};
 
 /// Log lines per small corpus: enough that per-read setup is noise.
 const LINES: usize = 50_000;
+/// Rows that close the latency benchmark's first Arrow batch before EOF.
+const FIRST_BATCH_ROWS: usize = 1_024;
+
+/// Stable identity cost for the regex-backed declarative option family.
+pub(crate) fn lines_identity_benchmarks(criterion: &mut Criterion) {
+    let lines = TextLineOptions::with_pattern(PATTERN)
+        .expect("a valid pattern")
+        .with_batch_size(FIRST_BATCH_ROWS);
+    let opening = lines.opening().clone();
+    let text = TextOptions::with_lines(lines.clone());
+    let record = RecordOptions::from(text.clone());
+    let mut group = criterion.benchmark_group("lines_identity");
+
+    group.bench_function("stable_hash/opening", |bencher| {
+        bencher.iter(|| black_box(&opening).stable_hash());
+    });
+    group.bench_function("stable_hash/line_options", |bencher| {
+        bencher.iter(|| black_box(&lines).stable_hash());
+    });
+    group.bench_function("stable_hash/text_options", |bencher| {
+        bencher.iter(|| black_box(&text).stable_hash());
+    });
+    group.bench_function("stable_hash/record_options", |bencher| {
+        bencher.iter(|| black_box(&record).stable_hash());
+    });
+    group.finish();
+}
 
 /// The shared header pattern, **byte-identical in every language**.
 ///
@@ -191,6 +219,112 @@ fn parsed_rows<H: IOBase>(handle: &H, options: &TextLineOptions) -> usize {
         .sum()
 }
 
+/// Construct a line reader and consume exactly its first record.
+fn first_line_bytes<H: IOBase>(handle: &H) -> usize {
+    let mut lines = handle.read_lines().expect("a line reader");
+    lines
+        .next()
+        .transpose()
+        .expect("a readable first line")
+        .map_or(0, |line| line.bytes().len())
+}
+
+/// Construct an Arrow projection and consume exactly its first batch.
+fn first_arrow_rows<H: IOBase>(handle: &H, options: &TextLineOptions) -> usize {
+    handle
+        .read_arrow_lines(options)
+        .expect("an Arrow line reader")
+        .next()
+        .transpose()
+        .expect("a readable first batch")
+        .map_or(0, |batch| batch.num_rows())
+}
+
+/// Time to the first borrowed line and the first projected Arrow batch.
+///
+/// Iterator construction is inside each timer. `local` uses a located file,
+/// so the returned Arrow reader owns a reopened, truly streamed handle.
+/// `memory` is the borrowed line baseline over bytes already in memory;
+/// `snapshot` names the in-memory Arrow fallback precisely: a borrowed
+/// unlocated handle must copy its encoded bytes into the owned reader before
+/// it can return. Keeping both makes that ownership cost visible instead of
+/// accidentally presenting it as streaming decoder startup.
+pub(crate) fn lines_first_benchmarks(criterion: &mut Criterion) {
+    // A first-batch benchmark needs a bound below the corpus size; otherwise
+    // the first and only batch closes at EOF and measures a full drain.
+    let options = TextLineOptions::with_pattern(PATTERN)
+        .expect("a valid pattern")
+        .with_batch_size(FIRST_BATCH_ROWS);
+    let text = corpus();
+    let gzip = yggdryl::gzip::dump(text.as_bytes()).expect("a gzip fixture");
+    let zlib = yggdryl::zlib::dump(text.as_bytes()).expect("a zlib fixture");
+    let zstd = yggdryl::zstd::dump(text.as_bytes()).expect("a zstd fixture");
+    let payloads = [
+        ("plain", "bench.log", text.into_bytes()),
+        ("gzip", "bench.log.gz", gzip),
+        ("zlib", "bench.log.zz", zlib),
+        ("zstd", "bench.log.zst", zstd),
+    ];
+    let root = scratch().join("first");
+    let _ = std::fs::remove_dir_all(&root);
+    let local: Vec<(&str, File)> = payloads
+        .iter()
+        .map(|(name, filename, bytes)| {
+            let mut file = File::new(root.join(filename)).expect("a local fixture handle");
+            file.write_all_bytes(bytes).expect("a local fixture write");
+            (*name, file)
+        })
+        .collect();
+    let memory: Vec<(&str, Buffer)> = payloads
+        .iter()
+        .map(|(name, filename, bytes)| (*name, handle(filename, bytes)))
+        .collect();
+
+    let mut group = criterion.benchmark_group("lines_first");
+    group.sample_size(10);
+    for (name, handle) in &local {
+        let line_bytes = first_line_bytes(handle);
+        let arrow_rows = first_arrow_rows(handle, &options);
+        assert!(line_bytes > 0, "{name} must yield a line");
+        assert_eq!(
+            arrow_rows, FIRST_BATCH_ROWS,
+            "{name} must close the first Arrow batch before EOF"
+        );
+
+        group.throughput(Throughput::Bytes(line_bytes as u64));
+        group.bench_function(format!("line/local/{name}"), |bencher| {
+            bencher.iter(|| first_line_bytes(black_box(handle)));
+        });
+
+        group.throughput(Throughput::Elements(arrow_rows as u64));
+        group.bench_function(format!("arrow/local/{name}"), |bencher| {
+            bencher.iter(|| first_arrow_rows(black_box(handle), &options));
+        });
+    }
+    for (name, handle) in &memory {
+        let line_bytes = first_line_bytes(handle);
+        let arrow_rows = first_arrow_rows(handle, &options);
+        assert!(line_bytes > 0, "{name} must yield an in-memory line");
+        assert_eq!(
+            arrow_rows, FIRST_BATCH_ROWS,
+            "{name} must close the snapshot Arrow batch before EOF"
+        );
+
+        group.throughput(Throughput::Bytes(line_bytes as u64));
+        group.bench_function(format!("line/memory/{name}"), |bencher| {
+            bencher.iter(|| first_line_bytes(black_box(handle)));
+        });
+
+        group.throughput(Throughput::Elements(arrow_rows as u64));
+        group.bench_function(format!("arrow/snapshot/{name}"), |bencher| {
+            bencher.iter(|| first_arrow_rows(black_box(handle), &options));
+        });
+    }
+    group.finish();
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
     let options = TextLineOptions::with_pattern(PATTERN).expect("a valid pattern");
     let text = corpus();
@@ -200,9 +334,19 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
         "bench.log.gz",
         &yggdryl::gzip::dump(text.as_bytes()).expect("a gzip fixture"),
     );
+    let zlib = handle(
+        "bench.log.zz",
+        &yggdryl::zlib::dump(text.as_bytes()).expect("a zlib fixture"),
+    );
+    let zstd = handle(
+        "bench.log.zst",
+        &yggdryl::zstd::dump(text.as_bytes()).expect("a zstd fixture"),
+    );
     // The parse is validated once outside the timed loops.
     assert_eq!(parsed_rows(&plain, &options), LINES);
     assert_eq!(parsed_rows(&gzip, &options), LINES);
+    assert_eq!(parsed_rows(&zlib, &options), LINES);
+    assert_eq!(parsed_rows(&zstd, &options), LINES);
 
     let mut group = criterion.benchmark_group("lines_arrow");
     group.sample_size(10);
@@ -213,6 +357,12 @@ pub(crate) fn lines_arrow_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("parse/gzip", |bencher| {
         bencher.iter(|| parsed_rows(black_box(&gzip), &options));
+    });
+    group.bench_function("parse/zlib", |bencher| {
+        bencher.iter(|| parsed_rows(black_box(&zlib), &options));
+    });
+    group.bench_function("parse/zstd", |bencher| {
+        bencher.iter(|| parsed_rows(black_box(&zstd), &options));
     });
     // The grouping stage alone - the same records without the Arrow
     // projection - so "what does the projection add on top of

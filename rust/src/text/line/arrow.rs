@@ -27,7 +27,7 @@
 //! In **log mode** - no pattern, so records open where a timestamp opens -
 //! three more columns follow, always emitted and always nullable: `level`,
 //! `logger`, `thread`. They are a *fixed* set, never discovered from the data,
-//! so [`TextLineOptions::schema`] still answers from configuration alone.
+//! so [`TextLineOptions::field`] still answers from configuration alone.
 //!
 //! Then one nullable column per **named capture group**, in group order - the
 //! union of the opening pattern's and the header pattern's - and finally the
@@ -84,7 +84,7 @@
 //! ```
 
 use std::fmt::Write as _;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::Arc;
 
 use arrow_array::builder::{
@@ -94,9 +94,9 @@ use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
 use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
-use crate::arrow::{BatchReader, scalar_array, schema_from_field};
+use crate::arrow::{BatchReader, arrow_schema_from_field, scalar_array};
 use crate::generic::{Holder, iso};
-use crate::io::{Buffer, IOBase};
+use crate::io::{Buffer, IOBase, Listing};
 use crate::{DataType, Error, Field, IOKind, Result};
 
 use super::handle::{Text, TextLines, url_text};
@@ -137,31 +137,6 @@ pub(crate) fn read_arrow_lines<H: IOBase + ?Sized>(
     }
 }
 
-/// Project a snapshot of the bytes a *view* handle presents.
-///
-/// [`reopened`] assumes a handle's bytes are its location's bytes, which is
-/// true of every storage handle and false of a decoding view such as
-/// [`Coded`](crate::io::Coded): its reads present decoded bytes while its
-/// location holds the encoded form. A view's projection routes here instead - a
-/// copy of the presented value, under the handle's own url and media type. A
-/// coded view materializes that value to serve any read, so the copy is its
-/// ordinary cost, not a new one.
-pub(crate) fn snapshot_arrow_lines<H: IOBase + ?Sized>(
-    handle: &H,
-    options: &TextLineOptions,
-) -> Result<BatchReader> {
-    match handle.kind() {
-        IOKind::Directory => folder_lines(handle, options),
-        IOKind::Unknown => empty_lines(options),
-        _ => {
-            let url = url_text(handle);
-            let mut buffer = Buffer::new();
-            handle.copy_into(&mut buffer)?;
-            leaf_lines(Holder::buffer(buffer), url, options)
-        }
-    }
-}
-
 /// Project an owned handle's records, per the trait method's contract.
 pub(crate) fn into_arrow_lines<H: IOBase + 'static>(
     handle: H,
@@ -195,19 +170,15 @@ fn reopened<H: IOBase + ?Sized>(handle: &H) -> Result<Holder> {
 
 /// Zero batches, schema still answered - what absence reads as.
 fn empty_lines(options: &TextLineOptions) -> Result<BatchReader> {
-    let schema = schema_from_field(options.schema())?;
+    let schema = arrow_schema_from_field(options.field())?;
     Ok(crate::arrow::batch_reader(schema, []))
 }
 
 /// Stream a container's leaves, name-sorted, one open leaf at a time.
 fn folder_lines(handle: &(impl IOBase + ?Sized), options: &TextLineOptions) -> Result<BatchReader> {
-    // The walk enumerates handles only - constructions that touch nothing. Each
-    // leaf's bytes wait until the reader reaches it, and what is held is one
-    // handle per leaf, bounded by the container being read.
-    let leaves: Vec<Holder> = handle
-        .children_where(&[], false)?
-        .collect::<Result<Vec<_>>>()?;
-    ArrowLines::boxed(options, leaves, None)
+    // The listing itself stays live. Each leaf's bytes wait until the reader
+    // reaches it, and the projection never owns the complete leaf set.
+    ArrowLines::boxed(options, handle.children_where(&[], false)?, None)
 }
 
 /// Stream one leaf the reader already owns.
@@ -217,7 +188,7 @@ fn leaf_lines<H: IOBase + 'static>(
     options: &TextLineOptions,
 ) -> Result<BatchReader> {
     let current = opened_records(handle, url, options)?;
-    ArrowLines::boxed(options, Vec::new(), Some(current))
+    ArrowLines::boxed(options, Listing::empty(), Some(current))
 }
 
 /// Open one resource's records with their per-leaf row state.
@@ -261,7 +232,7 @@ struct ArrowLines {
     /// cast that would hand every array back unchanged.
     typed: bool,
     /// Leaves not yet opened, in name-sorted order.
-    pending: std::vec::IntoIter<Holder>,
+    pending: Listing,
     current: Option<LeafRecords>,
     done: bool,
 }
@@ -270,11 +241,11 @@ impl ArrowLines {
     /// Assemble the reader over already-validated options.
     fn boxed(
         options: &TextLineOptions,
-        pending: Vec<Holder>,
+        pending: Listing,
         current: Option<LeafRecords>,
     ) -> Result<BatchReader> {
-        let root = options.schema();
-        let schema = schema_from_field(root)?;
+        let root = options.field();
+        let schema = arrow_schema_from_field(root)?;
         let leading = options.leading_column_count();
         let capture_count = options.capture_names().count();
         let mut customs = Vec::with_capacity(options.custom_fields().len());
@@ -300,7 +271,7 @@ impl ArrowLines {
                     .unwrap_or_default();
                 raw.set_field(leading + index, DataType::Utf8.nullable_field(name))?;
             }
-            schema_from_field(&raw)?
+            arrow_schema_from_field(&raw)?
         } else {
             Arc::clone(&schema)
         };
@@ -313,7 +284,7 @@ impl ArrowLines {
             root: root.clone(),
             raw_schema,
             typed,
-            pending: pending.into_iter(),
+            pending,
             current,
             done: false,
         }))
@@ -372,6 +343,13 @@ impl Iterator for ArrowLines {
             let Some(current) = self.current.as_mut() else {
                 let Some(leaf) = self.pending.next() else {
                     break;
+                };
+                let leaf = match leaf {
+                    Ok(leaf) => leaf,
+                    Err(error) => {
+                        self.done = true;
+                        return Some(Err(external(error)));
+                    }
                 };
                 let url = url_text(&leaf);
                 match opened_records(leaf, url, &self.options) {
@@ -629,7 +607,7 @@ fn append_timestamp(builders: &mut RowBuilders, line: &TextLine<'_>, header: &st
 // The write half: Arrow batches out as text lines.
 //
 // This is what makes `Text` a full media rather than a read-only projection:
-// `write_arrow_batch_reader` and `append_arrow_batch_reader` land here when
+// `overwrite_arrow_reader` and `append_arrow_reader` land here when
 // the record options say text, exactly as they land in the IPC encoder when
 // they say IPC.
 // ---------------------------------------------------------------------------
@@ -642,9 +620,9 @@ fn append_timestamp(builders: &mut RowBuilders, line: &TextLine<'_>, header: &st
 /// A batch with no `message` column but exactly one `utf8` column writes that
 /// column, so "write these strings as lines" needs no rename.
 ///
-/// The rendered value is held whole before anything reaches the handle - the
-/// same shape as the IPC encoder, and for the same reason: a failure mid-way
-/// must leave the resource exactly as it was.
+/// The encoded value is staged once before anything reaches the handle, so a
+/// failure mid-stream leaves the resource exactly as it was. Decoded text is
+/// only one reused batch buffer and is released as batches advance.
 ///
 /// # Errors
 ///
@@ -657,8 +635,7 @@ pub(crate) fn write_arrow_lines(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
-    let rendered = rendered_lines(batches, &options.lines)?;
-    let encoded = handle.codec().dump_with_level(&rendered, options.level())?;
+    let encoded = encoded_lines(batches, &options.lines, handle.codec(), options.level())?;
     handle.write_all_bytes(&encoded)?;
     Ok(())
 }
@@ -683,10 +660,12 @@ pub(crate) fn append_arrow_lines(
 ) -> Result<()> {
     use crate::generic::IORecordOptions;
 
-    let rendered = rendered_lines(batches, &options.lines)?;
     let linesep = options.lines.write_linesep();
     let codec = handle.codec();
     if matches!(codec, crate::Codec::Identity) {
+        // Rendering is completed before the first positional mutation, so a
+        // malformed later batch cannot leave a partial append visible.
+        let rendered = encoded_lines(batches, &options.lines, codec, options.level())?;
         let mut offset = handle.size();
         // A stored final line may lack its terminator; appending straight
         // after it would merge the first new row into it, so the terminator
@@ -702,34 +681,75 @@ pub(crate) fn append_arrow_lines(
         handle.pwrite_all(offset, &rendered)?;
         return handle.flush();
     }
-    let mut decoded = if handle.is_empty() {
-        Vec::new()
-    } else {
-        codec.load(&handle.read_all_bytes()?)?
-    };
-    if decoded.last().is_some() && decoded.last() != linesep.last() {
-        decoded.extend_from_slice(linesep);
+
+    // A compressed representation cannot be extended in place. Re-encode its
+    // decoded stream into the one atomic output buffer while retaining only a
+    // transport chunk, then render incoming batches through the same encoder.
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = codec.writer_with_level(&mut encoded, options.level());
+        let mut source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+        let mut prefix = [0_u8; 64];
+        let prefix_len = source.read(&mut prefix)?;
+        let mut last = None;
+        if prefix_len > 0 {
+            let replayed = std::io::Cursor::new(prefix)
+                .take(prefix_len as u64)
+                .chain(source);
+            let mut decoder = codec.reader(replayed);
+            let mut decoded = vec![0_u8; crate::io::DEFAULT_STREAM_BATCH_SIZE];
+            loop {
+                let read = decoder.read(&mut decoded)?;
+                if read == 0 {
+                    break;
+                }
+                last = Some(decoded[read - 1]);
+                encoder.write_all(&decoded[..read])?;
+            }
+        }
+        if last.is_some() && last.as_ref() != linesep.last() {
+            encoder.write_all(linesep)?;
+        }
+        render_batches(batches, &options.lines, &mut encoder)?;
+        encoder.finish()?;
     }
-    decoded.extend_from_slice(&rendered);
-    let encoded = codec.dump_with_level(&decoded, options.level())?;
     handle.write_all_bytes(&encoded)?;
     Ok(())
 }
 
-/// Render every batch's rows as terminated lines, into one buffer.
-///
-/// Held whole deliberately: the caller publishes it in one write, so a
-/// failure while rendering leaves the resource untouched.
-fn rendered_lines(batches: BatchReader, options: &TextLineOptions) -> Result<Vec<u8>> {
+/// Render batches through a content encoder into one atomic encoded value.
+fn encoded_lines(
+    batches: BatchReader,
+    options: &TextLineOptions,
+    codec: crate::Codec,
+    level: crate::Level,
+) -> Result<Vec<u8>> {
+    let mut encoded = Vec::new();
+    {
+        let mut encoder = codec.writer_with_level(&mut encoded, level);
+        render_batches(batches, options, &mut encoder)?;
+        encoder.finish()?;
+    }
+    Ok(encoded)
+}
+
+/// Render every batch into one reused decoded buffer and forward it.
+fn render_batches(
+    batches: BatchReader,
+    options: &TextLineOptions,
+    target: &mut impl Write,
+) -> Result<()> {
     let schema = batches.schema();
     let columns = LineColumns::resolve(schema.as_ref())?;
     let linesep = options.write_linesep();
-    let mut rendered = Vec::new();
+    let mut rendered = Vec::with_capacity(crate::io::DEFAULT_STREAM_BATCH_SIZE);
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
+        rendered.clear();
         columns.render(&batch, linesep, &mut rendered)?;
+        target.write_all(&rendered)?;
     }
-    Ok(rendered)
+    Ok(())
 }
 
 /// Where a batch's line text lives: a `message` column, its optional

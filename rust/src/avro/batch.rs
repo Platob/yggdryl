@@ -1,8 +1,8 @@
 //! Avro object containers as a record encoding over any byte handle.
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
-//! [`write_batch_reader`] - that take any [`IOBase`] handle and one
-//! [`AvroOptions`]. That is what [`IOBase::read_arrow_batch_reader`] and its
+//! [`overwrite_arrow_reader`] - that take any [`IOBase`] handle and one
+//! [`AvroOptions`]. That is what [`crate::io::IOMedia::read_arrow_reader`] and its
 //! two siblings call, so reading a container needs nothing but a handle whose
 //! media type says `avro`. These functions are the encoding and nothing more -
 //! the `field` they take is a column pushdown, and the casting, merging, and
@@ -10,7 +10,7 @@
 //! above them.
 //!
 //! Decoding is columnar: one builder per leaf, appended per record, with no
-//! intermediate [`Value`](crate::Value) tree. A pushed-down projection turns
+//! intermediate [`Scalar`](crate::Scalar) tree. A pushed-down projection turns
 //! every unselected top-level column into a skip - length-prefixed values jump
 //! by their prefix, size-carrying blocks jump whole - so a projection saves
 //! decode, allocation, *and* the bytes of the skipped fields; what it cannot
@@ -20,7 +20,7 @@
 //! handle declaring an outer content coding is rejected rather than silently
 //! double-compressed.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use arrow_array::builder::{
     BinaryBuilder, BooleanBuilder, Decimal128Builder, FixedSizeBinaryBuilder, PrimitiveBuilder,
@@ -39,8 +39,8 @@ use arrow_buffer::{IntervalMonthDayNano, NullBufferBuilder, OffsetBuffer, Scalar
 use arrow_schema::{ArrowError, DataType as ArrowDataType, FieldRef, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::arrow::{BatchReader, Result, record_schema_from_arrow, schema_from_field};
-use crate::generic::IORecordOptions;
+use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
+use crate::generic::{IORecordOptions, RecordOptions};
 use crate::io::IOBase;
 use crate::{Field, Level, Limits};
 
@@ -59,10 +59,10 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
 /// Avro adds two settings to the shared surface: the block compression codec,
 /// named in Avro's own vocabulary because that is what the header stores, and
 /// an optional fixed synchronization marker for byte-reproducible output.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AvroOptions {
     /// Declared canonical schema; inferred from the container when absent.
-    pub schema: Option<Field>,
+    pub field: Option<Field>,
     /// Root Field name used for an inferred schema.
     pub root_name: SmolStr,
     /// Whether a cast may null a value it cannot convert.
@@ -73,6 +73,8 @@ pub struct AvroOptions {
     pub max_row_size: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
+    /// Rows published per streamed-write commit; `None` publishes once.
+    pub commit_row_size: Option<usize>,
     /// Compression level for the block codec.
     pub level: Level,
     /// Column names forming a write's match key; empty means overwrite.
@@ -93,12 +95,13 @@ impl AvroOptions {
     /// Build the default Avro options.
     pub fn new() -> Self {
         Self {
-            schema: None,
+            field: None,
             root_name: SmolStr::new_static(DEFAULT_ROOT_NAME),
             safe: false,
             batch_size: None,
             max_row_size: None,
             max_byte_size: None,
+            commit_row_size: None,
             level: Level::DEFAULT,
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
@@ -134,7 +137,7 @@ impl IORecordOptions for AvroOptions {
 }
 
 /// How many rows one batch carries when the caller does not say.
-const DEFAULT_BATCH_ROWS: usize = 65_536;
+const DEFAULT_BATCH_ROWS: usize = crate::generic::DEFAULT_RECORD_BATCH_SIZE;
 
 /// Read the schema of the container `handle` holds.
 ///
@@ -145,12 +148,66 @@ const DEFAULT_BATCH_ROWS: usize = 65_536;
 ///
 /// Returns a read, decoding, or schema failure.
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &AvroOptions) -> Result<Field> {
-    if let Some(schema) = options.schema() {
-        return Ok(schema.clone());
+    if let Some(field) = options.field() {
+        return Ok(field.clone());
     }
     reject_outer_coding(handle)?;
     let blocks = super::container::read_blocks(handle)?;
     Ok(field_from_schema(blocks.schema(), options.root_name())?)
+}
+
+/// Return the number of rows declared by an Avro container's block headers.
+///
+/// Selection, partition filters, and read limits are deliberately ignored:
+/// this describes the whole logical media value. Compressed payloads are
+/// skipped positionally, so no datum is decompressed or decoded.
+pub(crate) fn row_size<H: IOBase + ?Sized>(
+    handle: &H,
+    _options: &AvroOptions,
+) -> crate::Result<u64> {
+    if handle.is_empty() {
+        return Ok(0);
+    }
+    reject_outer_coding(handle)?;
+    let mut blocks = super::container::read_blocks(handle)?;
+    let mut rows = 0_u64;
+    while let Some(count) = blocks.next_block_count()? {
+        rows = rows.checked_add(count).ok_or_else(row_count_overflow)?;
+    }
+    Ok(rows)
+}
+
+/// Schema and row count cached for one explicitly opened container.
+#[derive(Clone, Debug)]
+struct AvroDimensions {
+    field: Field,
+    rows: u64,
+}
+
+/// Read both pieces of Avro metadata without decoding a row.
+fn read_dimensions<H: IOBase + ?Sized>(
+    handle: &H,
+    options: &AvroOptions,
+) -> crate::Result<Option<AvroDimensions>> {
+    if handle.is_empty() {
+        return Ok(None);
+    }
+    reject_outer_coding(handle)?;
+    let mut blocks = super::container::read_blocks(handle)?;
+    let field = field_from_schema(blocks.schema(), options.root_name())?;
+    let mut rows = 0_u64;
+    while let Some(count) = blocks.next_block_count()? {
+        rows = rows.checked_add(count).ok_or_else(row_count_overflow)?;
+    }
+    Ok(Some(AvroDimensions { field, rows }))
+}
+
+/// Report that the sum of block counts cannot be represented by the surface.
+fn row_count_overflow() -> crate::Error {
+    crate::Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: SmolStr::new_static("logical row count exceeds u64::MAX"),
+    }
 }
 
 /// Read the container `handle` holds, keeping only the columns `field` names.
@@ -174,8 +231,8 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
         // Per the laziness contract, a missing container holds no batches.
-        let schema = match options.schema() {
-            Some(schema) => schema_from_field(schema)?,
+        let schema = match options.field() {
+            Some(field) => arrow_schema_from_field(field)?,
             None => Arc::new(arrow_schema::Schema::empty()),
         };
         return Ok(Box::new(RecordBatchIterator::new(
@@ -219,7 +276,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 /// # Errors
 ///
 /// Returns a schema, encoding, or write failure.
-pub fn write_batch_reader<H>(
+pub fn overwrite_arrow_reader<H>(
     handle: &mut H,
     batches: BatchReader,
     options: &AvroOptions,
@@ -228,7 +285,7 @@ where
     H: IOBase + ?Sized,
 {
     reject_outer_coding(handle)?;
-    let root = record_schema_from_arrow(options.root_name(), batches.schema().as_ref())?;
+    let root = field_from_arrow_schema(options.root_name(), batches.schema().as_ref())?;
     let schema_json = schema_json_from_field(&root)?;
     let schema = Schema::from_json(&schema_json)?;
     // The canonical shape is what the encoder walks: casting each batch onto
@@ -238,7 +295,7 @@ where
 
     let coding = BlockCoding::from_name(&options.codec)?;
     let sync = options.sync_marker.unwrap_or_else(sync_marker);
-    let encoded_schema = crate::json::to_vec(&schema_json)?;
+    let encoded_schema = crate::json::into_bytes(&schema_json)?;
 
     let mut output = Vec::with_capacity(1024);
     output.extend_from_slice(&MAGIC);
@@ -432,8 +489,8 @@ impl RootReader {
         keep: Option<&[&str]>,
     ) -> crate::Result<(Self, SchemaRef)> {
         let root_field = field_from_schema(schema, root_name)?;
-        let full =
-            schema_from_field(&root_field).map_err(|error| invalid(format_smolstr!("{error}")))?;
+        let full = arrow_schema_from_field(&root_field)
+            .map_err(|error| invalid(format_smolstr!("{error}")))?;
 
         let mut steps = Vec::new();
         let mut kept_fields = Vec::new();
@@ -1330,8 +1387,11 @@ fn locate_column(error: crate::Error, column: &str) -> crate::Error {
 pub struct Avro<H: IOBase> {
     handle: H,
     options: AvroOptions,
-    /// Schema cached by `open`, discarded by `close` or replaced by a write.
-    cached_schema: Option<Field>,
+    /// Explicit lifecycle state. An opened empty container has no metadata,
+    /// so cache presence cannot truthfully answer this question.
+    opened: bool,
+    /// `Some(None)` is the stable opened-session answer for an empty handle.
+    cached_dimensions: OnceLock<Option<AvroDimensions>>,
 }
 
 impl<H: IOBase> Avro<H> {
@@ -1340,7 +1400,8 @@ impl<H: IOBase> Avro<H> {
         Self {
             handle,
             options: AvroOptions::new(),
-            cached_schema: None,
+            opened: false,
+            cached_dimensions: OnceLock::new(),
         }
     }
 
@@ -1348,15 +1409,15 @@ impl<H: IOBase> Avro<H> {
     #[must_use]
     pub fn with_options(mut self, options: AvroOptions) -> Self {
         self.options = options;
-        self.cached_schema = None;
+        self.invalidate_dimensions();
         self
     }
 
     /// Return this container with an explicit canonical schema.
     #[must_use]
-    pub fn with_schema(mut self, schema: Field) -> Self {
-        self.options.set_schema(schema);
-        self.cached_schema = None;
+    pub fn with_field(mut self, field: Field) -> Self {
+        self.options.set_field(field);
+        self.invalidate_dimensions();
         self
     }
 
@@ -1364,7 +1425,7 @@ impl<H: IOBase> Avro<H> {
     #[must_use]
     pub fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self {
         self.options.set_root_name(root_name.into());
-        self.cached_schema = None;
+        self.invalidate_dimensions();
         self
     }
 
@@ -1372,6 +1433,7 @@ impl<H: IOBase> Avro<H> {
     #[must_use]
     pub fn with_level(mut self, level: Level) -> Self {
         self.options.set_level(level);
+        self.invalidate_dimensions();
         self
     }
 
@@ -1381,8 +1443,24 @@ impl<H: IOBase> Avro<H> {
     }
 
     /// Borrow the options mutably.
-    pub const fn options_mut(&mut self) -> &mut AvroOptions {
+    pub fn options_mut(&mut self) -> &mut AvroOptions {
+        self.invalidate_dimensions();
         &mut self.options
+    }
+
+    /// Refuse options for a different encoding before a write can pull its
+    /// first incoming batch.
+    fn require_record_options<'a>(
+        &self,
+        options: &'a RecordOptions,
+    ) -> crate::Result<&'a AvroOptions> {
+        match options {
+            RecordOptions::Avro(options) => Ok(options),
+            _ => Err(crate::Error::InvalidRecord {
+                path: SmolStr::new_static("$.encoding"),
+                reason: crate::text::expected_got("Avro record options", options.mime_type()),
+            }),
+        }
     }
 
     /// Borrow the underlying handle.
@@ -1391,7 +1469,8 @@ impl<H: IOBase> Avro<H> {
     }
 
     /// Borrow the underlying handle mutably.
-    pub const fn handle_mut(&mut self) -> &mut H {
+    pub fn handle_mut(&mut self) -> &mut H {
+        self.invalidate_dimensions();
         &mut self.handle
     }
 
@@ -1400,49 +1479,47 @@ impl<H: IOBase> Avro<H> {
         self.handle
     }
 
-    /// Return the container's canonical schema.
-    ///
-    /// A declared schema is returned as-is. An open container answers from
-    /// the cache [`IOBase::open`] filled; a closed one reads the header fresh
-    /// every time, because a cache nobody asked for is how a handle serves a
-    /// stale schema after the resource changes underneath it.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or schema failure.
-    pub fn schema(&self) -> Result<Field> {
-        if let Some(schema) = self.options.schema() {
-            return Ok(schema.clone());
+    /// Discard metadata after an in-place mutation while retaining lifecycle
+    /// state. The next dimension/schema ask in an open session repopulates it.
+    fn invalidate_dimensions(&mut self) {
+        self.cached_dimensions.take();
+    }
+
+    /// Return the opened-session metadata, or a fresh uncached closed answer.
+    fn dimensions(&self) -> crate::Result<Option<AvroDimensions>> {
+        if !self.opened {
+            return read_dimensions(&self.handle, &self.options);
         }
-        if let Some(cached) = &self.cached_schema {
+        if let Some(cached) = self.cached_dimensions.get() {
             return Ok(cached.clone());
         }
-        read_field(&self.handle, &self.options)
+        let loaded = read_dimensions(&self.handle, &self.options)?;
+        // Concurrent immutable asks may race to fill an invalidated cache;
+        // whichever answer wins defines this opened session consistently.
+        let _ = self.cached_dimensions.set(loaded.clone());
+        Ok(self.cached_dimensions.get().cloned().unwrap_or(loaded))
     }
 
-    /// Read the container, keeping only the columns `field` names.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read or decoding failure.
-    pub fn read_batch_reader(&self, field: Option<&Field>) -> Result<BatchReader> {
-        read_batch_reader(&self.handle, field, &self.options)
-    }
-
-    /// Replace the container with every batch `batches` yields.
-    ///
-    /// # Errors
-    ///
-    /// Returns a schema, encoding, or write failure.
-    pub fn write_batch_reader(&mut self, batches: BatchReader) -> Result<()> {
-        let written = batches.schema();
-        write_batch_reader(&mut self.handle, batches, &self.options)?;
-        // The batches just written are the container's schema, so the cache
-        // is refreshed rather than dropped; a schema that will not project
-        // back into a Field drops the cache and the next read derives it.
-        self.cached_schema =
-            record_schema_from_arrow(self.options.root_name(), written.as_ref()).ok();
+    /// Refresh metadata after a successful publication while keeping an open
+    /// session open. Closed operations never create a cache implicitly.
+    fn refresh_dimensions(&mut self) -> crate::Result<()> {
+        self.invalidate_dimensions();
+        if self.opened {
+            let loaded = read_dimensions(&self.handle, &self.options)?;
+            let _ = self.cached_dimensions.set(loaded);
+        }
         Ok(())
+    }
+
+    /// Best-effort refresh after a write error that may follow a published
+    /// commit. The original failure must remain the reported failure.
+    fn refresh_dimensions_after_error(&mut self) {
+        self.invalidate_dimensions();
+        if self.opened {
+            if let Ok(loaded) = read_dimensions(&self.handle, &self.options) {
+                let _ = self.cached_dimensions.set(loaded);
+            }
+        }
     }
 }
 
@@ -1452,8 +1529,125 @@ impl<H: IOBase> Avro<H> {
 ///
 /// [`IOBase::open`] additionally caches the container's schema and
 /// [`IOBase::close`] releases it.
+impl<H: IOBase> crate::io::IOMedia for Avro<H> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self
+    }
+
+    fn row_size(&self) -> crate::Result<u64> {
+        Ok(self.dimensions()?.map_or(0, |dimensions| dimensions.rows))
+    }
+
+    fn column_size(&self) -> crate::Result<usize> {
+        if let Some(field) = self.options.field() {
+            return Ok(field.field_len());
+        }
+        if self.opened {
+            return Ok(self
+                .dimensions()?
+                .map_or(0, |dimensions| dimensions.field.field_len()));
+        }
+        if self.handle.is_empty() {
+            return Ok(0);
+        }
+        Ok(read_field(&self.handle, &self.options)?.field_len())
+    }
+
+    /// Return this wrapper's Avro options even when the wrapped byte handle
+    /// has no informative media type of its own.
+    fn record_options(&self) -> crate::Result<RecordOptions> {
+        Ok(RecordOptions::Avro(self.options.clone()))
+    }
+
+    fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
+        let options = self.require_record_options(options)?;
+        if let Some(field) = options.field() {
+            return Ok(field.clone());
+        }
+        if self.opened {
+            if let Some(dimensions) = self.dimensions()? {
+                return Ok(dimensions.field.with_name(options.root_name()));
+            }
+        }
+        Ok(read_field(&self.handle, options)?)
+    }
+
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        self.require_record_options(options)?;
+        match crate::io::overwrite_arrow_reader_default_with_field(self, batches, options) {
+            Ok(_published) => {
+                self.refresh_dimensions()?;
+                Ok(())
+            }
+            Err(error) => {
+                // A complete earlier cadence remains published by contract;
+                // refresh an open handle from that visible container. A
+                // truncated or invalid survivor merely drops the cache, and
+                // never masks the original write failure.
+                self.refresh_dimensions_after_error();
+                Err(error)
+            }
+        }
+    }
+
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        self.require_record_options(options)?;
+        match crate::io::leaf_writer(self, batches, options) {
+            Ok(()) => {
+                self.refresh_dimensions()?;
+                Ok(())
+            }
+            Err(error) => {
+                self.refresh_dimensions_after_error();
+                Err(error)
+            }
+        }
+    }
+
+    fn append_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        self.require_record_options(options)?;
+        crate::io::append_arrow_reader_default(self, batches, options)
+    }
+
+    fn merge_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        self.require_record_options(options)?;
+        crate::io::merge_arrow_reader_default(self, batches, options)
+    }
+}
+
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle, except_lifecycle);
+    crate::delegate_iobase!(handle: pread, pstream_bytes, size, capacity, reserve, url, media_type,
+        set_media_type, flush, parent, child_by_path, ls, kind);
+
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+        self.invalidate_dimensions();
+        self.handle.pwrite(offset, bytes)
+    }
+
+    fn truncate(&mut self, size: u64) -> crate::Result<()> {
+        self.invalidate_dimensions();
+        self.handle.truncate(size)
+    }
 
     /// An Avro object container is a record encoding, so this handle holds
     /// rows whatever media type the bytes underneath happen to carry - no
@@ -1467,23 +1661,28 @@ impl<H: IOBase> IOBase for Avro<H> {
         false
     }
 
-    /// Materialize the handle and cache the container's schema.
+    /// Materialize the handle and cache its schema and block row counts.
     fn open(&mut self) -> crate::Result<()> {
-        self.handle.open()?;
-        if self.cached_schema.is_none() && !self.handle.is_empty() {
-            self.cached_schema = Some(read_field(&self.handle, &self.options)?);
+        if self.opened {
+            return Ok(());
         }
+        self.handle.open()?;
+        self.invalidate_dimensions();
+        let dimensions = read_dimensions(&self.handle, &self.options)?;
+        let _ = self.cached_dimensions.set(dimensions);
+        self.opened = true;
         Ok(())
     }
 
-    /// Return whether a schema is currently cached.
+    /// Return explicit lifecycle state, including for an empty container.
     fn opened(&self) -> bool {
-        self.cached_schema.is_some()
+        self.opened
     }
 
-    /// Flush the handle and drop the cached schema.
+    /// Flush the handle and drop the cached dimensions.
     fn close(&mut self) -> crate::Result<()> {
-        self.cached_schema = None;
+        self.opened = false;
+        self.invalidate_dimensions();
         self.handle.close()
     }
 
@@ -1493,8 +1692,16 @@ impl<H: IOBase> IOBase for Avro<H> {
     /// cached schema describing bytes that are gone is a stale answer, and a
     /// stale answer after an emptying is a bug.
     fn clear(&mut self) -> crate::Result<()> {
-        self.cached_schema = None;
-        self.handle.clear()
+        self.invalidate_dimensions();
+        let result = self.handle.clear();
+        if self.opened {
+            if result.is_ok() {
+                let _ = self.cached_dimensions.set(None);
+            } else {
+                self.refresh_dimensions_after_error();
+            }
+        }
+        result
     }
 
     /// Delete the encoded resource, and every cached schema it filled.
@@ -1502,7 +1709,8 @@ impl<H: IOBase> IOBase for Avro<H> {
     /// A media handle removes what it wraps, not merely its own view: the
     /// resource behind the handle goes, and the schema cache goes with it.
     fn remove(&mut self, recursive: bool) -> crate::Result<()> {
-        self.cached_schema = None;
+        self.opened = false;
+        self.invalidate_dimensions();
         self.handle.remove(recursive)
     }
 }

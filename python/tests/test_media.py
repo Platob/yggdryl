@@ -83,6 +83,14 @@ def test_mime_type_complete_known_constants_and_default() -> None:
     assert len(set(values)) == len(values)
 
 
+def test_io_identity_is_derived_from_the_unencoded_mime_value() -> None:
+    assert MimeType.CSV.is_io()
+    assert MediaType.from_parts(MimeType.CSV, [MimeType.GZIP]).is_io()
+    directory = MimeType("inode/directory")
+    assert not directory.is_io()
+    assert not MediaType(directory).is_io()
+
+
 def test_mime_type_native_parsing_views_and_value_protocols(tmp_path: Path) -> None:
     custom = MimeType("Application/Vnd.Example+JSON")
     assert str(custom) == "application/vnd.example+json"
@@ -103,8 +111,8 @@ def test_mime_type_native_parsing_views_and_value_protocols(tmp_path: Path) -> N
     assert MimeType.JSON == copy.copy(MimeType.JSON)
     assert MimeType.JSON == copy.deepcopy(MimeType.JSON)
     assert MimeType.JSON == pickle.loads(pickle.dumps(MimeType.JSON))
-    assert MimeType.from_json(MimeType.JSON.to_json()) == MimeType.JSON
     assert MimeType.from_json(MimeType.JSON.into_json()) == MimeType.JSON
+    assert not hasattr(MimeType.JSON, "to_json")
     assert hash(MimeType.JSON) == hash(MimeType.from_value(MimeType.JSON))
     assert MimeType.JSON.stable_hash() == MimeType.from_str("application/json").stable_hash()
 
@@ -164,7 +172,7 @@ def test_media_type_default_compound_headers_and_detached_snapshots() -> None:
     )
 
 
-def test_media_type_mutation_is_atomic_unhashable_and_round_trips() -> None:
+def test_media_type_mutation_is_atomic_hash_locked_and_round_trips() -> None:
     media = MediaType.from_parts(MimeType.JSON, [MimeType.GZIP])
     before = str(media)
 
@@ -181,24 +189,36 @@ def test_media_type_mutation_is_atomic_unhashable_and_round_trips() -> None:
     with pytest.raises(TypeError):
         media.set_base(object())
     assert str(media) == before
-    with pytest.raises(TypeError):
-        hash(media)
-
     media.set_base(MimeType.CSV)
     media.set_encodings(value for value in [MimeType.GZIP, MimeType.ZSTD])
     media.push_encoding(MimeType.BROTLI)
     assert media.base == MimeType.CSV
     assert media.encodings == (MimeType.GZIP, MimeType.ZSTD, MimeType.BROTLI)
-    assert MediaType.from_json(media.to_json()) == media
     assert MediaType.from_json(media.into_json()) == media
+    assert not hasattr(media, "to_json")
     assert copy.copy(media) == media
     assert copy.deepcopy(media) == media
     assert pickle.loads(pickle.dumps(media)) == media
     assert media.stable_hash() == MediaType.from_str(str(media)).stable_hash()
+    assert hash(media) == hash(MediaType.from_str(str(media)))
+
+    keyed = {media: "stable"}
+    with pytest.raises(TypeError, match="hashed MediaType is frozen"):
+        media.set_base(MimeType.JSON)
+    with pytest.raises(TypeError, match="hashed MediaType is frozen"):
+        media.clear_encodings()
+    assert keyed[media] == "stable"
+
+    copied = copy.copy(media)
+    copied.set_base(MimeType.JSON)
+    assert copied != media
+    restored = pickle.loads(pickle.dumps(media))
+    restored.clear_encodings()
+    assert restored != media
 
     with pytest.raises(TypeError, match="iterable"):
         MediaType.from_parts(MimeType.JSON, "gzip")
     with pytest.raises(TypeError, match="iterable"):
-        media.set_encodings("gzip")
+        MediaType(media).set_encodings("gzip")
     with pytest.raises(ValueError):
         MediaType.from_content_headers(None, "identity")

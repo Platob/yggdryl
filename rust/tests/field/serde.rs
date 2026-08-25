@@ -1,7 +1,7 @@
-//! The `Value` conversion is the one structural model of a schema, and every
+//! The `Scalar` conversion is the one structural model of a schema, and every
 //! serialized form is expressed over it.
 
-use yggdryl::generic::Value;
+use yggdryl::generic::Scalar;
 use yggdryl::{DataType, Field, Metadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
@@ -87,7 +87,7 @@ fn shapes() -> Vec<Field> {
 #[test]
 fn every_shape_round_trips_through_the_value_conversion() {
     for field in shapes() {
-        let restored = Field::from_value(field.to_value()).expect("a field mapping");
+        let restored = Field::from_value(field.clone().into_value()).expect("a field mapping");
         assert_eq!(restored, field, "{field}");
         assert_eq!(
             restored.as_metadata(),
@@ -96,7 +96,8 @@ fn every_shape_round_trips_through_the_value_conversion() {
         );
 
         let data_type = field.data_type().clone();
-        let restored = DataType::from_value(data_type.to_value()).expect("a datatype mapping");
+        let restored =
+            DataType::from_value(data_type.clone().into_value()).expect("a datatype mapping");
         assert_eq!(restored, data_type, "{data_type}");
     }
 }
@@ -106,18 +107,20 @@ fn the_value_shape_matches_the_json_structure_exactly() {
     for field in shapes() {
         // The JSON path is expressed over this conversion, so the two must
         // produce the same bytes - this is the compatibility test that
-        // pins `to_json` against drift.
-        let direct = field.to_json().expect("structural JSON");
-        let through_value =
-            String::from_utf8(yggdryl::json::to_vec(&field.to_value()).expect("a JSON dump"))
-                .expect("UTF-8");
+        // pins `into_json` against drift.
+        let direct = field.clone().into_json().expect("structural JSON");
+        let through_value = String::from_utf8(
+            yggdryl::json::into_bytes(&field.clone().into_value()).expect("a JSON dump"),
+        )
+        .expect("UTF-8");
         assert_eq!(direct, through_value, "{field}");
 
         let data_type = field.data_type();
-        let direct = data_type.to_json().expect("structural JSON");
-        let through_value =
-            String::from_utf8(yggdryl::json::to_vec(&data_type.to_value()).expect("a JSON dump"))
-                .expect("UTF-8");
+        let direct = data_type.clone().into_json().expect("structural JSON");
+        let through_value = String::from_utf8(
+            yggdryl::json::into_bytes(&data_type.clone().into_value()).expect("a JSON dump"),
+        )
+        .expect("UTF-8");
         assert_eq!(direct, through_value, "{data_type}");
     }
 }
@@ -125,19 +128,20 @@ fn the_value_shape_matches_the_json_structure_exactly() {
 #[test]
 fn a_malformed_mapping_is_refused_by_path() {
     let missing =
-        Value::from_mapping([(Value::String("name".into()), Value::String("id".into()))]).unwrap();
+        Scalar::from_mapping([(Scalar::String("name".into()), Scalar::String("id".into()))])
+            .unwrap();
     let refused = Field::from_value(missing).expect_err("no datatype");
     assert!(refused.to_string().contains("data_type"), "{refused}");
 
-    let unknown = Value::from_mapping([(
-        Value::String("type".into()),
-        Value::String("quaternion".into()),
+    let unknown = Scalar::from_mapping([(
+        Scalar::String("type".into()),
+        Scalar::String("quaternion".into()),
     )])
     .unwrap();
     let refused = DataType::from_value(unknown).expect_err("no such datatype");
     assert!(refused.to_string().contains("quaternion"), "{refused}");
 
-    let not_a_mapping = Value::String("int64".into());
+    let not_a_mapping = Scalar::String("int64".into());
     let refused = DataType::from_value(not_a_mapping).expect_err("not a mapping");
     assert!(
         refused.to_string().contains("datatype mapping"),
@@ -148,13 +152,13 @@ fn a_malformed_mapping_is_refused_by_path() {
 #[test]
 fn metadata_entries_must_be_strings() {
     let field = Field::new("id", DataType::Int64, false);
-    let mut value = field.to_value().as_mapping().unwrap().to_vec();
+    let mut value = field.into_value().as_mapping().unwrap().to_vec();
     value.pop();
     value.push((
-        Value::String("metadata".into()),
-        Value::from_mapping([(Value::String("count".into()), Value::I64(7))]).unwrap(),
+        Scalar::String("metadata".into()),
+        Scalar::from_mapping([(Scalar::String("count".into()), Scalar::I64(7))]).unwrap(),
     ));
-    let refused = Field::from_value(Value::from_mapping(value).unwrap())
+    let refused = Field::from_value(Scalar::from_mapping(value).unwrap())
         .expect_err("a non-string metadata value");
     assert!(refused.to_string().contains("count"), "{refused}");
 }
@@ -162,11 +166,11 @@ fn metadata_entries_must_be_strings() {
 #[test]
 fn the_trait_forms_sit_beside_the_inherent_ones() {
     let field = DataType::Int64.required_field("id");
-    let value: Value = (&field).into();
+    let value: Scalar = (&field).into();
     assert_eq!(Field::try_from(value).unwrap(), field);
 
     let data_type = DataType::Utf8;
-    let value: Value = (&data_type).into();
+    let value: Scalar = (&data_type).into();
     assert_eq!(DataType::try_from(value).unwrap(), data_type);
 
     // Metadata keeps its own entries type; this is only the schema route.
@@ -183,34 +187,64 @@ fn small() -> Field {
 #[test]
 fn every_shape_round_trips_through_every_format() {
     for field in shapes() {
-        assert_eq!(Field::from_json(&field.to_json().unwrap()).unwrap(), field);
-        assert_eq!(Field::from_yaml(&field.to_yaml().unwrap()).unwrap(), field);
-        assert_eq!(Field::from_toml(&field.to_toml().unwrap()).unwrap(), field);
+        assert_eq!(
+            Field::from_json(&field.clone().into_json().unwrap()).unwrap(),
+            field
+        );
+        assert_eq!(
+            Field::from_yaml(&field.clone().into_yaml().unwrap()).unwrap(),
+            field
+        );
+        assert_eq!(
+            Field::from_toml(&field.clone().into_toml().unwrap()).unwrap(),
+            field
+        );
 
         let data_type = field.data_type().clone();
         assert_eq!(
-            DataType::from_json(&data_type.to_json().unwrap()).unwrap(),
+            DataType::from_json(&data_type.clone().into_json().unwrap()).unwrap(),
             data_type
         );
         assert_eq!(
-            DataType::from_yaml(&data_type.to_yaml().unwrap()).unwrap(),
+            DataType::from_yaml(&data_type.clone().into_yaml().unwrap()).unwrap(),
             data_type
         );
         assert_eq!(
-            DataType::from_toml(&data_type.to_toml().unwrap()).unwrap(),
+            DataType::from_toml(&data_type.clone().into_toml().unwrap()).unwrap(),
             data_type
         );
     }
 }
 
 #[test]
+fn natural_text_objects_feed_record_aware_structural_readers() {
+    let field = small();
+    let documents = [
+        yggdryl::json::from_utf8(&field.clone().into_json().unwrap()).unwrap(),
+        yggdryl::yaml::from_utf8(&field.clone().into_yaml().unwrap()).unwrap(),
+        yggdryl::toml::from_utf8(&field.clone().into_toml().unwrap()).unwrap(),
+    ];
+
+    for document in documents {
+        assert!(document.as_record().is_some(), "{document:?}");
+        let data_type = document.get_key_str("data_type").unwrap().clone();
+        assert!(data_type.as_record().is_some(), "{data_type:?}");
+        assert_eq!(
+            DataType::from_value(data_type).unwrap(),
+            field.data_type().clone()
+        );
+        assert_eq!(Field::from_value(document).unwrap(), field);
+    }
+}
+
+#[test]
 fn the_three_formats_parse_back_to_equal_values() {
-    // Cross-format agreement is by construction - one `Value` mapping feeds
+    // Cross-format agreement is by construction - one `Scalar` mapping feeds
     // all three - and this is the test that pins it.
     for field in shapes() {
-        let from_json = Field::from_json(&field.to_json().unwrap()).unwrap();
-        let from_yaml = Field::from_yaml(&field.to_yaml().unwrap()).unwrap();
-        let from_toml = Field::from_toml(&field.to_toml().unwrap()).unwrap();
+        let from_json = Field::from_json(&field.clone().into_json().unwrap()).unwrap();
+        let from_yaml = Field::from_yaml(&field.clone().into_yaml().unwrap()).unwrap();
+        let from_toml = Field::from_toml(&field.clone().into_toml().unwrap()).unwrap();
         assert_eq!(from_json, from_yaml, "{field}");
         assert_eq!(from_yaml, from_toml, "{field}");
     }
@@ -223,12 +257,12 @@ fn a_small_dump_reads_the_way_the_docs_say() {
     let field = small();
 
     assert_eq!(
-        field.to_json().unwrap(),
+        field.clone().into_json().unwrap(),
         r#"{"name":"row","data_type":{"type":"struct","fields":[{"name":"id","data_type":{"type":"int64"},"nullable":false,"metadata":{}}]},"nullable":false,"metadata":{}}"#
     );
 
     assert_eq!(
-        field.to_yaml().unwrap(),
+        field.clone().into_yaml().unwrap(),
         "\
 name: row
 data_type:
@@ -245,7 +279,7 @@ metadata: {}
     );
 
     assert_eq!(
-        field.to_toml().unwrap(),
+        field.into_toml().unwrap(),
         "\
 \"name\" = \"row\"
 \"data_type\" = {\"type\" = \"struct\", \"fields\" = [{\"name\" = \"id\", \"data_type\" = {\"type\" = \"int64\"}, \"nullable\" = false, \"metadata\" = {}}]}
@@ -271,16 +305,16 @@ fn formatting_changes_bytes_never_meaning() {
     for formatting in settings {
         for (dump, parse) in [
             (
-                Box::new(move |f: &Field| f.to_json_with_formatting(formatting))
+                Box::new(move |f: &Field| f.clone().into_json_with_formatting(formatting))
                     as Box<dyn Fn(&Field) -> yggdryl::Result<String>>,
                 Box::new(Field::from_json) as Box<dyn Fn(&str) -> yggdryl::Result<Field>>,
             ),
             (
-                Box::new(move |f: &Field| f.to_yaml_with_formatting(formatting)),
+                Box::new(move |f: &Field| f.clone().into_yaml_with_formatting(formatting)),
                 Box::new(Field::from_yaml),
             ),
             (
-                Box::new(move |f: &Field| f.to_toml_with_formatting(formatting)),
+                Box::new(move |f: &Field| f.clone().into_toml_with_formatting(formatting)),
                 Box::new(Field::from_toml),
             ),
         ] {
@@ -298,50 +332,50 @@ fn formatting_changes_bytes_never_meaning() {
 fn indentation_reads_literally_in_every_format() {
     use yggdryl::text::Formatting;
 
-    let value = yggdryl::generic::Value::from_mapping([
+    let value = yggdryl::generic::Scalar::from_mapping([
         (
-            yggdryl::generic::Value::String("id".into()),
-            yggdryl::generic::Value::I64(1),
+            yggdryl::generic::Scalar::String("id".into()),
+            yggdryl::generic::Scalar::I64(1),
         ),
         (
-            yggdryl::generic::Value::String("tags".into()),
-            yggdryl::generic::Value::from_sequence([yggdryl::generic::Value::String("a".into())]),
+            yggdryl::generic::Scalar::String("tags".into()),
+            yggdryl::generic::Scalar::from_sequence([yggdryl::generic::Scalar::String("a".into())]),
         ),
     ])
     .unwrap();
 
     assert_eq!(
-        yggdryl::json::to_vec(&value).unwrap(),
+        yggdryl::json::into_bytes(&value).unwrap(),
         br#"{"id":1,"tags":["a"]}"#
     );
     assert_eq!(
-        yggdryl::json::to_vec_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"{\n  \"id\": 1,\n  \"tags\": [\n    \"a\"\n  ]\n}"
     );
     assert_eq!(
-        yggdryl::json::to_vec_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"{\n    \"id\": 1,\n    \"tags\": [\n        \"a\"\n    ]\n}"
     );
 
     assert_eq!(
-        yggdryl::yaml::to_vec(&value).unwrap(),
+        yggdryl::yaml::into_bytes(&value).unwrap(),
         b"id: 1\ntags:\n  - a\n"
     );
     assert_eq!(
-        yggdryl::yaml::to_vec_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"id: 1\ntags:\n    - a\n"
     );
     assert_eq!(
-        yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact()).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact()).unwrap(),
         b"{id: 1, tags: [a]}\n"
     );
 
     assert_eq!(
-        yggdryl::toml::to_vec(&value).unwrap(),
+        yggdryl::toml::into_bytes(&value).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\"a\"]\n"
     );
     assert_eq!(
-        yggdryl::toml::to_vec_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::toml::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\n  \"a\",\n]\n"
     );
 }
@@ -361,7 +395,8 @@ fn depth_three_indents_one_level_per_level() {
     .required_field("outer");
 
     let yaml = deep
-        .to_yaml_with_formatting(Formatting::indented(2))
+        .clone()
+        .into_yaml_with_formatting(Formatting::indented(2))
         .unwrap();
     // One unit deeper per level, with no drift at depth.
     let columns: Vec<usize> = yaml
@@ -374,7 +409,8 @@ fn depth_three_indents_one_level_per_level() {
     assert!(columns[0] < columns[1], "{yaml}");
 
     let wide = deep
-        .to_yaml_with_formatting(Formatting::indented(4))
+        .clone()
+        .into_yaml_with_formatting(Formatting::indented(4))
         .unwrap();
     let wide_columns: Vec<usize> = wide
         .lines()
@@ -399,7 +435,8 @@ fn depth_three_indents_one_level_per_level() {
     // JSON indents strictly by level, so the `fields` key at each depth sits
     // exactly one unit deeper than the one above it - no drift at depth.
     let json = deep
-        .to_json_with_formatting(Formatting::indented(2))
+        .clone()
+        .into_json_with_formatting(Formatting::indented(2))
         .unwrap();
     let json_columns: Vec<usize> = json
         .lines()
@@ -413,7 +450,7 @@ fn depth_three_indents_one_level_per_level() {
     );
 
     let wide_json = deep
-        .to_json_with_formatting(Formatting::indented(4))
+        .into_json_with_formatting(Formatting::indented(4))
         .unwrap();
     let wide_json_columns: Vec<usize> = wide_json
         .lines()

@@ -116,9 +116,14 @@ impl JsDataType {
             ),
             "time32" => CoreDataType::time32(unit).map_err(napi_error)?,
             "time64" => CoreDataType::time64(unit).map_err(napi_error)?,
-            "duration" if unit.is_temporal() => CoreDataType::Duration(unit),
+            "duration32" if unit.is_temporal() => {
+                CoreDataType::duration32(unit).map_err(napi_error)?
+            }
+            "duration64" if unit.is_temporal() => {
+                CoreDataType::duration64(unit).map_err(napi_error)?
+            }
             "interval" if unit.is_interval() => CoreDataType::Interval(unit),
-            "timestamp" | "duration" => {
+            "timestamp" | "duration32" | "duration64" => {
                 return Err(Error::from_reason(format!(
                     "{kind} requires a temporal resolution unit"
                 )));
@@ -474,7 +479,7 @@ impl JsDataType {
         self.inner.stable_hash()
     }
 
-    /// Materialize the bounded canonical default through Record's exact
+    /// Materialize the bounded canonical default through the exact native
     /// schema-guided JavaScript scalar projection.
     #[napi(js_name = "_defaultJSValueNative", skip_typescript)]
     pub fn default_js_value_native<'env>(
@@ -515,11 +520,12 @@ impl JsDataType {
 
     /// Recursively normalize this datatype for one closed compatibility
     /// target without changing the current wrapper.
-    #[napi(js_name = "toSchemeCompat", skip_typescript)]
-    pub fn to_scheme_compat(&self, target: String) -> Result<Self> {
+    #[napi(js_name = "intoSchemeCompat", skip_typescript)]
+    pub fn into_scheme_compat(&self, target: String) -> Result<Self> {
         let target = CoreScheme::from_str(&target).map_err(napi_error)?;
         self.inner
-            .to_scheme_compat(&target)
+            .clone()
+            .into_scheme_compat(&target)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -531,14 +537,14 @@ impl JsDataType {
     }
 
     /// Return canonical syntax accepted losslessly by `fromString`.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.inner.to_string()
     }
 
     /// Serialize to version-independent structural JSON.
     #[napi(js_name = "toJSON")]
-    pub fn to_json(&self) -> Result<serde_json::Value> {
+    pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
 }

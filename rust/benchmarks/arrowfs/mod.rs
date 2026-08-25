@@ -42,7 +42,7 @@ pub(crate) fn batch() -> RecordBatch {
     #[allow(clippy::cast_precision_loss)]
     let prices: Vec<f64> = ids.iter().map(|id| *id as f64).collect();
     RecordBatch::try_new(
-        yggdryl::arrow::schema_from_field(&wide()).expect("a projectable root"),
+        wide().into_arrow_schema().expect("a projectable root"),
         vec![
             Arc::new(Int64Array::from(ids.clone())),
             Arc::new(StringArray::from(
@@ -115,9 +115,9 @@ pub(crate) fn store(handle: &mut dyn IOBase, source: &RecordBatch) {
     let options = handle
         .record_options()
         .expect("an implemented encoding")
-        .with_schema(wide());
+        .with_field(wide());
     handle
-        .write_arrow_batch_reader(
+        .overwrite_arrow_reader(
             yggdryl::arrow::batch_reader(source.schema(), [source.clone()]),
             &options,
         )

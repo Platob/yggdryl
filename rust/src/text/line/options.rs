@@ -4,7 +4,7 @@
 //! counts as its header, what is left as the message, how the message is
 //! trimmed, which captures are typed, how batches are bounded, and which zone a
 //! naive timestamp is read in. It round-trips through the shared
-//! [`Value`](crate::generic::Value), so a JSON, YAML, or TOML document already
+//! [`Scalar`](crate::generic::Scalar), so a JSON, YAML, or TOML document already
 //! readable by this crate **fully defines a reader** - no code, no callbacks,
 //! no per-row work in any language.
 //!
@@ -21,7 +21,7 @@ use std::str::FromStr;
 use regex::Regex;
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
-use crate::generic::Value;
+use crate::generic::Scalar;
 use crate::iceberg::PrimitiveType;
 use crate::{DataType, Error, Field, Result, TimeUnit, Timezone};
 
@@ -37,7 +37,7 @@ pub(crate) const BASE_COLUMNS: [&str; 10] = [
 ///
 /// Fixed and always emitted, never discovered from the data: a line without a
 /// level gets `null`, not a missing column, so
-/// [`TextLineOptions::schema`] still answers from configuration alone.
+/// [`TextLineOptions::field`] still answers from configuration alone.
 pub(crate) const LOG_COLUMNS: [&str; 3] = ["level", "logger", "thread"];
 
 /// The name of the root Struct Field the projection reports.
@@ -70,7 +70,24 @@ pub enum Opening {
     Pattern(Regex),
 }
 
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+enum OpeningIdentity<'a> {
+    EveryLine,
+    Timestamp,
+    Pattern(&'a str),
+}
+
 impl Opening {
+    fn identity(&self) -> OpeningIdentity<'_> {
+        match self {
+            Self::EveryLine => OpeningIdentity::EveryLine,
+            Self::Timestamp => OpeningIdentity::Timestamp,
+            // The expression source is the declarative setting; the compiled
+            // automaton is derived state and is deliberately not identity.
+            Self::Pattern(pattern) => OpeningIdentity::Pattern(pattern.as_str()),
+        }
+    }
+
     /// The expression, when one was supplied.
     #[must_use]
     pub const fn pattern(&self) -> Option<&Regex> {
@@ -85,13 +102,45 @@ impl Opening {
     pub const fn is_timestamp(&self) -> bool {
         matches!(self, Self::Timestamp)
     }
+
+    /// Return the deterministic hash of the declared opening rule.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(&self.identity())
+    }
+}
+
+impl PartialEq for Opening {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Opening {}
+
+impl std::hash::Hash for Opening {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
+impl Ord for Opening {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl PartialOrd for Opening {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// The settings a text-line read or write runs under.
 ///
 /// Construction compiles and validates every expression, so holding a
 /// `TextLineOptions` is holding a schema already known to be emittable -
-/// [`Self::schema`] answers with no resource in sight, which is what a caller
+/// [`Self::field`] answers with no resource in sight, which is what a caller
 /// creating an Iceberg table before the first log line needs.
 ///
 /// ```
@@ -105,7 +154,7 @@ impl Opening {
 /// // A pattern overrides detection, and its captures become columns.
 /// let options = TextLineOptions::with_pattern(r"^\[(?<level>[A-Z]+)\]")?;
 /// assert_eq!(options.capture_names().collect::<Vec<_>>(), ["level"]);
-/// assert_eq!(options.schema().name(), "row");
+/// assert_eq!(options.field().name(), "row");
 /// # Ok(())
 /// # }
 /// ```
@@ -123,14 +172,81 @@ pub struct TextLineOptions {
     batch_size: Option<usize>,
     timestamp_capture: Option<SmolStr>,
     timezone: Option<Timezone>,
-    custom_fields: Vec<(SmolStr, Value)>,
+    custom_fields: Vec<(SmolStr, Scalar)>,
     capture_types: Vec<(SmolStr, DataType)>,
     /// Every named capture of both expressions, in emission order.
     captures: Vec<SmolStr>,
     /// How many of `captures` come from the opening pattern.
     pattern_captures: usize,
     /// The emitted root, rebuilt on every effective mutation.
-    schema: Field,
+    field: Field,
+}
+
+/// The complete declared configuration. Captures and the emitted field are
+/// derived from these members and therefore cannot create a second identity.
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct TextLineIdentity<'a> {
+    opening: OpeningIdentity<'a>,
+    header: Option<&'a str>,
+    linesep: Option<&'a LineSep>,
+    lstrip: &'a Strip,
+    rstrip: &'a Strip,
+    byte_size: Option<usize>,
+    batch_size: Option<usize>,
+    timestamp_capture: Option<&'a SmolStr>,
+    timezone: Option<&'a Timezone>,
+    custom_fields: &'a [(SmolStr, Scalar)],
+    capture_types: &'a [(SmolStr, DataType)],
+}
+
+impl TextLineOptions {
+    fn identity(&self) -> TextLineIdentity<'_> {
+        TextLineIdentity {
+            opening: self.opening.identity(),
+            header: self.header.as_ref().map(Regex::as_str),
+            linesep: self.linesep.as_ref(),
+            lstrip: &self.lstrip,
+            rstrip: &self.rstrip,
+            byte_size: self.byte_size,
+            batch_size: self.batch_size,
+            timestamp_capture: self.timestamp_capture.as_ref(),
+            timezone: self.timezone.as_ref(),
+            custom_fields: &self.custom_fields,
+            capture_types: &self.capture_types,
+        }
+    }
+
+    /// Return a deterministic hash of every declared extractor setting.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(&self.identity())
+    }
+}
+
+impl PartialEq for TextLineOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for TextLineOptions {}
+
+impl std::hash::Hash for TextLineOptions {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
+impl Ord for TextLineOptions {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl PartialOrd for TextLineOptions {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Default for TextLineOptions {
@@ -176,10 +292,10 @@ impl TextLineOptions {
             capture_types: Vec::new(),
             captures: Vec::new(),
             pattern_captures: 0,
-            schema: Field::new(ROOT_NAME, DataType::Null, false),
+            field: Field::new(ROOT_NAME, DataType::Null, false),
         };
         // The base schema cannot fail: its columns are this module's own.
-        options.schema =
+        options.field =
             options
                 .rebuild_schema()
                 .unwrap_or(Field::new(ROOT_NAME, DataType::Null, false));
@@ -561,7 +677,7 @@ impl TextLineOptions {
 
     /// Borrow the constant columns appended to every row, in column order.
     #[must_use]
-    pub fn custom_fields(&self) -> &[(SmolStr, Value)] {
+    pub fn custom_fields(&self) -> &[(SmolStr, Scalar)] {
         &self.custom_fields
     }
 
@@ -576,7 +692,7 @@ impl TextLineOptions {
     /// Returns the codec's own rejection under the column's path, or a
     /// collision with a base, capture, or earlier custom column. Failure leaves
     /// the options unchanged.
-    pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Value)>) -> Result<()> {
+    pub fn set_custom_fields(&mut self, custom_fields: Vec<(SmolStr, Scalar)>) -> Result<()> {
         self.rebuild_with(|options| &mut options.custom_fields, custom_fields)
     }
 
@@ -592,7 +708,7 @@ impl TextLineOptions {
     /// name collides.
     pub fn try_with_custom_fields<I, N>(mut self, custom_fields: I) -> Result<Self>
     where
-        I: IntoIterator<Item = (N, Value)>,
+        I: IntoIterator<Item = (N, Scalar)>,
         N: Into<SmolStr>,
     {
         self.set_custom_fields(
@@ -674,14 +790,14 @@ impl TextLineOptions {
     /// Every column passes the strict Iceberg codec unchanged, so this root
     /// creates an Iceberg table as it stands, **with no resource in sight**.
     #[must_use]
-    pub const fn schema(&self) -> &Field {
-        &self.schema
+    pub const fn field(&self) -> &Field {
+        &self.field
     }
 
     /// Consume these options into the root Struct Field they emit.
     #[must_use]
-    pub fn into_schema(self) -> Field {
-        self.schema
+    pub fn into_field(self) -> Field {
+        self.field
     }
 
     /// Return whether records open where a timestamp opens.
@@ -721,8 +837,8 @@ impl TextLineOptions {
             }
         }
         match self.rebuild_schema() {
-            Ok(schema) => {
-                self.schema = schema;
+            Ok(field) => {
+                self.field = field;
                 Ok(())
             }
             Err(error) => {
@@ -742,8 +858,8 @@ impl TextLineOptions {
     fn rebuild_with<T>(&mut self, setting: impl Fn(&mut Self) -> &mut T, value: T) -> Result<()> {
         let held = std::mem::replace(setting(self), value);
         match self.rebuild_schema() {
-            Ok(schema) => {
-                self.schema = schema;
+            Ok(field) => {
+                self.field = field;
                 Ok(())
             }
             Err(error) => {
@@ -810,7 +926,7 @@ impl TextLineOptions {
             fields.push(Field::new(
                 name.clone(),
                 data_type,
-                matches!(value, Value::Null),
+                matches!(value, Scalar::Null),
             ));
         }
         Ok(DataType::from_fields(fields)?.required_field(ROOT_NAME))
@@ -1022,37 +1138,6 @@ fn named_group_bodies(pattern: &str) -> Vec<(SmolStr, SmolStr)> {
     bodies
 }
 
-/// Build the projection's root Struct Field straight from a header pattern.
-///
-/// The one-call spelling of [`TextLineOptions::with_pattern`] followed by
-/// [`into_schema`](TextLineOptions::into_schema): the schema a pattern emits -
-/// typed captures inferred from their sub-patterns - **without a resource or a
-/// reader in sight**. Mark its partition columns and hand it to an Iceberg
-/// catalog, and the table exists before the first log line does; the reader then
-/// emits exactly this shape.
-///
-/// ```
-/// use yggdryl::text::schema_from_pattern;
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let schema = schema_from_pattern(r"^\[(?<level>[A-Z]+)\] (?<thread_id>\d+)")?;
-///
-/// assert_eq!(schema.name(), "row");
-/// assert_eq!(schema["level"].data_type(), &yggdryl::DataType::Utf8);
-/// // The closed inference table types this one from its own sub-pattern.
-/// assert_eq!(schema["thread_id"].data_type(), &yggdryl::DataType::Int64);
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Errors
-///
-/// Returns an error when the pattern does not parse or a capture group name
-/// collides with a base column.
-pub fn schema_from_pattern(pattern: &str) -> Result<Field> {
-    Ok(TextLineOptions::with_pattern(pattern)?.into_schema())
-}
-
 impl FromStr for TextLineOptions {
     type Err = Error;
 
@@ -1072,23 +1157,23 @@ impl FromStr for TextLineOptions {
 // ---------------------------------------------------------------------------
 
 impl TextLineOptions {
-    /// Project these options onto the shared structural [`Value`].
+    /// Project these options onto the shared structural [`Scalar`].
     ///
     /// Only what is actually set is emitted, so a default extractor is an empty
     /// mapping and a document round-trips without accumulating noise. The keys
     /// are the option names, in a fixed order.
     ///
     /// ```
-    /// use yggdryl::generic::Value;
+    /// use yggdryl::generic::Scalar;
     /// use yggdryl::text::TextLineOptions;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let options = TextLineOptions::with_pattern(r"^\[(?<level>[A-Z]+)\]")?
     ///     .with_byte_size(1 << 20);
-    /// let value = options.to_value();
+    /// let value = options.into_value();
     ///
     /// assert_eq!(
-    ///     value.get_key_str("pattern").and_then(Value::as_str),
+    ///     value.get_key_str("pattern").and_then(Scalar::as_utf8),
     ///     Some(r"^\[(?<level>[A-Z]+)\]"),
     /// );
     /// assert_eq!(TextLineOptions::from_value(value)?.byte_size(), Some(1 << 20));
@@ -1096,75 +1181,75 @@ impl TextLineOptions {
     /// # }
     /// ```
     #[must_use]
-    pub fn to_value(&self) -> Value {
-        let key = |name: &str| Value::String(SmolStr::new(name));
-        let mut entries: Vec<(Value, Value)> = Vec::new();
+    pub fn into_value(&self) -> Scalar {
+        let key = |name: &str| Scalar::String(SmolStr::new(name));
+        let mut entries: Vec<(Scalar, Scalar)> = Vec::new();
         match &self.opening {
             Opening::EveryLine => {}
             Opening::Timestamp => entries.push((key("opening"), key("timestamp"))),
             Opening::Pattern(pattern) => {
                 entries.push((
                     key("pattern"),
-                    Value::String(SmolStr::new(pattern.as_str())),
+                    Scalar::String(SmolStr::new(pattern.as_str())),
                 ));
             }
         }
         if let Some(header) = &self.header {
-            entries.push((key("header"), Value::String(SmolStr::new(header.as_str()))));
+            entries.push((key("header"), Scalar::String(SmolStr::new(header.as_str()))));
         }
         if let Some(linesep) = &self.linesep {
-            entries.push((key("linesep"), Value::String(escaped(linesep.as_bytes()))));
+            entries.push((key("linesep"), Scalar::String(escaped(linesep.as_bytes()))));
         }
         if !matches!(self.lstrip, Strip::Whitespace) {
-            entries.push((key("lstrip"), Value::String(self.lstrip.to_smolstr())));
+            entries.push((key("lstrip"), Scalar::String(self.lstrip.to_smolstr())));
         }
         if !matches!(self.rstrip, Strip::Whitespace) {
-            entries.push((key("rstrip"), Value::String(self.rstrip.to_smolstr())));
+            entries.push((key("rstrip"), Scalar::String(self.rstrip.to_smolstr())));
         }
         if let Some(byte_size) = self.byte_size {
-            entries.push((key("byte_size"), Value::U64(byte_size as u64)));
+            entries.push((key("byte_size"), Scalar::U64(byte_size as u64)));
         }
         if let Some(batch_size) = self.batch_size {
-            entries.push((key("batch_size"), Value::U64(batch_size as u64)));
+            entries.push((key("batch_size"), Scalar::U64(batch_size as u64)));
         }
         if let Some(capture) = &self.timestamp_capture {
-            entries.push((key("timestamp_capture"), Value::String(capture.clone())));
+            entries.push((key("timestamp_capture"), Scalar::String(capture.clone())));
         }
         if let Some(timezone) = &self.timezone {
             entries.push((
                 key("timezone"),
-                Value::String(SmolStr::new(timezone.as_str())),
+                Scalar::String(SmolStr::new(timezone.as_str())),
             ));
         }
         if !self.capture_types.is_empty() {
             entries.push((
                 key("capture_types"),
-                Value::from_mapping(
+                Scalar::from_mapping(
                     self.capture_types.iter().map(|(name, data_type)| {
-                        (key(name), Value::String(data_type.to_smolstr()))
+                        (key(name), Scalar::String(data_type.to_smolstr()))
                     }),
                 )
-                .unwrap_or(Value::Null),
+                .unwrap_or(Scalar::Null),
             ));
         }
         if !self.custom_fields.is_empty() {
             entries.push((
                 key("custom_fields"),
-                Value::from_mapping(
+                Scalar::from_mapping(
                     self.custom_fields
                         .iter()
                         .map(|(name, value)| (key(name), value.clone())),
                 )
-                .unwrap_or(Value::Null),
+                .unwrap_or(Scalar::Null),
             ));
         }
-        Value::from_mapping(entries).unwrap_or(Value::Null)
+        Scalar::from_mapping(entries).unwrap_or(Scalar::Null)
     }
 
-    /// Read options back from the shared structural [`Value`].
+    /// Read options back from the shared structural [`Scalar`].
     ///
     /// This is what makes a reader **fully specifiable from a document**: parse
-    /// a config file with [`text::from_str`](crate::text::from_str), hand the
+    /// a config file with [`text::from_utf8`](crate::text::from_utf8), hand the
     /// value here, and the reader is built - pattern, header, terminator,
     /// batch bounds, typed captures, constant columns, timestamp capture, and
     /// zone. Every value is validated exactly as the setters validate it, so a
@@ -1174,11 +1259,8 @@ impl TextLineOptions {
     ///
     /// Returns an error naming the key and the expectation when the value is
     /// not a mapping, a key is unknown, or a setting does not validate.
-    pub fn from_value(value: Value) -> Result<Self> {
-        let entries = value.as_mapping().ok_or_else(|| Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got("an options mapping", value.kind()),
-        })?;
+    pub fn from_value(value: Scalar) -> Result<Self> {
+        let entries = named_entries(&value, "an options record", "$")?;
         let mut options = Self::new();
         // A pattern and an explicit opening are the same setting spelled two
         // ways, so whichever the document carries is applied once.
@@ -1190,14 +1272,10 @@ impl TextLineOptions {
         // caller changes a pattern and wrong here - a document naming a
         // capture that does not exist must be refused, not quietly dropped.
         let mut capture_types: Vec<(SmolStr, DataType)> = Vec::new();
-        let mut custom_fields: Vec<(SmolStr, Value)> = Vec::new();
+        let mut custom_fields: Vec<(SmolStr, Scalar)> = Vec::new();
         let mut timestamp_capture: Option<SmolStr> = None;
 
         for (name, held) in entries {
-            let name = name.as_str().ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: crate::text::expected_got("string option names", name.kind()),
-            })?;
             match name {
                 "pattern" => opening = Some(Opening::Pattern(compiled(text(held, name)?, name)?)),
                 "opening" => {
@@ -1222,14 +1300,13 @@ impl TextLineOptions {
                 "timestamp_capture" => timestamp_capture = Some(SmolStr::new(text(held, name)?)),
                 "timezone" => options.set_timezone(Some(text(held, name)?.parse()?))?,
                 "capture_types" => {
-                    let pairs = held.as_mapping().ok_or_else(|| {
-                        unexpected(name, "a mapping of capture names to datatypes", held.kind())
-                    })?;
+                    let pairs = named_entries(
+                        held,
+                        "a record of capture names to datatypes",
+                        "capture_types",
+                    )?;
                     let mut declared = Vec::with_capacity(pairs.len());
                     for (capture, data_type) in pairs {
-                        let capture = capture.as_str().ok_or_else(|| {
-                            unexpected(name, "string capture names", capture.kind())
-                        })?;
                         let spelled = data_type.as_str().ok_or_else(|| {
                             unexpected(name, "datatype expressions", data_type.kind())
                         })?;
@@ -1238,14 +1315,13 @@ impl TextLineOptions {
                     capture_types = declared;
                 }
                 "custom_fields" => {
-                    let pairs = held.as_mapping().ok_or_else(|| {
-                        unexpected(name, "a mapping of column names to constants", held.kind())
-                    })?;
+                    let pairs = named_entries(
+                        held,
+                        "a record of column names to constants",
+                        "custom_fields",
+                    )?;
                     let mut customs = Vec::with_capacity(pairs.len());
                     for (column, constant) in pairs {
-                        let column = column.as_str().ok_or_else(|| {
-                            unexpected(name, "string column names", column.kind())
-                        })?;
                         customs.push((SmolStr::new(column), constant.clone()));
                     }
                     custom_fields = customs;
@@ -1280,37 +1356,65 @@ impl TextLineOptions {
     }
 }
 
-impl From<&TextLineOptions> for Value {
+impl From<&TextLineOptions> for Scalar {
     fn from(value: &TextLineOptions) -> Self {
-        value.to_value()
+        value.into_value()
     }
 }
 
-impl TryFrom<Value> for TextLineOptions {
+fn named_entries<'value>(
+    value: &'value Scalar,
+    expectation: &str,
+    path: &str,
+) -> Result<Vec<(&'value str, &'value Scalar)>> {
+    match value {
+        Scalar::Record(entries) => Ok(entries
+            .iter()
+            .map(|(name, value)| (name.as_str(), value))
+            .collect()),
+        Scalar::Mapping(entries) => entries
+            .iter()
+            .map(|(name, value)| {
+                name.as_str()
+                    .map(|name| (name, value))
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: SmolStr::new(path),
+                        reason: crate::text::expected_got("string names", name.kind()),
+                    })
+            })
+            .collect(),
+        _ => Err(Error::InvalidRecord {
+            path: SmolStr::new(path),
+            reason: crate::text::expected_got(expectation, value.kind()),
+        }),
+    }
+}
+
+impl TryFrom<Scalar> for TextLineOptions {
     type Error = Error;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Scalar) -> Result<Self> {
         Self::from_value(value)
     }
 }
 
 /// Read a string option, or report what it was.
-fn text<'value>(held: &'value Value, name: &str) -> Result<&'value str> {
+fn text<'value>(held: &'value Scalar, name: &str) -> Result<&'value str> {
     held.as_str()
         .ok_or_else(|| unexpected(name, "a string", held.kind()))
 }
 
 /// Read a count option, accepting every width a document may carry it in.
-fn count(held: &Value, name: &str) -> Result<usize> {
+fn count(held: &Scalar, name: &str) -> Result<usize> {
     let value = match held {
-        Value::U8(value) => u64::from(*value),
-        Value::U16(value) => u64::from(*value),
-        Value::U32(value) => u64::from(*value),
-        Value::U64(value) => *value,
-        Value::I8(value) => nonnegative(i64::from(*value), name)?,
-        Value::I16(value) => nonnegative(i64::from(*value), name)?,
-        Value::I32(value) => nonnegative(i64::from(*value), name)?,
-        Value::I64(value) => nonnegative(*value, name)?,
+        Scalar::U8(value) => u64::from(*value),
+        Scalar::U16(value) => u64::from(*value),
+        Scalar::U32(value) => u64::from(*value),
+        Scalar::U64(value) => *value,
+        Scalar::I8(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I16(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I32(value) => nonnegative(i64::from(*value), name)?,
+        Scalar::I64(value) => nonnegative(*value, name)?,
         other => return Err(unexpected(name, "a count", other.kind())),
     };
     usize::try_from(value)

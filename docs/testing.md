@@ -17,7 +17,7 @@ Every check runs from the repository root, which owns the Cargo workspace.
     cd python
     .venv/Scripts/python -m maturin develop
     .venv/Scripts/python -m pytest
-    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_records.py
+    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
     ```
 
 === "JavaScript"
@@ -126,7 +126,7 @@ AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib avro::tests::fuzz_lite
 ## What a test looks like here
 
 A test name states the behaviour: `a_missing_stream_reads_as_empty_rather_than_failing` says what
-the contract is, `test_read_batches_2` says nothing. One behaviour per test, and an assertion
+the contract is, `test_streamed_batch_read_2` says nothing. One behaviour per test, and an assertion
 message that carries the case when the test loops.
 
 Adversarial cases sit beside the happy path. The suites that matter most are the ones pinning a
@@ -156,6 +156,6 @@ measured the same way, rather than in prose.
 | `rust/src/**/tests.rs` | Unit tests, beside the module they cover |
 | `rust/tests/*.rs` | Integration tests, one file per domain |
 | `rust/tests/allocations.rs` | The counting-allocator target: what the hot path must *not* allocate per record |
-| `python/tests/` | Python binding and records tests |
+| `python/tests/` | Python binding and field-decorator tests |
 | `node/tests/` | JavaScript binding tests, plus `tsc --noEmit` |
 | `*/benchmarks/` | [Benchmarks](benchmarks.md) |

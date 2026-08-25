@@ -11,6 +11,7 @@ def test_every_vocabulary_is_a_nonempty_tuple_of_strings() -> None:
         enums.DATA_TYPE_KINDS,
         enums.TIME_UNITS,
         enums.UNION_MODES,
+        enums.IO_MODES,
         enums.CODECS,
         enums.IO_KINDS,
         enums.COMPATIBILITY_SCHEMES,
@@ -27,6 +28,7 @@ def test_the_spellings_are_the_ones_the_parsers_accept() -> None:
     assert DataType("int64").id == "int64"
     assert "integer" in enums.DATA_TYPE_KINDS
     assert enums.UNION_MODES == ("sparse", "dense")
+    assert enums.IO_MODES == ("overwrite", "append", "merge", "readonly", "random")
     assert "us" in enums.TIME_UNITS
     assert "gzip" in enums.CODECS
     assert "file" in enums.IO_KINDS

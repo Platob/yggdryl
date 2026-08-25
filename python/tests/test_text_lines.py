@@ -6,7 +6,7 @@ import pathlib
 
 import pytest
 
-from yggdryl import DataType, IOBase, schema_from_pattern, yaml
+from yggdryl import DataType, IOBase, field_from_pattern, yaml
 
 PATTERN = r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]"
 
@@ -19,7 +19,10 @@ LOG = (
 
 def handle(tmp_path: pathlib.Path, text: str, name: str = "app.log") -> IOBase:
     target = tmp_path / name
-    target.write_text(text)
+    # Keep line terminators byte-exact on Windows as well as POSIX: these
+    # tests exercise CR, LF, and CRLF independently, so host newline
+    # translation would change the fixture before yggdryl sees it.
+    target.write_bytes(text.encode())
     return IOBase(target)
 
 
@@ -80,7 +83,7 @@ custom_fields:
 
     # The schema answers from the document alone, with no resource in sight -
     # so the table exists before the first log line does.
-    schema = schema_from_pattern(options=options)
+    schema = field_from_pattern(options=options)
     assert schema.name == "row"
     assert schema["level"].data_type == DataType("utf8")
     assert schema["source"].data_type == DataType("utf8")
@@ -115,7 +118,7 @@ def test_log_mode_needs_no_expression_anywhere(tmp_path: pathlib.Path) -> None:
     assert table.column("level").to_pylist() == ["ERROR", "INFO"]
     assert table.column("logger").to_pylist() == [None, None]
     # And the schema is answerable from the options alone.
-    assert schema_from_pattern(logs=True)["level"].data_type == DataType("utf8")
+    assert field_from_pattern(logs=True)["level"].data_type == DataType("utf8")
 
 
 def test_both_batch_bounds_apply_and_the_first_to_trip_wins(

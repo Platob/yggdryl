@@ -6,12 +6,14 @@
 //! [`crate::zlib::Zlib`], [`crate::zstd::Zstd`] - are this type with the codec
 //! already chosen.
 //!
-//! A coding is not seekable, so the decoded value is materialized once and kept
-//! until [`IOBase::close`]. That is what makes positional reads and writes work
-//! at all over a compressed payload, and it is why the write is published on
-//! [`IOBase::flush`] rather than on every `pwrite`.
+//! A coding is not seekable, so positional mutation and an explicitly opened
+//! session materialize the decoded value until [`IOBase::close`]. Sequential
+//! reads decode through one bounded stream and retain no earlier page. Pending
+//! writes are published on [`IOBase::flush`] rather than on every `pwrite`.
 
-use crate::io::{Holder, IOBase};
+use std::io::Read;
+
+use crate::io::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, Holder, IOBase};
 use crate::{Codec, Level, MediaType, Result, Url};
 
 /// A transparent compression buffer over one handle.
@@ -82,13 +84,11 @@ impl<H: IOBase> Coded<H> {
     /// Materialize the decoded value, decoding the wrapped bytes once.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
-            let encoded = self.handle.read_all_bytes()?;
-            // Per the laziness contract, a resource that does not exist yet
-            // decodes to nothing rather than failing.
-            let plain = if encoded.is_empty() {
-                Vec::new()
-            } else {
-                self.codec.load(&encoded)?
+            let plain = {
+                let mut plain = Vec::new();
+                self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
+                    .read_to_end(&mut plain)?;
+                plain
             };
             self.plain = Some(plain);
         }
@@ -108,20 +108,22 @@ impl<H: IOBase> Coded<H> {
         self.plain.as_ref()
     }
 
-    /// Decode without caching, for the read-only accessors.
-    ///
-    /// This is the path for a handle that is *not* open: nothing may be
-    /// cached as a side effect of an ordinary read, so the value is decoded
-    /// for this call and dropped after it.
-    fn peek(&self) -> Result<Vec<u8>> {
-        if let Some(plain) = &self.plain {
-            return Ok(plain.clone());
+    /// Count decoded bytes through one bounded window without retaining them.
+    fn streamed_size(&self) -> Result<u64> {
+        let mut source = self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+        let mut chunk = vec![0_u8; DEFAULT_STREAM_BATCH_SIZE];
+        let mut size = 0_u64;
+        loop {
+            let read = source.read(&mut chunk)?;
+            if read == 0 {
+                return Ok(size);
+            }
+            size = size.checked_add(read as u64).ok_or_else(|| {
+                crate::Error::Io(std::io::Error::other(
+                    "decoded byte stream exceeds u64::MAX",
+                ))
+            })?;
         }
-        let encoded = self.handle.read_all_bytes()?;
-        if encoded.is_empty() {
-            return Ok(Vec::new());
-        }
-        self.codec.load(&encoded)
     }
 
     /// Write the decoded value back through the coding.
@@ -135,6 +137,73 @@ impl<H: IOBase> Coded<H> {
         self.plain = Some(plain);
         self.dirty = false;
         Ok(())
+    }
+
+    /// Own the same presented bytes without retaining decoded pages here.
+    ///
+    /// A closed located view reopens the encoded resource and keeps its coding
+    /// in the media type, so owning record readers decode it lazily. An
+    /// unlocated source snapshots only the encoded bytes it already holds.
+    /// Opened or dirty state must snapshot `plain`, because it is the stable
+    /// presented value and may be newer than the resource underneath it.
+    #[cfg(feature = "arrow")]
+    fn owned_presented_handle(&self) -> Result<Holder> {
+        if let Some(plain) = self.materialized() {
+            return Ok(Holder::buffer(
+                crate::io::Buffer::from_bytes(plain.clone())
+                    .with_media_type(self.media_type.clone()),
+            ));
+        }
+
+        let declared_codec = Codec::from_media_type(self.handle.media_type());
+        // Raw DEFLATE has no distinct MIME spelling in the shared media model.
+        // Keep explicit raw framing correct with one streamed decoded snapshot
+        // instead of falsely labelling it as a zlib stream.
+        if self.codec == Codec::Deflate && declared_codec != Codec::Deflate {
+            let mut plain = Vec::new();
+            self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
+                .read_to_end(&mut plain)?;
+            return Ok(Holder::buffer(
+                crate::io::Buffer::from_bytes(plain).with_media_type(self.media_type.clone()),
+            ));
+        }
+
+        let encoded_media_type = if self.codec.is_identity() || declared_codec == self.codec {
+            self.handle.media_type().clone()
+        } else {
+            self.handle
+                .media_type()
+                .clone()
+                .try_with_encodings(super::coding_mime(self.codec))?
+        };
+        if let Some(parent) = self.handle.parent() {
+            if let Some(name) = self.handle.url().and_then(crate::Url::file_name) {
+                let mut child = parent.child_by_path(name)?;
+                child.set_media_type(encoded_media_type);
+                return Ok(child);
+            }
+        }
+
+        let mut encoded = crate::io::Buffer::new();
+        self.handle.copy_into(&mut encoded)?;
+        encoded.set_media_type(encoded_media_type);
+        Ok(Holder::buffer(encoded))
+    }
+
+    /// Apply the generic read shaping after an owning encoding seam.
+    #[cfg(feature = "arrow")]
+    fn shape_owned_arrow_reader(
+        reader: crate::arrow::BatchReader,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        use crate::generic::IORecordOptions;
+
+        let reader = match options.field() {
+            Some(field) => crate::arrow::cast_reader(reader, field, options.safe())?,
+            None => reader,
+        };
+        let reader = crate::io::partition::filtered_reader(reader, options)?;
+        options.limit_arrow_reader(crate::io::select_reader(reader, options)?)
     }
 }
 
@@ -172,25 +241,39 @@ fn decoded_media_type(media_type: &MediaType, codec: Codec) -> MediaType {
         .unwrap_or_else(|_| MediaType::new(media_type.base().clone()))
 }
 
-impl<H: IOBase> IOBase for Coded<H> {
-    /// Lines stream off the *encoded* handle rather than the materialized
-    /// value: the coding is peeled as a streaming decoder, then whatever
-    /// codings the decoded media type still carries, so a compressed resource
-    /// pays one buffer instead of its decompressed size. A pending write has
-    /// the decoded value in memory already, so it takes the default path.
-    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + '_>>>
-    where
-        Self: Sized,
-    {
-        crate::text::line::coded_lines(self, &self.handle, self.codec, self.dirty)
-    }
+impl<H: IOBase> crate::io::IOMedia for Coded<H> {
+    crate::impl_default_iomedia!();
 
-    /// The borrowed projection reads a snapshot of the *decoded* value.
+    /// Keep an owning Arrow reader on the decoded view without caching it.
     ///
-    /// The default reopens the handle's location, which for this decoding
-    /// view holds the encoded form - not the bytes these reads present - so
-    /// the projection snapshots the presented value instead, exactly what
-    /// this handle materializes to serve any read.
+    /// A closed view reopens (or snapshots) its encoded source with the coding
+    /// restored in the owned handle's media type, so decoding remains lazy.
+    /// Only an opened or dirty view snapshots the decoded value it already
+    /// owns.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_reader(
+        &self,
+        options: &crate::generic::RecordOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        use crate::generic::IORecordOptions;
+
+        let owned = self.owned_presented_handle()?;
+        if owned.is_container() {
+            return crate::io::IOMedia::read_arrow_reader(&owned, options);
+        }
+        let reader = match options {
+            crate::generic::RecordOptions::Ipc(ipc) => {
+                crate::ipc::read_owned_batch_reader(owned, options.field(), ipc)?
+            }
+            crate::generic::RecordOptions::Text(text) => owned.into_arrow_lines(&text.lines)?,
+            _ => return crate::io::IOMedia::read_arrow_reader(&owned, options),
+        };
+        Self::shape_owned_arrow_reader(reader, options)
+    }
+}
+
+impl<H: IOBase> IOBase for Coded<H> {
+    /// Own the presented line stream without retaining decoded pages.
     #[cfg(feature = "arrow")]
     fn read_arrow_lines(
         &self,
@@ -199,20 +282,88 @@ impl<H: IOBase> IOBase for Coded<H> {
     where
         Self: Sized,
     {
-        crate::text::line::arrow::snapshot_arrow_lines(self, options)
+        self.owned_presented_handle()?.into_arrow_lines(options)
     }
 
     /// Read the range out of the decoded value.
     ///
     /// An open handle answers from the value it already holds; a closed one
-    /// decodes for this call. Either way only the requested range is copied
-    /// into the caller's buffer - a positional read over a coded handle costs
-    /// the decode, never a second copy of the whole payload.
+    /// decodes only far enough to fill this call. No closed positional read
+    /// retains or allocates the whole decoded payload.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         if let Some(plain) = self.materialized() {
             return Ok(copy_range(plain, offset, buffer));
         }
-        Ok(copy_range(&self.peek()?, offset, buffer))
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        Ok(self.pstream_bytes(offset, buffer.len())?.read(buffer)?)
+    }
+
+    /// Stream decoded bytes without materializing the decoded value.
+    ///
+    /// Compression has no decoded seek, so a closed stream starts at the
+    /// encoded beginning and discards decoded bytes up to `position` through
+    /// one bounded scratch buffer. An opened or dirty handle already owns its
+    /// decoded snapshot and streams a borrowed suffix of that value instead.
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
+        if let Some(plain) = self.materialized() {
+            let plain = usize::try_from(position)
+                .ok()
+                .and_then(|position| plain.get(position..))
+                .unwrap_or_default();
+            return ByteStream::from_reader(std::io::Cursor::new(plain), batch_size);
+        }
+        if self.codec.is_identity() {
+            return self.handle.pstream_bytes(position, batch_size);
+        }
+        // The caller's batch bounds decoded output. The encoded transport has
+        // its own fixed window: coupling it to a one-byte output request would
+        // turn one decode into one positional backend call per encoded byte.
+        let encoded = self.handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+        ByteStream::from_reader(
+            SkipReader::new(LazyDecoder::new(self.codec, encoded), position),
+            batch_size,
+        )
+    }
+
+    /// Materialize one streamed decode, without first materializing the
+    /// encoded value or decoding once merely to discover the decoded size.
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        if let Some(plain) = self.materialized() {
+            return Ok(plain.clone());
+        }
+        let mut bytes = Vec::new();
+        self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
+            .read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    /// Read one decoded range through the streaming decoder.
+    ///
+    /// Only the requested result is retained. A closed compressed stream must
+    /// still decode from its beginning to reach `offset`, but no earlier
+    /// decoded page remains cached afterwards.
+    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        if length == 0 {
+            return Ok(Vec::new());
+        }
+        if let Some(plain) = self.materialized() {
+            let Some(offset) = usize::try_from(offset)
+                .ok()
+                .filter(|offset| *offset < plain.len())
+            else {
+                return Ok(Vec::new());
+            };
+            return Ok(plain[offset..plain.len().min(offset.saturating_add(length))].to_vec());
+        }
+        let mut bytes = Vec::with_capacity(length.min(DEFAULT_STREAM_BATCH_SIZE));
+        std::io::Read::take(
+            self.pstream_bytes(offset, length.clamp(1, DEFAULT_STREAM_BATCH_SIZE))?,
+            length as u64,
+        )
+        .read_to_end(&mut bytes)?;
+        Ok(bytes)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
@@ -223,7 +374,12 @@ impl<H: IOBase> IOBase for Coded<H> {
             ))
         })?;
         let plain = self.decoded()?;
-        let end = offset + bytes.len();
+        let end = offset.checked_add(bytes.len()).ok_or_else(|| {
+            crate::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "decoded write range exceeds addressable memory",
+            ))
+        })?;
         if plain.len() < end {
             // Writing past the end grows the value and zero-fills any gap.
             plain.resize(end, 0);
@@ -237,7 +393,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         if let Some(plain) = self.materialized() {
             return plain.len() as u64;
         }
-        self.peek().map_or(0, |plain| plain.len() as u64)
+        self.streamed_size().unwrap_or(0)
     }
 
     fn capacity(&self) -> u64 {
@@ -332,6 +488,90 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.plain = None;
         self.dirty = false;
         self.handle.remove(recursive)
+    }
+}
+
+/// Construct a decoder only after the encoded source yields its first byte.
+///
+/// An absent resource is an empty decoded value, while an empty byte slice is
+/// not a complete gzip, zlib, or Zstandard frame. Delaying construction lets
+/// the handle contract win without probing its size and keeps construction
+/// itself lazy.
+struct LazyDecoder<'source> {
+    codec: Codec,
+    source: Option<ByteStream<'source>>,
+    decoder: Option<Box<dyn Read + 'source>>,
+}
+
+impl<'source> LazyDecoder<'source> {
+    const fn new(codec: Codec, source: ByteStream<'source>) -> Self {
+        Self {
+            codec,
+            source: Some(source),
+            decoder: None,
+        }
+    }
+}
+
+impl Read for LazyDecoder<'_> {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        if target.is_empty() {
+            return Ok(0);
+        }
+        if self.decoder.is_none() {
+            let Some(mut source) = self.source.take() else {
+                return Ok(0);
+            };
+            // Probe with enough bytes for every supported framing header. A
+            // one-byte probe costs a separate remote range request before the
+            // decoder's first useful read; replaying this owned prefix keeps
+            // absence lazy while making the first request useful.
+            let mut prefix = [0_u8; 64];
+            let read = source.read(&mut prefix)?;
+            if read == 0 {
+                return Ok(0);
+            }
+            self.decoder = Some(
+                self.codec
+                    .reader(std::io::Cursor::new(prefix).take(read as u64).chain(source)),
+            );
+        }
+        self.decoder
+            .as_mut()
+            .map_or(Ok(0), |decoder| decoder.read(target))
+    }
+}
+
+/// Lazily discard a decoded prefix before serving the requested position.
+struct SkipReader<R> {
+    reader: R,
+    remaining: u64,
+}
+
+impl<R> SkipReader<R> {
+    const fn new(reader: R, remaining: u64) -> Self {
+        Self { reader, remaining }
+    }
+}
+
+impl<R: Read> Read for SkipReader<R> {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        if target.is_empty() {
+            return Ok(0);
+        }
+        let mut discarded = [0_u8; 8 * 1024];
+        while self.remaining > 0 {
+            let length = usize::try_from(self.remaining)
+                .unwrap_or(usize::MAX)
+                .min(discarded.len());
+            let read = self.reader.read(&mut discarded[..length])?;
+            if read == 0 {
+                self.remaining = 0;
+                return Ok(0);
+            }
+            self.remaining -= read as u64;
+        }
+        self.reader.read(target)
     }
 }
 

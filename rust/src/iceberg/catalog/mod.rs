@@ -100,7 +100,7 @@ use super::Table;
 use crate::generic::Holder;
 use crate::io::IOBase;
 use crate::metadata::Metadata;
-use crate::{Error, Result, Value};
+use crate::{Error, Result, Scalar};
 
 /// The reserved folder every level keeps its own document in.
 ///
@@ -356,25 +356,36 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
     let described = document
         .url()
         .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
-    let value = crate::json::from_slice(&bytes)?;
+    let value = crate::json::from_bytes(&bytes)?;
     let Some(entries) = value.get_key_str("properties") else {
         return Err(invalid(format_smolstr!(
             "expected a {{\"properties\": ...}} document at {described}, got one without the key"
         )));
     };
-    let Some(mapping) = entries.as_mapping() else {
+    let mut pairs = Vec::with_capacity(entries.len());
+    if let Some(record) = entries.as_record() {
+        for (key, value) in record {
+            let Some(value) = value.as_str() else {
+                return Err(invalid(format_smolstr!(
+                    "expected string property pairs at {described}, got {key:?}: {value:?}"
+                )));
+            };
+            pairs.push((key.clone(), SmolStr::new(value)));
+        }
+    } else if let Some(mapping) = entries.as_mapping() {
+        for (key, value) in mapping {
+            let (Some(key), Some(value)) = (key.as_str(), value.as_str()) else {
+                return Err(invalid(format_smolstr!(
+                    "expected string property pairs at {described}, got {key:?}: {value:?}"
+                )));
+            };
+            pairs.push((SmolStr::new(key), SmolStr::new(value)));
+        }
+    } else {
         return Err(invalid(format_smolstr!(
-            "expected \"properties\" to hold a mapping at {described}, got {entries:?}"
+            "expected \"properties\" to hold a mapping at {described} \
+             (a record or mapping value), got {entries:?}"
         )));
-    };
-    let mut pairs: Vec<(SmolStr, SmolStr)> = Vec::with_capacity(mapping.len());
-    for (key, value) in mapping {
-        let (Some(key), Some(value)) = (key.as_str(), value.as_str()) else {
-            return Err(invalid(format_smolstr!(
-                "expected string property pairs at {described}, got {key:?}: {value:?}"
-            )));
-        };
-        pairs.push((SmolStr::new(key), SmolStr::new(value)));
     }
     Metadata::from_entries(pairs)
 }
@@ -431,13 +442,13 @@ fn write_properties(folder: &Holder, document: &str, pairs: Vec<(SmolStr, SmolSt
 
 /// [`write_properties`], on the document handle itself.
 fn write_properties_at(document: &mut Holder, pairs: Vec<(SmolStr, SmolStr)>) -> Result<()> {
-    let properties = Value::from_mapping(
+    let properties = Scalar::from_mapping(
         pairs
             .into_iter()
-            .map(|(key, value)| (Value::from(key.as_str()), Value::from(value.as_str()))),
+            .map(|(key, value)| (Scalar::from(key.as_str()), Scalar::from(value.as_str()))),
     )?;
-    let body = Value::from_mapping([(Value::from("properties"), properties)])?;
-    let bytes = crate::json::to_vec(&body)?;
+    let body = Scalar::from_mapping([(Scalar::from("properties"), properties)])?;
+    let bytes = crate::json::into_bytes(&body)?;
     document.write_all_bytes(&bytes)?;
     Ok(())
 }

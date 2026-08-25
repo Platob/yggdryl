@@ -155,7 +155,7 @@ impl Default for FileInfos {
 }
 
 /// What a foreign filesystem reports about one path.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FileInfo {
     /// Filesystem-relative location, forward slashes.
     pub path: String,
@@ -337,7 +337,7 @@ fn decode_component(component: &str) -> String {
 /// S3 filesystem names its objects by.
 pub(super) fn filesystem_location(url: &Url) -> String {
     if url.scheme() == &Scheme::FILE {
-        if let Ok(path) = url.to_path() {
+        if let Ok(path) = url.clone().into_path() {
             return path.to_string_lossy().replace('\\', "/");
         }
     }

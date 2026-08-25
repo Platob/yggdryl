@@ -109,13 +109,13 @@ impl DataType {
     /// Returns an error when `scheme` is not a compatibility target, when the
     /// datatype is invalid, or when a node has no lossless representation in
     /// the target.
-    pub fn to_scheme_compat(&self, scheme: &Scheme) -> Result<Self> {
+    pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self> {
         let target = Target::from_scheme(scheme)?;
-        preflight_schema(self, target.kind())?;
+        preflight_schema(&self, target.kind())?;
         if target == Target::Arrow {
-            return Ok(self.clone());
+            return Ok(self);
         }
-        normalize_data_type(target, self, &Path::root()).map(|(value, _)| value)
+        normalize_data_type(target, &self, &Path::root()).map(|(value, _)| value)
     }
 }
 
@@ -131,15 +131,15 @@ impl Field {
     /// Returns an error when `scheme` is not a compatibility target, when the
     /// field is invalid, or when a node has no lossless representation in the
     /// target.
-    pub fn to_scheme_compat(&self, scheme: &Scheme) -> Result<Self> {
+    pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self> {
         let target = Target::from_scheme(scheme)?;
         preflight_schema_shape(self.data_type(), target.kind())?;
         self.validate()?;
         if target == Target::Arrow {
-            return Ok(self.clone());
+            return Ok(self);
         }
         let root = Path::root();
-        normalize_field(target, self, &root.field(self.name())).map(|(value, _)| value)
+        normalize_field(target, &self, &root.field(self.name())).map(|(value, _)| value)
     }
 }
 
@@ -336,8 +336,12 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
                 data_type.name()
             ),
         ),
-        D::Duration(TimeUnit::Microsecond) => Ok((data_type.clone(), false)),
-        D::Duration(unit) => unit_mismatch(Target::Spark, path, "duration", *unit, "us"),
+        D::Duration32(TimeUnit::Microsecond) | D::Duration64(TimeUnit::Microsecond) => {
+            Ok((data_type.clone(), false))
+        }
+        D::Duration32(unit) | D::Duration64(unit) => {
+            unit_mismatch(Target::Spark, path, data_type.name(), *unit, "us")
+        }
         D::Interval(TimeUnit::YearMonth) => Ok((data_type.clone(), false)),
         D::Interval(TimeUnit::DayTime) => incompatible(
             Target::Spark,
@@ -429,12 +433,17 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         D::Time32(unit) | D::Time64(unit) => {
             unit_mismatch(Target::Polars, path, "time-of-day", *unit, "time64 of ns")
         }
-        D::Duration(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
+        D::Duration32(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond)
+        | D::Duration64(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
             Ok((data_type.clone(), false))
         }
-        D::Duration(unit) => {
-            unit_mismatch(Target::Polars, path, "duration", *unit, "ms, us, or ns")
-        }
+        D::Duration32(unit) | D::Duration64(unit) => unit_mismatch(
+            Target::Polars,
+            path,
+            data_type.name(),
+            *unit,
+            "ms, us, or ns",
+        ),
         D::Interval(unit) => incompatible(
             Target::Polars,
             path,
@@ -508,8 +517,12 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
             ),
         ),
         // `timedelta64[ns]` is the pandas duration representation.
-        D::Duration(TimeUnit::Nanosecond) => Ok((data_type.clone(), false)),
-        D::Duration(unit) => unit_mismatch(Target::Pandas, path, "duration", *unit, "ns"),
+        D::Duration32(TimeUnit::Nanosecond) | D::Duration64(TimeUnit::Nanosecond) => {
+            Ok((data_type.clone(), false))
+        }
+        D::Duration32(unit) | D::Duration64(unit) => {
+            unit_mismatch(Target::Pandas, path, data_type.name(), *unit, "ns")
+        }
         D::Interval(unit) => incompatible(
             Target::Pandas,
             path,
@@ -589,10 +602,10 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
         D::Timestamp(unit, _) => {
             unit_mismatch(Target::Iceberg, path, "timestamp", *unit, "us or ns")
         }
-        D::Duration(unit) => incompatible(
+        D::Duration32(unit) | D::Duration64(unit) => incompatible(
             Target::Iceberg,
             path,
-            format_smolstr!("Iceberg has no elapsed-time type, got duration({unit})"),
+            format_smolstr!("Iceberg has no elapsed-time type, got {}({unit})", data_type.name()),
         ),
         D::Interval(unit) => incompatible(
             Target::Iceberg,

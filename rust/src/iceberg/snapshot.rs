@@ -7,15 +7,17 @@
 //! freshly created table is exactly that, and reading it must yield no rows
 //! rather than fail.
 
+use std::hash::{Hash, Hasher};
+
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result, Value};
+use crate::{Error, Result, Scalar};
 
 /// The reference every table's default branch is named by.
 pub const MAIN_BRANCH: &str = "main";
 
 /// One committed version of a table's contents.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Snapshot {
     /// Identifier of this snapshot, unique within the table.
     pub snapshot_id: i64,
@@ -37,7 +39,39 @@ pub struct Snapshot {
     pub added_rows: Option<i64>,
 }
 
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SnapshotIdentity<'a> {
+    snapshot_id: i64,
+    parent_snapshot_id: Option<i64>,
+    sequence_number: Option<i64>,
+    timestamp_ms: i64,
+    manifest_list: &'a SmolStr,
+    summary: Vec<&'a (SmolStr, SmolStr)>,
+    schema_id: Option<i32>,
+    first_row_id: Option<i64>,
+    added_rows: Option<i64>,
+}
+
 impl Snapshot {
+    /// Return a deterministic hash of this complete snapshot description.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
+    fn identity(&self) -> SnapshotIdentity<'_> {
+        SnapshotIdentity {
+            snapshot_id: self.snapshot_id,
+            parent_snapshot_id: self.parent_snapshot_id,
+            sequence_number: self.sequence_number,
+            timestamp_ms: self.timestamp_ms,
+            manifest_list: &self.manifest_list,
+            summary: crate::generic::sorted_pairs(&self.summary),
+            schema_id: self.schema_id,
+            first_row_id: self.first_row_id,
+            added_rows: self.added_rows,
+        }
+    }
+
     /// Return one summary value by key.
     pub fn summary_value(&self, key: &str) -> Option<&str> {
         self.summary
@@ -56,14 +90,14 @@ impl Snapshot {
     ///
     /// Returns an error when `snapshot-id`, `timestamp-ms`, or `manifest-list`
     /// is missing or not the type Iceberg declares.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         let snapshot_id = document
             .get_key_str("snapshot-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .ok_or_else(|| invalid(SmolStr::new_static("expected a snapshot \"snapshot-id\"")))?;
         let timestamp_ms = document
             .get_key_str("timestamp-ms")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a \"timestamp-ms\" on snapshot {snapshot_id}"
@@ -73,21 +107,28 @@ impl Snapshot {
         // manifest layer, which is where the difference actually matters.
         let manifest_list = document
             .get_key_str("manifest-list")
-            .and_then(Value::as_str)
+            .and_then(Scalar::as_str)
             .unwrap_or_default();
 
         let summary = document
             .get_key_str("summary")
             .map(|summary| {
-                summary
-                    .mapping_iter()
-                    .filter_map(|(key, value)| {
-                        Some((
-                            SmolStr::new(key.as_str()?),
-                            super::value::scalar_text(value),
-                        ))
-                    })
-                    .collect()
+                if let Some(record) = summary.as_record() {
+                    record
+                        .iter()
+                        .map(|(key, value)| (key.clone(), super::value::scalar_text(value)))
+                        .collect()
+                } else {
+                    summary
+                        .mapping_iter()
+                        .filter_map(|(key, value)| {
+                            Some((
+                                SmolStr::new(key.as_str()?),
+                                super::value::scalar_text(value),
+                            ))
+                        })
+                        .collect()
+                }
             })
             .unwrap_or_default();
 
@@ -95,19 +136,21 @@ impl Snapshot {
             snapshot_id,
             parent_snapshot_id: document
                 .get_key_str("parent-snapshot-id")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             sequence_number: document
                 .get_key_str("sequence-number")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             timestamp_ms,
             manifest_list: SmolStr::new(manifest_list),
             summary,
             schema_id: document
                 .get_key_str("schema-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok()),
-            first_row_id: document.get_key_str("first-row-id").and_then(Value::as_i64),
-            added_rows: document.get_key_str("added-rows").and_then(Value::as_i64),
+            first_row_id: document
+                .get_key_str("first-row-id")
+                .and_then(Scalar::as_i64),
+            added_rows: document.get_key_str("added-rows").and_then(Scalar::as_i64),
         })
     }
 
@@ -119,41 +162,73 @@ impl Snapshot {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn to_json(&self, version: super::FormatVersion) -> Result<Value> {
-        let mut entries = vec![(Value::from("snapshot-id"), Value::from(self.snapshot_id))];
+    pub fn into_json(self, version: super::FormatVersion) -> Result<Scalar> {
+        let mut entries = vec![(Scalar::from("snapshot-id"), Scalar::from(self.snapshot_id))];
         if let Some(parent) = self.parent_snapshot_id {
-            entries.push((Value::from("parent-snapshot-id"), Value::from(parent)));
+            entries.push((Scalar::from("parent-snapshot-id"), Scalar::from(parent)));
         }
         if version >= super::FormatVersion::V2 {
             if let Some(sequence) = self.sequence_number {
-                entries.push((Value::from("sequence-number"), Value::from(sequence)));
+                entries.push((Scalar::from("sequence-number"), Scalar::from(sequence)));
             }
         }
-        entries.push((Value::from("timestamp-ms"), Value::from(self.timestamp_ms)));
         entries.push((
-            Value::from("manifest-list"),
-            Value::from(self.manifest_list.clone()),
+            Scalar::from("timestamp-ms"),
+            Scalar::from(self.timestamp_ms),
         ));
         entries.push((
-            Value::from("summary"),
-            Value::from_mapping(
+            Scalar::from("manifest-list"),
+            Scalar::from(self.manifest_list.clone()),
+        ));
+        entries.push((
+            Scalar::from("summary"),
+            Scalar::from_mapping(
                 self.summary
                     .iter()
-                    .map(|(key, value)| (Value::from(key.clone()), Value::from(value.clone()))),
+                    .map(|(key, value)| (Scalar::from(key.clone()), Scalar::from(value.clone()))),
             )?,
         ));
         if let Some(schema_id) = self.schema_id {
-            entries.push((Value::from("schema-id"), Value::from(i64::from(schema_id))));
+            entries.push((
+                Scalar::from("schema-id"),
+                Scalar::from(i64::from(schema_id)),
+            ));
         }
         if version >= super::FormatVersion::V3 {
             if let Some(first_row_id) = self.first_row_id {
-                entries.push((Value::from("first-row-id"), Value::from(first_row_id)));
+                entries.push((Scalar::from("first-row-id"), Scalar::from(first_row_id)));
             }
             if let Some(added_rows) = self.added_rows {
-                entries.push((Value::from("added-rows"), Value::from(added_rows)));
+                entries.push((Scalar::from("added-rows"), Scalar::from(added_rows)));
             }
         }
-        Value::from_mapping(entries)
+        Scalar::from_mapping(entries)
+    }
+}
+
+impl PartialEq for Snapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Snapshot {}
+
+impl PartialOrd for Snapshot {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Snapshot {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for Snapshot {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
     }
 }
 
@@ -164,7 +239,7 @@ impl Snapshot {
 /// expiration: the two `*snapshot*` limits describe how much of a branch's
 /// history to keep and so belong to branches alone, while `max_ref_age_ms`
 /// bounds the life of the reference itself and applies to both kinds.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SnapshotRef {
     /// The snapshot this reference names.
     pub snapshot_id: i64,
@@ -180,6 +255,11 @@ pub struct SnapshotRef {
 }
 
 impl SnapshotRef {
+    /// Return a deterministic hash of this complete snapshot reference.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Point a branch at one snapshot.
     pub fn branch(snapshot_id: i64) -> Self {
         Self {
@@ -278,11 +358,11 @@ impl SnapshotRef {
     /// # Errors
     ///
     /// Returns an error when `snapshot-id` is missing.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         Ok(Self {
             snapshot_id: document
                 .get_key_str("snapshot-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .ok_or_else(|| {
                     invalid(SmolStr::new_static(
                         "expected a snapshot reference \"snapshot-id\"",
@@ -291,19 +371,19 @@ impl SnapshotRef {
             kind: SmolStr::new(
                 document
                     .get_key_str("type")
-                    .and_then(Value::as_str)
+                    .and_then(Scalar::as_str)
                     .unwrap_or("branch"),
             ),
             min_snapshots_to_keep: document
                 .get_key_str("min-snapshots-to-keep")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|count| i32::try_from(count).ok()),
             max_snapshot_age_ms: document
                 .get_key_str("max-snapshot-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
             max_ref_age_ms: document
                 .get_key_str("max-ref-age-ms")
-                .and_then(Value::as_i64),
+                .and_then(Scalar::as_i64),
         })
     }
 
@@ -313,24 +393,24 @@ impl SnapshotRef {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn to_json(&self) -> Result<Value> {
+    pub fn into_json(self) -> Result<Scalar> {
         let mut entries = vec![
-            (Value::from("snapshot-id"), Value::from(self.snapshot_id)),
-            (Value::from("type"), Value::from(self.kind.clone())),
+            (Scalar::from("snapshot-id"), Scalar::from(self.snapshot_id)),
+            (Scalar::from("type"), Scalar::from(self.kind.clone())),
         ];
         if let Some(count) = self.min_snapshots_to_keep {
             entries.push((
-                Value::from("min-snapshots-to-keep"),
-                Value::from(i64::from(count)),
+                Scalar::from("min-snapshots-to-keep"),
+                Scalar::from(i64::from(count)),
             ));
         }
         if let Some(age_ms) = self.max_snapshot_age_ms {
-            entries.push((Value::from("max-snapshot-age-ms"), Value::from(age_ms)));
+            entries.push((Scalar::from("max-snapshot-age-ms"), Scalar::from(age_ms)));
         }
         if let Some(age_ms) = self.max_ref_age_ms {
-            entries.push((Value::from("max-ref-age-ms"), Value::from(age_ms)));
+            entries.push((Scalar::from("max-ref-age-ms"), Scalar::from(age_ms)));
         }
-        Value::from_mapping(entries)
+        Scalar::from_mapping(entries)
     }
 }
 

@@ -14,17 +14,17 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog as CoreCatalog, DataFile, FileFormat, FormatVersion,
+    Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FileFormat, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
-    Namespaces as CoreNamespaces, PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan,
-    SchemaUpdate as CoreSchemaUpdate, Snapshot, SnapshotRef, Table as CoreTable,
-    Tables as CoreTables, assign_field_ids, can_promote, last_field_id, schema_from_json,
-    schema_to_json,
+    Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
+    PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan, SchemaUpdate as CoreSchemaUpdate,
+    Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, assign_field_ids, can_promote,
+    last_field_id, schema_from_json, schema_to_json,
 };
-use yggdryl::{DataType as CoreDataType, Field as CoreField};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
 use crate::arrow::JsBatchReader;
-use crate::codec::JsCodecValue;
+use crate::codec::JsScalar;
 use crate::datatype::{JsDataType, data_type_from_input};
 use crate::field::{JsField, MetadataEntry};
 use crate::io::{JsIOBase, LocationInput, folder_from_input};
@@ -425,6 +425,30 @@ impl JsIcebergOptions {
         self.inner.set_data_format(file_format_from_name(&format)?);
         Ok(())
     }
+
+    /// Return whether every explicitly configured option is equal.
+    #[napi]
+    pub fn equals(&self, other: &JsIcebergOptions) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare the complete explicit configurations in the core's order.
+    #[napi]
+    pub fn compare(&self, other: &JsIcebergOptions) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for every explicitly configured option.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached copy of the current explicit configuration.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
 }
 
 /// Run one table operation under per-call options, restoring the handle after.
@@ -484,16 +508,67 @@ fn partition_spec(
 }
 
 /// One partition field of a spec.
-#[napi(object)]
-pub struct PartitionFieldView {
+#[napi(js_name = "PartitionField")]
+#[derive(Clone)]
+pub struct JsPartitionField {
+    inner: CorePartitionField,
+}
+
+impl JsPartitionField {
+    fn from_core(inner: CorePartitionField) -> Self {
+        Self { inner }
+    }
+}
+
+#[napi]
+impl JsPartitionField {
     /// Identifier of the schema column the value is derived from.
-    pub source_id: i32,
+    #[napi(getter)]
+    pub const fn source_id(&self) -> i32 {
+        self.inner.source_id
+    }
+
     /// Identifier of the partition field itself.
-    pub field_id: i32,
+    #[napi(getter)]
+    pub const fn field_id(&self) -> i32 {
+        self.inner.field_id
+    }
+
     /// The directory name this field writes.
-    pub name: String,
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name.to_string()
+    }
+
     /// The transform applied to the source column.
-    pub transform: String,
+    #[napi(getter)]
+    pub fn transform(&self) -> String {
+        self.inner.transform.to_string()
+    }
+
+    /// Return whether the complete core partition fields are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsPartitionField) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare complete partition fields in the core's order.
+    #[napi]
+    pub fn compare(&self, other: &JsPartitionField) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete partition field.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached clone of this immutable partition field.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
 }
 
 /// One per-column count a manifest records, keyed by field identifier.
@@ -515,24 +590,107 @@ pub struct FieldBound {
 }
 
 /// One committed version of a table's contents.
-#[napi(object)]
-pub struct SnapshotView {
+#[napi(js_name = "Snapshot")]
+#[derive(Clone)]
+pub struct JsSnapshot {
+    inner: Snapshot,
+}
+
+impl JsSnapshot {
+    fn from_core(inner: Snapshot) -> Self {
+        Self { inner }
+    }
+}
+
+#[napi]
+impl JsSnapshot {
     /// Identifier of this snapshot, unique within the table.
-    pub snapshot_id: BigInt,
+    #[napi(getter)]
+    pub fn snapshot_id(&self) -> BigInt {
+        BigInt::from(self.inner.snapshot_id)
+    }
+
     /// The snapshot this one was produced from, when there was one.
-    pub parent_snapshot_id: Option<BigInt>,
+    #[napi(getter)]
+    pub fn parent_snapshot_id(&self) -> Option<BigInt> {
+        self.inner.parent_snapshot_id.map(BigInt::from)
+    }
+
     /// Monotonic commit order, absent in v1 tables.
-    pub sequence_number: Option<i64>,
+    #[napi(getter)]
+    pub const fn sequence_number(&self) -> Option<i64> {
+        self.inner.sequence_number
+    }
+
     /// Wall-clock commit time in milliseconds since the Unix epoch.
-    pub timestamp_ms: i64,
+    #[napi(getter)]
+    pub const fn timestamp_ms(&self) -> i64 {
+        self.inner.timestamp_ms
+    }
+
     /// Location of the Avro manifest list this snapshot's manifests are in.
-    pub manifest_list: String,
+    #[napi(getter)]
+    pub fn manifest_list(&self) -> String {
+        self.inner.manifest_list.to_string()
+    }
+
     /// What the commit did, defaulting to `append`.
-    pub operation: String,
+    #[napi(getter)]
+    pub fn operation(&self) -> String {
+        self.inner.operation().to_owned()
+    }
+
     /// The commit summary, keyed by Iceberg's summary vocabulary.
-    pub summary: HashMap<String, String>,
+    #[napi(getter)]
+    pub fn summary(&self) -> HashMap<String, String> {
+        self.inner
+            .summary
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
     /// The schema in effect when the snapshot was written.
-    pub schema_id: Option<i32>,
+    #[napi(getter)]
+    pub const fn schema_id(&self) -> Option<i32> {
+        self.inner.schema_id
+    }
+
+    /// First row id assigned by a v3 snapshot, when row lineage is present.
+    #[napi(getter)]
+    pub fn first_row_id(&self) -> Option<BigInt> {
+        self.inner.first_row_id.map(BigInt::from)
+    }
+
+    /// Rows this v3 snapshot added, when row lineage is present.
+    #[napi(getter)]
+    pub const fn added_rows(&self) -> Option<i64> {
+        self.inner.added_rows
+    }
+
+    /// Return whether the complete core snapshots are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsSnapshot) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare complete snapshots in the core's structural order.
+    #[napi]
+    pub fn compare(&self, other: &JsSnapshot) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete snapshot.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached clone of this immutable snapshot.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
 }
 
 /// One branch or tag, as the metadata records it.
@@ -540,67 +698,268 @@ pub struct SnapshotView {
 /// A branch moves as commits land on it and a tag does not, which is the whole
 /// of the difference: both are a name pointing at one retained snapshot, and
 /// the retention fields are what expiration consults before dropping it.
-#[napi(object)]
-pub struct SnapshotRefView {
+#[napi(js_name = "SnapshotRef")]
+#[derive(Clone)]
+pub struct JsSnapshotRef {
+    inner: SnapshotRef,
+}
+
+impl JsSnapshotRef {
+    fn from_core(inner: SnapshotRef) -> Self {
+        Self { inner }
+    }
+}
+
+#[napi]
+impl JsSnapshotRef {
     /// The snapshot this reference names.
-    pub snapshot_id: BigInt,
+    #[napi(getter)]
+    pub fn snapshot_id(&self) -> BigInt {
+        BigInt::from(self.inner.snapshot_id)
+    }
+
     /// Either `branch` or `tag`.
-    pub kind: String,
+    #[napi(getter)]
+    pub fn kind(&self) -> String {
+        self.inner.kind.to_string()
+    }
+
     /// Fewest snapshots expiration keeps on this branch, head included.
-    pub min_snapshots_to_keep: Option<i32>,
+    #[napi(getter)]
+    pub const fn min_snapshots_to_keep(&self) -> Option<i32> {
+        self.inner.min_snapshots_to_keep
+    }
+
     /// Oldest ancestor age expiration keeps on this branch, in milliseconds.
-    pub max_snapshot_age_ms: Option<i64>,
+    #[napi(getter)]
+    pub const fn max_snapshot_age_ms(&self) -> Option<i64> {
+        self.inner.max_snapshot_age_ms
+    }
+
     /// Age at which the reference itself expires, in milliseconds from its
     /// snapshot's commit time.
-    pub max_ref_age_ms: Option<i64>,
+    #[napi(getter)]
+    pub const fn max_ref_age_ms(&self) -> Option<i64> {
+        self.inner.max_ref_age_ms
+    }
+
+    /// Return whether the complete core snapshot references are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsSnapshotRef) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare complete snapshot references in the core's order.
+    #[napi]
+    pub fn compare(&self, other: &JsSnapshotRef) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete snapshot reference.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached clone of this immutable snapshot reference.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
 }
 
 /// One manifest of the current snapshot.
-#[napi(object)]
-pub struct ManifestFileView {
-    /// The manifest's location, as a URI.
-    pub manifest_path: String,
-    /// Size of the manifest in bytes.
-    pub manifest_length: i64,
-    /// The partition spec the manifest's entries were written under.
-    pub partition_spec_id: i32,
-    /// Whether the manifest lists `data` files or `deletes`.
-    pub content: String,
-    /// Commit order assigned when the manifest was added.
-    pub sequence_number: i64,
-    /// Lowest commit order of any entry in the manifest.
-    pub min_sequence_number: i64,
-    /// The snapshot that added the manifest.
-    pub added_snapshot_id: BigInt,
-    /// Files the manifest marks added.
-    pub added_files_count: i32,
-    /// Files the manifest marks existing.
-    pub existing_files_count: i32,
-    /// Files the manifest marks deleted.
-    pub deleted_files_count: i32,
-    /// Rows in the added files.
-    pub added_rows_count: i64,
-    /// Rows in the existing files.
-    pub existing_rows_count: i64,
-    /// Rows in the deleted files.
-    pub deleted_rows_count: i64,
+#[napi(js_name = "ManifestFile")]
+#[derive(Clone)]
+pub struct JsManifestFile {
+    inner: ManifestFile,
 }
 
-/// What planning a scan decided, before a single data file is opened.
+impl JsManifestFile {
+    fn from_core(inner: ManifestFile) -> Self {
+        Self { inner }
+    }
+}
+
+/// One partition-field summary carried by a manifest-list row.
+#[napi(object)]
+pub struct FieldSummaryView {
+    /// Whether any file in the manifest has a null partition value.
+    pub contains_null: bool,
+    /// Whether any file has a NaN value, when the writer knew.
+    pub contains_nan: Option<bool>,
+    /// Serialized minimum across the manifest's files.
+    pub lower_bound: Option<Buffer>,
+    /// Serialized maximum across the manifest's files.
+    pub upper_bound: Option<Buffer>,
+}
+
+#[napi]
+impl JsManifestFile {
+    /// The manifest's location, as a URI.
+    #[napi(getter)]
+    pub fn manifest_path(&self) -> String {
+        self.inner.manifest_path.to_string()
+    }
+
+    /// Size of the manifest in bytes.
+    #[napi(getter)]
+    pub const fn manifest_length(&self) -> i64 {
+        self.inner.manifest_length
+    }
+
+    /// The partition spec the manifest's entries were written under.
+    #[napi(getter)]
+    pub const fn partition_spec_id(&self) -> i32 {
+        self.inner.partition_spec_id
+    }
+
+    /// Whether the manifest lists `data` files or `deletes`.
+    #[napi(getter)]
+    pub fn content(&self) -> String {
+        manifest_content(self.inner.content)
+    }
+
+    /// Commit order assigned when the manifest was added.
+    #[napi(getter)]
+    pub const fn sequence_number(&self) -> i64 {
+        self.inner.sequence_number
+    }
+
+    /// Lowest commit order of any entry in the manifest.
+    #[napi(getter)]
+    pub const fn min_sequence_number(&self) -> i64 {
+        self.inner.min_sequence_number
+    }
+
+    /// The snapshot that added the manifest.
+    #[napi(getter)]
+    pub fn added_snapshot_id(&self) -> BigInt {
+        BigInt::from(self.inner.added_snapshot_id)
+    }
+
+    /// Files the manifest marks added.
+    #[napi(getter)]
+    pub const fn added_files_count(&self) -> i32 {
+        self.inner.added_files_count
+    }
+
+    /// Files the manifest marks existing.
+    #[napi(getter)]
+    pub const fn existing_files_count(&self) -> i32 {
+        self.inner.existing_files_count
+    }
+
+    /// Files the manifest marks deleted.
+    #[napi(getter)]
+    pub const fn deleted_files_count(&self) -> i32 {
+        self.inner.deleted_files_count
+    }
+
+    /// Rows in the added files.
+    #[napi(getter)]
+    pub const fn added_rows_count(&self) -> i64 {
+        self.inner.added_rows_count
+    }
+
+    /// Rows in the existing files.
+    #[napi(getter)]
+    pub const fn existing_rows_count(&self) -> i64 {
+        self.inner.existing_rows_count
+    }
+
+    /// Rows in the deleted files.
+    #[napi(getter)]
+    pub const fn deleted_rows_count(&self) -> i64 {
+        self.inner.deleted_rows_count
+    }
+
+    /// Partition summaries in the partition spec's field order.
+    #[napi(getter)]
+    pub fn partitions(&self) -> Vec<FieldSummaryView> {
+        self.inner
+            .partitions
+            .iter()
+            .map(|summary| FieldSummaryView {
+                contains_null: summary.contains_null,
+                contains_nan: summary.contains_nan,
+                lower_bound: summary.lower_bound.clone().map(Into::into),
+                upper_bound: summary.upper_bound.clone().map(Into::into),
+            })
+            .collect()
+    }
+
+    /// First row id assigned by a v3 manifest, when row lineage is present.
+    #[napi(getter)]
+    pub fn first_row_id(&self) -> Option<BigInt> {
+        self.inner.first_row_id.map(BigInt::from)
+    }
+
+    /// Return whether the complete core manifest-list rows are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsManifestFile) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare complete manifest-list rows in the core's order.
+    #[napi]
+    pub fn compare(&self, other: &JsManifestFile) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete manifest-list row.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached clone of this immutable manifest-list row.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
+}
+
+/// A bounded five-count report of what a scan decided before reading rows.
 ///
-/// The plan is the answer to "how much of this table does that filter touch",
-/// and it is read-only because only [`Table.plan`](JsTable::plan) produces one.
-/// The counts are what make pruning checkable rather than claimed: a filtered
-/// read that skips nothing reports zero skipped, and a caller can assert on it.
+/// The core plan holds the data files themselves because a write needs them;
+/// this view keeps only the counts because callers use a plan to check what
+/// metadata pruning accomplished. Those five public counts are its complete
+/// value identity, independent of the hidden paths and tasks that produced it.
 #[napi(js_name = "ScanPlan")]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct JsScanPlan {
-    /// The core plan, kept whole so every count is one view of one decision.
-    inner: CoreScanPlan,
+    /// The rows the planned files hold, as the manifests counted them.
+    record_count: i64,
+    /// The data files the scan will open.
+    files_planned: usize,
+    /// Live files a read manifest listed that the filters excluded.
+    files_skipped: usize,
+    /// Manifests opened because their summaries allowed a match.
+    manifests_read: usize,
+    /// Manifests excluded on their summary alone, never opened.
+    manifests_skipped: usize,
 }
 
 impl JsScanPlan {
-    const fn from_core(inner: CoreScanPlan) -> Self {
-        Self { inner }
+    fn from_core(plan: CoreScanPlan) -> Self {
+        Self {
+            record_count: plan.record_count(),
+            files_planned: plan.tasks.len(),
+            files_skipped: plan.files_skipped(),
+            manifests_read: plan.manifests_read,
+            manifests_skipped: plan.manifests_skipped(),
+        }
+    }
+
+    fn identity_value(&self) -> CoreScalar {
+        CoreScalar::from_sequence([
+            CoreScalar::from(self.record_count),
+            CoreScalar::from(u64::try_from(self.files_planned).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.files_skipped).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.manifests_read).unwrap_or(u64::MAX)),
+            CoreScalar::from(u64::try_from(self.manifests_skipped).unwrap_or(u64::MAX)),
+        ])
     }
 }
 
@@ -615,25 +974,25 @@ impl JsScanPlan {
     /// of any size in the time it takes to walk the manifests.
     #[napi(getter)]
     pub fn record_count(&self) -> i64 {
-        self.inner.record_count()
+        self.record_count
     }
 
     /// How many data files the read would open.
     #[napi(getter)]
     pub fn files_planned(&self) -> f64 {
-        self.inner.tasks.len() as f64
+        self.files_planned as f64
     }
 
     /// How many data files the partition tuples and statistics excluded.
     #[napi(getter)]
     pub fn files_skipped(&self) -> f64 {
-        self.inner.files_skipped() as f64
+        self.files_skipped as f64
     }
 
     /// How many manifests had to be decoded to decide all of that.
     #[napi(getter)]
     pub fn manifests_read(&self) -> f64 {
-        self.inner.manifests_read as f64
+        self.manifests_read as f64
     }
 
     /// How many manifests the manifest list's own summaries ruled out whole.
@@ -642,21 +1001,49 @@ impl JsScanPlan {
     /// coarsest of the three levels of pruning and the cheapest.
     #[napi(getter)]
     pub fn manifests_skipped(&self) -> f64 {
-        self.inner.manifests_skipped() as f64
+        self.manifests_skipped as f64
+    }
+
+    /// Return whether all five public counts are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsScanPlan) -> bool {
+        self == other
+    }
+
+    /// Compare the five-count reports in their documented field order.
+    #[napi]
+    pub fn compare(&self, other: &JsScanPlan) -> i32 {
+        crate::ordering_value(self.cmp(other))
+    }
+
+    /// Return deterministic hash bits for the complete five-count report.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.identity_value().stable_hash()
+    }
+
+    /// Make a detached copy of this immutable count report.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
     }
 }
 
 /// One live data file of the current snapshot, with the spec that placed it.
 ///
 /// This is a class rather than a plain object because a partition value crosses
-/// as the native [`Value`](crate::codec::JsCodecValue) the manifest recorded.
+/// as the native [`Scalar`](crate::codec::JsScalar) the manifest recorded.
 /// Rendering it as text here would have to spell a null `null`, which is exactly
 /// what makes a directory name unable to answer the question.
 #[napi(js_name = "DataFile")]
+#[derive(Clone)]
 pub struct JsDataFile {
     /// The manifest's record of the file.
     file: DataFile,
-    /// The spec its partition tuple is ordered by.
+    /// Projection context naming the partition tuple's positions.
+    ///
+    /// This is not part of `DataFile` identity; a clone retains it so the
+    /// `partitionNames` view stays identical.
     spec: CorePartitionSpec,
 }
 
@@ -682,11 +1069,11 @@ impl JsDataFile {
 
     /// The partition tuple the manifest records, in spec order.
     #[napi(getter)]
-    pub fn partition(&self) -> Vec<JsCodecValue> {
+    pub fn partition(&self) -> Vec<JsScalar> {
         self.file
             .partition
             .iter()
-            .map(|value| JsCodecValue::from_core(value.clone()))
+            .map(|value| JsScalar::from_core(value.clone()))
             .collect()
     }
 
@@ -749,9 +1136,33 @@ impl JsDataFile {
     }
 
     /// Return the file's location, so a data file prints as where it is.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.file_path()
+    }
+
+    /// Return whether two views carry the same complete core data file.
+    #[napi]
+    pub fn equals(&self, other: &JsDataFile) -> bool {
+        self.file == other.file
+    }
+
+    /// Compare two data files by the core's complete structural order.
+    #[napi]
+    pub fn compare(&self, other: &JsDataFile) -> i32 {
+        crate::ordering_value(self.file.cmp(&other.file))
+    }
+
+    /// Return deterministic hash bits for the complete core data file.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.file.stable_hash()
+    }
+
+    /// Make a cheap detached clone of this immutable manifest file view.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
     }
 }
 
@@ -775,31 +1186,12 @@ fn bounds(values: &[(i32, Vec<u8>)]) -> Vec<FieldBound> {
         .collect()
 }
 
-fn snapshot_ref_view(reference: SnapshotRef) -> SnapshotRefView {
-    SnapshotRefView {
-        snapshot_id: BigInt::from(reference.snapshot_id),
-        kind: reference.kind.to_string(),
-        min_snapshots_to_keep: reference.min_snapshots_to_keep,
-        max_snapshot_age_ms: reference.max_snapshot_age_ms,
-        max_ref_age_ms: reference.max_ref_age_ms,
-    }
+fn snapshot_ref_view(reference: SnapshotRef) -> JsSnapshotRef {
+    JsSnapshotRef::from_core(reference)
 }
 
-fn snapshot_view(snapshot: &Snapshot) -> SnapshotView {
-    SnapshotView {
-        snapshot_id: BigInt::from(snapshot.snapshot_id),
-        parent_snapshot_id: snapshot.parent_snapshot_id.map(BigInt::from),
-        sequence_number: snapshot.sequence_number,
-        timestamp_ms: snapshot.timestamp_ms,
-        manifest_list: snapshot.manifest_list.to_string(),
-        operation: snapshot.operation().to_owned(),
-        summary: snapshot
-            .summary
-            .iter()
-            .map(|(key, value)| (key.to_string(), value.to_string()))
-            .collect(),
-        schema_id: snapshot.schema_id,
-    }
+fn snapshot_view(snapshot: &Snapshot) -> JsSnapshot {
+    JsSnapshot::from_core(snapshot.clone())
 }
 
 /// Name what a manifest's entries describe.
@@ -814,26 +1206,13 @@ fn manifest_content(content: ManifestContent) -> String {
     }
 }
 
-fn manifest_view(manifest: &ManifestFile) -> ManifestFileView {
-    ManifestFileView {
-        manifest_path: manifest.manifest_path.to_string(),
-        manifest_length: manifest.manifest_length,
-        partition_spec_id: manifest.partition_spec_id,
-        content: manifest_content(manifest.content),
-        sequence_number: manifest.sequence_number,
-        min_sequence_number: manifest.min_sequence_number,
-        added_snapshot_id: BigInt::from(manifest.added_snapshot_id),
-        added_files_count: manifest.added_files_count,
-        existing_files_count: manifest.existing_files_count,
-        deleted_files_count: manifest.deleted_files_count,
-        added_rows_count: manifest.added_rows_count,
-        existing_rows_count: manifest.existing_rows_count,
-        deleted_rows_count: manifest.deleted_rows_count,
-    }
+fn manifest_view(manifest: &ManifestFile) -> JsManifestFile {
+    JsManifestFile::from_core(manifest.clone())
 }
 
 /// How a table turns column values into the directories it writes.
 #[napi(js_name = "PartitionSpec")]
+#[derive(Clone)]
 pub struct JsPartitionSpec {
     pub(crate) inner: CorePartitionSpec,
 }
@@ -846,6 +1225,14 @@ impl JsPartitionSpec {
 
 #[napi]
 impl JsPartitionSpec {
+    /// Parse one already-inferred native JSON value through the core codec.
+    #[napi(factory, js_name = "_fromScalarNative", skip_typescript)]
+    pub fn from_scalar_native(value: &JsScalar) -> Result<Self> {
+        CorePartitionSpec::from_json(&value.inner)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// Describe a table that writes every row into one place.
     #[napi(factory)]
     pub fn unpartitioned() -> Self {
@@ -873,16 +1260,12 @@ impl JsPartitionSpec {
 
     /// The partition fields, in the order the directories nest.
     #[napi(getter)]
-    pub fn fields(&self) -> Vec<PartitionFieldView> {
+    pub fn fields(&self) -> Vec<JsPartitionField> {
         self.inner
             .fields
             .iter()
-            .map(|field| PartitionFieldView {
-                source_id: field.source_id,
-                field_id: field.field_id,
-                name: field.name.to_string(),
-                transform: field.transform.to_string(),
-            })
+            .cloned()
+            .map(JsPartitionField::from_core)
             .collect()
     }
 
@@ -890,6 +1273,40 @@ impl JsPartitionSpec {
     #[napi]
     pub fn is_unpartitioned(&self) -> bool {
         self.inner.is_unpartitioned()
+    }
+
+    /// Project the core's v2 document through the shared native Scalar.
+    #[napi(js_name = "_intoScalarNative", skip_typescript)]
+    pub fn into_scalar_native(&self) -> Result<JsScalar> {
+        self.inner
+            .clone()
+            .into_json()
+            .map(JsScalar::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return whether two partition specifications are structurally equal.
+    #[napi]
+    pub fn equals(&self, other: &JsPartitionSpec) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare two specifications by the core's complete structural order.
+    #[napi]
+    pub fn compare(&self, other: &JsPartitionSpec) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete specification.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a cheap detached clone of this immutable specification.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
     }
 }
 
@@ -1058,7 +1475,7 @@ impl JsTable {
     /// A freshly created or rolled-back table has snapshots but no current one,
     /// and reading it yields no rows rather than failing.
     #[napi(getter)]
-    pub fn current_snapshot(&self) -> Option<SnapshotView> {
+    pub fn current_snapshot(&self) -> Option<JsSnapshot> {
         self.inner.current_snapshot().map(snapshot_view)
     }
 
@@ -1076,7 +1493,7 @@ impl JsTable {
 
     /// Every retained snapshot, oldest first.
     #[napi(getter)]
-    pub fn snapshots(&self) -> Vec<SnapshotView> {
+    pub fn snapshots(&self) -> Vec<JsSnapshot> {
         self.inner
             .metadata()
             .snapshots
@@ -1087,7 +1504,7 @@ impl JsTable {
 
     /// Every manifest the current snapshot points at.
     #[napi]
-    pub fn manifests(&self) -> Result<Vec<ManifestFileView>> {
+    pub fn manifests(&self) -> Result<Vec<JsManifestFile>> {
         Ok(self
             .inner
             .manifests()
@@ -1103,7 +1520,7 @@ impl JsTable {
     /// [`manifests`](Self::manifests) answers for the present, this answers
     /// for any snapshot the table still retains.
     #[napi]
-    pub fn manifests_at(&self, snapshot_id: SnapshotIdInput) -> Result<Vec<ManifestFileView>> {
+    pub fn manifests_at(&self, snapshot_id: SnapshotIdInput) -> Result<Vec<JsManifestFile>> {
         let snapshot_id = snapshot_id_from_input(snapshot_id)?;
         let metadata = self.inner.metadata();
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
@@ -1358,8 +1775,9 @@ impl JsTable {
     /// A row whose key is already stored updates it and a row whose key is not
     /// appends. Only the files whose recorded bounds could hold an incoming key
     /// are read and rewritten - the rest are carried into the new snapshot
-    /// untouched - so an upsert costs the files it can actually change. An
-    /// empty `mergeByNames` is an overwrite, because nothing identifies a row.
+    /// untouched - so an upsert costs the files it can actually change. A
+    /// non-empty `mergeByNames` is required because nothing else identifies a
+    /// row.
     ///
     /// `safe` decides what a cast that cannot convert a value does: the
     /// default nulls it, and `false` throws instead. `options` configures this
@@ -1448,7 +1866,7 @@ impl JsTable {
     ///
     /// A name the table does not have is refused naming the refs it does.
     #[napi]
-    pub fn snapshot_by_ref(&self, name: String) -> Result<SnapshotView> {
+    pub fn snapshot_by_ref(&self, name: String) -> Result<JsSnapshot> {
         self.inner
             .snapshot_by_ref(&name)
             .map(snapshot_view)
@@ -1485,7 +1903,7 @@ impl JsTable {
     /// rather than committing nothing: dropping a ref that was never there is
     /// far more often a typo than a no-op.
     #[napi]
-    pub fn remove_ref(&mut self, name: String) -> Result<SnapshotRefView> {
+    pub fn remove_ref(&mut self, name: String) -> Result<JsSnapshotRef> {
         self.inner
             .remove_ref(&name)
             .map(snapshot_ref_view)
@@ -1570,13 +1988,11 @@ impl JsTable {
     /// stays readable through [`scanAt`](Self::scan_at). A table with nothing
     /// to compact commits nothing and reports zeros.
     #[napi]
-    pub fn compact(&mut self) -> Result<Compaction> {
-        let outcome = self.inner.compact().map_err(napi_error)?;
-        Ok(Compaction {
-            files_before: i64::try_from(outcome.files_before).unwrap_or(i64::MAX),
-            files_after: i64::try_from(outcome.files_after).unwrap_or(i64::MAX),
-            bytes_rewritten: outcome.bytes_rewritten,
-        })
+    pub fn compact(&mut self) -> Result<JsCompaction> {
+        self.inner
+            .compact()
+            .map(JsCompaction::from_core)
+            .map_err(napi_error)
     }
 
     /// Render when each snapshot became current, oldest first.
@@ -1670,8 +2086,8 @@ impl JsTable {
     }
 
     /// Return where the table lives, so a table prints as its location.
-    #[napi]
-    pub fn to_string(&self) -> String {
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
         self.location()
     }
 }
@@ -1680,14 +2096,61 @@ impl JsTable {
 ///
 /// The sizes cross as numbers because a data file already reports
 /// `fileSizeInBytes` as one, and the two must agree.
-#[napi(object)]
-pub struct Compaction {
+#[napi(js_name = "Compaction")]
+#[derive(Clone)]
+pub struct JsCompaction {
+    inner: CoreCompaction,
+}
+
+impl JsCompaction {
+    fn from_core(inner: CoreCompaction) -> Self {
+        Self { inner }
+    }
+}
+
+#[napi]
+impl JsCompaction {
     /// How many live data files were read and replaced.
-    pub files_before: i64,
+    #[napi(getter)]
+    pub fn files_before(&self) -> i64 {
+        i64::try_from(self.inner.files_before).unwrap_or(i64::MAX)
+    }
+
     /// How many data files the rewrite produced in their place.
-    pub files_after: i64,
+    #[napi(getter)]
+    pub fn files_after(&self) -> i64 {
+        i64::try_from(self.inner.files_after).unwrap_or(i64::MAX)
+    }
+
     /// The recorded size of the replaced files, in bytes.
-    pub bytes_rewritten: i64,
+    #[napi(getter)]
+    pub const fn bytes_rewritten(&self) -> i64 {
+        self.inner.bytes_rewritten
+    }
+
+    /// Return whether the complete core compaction reports are equal.
+    #[napi]
+    pub fn equals(&self, other: &JsCompaction) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Compare complete compaction reports in the core's order.
+    #[napi]
+    pub fn compare(&self, other: &JsCompaction) -> i32 {
+        crate::ordering_value(self.inner.cmp(&other.inner))
+    }
+
+    /// Return deterministic hash bits for the complete compaction report.
+    #[napi]
+    pub fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    /// Make a detached clone of this immutable compaction report.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        self.clone()
+    }
 }
 
 /// One recorded column operation, held as native values until a commit.
@@ -2374,7 +2837,7 @@ pub fn iceberg_assign_field_ids(schema: &JsField, start: Option<i32>) -> Result<
 
 /// Read an Iceberg schema document as a root Field.
 #[napi(js_name = "icebergSchemaFromJsonNative", skip_typescript)]
-pub fn iceberg_schema_from_json(name: String, document: &JsCodecValue) -> Result<JsField> {
+pub fn iceberg_schema_from_json(name: String, document: &JsScalar) -> Result<JsField> {
     schema_from_json(&name, &document.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
@@ -2382,9 +2845,9 @@ pub fn iceberg_schema_from_json(name: String, document: &JsCodecValue) -> Result
 
 /// Write a root Field as an Iceberg schema document.
 #[napi(js_name = "icebergSchemaToJsonNative", skip_typescript)]
-pub fn iceberg_schema_to_json(schema: &JsField) -> Result<JsCodecValue> {
+pub fn iceberg_schema_to_json(schema: &JsField) -> Result<JsScalar> {
     schema_to_json(&schema.inner)
-        .map(JsCodecValue::from_core)
+        .map(JsScalar::from_core)
         .map_err(napi_error)
 }
 

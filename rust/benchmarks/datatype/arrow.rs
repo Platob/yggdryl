@@ -11,7 +11,8 @@ pub(crate) fn arrow_benchmarks(criterion: &mut Criterion) {
         let data_type = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
         bencher.iter(|| {
             black_box(&data_type)
-                .to_arrow()
+                .clone()
+                .into_arrow()
                 .expect("the benchmark datatype is valid")
         });
     });
@@ -19,7 +20,8 @@ pub(crate) fn arrow_benchmarks(criterion: &mut Criterion) {
         let data_type = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
         bencher.iter(|| {
             black_box(&data_type)
-                .to_arrow_ffi()
+                .clone()
+                .into_arrow_ffi()
                 .expect("the benchmark datatype is valid")
         });
     });

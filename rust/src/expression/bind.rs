@@ -30,7 +30,7 @@ use super::parser::{Direction, NullsOrder, Statement};
 use super::selector::{Attributes, Cost, Selector};
 use super::typing::common_type;
 use super::{Comparison, Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, Error, Field, Result, TypedValue, Value};
+use crate::{DataType, Error, Field, Result, Scalar, TypedScalar};
 
 /// What one node costs to answer, in units of "a free attribute read".
 ///
@@ -53,7 +53,7 @@ pub(crate) struct Node {
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     /// A constant, already in this node's declared datatype.
-    Literal(Value),
+    Literal(Scalar),
     /// A column, by index into the bound schema.
     Column(usize),
     /// A path into a value.
@@ -114,7 +114,7 @@ pub(crate) enum Kind {
 
 impl Node {
     /// Return whether this node is a constant.
-    pub(crate) const fn as_literal(&self) -> Option<&Value> {
+    pub(crate) const fn as_literal(&self) -> Option<&Scalar> {
         match &self.kind {
             Kind::Literal(value) => Some(value),
             _ => None,
@@ -220,7 +220,7 @@ impl Node {
 /// One expression, resolved against one schema, ready to answer.
 ///
 /// A `Bound` is built once per stream and answers three ways: row at a time
-/// over [`Value`], vectorized over an Arrow batch, and three-valued over
+/// over [`Scalar`], vectorized over an Arrow batch, and three-valued over
 /// container statistics. All three walk the same resolved tree.
 #[derive(Clone, Debug)]
 pub struct Bound {
@@ -291,16 +291,16 @@ impl Bound {
 
     /// Evaluate this expression for one row.
     ///
-    /// The row is a [`Value::Sequence`] of column values in schema order, or a
-    /// [`Value::Record`], which is the same thing carrying its own datatype.
-    /// This is the row target's [`ApplyExpression`](super::ApplyExpression),
-    /// spelled from the expression's side.
+    /// The row is a [`Scalar::Sequence`] of column values in schema order. This
+    /// is the row target's [`ApplyExpression`](super::ApplyExpression), spelled
+    /// from the expression's side.
     ///
     /// # Errors
     ///
-    /// Returns an error when the row does not match the bound schema, or when
-    /// a strict cast refuses a value.
-    pub fn eval(&self, row: &Value) -> Result<Value> {
+    /// Returns an error when the row does not match the bound schema, a strict
+    /// cast refuses a value, or checked arithmetic overflows, divides by zero,
+    /// or cannot represent an exact decimal result.
+    pub fn eval(&self, row: &Scalar) -> Result<Scalar> {
         super::ApplyExpression::apply_expression(row, self)
     }
 
@@ -310,7 +310,7 @@ impl Bound {
     ///
     /// Returns an error when the row does not match, or the holder cannot
     /// answer an attribute it is asked for.
-    pub fn eval_with(&self, row: &Value, holder: &dyn Attributes) -> Result<Value> {
+    pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar> {
         let values = row_values(row, &self.schema)?;
         self.node.eval(&Row::new(Some(values), Some(holder)))
     }
@@ -322,7 +322,7 @@ impl Bound {
     /// # Errors
     ///
     /// Returns an error when the row does not match the bound schema.
-    pub fn matches(&self, row: &Value) -> Result<bool> {
+    pub fn matches(&self, row: &Scalar) -> Result<bool> {
         Ok(self.eval(row)?.as_bool().unwrap_or(false))
     }
 
@@ -331,7 +331,7 @@ impl Bound {
     /// # Errors
     ///
     /// Returns an error when the row does not match, or the holder fails.
-    pub fn matches_with(&self, row: &Value, holder: &dyn Attributes) -> Result<bool> {
+    pub fn matches_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<bool> {
         Ok(self.eval_with(row, holder)?.as_bool().unwrap_or(false))
     }
 
@@ -351,19 +351,16 @@ impl Bound {
     }
 }
 
-/// Borrow one row's column values, whichever row spelling was handed over.
-pub(crate) fn row_values<'row>(row: &'row Value, schema: &Field) -> Result<&'row [Value]> {
-    let values = match row {
-        Value::Record(_, values) => values.as_ref(),
-        other => other.as_sequence().ok_or_else(|| Error::InvalidRecord {
-            path: SmolStr::new(schema.name()),
-            reason: format_smolstr!(
-                "expected an ordered sequence of {} column values, got {}",
-                schema.field_len(),
-                other.kind()
-            ),
-        })?,
-    };
+/// Borrow one row's column values.
+pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'row [Scalar]> {
+    let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new(schema.name()),
+        reason: format_smolstr!(
+            "expected an ordered sequence of {} column values, got {}",
+            schema.field_len(),
+            row.kind()
+        ),
+    })?;
     if values.len() != schema.field_len() {
         return Err(Error::InvalidRecord {
             path: SmolStr::new(schema.name()),
@@ -455,7 +452,7 @@ impl Expression {
     ///
     /// Returns an error when a parameter is missing or the expression cannot
     /// be resolved.
-    pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Value)]) -> Result<Bound> {
+    pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound> {
         schema.require_struct()?;
         self.check_budget()?;
         let supplied = substitute(self, parameters)?;
@@ -488,7 +485,7 @@ impl Statement {
     pub fn bind_with(
         &self,
         schema: &Field,
-        parameters: &[(&str, Value)],
+        parameters: &[(&str, Scalar)],
     ) -> Result<BoundStatement> {
         schema.require_struct()?;
         let mut projections = Vec::with_capacity(self.projections().len());
@@ -541,7 +538,7 @@ impl Statement {
 }
 
 /// Replace every parameter with the value supplied for it.
-fn substitute(expression: &Expression, parameters: &[(&str, Value)]) -> Result<Expression> {
+fn substitute(expression: &Expression, parameters: &[(&str, Scalar)]) -> Result<Expression> {
     if parameters.is_empty() && expression.parameters().is_empty() {
         return Ok(expression.clone());
     }
@@ -839,7 +836,7 @@ impl Binder<'_> {
                 if !*case_insensitive && !has_wildcard(&pattern, *escape) {
                     let literal = Node {
                         field: Field::new("pattern", DataType::Utf8, false),
-                        kind: Kind::Literal(Value::String(unescape(&pattern, *escape))),
+                        kind: Kind::Literal(Scalar::String(unescape(&pattern, *escape))),
                         cost: 0,
                     };
                     let (nullable, cost) = (value.field.is_nullable(), value.cost);
@@ -1130,7 +1127,7 @@ impl Binder<'_> {
     /// Read the constant pattern a match operator requires.
     fn constant_pattern(&self, pattern: &Expression, operator: &str) -> Result<SmolStr> {
         let lowered = self.lower(pattern, Some(&DataType::Utf8))?;
-        match lowered.as_literal().and_then(Value::as_str) {
+        match lowered.as_literal().and_then(Scalar::as_str) {
             Some(text) => Ok(SmolStr::new(text)),
             None => Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
@@ -1144,7 +1141,7 @@ impl Binder<'_> {
 }
 
 /// Return whether a literal is representable in a datatype without loss.
-fn fits(data_type: &DataType, held: &TypedValue) -> bool {
+fn fits(data_type: &DataType, held: &TypedScalar) -> bool {
     let Ok(converted) = convert(data_type, held.value(), Safety::Strict) else {
         return false;
     };
@@ -1273,7 +1270,7 @@ fn incompatible(expected: &str) -> Error {
 pub(crate) fn rebuild(node: &Node) -> Expression {
     match &node.kind {
         Kind::Literal(value) => {
-            TypedValue::from_parts(node.field.data_type().clone(), value.clone())
+            TypedScalar::from_parts(node.field.data_type().clone(), value.clone())
                 .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal)
         }
         Kind::Column(_) => Expression::column(node.field.name()),
@@ -1304,13 +1301,13 @@ pub(crate) fn rebuild(node: &Node) -> Expression {
             escape,
         } => Expression::Like {
             value: Box::new(rebuild(value)),
-            pattern: Box::new(Expression::literal(Value::String(pattern.clone()))),
+            pattern: Box::new(Expression::literal(Scalar::String(pattern.clone()))),
             case_insensitive: *case_insensitive,
             escape: *escape,
         },
         Kind::Glob(value, pattern) => Expression::Glob(
             Box::new(rebuild(value)),
-            Box::new(Expression::literal(Value::String(pattern.clone()))),
+            Box::new(Expression::literal(Scalar::String(pattern.clone()))),
         ),
         Kind::Arithmetic(left, operator, right) => {
             Expression::Arithmetic(Box::new(rebuild(left)), *operator, Box::new(rebuild(right)))

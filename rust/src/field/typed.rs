@@ -37,7 +37,7 @@ pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync 
 /// The marker every datatype satisfies.
 ///
 /// A marker usually narrows a value to one variant. This one narrows nothing,
-/// so it is what an unnarrowed pairing such as [`crate::TypedValue`] carries by
+/// so it is what an unnarrowed pairing such as [`crate::TypedScalar`] carries by
 /// default: the datatype is still checked against the value, and the marker
 /// simply has no opinion about which datatype that was.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -193,6 +193,18 @@ impl<K: FieldType> TypedField<K> {
     /// Removes all metadata while retaining the datatype marker.
     pub fn clear_metadata(&mut self) {
         self.field.clear_metadata();
+    }
+}
+
+impl TypedField<super::nested::Struct> {
+    /// Consumes a checked Struct wrapper and returns its generic Struct field.
+    ///
+    /// This typed spelling is the Rust counterpart of the cached
+    /// `into_struct_field` class accessor exposed by field-decorated dataclasses.
+    /// The returned value is still the one canonical [`Field`]; the marker has
+    /// already proved that its datatype is Struct.
+    pub fn into_struct_field(self) -> Field {
+        self.field
     }
 }
 
@@ -356,6 +368,32 @@ impl<K: FieldType> fmt::Debug for TypedFieldRef<'_, K> {
             .field(&K::NAME)
             .field(&self.field)
             .finish()
+    }
+}
+
+impl<K: FieldType> PartialEq for TypedFieldRef<'_, K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+    }
+}
+
+impl<K: FieldType> Eq for TypedFieldRef<'_, K> {}
+
+impl<K: FieldType> PartialOrd for TypedFieldRef<'_, K> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<K: FieldType> Ord for TypedFieldRef<'_, K> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.field.cmp(other.field)
+    }
+}
+
+impl<K: FieldType> Hash for TypedFieldRef<'_, K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.field.hash(state);
     }
 }
 

@@ -24,7 +24,7 @@ mod temporal;
 
 pub(crate) use arrow::{arrow_data_type_to_ffi, is_variant_storage};
 
-pub use crate::enums::{TimeUnit, UnionMode};
+pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };
@@ -86,8 +86,10 @@ pub enum DataType {
     Time32(TimeUnit),
     /// 64-bit time of day; microseconds and nanoseconds are valid.
     Time64(TimeUnit),
-    /// Elapsed time.
-    Duration(TimeUnit),
+    /// 32-bit elapsed-time count.
+    Duration32(TimeUnit),
+    /// 64-bit elapsed-time count.
+    Duration64(TimeUnit),
     /// Calendar interval.
     Interval(TimeUnit),
     /// Variable-width binary data with 32-bit offsets.
@@ -134,7 +136,7 @@ pub enum DataType {
     RunEndEncoded(Arc<RunEndEncodedType>),
     /// Self-describing semi-structured values.
     ///
-    /// A variant value is a [`crate::Value`] - a tree that declares its own
+    /// A variant value is a [`crate::Scalar`] - a tree that declares its own
     /// types per value - so the type takes no parameters: shredding is a
     /// physical layout, not part of the logical type. Bare `variant` is this
     /// type; `variant(...)` with members stays the dense-union input sugar,

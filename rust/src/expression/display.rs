@@ -26,7 +26,7 @@ use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
 use super::{Comparison, Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, TypedValue, Value};
+use crate::{DataType, Scalar, TypedScalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -364,18 +364,18 @@ pub(crate) fn is_reserved(name: &str) -> bool {
 }
 
 /// Write one literal in the spelling that re-parses to it.
-fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedValue) -> fmt::Result {
+fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedScalar) -> fmt::Result {
     let data_type = held.data_type();
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
     // quoted literal the grammar reads back as `utf8`.
-    if let (DataType::Utf8, Value::String(text)) = (data_type, value) {
+    if let (DataType::Utf8, Scalar::String(text)) = (data_type, value) {
         return write_text_literal(formatter, text);
     }
     if let Some(bare) = bare_literal(data_type, value) {
         return formatter.write_str(&bare);
     }
-    if matches!(value, Value::Null) {
+    if matches!(value, Scalar::Null) {
         return write!(formatter, "{data_type} null");
     }
     match literal_text(data_type, value) {
@@ -391,19 +391,19 @@ fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedValue) -> fmt::
 }
 
 /// The bare spelling of a literal, when the grammar's defaults recover it.
-fn bare_literal(data_type: &DataType, value: &Value) -> Option<SmolStr> {
+fn bare_literal(data_type: &DataType, value: &Scalar) -> Option<SmolStr> {
     match (data_type, value) {
-        (DataType::Null, Value::Null) => Some(SmolStr::new_static("null")),
-        (DataType::Boolean, Value::Bool(held)) => Some(if *held {
+        (DataType::Null, Scalar::Null) => Some(SmolStr::new_static("null")),
+        (DataType::Boolean, Scalar::Bool(held)) => Some(if *held {
             SmolStr::new_static("true")
         } else {
             SmolStr::new_static("false")
         }),
-        (DataType::Int64, Value::I64(held)) => Some(SmolStr::new(held.to_string())),
+        (DataType::Int64, Scalar::I64(held)) => Some(SmolStr::new(held.to_string())),
         // A non-finite float has no bare spelling, because `nan` and `inf`
         // are column names as often as they are numbers. It falls through to
         // the typed form, where the text is unambiguous.
-        (DataType::Float64, Value::F64(held)) if held.as_f64().is_finite() => {
+        (DataType::Float64, Scalar::F64(held)) if held.as_f64().is_finite() => {
             Some(SmolStr::new(float_text(held.as_f64())))
         }
         _ => None,
@@ -411,36 +411,44 @@ fn bare_literal(data_type: &DataType, value: &Value) -> Option<SmolStr> {
 }
 
 /// The inner text of a typed literal, or `None` for a value with no text form.
-pub(crate) fn literal_text(data_type: &DataType, value: &Value) -> Option<SmolStr> {
+pub(crate) fn literal_text(data_type: &DataType, value: &Scalar) -> Option<SmolStr> {
     use crate::generic::iso;
 
     match value {
-        Value::Bool(held) => Some(SmolStr::new(held.to_string())),
-        Value::I8(held) => Some(SmolStr::new(held.to_string())),
-        Value::I16(held) => Some(SmolStr::new(held.to_string())),
-        Value::I32(held) => Some(SmolStr::new(held.to_string())),
-        Value::I64(held) => Some(SmolStr::new(held.to_string())),
-        Value::I128(held) => Some(SmolStr::new(held.to_string())),
-        Value::U8(held) => Some(SmolStr::new(held.to_string())),
-        Value::U16(held) => Some(SmolStr::new(held.to_string())),
-        Value::U32(held) => Some(SmolStr::new(held.to_string())),
-        Value::U64(held) => Some(SmolStr::new(held.to_string())),
-        Value::U128(held) => Some(SmolStr::new(held.to_string())),
-        Value::F32(held) => Some(SmolStr::new(float_text(f64::from(held.as_f32())))),
-        Value::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Value::Decimal(unscaled, scale) => Some(decimal_text(*unscaled, *scale)),
-        Value::String(held) => Some(held.clone()),
-        Value::Bytes(held) => Some(SmolStr::new(hex_text(held))),
+        Scalar::Bool(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::I8(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::I16(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::I32(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::I64(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::I128(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::U8(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::U16(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::U32(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::U64(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::U128(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::F32(held) => Some(SmolStr::new(float_text(f64::from(held.as_f32())))),
+        Scalar::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::D128(..) | Scalar::D256(..) => value.as_decimal_utf8().map(SmolStr::new),
+        Scalar::String(held) => Some(held.clone()),
+        Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
-        Value::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
-        Value::Date(days) => iso::format_date(*days),
-        Value::Time(count, unit) => iso::format_time(*count, *unit),
-        Value::Timestamp(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
-        Value::DateTime(count, unit) => iso::format_datetime(*count, *unit),
-        Value::Duration(count, unit) => iso::format_duration(*count, *unit),
-        Value::Null => matches!(data_type, DataType::Null).then(|| SmolStr::new_static("null")),
-        Value::Sequence(_) | Value::Mapping(_) | Value::Record(..) => None,
+        Scalar::Bytes(held) | Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
+        Scalar::Date32(days, _, _) => iso::format_date(*days),
+        Scalar::Date64(count, _, _) => i32::try_from(count.div_euclid(86_400_000))
+            .ok()
+            .and_then(iso::format_date),
+        Scalar::Time32(count, unit, _) => iso::format_time(i64::from(*count), *unit),
+        Scalar::Time64(count, unit, _) => iso::format_time(*count, *unit),
+        Scalar::DateTime64(count, unit, zone) if zone.is_naive() => {
+            iso::format_datetime(*count, *unit)
+        }
+        Scalar::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
+        Scalar::Duration32(count, unit, _) => iso::format_duration(i64::from(*count), *unit),
+        Scalar::Duration64(count, unit, _) => iso::format_duration(*count, *unit),
+        Scalar::Null => matches!(data_type, DataType::Null).then(|| SmolStr::new_static("null")),
+        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
     }
 }
 
@@ -448,18 +456,39 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Value) -> Option<SmolSt
 fn write_constructed(
     formatter: &mut fmt::Formatter<'_>,
     data_type: &DataType,
-    value: &Value,
+    value: &Scalar,
 ) -> fmt::Result {
     // The element type is carried by the cast around the constructor, so a
     // list of nothing still knows what it is a list of.
     write!(formatter, "cast(")?;
-    write_constructor_body(formatter, value)?;
+    if let (Some(fields), Some(values)) = (data_type.as_fields(), value.as_sequence()) {
+        write_struct_constructor(formatter, fields, values)?;
+    } else {
+        write_constructor_body(formatter, value)?;
+    }
     write!(formatter, " as {data_type})")
 }
 
-fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Value) -> fmt::Result {
+fn write_struct_constructor(
+    formatter: &mut fmt::Formatter<'_>,
+    fields: &[crate::Field],
+    values: &[Scalar],
+) -> fmt::Result {
+    formatter.write_str("struct(")?;
+    for (index, (field, held)) in fields.iter().zip(values).enumerate() {
+        if index != 0 {
+            formatter.write_str(", ")?;
+        }
+        write_constructor_item(formatter, held)?;
+        formatter.write_str(" as ")?;
+        write_identifier(formatter, field.name())?;
+    }
+    formatter.write_char(')')
+}
+
+fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     match value {
-        Value::Sequence(items) => {
+        Scalar::Sequence(items) => {
             formatter.write_char('[')?;
             for (index, item) in items.iter().enumerate() {
                 if index != 0 {
@@ -469,7 +498,7 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Value) -> 
             }
             formatter.write_char(']')
         }
-        Value::Mapping(entries) => {
+        Scalar::Mapping(entries) => {
             formatter.write_char('{')?;
             for (index, (key, held)) in entries.iter().enumerate() {
                 if index != 0 {
@@ -481,35 +510,17 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Value) -> 
             }
             formatter.write_char('}')
         }
-        Value::Record(data_type, values) => {
-            let names: Vec<&str> = data_type
-                .as_fields()
-                .unwrap_or_default()
-                .iter()
-                .map(crate::Field::name)
-                .collect();
-            formatter.write_str("struct(")?;
-            for (index, held) in values.iter().enumerate() {
-                if index != 0 {
-                    formatter.write_str(", ")?;
-                }
-                write_constructor_item(formatter, held)?;
-                formatter.write_str(" as ")?;
-                write_identifier(formatter, names.get(index).copied().unwrap_or("_"))?;
-            }
-            formatter.write_char(')')
-        }
         other => write_constructor_item(formatter, other),
     }
 }
 
-fn write_constructor_item(formatter: &mut fmt::Formatter<'_>, value: &Value) -> fmt::Result {
+fn write_constructor_item(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     if value.is_container() {
         return write_constructor_body(formatter, value);
     }
     // A leaf inside a constructor is written under the datatype it carries,
     // and the enclosing cast restates it into the declared element type.
-    let inferred = TypedValue::from_value(value.clone());
+    let inferred = TypedScalar::from_value(value.clone());
     match inferred {
         Ok(typed) => write_literal(formatter, &typed),
         Err(_) => formatter.write_str("null"),
@@ -533,42 +544,6 @@ pub(crate) fn float_text(value: f64) -> String {
         };
     }
     format!("{value:?}")
-}
-
-/// The text of an exact decimal, at the scale it was stored with.
-pub(crate) fn decimal_text(unscaled: i128, scale: i8) -> SmolStr {
-    let mut text = String::new();
-    let negative = unscaled < 0;
-    let digits = unscaled.unsigned_abs().to_string();
-    if negative {
-        text.push('-');
-    }
-    match scale {
-        // A negative scale multiplies, so the zeros are real digits.
-        ..=-1 => {
-            text.push_str(&digits);
-            for _ in 0..scale.unsigned_abs() {
-                text.push('0');
-            }
-        }
-        0 => text.push_str(&digits),
-        _ => {
-            let places = usize::from(scale.unsigned_abs());
-            if digits.len() > places {
-                let split = digits.len() - places;
-                text.push_str(&digits[..split]);
-                text.push('.');
-                text.push_str(&digits[split..]);
-            } else {
-                text.push_str("0.");
-                for _ in 0..places - digits.len() {
-                    text.push('0');
-                }
-                text.push_str(&digits);
-            }
-        }
-    }
-    SmolStr::new(text)
 }
 
 /// Lowercase hex, which is how a binary literal is written and read.

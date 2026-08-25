@@ -6,10 +6,11 @@
 //! never costs a backend call, and a pruning decision never loses a row.
 
 use std::cell::Cell;
+use std::hash::Hash;
 use std::sync::Arc;
 
-use super::{Bound, Bounds, Expression, Selector, Statement};
-use crate::{DataType, Field, MediaType, Result, TimeUnit, Timezone, Url, Value};
+use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Selector, Statement};
+use crate::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -64,6 +65,26 @@ fn text_round_trips() {
 }
 
 #[test]
+fn expressions_and_statements_have_core_total_order_and_stable_hash() {
+    fn assert_value_traits<T: Clone + Eq + Hash + Ord>() {}
+    assert_value_traits::<ColumnBounds>();
+    assert_value_traits::<Bounds>();
+    assert_value_traits::<Residual>();
+
+    let first: Expression = "a = 1".parse().unwrap();
+    let equal: Expression = first.to_string().parse().unwrap();
+    let later: Expression = "b = 1".parse().unwrap();
+    assert_eq!(first.stable_hash(), equal.stable_hash());
+    assert!(first < later);
+
+    let first: Statement = "select a where a > 1".parse().unwrap();
+    let equal: Statement = first.to_string().parse().unwrap();
+    let later: Statement = "select b where b > 1".parse().unwrap();
+    assert_eq!(first.stable_hash(), equal.stable_hash());
+    assert!(first < later);
+}
+
+#[test]
 fn quoted_names_survive_every_encapsulator() {
     for text in ["\"odd name\" = 1", "`odd name` = 1"] {
         let parsed: Expression = text.parse().unwrap();
@@ -99,11 +120,11 @@ fn statements_round_trip() {
 fn documents_round_trip() {
     for text in CORPUS {
         let parsed: Expression = text.parse().unwrap();
-        let document = parsed.to_json().unwrap();
+        let document = parsed.clone().into_json().unwrap();
         assert_eq!(Expression::from_json(&document).unwrap(), parsed, "{text}");
     }
     let statement: Statement = "select a as b where a > 1 limit 3".parse().unwrap();
-    let document = statement.to_json().unwrap();
+    let document = statement.clone().into_json().unwrap();
     assert_eq!(Statement::from_json(&document).unwrap(), statement);
 }
 
@@ -175,64 +196,59 @@ fn rows_schema() -> Field {
 }
 
 /// Rows chosen so every operator meets a null, a `nan`, and a boundary.
-fn rows() -> Vec<Value> {
-    let stamp = |micros: i64| Value::Timestamp(micros, TimeUnit::Microsecond, Timezone::UTC);
-    let nested = |leg: Option<&str>| {
-        Value::record(
-            DataType::from_fields([Field::new("leg", DataType::Utf8, true)]).unwrap(),
-            [leg.map_or(Value::Null, Value::from)],
-        )
-        .unwrap()
-    };
+fn rows() -> Vec<Scalar> {
+    let stamp = |micros: i64| Scalar::DateTime64(micros, TimeUnit::Microsecond, Timezone::UTC);
+    let nested =
+        |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
     vec![
-        Value::from_sequence([
-            Value::I64(1),
-            Value::F64(crate::Float::from_f64(1.5)),
-            Value::Decimal(150, 2),
-            Value::from("alpha"),
-            Value::Bool(true),
+        Scalar::from_sequence([
+            Scalar::I64(1),
+            Scalar::from(1.5_f64),
+            Scalar::d128(150, 2),
+            Scalar::from("alpha"),
+            Scalar::Bool(true),
             stamp(1_700_000_000_000_000),
-            Value::I32(2024),
+            Scalar::I32(2024),
             nested(Some("EUR")),
         ]),
-        Value::from_sequence([
-            Value::I64(-3),
-            Value::F64(crate::Float::from_f64(f64::NAN)),
-            Value::Decimal(-25, 2),
-            Value::from("beta"),
-            Value::Bool(false),
+        Scalar::from_sequence([
+            Scalar::I64(-3),
+            Scalar::from(f64::NAN),
+            Scalar::d128(-25, 2),
+            Scalar::from("beta"),
+            Scalar::Bool(false),
             stamp(0),
-            Value::I32(2024),
+            Scalar::I32(2024),
             nested(None),
         ]),
-        Value::from_sequence([
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::I32(2024),
-            Value::Null,
+        Scalar::from_sequence([
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::Null,
+            Scalar::I32(2024),
+            Scalar::Null,
         ]),
-        Value::from_sequence([
-            Value::I64(100),
-            Value::F64(crate::Float::from_f64(f64::INFINITY)),
-            Value::Decimal(10_000, 2),
-            Value::from("Alpha"),
-            Value::Null,
+        Scalar::from_sequence([
+            Scalar::I64(100),
+            Scalar::from(f64::INFINITY),
+            Scalar::d128(10_000, 2),
+            Scalar::from("Alpha"),
+            Scalar::Null,
             stamp(-1_000_000),
-            Value::I32(2023),
+            Scalar::I32(2023),
             nested(Some("USD")),
         ]),
-        Value::from_sequence([
-            Value::I64(0),
-            Value::F64(crate::Float::from_f64(0.0)),
-            Value::Decimal(0, 2),
-            Value::from(""),
-            Value::Bool(true),
+        Scalar::from_sequence([
+            Scalar::I64(0),
+            Scalar::from(0.0_f64),
+            Scalar::d128(0, 2),
+            Scalar::from(""),
+            Scalar::Bool(true),
             stamp(1_700_000_000_000_001),
-            Value::I32(2025),
+            Scalar::I32(2025),
             nested(Some("eur")),
         ]),
     ]
@@ -293,6 +309,38 @@ fn scalar_and_vectorized_agree() {
 }
 
 #[test]
+fn scalar_arithmetic_propagates_checked_failures() {
+    let bound = "n / i"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&rows_schema())
+        .unwrap();
+    assert!(matches!(
+        bound.eval(&rows()[4]),
+        Err(crate::Error::DivisionByZero { .. })
+    ));
+    assert_eq!(bound.eval(&rows()[2]).unwrap(), Scalar::Null);
+
+    let schema = Field::new(
+        "rows",
+        DataType::from_fields([Field::new("small", DataType::Int8, false)]).unwrap(),
+        false,
+    );
+    let negated = "-small"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert!(matches!(
+        negated.eval(&Scalar::from_sequence([Scalar::I8(i8::MIN)])),
+        Err(crate::Error::ArithmeticOverflow {
+            operation: "negation",
+            ..
+        })
+    ));
+}
+
+#[test]
 fn projections_agree_between_the_tiers() {
     let schema = rows_schema();
     let rows = rows();
@@ -328,14 +376,14 @@ fn projections_agree_between_the_tiers() {
     }
 }
 
-fn batch_of(schema: &Field, rows: &[Value]) -> arrow_array::RecordBatch {
-    let arrow_schema = crate::arrow::schema_from_field(schema).unwrap();
+fn batch_of(schema: &Field, rows: &[Scalar]) -> arrow_array::RecordBatch {
+    let arrow_schema = crate::arrow::arrow_schema_from_field(schema).unwrap();
     let columns = schema
         .fields()
         .iter()
         .enumerate()
         .map(|(index, field)| {
-            let values: Vec<&Value> = rows
+            let values: Vec<&Scalar> = rows
                 .iter()
                 .map(|row| &row.as_sequence().unwrap()[index])
                 .collect();
@@ -414,6 +462,10 @@ impl Counting {
             stats: Cell::new(0),
         }
     }
+}
+
+impl crate::io::IOMedia for Counting {
+    crate::impl_default_iomedia!();
 }
 
 impl crate::io::IOBase for Counting {
@@ -511,7 +563,7 @@ fn every_selector_declares_a_cost_and_a_type() {
     let partition = Selector::Partition("year".into());
     assert_eq!(partition.cost(), super::Cost::Free);
     let url = Url::from_str("file:///lake/year=2024/part-0.parquet").unwrap();
-    assert_eq!(partition.read_url(&url), Value::from("2024"));
+    assert_eq!(partition.read_url(&url), Scalar::from("2024"));
 }
 
 // ---------------------------------------------------------------------------
@@ -593,11 +645,11 @@ fn a_split_conjoins_back_to_what_it_split() {
 }
 
 /// The statistics the fixture rows actually have, computed rather than guessed.
-fn bounds_of(schema: &Field, rows: &[Value]) -> Bounds {
+fn bounds_of(schema: &Field, rows: &[Scalar]) -> Bounds {
     let mut bounds = Bounds::new(Some(rows.len() as u64));
     for (index, field) in schema.fields().iter().enumerate() {
-        let mut minimum: Option<Value> = None;
-        let mut maximum: Option<Value> = None;
+        let mut minimum: Option<Scalar> = None;
+        let mut maximum: Option<Scalar> = None;
         let mut nulls = 0_u64;
         for row in rows {
             let value = &row.as_sequence().unwrap()[index];
@@ -605,7 +657,7 @@ fn bounds_of(schema: &Field, rows: &[Value]) -> Bounds {
                 nulls += 1;
                 continue;
             }
-            let ordered = |held: &Option<Value>, keep_greater: bool| match held {
+            let ordered = |held: &Option<Scalar>, keep_greater: bool| match held {
                 None => Some(value.clone()),
                 Some(held) => match super::eval::order(field.data_type(), value, held) {
                     Some(std::cmp::Ordering::Greater) if keep_greater => Some(value.clone()),
@@ -644,7 +696,7 @@ fn substring_takes_the_window_the_standard_names() {
         let bound = text.parse::<Expression>().unwrap().bind(&schema).unwrap();
         assert_eq!(
             bound.eval(&rows()[0]).unwrap(),
-            Value::from(expected),
+            Scalar::from(expected),
             "{text}"
         );
     }
@@ -706,7 +758,7 @@ fn an_exact_quotient_keeps_room_to_be_a_quotient() {
         "a quotient at the operands' own scale would be a rounding"
     );
     // 1.50 / 3.00 is exactly 0.5, and it stays exact.
-    assert_eq!(bound.eval(&rows()[0]).unwrap(), Value::Decimal(500_000, 6));
+    assert_eq!(bound.eval(&rows()[0]).unwrap(), Scalar::d128(500_000, 6));
 }
 
 #[test]
@@ -730,16 +782,39 @@ fn binds_and_evaluates_rows() {
     assert_eq!(bound.column_names(), vec!["ccy", "price", "size"]);
 
     let row = |ccy: &str, price: i128, size: Option<i32>| {
-        Value::from_sequence([
-            Value::from(ccy),
-            Value::Decimal(price, 2),
-            size.map_or(Value::Null, Value::I32),
+        Scalar::from_sequence([
+            Scalar::from(ccy),
+            Scalar::d128(price, 2),
+            size.map_or(Scalar::Null, Scalar::I32),
         ])
     };
     assert!(bound.matches(&row("EUR", 15_000, Some(5))).unwrap());
     assert!(!bound.matches(&row("USD", 15_000, Some(5))).unwrap());
     assert!(!bound.matches(&row("EUR", 5_000, Some(5))).unwrap());
     assert!(!bound.matches(&row("EUR", 15_000, None)).unwrap());
+}
+
+#[test]
+fn a_struct_expression_produces_and_reprints_a_row_sequence() {
+    let schema = rows_schema();
+    let bound = "struct(1 as id, 'XNAS' as venue)"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let expected = Scalar::from_sequence([Scalar::I64(1), Scalar::from("XNAS")]);
+    assert_eq!(bound.eval(&rows()[0]).unwrap(), expected);
+
+    // Constant folding retains the datatype on TypedScalar rather than on the
+    // row. Display must use that schema to reconstruct the named expression.
+    let printed = bound.expression().to_string();
+    assert!(printed.contains("struct("), "{printed}");
+    let reparsed = printed
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(reparsed.eval(&rows()[0]).unwrap(), expected);
 }
 
 #[test]
@@ -751,7 +826,7 @@ fn unknown_is_not_true() {
         .bind(&schema)
         .unwrap();
     let row = &rows()[2];
-    assert_eq!(bound.eval(row).unwrap(), Value::Null);
+    assert_eq!(bound.eval(row).unwrap(), Scalar::Null);
     assert!(!bound.matches(row).unwrap());
 }
 
@@ -789,7 +864,7 @@ fn parameters_are_supplied_at_bind_and_never_again() {
     assert_eq!(expression.parameters(), vec!["floor".to_owned()]);
     assert!(expression.bind(&schema).is_err());
     let bound = expression
-        .bind_with(&schema, &[("floor", Value::I64(100))])
+        .bind_with(&schema, &[("floor", Scalar::I64(100))])
         .unwrap();
     assert_eq!(bound.expression().to_string(), "i >= 100");
     assert!(bound.matches(&rows()[3]).unwrap());

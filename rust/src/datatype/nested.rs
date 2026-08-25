@@ -9,7 +9,7 @@ use std::sync::Arc;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::enums::UnionMode;
+use crate::generic::UnionMode;
 use crate::{Error, Field, Result};
 
 use super::DataType;

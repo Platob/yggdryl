@@ -1,4 +1,4 @@
-//! TOML 1.1 value encoding, typed envelopes, and bounded single-document I/O.
+//! Natural TOML values with bounded single-document I/O.
 
 use std::borrow::Borrow;
 use std::io::{Read, Write};
@@ -6,37 +6,30 @@ use std::io::{Read, Write};
 mod parser;
 mod wire;
 
-use crate::text::{Formatting, Limits, Value, ValueIter, check_input_size};
-use crate::{Error, Result};
+use crate::text::{Formatting, Limits, Scalar, ScalarIter, check_input_size};
+use crate::{Error, Field, Result};
 
-/// Maximum structural nesting accepted by TOML parsing and conversion.
-///
-/// The pinned parser has its own recursion guard at 80. Yggdryl's lower public
-/// ceiling leaves headroom for parser bookkeeping and keeps conversion stack
-/// usage conservative even when caller limits are larger.
+/// Maximum structural nesting accepted by the TOML parser.
 pub const MAX_PARSER_DEPTH: usize = 64;
 
-/// Decode one TOML document from borrowed UTF-8 text.
-///
-/// TOML's root is always a table. Empty and comment-only documents therefore
-/// decode as an empty [`Value::Mapping`].
-pub fn from_str(input: &str) -> Result<Value> {
-    from_str_with_limits(input, Limits::default())
+/// Decode one TOML document from UTF-8.
+pub fn from_utf8(input: &str) -> Result<Scalar> {
+    from_utf8_with_limits(input, Limits::default())
 }
 
-/// Decode one TOML document from borrowed text with explicit limits.
-pub fn from_str_with_limits(input: &str, limits: Limits) -> Result<Value> {
+/// Decode one TOML document from UTF-8 with explicit limits.
+pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar> {
     check_input_size(input.as_bytes(), limits, "toml")?;
     parser::parse(input, limits)
 }
 
-/// Decode one TOML document from UTF-8 bytes.
-pub fn from_slice(input: &[u8]) -> Result<Value> {
-    from_slice_with_limits(input, Limits::default())
+/// Decode one TOML document from bytes.
+pub fn from_bytes(input: &[u8]) -> Result<Scalar> {
+    from_bytes_with_limits(input, Limits::default())
 }
 
 /// Decode one TOML document from bytes with explicit limits.
-pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value> {
+pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar> {
     check_input_size(input, limits, "toml")?;
     let input = std::str::from_utf8(input).map_err(|error| Error::Codec {
         format: "toml",
@@ -46,58 +39,139 @@ pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value> {
     parser::parse(input, limits)
 }
 
+/// Decode TOML UTF-8 and interpret its natural value under `field`.
+pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar> {
+    from_utf8_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed TOML UTF-8 with explicit limits.
+pub fn from_utf8_with_field_and_limits(
+    input: &str,
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    from_bytes_with_field_and_limits(input.as_bytes(), field, limits)
+}
+
+/// Decode TOML bytes and interpret the natural value under `field`.
+pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar> {
+    from_bytes_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed TOML bytes with explicit limits.
+pub fn from_bytes_with_field_and_limits(
+    input: &[u8],
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    field.from_natural_value(from_bytes_with_limits(input, limits)?)
+}
+
 /// Decode one TOML document from a byte reader.
-///
-/// The maintained TOML parser accepts contiguous UTF-8 input, so this adapter
-/// reads into one explicitly byte-bounded buffer before parsing.
-pub fn from_reader<R: Read>(reader: R) -> Result<Value> {
+pub fn from_reader<R: Read>(reader: R) -> Result<Scalar> {
     from_reader_with_limits(reader, Limits::default())
 }
 
 /// Decode one TOML document from a reader with explicit limits.
-pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value> {
+pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar> {
     let mut reader = Reader::with_limits(reader, limits);
     reader.next().unwrap_or_else(|| {
         Err(Error::Codec {
             format: "toml",
             position: 0,
-            reason: "TOML reader did not yield its single document".into(),
+            reason: "TOML reader did not yield its document".into(),
         })
     })
 }
 
+/// Decode TOML from a reader under `field`.
+pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar> {
+    from_reader_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Decode schema-directed TOML from a reader with explicit limits.
+pub fn from_reader_with_field_and_limits<R: Read>(
+    reader: R,
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    field.from_natural_value(from_reader_with_limits(reader, limits)?)
+}
+
 /// Decode the single TOML document as a one-element collection.
-pub fn from_str_all(input: &str) -> Result<Vec<Value>> {
-    from_str_all_with_limits(input, Limits::default())
+pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>> {
+    from_utf8_all_with_limits(input, Limits::default())
 }
 
-/// Decode the single TOML document as a one-element collection with limits.
-pub fn from_str_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>> {
-    from_str_with_limits(input, limits).map(|value| vec![value])
+/// Decode the single TOML UTF-8 document with explicit limits.
+pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>> {
+    from_utf8_with_limits(input, limits).map(|value| vec![value])
 }
 
-/// Decode the single TOML document as a one-element collection.
-pub fn from_slice_all(input: &[u8]) -> Result<Vec<Value>> {
-    from_slice_all_with_limits(input, Limits::default())
+/// Decode the single TOML byte document as a one-element collection.
+pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_limits(input, Limits::default())
 }
 
-/// Decode the single TOML document as a one-element collection with limits.
-pub fn from_slice_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>> {
-    from_slice_with_limits(input, limits).map(|value| vec![value])
+/// Decode the single TOML byte document with explicit limits.
+pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>> {
+    from_bytes_with_limits(input, limits).map(|value| vec![value])
 }
 
-/// Decode the single reader document as a one-element collection.
-pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>> {
+/// Decode the TOML UTF-8 document under `field`.
+pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>> {
+    from_utf8_all_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed TOML UTF-8 with explicit limits.
+pub fn from_utf8_all_with_field_and_limits(
+    input: &str,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    from_utf8_with_field_and_limits(input, field, limits).map(|value| vec![value])
+}
+
+/// Decode the TOML byte document under `field`.
+pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed TOML bytes with explicit limits.
+pub fn from_bytes_all_with_field_and_limits(
+    input: &[u8],
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    from_bytes_with_field_and_limits(input, field, limits).map(|value| vec![value])
+}
+
+/// Decode the reader's TOML document as a one-element collection.
+pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>> {
     from_reader_all_with_limits(reader, Limits::default())
 }
 
-/// Decode the single reader document as a one-element collection with limits.
-pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>> {
+/// Decode the reader's TOML document with explicit limits.
+pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>> {
     from_reader_with_limits(reader, limits).map(|value| vec![value])
 }
 
-/// Lazily decode the one TOML document from a borrowed byte reader.
-pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
+/// Decode the reader's TOML document under `field`.
+pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>> {
+    from_reader_all_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Decode schema-directed TOML from a reader with explicit limits.
+pub fn from_reader_all_with_field_and_limits<R: Read>(
+    reader: R,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    from_reader_with_field_and_limits(reader, field, limits).map(|value| vec![value])
+}
+
+/// Lazily decode the one TOML document from a borrowed reader.
+pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a> {
     from_reader_iter_with_limits(reader, Limits::default())
 }
 
@@ -105,8 +179,25 @@ pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
 pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     limits: Limits,
-) -> ValueIter<'a> {
-    ValueIter::new(Reader::with_limits(reader, limits))
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits))
+}
+
+/// Lazily decode the TOML document under `field`.
+pub fn from_reader_iter_with_field<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    field: &'a Field,
+) -> ScalarIter<'a> {
+    from_reader_iter_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Lazily decode schema-directed TOML with explicit limits.
+pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    field: &'a Field,
+    limits: Limits,
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field)
 }
 
 /// An owning lazy iterator that yields exactly one TOML document.
@@ -138,7 +229,7 @@ impl<R: Read> Reader<R> {
 }
 
 impl<R: Read> Iterator for Reader<R> {
-    type Item = Result<Value>;
+    type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let reader = self.reader.take()?;
@@ -150,8 +241,7 @@ impl<R: Read> Iterator for Reader<R> {
             }));
         }
         let maximum = self.limits.max_input_bytes();
-        let read_limit = maximum.saturating_add(1);
-        let mut reader = reader.take(u64::try_from(read_limit).unwrap_or(u64::MAX));
+        let mut reader = reader.take(u64::try_from(maximum.saturating_add(1)).unwrap_or(u64::MAX));
         let mut input = Vec::with_capacity(maximum.min(8 * 1024));
         let result = reader.read_to_end(&mut input).map_err(Error::from);
         self.byte_offset = input.len();
@@ -163,7 +253,7 @@ impl<R: Read> Iterator for Reader<R> {
                     reason: "input byte limit exceeded".into(),
                 });
             }
-            from_slice_with_limits(&input, self.limits)
+            from_bytes_with_limits(&input, self.limits)
         }))
     }
 
@@ -175,143 +265,110 @@ impl<R: Read> Iterator for Reader<R> {
 
 impl<R: Read> ExactSizeIterator for Reader<R> {}
 
-/// Encode one value as a TOML document in a new byte vector.
-pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
-    to_vec_with_formatting(value, Formatting::default())
+/// Encode one value as TOML bytes.
+pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
+    into_bytes_with_formatting(value, Formatting::default())
 }
 
-/// Encode one value as a TOML document, laid out as `formatting` asks.
-///
-/// TOML's whitespace is largely insignificant, so this affects readability and
-/// nothing else - the parse is identical either way. What an indent actually
-/// reaches is the indentation of **array** entries, the one nested structure
-/// every version of the grammar lets span lines; inline *tables* stay on one
-/// line because multi-line inline tables are a TOML 1.1 addition a 1.0 reader
-/// would refuse. `$yggdryl` envelope bodies stay flat for the same reason.
-///
-/// ```
-/// use yggdryl::generic::Value;
-/// use yggdryl::text::Formatting;
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let value = Value::from_mapping([(
-///     Value::String("ids".into()),
-///     Value::from_sequence([Value::I64(1), Value::I64(2)]),
-/// )])?;
-/// assert_eq!(yggdryl::toml::to_vec(&value)?, b"\"ids\" = [1, 2]\n");
-///
-/// let indented = yggdryl::toml::to_vec_with_formatting(&value, Formatting::indented(2))?;
-/// assert_eq!(indented, b"\"ids\" = [\n  1,\n  2,\n]\n");
-/// // Formatting changes bytes, never meaning.
-/// assert_eq!(yggdryl::toml::from_slice(&indented)?, value);
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Errors
-///
-/// Returns the encoder's failure, including the published depth cap.
-pub fn to_vec_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
+/// Encode one value as TOML bytes with explicit formatting.
+pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_with_formatting(&mut output, value, formatting)?;
+    into_writer_with_formatting(value, &mut output, formatting)?;
     Ok(output)
 }
 
-/// Consume and encode one value as a TOML document.
-pub fn into_vec(value: Value) -> Result<Vec<u8>> {
-    to_vec(&value)
+/// Encode one value as TOML UTF-8.
+pub fn into_utf8(value: &Scalar) -> Result<String> {
+    into_utf8_with_formatting(value, Formatting::default())
 }
 
-/// Consume and encode one value as a TOML document, laid out as asked.
-///
-/// # Errors
-///
-/// Returns the encoder's failure, including the published depth cap.
-pub fn into_vec_with_formatting(value: Value, formatting: Formatting) -> Result<Vec<u8>> {
-    to_vec_with_formatting(&value, formatting)
+/// Encode one value as TOML UTF-8 with explicit formatting.
+pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String> {
+    String::from_utf8(into_bytes_with_formatting(value, formatting)?).map_err(|error| {
+        Error::Codec {
+            format: "toml",
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded TOML is not valid UTF-8".into(),
+        }
+    })
 }
 
-/// Validate the exact TOML wire projection before opening a destination.
-///
-/// Typed envelopes can add containers beyond the source [`Value`] depth.
-/// Redirected bindings use this preflight before creating or truncating a
-/// destination, while [`to_writer`] repeats it to keep the direct API safe.
-pub fn validate_for_write(value: &Value) -> Result<()> {
+/// Validate the natural TOML projection before opening a destination.
+pub fn validate_for_write(value: &Scalar) -> Result<()> {
     validate_for_write_with_limits(value, Limits::default())
 }
 
-/// Validate the exact TOML wire projection against explicit limits.
-///
-/// The effective maximum is the smaller of `limits.max_depth()` and
-/// [`MAX_PARSER_DEPTH`]. This is useful when a runtime exposes a lower nesting
-/// ceiling than the Rust core default.
-pub fn validate_for_write_with_limits(value: &Value, limits: Limits) -> Result<()> {
+/// Validate the natural TOML projection against explicit limits.
+pub fn validate_for_write_with_limits(value: &Scalar, limits: Limits) -> Result<()> {
     wire::check_depth(value, limits.max_depth())
 }
 
-/// Encode one value as a TOML document to a byte writer.
-pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
-    to_writer_with_formatting(writer, value, Formatting::default())
+/// Encode one value to a byte writer.
+pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()> {
+    into_writer_with_formatting(value, writer, Formatting::default())
 }
 
-/// Encode one value to a byte writer, laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the encoder's or the sink's failure.
-pub fn to_writer_with_formatting<W: Write>(
+/// Encode one value to a byte writer with explicit formatting.
+pub fn into_writer_with_formatting<W: Write>(
+    value: &Scalar,
     mut writer: W,
-    value: &Value,
     formatting: Formatting,
 ) -> Result<()> {
     validate_for_write(value)?;
     wire::write_document(&mut writer, value, formatting.into())
 }
 
-/// Encode exactly one value as a TOML document in a new byte vector.
-pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
-    to_vec_all_with_formatting(values, Formatting::default())
+/// Encode exactly one value as TOML bytes.
+pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>> {
+    into_bytes_all_with_formatting(values, Formatting::default())
 }
 
-/// Encode exactly one value as a TOML document, laid out as asked.
-///
-/// # Errors
-///
-/// Returns the encoder's failure, or a refusal naming zero or two values.
-pub fn to_vec_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
+/// Encode exactly one value as TOML bytes with explicit formatting.
+pub fn into_bytes_all_with_formatting(
+    values: &[Scalar],
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_all_with_formatting(&mut output, values, formatting)?;
+    into_writer_all_with_formatting(values, &mut output, formatting)?;
     Ok(output)
 }
 
+/// Encode exactly one value as TOML UTF-8.
+pub fn into_utf8_all(values: &[Scalar]) -> Result<String> {
+    into_utf8_all_with_formatting(values, Formatting::default())
+}
+
+/// Encode exactly one value as TOML UTF-8 with explicit formatting.
+pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String> {
+    String::from_utf8(into_bytes_all_with_formatting(values, formatting)?).map_err(|error| {
+        Error::Codec {
+            format: "toml",
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded TOML is not valid UTF-8".into(),
+        }
+    })
+}
+
 /// Encode exactly one value to a TOML writer.
-///
-/// TOML has no multi-document stream syntax. Zero values and a second value
-/// are rejected before any bytes are written.
-pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()>
+pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: Borrow<Value>,
+    V: Borrow<Scalar>,
 {
-    to_writer_all_with_formatting(writer, values, Formatting::default())
+    into_writer_all_with_formatting(values, writer, Formatting::default())
 }
 
-/// Encode exactly one value to a TOML writer, laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the encoder's or the sink's failure, or a refusal naming zero or
-/// two values.
-pub fn to_writer_all_with_formatting<W, I, V>(
-    writer: W,
+/// Encode exactly one value to a TOML writer with explicit formatting.
+pub fn into_writer_all_with_formatting<W, I, V>(
     values: I,
+    writer: W,
     formatting: Formatting,
 ) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: Borrow<Value>,
+    V: Borrow<Scalar>,
 {
     let mut values = values.into_iter();
     let value = values.next().ok_or_else(|| Error::Codec {
@@ -326,5 +383,5 @@ where
             reason: "TOML does not support multiple documents".into(),
         });
     }
-    to_writer_with_formatting(writer, value.borrow(), formatting)
+    into_writer_with_formatting(value.borrow(), writer, formatting)
 }

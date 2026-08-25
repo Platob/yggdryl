@@ -1,15 +1,20 @@
 import {
   DataType,
   IOBase,
+  type ByteIterator,
+  type IOCursor,
   MediaType,
   Url,
-  schemaFromPattern,
+  fieldFromPattern,
   type BatchReader,
+  type BufferedOptions,
   type Field,
   type LineIterator,
   type LocationInput,
   type PartitionEntry,
   type PartitionFilters,
+  type ParquetFileStatistics,
+  type ParquetGeospatialStatistics,
 } from '..'
 
 const location: LocationInput = 'file:///lake'
@@ -23,6 +28,9 @@ const url: Url | null = handle.url
 const name: string = handle.name
 const mediaType: MediaType = handle.mediaType
 const size: number = handle.size
+const kind: string = handle.kind
+const rowSize: number = handle.rowSize
+const columnSize: number = handle.columnSize
 const parent: IOBase | null = handle.parent
 const joined: IOBase = handle.joinpath('year=2024', 'month=01')
 const joinedArray: IOBase = handle.joinpath(['year=2024', 'month=01'])
@@ -30,6 +38,7 @@ const joinedArray: IOBase = handle.joinpath(['year=2024', 'month=01'])
 const exists: boolean = handle.exists()
 const isDir: boolean = handle.isDir()
 const isFile: boolean = handle.isFile()
+const isIo: boolean = handle.isIo()
 const isAtomic: boolean = handle.isAtomic()
 const isTabular: boolean = handle.isTabular()
 
@@ -50,11 +59,37 @@ const bytes: Buffer = handle.readBytes()
 const text: string = handle.readText()
 const written: number = handle.writeBytes(Buffer.from('AAPL'))
 const wroteText: number = handle.writeText('AAPL')
+handle.writeScalar({ id: 1 })
+const value: unknown = handle.readScalar()
+const typedValue: { id: number } = handle.readScalar<{ id: number }>(
+  'row: struct<id: int64 not null> not null',
+)
+declare class TypedRow {
+  static readonly intoStructField: Field
+  id: number
+}
+const classTypedScalar: TypedRow = handle.readScalar<TypedRow>(TypedRow)
+const parquetStatistics: ParquetFileStatistics = handle.readParquetStatistics()
+const parquetGeospatial: ParquetGeospatialStatistics =
+  handle.readParquetGeospatialStatistics('shape')
 const head: Buffer = handle.pread(0, 6)
+const byteStream: ByteIterator = handle.pstreamBytes()
+const positionedByteStream: ByteIterator = handle.pstreamBytes(7, 4096)
+const streamedChunks: Buffer[] = [...byteStream]
+const streamedResult: IteratorResult<Buffer> = positionedByteStream.next()
+const cursor: IOCursor = handle.cursor(7)
+const cursorByteStream: ByteIterator = cursor.streamBytes(4096)
+const cursorChunks: Buffer[] = [...cursorByteStream]
+const cacheOptions: BufferedOptions = {
+  pageSize: 64 * 1024,
+  maxBytes: 8 * 1024 * 1024,
+  ttlMs: 30_000,
+}
+const cachedHandle: IOBase = handle.buffered(cacheOptions)
 const patched: number = handle.pwrite(0, new Uint8Array([65]))
 const appended: number = handle.append(Buffer.from('!'))
 const copied: number = handle.copyInto(memory)
-const asPath: string = handle.toPath()
+const asPath: string = handle.intoPath()
 const printed: string = handle.toString()
 
 handle.mkdir()
@@ -70,12 +105,16 @@ void url
 void name
 void mediaType
 void size
+void kind
+void rowSize
+void columnSize
 void parent
 void joined
 void joinedArray
 void exists
 void isDir
 void isFile
+void isIo
 void isAtomic
 void isTabular
 void children
@@ -92,7 +131,15 @@ void bytes
 void text
 void written
 void wroteText
+void value
+void typedValue
+void parquetStatistics
+void parquetGeospatial
 void head
+void streamedChunks
+void streamedResult
+void cursorChunks
+void cachedHandle
 void patched
 void appended
 void copied
@@ -108,12 +155,12 @@ const lineBatchesFromMap: BatchReader = handle.readArrowLines('^\\d{4}', {
 const lineBatchesTyped: BatchReader = handle.readArrowLines('^(?<qty>\\d+)', {
   captureTypes: new Map([['qty', new DataType('int64')]]),
 })
-const lineSchema: Field = schemaFromPattern('^(?<qty>\\d+)', {
+const lineSchema: Field = fieldFromPattern('^(?<qty>\\d+)', {
   customFields: { venue: 'XNAS' },
   captureTypes: { qty: 'decimal(9, 2)' },
 })
 // The whole extractor as one object, with no pattern to name positionally.
-const lineSchemaFromOptions: Field = schemaFromPattern({
+const lineSchemaFromOptions: Field = fieldFromPattern({
   logs: true,
   timezone: 'Europe/Paris',
 })

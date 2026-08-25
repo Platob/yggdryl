@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode, Value};
+use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -21,7 +21,8 @@ fn all_variants() -> Vec<DataType> {
         DataType::Date64,
         DataType::Time32(TimeUnit::Millisecond),
         DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration(TimeUnit::Second),
+        DataType::Duration32(TimeUnit::Second),
+        DataType::Duration64(TimeUnit::Second),
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
@@ -89,7 +90,7 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
             value
         );
         let root = Field::new("Root", DataType::from_fields([field]).unwrap(), false);
-        let row = Value::from_sequence([value]);
+        let row = Scalar::from_sequence([value]);
         root.validate_value(&row).unwrap_or_else(|error| {
             panic!("{} default did not validate: {error}", data_type.kind())
         });
@@ -99,8 +100,8 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
 #[test]
 fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
     let wide = DataType::FixedSizeBinary(64 * 1024 * 1024);
-    assert!(!wide.is_default_value(&Value::Null).unwrap());
-    assert!(!wide.is_default_value(&Value::from(vec![0_u8; 3])).unwrap());
+    assert!(!wide.is_default_value(&Scalar::Null).unwrap());
+    assert!(!wide.is_default_value(&Scalar::from(vec![0_u8; 3])).unwrap());
 
     let union = DataType::union(
         [
@@ -115,17 +116,17 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
     assert!(union.default_union_type_id().unwrap() == Some(7));
     assert!(
         !union
-            .is_default_value(&Value::from_sequence([Value::I64(2), Value::I64(0)]))
+            .is_default_value(&Scalar::from_sequence([Scalar::I64(2), Scalar::I64(0)]))
             .unwrap()
     );
     assert!(
         !union
-            .is_default_value(&Value::from_sequence([Value::I64(7), Value::I64(1)]))
+            .is_default_value(&Scalar::from_sequence([Scalar::I64(7), Scalar::I64(1)]))
             .unwrap()
     );
 
     let fatal = DataType::FixedSizeBinary(64 * 1024 * 1024 + 1);
-    assert!(fatal.is_default_value(&Value::Null).is_err());
+    assert!(fatal.is_default_value(&Scalar::Null).is_err());
 }
 
 #[test]
@@ -137,13 +138,13 @@ fn nested_defaults_respect_child_field_nullability() {
     .unwrap();
     assert_eq!(
         structure.default_value().unwrap().as_sequence().unwrap(),
-        &[Value::I64(0), Value::Null]
+        &[Scalar::I64(0), Scalar::Null]
     );
 
     let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 3).unwrap();
     assert_eq!(
         fixed.default_value().unwrap().as_sequence().unwrap(),
-        &[Value::Null, Value::Null, Value::Null]
+        &[Scalar::Null, Scalar::Null, Scalar::Null]
     );
 }
 
@@ -160,7 +161,7 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
     let nullable = Field::new("choice", union.clone(), true);
     assert_eq!(
         nullable.default_value().unwrap().as_sequence().unwrap(),
-        &[Value::I64(9), Value::Null]
+        &[Scalar::I64(9), Scalar::Null]
     );
     assert_eq!(
         Field::new("choice", union, false)
@@ -168,7 +169,7 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
             .unwrap()
             .as_sequence()
             .unwrap(),
-        &[Value::I64(3), Value::I64(0)]
+        &[Scalar::I64(3), Scalar::I64(0)]
     );
 
     let nullable_run = Field::new(
@@ -180,7 +181,7 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
         .unwrap(),
         true,
     );
-    assert_eq!(nullable_run.default_value().unwrap(), Value::Null);
+    assert_eq!(nullable_run.default_value().unwrap(), Scalar::Null);
 
     let required_values = Field::new(
         "runs",
@@ -204,7 +205,8 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
     for invalid in [
         DataType::Time32(TimeUnit::Nanosecond),
         DataType::Time64(TimeUnit::Millisecond),
-        DataType::Duration(TimeUnit::DayTime),
+        DataType::Duration32(TimeUnit::DayTime),
+        DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
         DataType::FixedSizeBinary(-1),
         DataType::FixedSizeList(
@@ -278,14 +280,14 @@ fn fatal_default_limits_never_fall_back_to_nullable_nulls() {
     .unwrap();
     assert_eq!(
         fallback.default_value().unwrap(),
-        Value::from_sequence([Value::I64(2), Value::I64(0)])
+        Scalar::from_sequence([Scalar::I64(2), Scalar::I64(0)])
     );
 }
 
 #[test]
 fn null_only_nested_layouts_obey_physical_field_constraints() {
     let zero = DataType::fixed_size_list(Field::new("item", DataType::Null, false), 0).unwrap();
-    assert_eq!(zero.default_value().unwrap(), Value::from_sequence([]));
+    assert_eq!(zero.default_value().unwrap(), Scalar::from_sequence([]));
     let positive = DataType::fixed_size_list(Field::new("item", DataType::Null, false), 1).unwrap();
     assert!(positive.default_value().is_err());
 
@@ -300,7 +302,7 @@ fn null_only_nested_layouts_obey_physical_field_constraints() {
             .unwrap()
             .as_sequence()
             .unwrap(),
-        &[Value::Null]
+        &[Scalar::Null]
     );
 
     let no_nullable_branch = DataType::union(

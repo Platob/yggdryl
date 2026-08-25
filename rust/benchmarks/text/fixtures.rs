@@ -1,35 +1,51 @@
-use yggdryl::Value;
+use std::str::FromStr;
 
-pub(crate) fn nested(depth: usize) -> Value {
-    (0..depth).fold(Value::Null, |value, _| Value::from_sequence([value]))
+use yggdryl::{DataType, Field, I256, Scalar, TimeUnit, Timezone};
+
+pub(crate) fn nested(depth: usize) -> Scalar {
+    (0..depth).fold(Scalar::I64(0), |value, _| Scalar::from_sequence([value]))
 }
 
-pub(crate) fn representative() -> Value {
-    Value::from_mapping([
-        (Value::from("symbol"), Value::from("MSFT")),
-        (Value::from("quantity"), Value::from(120_i64)),
-        (Value::from("price"), Value::from(413.75_f64)),
+pub(crate) fn representative() -> Scalar {
+    Scalar::from_record([
+        ("symbol", Scalar::from("MSFT")),
+        ("quantity", Scalar::from(120_i64)),
+        ("price", Scalar::from(413.75_f64)),
         (
-            Value::from("tags"),
-            Value::from_sequence([Value::from("closing"), Value::from("auction")]),
+            "tags",
+            Scalar::from_sequence([Scalar::from("closing"), Scalar::from("auction")]),
         ),
     ])
     .unwrap()
 }
 
-/// A value no text format spells natively, so every envelope path carries it.
-///
-/// The non-string key forces the whole mapping through the mapping envelope,
-/// and its three values are the byte, wide-integer, and non-finite float
-/// envelopes, so one fixture measures the encoder's whole envelope surface.
-pub(crate) fn exotic() -> Value {
-    Value::from_mapping([
+/// Exact values projected through natural scalars and restored by one field.
+pub(crate) fn typed() -> (Scalar, Field) {
+    let value = Scalar::from_record([
         (
-            Value::from_sequence([Value::from("payload")]),
-            Value::from(vec![0, 1, 255]),
+            "amount",
+            Scalar::d256(I256::from_str("1234500").unwrap(), 4),
         ),
-        (Value::from("sequence"), Value::U128(u128::MAX)),
-        (Value::from("price"), Value::from(f64::INFINITY)),
+        (
+            "at",
+            Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap(),
+        ),
+        ("payload", Scalar::from(vec![0, 1, 255])),
     ])
-    .unwrap()
+    .unwrap();
+    let field = Field::new(
+        "row",
+        DataType::from_fields([
+            Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
+            Field::new(
+                "at",
+                DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+                false,
+            ),
+            Field::new("payload", DataType::Binary, false),
+        ])
+        .unwrap(),
+        false,
+    );
+    (value, field)
 }

@@ -1,7 +1,7 @@
 //! The settings a record read or write takes, shared across encodings.
 //!
 //! Reading rows out of an Arrow IPC stream and reading them out of a Parquet
-//! file need the same handful of answers - what schema, what to call an
+//! file need the same handful of answers - what field, what to call an
 //! inferred root, how strict a cast may be, how many rows per batch, how much
 //! may flow at all, how hard to compress, and what makes two rows the same
 //! row - and each encoding then
@@ -24,11 +24,13 @@
 //! // Arrow IPC is the encoding every build implements, so this example reads
 //! // the same in a default build as in one with the `parquet` feature on.
 //! let options = RecordOptions::for_media_type(&Url::from_str("file:///t.arrows")?.media_type())?
-//!     .with_schema(schema.clone())
-//!     .with_batch_size(1024);
+//!     .with_field(schema.clone())
+//!     .with_batch_size(1024)
+//!     .with_commit_row_size(10_000);
 //!
-//! assert_eq!(options.schema(), Some(&schema));
+//! assert_eq!(options.field(), Some(&schema));
 //! assert_eq!(options.batch_size(), Some(1024));
+//! assert_eq!(options.commit_row_size(), Some(10_000));
 //! # Ok(())
 //! # }
 //! ```
@@ -37,7 +39,13 @@ use smol_str::SmolStr;
 
 use crate::Level;
 use crate::ipc::IpcOptions;
-use crate::{Error, Field, MediaType, MimeType, Result};
+use crate::{Error, Field, IOMode, MediaType, MimeType, Result};
+
+/// Default rows materialized in one native-record conversion batch.
+///
+/// Runtime bindings use this same value when their host-language rows must be
+/// widened into Arrow before entering the core reader surface.
+pub const DEFAULT_RECORD_BATCH_SIZE: usize = 65_536;
 
 /// The read and write settings shared by every record encoding.
 ///
@@ -45,11 +53,18 @@ use crate::{Error, Field, MediaType, MimeType, Result};
 /// struct to thread through - and the builders here are what every caller uses,
 /// so the encodings cannot drift apart in what a shared setting means.
 pub trait IORecordOptions: Sized {
-    /// Borrow the declared canonical schema, if any.
-    fn schema(&self) -> Option<&Field>;
+    /// Borrow the declared canonical field, if any.
+    fn field(&self) -> Option<&Field>;
 
-    /// Declare the canonical schema.
-    fn set_schema(&mut self, schema: Field);
+    /// Declare the canonical field.
+    fn set_field(&mut self, field: Field);
+
+    /// Remove and return the declared canonical field, if any.
+    ///
+    /// Write combinators use this after casting an incoming stream. The
+    /// delegated overwrite then receives rows already in the declared shape
+    /// and cannot cast them a second time.
+    fn take_field(&mut self) -> Option<Field>;
 
     /// Borrow the root Field name used when a schema is inferred.
     fn root_name(&self) -> &str;
@@ -68,6 +83,25 @@ pub trait IORecordOptions: Sized {
 
     /// Set the row-per-batch bound.
     fn set_batch_size(&mut self, batch_size: Option<usize>);
+
+    /// Return the row materialization bound for a native-record write.
+    ///
+    /// Row conversion must never run past the next publication boundary: a
+    /// conversion error at row `N + 1` must not erase the complete `N`-row
+    /// prefix waiting to commit. The smaller of `batch_size` and
+    /// `commit_row_size` is therefore the writer's batch size; either setting
+    /// alone supplies the bound.
+    fn write_batch_size(&self) -> Option<usize> {
+        match self.commit_row_size() {
+            Some(commit) => Some(
+                self.batch_size()
+                    .unwrap_or(DEFAULT_RECORD_BATCH_SIZE)
+                    .max(1)
+                    .min(commit),
+            ),
+            None => self.batch_size(),
+        }
+    }
 
     /// Return the bound on how many result rows flow in total, if any - a
     /// **count of rows**, never a per-row byte cap, because the name reads
@@ -104,21 +138,32 @@ pub trait IORecordOptions: Sized {
     /// Set the bound on the result rows' Arrow in-memory bytes.
     fn set_max_byte_size(&mut self, max_byte_size: Option<u64>);
 
+    /// Return the publication cadence for a streamed write, in rows.
+    ///
+    /// `None` publishes once after the source ends. `Some(N)` publishes every
+    /// complete group of `N` incoming rows and then the final remainder. Zero
+    /// is not a cadence and is rejected before a write pulls its source.
+    fn commit_row_size(&self) -> Option<usize>;
+
+    /// Set the publication cadence for a streamed write.
+    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>);
+
     /// Return the compression level applied to a declared content coding.
     fn level(&self) -> Level;
 
     /// Set the compression level.
     fn set_level(&mut self, level: Level);
 
-    /// Borrow the column names whose values form a write's match key.
+    /// Borrow the column names whose values form an explicit merge's match key.
     ///
-    /// An empty list is an overwrite. A non-empty one names the columns a
-    /// [`write`](crate::io::IOBase::write_arrow_batch_reader) matches incoming
-    /// rows against: a row whose key is already stored updates it, and a row
-    /// whose key is not appends.
+    /// A non-empty list is required by
+    /// [`merge_arrow_reader`](crate::io::IOMedia::merge_arrow_reader): a row
+    /// whose key is already stored updates it, and a row whose key is not
+    /// appends. The option never selects an operation; overwrite and append
+    /// reject it, and merge rejects an empty list.
     fn merge_by_names(&self) -> &[String];
 
-    /// Set the column names whose values form a write's match key.
+    /// Set the column names whose values form an explicit merge's match key.
     fn set_merge_by_names(&mut self, merge_by_names: Vec<String>);
 
     /// Borrow the column names a read or write is narrowed to.
@@ -178,24 +223,24 @@ pub trait IORecordOptions: Sized {
         )
     }
 
-    /// Borrow the declared schema, or say that one is required.
+    /// Borrow the declared field, or say that one is required.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the builder that declares a schema.
-    fn require_schema(&self) -> Result<&Field> {
-        self.schema().ok_or_else(|| Error::InvalidRecord {
+    /// Returns an error naming the builder that declares a field.
+    fn require_field(&self) -> Result<&Field> {
+        self.field().ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static(
-                "expected a declared schema to write records; call with_schema first",
+                "expected a declared field to write records; call with_field first",
             ),
         })
     }
 
-    /// Return these options with a declared canonical schema.
+    /// Return these options with a declared canonical field.
     #[must_use]
-    fn with_schema(mut self, schema: Field) -> Self {
-        self.set_schema(schema);
+    fn with_field(mut self, field: Field) -> Self {
+        self.set_field(field);
         self
     }
 
@@ -234,6 +279,18 @@ pub trait IORecordOptions: Sized {
         self
     }
 
+    /// Return these options with a publication every `commit_row_size` rows.
+    ///
+    /// A zero value is retained so the write can return a typed error before
+    /// touching a one-shot input. Use `None` through
+    /// [`set_commit_row_size`](Self::set_commit_row_size) for one publication
+    /// at the end.
+    #[must_use]
+    fn with_commit_row_size(mut self, commit_row_size: usize) -> Self {
+        self.set_commit_row_size(Some(commit_row_size));
+        self
+    }
+
     /// Return these options with a different compression level.
     #[must_use]
     fn with_level(mut self, level: Level) -> Self {
@@ -241,7 +298,7 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Return these options with a match key for a write.
+    /// Return these options with a match key for an explicit merge.
     #[must_use]
     fn with_merge_by_names<I, S>(mut self, merge_by_names: I) -> Self
     where
@@ -283,7 +340,7 @@ pub trait IORecordOptions: Sized {
     /// Cast one batch the way these options say, completed by what is stored.
     ///
     /// This is the one definition of option-driven casting, in three layers
-    /// applied in order: the declared [`schema`](Self::schema) says what the
+    /// applied in order: the declared [`field`](Self::field) says what the
     /// rows are meant to be, [`select_by_names`](Self::select_by_names)
     /// narrows and orders the columns, and `existing` - a holder's stored
     /// shape - is what the batch is finally cast onto, always safely, so a
@@ -301,12 +358,12 @@ pub trait IORecordOptions: Sized {
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
         let safe = self.safe();
-        let batch = match self.schema() {
+        let batch = match self.field() {
             Some(declared) => crate::field::cast::cast_record_batch(declared, batch, safe)?,
             None => batch,
         };
         let root =
-            crate::arrow::record_schema_from_arrow(self.root_name(), batch.schema().as_ref())?;
+            crate::arrow::field_from_arrow_schema(self.root_name(), batch.schema().as_ref())?;
         let batch =
             match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
                 Some(target) => crate::field::cast::cast_record_batch(&target, batch, safe)?,
@@ -333,12 +390,12 @@ pub trait IORecordOptions: Sized {
         existing: Option<&Field>,
     ) -> Result<crate::arrow::BatchReader> {
         let safe = self.safe();
-        let reader = match self.schema() {
+        let reader = match self.field() {
             Some(declared) => crate::arrow::cast_reader(reader, declared, safe)?,
             None => reader,
         };
         let root =
-            crate::arrow::record_schema_from_arrow(self.root_name(), reader.schema().as_ref())?;
+            crate::arrow::field_from_arrow_schema(self.root_name(), reader.schema().as_ref())?;
         let reader =
             match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
                 Some(target) => crate::arrow::cast_reader(reader, &target, safe)?,
@@ -382,6 +439,28 @@ pub trait IORecordOptions: Sized {
         if max_rows.is_none() && max_bytes.is_none() {
             return Ok(reader);
         }
+        self.require_write_limits()?;
+        use arrow_array::RecordBatchReader as _;
+        let schema = reader.schema();
+        Ok(Box::new(Limited {
+            inner: reader,
+            schema,
+            state: WriteLimitState::new(max_rows, max_bytes),
+        }))
+    }
+
+    /// Validate deterministic write-limit combinations without an input.
+    ///
+    /// This preflight runs before append/merge peek at a one-shot reader. A
+    /// truncated keyed merge is always invalid, independently of the rows it
+    /// would receive, so its error must not consume one merely to discover the
+    /// same configuration failure.
+    fn require_write_limits(&self) -> Result<()> {
+        let max_rows = self.max_row_size();
+        let max_bytes = self.max_byte_size();
+        if max_rows.is_none() && max_bytes.is_none() {
+            return Ok(());
+        }
         if !self.merge_by_names().is_empty() {
             let mut limits = String::new();
             if let Some(rows) = max_rows {
@@ -403,19 +482,12 @@ pub trait IORecordOptions: Sized {
                 ),
             });
         }
-        use arrow_array::RecordBatchReader as _;
-        let schema = reader.schema();
-        Ok(Box::new(Limited {
-            inner: reader,
-            schema,
-            remaining_rows: max_rows,
-            remaining_bytes: max_bytes,
-            yielded: false,
-            // `Some(0)` on either bound admits nothing: the reader still
-            // reports its shaped schema, and the first `next` is `None`
-            // without the source ever being touched.
-            satisfied: max_rows == Some(0) || max_bytes == Some(0),
-        }))
+        Ok(())
+    }
+
+    /// Return whether a zero write bound admits no incoming row.
+    fn write_limit_is_zero(&self) -> bool {
+        self.max_row_size() == Some(0) || self.max_byte_size() == Some(0)
     }
 }
 
@@ -428,59 +500,73 @@ pub trait IORecordOptions: Sized {
 struct Limited {
     inner: crate::arrow::BatchReader,
     schema: arrow_schema::SchemaRef,
+    state: WriteLimitState,
+}
+
+/// Stateful write limits shared by a pull reader and an incremental runtime
+/// bridge.
+///
+/// The JavaScript binding has to leave the Rust stack while it awaits the next
+/// asynchronous record chunk. Keeping these counters outside `Limited` lets
+/// that bridge resume the exact same logical limit: byte accounting and the
+/// one global "at least one row" decision never restart at a chunk boundary.
+#[derive(Clone, Debug)]
+pub(crate) struct WriteLimitState {
     /// Rows the row bound still admits; `None` when no row bound is set.
     remaining_rows: Option<u64>,
     /// Bytes the byte bound still admits; `None` when no byte bound is set.
     remaining_bytes: Option<u64>,
     /// Whether any row went out yet, for the at-least-one-row rule.
     yielded: bool,
-    /// Set the moment the bounds are met, so `next` never touches `inner`
+    /// Set the moment the bounds are met, so no caller touches its source
     /// again.
     satisfied: bool,
 }
 
-impl Iterator for Limited {
-    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+impl WriteLimitState {
+    pub(crate) const fn new(remaining_rows: Option<u64>, remaining_bytes: Option<u64>) -> Self {
+        Self {
+            remaining_rows,
+            remaining_bytes,
+            yielded: false,
+            // `Some(0)` on either bound admits nothing: a reader still reports
+            // its shaped schema, and no input batch is pulled.
+            satisfied: matches!(remaining_rows, Some(0)) || matches!(remaining_bytes, Some(0)),
+        }
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
+    pub(crate) const fn satisfied(&self) -> bool {
+        self.satisfied
+    }
+
+    /// Admit the leading rows one logical write limit still allows.
+    ///
+    /// `None` means the limit is complete. A zero-row batch passes through as
+    /// `Some`, because it carries schema continuity without spending either
+    /// budget.
+    pub(crate) fn apply(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+    ) -> Option<arrow_array::RecordBatch> {
         if self.satisfied {
             return None;
         }
-        let batch = match self.inner.next()? {
-            Ok(batch) => batch,
-            Err(error) => {
-                // Fused after the first error, per the listing contract.
-                self.satisfied = true;
-                return Some(Err(error));
-            }
-        };
         let rows = batch.num_rows() as u64;
         if rows == 0 {
-            // An empty batch carries no rows to count and no row bytes to
-            // charge, and swallowing it would end the stream early.
-            return Some(Ok(batch));
+            return Some(batch);
         }
-        // How many leading rows each bound admits; the smaller answer wins.
         let mut take = rows;
         if let Some(remaining) = self.remaining_rows {
             take = take.min(remaining);
         }
-        // Priced only when a byte bound exists, because sizing a batch walks
-        // every one of its arrays.
         let mut size = 0_u64;
         if let Some(remaining) = self.remaining_bytes {
             size = u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX);
             if size > remaining {
-                // The whole batch does not fit, so the rows that keep the
-                // running total at or under the limit are prorated from the
-                // batch's own size - Arrow cannot price one row alone.
                 let fits = u64::try_from(
                     u128::from(remaining) * u128::from(rows) / u128::from(size.max(1)),
                 )
                 .unwrap_or(u64::MAX);
-                // A non-zero byte limit always yields at least one row: a
-                // first row wider than the whole budget would otherwise turn
-                // a bounded read into a silent total loss.
                 let fits = if fits == 0 && !self.yielded { 1 } else { fits };
                 take = take.min(fits);
             }
@@ -490,13 +576,10 @@ impl Iterator for Limited {
             return None;
         }
         if take < rows {
-            // A bound landed inside this batch, so nothing after it can fit:
-            // the cut is a `slice`, a view over the same buffers, never a
-            // copy.
             self.satisfied = true;
             self.yielded = true;
             let take = usize::try_from(take).unwrap_or(usize::MAX);
-            return Some(Ok(batch.slice(0, take)));
+            return Some(batch.slice(0, take));
         }
         if let Some(remaining) = &mut self.remaining_rows {
             *remaining -= rows;
@@ -511,13 +594,184 @@ impl Iterator for Limited {
             }
         }
         self.yielded = true;
-        Some(Ok(batch))
+        Some(batch)
+    }
+}
+
+impl Iterator for Limited {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.state.satisfied() {
+            return None;
+        }
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => {
+                // Fused after the first error, per the listing contract.
+                self.state.satisfied = true;
+                return Some(Err(error));
+            }
+        };
+        self.state.apply(batch).map(Ok)
     }
 }
 
 impl arrow_array::RecordBatchReader for Limited {
     fn schema(&self) -> arrow_schema::SchemaRef {
         std::sync::Arc::clone(&self.schema)
+    }
+}
+
+/// The one streaming splitter for row-count publication boundaries.
+///
+/// A bounded instance owns at most one complete cadence plus the unconsumed
+/// remainder of the current input batch. Batch slices are Arrow views over the
+/// same buffers. It never pulls a following batch after the current cadence is
+/// full, which is what makes a successful prefix observable before a later
+/// source failure. An unbounded instance yields the original reader once.
+pub(crate) struct CommitReaders {
+    schema: arrow_schema::SchemaRef,
+    batches: Option<crate::arrow::BatchReader>,
+    commit_row_size: Option<usize>,
+    buffer: Option<CommitBuffer>,
+    done: bool,
+}
+
+/// One owned, bounded publication window.
+///
+/// Both the ordinary pull reader and a runtime binding that pushes batches
+/// between awaits use this object. It owns only the current cadence; slices are
+/// Arrow views over their source buffers.
+pub(crate) struct CommitBuffer {
+    schema: arrow_schema::SchemaRef,
+    row_size: usize,
+    rows: usize,
+    batches: Vec<arrow_array::RecordBatch>,
+    /// The one input batch whose leading rows completed the last cadence.
+    /// Its remaining rows are not sliced until the caller asks for the next
+    /// cadence, after it has had a chance to publish the one just returned.
+    current: Option<(arrow_array::RecordBatch, usize)>,
+}
+
+impl CommitBuffer {
+    pub(crate) fn new(schema: arrow_schema::SchemaRef, row_size: usize) -> Self {
+        debug_assert!(row_size > 0);
+        Self {
+            schema,
+            row_size,
+            rows: 0,
+            batches: Vec::new(),
+            current: None,
+        }
+    }
+
+    /// Add one batch and return at most the first cadence it completes.
+    ///
+    /// A remainder stays in `current`; callers must publish the returned
+    /// reader before asking [`next_ready`](Self::next_ready) to advance it.
+    pub(crate) fn push(
+        &mut self,
+        batch: arrow_array::RecordBatch,
+    ) -> Option<crate::arrow::BatchReader> {
+        debug_assert!(self.current.is_none());
+        self.current = Some((batch, 0));
+        self.next_ready()
+    }
+
+    /// Advance only the retained input batch, yielding at most one cadence.
+    pub(crate) fn next_ready(&mut self) -> Option<crate::arrow::BatchReader> {
+        let (batch, offset) = self.current.take()?;
+        let available = batch.num_rows().saturating_sub(offset);
+        if available == 0 {
+            return None;
+        }
+        let take = (self.row_size - self.rows).min(available);
+        if offset == 0 && take == batch.num_rows() {
+            self.batches.push(batch);
+        } else {
+            self.batches.push(batch.slice(offset, take));
+            if take < available {
+                self.current = Some((batch, offset + take));
+            }
+        }
+        self.rows += take;
+        if self.rows != self.row_size {
+            return None;
+        }
+        self.rows = 0;
+        Some(crate::arrow::batch_reader(
+            std::sync::Arc::clone(&self.schema),
+            std::mem::take(&mut self.batches),
+        ))
+    }
+
+    /// Take the successful final remainder, if this window holds one.
+    pub(crate) fn finish(&mut self) -> Option<crate::arrow::BatchReader> {
+        if self.rows == 0 {
+            return None;
+        }
+        self.rows = 0;
+        Some(crate::arrow::batch_reader(
+            std::sync::Arc::clone(&self.schema),
+            std::mem::take(&mut self.batches),
+        ))
+    }
+
+    /// Discard an incomplete cadence after a source or conversion failure.
+    pub(crate) fn clear(&mut self) {
+        self.rows = 0;
+        self.batches.clear();
+        self.current = None;
+    }
+}
+
+impl Iterator for CommitReaders {
+    type Item = Result<crate::arrow::BatchReader>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        let Some(commit_row_size) = self.commit_row_size else {
+            self.done = true;
+            return self.batches.take().map(Ok);
+        };
+        loop {
+            if let Some(reader) = self.buffer.as_mut().and_then(CommitBuffer::next_ready) {
+                return Some(Ok(reader));
+            }
+            let batches = self
+                .batches
+                .as_mut()
+                .expect("a live commit splitter owns its source");
+            match batches.next() {
+                Some(Ok(batch)) => {
+                    if batch.num_rows() == 0 {
+                        continue;
+                    }
+                    let buffer = self.buffer.get_or_insert_with(|| {
+                        CommitBuffer::new(std::sync::Arc::clone(&self.schema), commit_row_size)
+                    });
+                    if let Some(reader) = buffer.push(batch) {
+                        return Some(Ok(reader));
+                    }
+                }
+                Some(Err(error)) => {
+                    // The partial cadence has not been published. Previous
+                    // complete cadences remain visible by design.
+                    self.done = true;
+                    if let Some(buffer) = &mut self.buffer {
+                        buffer.clear();
+                    }
+                    return Some(Err(crate::arrow::from_reader_error(error).into()));
+                }
+                None => {
+                    self.done = true;
+                    return self.buffer.as_mut().and_then(CommitBuffer::finish).map(Ok);
+                }
+            }
+        }
     }
 }
 
@@ -528,12 +782,16 @@ impl arrow_array::RecordBatchReader for Limited {
 #[macro_export]
 macro_rules! record_options_fields {
     () => {
-        fn schema(&self) -> Option<&$crate::Field> {
-            self.schema.as_ref()
+        fn field(&self) -> Option<&$crate::Field> {
+            self.field.as_ref()
         }
 
-        fn set_schema(&mut self, schema: $crate::Field) {
-            self.schema = Some(schema);
+        fn set_field(&mut self, field: $crate::Field) {
+            self.field = Some(field);
+        }
+
+        fn take_field(&mut self) -> Option<$crate::Field> {
+            self.field.take()
         }
 
         fn root_name(&self) -> &str {
@@ -576,6 +834,14 @@ macro_rules! record_options_fields {
             self.max_byte_size = max_byte_size;
         }
 
+        fn commit_row_size(&self) -> Option<usize> {
+            self.commit_row_size
+        }
+
+        fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
+            self.commit_row_size = commit_row_size;
+        }
+
         fn level(&self) -> $crate::Level {
             self.level
         }
@@ -614,7 +880,7 @@ macro_rules! record_options_fields {
 ///
 /// The variant *is* the encoding: a record call takes `RecordOptions` and
 /// needs no separate format argument.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum RecordOptions {
     /// Arrow IPC stream options.
     Ipc(IpcOptions),
@@ -632,6 +898,266 @@ pub enum RecordOptions {
 }
 
 impl RecordOptions {
+    /// Return a deterministic hash of the encoding and its complete options.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        match self {
+            Self::Ipc(options) => crate::stable_hash_of(&("ipc", options)),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => crate::stable_hash_of(&("parquet", options)),
+            Self::Avro(options) => crate::stable_hash_of(&("avro", options)),
+            Self::Text(options) => crate::stable_hash_of(&("text", options)),
+        }
+    }
+
+    fn avro_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::avro::AvroOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Avro(options) => Ok(options),
+            Self::Ipc(_) | Self::Text(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected Avro options to set {setting}, got {media_type} options"
+                ),
+            }),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected Avro options to set {setting}, got {media_type} options"
+                ),
+            }),
+        }
+    }
+
+    /// Return the Avro block codec name, or `None` for another encoding.
+    pub fn avro_block_codec(&self) -> Option<&str> {
+        match self {
+            Self::Avro(options) => Some(options.codec.as_str()),
+            Self::Ipc(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Validate and set the Avro block codec.
+    ///
+    /// Validation uses the codec vocabulary the container encoder itself
+    /// dispatches through, so a binding can reject a bad name before it pulls
+    /// a one-shot record source.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-Avro variant or a codec this build does not
+    /// implement.
+    pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()> {
+        let options = self.avro_mut("$.block_codec", "a block codec")?;
+        crate::avro::container::BlockCoding::from_name(codec)?;
+        options.codec = SmolStr::new(codec);
+        Ok(())
+    }
+
+    /// Borrow the optional fixed Avro synchronization marker.
+    ///
+    /// `None` means either that a fresh marker will be generated for an Avro
+    /// write or that these options describe another encoding. A setter remains
+    /// encoding-checked, so the two cases cannot be confused while mutating.
+    pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
+        match self {
+            Self::Avro(options) => options.sync_marker.as_ref(),
+            Self::Ipc(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Set or clear the fixed Avro synchronization marker.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-Avro variant or a marker whose length is not
+    /// exactly sixteen bytes.
+    pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()> {
+        let options = self.avro_mut("$.sync_marker", "a synchronization marker")?;
+        let marker = marker
+            .map(|marker| {
+                marker.try_into().map_err(|_| Error::InvalidRecord {
+                    path: SmolStr::new_static("$.sync_marker"),
+                    reason: smol_str::format_smolstr!(
+                        "expected exactly 16 bytes, got {}",
+                        marker.len()
+                    ),
+                })
+            })
+            .transpose()?;
+        options.sync_marker = marker;
+        Ok(())
+    }
+
+    #[cfg(feature = "parquet")]
+    fn parquet_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::parquet::ParquetOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Parquet(options) => Ok(options),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected Parquet options to set {setting}, got {media_type} options"
+                ),
+            }),
+        }
+    }
+
+    /// Return the Parquet page-compression name, or `None` for another encoding.
+    #[cfg(feature = "parquet")]
+    pub fn parquet_compression_name(&self) -> Option<String> {
+        match self {
+            Self::Parquet(options) => Some(options.compression_name()),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+        }
+    }
+
+    /// Parse and set the Parquet page compression.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-Parquet variant or an invalid compression.
+    #[cfg(feature = "parquet")]
+    pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()> {
+        self.parquet_mut("$.compression", "a page compression")?
+            .set_compression_name(compression)
+    }
+
+    /// Return the Parquet row-group bound, or `None` for another encoding.
+    #[cfg(feature = "parquet")]
+    pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
+        match self {
+            Self::Parquet(options) => Some(options.max_row_group_size),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+        }
+    }
+
+    /// Set the maximum rows in one Parquet row group.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when these are not Parquet options.
+    #[cfg(feature = "parquet")]
+    pub fn set_parquet_max_row_group_size(&mut self, rows: usize) -> Result<()> {
+        self.parquet_mut("$.max_row_group_size", "a row-group size")?
+            .set_max_row_group_size(rows);
+        Ok(())
+    }
+
+    /// Borrow Parquet footer metadata, or return `None` for another encoding.
+    #[cfg(feature = "parquet")]
+    pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
+        match self {
+            Self::Parquet(options) => Some(&options.key_value_metadata),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+        }
+    }
+
+    /// Replace Parquet footer metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when these are not Parquet options.
+    #[cfg(feature = "parquet")]
+    pub fn set_parquet_key_value_metadata(
+        &mut self,
+        metadata: Vec<(String, String)>,
+    ) -> Result<()> {
+        self.parquet_mut("$.key_value_metadata", "footer metadata")?
+            .set_key_value_metadata(metadata);
+        Ok(())
+    }
+
+    /// Add one Parquet footer metadata entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when these are not Parquet options.
+    #[cfg(feature = "parquet")]
+    pub fn push_parquet_key_value(
+        &mut self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<()> {
+        self.parquet_mut("$.key_value_metadata", "footer metadata")?
+            .push_key_value(key, value);
+        Ok(())
+    }
+
+    /// Validate one explicit write mode before a runtime binding consumes input.
+    ///
+    /// The mode is authoritative. Match keys refine `merge` and never select
+    /// it implicitly: merge requires at least one key, while overwrite and
+    /// append refuse every key.
+    #[doc(hidden)]
+    pub fn require_write_mode(&self, mode: IOMode) -> Result<()> {
+        let keyed = mode == IOMode::Merge;
+        let keys = self.merge_by_names();
+        if keyed != keys.is_empty() {
+            return Ok(());
+        }
+        let reason = if keyed {
+            format!("write mode {mode} requires at least one merge_by_names column")
+        } else {
+            format!(
+                "write mode {mode} does not accept merge_by_names; use merge mode for keyed writes"
+            )
+        };
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$.merge_by_names"),
+            reason: SmolStr::new(reason),
+        })
+    }
+
+    /// Validate the optional streamed-write publication cadence.
+    ///
+    /// This is public only for the workspace bindings, which must reject a
+    /// zero cadence before converting or pulling a runtime iterator.
+    #[doc(hidden)]
+    pub fn require_commit_row_size(&self) -> Result<Option<usize>> {
+        match self.commit_row_size() {
+            Some(0) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.commit_row_size"),
+                reason: SmolStr::new_static(
+                    "expected commit_row_size to be a non-zero row count, got 0",
+                ),
+            }),
+            commit_row_size => Ok(commit_row_size),
+        }
+    }
+
+    /// Split one already-shaped stream into bounded publication readers.
+    ///
+    /// The caller validates write intent and shapes the stream before entering
+    /// here. Every yielded reader contains exactly one complete cadence, or
+    /// the final remainder after end-of-stream. A source error discards only
+    /// the incomplete cadence it interrupted.
+    pub(crate) fn commit_arrow_readers(
+        &self,
+        batches: crate::arrow::BatchReader,
+    ) -> Result<CommitReaders> {
+        Ok(CommitReaders {
+            schema: batches.schema(),
+            batches: Some(batches),
+            commit_row_size: self.require_commit_row_size()?,
+            buffer: None,
+            done: false,
+        })
+    }
+
     /// Derive the options for the encoding a media type names.
     ///
     /// Content codings are ignored here: they are the handle's business, not
@@ -692,23 +1218,33 @@ impl RecordOptions {
 }
 
 impl IORecordOptions for RecordOptions {
-    fn schema(&self) -> Option<&Field> {
+    fn field(&self) -> Option<&Field> {
         match self {
-            Self::Ipc(options) => options.schema(),
+            Self::Ipc(options) => options.field(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.schema(),
-            Self::Avro(options) => options.schema(),
-            Self::Text(options) => options.schema(),
+            Self::Parquet(options) => options.field(),
+            Self::Avro(options) => options.field(),
+            Self::Text(options) => options.field(),
         }
     }
 
-    fn set_schema(&mut self, schema: Field) {
+    fn set_field(&mut self, field: Field) {
         match self {
-            Self::Ipc(options) => options.set_schema(schema),
+            Self::Ipc(options) => options.set_field(field),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_schema(schema),
-            Self::Avro(options) => options.set_schema(schema),
-            Self::Text(options) => options.set_schema(schema),
+            Self::Parquet(options) => options.set_field(field),
+            Self::Avro(options) => options.set_field(field),
+            Self::Text(options) => options.set_field(field),
+        }
+    }
+
+    fn take_field(&mut self) -> Option<Field> {
+        match self {
+            Self::Ipc(options) => options.take_field(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.take_field(),
+            Self::Avro(options) => options.take_field(),
+            Self::Text(options) => options.take_field(),
         }
     }
 
@@ -809,6 +1345,26 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
             Self::Avro(options) => options.set_max_byte_size(max_byte_size),
             Self::Text(options) => options.set_max_byte_size(max_byte_size),
+        }
+    }
+
+    fn commit_row_size(&self) -> Option<usize> {
+        match self {
+            Self::Ipc(options) => options.commit_row_size(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.commit_row_size(),
+            Self::Avro(options) => options.commit_row_size(),
+            Self::Text(options) => options.commit_row_size(),
+        }
+    }
+
+    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
+        match self {
+            Self::Ipc(options) => options.set_commit_row_size(commit_row_size),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_commit_row_size(commit_row_size),
+            Self::Avro(options) => options.set_commit_row_size(commit_row_size),
+            Self::Text(options) => options.set_commit_row_size(commit_row_size),
         }
     }
 

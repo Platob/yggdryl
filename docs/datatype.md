@@ -14,7 +14,7 @@ type, with Arrow itself kept out of the value model.
     // Display is canonical and both text forms round-trip.
     assert_eq!(value.to_string(), "decimal128(18,4)");
     assert_eq!(DataType::from_str(&value.to_string())?, value);
-    assert_eq!(DataType::from_json(&value.to_json()?)?, value);
+    assert_eq!(DataType::from_json(&value.clone().into_json()?)?, value);
     ```
 
 === "Python"
@@ -27,7 +27,7 @@ type, with Arrow itself kept out of the value model.
 
     assert str(value) == "decimal128(18,4)"
     assert DataType(str(value)) == value
-    assert DataType.from_json(value.to_json()) == value
+    assert DataType.from_json(value.into_json()) == value
     ```
 
 === "JavaScript"
@@ -48,7 +48,7 @@ There are 44 variants: one per Arrow logical type, plus Variant and the geospati
 cross Arrow as extension-typed storage. The parser accepts the Arrow, SQL, Hive, and
 Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`, `row(...)`,
 `double precision` - and normalizes to one canonical form, so `to_string` is a losslessly
-re-parseable value rather than a debug rendering. `to_json` is a separate, structural encoding:
+re-parseable value rather than a debug rendering. `into_json` is a separate, structural encoding:
 tagged objects that name every parameter, which is what a schema written to disk should be.
 
 Scalar variants are inline and nested children sit behind shared allocations, so cloning a
@@ -198,7 +198,7 @@ exact constructors stay available for when the physical width is part of the con
 call, the parameters are validated once at construction - a precision of zero, a positive scale
 larger than the precision, a nanosecond `time32`, or a negative fixed width never becomes a value.
 
-Units are parsed from the shared [`TimeUnit`](enums.md) vocabulary, so `s`, `sec`, `MILLIS`, `µs`,
+Units are parsed from the shared [`TimeUnit`](generic.md) vocabulary, so `s`, `sec`, `MILLIS`, `µs`,
 and `nano seconds` all work, and the calendar interval layouts - which are not time-of-day
 resolutions - are rejected here rather than silently accepted. JavaScript has no
 `DataType.decimal`; decimals arrive through the `fields` factories.
@@ -517,7 +517,7 @@ A variant is a self-describing tree: each value declares its own types, which is
 takes no parameters - shredding is a physical layout, not part of the logical type - and why the
 grammar's bare `variant` parses to it while `variant(...)` stays the
 [dense-union sugar](#unions-and-the-dense-union-sugar) above. A variant *value* is the one
-[`Value`](generic.md) model; its Parquet binary encoding lands with the Iceberg v3 layer, so paths
+[`Scalar`](generic.md) model; its Parquet binary encoding lands with the Iceberg v3 layer, so paths
 that would need it today refuse by name.
 
 The geospatial pair shares one parameter value: a coordinate reference system, and - only on a
@@ -527,7 +527,7 @@ display emits a parameter exactly when it differs from that default, so every sp
 through `from_str`. An empty CRS is refused - the absent spelling is `None`, which fills the
 default - and a geometry given an edge algorithm is refused by name: straight planar lines need
 none. The algorithm vocabulary is the five canonical lowercase names of
-[`EdgeAlgorithm`](enums.md#edge-algorithms) - `spherical`, `vincenty`, `thomas`, `andoyer`,
+[`EdgeAlgorithm`](generic.md#shared-vocabulary) - `spherical`, `vincenty`, `thomas`, `andoyer`,
 `karney` - parsed case-insensitively; the Python and JavaScript `algorithm` arguments accept those
 strings.
 
@@ -538,7 +538,7 @@ GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm.
 ride the `ARROW:extension:name` / `ARROW:extension:metadata` field-metadata keys. GeoArrow's own
 documentation says the specification is not finalized, so the `geoarrow.wkb` mapping is a
 community choice that may be revisited when it stabilizes. The geospatial *values* travel as
-Well-Known Binary through [`Value::Geospatial`](generic.md#the-wkb-reader), read back for display
+Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
 
 ## Identity and family
@@ -599,7 +599,7 @@ and bounds by the one WKB reader documented there.
 parameter-free, so they compare and hash without touching nested state, which is what makes them the
 cheap way to branch. Dispatch on the kind when the behavior is uniform across a family, on the id
 when it is not; `name()` is the Rust spelling of `id().as_str()`. The two vocabularies and the
-predicates over them are documented in [shared enums](enums.md). Python and JavaScript have no
+predicates over them are documented in [shared enums](generic.md). Python and JavaScript have no
 separate class for either: both arrive as the canonical lowercase strings.
 
 ## Arrow projection
@@ -610,15 +610,15 @@ separate class for either: both arrive as the canonical lowercase strings.
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
-    let arrow = value.to_arrow()?;
+    let arrow = value.clone().into_arrow()?;
 
     assert_eq!(DataType::from_arrow(&arrow)?, value);
     assert_eq!(value.clone().into_arrow()?, arrow);
     assert_eq!(DataType::try_from(arrow)?, value);
 
     // Projection re-checks parameters, so a directly built enum value cannot escape.
-    assert!(DataType::Time32(TimeUnit::Nanosecond).to_arrow().is_err());
-    assert!(DataType::Time32(TimeUnit::Nanosecond).to_arrow_ffi().is_err());
+    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow().is_err());
+    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_ffi().is_err());
     ```
 
 === "Python"
@@ -629,14 +629,14 @@ separate class for either: both arrive as the canonical lowercase strings.
     from yggdryl import DataType
 
     value = DataType("map<string,array<decimal(38,18)>>")
-    arrow = value.to_arrow()
+    arrow = value.into_arrow()
 
     assert DataType.from_arrow(arrow) == value
     assert DataType(arrow) == value
     assert value.into_arrow() == arrow
 
     assert DataType(pa.int64()) == DataType("int64")
-    assert DataType("int64").to_arrow() == pa.int64()
+    assert DataType("int64").into_arrow() == pa.int64()
     ```
 
 === "JavaScript"
@@ -656,11 +656,11 @@ separate class for either: both arrive as the canonical lowercase strings.
 
 Rust and Python hand over a real Arrow type - an `arrow_schema::DataType` and a `pyarrow.DataType`
 respectively - and Python crosses the boundary through the Arrow C Data Interface rather than
-rebuilding the value. In Rust `to_arrow` borrows and `into_arrow` consumes, while `to_arrow_ffi`
-produces the `FFI_ArrowSchema` a foreign runtime imports.
+rebuilding the value. Rust's `into_arrow` and `into_arrow_ffi` consume the source so ownership is
+explicit; clone first when the source must be retained.
 
-The Node package has no `toArrow`: `fromArrow` reads any Arrow JS type through its own `toString`,
-and the canonical display is the bridge back out. Nothing is inferred from a generic string
+Node's `fromArrow` reads an Arrow JS type through its standard `toString`; the canonical display is
+the bridge back out. Nothing is inferred from a generic string
 coercion, so an object without its own textual form is an error rather than `[object Object]`.
 
 Projection is a validation boundary. Because `DataType` is a public Rust enum, a caller can
@@ -673,7 +673,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Value};
+    use yggdryl::{DataType, Field, Scalar};
 
     let value = DataType::from_fields([
         Field::new("id", DataType::Int32, false),
@@ -683,10 +683,10 @@ before materializing foreign state. Whole schemas cross the same boundary throug
     // One positional slot per child, each honoring its own nullability.
     assert_eq!(
         value.default_value()?.as_sequence().unwrap(),
-        &[Value::I64(0), Value::Null]
+        &[Scalar::I64(0), Scalar::Null]
     );
     assert!(value.is_default_value(&value.default_value()?)?);
-    assert_eq!(DataType::Utf8.default_value()?, Value::String("".into()));
+    assert_eq!(DataType::Utf8.default_value()?, Scalar::String("".into()));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
     assert!(DataType::FixedSizeBinary(64 * 1024 * 1024 + 1).default_value().is_err());
@@ -729,7 +729,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
 
 Every one of the 44 variants has a canonical default, and it is computed from the schema rather than
 looked up per language: the core produces one value and each binding projects it. Rust yields a
-[`Value`](generic.md); Python yields a dataclass record or a Python scalar from `default_pyvalue`
+[`Scalar`](generic.md); Python yields a generated field dataclass or a Python scalar from `default_pyvalue`
 and a `pyarrow.Scalar` from `default_arrow_scalar`; JavaScript yields a plain array, `Buffer`,
 `Map`, or `{ typeId, value }`. Mutable containers are freshly allocated on every call, so a default
 is never shared state.
@@ -745,7 +745,7 @@ A bare `DataType` has no nullability, so its default is the non-null one. Ask a
 ## Serializing a schema
 
 `DataType` reads and writes the three structured-text formats through **one** structural model. There
-is exactly one `DataType` ⇄ `Value` mapping - `to_value`/`from_value` in Rust, `to_dict`/`from_dict` in
+is exactly one `DataType` ⇄ `Scalar` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
 Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
 rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
 document can carry a declared schema inline beside the rest of its settings, with no
@@ -756,25 +756,25 @@ The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`
 `metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
 TOML, which has no null, loses nothing on the way out.
 
-Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; Python spells it as an
+Each format takes the shared [`Formatting`](text.md#formatting) option; Python spells it as an
 `indent` keyword.
 
 === "Rust"
 
     ```rust
     use yggdryl::DataType;
-    use yggdryl::generic::Value;
+    use yggdryl::generic::Scalar;
 
     let data_type = DataType::decimal128(9, 2)?;
 
     // One structural model, three formats over it.
-    assert_eq!(DataType::from_value(data_type.to_value())?, data_type);
-    assert_eq!(DataType::from_json(&data_type.to_json()?)?, data_type);
-    assert_eq!(DataType::from_yaml(&data_type.to_yaml()?)?, data_type);
-    assert_eq!(DataType::from_toml(&data_type.to_toml()?)?, data_type);
+    assert_eq!(DataType::from_value(data_type.clone().into_value())?, data_type);
+    assert_eq!(DataType::from_json(&data_type.clone().into_json()?)?, data_type);
+    assert_eq!(DataType::from_yaml(&data_type.clone().into_yaml()?)?, data_type);
+    assert_eq!(DataType::from_toml(&data_type.clone().into_toml()?)?, data_type);
 
-    let shape = data_type.to_value();
-    assert_eq!(shape.get_key_str("type").and_then(Value::as_str), Some("decimal128"));
+    let shape = data_type.into_value();
+    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal128"));
     ```
 
 === "Python"
@@ -784,12 +784,12 @@ Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; P
 
     data_type = DataType.decimal(9, 2)
 
-    assert DataType.from_dict(data_type.to_dict()) == data_type
-    assert DataType.from_json(data_type.to_json()) == data_type
-    assert DataType.from_yaml(data_type.to_yaml()) == data_type
-    assert DataType.from_toml(data_type.to_toml()) == data_type
+    assert DataType.from_dict(data_type.into_dict()) == data_type
+    assert DataType.from_json(data_type.into_json()) == data_type
+    assert DataType.from_yaml(data_type.into_yaml()) == data_type
+    assert DataType.from_toml(data_type.into_toml()) == data_type
 
-    assert data_type.to_dict()["type"] == "decimal128"
+    assert data_type.into_dict()["type"] == "decimal128"
     ```
 
 === "JavaScript"
@@ -867,7 +867,7 @@ The output is stable across runs; nothing in it iterates a hash map.
         ),
     ])?;
 
-    let spark = source.to_scheme_compat(&Scheme::SPARK)?;
+    let spark = source.clone().into_scheme_compat(&Scheme::SPARK)?;
     let rewritten = spark.as_fields().unwrap();
     assert_eq!(rewritten[0].data_type(), &DataType::Int16);
     assert_eq!(rewritten[1].data_type(), &DataType::decimal128(20, 0)?);
@@ -877,8 +877,8 @@ The output is stable across runs; nothing in it iterates a hash map.
     );
 
     // Arrow is a validated clone; Polars keeps the unsigned integers Spark has to widen.
-    assert_eq!(source.to_scheme_compat(&Scheme::ARROW)?, source);
-    assert_eq!(DataType::UInt32.to_scheme_compat(&Scheme::POLARS)?, DataType::UInt32);
+    assert_eq!(source.clone().into_scheme_compat(&Scheme::ARROW)?, source);
+    assert_eq!(DataType::UInt32.into_scheme_compat(&Scheme::POLARS)?, DataType::UInt32);
 
     // A rewrite that would reinterpret values is refused, and the path is named.
     let error = DataType::from_fields([Field::new(
@@ -886,7 +886,7 @@ The output is stable across runs; nothing in it iterates a hash map.
         DataType::Timestamp(TimeUnit::Nanosecond, None),
         false,
     )])?
-    .to_scheme_compat(&Scheme::SPARK)
+    .into_scheme_compat(&Scheme::SPARK)
     .unwrap_err()
     .to_string();
     assert!(error.contains("created") && error.contains("got ns"));
@@ -904,17 +904,17 @@ The output is stable across runs; nothing in it iterates a hash map.
         Field("wide", "uint64", nullable=True),
     ])
 
-    spark = source.to_scheme_compat("spark")
+    spark = source.into_scheme_compat("spark")
     assert str(spark["small"].data_type) == "int16"
     assert str(spark["wide"].data_type) == "decimal128(20,0)"
 
-    assert source.to_scheme_compat("arrow") == source
-    assert DataType("uint32").to_scheme_compat("polars") == DataType("uint32")
+    assert source.into_scheme_compat("arrow") == source
+    assert DataType("uint32").into_scheme_compat("polars") == DataType("uint32")
 
     with pytest.raises(ValueError, match="got ns"):
-        DataType("timestamp(ns)").to_scheme_compat("spark")
+        DataType("timestamp(ns)").into_scheme_compat("spark")
     with pytest.raises(ValueError, match="arrow, spark, polars, pandas"):
-        DataType("int32").to_scheme_compat("duckdb")
+        DataType("int32").into_scheme_compat("duckdb")
     ```
 
 === "JavaScript"
@@ -928,16 +928,16 @@ The output is stable across runs; nothing in it iterates a hash map.
       fields.uint64('wide', { nullable: true }),
     ])
 
-    const spark = source.toSchemeCompat('spark')
+    const spark = source.intoSchemeCompat('spark')
     assert.equal(spark.get('small').dataType.toString(), 'int16')
     assert.equal(spark.get('wide').dataType.toString(), 'decimal128(20,0)')
 
-    assert.ok(source.toSchemeCompat('arrow').equals(source))
-    assert.ok(DataType.from('uint32').toSchemeCompat('polars').equals(DataType.from('uint32')))
+    assert.ok(source.intoSchemeCompat('arrow').equals(source))
+    assert.ok(DataType.from('uint32').intoSchemeCompat('polars').equals(DataType.from('uint32')))
 
-    assert.throws(() => DataType.from('timestamp(ns)').toSchemeCompat('spark'), /got ns/)
+    assert.throws(() => DataType.from('timestamp(ns)').intoSchemeCompat('spark'), /got ns/)
     assert.throws(
-      () => DataType.from('int32').toSchemeCompat('duckdb'),
+      () => DataType.from('int32').intoSchemeCompat('duckdb'),
       /arrow, spark, polars, pandas/,
     )
     ```

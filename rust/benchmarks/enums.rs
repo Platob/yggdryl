@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::path::Path;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use yggdryl::{MediaType, MimeType};
+use yggdryl::{IOMode, MediaType, MimeType};
 
 const KNOWN_MIME: &str = "application/vnd.apache.parquet";
 const UPPERCASE_MIME: &str = "APPLICATION/VND.APACHE.PARQUET";
@@ -70,5 +70,28 @@ fn media_inference(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(enums, mime_parsing, media_inference);
+fn write_modes_and_io_identity(criterion: &mut Criterion) {
+    let encoded = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP]).unwrap();
+    let mut group = criterion.benchmark_group("enum_accessors");
+    group.bench_function("mime_is_io", |bencher| {
+        bencher.iter(|| black_box(MimeType::CSV).is_io());
+    });
+    group.bench_function("media_is_io", |bencher| {
+        bencher.iter(|| black_box(&encoded).is_io());
+    });
+    group.bench_function("write_mode_parse", |bencher| {
+        bencher.iter(|| IOMode::from_str(black_box("overwrite")).unwrap());
+    });
+    group.bench_function("write_mode_name", |bencher| {
+        bencher.iter(|| black_box(IOMode::Merge).as_str());
+    });
+    group.finish();
+}
+
+criterion_group!(
+    enums,
+    mime_parsing,
+    media_inference,
+    write_modes_and_io_identity
+);
 criterion_main!(enums);

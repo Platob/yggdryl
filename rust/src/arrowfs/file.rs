@@ -228,6 +228,10 @@ impl IOFile for File {
     }
 }
 
+impl crate::io::IOMedia for File {
+    crate::impl_default_iomedia!();
+}
+
 impl IOBase for File {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let stage = self.stage.lock().map_err(|_| poisoned())?;

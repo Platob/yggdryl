@@ -16,9 +16,21 @@ import gc
 import statistics
 import timeit
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Annotated
 
-from yggdryl import DataType, Field, MediaType, MimeType, fields
+import pyarrow as pa
+
+from yggdryl import (
+    DataType,
+    Field,
+    MediaType,
+    MimeType,
+    scalar,
+    fields,
+    field,
+    json,
+)
 
 WIDE_METADATA = tuple(
     (f"key_{index:04d}", str(index)) for index in range(1_024)
@@ -68,6 +80,38 @@ VARIANT_MEMBERS = (
     Field("integer", "int64", nullable=False),
     Field("text", "utf8", nullable=False),
 )
+PRECISE_PRICE = pa.decimal128(18, 4)
+
+
+@scalar(frozen=True, slots=True)
+class Leg:
+    symbol: str
+    quantity: int
+
+
+@scalar(frozen=True, slots=True)
+class Order:
+    order_id: int
+    active: bool
+    legs: list[Leg]
+    note: str | None = None
+
+
+@scalar(frozen=True, slots=True)
+class VariantValue:
+    value: int | str
+
+
+CLASS_PAYLOAD = {
+    "order_id": "42",
+    "active": "true",
+    "legs": [{"symbol": "ABC", "quantity": "10"}],
+}
+CLASS_PAYLOAD_BYTES = json.dumps(CLASS_PAYLOAD)
+CLASS_VALUE = json.loads(CLASS_PAYLOAD_BYTES, cls=Order)
+VARIANT_PAYLOAD = {"value": "42"}
+VARIANT_PAYLOAD_BYTES = json.dumps(VARIANT_PAYLOAD)
+VARIANT_VALUE = json.loads(VARIANT_PAYLOAD_BYTES, cls=VariantValue)
 
 
 def _construct_wide_metadata() -> Field:
@@ -76,7 +120,7 @@ def _construct_wide_metadata() -> Field:
 
 def _update_wide_metadata() -> Field:
     field = Field("payload", "utf8")
-    field.update(WIDE_UPDATE)
+    field.metadata.update(WIDE_UPDATE)
     return field
 
 
@@ -122,8 +166,40 @@ def _cached_default_hint() -> object:
     return DEFAULT_STRUCT.default_pyhint()
 
 
-def _default_python_record() -> object:
+def _default_python_value() -> object:
     return DEFAULT_STRUCT.default_pyvalue()
+
+
+def _global_field() -> Field:
+    return field(Order)
+
+
+def _renamed_field() -> Field:
+    return field(Order, name="order")
+
+
+def _cold_field_class() -> object:
+    @scalar(frozen=True, slots=True)
+    class Quote:
+        symbol: str
+        bid: float
+        ask: float
+        venues: list[str]
+        comment: str | None = None
+
+    return Quote.field()
+
+
+def _cold_customized_field_class() -> object:
+    @scalar(frozen=True, slots=True)
+    class PreciseQuote:
+        price: Annotated[
+            Decimal,
+            ("arrow_type", PRECISE_PRICE),
+            {"nullable": False, "metadata": {"unit": "EUR"}, "id": 7},
+        ]
+
+    return PreciseQuote.field()
 
 
 def _default_arrow_scalar() -> object:
@@ -131,7 +207,7 @@ def _default_arrow_scalar() -> object:
 
 
 def _spark_compatibility() -> DataType:
-    return DEFAULT_STRUCT.to_scheme_compat("spark")
+    return DEFAULT_STRUCT.into_scheme_compat("spark")
 
 
 # The protocol cases measure the boundary the live view adds: creating one is a
@@ -155,7 +231,7 @@ def _read_through_get_property() -> object:
 
 
 def _read_through_metadata_key() -> object:
-    return PROTOCOL_FIELD["iceberg:doc"]
+    return PROTOCOL_FIELD.metadata["iceberg:doc"]
 
 
 def _protocol_view_items() -> object:
@@ -203,7 +279,54 @@ def main() -> None:
         )
         _measure("wide diff first line", _first_wide_difference, args.iterations)
         _measure("cached default hint", _cached_default_hint, args.iterations)
-        _measure("default Python record", _default_python_record, args.iterations)
+        _measure("default Python value", _default_python_value, args.iterations)
+        _measure(
+            "cached static field",
+            Order.field,
+            args.iterations,
+        )
+        _measure("global field", _global_field, args.iterations)
+        _measure("renamed field", _renamed_field, args.iterations)
+        _measure(
+            "cached class child",
+            lambda: Order.field().data_type["order_id"],
+            args.iterations,
+        )
+        _measure(
+            "shallow codec materialize",
+            lambda: json.loads(CLASS_PAYLOAD_BYTES, cls=Order, safe=False),
+            args.iterations,
+        )
+        _measure(
+            "safe codec materialize",
+            lambda: json.loads(CLASS_PAYLOAD_BYTES, cls=Order),
+            args.iterations,
+        )
+        _measure(
+            "dataclass codec encode",
+            lambda: json.dumps(CLASS_VALUE),
+            args.iterations,
+        )
+        _measure(
+            "variant materialize",
+            lambda: json.loads(VARIANT_PAYLOAD_BYTES, cls=VariantValue),
+            args.iterations,
+        )
+        _measure(
+            "variant encode",
+            lambda: json.dumps(VARIANT_VALUE),
+            args.iterations,
+        )
+        _measure(
+            "cold scalar + field",
+            _cold_field_class,
+            max(1, args.iterations // 100),
+        )
+        _measure(
+            "cold option field",
+            _cold_customized_field_class,
+            max(1, args.iterations // 100),
+        )
         _measure("default Arrow scalar", _default_arrow_scalar, args.iterations)
         _measure("Spark compatibility", _spark_compatibility, args.iterations)
         _measure("protocol view creation", _create_protocol_view, args.iterations)

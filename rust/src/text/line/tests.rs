@@ -1,6 +1,6 @@
 //! The text-line handler, over every terminator form, coding, and container.
 
-use crate::io::{Buffer, IOBase};
+use crate::io::{Buffer, IOBase, IOMedia};
 use crate::text::{LineSep, Strip, TextLineOptions};
 use crate::{Codec, Url};
 
@@ -57,10 +57,46 @@ mod read_lines {
     }
 
     #[test]
-    fn a_gzip_named_resource_streams_its_decoded_lines() {
-        let encoded = crate::gzip::dump(b"alpha\nbeta\ngamma\n").unwrap();
-        let handle = named("words.txt.gz", &encoded);
-        assert_eq!(collect(&handle), ["alpha", "beta", "gamma"]);
+    fn every_named_coding_streams_its_decoded_lines() {
+        for (codec, name) in [
+            (Codec::Gzip, "words.txt.gz"),
+            (Codec::Zlib, "words.txt.zz"),
+            (Codec::Zstd, "words.txt.zst"),
+        ] {
+            let encoded = codec.dump(b"alpha\nbeta\ngamma\n").unwrap();
+            let handle = named(name, &encoded);
+            assert_eq!(collect(&handle), ["alpha", "beta", "gamma"], "{codec}");
+        }
+    }
+
+    #[test]
+    fn a_line_spans_many_source_batches_under_every_coding() {
+        // Xorshift makes this difficult enough to compress that the encoded
+        // source as well as the decoded line crosses the 64-KiB transfer
+        // boundary. No newline byte is generated inside the record.
+        let mut state = 0x7A31_9D42_u32;
+        let long = (0..256 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                (b'!' + (state % 90) as u8) as char
+            })
+            .collect::<String>();
+        let plain = format!("{long}\ntail\n");
+
+        for (codec, name) in [
+            (Codec::Gzip, "large.txt.gz"),
+            (Codec::Zlib, "large.txt.zz"),
+            (Codec::Zstd, "large.txt.zst"),
+        ] {
+            let encoded = codec.dump(plain.as_bytes()).unwrap();
+            assert!(encoded.len() > 64 * 1024, "{codec}");
+            let found = collect(&named(name, &encoded));
+            assert_eq!(found.len(), 2, "{codec}");
+            assert_eq!(found[0], long, "{codec}");
+            assert_eq!(found[1], "tail", "{codec}");
+        }
     }
 
     #[test]
@@ -159,6 +195,197 @@ mod read_lines_matching {
     }
 }
 
+mod dimensions {
+    //! Text dimensions use the borrowed extractor itself, never Arrow rows.
+
+    use super::*;
+
+    #[test]
+    fn raw_row_size_counts_multiline_records_without_arrow_materialization() {
+        let options = TextLineOptions::with_pattern(r"^\d{4}-\d{2}-\d{2}").unwrap();
+        let handle = named(
+            "multiline.log",
+            b"2026-08-22 first\n  continuation\n2026-08-23 second\n  tail\n",
+        );
+
+        assert_eq!(crate::text::line::row_size(&handle, &options).unwrap(), 2);
+        assert_eq!(
+            crate::text::line::row_size(&named("empty.log", b""), &options).unwrap(),
+            0
+        );
+    }
+
+    #[cfg(feature = "arrow")]
+    mod cached {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        use super::*;
+        use crate::{DataType, IOKind, MediaType, MimeType, Result};
+
+        /// A clonable byte leaf used to replace bytes through a second handle
+        /// and to make cache reuse observable without a filesystem race.
+        #[derive(Clone, Debug)]
+        struct Shared {
+            bytes: Arc<Mutex<Vec<u8>>>,
+            media_type: MediaType,
+            reads: Arc<AtomicUsize>,
+        }
+
+        impl Shared {
+            fn new(bytes: &[u8]) -> Self {
+                Self {
+                    bytes: Arc::new(Mutex::new(bytes.to_vec())),
+                    media_type: MimeType::PLAIN_TEXT.into(),
+                    reads: Arc::new(AtomicUsize::new(0)),
+                }
+            }
+
+            fn read_count(&self) -> usize {
+                self.reads.load(Ordering::Relaxed)
+            }
+        }
+
+        impl crate::io::IOMedia for Shared {
+            crate::impl_default_iomedia!();
+        }
+
+        impl IOBase for Shared {
+            fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+                self.reads.fetch_add(1, Ordering::Relaxed);
+                let Ok(offset) = usize::try_from(offset) else {
+                    return Ok(0);
+                };
+                let bytes = self.bytes.lock().unwrap();
+                if offset >= bytes.len() {
+                    return Ok(0);
+                }
+                let count = buffer.len().min(bytes.len() - offset);
+                buffer[..count].copy_from_slice(&bytes[offset..offset + count]);
+                Ok(count)
+            }
+
+            fn pwrite(&mut self, offset: u64, incoming: &[u8]) -> Result<usize> {
+                let offset = usize::try_from(offset).map_err(|_| crate::io::oversized(offset))?;
+                let end = offset
+                    .checked_add(incoming.len())
+                    .ok_or_else(|| crate::io::oversized(u64::MAX))?;
+                let mut bytes = self.bytes.lock().unwrap();
+                let new_len = bytes.len().max(end);
+                bytes.resize(new_len, 0);
+                bytes[offset..end].copy_from_slice(incoming);
+                Ok(incoming.len())
+            }
+
+            fn size(&self) -> u64 {
+                self.bytes.lock().unwrap().len() as u64
+            }
+
+            fn capacity(&self) -> u64 {
+                self.bytes.lock().unwrap().capacity() as u64
+            }
+
+            fn reserve(&mut self, capacity: u64) -> Result<()> {
+                let capacity =
+                    usize::try_from(capacity).map_err(|_| crate::io::oversized(capacity))?;
+                let mut bytes = self.bytes.lock().unwrap();
+                if capacity > bytes.capacity() {
+                    let additional = capacity.saturating_sub(bytes.len());
+                    bytes.reserve_exact(additional);
+                }
+                Ok(())
+            }
+
+            fn truncate(&mut self, size: u64) -> Result<()> {
+                let size = usize::try_from(size).map_err(|_| crate::io::oversized(size))?;
+                self.bytes.lock().unwrap().resize(size, 0);
+                Ok(())
+            }
+
+            fn url(&self) -> Option<&Url> {
+                None
+            }
+
+            fn media_type(&self) -> &MediaType {
+                &self.media_type
+            }
+
+            fn set_media_type(&mut self, media_type: MediaType) {
+                self.media_type = media_type;
+            }
+
+            fn kind(&self) -> IOKind {
+                IOKind::Memory
+            }
+        }
+
+        #[test]
+        fn opened_empty_and_nonempty_counts_are_cached_but_close_restores_freshness() {
+            let empty = Shared::new(b"");
+            let empty_probe = empty.clone();
+            let mut text = crate::text::Text::new(empty);
+            text.open().unwrap();
+            assert!(text.opened());
+            assert_eq!(text.row_size().unwrap(), 0);
+            let reads = empty_probe.read_count();
+            assert!(reads > 0);
+            assert_eq!(text.row_size().unwrap(), 0);
+            assert_eq!(empty_probe.read_count(), reads);
+
+            let source = Shared::new(b"one\ntwo\n");
+            let mut replacement = source.clone();
+            let mut text = crate::text::Text::new(source);
+            assert_eq!(text.row_size().unwrap(), 2);
+            replacement.write_all_bytes(b"one\ntwo\nthree\n").unwrap();
+            assert_eq!(text.row_size().unwrap(), 3);
+
+            text.open().unwrap();
+            assert_eq!(text.row_size().unwrap(), 3);
+            replacement.write_all_bytes(b"replacement\n").unwrap();
+            assert_eq!(text.row_size().unwrap(), 3);
+            text.close().unwrap();
+            assert_eq!(text.row_size().unwrap(), 1);
+        }
+
+        #[test]
+        fn writes_extractors_and_fields_invalidate_opened_dimensions() {
+            let bytes = b"2026-08-22 10:00:00 first\n  continuation\n\
+                2026-08-23 10:00:00 second\n";
+            let mut text = crate::text::Text::new(Shared::new(bytes));
+            text.open().unwrap();
+            assert_eq!(text.row_size().unwrap(), 3);
+            assert_eq!(text.column_size().unwrap(), 10);
+
+            text.set_options(TextLineOptions::for_logs());
+            assert!(text.opened());
+            assert_eq!(text.row_size().unwrap(), 2);
+            assert_eq!(text.column_size().unwrap(), 13);
+
+            let field = DataType::from_fields([
+                DataType::Utf8.required_field("message"),
+                DataType::Int64.required_field("sequence"),
+            ])
+            .unwrap()
+            .required_field("row");
+            text.set_field(field);
+            assert!(text.opened());
+            assert_eq!(text.column_size().unwrap(), 2);
+
+            text.write_lines(["2026-08-24 10:00:00 one", "2026-08-25 10:00:00 two"])
+                .unwrap();
+            assert!(text.opened());
+            assert_eq!(text.row_size().unwrap(), 2);
+            text.append_lines(["2026-08-26 10:00:00 three"]).unwrap();
+            assert_eq!(text.row_size().unwrap(), 3);
+            text.write_all_bytes(b"2026-08-27 10:00:00 only\n").unwrap();
+            assert_eq!(text.row_size().unwrap(), 1);
+            text.clear().unwrap();
+            assert!(text.opened());
+            assert_eq!(text.row_size().unwrap(), 0);
+        }
+    }
+}
+
 #[cfg(feature = "arrow")]
 mod arrow_lines {
     //! The Arrow projection of matched line records: a text-line surface,
@@ -166,7 +393,7 @@ mod arrow_lines {
 
     use super::*;
 
-    use crate::{Scheme, Value};
+    use crate::{Scalar, Scheme};
     use arrow_array::{
         Date32Array, Int32Array, Int64Array, RecordBatch, StringArray, Time64MicrosecondArray,
     };
@@ -454,7 +681,7 @@ mod arrow_lines {
             path
         };
         let options = options();
-        let expected = crate::arrow::schema_from_field(options.schema()).unwrap();
+        let expected = crate::arrow::arrow_schema_from_field(options.field()).unwrap();
 
         for (name, reader) in [
             (
@@ -496,8 +723,8 @@ mod arrow_lines {
     fn custom_constants_append_typed_columns_to_every_row() {
         let options = options()
             .try_with_custom_fields([
-                ("venue", Value::from("XNAS")),
-                ("session", Value::from(7_i64)),
+                ("venue", Scalar::from("XNAS")),
+                ("session", Scalar::from(7_i64)),
             ])
             .unwrap();
         let batch = &batches(named("app.log", LOG).read_arrow_lines(&options).unwrap())[0];
@@ -521,7 +748,7 @@ mod arrow_lines {
 
         // A custom column shadowing a capture, case-insensitively.
         let error = options()
-            .try_with_custom_fields([("LEVEL", Value::from("x"))])
+            .try_with_custom_fields([("LEVEL", Scalar::from("x"))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("capture group"), "{error}");
@@ -529,7 +756,7 @@ mod arrow_lines {
         // A datatype the strict Iceberg codec cannot spell is refused with
         // the codec's own words, before any resource is read.
         let error = options()
-            .try_with_custom_fields([("count", Value::from(1_u64))])
+            .try_with_custom_fields([("count", Scalar::from(1_u64))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("Iceberg can express"), "{error}");
@@ -545,7 +772,7 @@ mod arrow_lines {
         // A negative decimal scale has no Iceberg spelling; the codec's own
         // rejection lands here, not after the table metadata is committed.
         let error = options()
-            .try_with_custom_fields([("px", Value::decimal(5, -2))])
+            .try_with_custom_fields([("px", Scalar::d128(5, -2))])
             .unwrap_err()
             .to_string();
         assert!(error.contains("decimal(1, -2)"), "{error}");
@@ -556,8 +783,11 @@ mod arrow_lines {
         // column they cannot legally declare must fail before the first
         // batch.
         for (name, value) in [
-            ("note", Value::Null),
-            ("stamp", Value::datetime(0, crate::TimeUnit::Nanosecond)),
+            ("note", Scalar::Null),
+            (
+                "stamp",
+                Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::NAIVE).unwrap(),
+            ),
         ] {
             let error = options()
                 .try_with_custom_fields([(name, value)])
@@ -569,11 +799,11 @@ mod arrow_lines {
         // Failure leaves the options unchanged.
         let mut kept = options();
         assert!(
-            kept.set_custom_fields(vec![("hash".into(), Value::from("x"))])
+            kept.set_custom_fields(vec![("hash".into(), Scalar::from("x"))])
                 .is_err()
         );
         assert!(kept.custom_fields().is_empty());
-        assert_eq!(kept.schema().field_len(), 12);
+        assert_eq!(kept.field().field_len(), 12);
     }
 
     #[test]
@@ -633,7 +863,7 @@ mod arrow_lines {
             r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] \((?<log_level>\w+)\) qty=(?<qty>\d+\.\d+)",
         )
         .unwrap();
-        let schema = options.schema();
+        let schema = options.field();
         assert_eq!(
             schema.get_field_by_name("thread_id").unwrap().data_type(),
             &crate::DataType::Int64
@@ -685,7 +915,7 @@ mod arrow_lines {
             ("reference", crate::DataType::Utf8),
         ])
         .unwrap();
-        let schema = options.schema();
+        let schema = options.field();
         assert_eq!(
             schema.get_field_by_name("price").unwrap().data_type(),
             &crate::DataType::decimal(9, 2).unwrap()
@@ -761,34 +991,34 @@ mod arrow_lines {
         );
         assert!(kept.capture_types().is_empty());
         assert_eq!(
-            kept.schema()
-                .get_field_by_name("level")
-                .unwrap()
-                .data_type(),
+            kept.field().get_field_by_name("level").unwrap().data_type(),
             &crate::DataType::Utf8
         );
     }
 
     #[test]
-    fn the_schema_builder_answers_without_a_reader_and_the_reader_emits_it() {
-        // The standalone builder is the reader's own schema, so a table
+    fn the_field_builder_answers_without_a_reader_and_the_reader_emits_it() {
+        // The options value owns the reader's field, so a table
         // created from one is exactly what the parse appends.
         let pattern =
             r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\] (?<log_level>\w+)";
-        let standalone = crate::text::schema_from_pattern(pattern).unwrap();
         let options = TextLineOptions::with_pattern(pattern).unwrap();
-        assert_eq!(&standalone, options.schema());
-        assert_eq!(standalone, options.clone().into_schema());
+        let standalone = options.clone().into_field();
+        assert_eq!(&standalone, options.field());
+        assert_eq!(standalone, options.clone().into_field());
 
         let handle = named("built.log", b"2024-02-01 10:00:00 [7] info ok\n");
         let reader = handle.read_arrow_lines(&options).unwrap();
         assert_eq!(
             reader.schema(),
-            crate::arrow::schema_from_field(&standalone).unwrap()
+            crate::arrow::arrow_schema_from_field(&standalone).unwrap()
         );
         // The typed schema maps to Iceberg unchanged, like every emitted one.
         assert_eq!(
-            &standalone.to_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            &standalone
+                .clone()
+                .into_scheme_compat(&Scheme::ICEBERG)
+                .unwrap(),
             &standalone
         );
     }
@@ -833,15 +1063,18 @@ mod arrow_lines {
     fn the_emitted_schema_maps_to_iceberg_unchanged() {
         let options = options()
             .try_with_custom_fields([
-                ("venue", Value::from("XNAS")),
-                ("session", Value::from(7_i64)),
-                ("day", Value::date(19_754)),
+                ("venue", Scalar::from("XNAS")),
+                ("session", Scalar::from(7_i64)),
+                ("day", Scalar::date32(19_754)),
             ])
             .unwrap();
-        let schema = options.schema();
+        let schema = options.field();
         // The Iceberg compatibility target maps the whole root without error
         // or change: every column is already a type the format spells.
-        assert_eq!(&schema.to_scheme_compat(&Scheme::ICEBERG).unwrap(), schema);
+        assert_eq!(
+            &schema.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            schema
+        );
 
         #[cfg(feature = "iceberg")]
         for field in schema.fields() {
@@ -1441,14 +1674,14 @@ mod log_mode {
 
     #[test]
     fn the_schema_is_static_and_answered_without_a_resource() {
-        let schema = options().schema().clone();
+        let schema = options().field().clone();
         // The recognized columns are a fixed, always-emitted, nullable set -
         // never discovered from what the first batch happened to contain.
         assert!(schema["level"].is_nullable());
         assert!(schema["logger"].is_nullable());
         assert!(schema["thread"].is_nullable());
         // And the same schema comes back with no resource in sight.
-        assert_eq!(TextLineOptions::for_logs().schema(), &schema);
+        assert_eq!(TextLineOptions::for_logs().field(), &schema);
     }
 
     #[test]
@@ -1490,7 +1723,7 @@ mod log_mode {
         // log mode is a deliberate choice, not something a caller falls into.
         options.set_pattern(None).unwrap();
         assert!(!options.is_log_mode());
-        assert!(options.schema().get_field_by_name("level").is_none());
+        assert!(options.field().get_field_by_name("level").is_none());
     }
 }
 
@@ -1901,7 +2134,7 @@ mod configuration {
     //! A reader is fully specifiable from a document: no code anywhere.
 
     use super::*;
-    use crate::generic::Value;
+    use crate::generic::Scalar;
 
     #[test]
     fn a_yaml_document_defines_a_whole_reader() {
@@ -1920,7 +2153,7 @@ capture_types:
 custom_fields:
   source: gateway
 "#;
-        let value = crate::yaml::from_str(document).unwrap();
+        let value = crate::yaml::from_utf8(document).unwrap();
         let options = TextLineOptions::from_value(value).unwrap();
 
         assert_eq!(options.linesep(), Some(&LineSep::CRLF));
@@ -1939,7 +2172,7 @@ custom_fields:
         );
         // The schema follows, with no resource in sight.
         assert_eq!(
-            options.schema()["source"].data_type(),
+            options.field()["source"].data_type(),
             &crate::DataType::Utf8
         );
     }
@@ -1950,28 +2183,28 @@ custom_fields:
             .unwrap()
             .with_byte_size(1 << 20)
             .with_lstrip(Strip::None);
-        let value = options.to_value();
+        let value = options.into_value();
 
         for format in [
             crate::text::Format::Json,
             crate::text::Format::Yaml,
             crate::text::Format::Toml,
         ] {
-            let bytes = crate::text::to_vec(&value, format).unwrap();
-            let read = crate::text::from_slice(&bytes, format).unwrap();
+            let bytes = crate::text::into_bytes(&value, format).unwrap();
+            let read = crate::text::from_bytes(&bytes, format).unwrap();
             let restored = TextLineOptions::from_value(read).unwrap();
             assert_eq!(restored.pattern(), options.pattern(), "{format:?}");
             assert_eq!(restored.byte_size(), options.byte_size(), "{format:?}");
-            assert_eq!(restored.schema(), options.schema(), "{format:?}");
+            assert_eq!(restored.field(), options.field(), "{format:?}");
         }
     }
 
     #[test]
     fn only_what_is_set_is_emitted_so_a_default_round_trips_clean() {
-        let value = TextLineOptions::new().to_value();
+        let value = TextLineOptions::new().into_value();
         assert_eq!(value.as_mapping().map(<[_]>::len), Some(0));
         let restored = TextLineOptions::from_value(value).unwrap();
-        assert_eq!(restored.schema(), TextLineOptions::new().schema());
+        assert_eq!(restored.field(), TextLineOptions::new().field());
     }
 
     #[test]
@@ -1991,10 +2224,10 @@ custom_fields:
             .unwrap()
             .try_with_capture_types([("qty", crate::DataType::Int64)])
             .unwrap()
-            .try_with_custom_fields([("venue", Value::String("XPAR".into()))])
+            .try_with_custom_fields([("venue", Scalar::String("XPAR".into()))])
             .unwrap();
 
-        let restored = TextLineOptions::from_value(options.to_value()).unwrap();
+        let restored = TextLineOptions::from_value(options.into_value()).unwrap();
         assert_eq!(restored.pattern(), options.pattern());
         assert_eq!(restored.header(), options.header());
         assert_eq!(restored.linesep(), options.linesep());
@@ -2004,16 +2237,48 @@ custom_fields:
         assert_eq!(restored.timezone(), options.timezone());
         assert_eq!(restored.capture_types(), options.capture_types());
         assert_eq!(restored.custom_fields(), options.custom_fields());
-        assert_eq!(restored.schema(), options.schema());
+        assert_eq!(restored.field(), options.field());
         // And dumping again is byte-identical.
-        assert_eq!(restored.to_value(), options.to_value());
+        assert_eq!(restored.into_value(), options.into_value());
+    }
+
+    #[test]
+    fn declared_options_have_complete_stable_value_identity() {
+        fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
+
+        let options = TextLineOptions::with_pattern(r"^(?<stamp>\S+) (?<qty>\d+)")
+            .unwrap()
+            .try_with_header(r"^(?<stamp2>\S+)")
+            .unwrap()
+            .with_linesep(LineSep::CRLF)
+            .with_lstrip(Strip::None)
+            .with_byte_size(4_096)
+            .try_with_capture_types([("qty", crate::DataType::Int64)])
+            .unwrap()
+            .try_with_custom_fields([("venue", Scalar::String("XPAR".into()))])
+            .unwrap();
+        let restored = TextLineOptions::from_value(options.into_value()).unwrap();
+
+        assert_traits(&options);
+        assert_traits(options.opening());
+        assert_eq!(options, restored);
+        assert_eq!(options.cmp(&restored), std::cmp::Ordering::Equal);
+        assert_eq!(options.stable_hash(), restored.stable_hash());
+        assert_eq!(
+            options.opening().stable_hash(),
+            restored.opening().stable_hash()
+        );
+
+        let changed = restored.with_batch_size(7);
+        assert_ne!(options, changed);
+        assert_ne!(options.stable_hash(), changed.stable_hash());
     }
 
     #[test]
     fn log_mode_round_trips_as_an_explicit_opening() {
-        let value = TextLineOptions::for_logs().to_value();
+        let value = TextLineOptions::for_logs().into_value();
         assert_eq!(
-            value.get_key_str("opening").and_then(Value::as_str),
+            value.get_key_str("opening").and_then(Scalar::as_str),
             Some("timestamp")
         );
         assert!(TextLineOptions::from_value(value).unwrap().is_log_mode());
@@ -2022,32 +2287,32 @@ custom_fields:
     #[test]
     fn an_unknown_key_and_a_bad_value_are_refused_naming_the_option() {
         let unknown =
-            Value::from_mapping([(Value::String("batch-size".into()), Value::U64(10))]).unwrap();
+            Scalar::from_mapping([(Scalar::String("batch-size".into()), Scalar::U64(10))]).unwrap();
         let refused = TextLineOptions::from_value(unknown)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("batch-size"), "{refused}");
         assert!(refused.contains("a known option"), "{refused}");
 
-        let wrong = Value::from_mapping([(
-            Value::String("byte_size".into()),
-            Value::String("lots".into()),
+        let wrong = Scalar::from_mapping([(
+            Scalar::String("byte_size".into()),
+            Scalar::String("lots".into()),
         )])
         .unwrap();
         let refused = TextLineOptions::from_value(wrong).unwrap_err().to_string();
         assert!(refused.contains("byte_size"), "{refused}");
         assert!(refused.contains("a count"), "{refused}");
 
-        let bad_capture = Value::from_mapping([
+        let bad_capture = Scalar::from_mapping([
             (
-                Value::String("pattern".into()),
-                Value::String(r"^\[".into()),
+                Scalar::String("pattern".into()),
+                Scalar::String(r"^\[".into()),
             ),
             (
-                Value::String("capture_types".into()),
-                Value::from_mapping([(
-                    Value::String("absent".into()),
-                    Value::String("int64".into()),
+                Scalar::String("capture_types".into()),
+                Scalar::from_mapping([(
+                    Scalar::String("absent".into()),
+                    Scalar::String("int64".into()),
                 )])
                 .unwrap(),
             ),
@@ -2065,11 +2330,24 @@ mod record_surface {
     //! Text is a record encoding: the three record methods route through the
     //! line projection, with no options in sight.
 
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
     use crate::generic::{IORecordOptions, RecordOptions};
 
     fn rows(reader: crate::arrow::BatchReader) -> Vec<arrow_array::RecordBatch> {
         reader.collect::<Result<_, _>>().unwrap()
+    }
+
+    fn counted_reader(pulls: Arc<AtomicUsize>) -> crate::arrow::BatchReader {
+        let column: arrow_array::ArrayRef = Arc::new(arrow_array::StringArray::from(vec!["one"]));
+        let batch = arrow_array::RecordBatch::try_from_iter([("message", column)]).unwrap();
+        let schema = batch.schema();
+        let batches = std::iter::once(batch).inspect(move |_| {
+            pulls.fetch_add(1, Ordering::Relaxed);
+        });
+        crate::arrow::batch_reader(schema, batches)
     }
 
     #[test]
@@ -2081,10 +2359,54 @@ mod record_surface {
     }
 
     #[test]
+    fn the_text_wrapper_owns_options_over_an_unnamed_buffer() {
+        let text = crate::text::Text::new(crate::io::Buffer::new());
+        assert!(matches!(
+            text.record_options().unwrap(),
+            RecordOptions::Text(_)
+        ));
+    }
+
+    #[test]
+    fn mismatched_options_are_rejected_before_any_text_write_pulls_input() {
+        for operation in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut text = crate::text::Text::new(crate::io::Buffer::new());
+            let mut options = RecordOptions::Ipc(crate::ipc::IpcOptions::new());
+            if operation == "merge" {
+                options.set_merge_by_names(vec!["message".into()]);
+            }
+            let result = match operation {
+                "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+                    &mut text,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                "append" => crate::io::IOMedia::append_arrow_reader(
+                    &mut text,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                "merge" => crate::io::IOMedia::merge_arrow_reader(
+                    &mut text,
+                    counted_reader(Arc::clone(&pulls)),
+                    &options,
+                ),
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("text"), "{operation}: {message}");
+            assert_eq!(pulls.load(Ordering::Relaxed), 0, "{operation}");
+            assert!(text.handle().is_empty(), "{operation}");
+        }
+    }
+
+    #[test]
     fn the_record_read_is_the_line_projection() {
         let handle = named("app.log", b"first\nsecond\n");
         let options = handle.record_options().unwrap();
-        let batches = rows(handle.read_arrow_batch_reader(&options).unwrap());
+        let batches = rows(handle.read_arrow_reader(&options).unwrap());
         assert_eq!(
             batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
             2
@@ -2104,7 +2426,7 @@ mod record_surface {
         let handle = named("app.log", b"2024-02-01 10:00:00 [ee] [engine] boom\n")
             .into_text_with(TextLineOptions::for_logs());
         let options = handle.record_options().unwrap();
-        let batches = rows(handle.read_arrow_batch_reader(&options).unwrap());
+        let batches = rows(handle.read_arrow_reader(&options).unwrap());
         let levels = batches[0]
             .column_by_name("level")
             .unwrap()
@@ -2119,15 +2441,15 @@ mod record_surface {
     fn a_write_renders_rows_as_lines_and_an_append_adds_after_them() {
         let read = named("in.log", b"alpha\nbeta\n");
         let mut target = named("out.log", b"");
-        let options = read.record_options().unwrap();
+        let options = read.record_options().unwrap().with_commit_row_size(1);
 
-        let batches = read.read_arrow_batch_reader(&options).unwrap();
-        target.write_arrow_batch_reader(batches, &options).unwrap();
+        let batches = read.read_arrow_reader(&options).unwrap();
+        target.overwrite_arrow_reader(batches, &options).unwrap();
         assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\n");
 
         let more = named("more.log", b"gamma\n");
-        let batches = more.read_arrow_batch_reader(&options).unwrap();
-        target.append_arrow_batch_reader(batches, &options).unwrap();
+        let batches = more.read_arrow_reader(&options).unwrap();
+        target.append_arrow_reader(batches, &options).unwrap();
         assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\ngamma\n");
     }
 
@@ -2137,8 +2459,8 @@ mod record_surface {
         let read = named("in.log", line).into_text_with(TextLineOptions::for_logs());
         let mut target = named("out.log", b"");
         let options = read.record_options().unwrap();
-        let batches = read.read_arrow_batch_reader(&options).unwrap();
-        target.write_arrow_batch_reader(batches, &options).unwrap();
+        let batches = read.read_arrow_reader(&options).unwrap();
+        target.overwrite_arrow_reader(batches, &options).unwrap();
         // The header opens the line and the message keeps its interior
         // newline, so the multi-line record round-trips.
         assert_eq!(
@@ -2157,7 +2479,7 @@ mod record_surface {
 
         let mut target = named("out.log", b"");
         let options = target.record_options().unwrap();
-        target.write_arrow_batch_reader(reader, &options).unwrap();
+        target.overwrite_arrow_reader(reader, &options).unwrap();
         assert_eq!(target.read_all_bytes().unwrap(), b"one\ntwo\n");
     }
 
@@ -2167,11 +2489,11 @@ mod record_surface {
         let mut target = named("out.log.gz", b"");
         let options = read.record_options().unwrap();
 
-        let batches = read.read_arrow_batch_reader(&options).unwrap();
-        target.write_arrow_batch_reader(batches, &options).unwrap();
+        let batches = read.read_arrow_reader(&options).unwrap();
+        target.overwrite_arrow_reader(batches, &options).unwrap();
         let more = named("more.log", b"gamma\n");
-        let batches = more.read_arrow_batch_reader(&options).unwrap();
-        target.append_arrow_batch_reader(batches, &options).unwrap();
+        let batches = more.read_arrow_reader(&options).unwrap();
+        target.append_arrow_reader(batches, &options).unwrap();
 
         let stored = target.read_all_bytes().unwrap();
         assert_eq!(
@@ -2179,7 +2501,7 @@ mod record_surface {
             b"alpha\nbeta\ngamma\n"
         );
         // Reading back through the record surface sees three rows.
-        let batches = rows(target.read_arrow_batch_reader(&options).unwrap());
+        let batches = rows(target.read_arrow_reader(&options).unwrap());
         assert_eq!(
             batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
             3
@@ -2192,8 +2514,8 @@ mod record_surface {
         let mut target = named("out.log", b"alpha\n");
         let mut options = read.record_options().unwrap();
         options.set_merge_by_names(vec!["message".into()]);
-        let batches = read.read_arrow_batch_reader(&options).unwrap();
-        let refused = target.write_arrow_batch_reader(batches, &options);
+        let batches = read.read_arrow_reader(&options).unwrap();
+        let refused = target.merge_arrow_reader(batches, &options);
         assert!(refused.unwrap_err().to_string().contains("row identity"));
     }
 
@@ -2202,8 +2524,8 @@ mod record_surface {
         let read = named("in.log", b"beta\n");
         let mut target = named("out.log", b"alpha");
         let options = read.record_options().unwrap();
-        let batches = read.read_arrow_batch_reader(&options).unwrap();
-        target.append_arrow_batch_reader(batches, &options).unwrap();
+        let batches = read.read_arrow_reader(&options).unwrap();
+        target.append_arrow_reader(batches, &options).unwrap();
         // Never "alphabeta": the stored line is closed before the new row.
         assert_eq!(target.read_all_bytes().unwrap(), b"alpha\nbeta\n");
     }
@@ -2220,7 +2542,7 @@ mod record_surface {
         let schema = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
             .unwrap()
             .required_field("row");
-        let arrow_schema = crate::arrow::schema_from_field(&schema).unwrap();
+        let arrow_schema = crate::arrow::arrow_schema_from_field(&schema).unwrap();
         let batch = arrow_array::RecordBatch::try_new(
             std::sync::Arc::clone(&arrow_schema),
             vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![
@@ -2230,7 +2552,7 @@ mod record_surface {
         .unwrap();
         let reader = crate::arrow::batch_reader(arrow_schema, [batch]);
         let ipc = RecordOptions::Ipc(crate::ipc::IpcOptions::new());
-        leaf.write_arrow_batch_reader(reader, &ipc).unwrap();
+        leaf.overwrite_arrow_reader(reader, &ipc).unwrap();
 
         let folder = crate::local::Folder::new(&root).unwrap();
         let options = folder.record_options().unwrap();
@@ -2260,7 +2582,7 @@ mod record_surface {
         let view = crate::gzip::Gzip::new(inner);
         let options = view.record_options().unwrap();
         assert!(matches!(options, RecordOptions::Text(_)));
-        let batches = rows(view.read_arrow_batch_reader(&options).unwrap());
+        let batches = rows(view.read_arrow_reader(&options).unwrap());
         assert_eq!(
             batches.iter().map(|batch| batch.num_rows()).sum::<usize>(),
             2
@@ -2296,7 +2618,7 @@ mod record_surface {
         assert!(matches!(text, crate::generic::Holder::Text(_)));
         let options = text.record_options().unwrap();
         let batches: Vec<_> = text
-            .read_arrow_batch_reader(&options)
+            .read_arrow_reader(&options)
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
@@ -2306,11 +2628,12 @@ mod record_surface {
     #[test]
     fn a_media_binds_text_from_the_media_type() {
         let holder = crate::generic::Holder::buffer(named("app.log", b"first\nsecond\n"));
-        let mut media = crate::generic::Media::open(holder).unwrap();
+        let media = crate::generic::Media::open(holder).unwrap();
         assert!(matches!(media, crate::generic::Media::Text(_)));
-        assert_eq!(media.schema().unwrap().name(), "row");
+        let options = media.record_options().unwrap();
+        assert_eq!(media.read_arrow_field(&options).unwrap().name(), "row");
         let read: usize = media
-            .read_batch_reader(None)
+            .read_arrow_reader(&options)
             .unwrap()
             .map(|batch| batch.map(|batch| batch.num_rows()))
             .sum::<Result<_, _>>()

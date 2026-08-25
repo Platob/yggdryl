@@ -1,4 +1,4 @@
-//! YAML value encoding, machine-readable tags, comments, and document streams.
+//! Natural YAML values, comments, and document streams.
 
 use std::io::{Read, Write};
 
@@ -7,8 +7,10 @@ use base64::Engine as _;
 mod parser;
 
 use crate::text::wire::{RawValue, from_raw};
-use crate::text::{Formatting, Limits, Value, ValueIter, check_encode_depth, check_input_size};
-use crate::{Error, Result};
+use crate::text::{
+    Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
+};
+use crate::{Error, Field, Result};
 
 use self::parser::YamlParser;
 
@@ -29,33 +31,61 @@ pub const MAX_PARSER_DEPTH: usize = 384;
 /// This delegates through the string's borrowed bytes without an intermediate
 /// UTF-8/byte input buffer. The returned owned value still allocates or shares
 /// storage for strings and collections.
-pub fn from_str(input: &str) -> Result<Value> {
-    from_str_with_limits(input, Limits::default())
+pub fn from_utf8(input: &str) -> Result<Scalar> {
+    from_utf8_with_limits(input, Limits::default())
 }
 
 /// Decode exactly one YAML document from borrowed UTF-8 text with explicit limits.
-pub fn from_str_with_limits(input: &str, limits: Limits) -> Result<Value> {
-    from_slice_with_limits(input.as_bytes(), limits)
+pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar> {
+    from_bytes_with_limits(input.as_bytes(), limits)
 }
 
 /// Decode exactly one YAML document from bytes.
-pub fn from_slice(input: &[u8]) -> Result<Value> {
-    from_slice_with_limits(input, Limits::default())
+pub fn from_bytes(input: &[u8]) -> Result<Scalar> {
+    from_bytes_with_limits(input, Limits::default())
 }
 
 /// Decode exactly one YAML document from bytes with explicit limits.
-pub fn from_slice_with_limits(input: &[u8], limits: Limits) -> Result<Value> {
+pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar> {
     check_input_size(input, limits, "yaml")?;
     from_reader_with_limits(std::io::Cursor::new(input), limits)
 }
 
+/// Decode YAML UTF-8 under `field`.
+pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar> {
+    from_utf8_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed YAML UTF-8 with limits.
+pub fn from_utf8_with_field_and_limits(
+    input: &str,
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    from_bytes_with_field_and_limits(input.as_bytes(), field, limits)
+}
+
+/// Decode YAML bytes under `field`.
+pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar> {
+    from_bytes_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode schema-directed YAML bytes with limits.
+pub fn from_bytes_with_field_and_limits(
+    input: &[u8],
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    field.from_natural_value(from_bytes_with_limits(input, limits)?)
+}
+
 /// Decode exactly one YAML document from a streaming reader.
-pub fn from_reader<R: Read>(reader: R) -> Result<Value> {
+pub fn from_reader<R: Read>(reader: R) -> Result<Scalar> {
     from_reader_with_limits(reader, Limits::default())
 }
 
 /// Decode exactly one YAML document from a streaming reader with explicit limits.
-pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Value> {
+pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar> {
     let mut reader = Reader::with_limits(reader, limits);
     let value = reader.next().transpose()?.ok_or_else(|| Error::Codec {
         format: "yaml",
@@ -73,39 +103,95 @@ pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Val
     Ok(value)
 }
 
+/// Decode YAML from a reader under `field`.
+pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar> {
+    from_reader_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Decode schema-directed YAML from a reader with limits.
+pub fn from_reader_with_field_and_limits<R: Read>(
+    reader: R,
+    field: &Field,
+    limits: Limits,
+) -> Result<Scalar> {
+    field.from_natural_value(from_reader_with_limits(reader, limits)?)
+}
+
 /// Decode every YAML document from bytes.
-pub fn from_slice_all(input: &[u8]) -> Result<Vec<Value>> {
-    from_slice_all_with_limits(input, Limits::default())
+pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_limits(input, Limits::default())
 }
 
 /// Decode every YAML document from borrowed UTF-8 text.
-pub fn from_str_all(input: &str) -> Result<Vec<Value>> {
-    from_str_all_with_limits(input, Limits::default())
+pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>> {
+    from_utf8_all_with_limits(input, Limits::default())
 }
 
 /// Decode every YAML document from borrowed UTF-8 text with explicit limits.
-pub fn from_str_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Value>> {
-    from_slice_all_with_limits(input.as_bytes(), limits)
+pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_limits(input.as_bytes(), limits)
 }
 
 /// Decode every YAML document from bytes with explicit limits.
-pub fn from_slice_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Value>> {
+pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>> {
     check_input_size(input, limits, "yaml")?;
     Reader::with_limits(std::io::Cursor::new(input), limits).collect()
 }
 
+/// Decode every YAML document from UTF-8 under `field`.
+pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>> {
+    from_utf8_all_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode every schema-directed YAML document from UTF-8 with limits.
+pub fn from_utf8_all_with_field_and_limits(
+    input: &str,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_field_and_limits(input.as_bytes(), field, limits)
+}
+
+/// Decode every YAML document from bytes under `field`.
+pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>> {
+    from_bytes_all_with_field_and_limits(input, field, Limits::default())
+}
+
+/// Decode every schema-directed YAML document from bytes with limits.
+pub fn from_bytes_all_with_field_and_limits(
+    input: &[u8],
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    apply_field(from_bytes_all_with_limits(input, limits)?, field)
+}
+
 /// Decode every YAML document from a reader.
-pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Value>> {
+pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>> {
     Reader::new(reader).collect()
 }
 
 /// Decode every YAML document from a reader with explicit limits.
-pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Value>> {
+pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>> {
     Reader::with_limits(reader, limits).collect()
 }
 
+/// Decode every YAML document from a reader under `field`.
+pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>> {
+    from_reader_all_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Decode every schema-directed YAML document from a reader with limits.
+pub fn from_reader_all_with_field_and_limits<R: Read>(
+    reader: R,
+    field: &Field,
+    limits: Limits,
+) -> Result<Vec<Scalar>> {
+    apply_field(from_reader_all_with_limits(reader, limits)?, field)
+}
+
 /// Lazily decode YAML documents from a borrowed reader.
-pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
+pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a> {
     from_reader_iter_with_limits(reader, Limits::default())
 }
 
@@ -113,8 +199,25 @@ pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ValueIter<'a> {
 pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     reader: &'a mut R,
     limits: Limits,
-) -> ValueIter<'a> {
-    ValueIter::new(Reader::with_limits(reader, limits))
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits))
+}
+
+/// Lazily decode YAML documents from a reader under `field`.
+pub fn from_reader_iter_with_field<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    field: &'a Field,
+) -> ScalarIter<'a> {
+    from_reader_iter_with_field_and_limits(reader, field, Limits::default())
+}
+
+/// Lazily decode schema-directed YAML documents with limits.
+pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
+    reader: &'a mut R,
+    field: &'a Field,
+    limits: Limits,
+) -> ScalarIter<'a> {
+    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field)
 }
 
 /// An owning, lazy iterator over YAML documents.
@@ -150,7 +253,7 @@ impl<'a> Reader<'a> {
 }
 
 impl Iterator for Reader<'_> {
-    type Item = Result<Value>;
+    type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.failed {
@@ -166,8 +269,8 @@ impl Iterator for Reader<'_> {
 }
 
 /// Encode one value to YAML bytes.
-pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
-    to_vec_with_formatting(value, Formatting::default())
+pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
+    into_bytes_with_formatting(value, Formatting::default())
 }
 
 /// Encode one value to YAML bytes laid out as `formatting` asks.
@@ -180,17 +283,17 @@ pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
 /// style is the default precisely so nobody has to ask for it.
 ///
 /// ```
-/// use yggdryl::generic::Value;
+/// use yggdryl::generic::Scalar;
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let value = Value::from_mapping([(Value::String("id".into()), Value::I64(1))])?;
-/// assert_eq!(yggdryl::yaml::to_vec(&value)?, b"id: 1\n");
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// assert_eq!(yggdryl::yaml::into_bytes(&value)?, b"id: 1\n");
 ///
-/// let flow = yggdryl::yaml::to_vec_with_formatting(&value, Formatting::compact())?;
+/// let flow = yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact())?;
 /// assert_eq!(flow, b"{id: 1}\n");
 /// // Formatting changes bytes, never meaning.
-/// assert_eq!(yggdryl::yaml::from_str("{id: 1}")?, value);
+/// assert_eq!(yggdryl::yaml::from_utf8("{id: 1}")?, value);
 /// # Ok(())
 /// # }
 /// ```
@@ -198,32 +301,31 @@ pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns the encoder's failure, including the published depth cap.
-pub fn to_vec_with_formatting(value: &Value, formatting: Formatting) -> Result<Vec<u8>> {
+pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_with_formatting(&mut output, value, formatting)?;
+    into_writer_with_formatting(value, &mut output, formatting)?;
     Ok(output)
 }
 
-/// Consume and encode one value to YAML bytes.
-///
-/// The encoded bytes require a new buffer; consuming avoids retaining or
-/// cloning the input value but cannot reuse its typed backing allocations.
-pub fn into_vec(value: Value) -> Result<Vec<u8>> {
-    to_vec(&value)
+/// Encode one value to YAML UTF-8.
+pub fn into_utf8(value: &Scalar) -> Result<String> {
+    into_utf8_with_formatting(value, Formatting::default())
 }
 
-/// Consume and encode one value to YAML bytes laid out as `formatting` asks.
-///
-/// # Errors
-///
-/// Returns the encoder's failure, including the published depth cap.
-pub fn into_vec_with_formatting(value: Value, formatting: Formatting) -> Result<Vec<u8>> {
-    to_vec_with_formatting(&value, formatting)
+/// Encode one value to YAML UTF-8 with explicit formatting.
+pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String> {
+    String::from_utf8(into_bytes_with_formatting(value, formatting)?).map_err(|error| {
+        Error::Codec {
+            format: "yaml",
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded YAML is not valid UTF-8".into(),
+        }
+    })
 }
 
 /// Encode one value to a byte writer.
-pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
-    to_writer_with_formatting(writer, value, Formatting::default())
+pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()> {
+    into_writer_with_formatting(value, writer, Formatting::default())
 }
 
 /// Encode one value to a byte writer, laid out as `formatting` asks.
@@ -231,19 +333,19 @@ pub fn to_writer<W: Write>(writer: W, value: &Value) -> Result<()> {
 /// # Errors
 ///
 /// Returns the encoder's or the sink's failure.
-pub fn to_writer_with_formatting<W: Write>(
+pub fn into_writer_with_formatting<W: Write>(
+    value: &Scalar,
     mut writer: W,
-    value: &Value,
     formatting: Formatting,
 ) -> Result<()> {
     check_encode_depth(value, "yaml")?;
-    // `write_value` terminates the document, so nothing is added here.
-    write_value(&mut writer, value, Layout::from(formatting))
+    // `write_scalar` terminates the document, so nothing is added here.
+    write_scalar(&mut writer, value, Layout::from(formatting))
 }
 
 /// Encode YAML documents to a byte vector.
-pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
-    to_vec_all_with_formatting(values, Formatting::default())
+pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>> {
+    into_bytes_all_with_formatting(values, Formatting::default())
 }
 
 /// Encode YAML documents to a byte vector, laid out as `formatting` asks.
@@ -251,20 +353,39 @@ pub fn to_vec_all(values: &[Value]) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns the encoder's failure, including the published depth cap.
-pub fn to_vec_all_with_formatting(values: &[Value], formatting: Formatting) -> Result<Vec<u8>> {
+pub fn into_bytes_all_with_formatting(
+    values: &[Scalar],
+    formatting: Formatting,
+) -> Result<Vec<u8>> {
     let mut output = Vec::new();
-    to_writer_all_with_formatting(&mut output, values, formatting)?;
+    into_writer_all_with_formatting(values, &mut output, formatting)?;
     Ok(output)
 }
 
+/// Encode YAML documents to UTF-8.
+pub fn into_utf8_all(values: &[Scalar]) -> Result<String> {
+    into_utf8_all_with_formatting(values, Formatting::default())
+}
+
+/// Encode YAML documents to UTF-8 with explicit formatting.
+pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String> {
+    String::from_utf8(into_bytes_all_with_formatting(values, formatting)?).map_err(|error| {
+        Error::Codec {
+            format: "yaml",
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded YAML is not valid UTF-8".into(),
+        }
+    })
+}
+
 /// Encode multiple values as a YAML document stream.
-pub fn to_writer_all<W, I, V>(writer: W, values: I) -> Result<()>
+pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: std::borrow::Borrow<Value>,
+    V: std::borrow::Borrow<Scalar>,
 {
-    to_writer_all_with_formatting(writer, values, Formatting::default())
+    into_writer_all_with_formatting(values, writer, Formatting::default())
 }
 
 /// Encode a YAML document stream, laid out as `formatting` asks.
@@ -272,15 +393,15 @@ where
 /// # Errors
 ///
 /// Returns the encoder's or the sink's failure.
-pub fn to_writer_all_with_formatting<W, I, V>(
-    mut writer: W,
+pub fn into_writer_all_with_formatting<W, I, V>(
     values: I,
+    mut writer: W,
     formatting: Formatting,
 ) -> Result<()>
 where
     W: Write,
     I: IntoIterator<Item = V>,
-    V: std::borrow::Borrow<Value>,
+    V: std::borrow::Borrow<Scalar>,
 {
     let layout = Layout::from(formatting);
     for (index, value) in values.into_iter().enumerate() {
@@ -289,7 +410,7 @@ where
         }
         let value = value.borrow();
         check_encode_depth(value, "yaml")?;
-        write_value(&mut writer, value, layout)?;
+        write_scalar(&mut writer, value, layout)?;
     }
     Ok(())
 }
@@ -337,7 +458,7 @@ impl From<Formatting> for Layout {
 }
 
 /// Write one document, block or flow as the layout asks.
-fn write_value<W: Write>(writer: &mut W, value: &Value, layout: Layout) -> Result<()> {
+fn write_scalar<W: Write>(writer: &mut W, value: &Scalar, layout: Layout) -> Result<()> {
     match layout.width {
         Some(width) => write_node(writer, value, 0, Position::Root, width)?,
         // Flow style, spelled the way the block writer spells its scalars so
@@ -362,7 +483,7 @@ enum Position {
 /// Write one node at `indent`, honouring where it sits.
 fn write_node<W: Write>(
     writer: &mut W,
-    value: &Value,
+    value: &Scalar,
     columns: usize,
     position: Position,
     width: usize,
@@ -371,24 +492,25 @@ fn write_node<W: Write>(
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
     match value {
-        // A record is its named-mapping spelling, block or inline alike.
-        Value::Record(..) => {
-            write_node(writer, &value.record_to_mapping(), columns, position, width)
-        }
-        Value::Sequence(values) if !values.is_empty() => {
+        Scalar::Sequence(values) if !values.is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
             write_sequence(writer, values, columns, skip_first_indent, width)
         }
-        Value::Mapping(entries) if !entries.is_empty() && !is_yaml_envelope_collision(entries) => {
+        Scalar::Mapping(entries) if !entries.is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
             write_mapping(writer, entries, columns, skip_first_indent, width)
         }
-        // Everything else is one scalar-shaped token: it stays on the line the
-        // marker opened, including the empty collections and the envelopes.
+        Scalar::Record(entries) if !entries.is_empty() => {
+            if position == Position::AfterKey {
+                writer.write_all(b"\n")?;
+            }
+            write_record(writer, entries, columns, skip_first_indent, width)
+        }
+        // Everything else is one scalar-shaped token and stays on this line.
         other => write_inline(writer, other),
     }
 }
@@ -399,7 +521,7 @@ fn write_node<W: Write>(
 /// marker already started, so its first entry continues that line.
 fn write_sequence<W: Write>(
     writer: &mut W,
-    values: &[Value],
+    values: &[Scalar],
     columns: usize,
     skip_first_indent: bool,
     width: usize,
@@ -429,7 +551,7 @@ fn write_sequence<W: Write>(
 /// Write a block mapping, one `key: value` per line.
 fn write_mapping<W: Write>(
     writer: &mut W,
-    entries: &[(Value, Value)],
+    entries: &[(Scalar, Scalar)],
     columns: usize,
     skip_first_indent: bool,
     width: usize,
@@ -468,25 +590,57 @@ fn write_mapping<W: Write>(
     Ok(())
 }
 
+fn write_record<W: Write>(
+    writer: &mut W,
+    entries: &std::collections::BTreeMap<smol_str::SmolStr, Scalar>,
+    columns: usize,
+    skip_first_indent: bool,
+    width: usize,
+) -> Result<()> {
+    for (index, (name, value)) in entries.iter().enumerate() {
+        if index != 0 {
+            writer.write_all(b"\n")?;
+        }
+        if index != 0 || !skip_first_indent {
+            write_indent(writer, columns)?;
+        }
+        write_scalar_string(writer, name)?;
+        writer.write_all(b":")?;
+        if is_block(value) {
+            write_node(writer, value, columns + width, Position::AfterKey, width)?;
+        } else {
+            writer.write_all(b" ")?;
+            write_inline(writer, value)?;
+        }
+    }
+    Ok(())
+}
+
 /// Return whether a value is written as an indented block rather than inline.
-fn is_block(value: &Value) -> bool {
+fn is_block(value: &Scalar) -> bool {
     match value {
-        Value::Sequence(values) => !values.is_empty(),
-        Value::Mapping(entries) => !entries.is_empty() && !is_yaml_envelope_collision(entries),
+        Scalar::Sequence(values) => !values.is_empty(),
+        Scalar::Mapping(entries) => !entries.is_empty(),
+        Scalar::Record(entries) => !entries.is_empty(),
         _ => false,
     }
 }
 
 /// Return whether a key can be written plainly before the colon.
-fn is_plain_key(key: &Value) -> bool {
+fn is_plain_key(key: &Scalar) -> bool {
     matches!(
         key,
-        Value::Null
-            | Value::Bool(_)
-            | Value::I64(_)
-            | Value::U64(_)
-            | Value::F64(_)
-            | Value::String(_)
+        Scalar::Null
+            | Scalar::Bool(_)
+            | Scalar::I64(_)
+            | Scalar::U64(_)
+            | Scalar::I128(_)
+            | Scalar::U128(_)
+            | Scalar::F16(_)
+            | Scalar::F32(_)
+            | Scalar::F64(_)
+            | Scalar::String(_)
+            | Scalar::Enum(_)
     )
 }
 
@@ -502,119 +656,151 @@ fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
     Ok(())
 }
 
-/// Write one value as a single token, for scalars and the lossless envelopes.
-fn write_inline<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+/// Write one scalar or empty collection as one token.
+fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        // A record inlines as the mapping its field names spell.
-        Value::Record(..) => write_inline_recursive(writer, &value.record_to_mapping())?,
-        Value::Null => writer.write_all(b"null")?,
-        Value::Bool(true) => writer.write_all(b"true")?,
-        Value::Bool(false) => writer.write_all(b"false")?,
-        Value::I8(value) => write!(writer, "{value}")?,
-        Value::I16(value) => write!(writer, "{value}")?,
-        Value::I32(value) => write!(writer, "{value}")?,
-        Value::I64(value) => write!(writer, "{value}")?,
-        Value::U8(value) => write!(writer, "{value}")?,
-        Value::U16(value) => write!(writer, "{value}")?,
-        Value::U32(value) => write!(writer, "{value}")?,
-        Value::U64(value) => write!(writer, "{value}")?,
-        Value::I128(value) => {
-            writer.write_all(b"{\"$yggdryl\": \"i128\", \"value\": ")?;
-            write!(writer, "\"{value}\"")?;
-            writer.write_all(b"}")?;
-        }
-        Value::U128(value) => {
-            writer.write_all(b"{\"$yggdryl\": \"u128\", \"value\": ")?;
-            write!(writer, "\"{value}\"")?;
-            writer.write_all(b"}")?;
-        }
-        Value::F32(value) => write_float(writer, value.as_f64())?,
-        Value::F64(value) => write_float(writer, value.as_f64())?,
-        Value::Decimal(unscaled, scale) => {
-            // The coefficient is quoted for the same reason `i128` is: it is
-            // wider than the integer every YAML reader agrees on.
-            writer.write_all(b"{\"$yggdryl\": \"decimal\", \"value\": [")?;
-            write!(writer, "\"{unscaled}\", {scale}")?;
-            writer.write_all(b"]}")?;
-        }
-        Value::String(value) => write_scalar_string(writer, value)?,
-        Value::Bytes(value) => {
-            writer.write_all(b"{\"$yggdryl\": \"bytes\", \"value\": ")?;
+        Scalar::Null => writer.write_all(b"null")?,
+        Scalar::Bool(true) => writer.write_all(b"true")?,
+        Scalar::Bool(false) => writer.write_all(b"false")?,
+        Scalar::I8(value) => write!(writer, "{value}")?,
+        Scalar::I16(value) => write!(writer, "{value}")?,
+        Scalar::I32(value) => write!(writer, "{value}")?,
+        Scalar::I64(value) => write!(writer, "{value}")?,
+        Scalar::U8(value) => write!(writer, "{value}")?,
+        Scalar::U16(value) => write!(writer, "{value}")?,
+        Scalar::U32(value) => write!(writer, "{value}")?,
+        Scalar::U64(value) => write!(writer, "{value}")?,
+        Scalar::I128(value) => write!(writer, "{value}")?,
+        Scalar::U128(value) => write!(writer, "{value}")?,
+        Scalar::F16(value) => write_float(writer, value.as_f64())?,
+        Scalar::F32(value) => write_float(writer, value.as_f64())?,
+        Scalar::F64(value) => write_float(writer, value.as_f64())?,
+        Scalar::D128(unscaled, scale) => write_quoted(
+            writer,
+            &crate::generic::decimal::decimal_text(crate::I256::from_i128(*unscaled), *scale),
+        )?,
+        Scalar::D256(unscaled, scale) => write_quoted(
+            writer,
+            &crate::generic::decimal::decimal_text(*unscaled, *scale),
+        )?,
+        Scalar::String(value) => write_scalar_string(writer, value)?,
+        Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::Bytes(value) | Scalar::Geospatial(value) => {
+            // `!!binary` is YAML's standard tag, understood outside Yggdryl.
+            writer.write_all(b"!!binary ")?;
             write_quoted(
                 writer,
                 &base64::engine::general_purpose::STANDARD.encode(value),
             )?;
-            writer.write_all(b"}")?;
         }
-        // A geometry is the bytes envelope under its own kind, so the WKB
-        // reads back as the geospatial value it left as.
-        Value::Geospatial(value) => {
-            writer.write_all(b"{\"$yggdryl\": \"geospatial\", \"value\": ")?;
-            write_quoted(
-                writer,
-                &base64::engine::general_purpose::STANDARD.encode(value),
-            )?;
-            writer.write_all(b"}")?;
-        }
-        Value::Date(days) => match crate::generic::iso::format_date(*days) {
-            Some(spelled) => write_scalar_string(writer, &spelled)?,
-            None => {
-                writer.write_all(b"{\"$yggdryl\": \"date\", \"value\": ")?;
-                write!(writer, "{days}")?;
-                writer.write_all(b"}")?;
+        Scalar::Date32(count, unit, zone) => {
+            if !zone.is_naive() {
+                return Err(codec_error(0, "Date32 cannot carry a timezone"));
             }
-        },
-        Value::Time(count, unit) => match crate::generic::iso::format_time(*count, *unit) {
-            Some(spelled) => write_scalar_string(writer, &spelled)?,
-            None => write_temporal(writer, "time", *count, *unit, None)?,
-        },
-        Value::Duration(count, unit) => match crate::generic::iso::format_duration(*count, *unit) {
-            Some(spelled) => write_scalar_string(writer, &spelled)?,
-            None => write_temporal(writer, "duration", *count, *unit, None)?,
-        },
-        Value::Timestamp(count, unit, zone) => {
-            match crate::generic::iso::format_timestamp(*count, *unit, zone) {
-                Some(spelled) => write_scalar_string(writer, &spelled)?,
-                None => write_temporal(writer, "timestamp", *count, *unit, Some(zone))?,
+            if *unit == crate::TimeUnit::Day && zone.is_naive() {
+                if let Some(text) = crate::generic::iso::format_date(*count) {
+                    return write_scalar_string(writer, &text);
+                }
+            }
+            write!(writer, "{count}")?;
+        }
+        Scalar::Date64(count, unit, zone) => {
+            if !zone.is_naive() {
+                return Err(codec_error(0, "Date64 cannot carry a timezone"));
+            }
+            const DAY_MILLISECONDS: i64 = 86_400_000;
+            let days = count.div_euclid(DAY_MILLISECONDS);
+            if *unit == crate::TimeUnit::Millisecond
+                && zone.is_naive()
+                && count.rem_euclid(DAY_MILLISECONDS) == 0
+            {
+                if let Ok(days) = i32::try_from(days) {
+                    if let Some(text) = crate::generic::iso::format_date(days) {
+                        return write_scalar_string(writer, &text);
+                    }
+                }
+            }
+            write!(writer, "{count}")?;
+        }
+        Scalar::Time32(count, unit, zone) => {
+            write_time(writer, i64::from(*count), *unit, zone)?;
+        }
+        Scalar::Time64(count, unit, zone) => {
+            write_time(writer, *count, *unit, zone)?;
+        }
+        Scalar::DateTime64(count, unit, zone) => {
+            let text = if zone.is_naive() {
+                crate::generic::iso::format_datetime(*count, *unit)
+            } else {
+                crate::generic::iso::format_timestamp(*count, *unit, zone)
+            };
+            match text {
+                Some(text) => write_scalar_string(writer, &text)?,
+                None => write!(writer, "{count}")?,
             }
         }
-        Value::DateTime(count, unit) => match crate::generic::iso::format_datetime(*count, *unit) {
-            Some(spelled) => write_scalar_string(writer, &spelled)?,
-            None => write_temporal(writer, "timestamp", *count, *unit, None)?,
-        },
-        Value::Sequence(values) => {
+        Scalar::Duration32(count, unit, zone) => {
+            write_duration(writer, i64::from(*count), *unit, zone)?;
+        }
+        Scalar::Duration64(count, unit, zone) => {
+            write_duration(writer, *count, *unit, zone)?;
+        }
+        Scalar::Sequence(values) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
         }
-        Value::Mapping(entries) => {
-            if is_yaml_envelope_collision(entries) {
-                writer.write_all(b"{\"$yggdryl\": \"mapping\", \"value\": [")?;
-                for (index, (key, value)) in entries.iter().enumerate() {
-                    if index != 0 {
-                        writer.write_all(b", ")?;
-                    }
-                    writer.write_all(b"[")?;
-                    write_inline_recursive(writer, key)?;
-                    writer.write_all(b", ")?;
-                    write_inline_recursive(writer, value)?;
-                    writer.write_all(b"]")?;
-                }
-                writer.write_all(b"]}")?;
-            } else {
-                debug_assert!(entries.is_empty());
-                writer.write_all(b"{}")?;
-            }
+        Scalar::Mapping(entries) => {
+            debug_assert!(entries.is_empty());
+            writer.write_all(b"{}")?;
+        }
+        Scalar::Record(entries) => {
+            debug_assert!(entries.is_empty());
+            writer.write_all(b"{}")?;
         }
     }
     Ok(())
 }
 
+fn write_time<W: Write>(
+    writer: &mut W,
+    count: i64,
+    unit: crate::TimeUnit,
+    zone: &crate::Timezone,
+) -> Result<()> {
+    if !zone.is_naive() {
+        return Err(codec_error(
+            0,
+            "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
+        ));
+    }
+    let Some(text) = crate::generic::iso::format_time(count, unit) else {
+        write!(writer, "{count}")?;
+        return Ok(());
+    };
+    write_scalar_string(writer, &text)
+}
+
+fn write_duration<W: Write>(
+    writer: &mut W,
+    count: i64,
+    unit: crate::TimeUnit,
+    zone: &crate::Timezone,
+) -> Result<()> {
+    if zone.is_naive() {
+        if let Some(text) = crate::generic::iso::format_duration(count, unit) {
+            return write_scalar_string(writer, &text);
+        }
+    } else {
+        return Err(codec_error(0, "duration cannot carry a timezone"));
+    }
+    write!(writer, "{count}")?;
+    Ok(())
+}
+
 /// Write one float in YAML's core schema, non-finite spellings included.
 ///
-/// YAML spells the non-finite floats itself and the scanner reads those
-/// spellings back, so an envelope would only cost every other implementation
-/// the value it can already read.
+/// YAML and its scanner both define these non-finite spellings.
 fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
     if value.is_finite() {
         serde_json::to_writer(&mut *writer, &value).map_err(|error| Error::Codec {
@@ -632,68 +818,15 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
     Ok(())
 }
 
-/// Write one temporal as the flat `$yggdryl` envelope every reader can read.
-fn write_temporal<W: Write>(
-    writer: &mut W,
-    kind: &str,
-    count: i64,
-    unit: crate::TimeUnit,
-    zone: Option<&crate::Timezone>,
-) -> Result<()> {
-    write!(writer, "{{\"$yggdryl\": \"{kind}\", \"value\": [")?;
-    write_quoted(writer, unit.as_str())?;
-    write!(writer, ", {count}")?;
-    if let Some(zone) = zone {
-        writer.write_all(b", ")?;
-        write_quoted(writer, zone.as_str())?;
-    }
-    writer.write_all(b"]}")?;
-    Ok(())
-}
-
-/// Write a value in flow style, for the inside of a lossless envelope.
-fn write_inline_recursive<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
-    match value {
-        Value::Sequence(values) => {
-            writer.write_all(b"[")?;
-            for (index, value) in values.iter().enumerate() {
-                if index != 0 {
-                    writer.write_all(b", ")?;
-                }
-                write_inline_recursive(writer, value)?;
-            }
-            writer.write_all(b"]")?;
-            Ok(())
-        }
-        Value::Mapping(entries) if !is_yaml_envelope_collision(entries) => {
-            writer.write_all(b"{")?;
-            for (index, (key, value)) in entries.iter().enumerate() {
-                if index != 0 {
-                    writer.write_all(b", ")?;
-                }
-                writer.write_all(b"? ")?;
-                write_inline_recursive(writer, key)?;
-                writer.write_all(b" : ")?;
-                write_inline_recursive(writer, value)?;
-            }
-            writer.write_all(b"}")?;
-            Ok(())
-        }
-        Value::String(value) => write_quoted(writer, value),
-        other => write_inline(writer, other),
-    }
-}
-
 /// Write one value in flow style, at any depth.
 ///
 /// The scalar spelling is the block writer's - a plain key stays plain, a
 /// string is quoted only when a plain scalar would read back as something
 /// else - so flow and block differ in layout and nothing else. A key the flow
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
-fn write_flow<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Value::Record(..) => write_flow(writer, &value.record_to_mapping()),
-        Value::Sequence(values) if !values.is_empty() => {
+        Scalar::Sequence(values) if !values.is_empty() => {
             writer.write_all(b"[")?;
             for (index, value) in values.iter().enumerate() {
                 if index != 0 {
@@ -704,7 +837,7 @@ fn write_flow<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
             writer.write_all(b"]")?;
             Ok(())
         }
-        Value::Mapping(entries) if !entries.is_empty() && !is_yaml_envelope_collision(entries) => {
+        Scalar::Mapping(entries) if !entries.is_empty() => {
             writer.write_all(b"{")?;
             for (index, (key, value)) in entries.iter().enumerate() {
                 if index != 0 {
@@ -718,6 +851,19 @@ fn write_flow<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
                     write_flow(writer, key)?;
                     writer.write_all(b" : ")?;
                 }
+                write_flow(writer, value)?;
+            }
+            writer.write_all(b"}")?;
+            Ok(())
+        }
+        Scalar::Record(entries) if !entries.is_empty() => {
+            writer.write_all(b"{")?;
+            for (index, (name, value)) in entries.iter().enumerate() {
+                if index != 0 {
+                    writer.write_all(b", ")?;
+                }
+                write_scalar_string(writer, name)?;
+                writer.write_all(b": ")?;
                 write_flow(writer, value)?;
             }
             writer.write_all(b"}")?;
@@ -806,31 +952,18 @@ fn scanner_reads_back_the_same_string(value: &str) -> bool {
     scanned == value && parser.next().is_none()
 }
 
-fn is_yaml_envelope_collision(entries: &[(Value, Value)]) -> bool {
-    let marker = entries.iter().find_map(|(key, value)| {
-        (key.as_str() == Some("$yggdryl"))
-            .then(|| value.as_str())
-            .flatten()
-    });
-    match marker {
-        Some("bytes" | "geospatial" | "i128" | "u128" | "float" | "mapping") => {
-            exact_value_keys(entries, &["$yggdryl", "value"])
-        }
-        _ => false,
-    }
-}
-
-fn exact_value_keys(entries: &[(Value, Value)], names: &[&str]) -> bool {
-    entries.len() == names.len()
-        && entries
-            .iter()
-            .all(|(key, _)| key.as_str().is_some_and(|key| names.contains(&key)))
-}
-
 fn write_quoted<W: Write>(writer: &mut W, value: &str) -> Result<()> {
     serde_json::to_writer(writer, value).map_err(|error| Error::Codec {
         format: "yaml",
         position: 0,
         reason: error.to_string().into(),
     })
+}
+
+fn codec_error(position: usize, reason: &'static str) -> Error {
+    Error::Codec {
+        format: "yaml",
+        position,
+        reason: reason.into(),
+    }
 }

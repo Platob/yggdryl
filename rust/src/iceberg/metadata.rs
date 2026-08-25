@@ -16,12 +16,14 @@
 //! ones, so the rest of the module never asks which version it is looking at.
 //! Writing emits exactly what the declared version requires.
 
+use std::hash::{Hash, Hasher};
+
 use smol_str::{SmolStr, format_smolstr};
 
 use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use super::{Transform, schema_from_json, schema_to_json};
-use crate::{Error, Field, Result, Value};
+use crate::{Error, Field, Result, Scalar};
 
 /// Which revision of the Iceberg table specification a table is written to.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -64,7 +66,7 @@ impl FormatVersion {
 }
 
 /// One column a table's rows are sorted by.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SortField {
     /// Identifier of the schema field sorted on.
     pub source_id: i32,
@@ -76,8 +78,15 @@ pub struct SortField {
     pub null_order: SmolStr,
 }
 
+impl SortField {
+    /// Return a deterministic hash of this complete sort field.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+}
+
 /// An identified ordering a table's writers maintain.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SortOrder {
     /// Identifier of this order within the table.
     pub order_id: i32,
@@ -86,6 +95,11 @@ pub struct SortOrder {
 }
 
 impl SortOrder {
+    /// Return a deterministic hash of this complete sort order.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// The unsorted order, which every table has as order zero.
     pub const fn unsorted() -> Self {
         Self {
@@ -99,40 +113,40 @@ impl SortOrder {
     /// # Errors
     ///
     /// Returns an error when a sort field names a transform Iceberg does not.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         let order_id = document
             .get_key_str("order-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .unwrap_or_default();
         let mut fields = Vec::new();
         for entry in document
             .get_key_str("fields")
-            .map(Value::sequence_iter)
+            .map(Scalar::sequence_iter)
             .unwrap_or_default()
         {
             fields.push(SortField {
                 source_id: entry
                     .get_key_str("source-id")
-                    .and_then(Value::as_i64)
+                    .and_then(Scalar::as_i64)
                     .and_then(|id| i32::try_from(id).ok())
                     .unwrap_or_default(),
                 transform: Transform::from_str(
                     entry
                         .get_key_str("transform")
-                        .and_then(Value::as_str)
+                        .and_then(Scalar::as_str)
                         .unwrap_or("identity"),
                 )?,
                 direction: SmolStr::new(
                     entry
                         .get_key_str("direction")
-                        .and_then(Value::as_str)
+                        .and_then(Scalar::as_str)
                         .unwrap_or("asc"),
                 ),
                 null_order: SmolStr::new(
                     entry
                         .get_key_str("null-order")
-                        .and_then(Value::as_str)
+                        .and_then(Scalar::as_str)
                         .unwrap_or("nulls-first"),
                 ),
             });
@@ -145,34 +159,34 @@ impl SortOrder {
     /// # Errors
     ///
     /// Returns an error only when the mapping cannot be built.
-    pub fn to_json(&self) -> Result<Value> {
+    pub fn into_json(self) -> Result<Scalar> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
-            fields.push(Value::from_mapping([
+            fields.push(Scalar::from_mapping([
                 (
-                    Value::from("source-id"),
-                    Value::from(i64::from(field.source_id)),
+                    Scalar::from("source-id"),
+                    Scalar::from(i64::from(field.source_id)),
                 ),
                 (
-                    Value::from("transform"),
-                    Value::from(field.transform.to_string()),
+                    Scalar::from("transform"),
+                    Scalar::from(field.transform.to_string()),
                 ),
                 (
-                    Value::from("direction"),
-                    Value::from(field.direction.clone()),
+                    Scalar::from("direction"),
+                    Scalar::from(field.direction.clone()),
                 ),
                 (
-                    Value::from("null-order"),
-                    Value::from(field.null_order.clone()),
+                    Scalar::from("null-order"),
+                    Scalar::from(field.null_order.clone()),
                 ),
             ])?);
         }
-        Value::from_mapping([
+        Scalar::from_mapping([
             (
-                Value::from("order-id"),
-                Value::from(i64::from(self.order_id)),
+                Scalar::from("order-id"),
+                Scalar::from(i64::from(self.order_id)),
             ),
-            (Value::from("fields"), Value::from_sequence(fields)),
+            (Scalar::from("fields"), Scalar::from_sequence(fields)),
         ])
     }
 }
@@ -222,7 +236,65 @@ pub struct TableMetadata {
     pub next_row_id: Option<i64>,
 }
 
+/// Complete semantic metadata identity. Iceberg models schemas, specs, sort
+/// orders, properties, snapshots, and refs as keyed collections, so wire
+/// order is excluded. The two history logs are timelines and retain order.
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct TableMetadataIdentity<'a> {
+    format_version: FormatVersion,
+    table_uuid: &'a SmolStr,
+    location: &'a SmolStr,
+    last_sequence_number: i64,
+    last_updated_ms: i64,
+    last_column_id: i32,
+    schemas: Vec<&'a Field>,
+    current_schema_id: i32,
+    partition_specs: Vec<&'a PartitionSpec>,
+    default_spec_id: i32,
+    last_partition_id: i32,
+    sort_orders: Vec<&'a SortOrder>,
+    default_sort_order_id: i32,
+    properties: Vec<&'a (SmolStr, SmolStr)>,
+    current_snapshot_id: Option<i64>,
+    snapshots: Vec<&'a Snapshot>,
+    snapshot_log: &'a [(i64, i64)],
+    metadata_log: &'a [(i64, SmolStr)],
+    refs: Vec<&'a (SmolStr, SnapshotRef)>,
+    next_row_id: Option<i64>,
+}
+
 impl TableMetadata {
+    fn identity(&self) -> TableMetadataIdentity<'_> {
+        TableMetadataIdentity {
+            format_version: self.format_version,
+            table_uuid: &self.table_uuid,
+            location: &self.location,
+            last_sequence_number: self.last_sequence_number,
+            last_updated_ms: self.last_updated_ms,
+            last_column_id: self.last_column_id,
+            schemas: crate::generic::sorted_values(&self.schemas),
+            current_schema_id: self.current_schema_id,
+            partition_specs: crate::generic::sorted_values(&self.partition_specs),
+            default_spec_id: self.default_spec_id,
+            last_partition_id: self.last_partition_id,
+            sort_orders: crate::generic::sorted_values(&self.sort_orders),
+            default_sort_order_id: self.default_sort_order_id,
+            properties: crate::generic::sorted_pairs(&self.properties),
+            current_snapshot_id: self.current_snapshot_id,
+            snapshots: crate::generic::sorted_values(&self.snapshots),
+            snapshot_log: &self.snapshot_log,
+            metadata_log: &self.metadata_log,
+            refs: crate::generic::sorted_pairs(&self.refs),
+            next_row_id: self.next_row_id,
+        }
+    }
+
+    /// Return a deterministic hash of the complete semantic table document.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(&self.identity())
+    }
+
     /// Describe a new, empty table.
     ///
     /// The table has a schema, a spec, and no snapshot, which is exactly what
@@ -405,11 +477,11 @@ impl TableMetadata {
     /// Returns an error when a required key is missing, when the format
     /// version is not one this build implements, or when a nested document is
     /// malformed.
-    pub fn from_json(document: &Value) -> Result<Self> {
+    pub fn from_json(document: &Scalar) -> Result<Self> {
         let format_version = FormatVersion::from_number(
             document
                 .get_key_str("format-version")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .ok_or_else(|| {
                     invalid(SmolStr::new_static(
                         "expected a table metadata \"format-version\"",
@@ -418,7 +490,7 @@ impl TableMetadata {
         )?;
         let location = document
             .get_key_str("location")
-            .and_then(Value::as_str)
+            .and_then(Scalar::as_str)
             .ok_or_else(|| {
                 invalid(SmolStr::new_static(
                     "expected a table metadata \"location\"",
@@ -430,7 +502,7 @@ impl TableMetadata {
         let mut schemas = Vec::new();
         for entry in document
             .get_key_str("schemas")
-            .map(Value::sequence_iter)
+            .map(Scalar::sequence_iter)
             .unwrap_or_default()
         {
             schemas.push(schema_from_json("row", entry)?);
@@ -449,7 +521,7 @@ impl TableMetadata {
         let mut partition_specs = Vec::new();
         for entry in document
             .get_key_str("partition-specs")
-            .map(Value::sequence_iter)
+            .map(Scalar::sequence_iter)
             .unwrap_or_default()
         {
             partition_specs.push(PartitionSpec::from_json(entry)?);
@@ -466,7 +538,7 @@ impl TableMetadata {
         // same schema it was created with, marks included.
         let default_spec_id = document
             .get_key_str("default-spec-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .unwrap_or_default();
         if let Some(spec) = partition_specs
@@ -481,7 +553,7 @@ impl TableMetadata {
         let mut sort_orders = Vec::new();
         for entry in document
             .get_key_str("sort-orders")
-            .map(Value::sequence_iter)
+            .map(Scalar::sequence_iter)
             .unwrap_or_default()
         {
             sort_orders.push(SortOrder::from_json(entry)?);
@@ -493,27 +565,31 @@ impl TableMetadata {
         let mut snapshots = Vec::new();
         for entry in document
             .get_key_str("snapshots")
-            .map(Value::sequence_iter)
+            .map(Scalar::sequence_iter)
             .unwrap_or_default()
         {
             snapshots.push(Snapshot::from_json(entry)?);
         }
 
         let mut refs = Vec::new();
-        for (name, entry) in document
-            .get_key_str("refs")
-            .map(Value::mapping_iter)
-            .unwrap_or_default()
-        {
-            if let Some(name) = name.as_str() {
-                refs.push((SmolStr::new(name), SnapshotRef::from_json(entry)?));
+        if let Some(entries) = document.get_key_str("refs") {
+            if let Some(record) = entries.as_record() {
+                for (name, entry) in record {
+                    refs.push((name.clone(), SnapshotRef::from_json(entry)?));
+                }
+            } else if let Some(mapping) = entries.as_mapping() {
+                for (name, entry) in mapping {
+                    if let Some(name) = name.as_str() {
+                        refs.push((SmolStr::new(name), SnapshotRef::from_json(entry)?));
+                    }
+                }
             }
         }
 
         // A table with no snapshot spells that as an absent key or as -1.
         let current_snapshot_id = document
             .get_key_str("current-snapshot-id")
-            .and_then(Value::as_i64)
+            .and_then(Scalar::as_i64)
             .filter(|id| *id >= 0);
 
         let metadata = Self {
@@ -521,33 +597,33 @@ impl TableMetadata {
             table_uuid: SmolStr::new(
                 document
                     .get_key_str("table-uuid")
-                    .and_then(Value::as_str)
+                    .and_then(Scalar::as_str)
                     .unwrap_or_default(),
             ),
             location: SmolStr::new(location),
             last_sequence_number: document
                 .get_key_str("last-sequence-number")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .unwrap_or_default(),
             last_updated_ms: document
                 .get_key_str("last-updated-ms")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .unwrap_or_default(),
             last_column_id: document
                 .get_key_str("last-column-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok())
                 .unwrap_or_default(),
             current_schema_id: document
                 .get_key_str("current-schema-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok())
                 .unwrap_or_default(),
             schemas,
             default_spec_id,
             last_partition_id: document
                 .get_key_str("last-partition-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok())
                 // v1 could omit the key, so it is recovered from the specs the
                 // way Iceberg's own reader recovers it.
@@ -561,27 +637,37 @@ impl TableMetadata {
             partition_specs,
             default_sort_order_id: document
                 .get_key_str("default-sort-order-id")
-                .and_then(Value::as_i64)
+                .and_then(Scalar::as_i64)
                 .and_then(|id| i32::try_from(id).ok())
                 .unwrap_or_default(),
             sort_orders,
             properties: document
                 .get_key_str("properties")
-                .map(Value::mapping_iter)
-                .unwrap_or_default()
-                .filter_map(|(key, value)| {
-                    Some((
-                        SmolStr::new(key.as_str()?),
-                        super::value::scalar_text(value),
-                    ))
+                .map(|entries| {
+                    if let Some(record) = entries.as_record() {
+                        record
+                            .iter()
+                            .map(|(key, value)| (key.clone(), super::value::scalar_text(value)))
+                            .collect()
+                    } else {
+                        entries
+                            .mapping_iter()
+                            .filter_map(|(key, value)| {
+                                Some((
+                                    SmolStr::new(key.as_str()?),
+                                    super::value::scalar_text(value),
+                                ))
+                            })
+                            .collect()
+                    }
                 })
-                .collect(),
+                .unwrap_or_default(),
             current_snapshot_id,
             snapshots,
             snapshot_log: log_entries(document, "snapshot-log", "snapshot-id"),
             metadata_log: metadata_log(document),
             refs,
-            next_row_id: document.get_key_str("next-row-id").and_then(Value::as_i64),
+            next_row_id: document.get_key_str("next-row-id").and_then(Scalar::as_i64),
         };
         metadata.validate()?;
         Ok(metadata)
@@ -593,31 +679,34 @@ impl TableMetadata {
     ///
     /// Returns an error when a schema has no field identifiers or a nested
     /// document cannot be built.
-    pub fn to_json(&self) -> Result<Value> {
-        let mut entries: Vec<(Value, Value)> = vec![
+    pub fn into_json(self) -> Result<Scalar> {
+        let mut entries: Vec<(Scalar, Scalar)> = vec![
             (
-                Value::from("format-version"),
-                Value::from(i64::from(self.format_version.number())),
+                Scalar::from("format-version"),
+                Scalar::from(i64::from(self.format_version.number())),
             ),
             (
-                Value::from("table-uuid"),
-                Value::from(self.table_uuid.clone()),
+                Scalar::from("table-uuid"),
+                Scalar::from(self.table_uuid.clone()),
             ),
-            (Value::from("location"), Value::from(self.location.clone())),
+            (
+                Scalar::from("location"),
+                Scalar::from(self.location.clone()),
+            ),
         ];
         if self.format_version >= FormatVersion::V2 {
             entries.push((
-                Value::from("last-sequence-number"),
-                Value::from(self.last_sequence_number),
+                Scalar::from("last-sequence-number"),
+                Scalar::from(self.last_sequence_number),
             ));
         }
         entries.push((
-            Value::from("last-updated-ms"),
-            Value::from(self.last_updated_ms),
+            Scalar::from("last-updated-ms"),
+            Scalar::from(self.last_updated_ms),
         ));
         entries.push((
-            Value::from("last-column-id"),
-            Value::from(i64::from(self.last_column_id)),
+            Scalar::from("last-column-id"),
+            Scalar::from(i64::from(self.last_column_id)),
         ));
 
         let mut schemas = Vec::with_capacity(self.schemas.len());
@@ -627,87 +716,90 @@ impl TableMetadata {
         if self.format_version == FormatVersion::V1 {
             // A v1 reader that predates `schemas` still needs the singular key.
             entries.push((
-                Value::from("schema"),
+                Scalar::from("schema"),
                 schema_to_json(self.current_schema()?)?,
             ));
         }
-        entries.push((Value::from("schemas"), Value::from_sequence(schemas)));
+        entries.push((Scalar::from("schemas"), Scalar::from_sequence(schemas)));
         entries.push((
-            Value::from("current-schema-id"),
-            Value::from(i64::from(self.current_schema_id)),
+            Scalar::from("current-schema-id"),
+            Scalar::from(i64::from(self.current_schema_id)),
         ));
 
         let mut specs = Vec::with_capacity(self.partition_specs.len());
         for spec in &self.partition_specs {
-            specs.push(spec.to_json()?);
+            specs.push(spec.clone().into_json()?);
         }
         if self.format_version == FormatVersion::V1 {
             entries.push((
-                Value::from("partition-spec"),
-                self.default_spec()?.to_v1_json()?,
+                Scalar::from("partition-spec"),
+                self.default_spec()?.clone().into_v1_json()?,
             ));
         }
-        entries.push((Value::from("partition-specs"), Value::from_sequence(specs)));
         entries.push((
-            Value::from("default-spec-id"),
-            Value::from(i64::from(self.default_spec_id)),
+            Scalar::from("partition-specs"),
+            Scalar::from_sequence(specs),
         ));
         entries.push((
-            Value::from("last-partition-id"),
-            Value::from(i64::from(self.last_partition_id)),
+            Scalar::from("default-spec-id"),
+            Scalar::from(i64::from(self.default_spec_id)),
+        ));
+        entries.push((
+            Scalar::from("last-partition-id"),
+            Scalar::from(i64::from(self.last_partition_id)),
         ));
 
         let mut orders = Vec::with_capacity(self.sort_orders.len());
         for order in &self.sort_orders {
-            orders.push(order.to_json()?);
+            orders.push(order.clone().into_json()?);
         }
-        entries.push((Value::from("sort-orders"), Value::from_sequence(orders)));
+        entries.push((Scalar::from("sort-orders"), Scalar::from_sequence(orders)));
         entries.push((
-            Value::from("default-sort-order-id"),
-            Value::from(i64::from(self.default_sort_order_id)),
+            Scalar::from("default-sort-order-id"),
+            Scalar::from(i64::from(self.default_sort_order_id)),
         ));
 
         entries.push((
-            Value::from("properties"),
-            Value::from_mapping(
+            Scalar::from("properties"),
+            Scalar::from_mapping(
                 self.properties
                     .iter()
-                    .map(|(key, value)| (Value::from(key.clone()), Value::from(value.clone()))),
+                    .map(|(key, value)| (Scalar::from(key.clone()), Scalar::from(value.clone()))),
             )?,
         ));
 
         if let Some(current) = self.current_snapshot_id {
-            entries.push((Value::from("current-snapshot-id"), Value::from(current)));
+            entries.push((Scalar::from("current-snapshot-id"), Scalar::from(current)));
         }
         let mut snapshots = Vec::with_capacity(self.snapshots.len());
         for snapshot in &self.snapshots {
-            snapshots.push(snapshot.to_json(self.format_version)?);
+            snapshots.push(snapshot.clone().into_json(self.format_version)?);
         }
-        entries.push((Value::from("snapshots"), Value::from_sequence(snapshots)));
+        entries.push((Scalar::from("snapshots"), Scalar::from_sequence(snapshots)));
 
         entries.push((
-            Value::from("snapshot-log"),
-            Value::from_sequence(
+            Scalar::from("snapshot-log"),
+            Scalar::from_sequence(
                 self.snapshot_log
                     .iter()
                     .map(|(timestamp, snapshot_id)| {
-                        Value::from_mapping([
-                            (Value::from("timestamp-ms"), Value::from(*timestamp)),
-                            (Value::from("snapshot-id"), Value::from(*snapshot_id)),
+                        Scalar::from_mapping([
+                            (Scalar::from("timestamp-ms"), Scalar::from(*timestamp)),
+                            (Scalar::from("snapshot-id"), Scalar::from(*snapshot_id)),
                         ])
                     })
                     .collect::<Result<Vec<_>>>()?,
             ),
         ));
         entries.push((
-            Value::from("metadata-log"),
-            Value::from_sequence(
+            Scalar::from("metadata-log"),
+            Scalar::from_sequence(
                 self.metadata_log
                     .iter()
                     .map(|(timestamp, file)| {
-                        Value::from_mapping([
-                            (Value::from("timestamp-ms"), Value::from(*timestamp)),
-                            (Value::from("metadata-file"), Value::from(file.clone())),
+                        Scalar::from_mapping([
+                            (Scalar::from("timestamp-ms"), Scalar::from(*timestamp)),
+                            (Scalar::from("metadata-file"), Scalar::from(file.clone())),
                         ])
                     })
                     .collect::<Result<Vec<_>>>()?,
@@ -716,18 +808,18 @@ impl TableMetadata {
 
         let mut refs = Vec::with_capacity(self.refs.len());
         for (name, reference) in &self.refs {
-            refs.push((Value::from(name.clone()), reference.to_json()?));
+            refs.push((Scalar::from(name.clone()), reference.clone().into_json()?));
         }
-        entries.push((Value::from("refs"), Value::from_mapping(refs)?));
+        entries.push((Scalar::from("refs"), Scalar::from_mapping(refs)?));
 
         if self.format_version >= FormatVersion::V3 {
             entries.push((
-                Value::from("next-row-id"),
-                Value::from(self.next_row_id.unwrap_or_default()),
+                Scalar::from("next-row-id"),
+                Scalar::from(self.next_row_id.unwrap_or_default()),
             ));
         }
 
-        Value::from_mapping(entries)
+        Scalar::from_mapping(entries)
     }
 
     /// Make `snapshot` the current one, recording it in the log and on `main`.
@@ -1404,6 +1496,32 @@ impl TableMetadata {
     }
 }
 
+impl PartialEq for TableMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for TableMetadata {}
+
+impl PartialOrd for TableMetadata {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TableMetadata {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for TableMetadata {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
 /// Collect every field identifier below a schema root, depth first.
 fn collect_field_ids(node: &Field, ids: &mut Vec<i32>) -> Result<()> {
     for index in 0..node.data_type().field_len() {
@@ -1431,10 +1549,10 @@ fn is_uuid_shaped(value: &str) -> bool {
 }
 
 /// Read a `snapshot-log`-shaped array of timestamped identifiers.
-fn log_entries(document: &Value, key: &str, value_key: &str) -> Vec<(i64, i64)> {
+fn log_entries(document: &Scalar, key: &str, value_key: &str) -> Vec<(i64, i64)> {
     document
         .get_key_str(key)
-        .map(Value::sequence_iter)
+        .map(Scalar::sequence_iter)
         .unwrap_or_default()
         .filter_map(|entry| {
             Some((
@@ -1446,10 +1564,10 @@ fn log_entries(document: &Value, key: &str, value_key: &str) -> Vec<(i64, i64)> 
 }
 
 /// Read the `metadata-log` array of timestamped previous documents.
-fn metadata_log(document: &Value) -> Vec<(i64, SmolStr)> {
+fn metadata_log(document: &Scalar) -> Vec<(i64, SmolStr)> {
     document
         .get_key_str("metadata-log")
-        .map(Value::sequence_iter)
+        .map(Scalar::sequence_iter)
         .unwrap_or_default()
         .filter_map(|entry| {
             Some((

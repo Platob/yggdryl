@@ -7,12 +7,14 @@
 //! `pread`, so a large container can be streamed - and whole blocks skipped -
 //! without ever holding it in memory.
 
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::io::IOBase;
-use crate::{Codec, Level, Limits, Result, Value};
+use crate::{Codec, Level, Limits, Result, Scalar};
 
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::resolve::Resolution;
@@ -31,22 +33,68 @@ pub(crate) const CODEC_KEY: &str = "avro.codec";
 pub(crate) const SYNC_LEN: usize = 16;
 
 /// One decoded Avro object container.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Container {
     /// The writer schema the header named.
     pub schema: Schema,
     /// The header's key/value metadata, minus the reserved schema and codec.
     pub metadata: Vec<(SmolStr, SmolStr)>,
     /// Every decoded row, in file order.
-    pub rows: Vec<Value>,
+    pub rows: Vec<Scalar>,
+}
+
+#[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct ContainerIdentity<'a> {
+    schema: &'a Schema,
+    metadata: Vec<&'a (SmolStr, SmolStr)>,
+    rows: &'a [Scalar],
 }
 
 impl Container {
+    /// Return a deterministic hash of the complete decoded container value.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
+    fn identity(&self) -> ContainerIdentity<'_> {
+        ContainerIdentity {
+            schema: &self.schema,
+            metadata: crate::generic::sorted_pairs(&self.metadata),
+            rows: &self.rows,
+        }
+    }
+
     /// Return one metadata value by key.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.metadata
             .iter()
             .find_map(|(name, value)| (name == key).then(|| value.as_str()))
+    }
+}
+
+impl PartialEq for Container {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Container {}
+
+impl PartialOrd for Container {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Container {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl Hash for Container {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
     }
 }
 
@@ -216,12 +264,48 @@ pub(crate) struct Header {
 /// The raw header entries, still as bytes.
 pub(crate) type HeaderEntries = Vec<(SmolStr, Vec<u8>)>;
 
+/// Retain one header entry while enforcing the map's unique-key semantics.
+fn push_header_entry(
+    entries: &mut HeaderEntries,
+    keys: &mut HashSet<SmolStr>,
+    key: SmolStr,
+    value: Vec<u8>,
+    position: usize,
+) -> Result<()> {
+    if !keys.insert(key.clone()) {
+        return Err(codec(
+            position,
+            format_smolstr!("expected unique Avro header keys, got duplicate {key:?}"),
+        ));
+    }
+    entries.push((key, value));
+    Ok(())
+}
+
+/// Keep the container header's structural budget independent from its row budget.
+///
+/// On container and block reads `max_nodes` bounds the rows in the container or
+/// block and the nodes allocated by each datum. A small row bound must therefore
+/// still be able to parse the mandatory schema/codec header. Header bytes and
+/// depth remain caller-bounded; the node count keeps the core's ordinary safety
+/// ceiling (or a larger explicit ceiling) instead of borrowing the row limit.
+fn header_limits(limits: Limits) -> Limits {
+    let max_nodes = limits.max_nodes().max(Limits::default().max_nodes());
+    Limits::new(
+        limits.max_depth(),
+        limits.max_input_bytes(),
+        max_nodes,
+        limits.max_documents(),
+    )
+}
+
 /// Parse the raw header entries and the sync marker after the magic.
 pub(crate) fn parse_header_entries(
     cursor: &mut Cursor<'_>,
     limits: Limits,
 ) -> Result<(HeaderEntries, [u8; SYNC_LEN])> {
     let mut entries = Vec::new();
+    let mut keys = HashSet::new();
     loop {
         let (count, _) = block_count(cursor)?;
         if count == 0 {
@@ -241,7 +325,7 @@ pub(crate) fn parse_header_entries(
                 )
             })?);
             let value = cursor.bytes()?.to_vec();
-            entries.push((key, value));
+            push_header_entry(&mut entries, &mut keys, key, value, cursor.position)?;
         }
     }
     let sync: [u8; SYNC_LEN] = cursor.take(SYNC_LEN)?.try_into().map_err(|_| {
@@ -265,13 +349,14 @@ pub(crate) fn header_entry<'entries>(
 
 /// Parse the header entries after the magic.
 pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<Header> {
+    let limits = header_limits(limits);
     let (entries, sync) = parse_header_entries(cursor, limits)?;
     let schema_bytes = header_entry(&entries, SCHEMA_KEY).ok_or_else(|| {
         invalid(format_smolstr!(
             "expected an Avro header carrying {SCHEMA_KEY:?}"
         ))
     })?;
-    let schema_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
+    let schema_json = crate::json::from_bytes_with_limits(schema_bytes, limits)?;
     let schema = Schema::from_json_with_limits(&schema_json, limits)?;
     let coding = match header_entry(&entries, CODEC_KEY) {
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,
@@ -441,7 +526,7 @@ fn decode_container<H: IOBase + ?Sized>(
 
 /// Replace a handle's bytes with an Avro object container holding `rows`.
 ///
-/// The schema is an Avro schema as its JSON [`Value`], and its JSON spelling
+/// The schema is an Avro schema as its JSON [`Scalar`], and its JSON spelling
 /// is written into the header verbatim, so attributes this implementation does
 /// not model - Iceberg's `field-id` among them - survive byte for byte. Every
 /// row is written as one block, compressed with raw deflate, which is what the
@@ -454,12 +539,12 @@ fn decode_container<H: IOBase + ?Sized>(
 /// fit it, or when the write fails.
 pub fn write_container<H: IOBase + ?Sized>(
     handle: &mut H,
-    schema_json: &Value,
+    schema_json: &Scalar,
     metadata: &[(&str, &str)],
-    rows: &[Value],
+    rows: &[Scalar],
 ) -> Result<()> {
     let schema = Schema::from_json(schema_json)?;
-    let encoded_schema = crate::json::to_vec(schema_json)?;
+    let encoded_schema = crate::json::into_bytes(schema_json)?;
     let datum = DatumCodec {
         names: &schema.names,
         limits: Limits::default(),
@@ -548,8 +633,8 @@ pub(crate) fn sync_marker() -> [u8; SYNC_LEN] {
 /// A buffered positional reader over any handle: `pread` is the only
 /// assumption, which is the storage contract's floor.
 struct Pread<'handle, H: IOBase + ?Sized> {
-    /// The handle being read.
-    handle: &'handle H,
+    /// The borrowed or owned handle being read.
+    handle: PreadHandle<'handle, H>,
     /// The next byte to serve.
     position: u64,
     /// The handle's size when iteration began.
@@ -560,6 +645,22 @@ struct Pread<'handle, H: IOBase + ?Sized> {
     start: u64,
 }
 
+/// A positional source can borrow its caller's handle or own one for a
+/// language-runtime iterator whose lifetime outlives the factory call.
+enum PreadHandle<'handle, H: IOBase + ?Sized> {
+    Borrowed(&'handle H),
+    Owned(Box<H>),
+}
+
+impl<H: IOBase + ?Sized> PreadHandle<'_, H> {
+    const fn get(&self) -> &H {
+        match self {
+            Self::Borrowed(handle) => handle,
+            Self::Owned(handle) => handle,
+        }
+    }
+}
+
 /// How many bytes one buffered window pulls at a time.
 const CHUNK: usize = 64 * 1024;
 
@@ -568,7 +669,7 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
     fn new(handle: &'handle H) -> Self {
         let size = handle.size();
         Self {
-            handle,
+            handle: PreadHandle::Borrowed(handle),
             position: 0,
             size,
             buffer: Vec::new(),
@@ -593,7 +694,7 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
         if self.position < self.start || offset >= self.buffer.len() {
             let want = CHUNK.min((self.size - self.position) as usize);
             let mut chunk = vec![0; want];
-            self.handle.pread_exact(self.position, &mut chunk)?;
+            self.handle.get().pread_exact(self.position, &mut chunk)?;
             self.buffer = chunk;
             self.start = self.position;
         }
@@ -633,13 +734,31 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
             ));
         }
         let mut bytes = vec![0; count];
-        self.handle.pread_exact(self.position, &mut bytes)?;
+        self.handle.get().pread_exact(self.position, &mut bytes)?;
         self.position += count as u64;
         Ok(bytes)
     }
 
-    /// Read a length-prefixed byte run bounded by `bound`.
-    fn sized(&mut self, bound: usize) -> Result<Vec<u8>> {
+    /// Advance over exactly `count` bytes without fetching their contents.
+    ///
+    /// Block metadata walks use this to count rows without allocating,
+    /// decompressing, or decoding a block payload. The next scalar read will
+    /// refill the buffered window at the new position when necessary.
+    #[cfg(feature = "arrow")]
+    fn skip(&mut self, count: usize) -> Result<()> {
+        let remaining = self.size.saturating_sub(self.position);
+        if count as u64 > remaining {
+            return Err(codec(
+                self.position as usize,
+                format_smolstr!("expected {count} bytes, got {remaining} bytes"),
+            ));
+        }
+        self.position += count as u64;
+        Ok(())
+    }
+
+    /// Read and validate one byte-run length without reading the run itself.
+    fn sized_length(&mut self, bound: usize) -> Result<usize> {
         let length = self.long()?;
         let length = usize::try_from(length).map_err(|_| {
             codec(
@@ -653,7 +772,28 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
                 format_smolstr!("expected at most {bound} bytes, got {length}"),
             ));
         }
+        Ok(length)
+    }
+
+    /// Read a length-prefixed byte run bounded by `bound`.
+    fn sized(&mut self, bound: usize) -> Result<Vec<u8>> {
+        let length = self.sized_length(bound)?;
         self.exact(length)
+    }
+}
+
+impl<H: IOBase + 'static> Pread<'static, H> {
+    /// Own a handle so a runtime iterator can keep reading after its factory
+    /// call returns, without a self-reference or unsafe lifetime extension.
+    fn owned(handle: H) -> Self {
+        let size = handle.size();
+        Self {
+            handle: PreadHandle::Owned(Box::new(handle)),
+            position: 0,
+            size,
+            buffer: Vec::new(),
+            start: 0,
+        }
     }
 }
 
@@ -711,12 +851,47 @@ pub fn read_blocks_with_limits<H: IOBase + ?Sized>(
     handle: &H,
     limits: Limits,
 ) -> Result<Blocks<'_, H>> {
-    let mut source = Pread::new(handle);
+    open_blocks(Pread::new(handle), limits)
+}
+
+/// Open a lazy block iterator that owns its handle.
+///
+/// This is the lifetime-safe shape for a language binding: the returned
+/// iterator remains streamed and holds one bounded read window, never the
+/// whole container or a self-reference.
+///
+/// # Errors
+///
+/// Returns an error when the header is not an Avro object container header.
+pub fn read_blocks_owned<H: IOBase + 'static>(handle: H) -> Result<Blocks<'static, H>> {
+    read_blocks_owned_with_limits(handle, Limits::default())
+}
+
+/// Open an owning lazy block iterator with explicit limits.
+///
+/// # Errors
+///
+/// Returns an error when the header is invalid or exceeds the limits.
+pub fn read_blocks_owned_with_limits<H: IOBase + 'static>(
+    handle: H,
+    limits: Limits,
+) -> Result<Blocks<'static, H>> {
+    open_blocks(Pread::owned(handle), limits)
+}
+
+/// Parse one container header over either a borrowed or an owned source.
+fn open_blocks<'handle, H: IOBase + ?Sized>(
+    mut source: Pread<'handle, H>,
+    limits: Limits,
+) -> Result<Blocks<'handle, H>> {
     check_magic(&source.exact(MAGIC.len())?)?;
+
+    let header_limits = header_limits(limits);
 
     // The header is small by construction; buffer it through the same parser
     // the whole-container path uses by reading entries incrementally.
     let mut entries = Vec::new();
+    let mut keys = HashSet::new();
     loop {
         let count = source.long()?;
         if count < 0 {
@@ -729,10 +904,10 @@ pub fn read_blocks_with_limits<H: IOBase + ?Sized>(
             break;
         }
         for _ in 0..count {
-            if entries.len() >= limits.max_nodes() {
+            if entries.len() >= header_limits.max_nodes() {
                 return Err(invalid(format_smolstr!(
                     "expected at most {} header entries",
-                    limits.max_nodes()
+                    header_limits.max_nodes()
                 )));
             }
             let key_bytes = source.sized(limits.max_input_bytes())?;
@@ -743,7 +918,13 @@ pub fn read_blocks_with_limits<H: IOBase + ?Sized>(
                 )
             })?);
             let value = source.sized(limits.max_input_bytes())?;
-            entries.push((key, value));
+            push_header_entry(
+                &mut entries,
+                &mut keys,
+                key,
+                value,
+                source.position as usize,
+            )?;
         }
     }
     let sync: [u8; SYNC_LEN] = source.exact(SYNC_LEN)?.as_slice().try_into().map_err(|_| {
@@ -763,8 +944,8 @@ pub fn read_blocks_with_limits<H: IOBase + ?Sized>(
             "expected an Avro header carrying {SCHEMA_KEY:?}"
         ))
     })?;
-    let schema_json = crate::json::from_slice_with_limits(schema_bytes, limits)?;
-    let schema = Schema::from_json_with_limits(&schema_json, limits)?;
+    let schema_json = crate::json::from_bytes_with_limits(schema_bytes, header_limits)?;
+    let schema = Schema::from_json_with_limits(&schema_json, header_limits)?;
     let coding = match lookup(CODEC_KEY) {
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,
         None => BlockCoding::Shared(Codec::Identity),
@@ -803,13 +984,8 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
             .find_map(|(name, value)| (name == key).then(|| value.as_str()))
     }
 
-    /// Read the next block, still compressed, or `None` past the last one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the container ends mid-block or a marker does
-    /// not match the header's.
-    pub fn next_block(&mut self) -> Result<Option<Block>> {
+    /// Read and validate the next block's count and payload length.
+    fn next_block_header(&mut self) -> Result<Option<(u64, usize)>> {
         if self.source.is_exhausted() {
             return Ok(None);
         }
@@ -826,7 +1002,12 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
                 self.limits.max_nodes()
             )));
         }
-        let payload = self.source.sized(self.limits.max_input_bytes())?;
+        let payload_size = self.source.sized_length(self.limits.max_input_bytes())?;
+        Ok(Some((count, payload_size)))
+    }
+
+    /// Validate the synchronization marker closing the current block.
+    fn finish_block(&mut self) -> Result<()> {
         let marker = self.source.exact(SYNC_LEN)?;
         if marker != self.sync {
             return Err(codec(
@@ -836,6 +1017,36 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
                 ),
             ));
         }
+        Ok(())
+    }
+
+    /// Count the next block without fetching or decoding its payload.
+    ///
+    /// This is crate-internal metadata traversal for the record surface. It
+    /// still validates payload bounds and synchronization markers, while the
+    /// potentially large compressed byte run is skipped positionally.
+    #[cfg(feature = "arrow")]
+    pub(crate) fn next_block_count(&mut self) -> Result<Option<u64>> {
+        let Some((count, payload_size)) = self.next_block_header()? else {
+            return Ok(None);
+        };
+        self.source.skip(payload_size)?;
+        self.finish_block()?;
+        Ok(Some(count))
+    }
+
+    /// Read the next block, still compressed, or `None` past the last one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the container ends mid-block or a marker does
+    /// not match the header's.
+    pub fn next_block(&mut self) -> Result<Option<Block>> {
+        let Some((count, payload_size)) = self.next_block_header()? else {
+            return Ok(None);
+        };
+        let payload = self.source.exact(payload_size)?;
+        self.finish_block()?;
         Ok(Some(Block {
             count,
             payload,
@@ -863,7 +1074,7 @@ impl Block {
     ///
     /// Returns an error when the payload does not decompress or a row does
     /// not decode.
-    pub fn rows(&self) -> Result<Vec<Value>> {
+    pub fn rows(&self) -> Result<Vec<Scalar>> {
         let decoded = self.coding.load(&self.payload, self.limits)?;
         let mut cursor = Cursor::new(&decoded);
         let datum = DatumCodec {
@@ -899,7 +1110,7 @@ impl Block {
     ///
     /// Returns an error when the payload does not decompress or a row does
     /// not resolve.
-    pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Value>> {
+    pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Scalar>> {
         let decoded = self.coding.load(&self.payload, self.limits)?;
         let mut cursor = Cursor::new(&decoded);
         let mut rows = Vec::new();

@@ -13,7 +13,7 @@
 //! The module also owns the other half of the convention: a handle that
 //! addresses the *folder* rather than one file reads across the leaves beneath
 //! it and routes each row of a write to the leaf its partition values name.
-//! [`crate::io::IOBase`]'s three record methods call in here whenever the handle
+//! [`crate::io::IOBase`]'s three write intents call in here whenever the handle
 //! is a container, which is what lets a caller address a lake and one file with
 //! the same call.
 
@@ -24,9 +24,9 @@ use arrow_array::{ArrayRef, RecordBatch, StringArray, UInt32Array};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
-use crate::arrow::{BatchReader, record_schema_from_arrow, schema_from_field};
+use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::IOBase;
+use crate::io::{IOBase, IOMedia, Listing};
 use crate::{Error, Field, Result, Url};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
@@ -55,13 +55,13 @@ fn partition_format() -> FormatOptions<'static> {
 ///
 /// ```
 /// use yggdryl::io::partition::partition_text;
-/// use yggdryl::Value;
+/// use yggdryl::Scalar;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// assert_eq!(partition_text(&Value::from("XNAS"))?, "XNAS");
-/// assert_eq!(partition_text(&Value::date(19_723))?, "2024-01-01");
-/// assert_eq!(partition_text(&Value::decimal(150, 2))?, "1.50");
-/// assert_eq!(partition_text(&Value::Null)?, "null");
+/// assert_eq!(partition_text(&Scalar::from("XNAS"))?, "XNAS");
+/// assert_eq!(partition_text(&Scalar::date32(19_723))?, "2024-01-01");
+/// assert_eq!(partition_text(&Scalar::d128(150, 2))?, "1.50");
+/// assert_eq!(partition_text(&Scalar::Null)?, "null");
 /// # Ok(())
 /// # }
 /// ```
@@ -70,15 +70,15 @@ fn partition_format() -> FormatOptions<'static> {
 ///
 /// Returns an error when the value names no single datatype, or when it cannot
 /// be materialized as the one-element array the formatter reads.
-pub fn partition_text(value: &crate::Value) -> Result<smol_str::SmolStr> {
+pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     if value.is_null() {
         return Ok(smol_str::SmolStr::new_static(NULL_PARTITION));
     }
     // The value is non-null here, so the typed pairing's own projection is the
     // one-row array the formatter reads; a value the datatype cannot hold was
     // already refused when the pairing was built.
-    let typed = crate::TypedValue::from_value(value.clone())?;
-    let array = typed.to_arrow_array()?;
+    let typed = crate::TypedScalar::from_value(value.clone())?;
+    let array = typed.into_arrow_array()?;
     let formatter =
         ArrayFormatter::try_new(array.as_ref(), &partition_format()).map_err(Error::Arrow)?;
     Ok(smol_str::SmolStr::new(formatter.value(0).to_string()))
@@ -99,7 +99,11 @@ fn constant_column(value: &str, rows: usize, target: Option<&ArrowDataType>) -> 
 /// Return the Arrow type a schema declares for a partition column, if any.
 fn declared_type(field: Option<&Field>, column: &str) -> Option<ArrowDataType> {
     let child = field?.get_field_by_name(column)?;
-    child.to_arrow().ok().map(|arrow| arrow.data_type().clone())
+    child
+        .clone()
+        .into_arrow()
+        .ok()
+        .map(|arrow| arrow.data_type().clone())
 }
 
 /// Append the partition columns a path spells out to one batch.
@@ -342,7 +346,7 @@ pub(crate) fn filtered_reader(inner: BatchReader, options: &RecordOptions) -> Re
     if options.filter_partitions().is_empty() {
         return Ok(inner);
     }
-    let schema = record_schema_from_arrow("row", inner.schema().as_ref())?;
+    let schema = field_from_arrow_schema("row", inner.schema().as_ref())?;
     let predicate = options.partition_predicate(&schema);
     if predicate.is_always_true() {
         return Ok(inner);
@@ -370,22 +374,11 @@ fn pairs_under(part: &(impl IOBase + ?Sized), root: Option<&Url>) -> Vec<(String
 /// A lake usually holds more than its data files - a marker, a checksum, a
 /// committed manifest - so a leaf whose media type is not this encoding is not
 /// a part of the table and is skipped rather than handed to a decoder.
-fn record_parts(
-    folder: &(impl IOBase + ?Sized),
-    options: &RecordOptions,
-) -> Result<Vec<crate::generic::Holder>> {
+fn record_parts(folder: &(impl IOBase + ?Sized), options: &RecordOptions) -> Result<Listing> {
     let encoding = options.mime_type();
-    // Held whole, and bounded by the folder: the parts decide the derived
-    // schema before the first batch is read, and the reader chains them in a
-    // fixed order afterwards. What is retained is one handle per leaf, never a
-    // batch - the rows themselves are still streamed one part at a time.
-    folder
+    Ok(folder
         .children_where(&[], false)?
-        .filter(|child| match child {
-            Ok(child) => child.media_type().base() == &encoding,
-            Err(_) => true,
-        })
-        .collect()
+        .keeping(move |child| child.media_type().base() == &encoding))
 }
 
 /// Return the partition columns the tree beneath `folder` already spells out.
@@ -434,9 +427,9 @@ fn write_partition_columns(
 ) -> Result<Vec<String>> {
     let stored = folder_partition_columns(entries, root);
     let declared: Vec<String> = options
-        .schema()
-        .map(|schema| {
-            schema
+        .field()
+        .map(|field| {
+            field
                 .partition_field_names()
                 .map(ToOwned::to_owned)
                 .collect()
@@ -527,10 +520,11 @@ fn split_by_partition(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Par
 
 /// Return the relative location of the leaf holding one partition.
 ///
-/// An existing leaf is reused so a partition keeps one file rather than growing
-/// a new one per write; a partition that has none is named after the encoding,
-/// which is what makes the child's own media type agree with the options it was
-/// written under.
+/// The deterministic leaf for one partition.
+///
+/// A fixed name lets a write route a row without first collecting the folder's
+/// existing leaves. Other leaves remain readable; append leaves them untouched,
+/// while overwrite drains and clears them before publishing this one.
 fn leaf_name(
     existing: &HashMap<Vec<(String, String)>, String>,
     pairs: &[(String, String)],
@@ -566,18 +560,23 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     // their full size.
     leaf.set_max_row_size(None);
     leaf.set_max_byte_size(None);
+    leaf.set_commit_row_size(None);
     if pairs.is_empty() {
         return Ok(leaf);
     }
     let columns: Vec<&str> = pairs.iter().map(|(column, _)| column.as_str()).collect();
-    if let Some(schema) = options.schema() {
-        leaf.set_schema(schema.without_fields(&columns)?);
+    if let Some(field) = options.field() {
+        leaf.set_field(field.without_fields(&columns)?);
     }
     leaf.set_merge_by_names(
         options
             .merge_by_names()
             .iter()
-            .filter(|name| !columns.contains(&name.as_str()))
+            .filter(|name| {
+                !columns
+                    .iter()
+                    .any(|column| column.eq_ignore_ascii_case(name))
+            })
             .cloned()
             .collect(),
     );
@@ -609,21 +608,26 @@ pub(crate) fn folder_reader(
         // A leaf that does not name a filtered column is unknown rather than
         // false, so it stays and the row filter answers for it.
         let bound = filter.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
-        let mut kept = Vec::with_capacity(parts.len());
-        for part in parts {
-            if bound.matches_holder(&crate::expression::Handle(&part))? {
-                kept.push(part);
-            }
-        }
-        parts = kept;
+        parts = Listing::new(parts.filter_map(move |part| match part {
+            Err(error) => Some(Err(error)),
+            Ok(part) => match bound.matches_holder(&crate::expression::Handle(&part)) {
+                Ok(true) => Some(Ok(part)),
+                Ok(false) => None,
+                Err(error) => Some(Err(error)),
+            },
+        }));
     }
-    let field = match options.schema() {
-        Some(schema) => Some(schema.clone()),
+    let field = match options.field() {
+        Some(field) => Some(field.clone()),
         // The line projection's shape follows from the options alone - no
         // leaf holds a schema to probe, and an empty folder still answers.
         None => match options {
-            RecordOptions::Text(text) => Some(text.lines.schema().clone()),
-            _ => derived_field(&parts, root.as_ref(), options)?,
+            RecordOptions::Text(text) => Some(text.lines.field().clone()),
+            _ => {
+                let (field, remaining) = derived_field(parts, root.as_ref(), options)?;
+                parts = remaining;
+                field
+            }
         },
     };
     let Some(field) = field else {
@@ -631,69 +635,89 @@ pub(crate) fn folder_reader(
         // report; an empty reader is what the laziness contract asks for.
         return Ok(crate::arrow::batch_reader(Arc::new(Schema::empty()), []));
     };
-    let schema = schema_from_field(&field)?;
+    let schema = arrow_schema_from_field(&field)?;
     Ok(Box::new(Chained {
-        parts: parts.into_iter(),
+        parts,
         root,
         field,
         options: options.clone(),
         current: None,
         schema,
+        done: false,
     }))
 }
 
 /// Derive the root Field a folder holds from the first leaf that has one.
 fn derived_field(
-    parts: &[Holder],
+    mut parts: Listing,
     root: Option<&Url>,
     options: &RecordOptions,
-) -> Result<Option<Field>> {
-    for part in parts {
-        let Some(stored) = super::stored_field(part, options)? else {
+) -> Result<(Option<Field>, Listing)> {
+    while let Some(part) = parts.next() {
+        let part = part?;
+        let Some(stored) = super::stored_field(&part, options)? else {
             continue;
         };
-        let pairs = pairs_under(part, root);
+        let pairs = pairs_under(&part, root);
         // The partition columns are appended untyped, which is what the
         // directory names actually hold; a caller wanting them typed declares a
         // schema and gets that cast for free. They arrive marked as partition
         // columns, because the layout is where that fact came from.
-        let empty = RecordBatch::new_empty(schema_from_field(&stored)?);
+        let empty = RecordBatch::new_empty(arrow_schema_from_field(&stored)?);
         let widened = with_partitions(&empty, &pairs, None)?;
-        return Ok(Some(record_schema_from_arrow(
-            options.root_name(),
-            widened.schema().as_ref(),
-        )?));
+        let field = field_from_arrow_schema(options.root_name(), widened.schema().as_ref())?;
+        // The schema-bearing part may also contain rows. Put it back in front
+        // of the still-live listing instead of reopening or discarding it.
+        let remaining = Listing::new(std::iter::once(Ok(part)).chain(parts));
+        return Ok((Some(field), remaining));
     }
-    Ok(None)
+    Ok((None, parts))
 }
 
 /// A reader over every leaf of a partitioned folder, opened one at a time.
 struct Chained {
-    parts: std::vec::IntoIter<Holder>,
+    parts: Listing,
     root: Option<Url>,
     field: Field,
     options: RecordOptions,
     current: Option<BatchReader>,
     schema: SchemaRef,
+    done: bool,
 }
 
 impl Iterator for Chained {
     type Item = std::result::Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
         loop {
             if let Some(current) = self.current.as_mut() {
                 match current.next() {
-                    Some(batch) => return Some(batch),
+                    Some(Ok(batch)) => return Some(Ok(batch)),
+                    Some(Err(error)) => {
+                        self.done = true;
+                        return Some(Err(error));
+                    }
                     // A leaf is dropped as soon as it is drained, so a lake
                     // costs one open file rather than one per part.
                     None => self.current = None,
                 }
             }
-            let part = self.parts.next()?;
+            let part = match self.parts.next()? {
+                Ok(part) => part,
+                Err(error) => {
+                    self.done = true;
+                    return Some(Err(ArrowError::ExternalError(Box::new(error))));
+                }
+            };
             match part_reader(&part, self.root.as_ref(), &self.field, &self.options) {
                 Ok(reader) => self.current = Some(reader),
-                Err(error) => return Some(Err(ArrowError::ExternalError(Box::new(error)))),
+                Err(error) => {
+                    self.done = true;
+                    return Some(Err(ArrowError::ExternalError(Box::new(error))));
+                }
             }
         }
     }
@@ -714,18 +738,18 @@ fn part_reader(
 ) -> Result<BatchReader> {
     let pairs = pairs_under(part, root);
     let mut leaf = leaf_options(options, &pairs)?;
-    if leaf.schema().is_none() {
+    if leaf.field().is_none() {
         let columns: Vec<&str> = pairs.iter().map(|(column, _)| column.as_str()).collect();
-        leaf.set_schema(field.without_fields(&columns)?);
+        leaf.set_field(field.without_fields(&columns)?);
     }
     let reader = super::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
     Ok(crate::arrow::cast_reader(restored, field, options.safe())?)
 }
 
-/// Route every row of `batches` to the leaf its partition values name.
+/// One stable routing plan for every cadence of a folder write.
 ///
-/// The incoming reader is consumed one batch at a time and each batch is split
+/// An incoming reader is consumed one batch at a time and each batch is split
 /// by partition before it is written, so a write across a lake costs one batch
 /// of memory rather than one per partition. The price is paid on the other
 /// side: these encodings rewrite a whole leaf, so a partition touched by five
@@ -733,82 +757,231 @@ fn part_reader(
 /// caller's operation and the rest append to it, which is what keeps an
 /// overwrite an overwrite without buffering the whole write first.
 ///
-/// # Errors
+/// Publications are atomic per leaf, not across the folder: [`IOBase`] has no
+/// transaction, rename, or compare-and-swap primitive spanning independent
+/// child handles. A second handle can therefore observe a completed prefix of
+/// a multi-partition write. Table formats provide their own snapshot commit
+/// and are redirected before reaching this writer.
+/// This per-leaf publication is also the explicit exception to an unset
+/// cadence's single-publication rule: materializing an unbounded source merely
+/// to approximate a folder transaction would violate the streaming contract,
+/// while [`IOBase`] supplies no cross-leaf atomic primitive.
 ///
-/// Returns a listing, read, schema, cast, encoding, or write failure.
-pub(crate) fn write_folder(
-    folder: &(impl IOBase + ?Sized),
-    batches: BatchReader,
-    options: &RecordOptions,
-    append: bool,
-) -> Result<()> {
-    // One walk answers both questions: which directories name partition
-    // columns, and which leaves already hold rows. The layout is held whole
-    // because a partitioned write routes every incoming row to the leaf its
-    // values name, so the whole layout has to be known before the first row
-    // lands; it is bounded by the folder being written, not by the rows.
-    let entries: Vec<Holder> = retried(|| folder.ls(true, false).collect::<Result<Vec<Holder>>>())?;
-    let root = folder.url().cloned();
-    let columns = write_partition_columns(&entries, root.as_ref(), options)?;
-    let encoding = options.mime_type();
-    let mut parts: Vec<Holder> = entries
-        .into_iter()
-        .filter(|entry| !entry.is_container() && entry.media_type().base() == &encoding)
-        .collect();
-    parts.sort_by_key(|part| part.url().map(ToString::to_string));
+/// Layout discovery drains the tree once at top-level preflight. Reusing this
+/// value keeps `commit_row_size = 1` from turning one listing into one listing
+/// per row, and prevents rows in the same operation from observing different
+/// layouts if another writer changes the folder between publications.
+pub(crate) struct FolderWriter {
+    existing: HashMap<Vec<(String, String)>, String>,
+    parts: Vec<Holder>,
+    columns: Vec<String>,
+    options: RecordOptions,
+}
 
-    let mut existing: HashMap<Vec<(String, String)>, String> = HashMap::new();
-    for part in &parts {
-        let Some(url) = part.url() else { continue };
-        let Some(relative) = root.as_ref().and_then(|root| url.segments_under(root)) else {
-            continue;
-        };
-        existing
-            .entry(pairs_under(part, root.as_ref()))
-            .or_insert_with(|| relative.join("/"));
+impl FolderWriter {
+    /// Resolve and validate a folder's layout without touching the input.
+    pub(crate) fn new(folder: &(impl IOBase + ?Sized), options: &RecordOptions) -> Result<Self> {
+        // One walk resolves both the path layout and existing leaf routing for
+        // every cadence of this top-level operation. The handles are bounded
+        // by the folder, not by the incoming stream; no row batch is held.
+        let entries: Vec<Holder> =
+            retried(|| folder.ls(true, false).collect::<Result<Vec<Holder>>>())?;
+        let root = folder.url().cloned();
+        let columns = write_partition_columns(&entries, root.as_ref(), options)?;
+        Self::validate_merge_key(options, &columns)?;
+        let encoding = options.mime_type();
+        let mut parts: Vec<Holder> = entries
+            .into_iter()
+            .filter(|entry| !entry.is_container() && entry.media_type().base() == &encoding)
+            .collect();
+        parts.sort_by_key(|part| part.url().map(ToString::to_string));
+        let mut existing = HashMap::new();
+        for part in &parts {
+            let Some(url) = part.url() else { continue };
+            let Some(relative) = root.as_ref().and_then(|root| url.segments_under(root)) else {
+                continue;
+            };
+            existing
+                .entry(pairs_under(part, root.as_ref()))
+                .or_insert_with(|| relative.join("/"));
+        }
+        Ok(Self {
+            existing,
+            parts,
+            columns,
+            options: options.clone(),
+        })
     }
 
-    let merging = !options.merge_by_names().is_empty();
-    if !append && !merging {
-        // An overwrite replaces the tree, so a partition the incoming rows
-        // never mention has to end up empty rather than keeping stale rows. A
-        // zero-length leaf reads as no batches, which is exactly that.
-        for mut part in parts {
+    /// Replace incoming-only options after the top-level shaping pass.
+    pub(crate) fn set_options(&mut self, options: RecordOptions) -> Result<()> {
+        Self::validate_merge_key(&options, &self.columns)?;
+        self.options = options;
+        Ok(())
+    }
+
+    /// Publish one overwrite cadence.
+    pub(crate) fn overwrite(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        batches: BatchReader,
+    ) -> Result<()> {
+        let schema = batches.schema();
+        match super::non_empty_arrow_reader(batches)? {
+            Some(batches) => self.write(folder, batches, false),
+            None => self.overwrite_empty(folder, schema),
+        }
+    }
+
+    /// Publish one append cadence.
+    pub(crate) fn append(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        batches: BatchReader,
+    ) -> Result<()> {
+        self.write(folder, batches, true)
+    }
+
+    /// Publish one merge cadence.
+    pub(crate) fn merge(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        batches: BatchReader,
+    ) -> Result<()> {
+        self.write(folder, batches, false)
+    }
+
+    /// A path-only key cannot identify two rows stored in the same leaf.
+    fn validate_merge_key(options: &RecordOptions, columns: &[String]) -> Result<()> {
+        let keys = options.merge_by_names();
+        if keys.is_empty()
+            || keys.iter().any(|key| {
+                !columns
+                    .iter()
+                    .any(|column| column.eq_ignore_ascii_case(key))
+            })
+        {
+            return Ok(());
+        }
+        Err(Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.merge_by_names"),
+            reason: crate::text::expected_got(
+                "at least one merge key stored inside each partition leaf",
+                format_args!(
+                    "only partition columns [{}], which are constant within a leaf",
+                    keys.join(", ")
+                ),
+            ),
+        })
+    }
+
+    /// Clear the addressed rows while leaving one decodable schema carrier.
+    ///
+    /// Zero-byte leaves cannot answer an inferred field. A flat folder uses
+    /// `part-0`; an existing partitioned folder reuses its first leaf so the
+    /// path still supplies its constant partition columns. A brand-new
+    /// partitioned layout has no values with which to name such a path and is
+    /// refused before any existing leaf is cleared.
+    fn overwrite_empty(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        schema: SchemaRef,
+    ) -> Result<()> {
+        let selected = self
+            .existing
+            .iter()
+            .min_by(|left, right| left.1.cmp(right.1))
+            .map(|(pairs, relative)| (pairs.clone(), relative.clone()));
+        let (pairs, relative) = match selected {
+            Some(selected) => selected,
+            None if self.columns.is_empty() => {
+                let pairs = Vec::new();
+                let relative = leaf_name(&self.existing, &pairs, &self.options);
+                (pairs, relative)
+            }
+            None => {
+                return Err(Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        "at least one row or stored partition path to publish an empty partitioned folder",
+                        format_args!(
+                            "an empty stream for partition columns [{}]",
+                            self.columns.join(", ")
+                        ),
+                    ),
+                });
+            }
+        };
+
+        let root = field_from_arrow_schema(self.options.root_name(), schema.as_ref())?;
+        let columns: Vec<&str> = self.columns.iter().map(String::as_str).collect();
+        let leaf_field = root.without_fields(&columns)?;
+        let leaf_schema = arrow_schema_from_field(&leaf_field)?;
+        let mut leaf = leaf_options(&self.options, &pairs)?;
+        // The empty reader already has the exact leaf shape; retaining the
+        // logical declaration here would repeat the top-level cast.
+        leaf.take_field();
+
+        for part in &mut self.parts {
             part.clear()?;
         }
+        let mut handle = folder.child_by_path(&relative)?;
+        handle.overwrite_arrow_reader(crate::arrow::batch_reader(leaf_schema, []), &leaf)?;
+        handle.flush()
     }
 
-    let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for batch in batches {
-        let batch = batch.map_err(crate::arrow::from_reader_error)?;
-        if batch.num_rows() == 0 {
-            continue;
-        }
-        for (pairs, part) in split_by_partition(&batch, &columns)? {
-            let relative = leaf_name(&existing, &pairs, options);
-            let leaf = leaf_options(options, &pairs)?;
-            let mut handle = folder.child_by_path(&relative)?;
-            let first = written.insert(relative);
-            let replacing = !leaf.merge_by_names().is_empty() || (!append && first);
-            if replacing {
-                // A replace and a merge rewrite the whole leaf, so a retry
-                // replays the same outcome; the batch is rebuilt into a
-                // fresh reader per attempt rather than an exhausted stream.
-                retried(|| {
-                    let reader = crate::arrow::batch_reader(part.schema(), [part.clone()]);
-                    handle.write_arrow_batch_reader(reader, &leaf)?;
-                    handle.flush()
-                })?;
-            } else {
-                // An append is not idempotent - a retry after a torn write
-                // would duplicate rows - so it runs exactly once.
-                let reader = crate::arrow::batch_reader(part.schema(), [part]);
-                handle.append_arrow_batch_reader(reader, &leaf)?;
-                handle.flush()?;
+    fn write(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        batches: BatchReader,
+        append: bool,
+    ) -> Result<()> {
+        let merging = !self.options.merge_by_names().is_empty();
+        if !append && !merging {
+            // An overwrite replaces the tree, so a partition the incoming rows
+            // never mention has to end up empty rather than keeping stale rows.
+            for part in &mut self.parts {
+                part.clear()?;
             }
         }
+
+        let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for batch in batches {
+            let batch = batch.map_err(crate::arrow::from_reader_error)?;
+            if batch.num_rows() == 0 {
+                continue;
+            }
+            for (pairs, part) in split_by_partition(&batch, &self.columns)? {
+                let relative = leaf_name(&self.existing, &pairs, &self.options);
+                let mut leaf = leaf_options(&self.options, &pairs)?;
+                // The folder entry point cast the whole incoming stream before
+                // it split path columns. Pop the declaration before encoding.
+                leaf.take_field();
+                let mut handle = folder.child_by_path(&relative)?;
+                let first = written.insert(relative);
+                let replacing = !leaf.merge_by_names().is_empty() || (!append && first);
+                if replacing {
+                    // A replace and a merge are idempotent, so a fresh reader
+                    // can replay the same bounded partition on a transient race.
+                    retried(|| {
+                        let reader = crate::arrow::batch_reader(part.schema(), [part.clone()]);
+                        if leaf.merge_by_names().is_empty() {
+                            handle.overwrite_arrow_reader(reader, &leaf)?;
+                        } else {
+                            handle.merge_arrow_reader(reader, &leaf)?;
+                        }
+                        handle.flush()
+                    })?;
+                } else {
+                    // Append is not idempotent: retrying could duplicate rows.
+                    let reader = crate::arrow::batch_reader(part.schema(), [part]);
+                    handle.append_arrow_reader(reader, &leaf)?;
+                    handle.flush()?;
+                }
+            }
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Retry a folder step that can lose a race with a concurrent writer.

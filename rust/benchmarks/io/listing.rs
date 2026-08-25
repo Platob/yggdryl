@@ -5,6 +5,7 @@
 //! hundred thousand should pay for three. The two legs are reported together so
 //! the shape of that answer is visible rather than asserted.
 
+use std::cell::OnceCell;
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -48,7 +49,11 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("io_listing");
 
     for width in WIDTHS {
-        let (root, folder) = wide(width);
+        // Criterion still calls this benchmark-registration function when a
+        // different group is selected by a command-line filter. Keep the
+        // 100,000-file fixture behind the timed case so a focused run does not
+        // eagerly build an unrelated directory tree.
+        let fixture = OnceCell::new();
         group.throughput(Throughput::Elements(width as u64));
 
         // The property the contract exists for: one entry costs one entry.
@@ -56,7 +61,8 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             BenchmarkId::new("first_entry/flat", width),
             &width,
             |bencher, _| {
-                bencher.iter(|| black_box(&folder).ls(false, false).next().is_some());
+                let (_, folder) = fixture.get_or_init(|| wide(width));
+                bencher.iter(|| black_box(folder).ls(false, false).next().is_some());
             },
         );
 
@@ -64,22 +70,27 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             BenchmarkId::new("drain/flat", width),
             &width,
             |bencher, _| {
-                bencher.iter(|| black_box(&folder).ls(false, false).count());
+                let (_, folder) = fixture.get_or_init(|| wide(width));
+                bencher.iter(|| black_box(folder).ls(false, false).count());
             },
         );
 
-        let _ = std::fs::remove_dir_all(&root);
+        if let Some((root, folder)) = fixture.into_inner() {
+            drop(folder);
+            let _ = std::fs::remove_dir_all(root);
+        }
     }
 
     for width in WIDTHS {
-        let (root, folder) = deep(width);
+        let fixture = OnceCell::new();
         group.throughput(Throughput::Elements(width as u64));
 
         group.bench_with_input(
             BenchmarkId::new("first_entry/recursive", width),
             &width,
             |bencher, _| {
-                bencher.iter(|| black_box(&folder).ls(true, false).next().is_some());
+                let (_, folder) = fixture.get_or_init(|| deep(width));
+                bencher.iter(|| black_box(folder).ls(true, false).next().is_some());
             },
         );
 
@@ -87,11 +98,15 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
             BenchmarkId::new("drain/recursive", width),
             &width,
             |bencher, _| {
-                bencher.iter(|| black_box(&folder).ls(true, false).count());
+                let (_, folder) = fixture.get_or_init(|| deep(width));
+                bencher.iter(|| black_box(folder).ls(true, false).count());
             },
         );
 
-        let _ = std::fs::remove_dir_all(&root);
+        if let Some((root, folder)) = fixture.into_inner() {
+            drop(folder);
+            let _ = std::fs::remove_dir_all(root);
+        }
     }
 
     group.finish();

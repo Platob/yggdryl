@@ -13,7 +13,7 @@
 //!
 //! # The targets
 //!
-//! * One row ([`Value`]) applies to the [`Value`] the expression computes -
+//! * One row ([`Scalar`]) applies to the [`Scalar`] the expression computes -
 //!   the scalar tier, compiled with no Arrow at all.
 //! * One Arrow `RecordBatch` applies to one column of answers, an `ArrayRef` -
 //!   the vectorized tier, implemented in [`arrow`](super::arrow) behind the
@@ -42,7 +42,7 @@
 use super::bind::{Bound, row_values};
 use super::eval::Row;
 use super::selector::Attributes;
-use crate::{Result, Value};
+use crate::{Result, Scalar};
 
 /// How a bound expression applies to this target.
 ///
@@ -83,12 +83,11 @@ pub trait ApplyExpressionStream {
 
 /// One row applies to the value the expression computes.
 ///
-/// The row is a [`Value::Sequence`] of column values in schema order, or a
-/// [`Value::Record`], which is the same thing carrying its own datatype.
-impl ApplyExpression for Value {
-    type Output = Value;
+/// The row is a [`Scalar::Sequence`] of column values in schema order.
+impl ApplyExpression for Scalar {
+    type Output = Scalar;
 
-    fn apply_expression(&self, bound: &Bound) -> Result<Value> {
+    fn apply_expression(&self, bound: &Bound) -> Result<Scalar> {
         let values = row_values(self, bound.schema())?;
         bound.node().eval(&Row::new(Some(values), None))
     }
@@ -105,9 +104,9 @@ impl ApplyExpression for Value {
 /// The conjuncts run cheapest-first and stop at the first `false`, so a
 /// predicate answerable from the path alone performs no backend call.
 impl<'holder> ApplyExpression for dyn Attributes + 'holder {
-    type Output = Value;
+    type Output = Scalar;
 
-    fn apply_expression(&self, bound: &Bound) -> Result<Value> {
+    fn apply_expression(&self, bound: &Bound) -> Result<Scalar> {
         let row = Row::new(None, Some(self));
         let mut unknown = false;
         for conjunct in bound.node().conjuncts() {
@@ -116,15 +115,15 @@ impl<'holder> ApplyExpression for dyn Attributes + 'holder {
                 continue;
             }
             match conjunct.eval(&row)?.as_bool() {
-                Some(false) => return Ok(Value::Bool(false)),
+                Some(false) => return Ok(Scalar::Bool(false)),
                 Some(true) => {}
                 None => unknown = true,
             }
         }
         Ok(if unknown {
-            Value::Null
+            Scalar::Null
         } else {
-            Value::Bool(true)
+            Scalar::Bool(true)
         })
     }
 }

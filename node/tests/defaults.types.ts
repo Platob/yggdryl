@@ -48,8 +48,8 @@ const unknownDataTypeDefault: unknown = genericDataType.defaultJSValue()
 const genericField = new Field('value', genericDataType, false)
 const unknownFieldDefault: unknown = genericField.defaultJSValue()
 const arrowScalar: unknown = fixed.defaultArrowScalar()
-const sparkDataType: DataType = fixed.dataType.toSchemeCompat('spark')
-const arrowField: Field = fixed.toSchemeCompat('arrow')
+const sparkDataType: DataType = fixed.dataType.intoSchemeCompat('spark')
+const arrowField: Field = fixed.intoSchemeCompat('arrow')
 
 // @ts-expect-error nullable Field defaults are not narrowed to bigint
 const nonNullableFieldValue: bigint = nullableId.defaultJSValue()
@@ -58,7 +58,7 @@ const nullableDataTypeValue: null = nullableId.dataType.defaultJSValue()
 // @ts-expect-error a defaulted Struct is nullable, so its default is not a bare tuple
 const nonNullableItemValue: readonly [number | null] = defaultedItem.defaultJSValue()
 // @ts-expect-error compatibility targets are a closed vocabulary
-fixed.toSchemeCompat('postgres')
+fixed.intoSchemeCompat('postgres')
 // @ts-expect-error private native defaults bridges are not public declarations
 fixed._defaultJSValueNative()
 // @ts-expect-error private native cached-schema bridge is hidden

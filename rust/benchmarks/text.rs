@@ -11,6 +11,8 @@ criterion_group!(
     text,
     value::value_benchmarks,
     placeholder::placeholder_benchmarks,
+    line::lines_first_benchmarks,
+    line::lines_identity_benchmarks,
     line::lines_arrow_benchmarks,
     line::lines_gzip_benchmarks,
     line::lines_shape_benchmarks

@@ -26,13 +26,16 @@ TIME_UNITS: tuple[str, ...] = tuple(_LISTING["time_units"])
 #: Both union modes: ``"sparse"`` and ``"dense"``.
 UNION_MODES: tuple[str, ...] = tuple(_LISTING["union_modes"])
 
+#: Every generic I/O intent.
+IO_MODES: tuple[str, ...] = tuple(_LISTING["io_modes"])
+
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
 #: Every answer a handle gives about what it addresses, e.g. ``"file"``.
 IO_KINDS: tuple[str, ...] = tuple(_LISTING["io_kinds"])
 
-#: The compatibility targets ``to_scheme_compat`` accepts, e.g. ``"arrow"``.
+#: The compatibility targets ``into_scheme_compat`` accepts, e.g. ``"arrow"``.
 COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"])
 
 #: The named points of the shared 0-to-9 compression scale.
@@ -47,4 +50,5 @@ __all__ = [
     "LEVELS",
     "TIME_UNITS",
     "UNION_MODES",
+    "IO_MODES",
 ]

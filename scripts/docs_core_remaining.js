@@ -26,26 +26,28 @@ If a name is not in the relevant inventory, IT DOES NOT EXIST. Do not write it.
 
 ARCHITECTURE IN BRIEF:
 - A NON-NULL STRUCT \`Field\` IS THE SCHEMA. There is no Record, RecordSchema, Tabular, ArrowTable,
-  MediaDescriptor, IOMedia, RecordSettings, or BatchCastPlan, and no yggdryl::media, yggdryl::cast,
-  or yggdryl::codec module. \`DataType\` is the logical type tree; \`Field\` adds name, nullability,
-  and metadata.
+  MediaDescriptor, or BatchCastPlan. \`DataType\` is the logical type tree; \`Field\` adds name,
+  nullability, and metadata. \`yggdryl::codec\` is only a compatibility re-export facade.
 - \`yggdryl::io::IOBase\` is the one storage trait: positional pread/pwrite, lazy by contract
   (constructing touches nothing, reading something absent yields nothing, writing creates).
   \`IOKind\` says what a handle addresses. The role traits \`IOPath\`/\`IOFile\`/\`IOFolder\`
-  pre-implement what follows from a resource's role.
+  pre-implement what follows from a resource's role. \`IOMedia\` is its record/media contract:
+  schema and dimensions, streamed Arrow reads, and explicit overwrite/append/merge writes.
 - \`yggdryl::generic\` holds one enum per contract: \`Holder\` (every IOBase), \`Media\` (every record
   encoding), \`Codec\` (every content coding over a handle), \`RecordOptions\` (every encoding's
   settings, with \`IORecordOptions\` as the shared settings trait and flat public fields).
 - \`yggdryl::local\` supplies the three filesystem roles: \`Path\`, \`Folder\`, \`File\`.
 - \`yggdryl::gzip|zlib|zstd\` each expose load/dump/reader/writer plus a transparent IOBase handle.
 - \`yggdryl::ipc\` and \`yggdryl::parquet\` (non-default \`parquet\` feature) read and write ARROW
-  BATCHES over any handle. Reading returns \`yggdryl::arrow::BatchReader\`, which STREAMS; writing
-  takes any IntoIterator of batches. There is NO row-level read_records/write_records anywhere.
+  BATCHES over any handle. Reading returns \`yggdryl::arrow::BatchReader\`, which STREAMS; primitive
+  writes take that same reader. Reader, table, record-batch, and ordered row-record entry points
+  name overwrite, append, or merge intent explicitly and converge on those primitives.
 - \`yggdryl::arrow\` holds scalars (scalar_array / scalar_value, StructScalar, the default_arrow_array methods), schema projection
-  (schema_from_field, record_schema_from_arrow, record_schema_to_arrow), and BatchReader.
+  (`Field::into_arrow_schema`, `Field::from_arrow_schema`,
+  `Field::into_arrow_exchange_schema`), and BatchReader.
 - \`yggdryl::field::cast\` holds the ArrowCast trait and the typed per-datatype casts
   (Int64Field::cast_arrow_array -> Int64Array via ArrowFieldType). Batch casting IS array casting.
-- \`yggdryl::text\` holds the shared \`Value\` tree and the four format types \`Json\`, \`Jsonl\`,
+- \`yggdryl::generic\` holds the shared \`Scalar\` tree; \`yggdryl::text\` owns the four format types \`Json\`, \`Jsonl\`,
   \`Toml\`, \`Yaml\`, all implementing \`TextCodec\`.
 - \`yggdryl::uri\` holds Uri/Url/Urn with full std Path/PathBuf interop.
 - \`yggdryl::iceberg\` (non-default \`iceberg\` feature) maps Iceberg schemas to struct Fields.
@@ -85,8 +87,8 @@ DOCUMENTATION CONTRACT - follow every rule.
    Four-space indent inside the tab, blank line after each marker.
 
    CHECK ${REPO}/.api-bindings.txt before writing a Python or JavaScript tab. If the module is not
-   exposed to those runtimes at all (storage, records, compression, iceberg are Rust-only today),
-   then instead of faking tabs, put exactly this line directly under the one-sentence lead:
+   exposed to those runtimes at all, then instead of faking tabs, put exactly this line directly
+   under the one-sentence lead:
 
        !!! note "Rust only"
            The Python and JavaScript packages do not expose this module yet.
@@ -109,7 +111,11 @@ DOCUMENTATION CONTRACT - follow every rule.
 5. TONE. Concrete, tight, no marketing, no hedging, no feature tours. Prefer several small examples
    over one long one. Use H2 sections.
 
-6. LINKS. Relative links only, and only to pages in the list you are given.
+6. NAMES. Project conversions are \`from_*\`/\`into_*\` (\`fromX\`/\`intoX\` in JavaScript), never a plain
+   \`to_*\` alias. Keep standard and foreign protocols such as \`toString\`, \`toJSON\`, and PyArrow's
+   \`scanner.to_table()\`.
+
+7. LINKS. Relative links only, and only to pages in the list you are given.
 `
 
 const CORE_PAGES = [
@@ -118,34 +124,34 @@ const CORE_PAGES = [
     cover: 'Building and parsing logical types, nesting, decimals, temporal units, dictionaries, run-end encoding, unions and the variant alias, the id/kind vocabulary, Arrow projection, default values, and compatibility rewriting for spark/polars/pandas.' },
   { module: 'field', title: 'Field', bindings: true,
     read: 'rust/src/field/ (mod.rs, typed.rs, value.rs, diff.rs, parser.rs, serde.rs, arrow.rs, cast/), rust/tests/field/, python/src/field.rs, python/tests/test_field.py, node/src/field.rs, node/tests/field.test.js, node/tests/fields.test.js',
-    cover: 'A field is a name, datatype, nullability, and metadata - and a non-null struct field is the schema. Cover construction, metadata as a mapping (including the reserved field:init and PARQUET:field_id keys and the http:* protocol properties), the typed field aliases, validating and canonicalizing a Value against a struct root, comparison through show_diff/show_diffs, and the casting surface (ArrowCast plus the typed per-datatype casts). This is the most important page on the site.' },
+    cover: 'A field is a name, datatype, nullability, and metadata; a non-null struct field is the schema. Cover construction, metadata mappings, typed aliases, Scalar validation/canonicalization, comparison, and ArrowCast. Python `@scalar` wraps a stdlib dataclass and installs cached static `Class.field()`; global `field(value, name=None)` is only a builder. Rust keeps typed `into_field`/`into_struct_field`.' },
   { module: 'arrow', title: 'Arrow interoperability', bindings: true,
     read: 'rust/src/arrow/, rust/tests/default_scalar.rs, rust/tests/value_bounds.rs, rust/tests/batch_cast.rs, plus the arrow_scalar methods in python/src and node/src',
-    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the TypedValue Arrow projection, schema_from_field, record_schema_from_arrow / record_schema_to_arrow, and the streaming BatchReader. Say plainly that the row-to-Arrow conversion layer was removed: Arrow speaks batches and scalars. Cover the materialization budgets that reject an oversized allocation before making it. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
-  { module: 'ipc', title: 'Arrow IPC', bindings: false,
-    read: 'rust/src/ipc/ (mod.rs, tests.rs)',
-    cover: 'Reading and writing Arrow IPC over any handle: the free functions (read_field, read_batches, write_batches), the stateful Ipc type with its options and cached schema, streamed reading through BatchReader, writing from any iterator, and the automatic content coding.' },
-  { module: 'parquet', title: 'Apache Parquet', bindings: false,
-    read: 'rust/src/parquet/ (mod.rs, metadata.rs, tests.rs)',
-    cover: 'The non-default parquet feature: ParquetOptions (flat shared fields plus compression, max_row_group_size, key_value_metadata), reading and writing batches, footer statistics (row groups, split offsets, null counts, bounds), field-id round trips, and why a handle declaring an outer content coding is rejected.' },
-  { module: 'iceberg', title: 'Apache Iceberg', bindings: false,
-    read: 'rust/src/iceberg/ (mod.rs, types.rs, schema.rs, tests.rs)',
-    cover: 'The non-default iceberg feature: PrimitiveType (the closed Iceberg vocabulary and its exact mapping to DataType, refusing what Iceberg cannot express), schema_from_json/schema_to_json (an Iceberg schema is a non-null struct Field whose children carry PARQUET:field_id, and requirement inverts into nullability), and assign_field_ids. State what is not here: no catalog client, no manifests, no transaction protocol.' },
+    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the TypedScalar Arrow projection, Field::into_arrow_schema / Field::from_arrow_schema / Field::into_arrow_exchange_schema, and the streaming BatchReader. Say plainly that Arrow speaks batches and scalars. Cover materialization budgets that reject oversized allocations first. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
+  { module: 'ipc', title: 'Arrow IPC', bindings: true,
+    read: 'rust/src/ipc/ (mod.rs, tests.rs), rust/src/io/media.rs, python/src/io.rs, python/tests/test_ipc.py, node/src/io.rs, node/tests/io.test.js',
+    cover: 'Reading and writing Arrow IPC over any handle: read_arrow_field/read_arrow_reader, overwrite/append/merge and the mode-dispatching write methods, optimized table and record-batch widening, shared RecordOptions, streaming BatchReader behavior, and automatic content coding. Present overwrite, append, keyed merge, and read in Rust/Python/JavaScript tabs.' },
+  { module: 'parquet', title: 'Apache Parquet', bindings: true,
+    read: 'rust/src/parquet/ (mod.rs, metadata.rs, geospatial.rs, tests.rs), rust/src/io/media.rs, python/src/io.rs, python/tests/test_parquet.py, node/src/io.rs, node/tests/io.test.js',
+    cover: 'The parquet feature through IOMedia: flat shared options plus compression, row-group sizing and metadata; streamed overwrite/append/keyed merge/read; projection and schema casting; footer and geospatial statistics without row decoding; field-id round trips; and rejection of outer content coding. Use the matching three-language tabs and measured benchmark table.' },
+  { module: 'iceberg', title: 'Apache Iceberg', bindings: true,
+    read: 'rust/src/iceberg/, rust/tests/iceberg_interop.rs, python/src/iceberg.rs, python/tests/test_iceberg.py, node/src/iceberg.rs, node/tests/iceberg.test.js',
+    cover: 'The iceberg feature as a table format over IOBase and Parquet/Avro: schemas and field ids, partition specs, snapshots and refs, metadata, manifests, scan planning and pruning, table commits, catalog hierarchy, evolution, inspection, retention and compaction. Keep the runtime views thin and show the same supported operation in every language tab.' },
   { module: 'uri', title: 'URI, URL, and URN', bindings: true,
     read: 'rust/src/uri.rs, rust/tests/uri.rs, python/src/uri.rs, python/tests/test_uri.py, node/src/uri.rs, node/tests/uri.test.js',
-    cover: 'Parsing and canonical syntax, components, path segments and extensions, media-type inference from a compound filename, joinpath/parent/parents/parts, default_port, and the std Path/PathBuf interop (from_path, to_path, TryFrom, join_path, is_local, exists, is_dir, is_file, local_mime_type). All three languages expose this.' },
+    cover: 'Parsing and canonical syntax, components, path segments and extensions, compound-filename media inference, joinpath/parent/parents/parts, default_port, and Path/PathBuf interop (from_path, into_path, TryFrom, join_path, is_local, exists, is_dir, is_file, local_mime_type). All three languages expose this.' },
   { module: 'text', title: 'Structured text values', bindings: true,
-    read: 'rust/src/text/ (mod.rs, value.rs, codec.rs, format.rs, limits.rs, display.rs, io.rs), rust/tests/text/, python/src/codec.rs, node/src/codec.rs',
-    cover: 'The shared Value tree - variants, floats, limits, byte positions, format inference - and then the four format types Json/Jsonl/Toml/Yaml behind one TextCodec surface, including reading and writing through an IOBase handle with its content coding. Python and JavaScript expose the value conversion and the codecs, so those examples get three tabs.' },
+    read: 'rust/src/text/ (mod.rs, codec.rs, format.rs, limits.rs, display.rs, io.rs), rust/src/generic/scalar.rs, rust/tests/text/, python/src/codec.rs, node/src/codec.rs',
+    cover: 'The shared Scalar tree - variants, floats, limits, byte positions, format inference - and then the four format types Json/Jsonl/Toml/Yaml behind one TextCodec surface, including reading and writing through an IOBase handle with its content coding. Python and JavaScript expose scalar conversion and the codecs, so those examples get three tabs.' },
   { module: 'json', title: 'JSON', bindings: true,
     read: 'rust/src/json/, rust/tests/json.rs, python/yggdryl/json/, node/tests/codec.test.js',
-    cover: 'Reading and writing JSON through the shared Value: whole-value and streaming forms, newline-delimited JSON, limits, and automatic content coding from a filename.' },
+    cover: 'Reading and writing JSON through Scalar: whole-value and streaming forms, newline-delimited JSON, limits, and automatic content coding from a filename.' },
   { module: 'yaml', title: 'YAML', bindings: true,
     read: 'rust/src/yaml/, rust/tests/yaml.rs, python/yggdryl/yaml/, node/tests/codec.test.js',
-    cover: 'Reading and writing YAML through the shared Value, multi-document handling, the deliberate absence of tag emission, and how a tag on input is read.' },
+    cover: 'Reading and writing YAML through Scalar, multi-document handling, the deliberate absence of tag emission, and how a tag on input is read.' },
   { module: 'toml', title: 'TOML', bindings: true,
     read: 'rust/src/toml/, rust/tests/toml.rs, python/yggdryl/toml/, node/tests/toml.test.js',
-    cover: 'Reading and writing TOML through the shared Value, table ordering, and the type mapping.' },
+    cover: 'Reading and writing TOML through Scalar, table ordering, and the type mapping.' },
 ]
 
 const CORE_LINKS = CORE_PAGES.map((page) => `${page.module}.md`).join(', ')
@@ -298,8 +304,8 @@ Report, in priority order:
   exposed to Python and JavaScript. (A page carrying the "Rust only" note is exempt, but check that
   the note is justified against .api-bindings.txt.)
 - NO LEAD SENTENCE: the page does not open with H1 followed by exactly one short sentence.
-- STALE ARCHITECTURE: Record, RecordSchema, Tabular, ArrowTable, MediaDescriptor, IOMedia,
-  RecordSettings, BatchCastPlan, read_records/write_records, yggdryl::media, yggdryl::cast,
+- STALE ARCHITECTURE: Record, RecordSchema, Tabular, ArrowTable, MediaDescriptor,
+  RecordSettings, BatchCastPlan, yggdryl::media, yggdryl::cast,
   yggdryl::codec, the name "rekep", the mmap feature, or benches/examples directories.
 - BROKEN LINK: a relative link with no target file under ${REPO}/docs.
 - STYLE: explanation before the example, hedging, or a feature tour.

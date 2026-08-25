@@ -17,11 +17,12 @@ if TYPE_CHECKING:
     Time32Field: TypeAlias = TypedField[Literal["time32"], TimeValue]
     Time64Field: TypeAlias = TypedField[Literal["time64"], TimeValue]
     TimeField: TypeAlias = Time32Field | Time64Field
-    DurationField: TypeAlias = TypedField[Literal["duration"], timedelta]
+    Duration32Field: TypeAlias = TypedField[Literal["duration32"], timedelta]
+    Duration64Field: TypeAlias = TypedField[Literal["duration64"], timedelta]
     IntervalField: TypeAlias = TypedField[Literal["interval"], object]
 else:
     TimestampField = Date32Field = Date64Field = Field
-    Time32Field = Time64Field = TimeField = DurationField = IntervalField = Field
+    Time32Field = Time64Field = TimeField = Duration32Field = Duration64Field = IntervalField = Field
 
 _DATE32 = simple_data_type("date32")
 _DATE64 = simple_data_type("date64")
@@ -86,15 +87,35 @@ def time(
     )
 
 
-def duration(
+def duration32(
+    name: str,
+    unit: str = "millisecond",
+    *,
+    nullable: bool = True,
+    metadata: MetadataInput = None,
+) -> Duration32Field:
+    return new_field(
+        Duration32Field,
+        name,
+        DataType.duration32(unit),
+        nullable,
+        metadata,
+    )
+
+
+def duration64(
     name: str,
     unit: str = "microsecond",
     *,
     nullable: bool = True,
     metadata: MetadataInput = None,
-) -> DurationField:
+) -> Duration64Field:
     return new_field(
-        DurationField, name, DataType._temporal("duration", unit), nullable, metadata
+        Duration64Field,
+        name,
+        DataType.duration64(unit),
+        nullable,
+        metadata,
     )
 
 
@@ -113,7 +134,8 @@ def interval(
 __all__ = [
     "Date32Field",
     "Date64Field",
-    "DurationField",
+    "Duration32Field",
+    "Duration64Field",
     "IntervalField",
     "Time32Field",
     "Time64Field",
@@ -121,7 +143,8 @@ __all__ = [
     "TimestampField",
     "date32",
     "date64",
-    "duration",
+    "duration32",
+    "duration64",
     "interval",
     "time",
     "time32",

@@ -14,9 +14,6 @@ from ._common import (
 )
 from ._typing import TypedField
 
-if TYPE_CHECKING:
-    from ..records import Record
-
 _ItemT = TypeVar("_ItemT")
 _KeyT = TypeVar("_KeyT")
 _ValueT = TypeVar("_ValueT")
@@ -37,9 +34,7 @@ if TYPE_CHECKING:
     LargeListViewField: TypeAlias = TypedField[
         Literal["large_list_view"], builtins.list[_ItemT]
     ]
-    StructField: TypeAlias = TypedField[
-        Literal["struct"], Record | Mapping[str, object]
-    ]
+    StructField: TypeAlias = TypedField[Literal["struct"], object]
     UnionField: TypeAlias = TypedField[Literal["union"], object]
     DenseUnionField: TypeAlias = UnionField
     DictionaryField: TypeAlias = TypedField[Literal["dictionary"], _ValueT]

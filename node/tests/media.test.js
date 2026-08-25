@@ -114,6 +114,17 @@ test('MimeType parsing, views, JSON, ordering, and hashes stay native-owned', ()
   assert.throws(() => MimeType.from({}))
 })
 
+test('MIME and media I/O identity comes from the unencoded base', () => {
+  assert.equal(MimeType.CSV.isIo(), true)
+  assert.equal(
+    MediaType.fromParts(MimeType.CSV, [MimeType.GZIP]).isIo(),
+    true,
+  )
+  const directory = MimeType.fromString('inode/directory')
+  assert.equal(directory.isIo(), false)
+  assert.equal(new MediaType(directory).isIo(), false)
+})
+
 test('MediaType consumes iterables once and exposes detached snapshots', () => {
   let visits = 0
   function* encodings() {

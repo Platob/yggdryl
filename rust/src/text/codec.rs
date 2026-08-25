@@ -1,51 +1,23 @@
-//! One read/write surface shared by every structured text format.
-//!
-//! [`Json`], [`Jsonl`], [`Toml`], and [`Yaml`] are the four formats, and
-//! [`TextCodec`] is what they all answer: parse a string, parse bytes, parse a
-//! reader, parse the bytes a handle holds - and the same four in reverse. The
-//! format decides the grammar; nothing else changes.
-//!
-//! Handle operations go through [`IOBase`], so the handle's own content coding
-//! applies: reading `trades.json.gz` decompresses and writing it compresses,
-//! with no argument saying so.
-//!
-//! ```
-//! use yggdryl::io::{Buffer, IOBase};
-//! use yggdryl::text::{Json, TextCodec, Value};
-//! use yggdryl::Url;
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let value = Json.loads(r#"{"symbol":"AAPL"}"#)?;
-//! assert_eq!(Json.dumps(&value)?, r#"{"symbol":"AAPL"}"#);
-//!
-//! // The same value through a compressed handle.
-//! let mut handle =
-//!     Buffer::new().with_media_type(Url::from_str("file:///quote.json.gz")?.media_type());
-//! Json.dump(&mut handle, &value)?;
-//! assert_eq!(Json.load(&handle)?, value);
-//! assert_eq!(&handle.read_range(0, 2)?, &[0x1F, 0x8B]);
-//! # Ok(())
-//! # }
-//! ```
+//! One natural read/write surface for every structured-text format.
 
 use std::io::{Read, Write};
 
-use super::{Format, Limits, Value};
+use super::{Format, Formatting, Limits, Scalar};
 use crate::io::IOBase;
-use crate::{Level, MimeType, Result};
+use crate::{Field, Level, MimeType, Result};
 
-/// The read and write surface every structured text format provides.
-///
-/// A format value is the configuration: [`Json`] and friends are unit structs
-/// with the default limits, and [`Json::with_limits`] returns a configured one.
+/// The read and write surface shared by JSON, JSON Lines, YAML, and TOML.
+// The receiver selects the codec; these names intentionally describe the
+// conversion direction at the public format boundary.
+#[allow(clippy::wrong_self_convention)]
 pub trait TextCodec: Copy {
-    /// The format this codec parses and writes.
+    /// Return this codec's format.
     fn format(&self) -> Format;
 
-    /// The parser bounds applied to untrusted input.
+    /// Return this codec's parser bounds.
     fn limits(&self) -> Limits;
 
-    /// Return this codec with explicit parser bounds.
+    /// Return a codec with explicit parser bounds.
     fn with_limits(self, limits: Limits) -> Limited<Self> {
         Limited {
             codec: self,
@@ -53,203 +25,204 @@ pub trait TextCodec: Copy {
         }
     }
 
-    /// The MIME type a written value carries.
+    /// Return this codec's MIME type.
     fn mime_type(&self) -> MimeType {
         self.format().mime_type()
     }
 
-    /// Return whether this format holds more than one value per document.
+    /// Return whether this format carries several documents.
     fn is_multi_document(&self) -> bool {
         matches!(self.format(), Format::JsonLines | Format::Yaml)
     }
 
-    /// Parse one value from text.
-    ///
-    /// # Errors
-    ///
-    /// Returns the parser failure, with the byte position it stopped at.
-    fn loads(&self, text: &str) -> Result<Value> {
-        super::from_str_with_limits(text, self.format(), self.limits())
+    /// Parse one value from UTF-8.
+    fn from_utf8(&self, input: &str) -> Result<Scalar> {
+        super::from_utf8_with_limits(input, self.format(), self.limits())
+    }
+
+    /// Parse and type one UTF-8 value under `field`.
+    fn from_utf8_with_field(&self, input: &str, field: &Field) -> Result<Scalar> {
+        super::from_utf8_with_field_and_limits(input, self.format(), field, self.limits())
     }
 
     /// Parse one value from bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns the parser failure, with the byte position it stopped at.
-    fn load_slice(&self, bytes: &[u8]) -> Result<Value> {
-        super::from_slice_with_limits(bytes, self.format(), self.limits())
+    fn from_bytes(&self, input: &[u8]) -> Result<Scalar> {
+        super::from_bytes_with_limits(input, self.format(), self.limits())
     }
 
-    /// Parse one value from a reader.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read or parser failure.
-    fn read<R: Read>(&self, reader: R) -> Result<Value> {
+    /// Parse and type one byte value under `field`.
+    fn from_bytes_with_field(&self, input: &[u8], field: &Field) -> Result<Scalar> {
+        super::from_bytes_with_field_and_limits(input, self.format(), field, self.limits())
+    }
+
+    /// Parse one value from a standard byte reader.
+    fn from_reader<R: Read>(&self, reader: R) -> Result<Scalar> {
         super::from_reader_with_limits(reader, self.format(), self.limits())
     }
 
-    /// Parse every value from text.
-    ///
-    /// A single-document format yields exactly one value.
-    ///
-    /// # Errors
-    ///
-    /// Returns the parser failure, with the byte position it stopped at.
-    fn loads_all(&self, text: &str) -> Result<Vec<Value>> {
-        super::from_str_all_with_limits(text, self.format(), self.limits())
+    /// Parse and type one reader value under `field`.
+    fn from_reader_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Scalar> {
+        super::from_reader_with_field_and_limits(reader, self.format(), field, self.limits())
     }
 
-    /// Parse every value from bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns the parser failure, with the byte position it stopped at.
-    fn load_slice_all(&self, bytes: &[u8]) -> Result<Vec<Value>> {
-        super::from_slice_all_with_limits(bytes, self.format(), self.limits())
+    /// Parse every UTF-8 document.
+    fn from_utf8_all(&self, input: &str) -> Result<Vec<Scalar>> {
+        super::from_utf8_all_with_limits(input, self.format(), self.limits())
     }
 
-    /// Parse every value from a reader.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read or parser failure.
-    fn read_all<R: Read>(&self, reader: R) -> Result<Vec<Value>> {
+    /// Parse and type every UTF-8 document under `field`.
+    fn from_utf8_all_with_field(&self, input: &str, field: &Field) -> Result<Vec<Scalar>> {
+        super::from_utf8_all_with_field_and_limits(input, self.format(), field, self.limits())
+    }
+
+    /// Parse every byte document.
+    fn from_bytes_all(&self, input: &[u8]) -> Result<Vec<Scalar>> {
+        super::from_bytes_all_with_limits(input, self.format(), self.limits())
+    }
+
+    /// Parse and type every byte document under `field`.
+    fn from_bytes_all_with_field(&self, input: &[u8], field: &Field) -> Result<Vec<Scalar>> {
+        super::from_bytes_all_with_field_and_limits(input, self.format(), field, self.limits())
+    }
+
+    /// Parse every document from a standard byte reader.
+    fn from_reader_all<R: Read>(&self, reader: R) -> Result<Vec<Scalar>> {
         super::from_reader_all_with_limits(reader, self.format(), self.limits())
     }
 
-    /// Render one value as text.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value cannot be represented in this format.
-    fn dumps(&self, value: &Value) -> Result<String> {
-        let bytes = self.dump_vec(value)?;
-        String::from_utf8(bytes).map_err(|error| crate::Error::Codec {
-            format: self.format().as_str(),
-            position: error.utf8_error().valid_up_to(),
-            reason: smol_str::SmolStr::new_static("encoded output is not valid UTF-8"),
-        })
+    /// Parse and type every reader document under `field`.
+    fn from_reader_all_with_field<R: Read>(&self, reader: R, field: &Field) -> Result<Vec<Scalar>> {
+        super::from_reader_all_with_field_and_limits(reader, self.format(), field, self.limits())
     }
 
-    /// Render one value as bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value cannot be represented in this format.
-    fn dump_vec(&self, value: &Value) -> Result<Vec<u8>> {
-        super::to_vec(value, self.format())
+    /// Encode one value as UTF-8.
+    fn into_utf8(&self, value: &Scalar) -> Result<String> {
+        super::into_utf8(value, self.format())
     }
 
-    /// Write one value to a writer.
-    ///
-    /// # Errors
-    ///
-    /// Returns a write or representation failure.
-    fn write<W: Write>(&self, writer: W, value: &Value) -> Result<()> {
-        super::to_writer(writer, value, self.format())
+    /// Encode one value as UTF-8 with explicit formatting.
+    fn into_utf8_with_formatting(&self, value: &Scalar, formatting: Formatting) -> Result<String> {
+        super::into_utf8_with_formatting(value, self.format(), formatting)
     }
 
-    /// Render several values as bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the format holds one value per document and more
-    /// than one was supplied, or when a value cannot be represented.
-    fn dump_vec_all(&self, values: &[Value]) -> Result<Vec<u8>> {
-        let mut bytes = Vec::new();
-        super::to_writer_all(&mut bytes, values, self.format())?;
-        Ok(bytes)
+    /// Encode one value as bytes.
+    fn into_bytes(&self, value: &Scalar) -> Result<Vec<u8>> {
+        super::into_bytes(value, self.format())
     }
 
-    /// Write several values to a writer.
-    ///
-    /// # Errors
-    ///
-    /// Returns a write or representation failure.
-    fn write_all<W: Write>(&self, writer: W, values: &[Value]) -> Result<()> {
-        super::to_writer_all(writer, values, self.format())
-    }
-
-    /// Parse one value from the bytes a handle holds.
-    ///
-    /// The handle's content coding is removed first, so a `.json.gz` handle
-    /// needs no extra argument. Per the laziness contract, a resource that does
-    /// not exist yet is empty rather than an error, which is a parse failure
-    /// for a format that requires a value.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or parser failure.
-    fn load<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Value> {
-        self.load_slice(&decoded(handle)?)
-    }
-
-    /// Parse every value from the bytes a handle holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns a read, decoding, or parser failure.
-    fn load_all<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Vec<Value>> {
-        self.load_slice_all(&decoded(handle)?)
-    }
-
-    /// Replace a handle's bytes with one rendered value.
-    ///
-    /// # Errors
-    ///
-    /// Returns a representation, encoding, or write failure.
-    fn dump<H: IOBase + ?Sized>(&self, handle: &mut H, value: &Value) -> Result<()> {
-        let bytes = self.dump_vec(value)?;
-        store(handle, &bytes, Level::DEFAULT)
-    }
-
-    /// Replace a handle's bytes with several rendered values.
-    ///
-    /// # Errors
-    ///
-    /// Returns a representation, encoding, or write failure.
-    fn dump_all<H: IOBase + ?Sized>(&self, handle: &mut H, values: &[Value]) -> Result<()> {
-        let bytes = self.dump_vec_all(values)?;
-        store(handle, &bytes, Level::DEFAULT)
-    }
-
-    /// Replace a handle's bytes at an explicit compression level.
-    ///
-    /// # Errors
-    ///
-    /// Returns a representation, encoding, or write failure.
-    fn dump_with_level<H: IOBase + ?Sized>(
+    /// Encode one value as bytes with explicit formatting.
+    fn into_bytes_with_formatting(
         &self,
+        value: &Scalar,
+        formatting: Formatting,
+    ) -> Result<Vec<u8>> {
+        super::into_bytes_with_formatting(value, self.format(), formatting)
+    }
+
+    /// Encode one value to a standard byte writer.
+    fn into_writer<W: Write>(&self, value: &Scalar, writer: W) -> Result<()> {
+        super::into_writer(value, writer, self.format())
+    }
+
+    /// Encode one value to a writer with explicit formatting.
+    fn into_writer_with_formatting<W: Write>(
+        &self,
+        value: &Scalar,
+        writer: W,
+        formatting: Formatting,
+    ) -> Result<()> {
+        super::into_writer_with_formatting(value, writer, self.format(), formatting)
+    }
+
+    /// Encode values as UTF-8.
+    fn into_utf8_all(&self, values: &[Scalar]) -> Result<String> {
+        super::into_utf8_all(values, self.format())
+    }
+
+    /// Encode values as bytes.
+    fn into_bytes_all(&self, values: &[Scalar]) -> Result<Vec<u8>> {
+        super::into_bytes_all(values, self.format())
+    }
+
+    /// Encode values to a standard byte writer.
+    fn into_writer_all<W: Write>(&self, values: &[Scalar], writer: W) -> Result<()> {
+        super::into_writer_all(values, writer, self.format())
+    }
+
+    /// Parse one value from a Yggdryl I/O handle.
+    fn from_io<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Scalar> {
+        let decoded = super::io::decoded_for_format(handle, self.format())?;
+        super::from_reader_with_limits(decoded, self.format(), self.limits())
+    }
+
+    /// Parse and type one handle value under `field`.
+    fn from_io_with_field<H: IOBase + ?Sized>(&self, handle: &H, field: &Field) -> Result<Scalar> {
+        let decoded = super::io::decoded_for_format(handle, self.format())?;
+        super::from_reader_with_field_and_limits(decoded, self.format(), field, self.limits())
+    }
+
+    /// Parse every value from a Yggdryl I/O handle.
+    fn from_io_all<H: IOBase + ?Sized>(&self, handle: &H) -> Result<Vec<Scalar>> {
+        let decoded = super::io::decoded_for_format(handle, self.format())?;
+        super::from_reader_all_with_limits(decoded, self.format(), self.limits())
+    }
+
+    /// Parse and type every handle value under `field`.
+    fn from_io_all_with_field<H: IOBase + ?Sized>(
+        &self,
+        handle: &H,
+        field: &Field,
+    ) -> Result<Vec<Scalar>> {
+        let decoded = super::io::decoded_for_format(handle, self.format())?;
+        super::from_reader_all_with_field_and_limits(decoded, self.format(), field, self.limits())
+    }
+
+    /// Replace a Yggdryl handle with one encoded value.
+    fn into_io<H: IOBase + ?Sized>(&self, value: &Scalar, handle: &mut H) -> Result<()> {
+        self.into_io_with_formatting(value, handle, Formatting::default())
+    }
+
+    /// Replace a handle with one value at an explicit compression level.
+    fn into_io_with_level<H: IOBase + ?Sized>(
+        &self,
+        value: &Scalar,
         handle: &mut H,
-        value: &Value,
         level: Level,
     ) -> Result<()> {
-        let bytes = self.dump_vec(value)?;
-        store(handle, &bytes, level)
+        self.into_io_with_formatting(value, handle, Formatting::default().with_level(level))
+    }
+
+    /// Replace a handle with one value under explicit formatting.
+    fn into_io_with_formatting<H: IOBase + ?Sized>(
+        &self,
+        value: &Scalar,
+        handle: &mut H,
+        formatting: Formatting,
+    ) -> Result<()> {
+        let mut encoded = Vec::new();
+        {
+            let mut writer = handle
+                .codec()
+                .writer_with_level(&mut encoded, formatting.level());
+            self.into_writer_with_formatting(value, &mut writer, formatting)?;
+            writer.finish()?;
+        }
+        handle.write_all_bytes(&encoded)
+    }
+
+    /// Replace a handle with encoded values.
+    fn into_io_all<H: IOBase + ?Sized>(&self, values: &[Scalar], handle: &mut H) -> Result<()> {
+        let mut encoded = Vec::new();
+        {
+            let mut writer = handle.codec().writer(&mut encoded);
+            self.into_writer_all(values, &mut writer)?;
+            writer.finish()?;
+        }
+        handle.write_all_bytes(&encoded)
     }
 }
 
-/// Read a handle's bytes with any declared content coding removed.
-fn decoded<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
-    let bytes = handle.read_all_bytes()?;
-    if bytes.is_empty() {
-        return Ok(bytes);
-    }
-    handle.codec().load(&bytes)
-}
-
-/// Apply the handle's content coding and replace its bytes.
-fn store<H: IOBase + ?Sized>(handle: &mut H, bytes: &[u8], level: Level) -> Result<()> {
-    let encoded = handle.codec().dump_with_level(bytes, level)?;
-    handle.write_all_bytes(&encoded)
-}
-
-/// A codec with explicit parser bounds.
-///
-/// [`TextCodec::with_limits`] returns one of these, so the format values stay
-/// unit structs that read as the format itself: `Json.loads(...)`.
+/// A codec with explicit parser limits.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Limited<C: TextCodec> {
     codec: C,
@@ -266,14 +239,9 @@ impl<C: TextCodec> TextCodec for Limited<C> {
     }
 }
 
-/// Build one unit format type with its [`TextCodec`] implementation.
 macro_rules! text_format {
     ($name:ident, $format:expr, $doc:literal) => {
         #[doc = $doc]
-        ///
-        /// The value uses the default parser bounds;
-        /// [`TextCodec::with_limits`] returns one configured for untrusted
-        /// input.
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name;
 

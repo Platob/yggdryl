@@ -2,21 +2,23 @@ use std::collections::{BTreeSet, HashSet};
 
 use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use yggdryl::{
-    DataTypeId, DataTypeKind, Error, IOKind, MediaType, MimeType, Scheme, TimeUnit, UnionMode,
+    DataTypeId, DataTypeKind, Error, IOKind, IOMode, MediaType, MimeType, Scheme, TimeUnit,
+    UnionMode,
 };
 
 #[path = "enums/mime.rs"]
 mod mime;
 
 #[test]
-fn enums_module_reexports_the_public_vocabulary() {
-    let id: yggdryl::enums::DataTypeId = DataTypeId::Int32;
-    let kind: yggdryl::enums::DataTypeKind = DataTypeKind::Integer;
-    let scheme: yggdryl::enums::Scheme = Scheme::HTTPS;
-    let unit: yggdryl::enums::TimeUnit = TimeUnit::Nanosecond;
-    let mode: yggdryl::enums::UnionMode = UnionMode::Dense;
-    let mime: yggdryl::enums::MimeType = MimeType::JSON;
-    let media: yggdryl::enums::MediaType = MediaType::from(mime.clone());
+fn generic_reexports_the_public_vocabulary() {
+    let id: yggdryl::generic::DataTypeId = DataTypeId::Int32;
+    let kind: yggdryl::generic::DataTypeKind = DataTypeKind::Integer;
+    let scheme: yggdryl::generic::Scheme = Scheme::HTTPS;
+    let unit: yggdryl::generic::TimeUnit = TimeUnit::Nanosecond;
+    let mode: yggdryl::generic::UnionMode = UnionMode::Dense;
+    let mime: yggdryl::generic::MimeType = MimeType::JSON;
+    let media: yggdryl::generic::MediaType = MediaType::from(mime.clone());
+    let write: yggdryl::generic::IOMode = IOMode::Overwrite;
 
     assert_eq!(scheme, Scheme::HTTPS);
     assert_eq!(id, DataTypeId::Int32);
@@ -26,6 +28,44 @@ fn enums_module_reexports_the_public_vocabulary() {
     assert_eq!(mode, UnionMode::Dense);
     assert_eq!(mime, MimeType::JSON);
     assert_eq!(media.base(), &MimeType::JSON);
+    assert_eq!(write, IOMode::Overwrite);
+}
+
+#[test]
+fn every_io_mode_has_one_required_canonical_spelling() {
+    for (mode, canonical) in [
+        (IOMode::Overwrite, "overwrite"),
+        (IOMode::Append, "append"),
+        (IOMode::Merge, "merge"),
+        (IOMode::ReadOnly, "readonly"),
+        (IOMode::Random, "random"),
+    ] {
+        assert_eq!(mode.as_str(), canonical);
+        assert_eq!(mode.as_ref(), canonical);
+        assert_eq!(mode.to_string(), canonical);
+        assert_eq!(IOMode::from_str(canonical).unwrap(), mode);
+        assert_eq!(IOMode::from_str(&canonical.to_uppercase()).unwrap(), mode);
+        assert_eq!(IOMode::from_str(&format!("  {canonical}\t")).unwrap(), mode);
+        assert_eq!(
+            serde_json::to_string(&mode).unwrap(),
+            format!("\"{canonical}\"")
+        );
+        assert_eq!(
+            serde_json::from_str::<IOMode>(&format!("\"{canonical}\"")).unwrap(),
+            mode
+        );
+    }
+    assert_eq!(IOMode::ALL.len(), 5);
+    assert_eq!(IOMode::WRITE.len(), 3);
+
+    let error = IOMode::from_str("upsert").unwrap_err();
+    assert!(matches!(error, Error::Parse { target: "mode", .. }));
+    assert!(
+        error
+            .to_string()
+            .contains("overwrite, append, merge, readonly, random")
+    );
+    assert!(serde_json::from_str::<IOMode>("\"write\"").is_err());
 }
 
 #[test]
@@ -213,6 +253,7 @@ fn shared_static_enums_have_canonical_strings_and_serde() {
 #[test]
 fn every_time_unit_parses_displays_and_serializes_canonically() {
     for (unit, canonical, json) in [
+        (TimeUnit::Day, "d", "\"day\""),
         (TimeUnit::Second, "s", "\"second\""),
         (TimeUnit::Millisecond, "ms", "\"millisecond\""),
         (TimeUnit::Microsecond, "us", "\"microsecond\""),
@@ -242,6 +283,8 @@ fn every_time_unit_parses_displays_and_serializes_canonically() {
 fn time_unit_parser_accepts_arrow_names_and_common_full_aliases() {
     for (source, expected) in [
         ("S", TimeUnit::Second),
+        ("day", TimeUnit::Day),
+        ("days", TimeUnit::Day),
         ("sec", TimeUnit::Second),
         ("Second", TimeUnit::Second),
         ("  Second\t", TimeUnit::Second),
@@ -261,7 +304,6 @@ fn time_unit_parser_accepts_arrow_names_and_common_full_aliases() {
         ("YEAR TO MONTH", TimeUnit::YearMonth),
         ("years-to-months", TimeUnit::YearMonth),
         ("DayTime", TimeUnit::DayTime),
-        ("day", TimeUnit::DayTime),
         ("DAY_TIME", TimeUnit::DayTime),
         ("DAY TO SECOND", TimeUnit::DayTime),
         ("days to seconds", TimeUnit::DayTime),
@@ -319,6 +361,7 @@ fn time_unit_parser_trims_boundaries_and_reports_original_junk_offsets() {
 #[test]
 fn time_unit_values_have_total_value_semantics_and_categories() {
     let temporal = [
+        TimeUnit::Day,
         TimeUnit::Second,
         TimeUnit::Millisecond,
         TimeUnit::Microsecond,
@@ -333,6 +376,7 @@ fn time_unit_values_have_total_value_semantics_and_categories() {
     for unit in temporal {
         assert!(unit.is_temporal());
         assert!(!unit.is_interval());
+        assert_eq!(unit.is_arrow_time(), unit != TimeUnit::Day);
     }
     for unit in interval {
         assert!(!unit.is_temporal());
@@ -340,6 +384,7 @@ fn time_unit_values_have_total_value_semantics_and_categories() {
     }
 
     let ordered = BTreeSet::from([
+        TimeUnit::Day,
         TimeUnit::MonthDayNano,
         TimeUnit::Second,
         TimeUnit::DayTime,
@@ -351,6 +396,7 @@ fn time_unit_values_have_total_value_semantics_and_categories() {
     assert_eq!(
         ordered.into_iter().collect::<Vec<_>>(),
         [
+            TimeUnit::Day,
             TimeUnit::Second,
             TimeUnit::Millisecond,
             TimeUnit::Microsecond,
@@ -361,6 +407,7 @@ fn time_unit_values_have_total_value_semantics_and_categories() {
         ]
     );
     let hashed = HashSet::from([
+        TimeUnit::Day,
         TimeUnit::Second,
         TimeUnit::Millisecond,
         TimeUnit::Microsecond,
@@ -369,7 +416,7 @@ fn time_unit_values_have_total_value_semantics_and_categories() {
         TimeUnit::DayTime,
         TimeUnit::MonthDayNano,
     ]);
-    assert_eq!(hashed.len(), 7);
+    assert_eq!(hashed.len(), 8);
     assert!(hashed.contains(&TimeUnit::DayTime));
 }
 

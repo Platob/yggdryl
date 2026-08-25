@@ -1,6 +1,6 @@
 [package]
 name = "yggdryl-python"
-description = "Python bindings for Yggdryl schemas, records, identifiers, and byte codecs"
+description = "Python bindings for Yggdryl schemas, dataclass field definitions, identifiers, and byte codecs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,6 +17,7 @@ arrow-array.workspace = true
 arrow-data.workspace = true
 arrow-pyarrow.workspace = true
 arrow-schema.workspace = true
+half.workspace = true
 pyo3.workspace = true
 # Only for naming a page compression: the codec value is a Parquet type, and
 # spelling it here beats re-deriving its name from foreign `Display` text.

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::{Buffer, IOMedia};
 use yggdryl::{DataType, Url};
 
 #[test]
@@ -16,7 +16,7 @@ fn the_landing_page_example_runs() -> Result<(), Box<dyn std::error::Error>> {
     ])?
     .required_field("row");
 
-    let arrow_schema = yggdryl::arrow::schema_from_field(&schema)?;
+    let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![
@@ -28,14 +28,14 @@ fn the_landing_page_example_runs() -> Result<(), Box<dyn std::error::Error>> {
     // The name decides the encoding and the compression; nothing else changes.
     let mut handle =
         Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
-    let options = handle.record_options()?.with_schema(schema);
+    let options = handle.record_options()?.with_field(schema);
 
-    handle.write_arrow_batch_reader(
+    handle.overwrite_arrow_reader(
         yggdryl::arrow::batch_reader(arrow_schema, [batch]),
         &options,
     )?;
 
     // Reading streams: batches arrive one at a time, not as one big vector.
-    assert_eq!(handle.read_arrow_batch_reader(&options)?.count(), 1);
+    assert_eq!(handle.read_arrow_reader(&options)?.count(), 1);
     Ok(())
 }

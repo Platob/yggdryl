@@ -43,7 +43,7 @@ use crate::{Error, Result};
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IcebergOptions {
     /// How many beaten commit attempts are retried, when set.
     commit_retries: Option<u32>,
@@ -66,6 +66,11 @@ pub struct IcebergOptions {
 }
 
 impl IcebergOptions {
+    /// Return a deterministic hash of every explicitly configured option.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// The property naming how many beaten commit attempts are retried.
     pub const COMMIT_RETRIES_KEY: &'static str = "commit.retry.num-retries";
     /// The property naming the first retry wait, in milliseconds.
@@ -124,10 +129,20 @@ impl IcebergOptions {
         self.commit_retries.unwrap_or(Self::DEFAULT_COMMIT_RETRIES)
     }
 
+    /// Return the explicitly configured retry count, without applying defaults.
+    pub const fn commit_retries_option(&self) -> Option<u32> {
+        self.commit_retries
+    }
+
     /// Return the first retry wait in milliseconds. Default: 100.
     pub fn commit_min_backoff_ms(&self) -> u64 {
         self.commit_min_backoff_ms
             .unwrap_or(Self::DEFAULT_COMMIT_MIN_BACKOFF_MS)
+    }
+
+    /// Return the explicitly configured minimum retry wait.
+    pub const fn commit_min_backoff_ms_option(&self) -> Option<u64> {
+        self.commit_min_backoff_ms
     }
 
     /// Return the largest retry wait in milliseconds. Default: 60 000.
@@ -138,6 +153,11 @@ impl IcebergOptions {
     pub fn commit_max_backoff_ms(&self) -> u64 {
         self.commit_max_backoff_ms
             .unwrap_or(Self::DEFAULT_COMMIT_MAX_BACKOFF_MS)
+    }
+
+    /// Return the explicitly configured maximum retry wait.
+    pub const fn commit_max_backoff_ms_option(&self) -> Option<u64> {
+        self.commit_max_backoff_ms
     }
 
     /// Return the automatic compaction cadence, when one is set.
@@ -152,10 +172,20 @@ impl IcebergOptions {
         self.compact_after_commits.filter(|cadence| *cadence > 0)
     }
 
+    /// Return the explicit compaction cadence, preserving `Some(0)`.
+    pub const fn compact_after_commits_option(&self) -> Option<u32> {
+        self.compact_after_commits
+    }
+
     /// Return the size a data file aims for, in bytes. Default: 512 MiB.
     pub fn target_file_size_bytes(&self) -> u64 {
         self.target_file_size_bytes
             .unwrap_or(Self::DEFAULT_TARGET_FILE_SIZE_BYTES)
+    }
+
+    /// Return the explicitly configured target file size.
+    pub const fn target_file_size_bytes_option(&self) -> Option<u64> {
+        self.target_file_size_bytes
     }
 
     /// Return how many data files a scan decodes at once.
@@ -167,10 +197,20 @@ impl IcebergOptions {
             .unwrap_or_else(Self::default_read_parallelism)
     }
 
+    /// Return the explicitly configured read parallelism.
+    pub const fn read_parallelism_option(&self) -> Option<usize> {
+        self.read_parallelism
+    }
+
     /// Return how many large-enough files justify a parallel scan. Default: 16.
     pub fn read_parallel_min_files(&self) -> usize {
         self.read_parallel_min_files
             .unwrap_or(Self::DEFAULT_READ_PARALLEL_MIN_FILES)
+    }
+
+    /// Return the explicitly configured parallel-scan file threshold.
+    pub const fn read_parallel_min_files_option(&self) -> Option<usize> {
+        self.read_parallel_min_files
     }
 
     /// Return the recorded size below which a file does not count toward
@@ -180,6 +220,11 @@ impl IcebergOptions {
             .unwrap_or(Self::DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES)
     }
 
+    /// Return the explicitly configured parallel-scan size threshold.
+    pub const fn read_parallel_min_file_size_bytes_option(&self) -> Option<u64> {
+        self.read_parallel_min_file_size_bytes
+    }
+
     /// Return the format new data files are written in. Default: Parquet.
     ///
     /// Only what a *write* produces is decided here: a scan decodes each data
@@ -187,6 +232,11 @@ impl IcebergOptions {
     /// formats and still read as one shape.
     pub fn data_format(&self) -> FileFormat {
         self.data_format.unwrap_or(Self::DEFAULT_DATA_FORMAT)
+    }
+
+    /// Return the explicitly configured data format.
+    pub const fn data_format_option(&self) -> Option<FileFormat> {
+        self.data_format
     }
 
     /// Set the format new data files are written in.

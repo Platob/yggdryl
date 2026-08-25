@@ -135,7 +135,7 @@ def _pyarrow_read_range() -> object:
 def _wrapper_write_parquet() -> object:
     handle = IOBase.from_arrow_fs(LOCAL, _path("sink-wrapper.parquet"))
     with handle:
-        handle.write_arrow_batch_reader(TABLE)
+        handle.overwrite_arrow_table(TABLE)
     return handle.size
 
 
@@ -146,7 +146,7 @@ def _pyarrow_write_parquet() -> object:
 
 def _wrapper_read_parquet() -> object:
     handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_PARQUET)
-    return handle.read_arrow_batch_reader().read_all().num_rows
+    return handle.read_arrow_reader().read_all().num_rows
 
 
 def _pyarrow_read_parquet() -> object:

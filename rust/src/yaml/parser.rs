@@ -439,9 +439,9 @@ impl Frame {
     }
 }
 
-fn wrap_tag(value: RawValue, tag: Option<String>, position: usize) -> RawValue {
+fn wrap_tag(value: RawValue, tag: Option<String>, _position: usize) -> RawValue {
     match tag {
-        Some(tag) => RawValue::YamlTagged(tag, Box::new(value), position),
+        Some(_) => RawValue::YamlTagged(Box::new(value)),
         None => value,
     }
 }
@@ -761,10 +761,7 @@ fn raw_stats(value: &RawValue) -> (usize, usize) {
                 )
             })
         }
-        RawValue::YamlTagged(_, value, _) => {
-            let (nodes, depth) = raw_stats(value);
-            (nodes.saturating_add(1), depth.saturating_add(1))
-        }
+        RawValue::YamlTagged(value) => raw_stats(value),
         RawValue::YamlMergeKey => (1, 0),
         _ => (1, 0),
     }

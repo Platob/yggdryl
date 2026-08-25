@@ -37,6 +37,59 @@ test('URI values expose canonical components and path collections', () => {
   assert.ok(Uri.fromJSON(JSON.parse(JSON.stringify(uri))).equals(uri))
 })
 
+test('generic URI path joining is variadic, normalized, and immutable', () => {
+  const base = Uri.fromString('https://example.com/warehouse/db?q=1#rows')
+
+  assert.equal(
+    base.joinPath('table', 'data.parquet').toString(),
+    'https://example.com/warehouse/db/table/data.parquet?q=1#rows',
+  )
+  assert.equal(
+    base.joinPath(['table', '..'], './other').toString(),
+    'https://example.com/warehouse/db/other?q=1#rows',
+  )
+  assert.equal(
+    base.joinPath('/root').toString(),
+    'https://example.com/root?q=1#rows',
+  )
+  assert.ok(base.joinPath().equals(base))
+  assert.equal(base.toString(), 'https://example.com/warehouse/db?q=1#rows')
+  assert.throws(() => base.joinPath(7), TypeError)
+})
+
+test('credentials and S3 locations are parsed by the native core', () => {
+  const credentials = Uri.fromString(
+    'https://user:pass:word@[2001:db8::1]:8443/archive/data.parquet',
+  )
+  assert.equal(credentials.user, 'user')
+  assert.equal(credentials.password, 'pass:word')
+  assert.equal(credentials.hostname, '2001:db8::1')
+  assert.equal(credentials.bucket, null)
+  assert.equal(credentials.region, null)
+
+  const bucket = Uri.fromString('s3://market-data/year=2026/data.parquet')
+  assert.equal(bucket.hostname, null)
+  assert.equal(bucket.bucket, 'market-data')
+  assert.equal(bucket.region, null)
+
+  const endpoint = Url.fromString(
+    's3://market-data.s3.dualstack.eu-west-3.amazonaws.com/data.parquet',
+  )
+  assert.equal(
+    endpoint.hostname,
+    'market-data.s3.dualstack.eu-west-3.amazonaws.com',
+  )
+  assert.equal(endpoint.bucket, 'market-data')
+  assert.equal(endpoint.region, 'eu-west-3')
+
+  const compatible = Uri.fromString(
+    's3://objects.example.io/archive/data.parquet',
+  )
+  assert.equal(compatible.hostname, 'objects.example.io')
+  assert.equal(compatible.bucket, 'archive')
+  assert.equal(compatible.region, null)
+})
+
 test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {
   const drive = Uri.fromPath('C:\\Users\\alice\\ticks\\prices.parquet')
   assert.equal(drive.toString(), 'file:///C:/Users/alice/ticks/prices.parquet')
@@ -45,7 +98,8 @@ test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {
   assert.equal(drive.path, '/C:/Users/alice/ticks/prices.parquet')
   assert.equal(drive.fileName, 'prices.parquet')
   assert.equal(drive.extension, 'parquet')
-  assert.equal(drive.toPath(), 'C:/Users/alice/ticks/prices.parquet')
+  assert.equal(drive.intoPath(), 'C:/Users/alice/ticks/prices.parquet')
+  assert.equal(drive.toPath, undefined)
 
   const unc = Uri.fromPath('\\\\server\\share\\ticks\\prices.tar.zst')
   assert.equal(unc.toString(), 'file://server/share/ticks/prices.tar.zst')
@@ -53,27 +107,27 @@ test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {
   assert.equal(unc.authority, 'server')
   assert.equal(unc.path, '/share/ticks/prices.tar.zst')
   assert.deepEqual(unc.extensions, ['tar', 'zst'])
-  assert.equal(unc.toPath(), '//server/share/ticks/prices.tar.zst')
+  assert.equal(unc.intoPath(), '//server/share/ticks/prices.tar.zst')
 
   const unicodeUnc = Uri.fromString(
     'file://caf%C3%A9/share/market%20data%25.csv',
   )
-  assert.equal(unicodeUnc.toPath(), '//café/share/market data%.csv')
-  assert.ok(Uri.fromPath(unicodeUnc.toPath()).equals(unicodeUnc))
+  assert.equal(unicodeUnc.intoPath(), '//café/share/market data%.csv')
+  assert.ok(Uri.fromPath(unicodeUnc.intoPath()).equals(unicodeUnc))
 
   assert.equal(Uri.fromPath('C:\\').toString(), 'file:///C:/')
-  assert.throws(() => Uri.fromString('https://example.com/data').toPath())
-  assert.equal(Uri.fromString('file:///tmp/A%20B.csv').toPath(), '/tmp/A B.csv')
-  assert.equal(Uri.fromString('file://server').toPath(), '//server/')
-  assert.throws(() => Uri.fromString('file:///tmp/a%2Fb.csv').toPath())
-  assert.throws(() => Uri.fromString('file:///tmp/a%5Cb.csv').toPath())
-  assert.throws(() => Uri.fromString('file:///tmp/data.csv?download=1').toPath())
-  assert.throws(() => Uri.fromString('file:///tmp/data.csv#row-1').toPath())
-  assert.throws(() => Uri.fromString('file:').toPath())
-  assert.throws(() => Uri.fromString('file:///tmp/%FF.csv').toPath())
-  assert.throws(() => Uri.fromString('file://user%40host/share/data.csv').toPath())
-  assert.throws(() => Uri.fromString('file:///%43%3A/data.csv').toPath())
-  assert.throws(() => Uri.fromString('file:///tmp/%C2%85/data.csv').toPath())
+  assert.throws(() => Uri.fromString('https://example.com/data').intoPath())
+  assert.equal(Uri.fromString('file:///tmp/A%20B.csv').intoPath(), '/tmp/A B.csv')
+  assert.equal(Uri.fromString('file://server').intoPath(), '//server/')
+  assert.throws(() => Uri.fromString('file:///tmp/a%2Fb.csv').intoPath())
+  assert.throws(() => Uri.fromString('file:///tmp/a%5Cb.csv').intoPath())
+  assert.throws(() => Uri.fromString('file:///tmp/data.csv?download=1').intoPath())
+  assert.throws(() => Uri.fromString('file:///tmp/data.csv#row-1').intoPath())
+  assert.throws(() => Uri.fromString('file:').intoPath())
+  assert.throws(() => Uri.fromString('file:///tmp/%FF.csv').intoPath())
+  assert.throws(() => Uri.fromString('file://user%40host/share/data.csv').intoPath())
+  assert.throws(() => Uri.fromString('file:///%43%3A/data.csv').intoPath())
+  assert.throws(() => Uri.fromString('file:///tmp/%C2%85/data.csv').intoPath())
 })
 
 test('URL conversion is validated by the native URI core', () => {
@@ -91,8 +145,10 @@ test('URL conversion is validated by the native URI core', () => {
   assert.ok(url.equals(clone))
   assert.ok(Uri.from(url).equals(uri))
   assert.ok(new Uri(url).equals(uri))
-  assert.ok(url.toUri().equals(Uri.fromString(url.toString())))
-  assert.ok(uri.toUrl().equals(url))
+  assert.ok(url.intoUri().equals(Uri.fromString(url.toString())))
+  assert.ok(uri.intoUrl().equals(url))
+  assert.equal(url.toUri, undefined)
+  assert.equal(uri.toUrl, undefined)
   assert.ok(Url.fromString(url.toString()).equals(url))
   assert.ok(Url.fromJSON(JSON.parse(JSON.stringify(url))).equals(url))
   assert.ok(
@@ -100,7 +156,7 @@ test('URL conversion is validated by the native URI core', () => {
       Url.fromString('file:///C:/data/report.csv'),
     ),
   )
-  assert.equal(Url.fromPath('C:\\data\\report.csv').toPath(), 'C:/data/report.csv')
+  assert.equal(Url.fromPath('C:\\data\\report.csv').intoPath(), 'C:/data/report.csv')
 
   assert.throws(() => Url.fromString('urn:isbn:9780131103627'))
   assert.throws(() => Url.fromUri(Uri.fromString('mailto:user@example.com')))
@@ -121,19 +177,19 @@ test('URN values expose namespace and namespace-specific string', () => {
   assert.equal(urn.namespace, 'isbn')
   assert.equal(urn.namespaceSpecific, '9780131103627')
   assert.ok(urn.equals(clone))
-  assert.ok(Uri.from(urn).equals(urn.toUri()))
-  assert.ok(new Uri(urn).equals(urn.toUri()))
+  assert.ok(Uri.from(urn).equals(urn.intoUri()))
+  assert.ok(new Uri(urn).equals(urn.intoUri()))
   assert.equal(urn.compare(clone), 0)
   assert.equal(typeof urn.stableHash(), 'bigint')
-  assert.ok(urn.toUri().equals(Uri.fromString(urn.toString())))
-  assert.ok(uri.toUrn().equals(urn))
+  assert.ok(urn.intoUri().equals(Uri.fromString(urn.toString())))
+  assert.ok(uri.intoUrn().equals(urn))
   assert.ok(Urn.fromString(urn.toString()).equals(urn))
   assert.ok(Urn.fromJSON(JSON.parse(JSON.stringify(urn))).equals(urn))
 
   assert.throws(() => Urn.fromString('https://example.com/resource'))
   assert.throws(() => Urn.fromString('urn::missing-namespace'))
   assert.throws(() => Urn.from(Url.fromString('https://example.com')), /URN/)
-  assert.throws(() => uri.toUrl())
+  assert.throws(() => uri.intoUrl())
 })
 
 test('scheme-less input parses as a file URI instead of failing', () => {

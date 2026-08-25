@@ -11,7 +11,7 @@ use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::avro::{Resolution, Schema};
 use yggdryl::io::Buffer;
-use yggdryl::{Value, avro, json};
+use yggdryl::{Scalar, avro, json};
 
 /// Rows in the resolution fixture.
 const ROWS: usize = 10_000;
@@ -19,7 +19,7 @@ const ROWS: usize = 10_000;
 pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/avro_resolution");
 
-    let writer_json = json::from_str(
+    let writer_json = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
             {"name":"id","type":"long"},
             {"name":"symbol","type":"string"},
@@ -42,14 +42,14 @@ pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     .expect("the reader schema parses");
     let writer = Schema::from_json(&writer_json).expect("the writer parses");
 
-    let rows: Vec<Value> = (0..ROWS)
+    let rows: Vec<Scalar> = (0..ROWS)
         .map(|index| {
-            Value::from_mapping([
-                (Value::from("id"), Value::from(index as i64)),
-                (Value::from("symbol"), Value::from(format!("S{index:05}"))),
-                (Value::from("qty"), Value::from((index % 1_000) as i64)),
-                (Value::from("venue"), Value::from("XNAS")),
-                (Value::from("note"), Value::from("skipped by the reader")),
+            Scalar::from_mapping([
+                (Scalar::from("id"), Scalar::from(index as i64)),
+                (Scalar::from("symbol"), Scalar::from(format!("S{index:05}"))),
+                (Scalar::from("qty"), Scalar::from((index % 1_000) as i64)),
+                (Scalar::from("venue"), Scalar::from("XNAS")),
+                (Scalar::from("note"), Scalar::from("skipped by the reader")),
             ])
             .expect("unique keys")
         })
@@ -77,6 +77,9 @@ pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("fingerprint", |bencher| {
         bencher.iter(|| black_box(&writer).fingerprint());
+    });
+    group.bench_function("stable_hash_schema", |bencher| {
+        bencher.iter(|| black_box(&writer).stable_hash());
     });
 
     group.throughput(Throughput::Elements(ROWS as u64));

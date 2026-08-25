@@ -11,17 +11,16 @@ from decimal import Decimal
 
 import pytest
 
-from yggdryl import DataType, Field, toml
-from yggdryl.records import record
+from yggdryl import DataType, Field, scalar, toml
 
 
-@record(frozen=True, slots=True)
+@scalar(frozen=True, slots=True)
 class Fill:
     price: Decimal
     observed_at: dt.datetime
 
 
-@record(frozen=True, slots=True)
+@scalar(frozen=True, slots=True)
 class Order:
     order_id: int
     fill: Fill
@@ -34,26 +33,18 @@ def test_public_surface_is_deliberately_single_document() -> None:
         assert not hasattr(toml, name)
 
 
-def test_plain_table_and_enveloped_roots_round_trip() -> None:
+def test_plain_table_round_trips_and_non_table_roots_are_refused() -> None:
     table = {"name": "yggdryl", "enabled": True, "count": 42}
     assert toml.loads(b"") == {}
     encoded = toml.dumps(table)
-    assert b"$yggdryl" not in encoded
     assert toml.loads(encoded) == table
 
     for value in (None, 42, [1, 2], {1: "one"}):
-        encoded = toml.dumps(value)
-        assert b"$yggdryl" in encoded
-        assert toml.loads(encoded) == value
+        with pytest.raises(ValueError, match="root must be a record"):
+            toml.dumps(value)
 
 
-def test_reserved_envelope_shaped_mapping_remains_user_data() -> None:
-    value = {"$yggdryl": {"version": 1, "type": "null"}}
-
-    assert toml.loads(toml.dumps(value)) == value
-
-
-def test_exact_scalars_round_trip_through_toml_syntax_or_an_envelope() -> None:
+def test_exact_scalars_use_toml_syntax_or_natural_text() -> None:
     value = {
         "payload": b"\x00\xff",
         "decimal": Decimal("123.4500"),
@@ -68,17 +59,14 @@ def test_exact_scalars_round_trip_through_toml_syntax_or_an_envelope() -> None:
     restored = toml.loads(encoded)
 
     assert isinstance(encoded, bytes)
-    # A date, a time, and a datetime have TOML syntax of their own and use it,
-    # so they come back typed.
-    assert {name: restored[name] for name in value if name != "delta"} == {
-        name: item for name, item in value.items() if name != "delta"
-    }
+    assert restored["payload"] == "AP8="
+    assert restored["decimal"] == "123.4500"
+    for name in ("date", "time", "datetime", "zoned"):
+        assert restored[name] == value[name]
     assert b'"date" = 2026-08-15\n' in encoded
     assert b'"datetime" = 2026-08-15T12:03:04.000005\n' in encoded
     assert b'"zoned" = 2026-08-15T12:00:00Z\n' in encoded
-    # A decimal has no TOML syntax and takes the envelope; a duration spells
-    # its classic ISO string and comes back as that string.
-    assert b'type = "decimal"' in encoded
+    assert b'"decimal" = "123.4500"\n' in encoded
     assert b'"delta" = "-PT172796.999996S"\n' in encoded
     assert restored["delta"] == "-PT172796.999996S"
 
@@ -111,8 +99,8 @@ def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:
         "datatype": str(value["datatype"]),
         "field": str(value["field"]),
     }
-    # Insertion order is the mapping's, not the alphabet's.
-    assert list(restored["ordered"]) == ["b", "a"]
+    # Named records are sorted maps in the core.
+    assert list(restored["ordered"]) == ["a", "b"]
 
 
 def test_dataclass_reconstruction_requires_an_explicit_target() -> None:
@@ -147,39 +135,41 @@ local_time = 07:32:00
     }
     # Each one writes back as the same TOML syntax it was read from.
     assert toml.dumps(decoded).split(b"\n")[:4] == [
-        b'"offset" = 1979-05-27T07:32:00Z',
-        b'"local_datetime" = 1979-05-27T07:32:00',
         b'"local_date" = 1979-05-27',
+        b'"local_datetime" = 1979-05-27T07:32:00',
         b'"local_time" = 07:32:00',
+        b'"offset" = 1979-05-27T07:32:00Z',
     ]
 
 
-def test_nested_record_uses_shared_safe_caster() -> None:
+def test_nested_field_class_uses_shared_safe_caster() -> None:
     value = Order(
         7,
         Fill(Decimal("12.50"), dt.datetime(2026, 8, 15, 8)),
         ("urgent", "auction"),
     )
 
-    encoded = value.into_toml()
+    encoded = toml.dumps(value)
 
     assert isinstance(encoded, bytes)
-    assert Order.from_toml(encoded) == value
-    assert Order.from_(encoded, format="toml") == value
-    shallow = Order.from_toml(encoded, safe=False)
+    assert toml.loads(encoded, cls=Order) == value
+    shallow = toml.loads(encoded, cls=Order, safe=False)
     assert shallow.order_id == value.order_id
     assert shallow.fill == {
-        "price": value.fill.price,
+        "price": "12.50",
         "observed_at": value.fill.observed_at,
     }
 
 
-def test_path_content_and_text_binary_sources(tmp_path: pathlib.Path) -> None:
+def test_source_intent_is_type_driven_for_text_binary_and_paths(
+    tmp_path: pathlib.Path,
+) -> None:
     path = tmp_path / "value.toml"
     path.write_bytes(b"value = 42\n")
 
     assert toml.loads(path) == {"value": 42}
-    assert toml.loads(str(path)) == {"value": 42}
+    with pytest.raises(ValueError, match="invalid toml data"):
+        toml.loads(str(path))
     assert toml.loads("value = 43") == {"value": 43}
     assert toml.loads(bytearray(b"value = 43\n")) == {"value": 43}
     assert toml.loads(memoryview(b"value = 43\n")) == {"value": 43}
@@ -289,11 +279,11 @@ def test_toml_wire_depth_error_does_not_truncate_existing_path(
 ) -> None:
     path = tmp_path / "existing.toml"
     path.write_bytes(b"keep me")
-    value: object = None
-    for index in range(32):
-        value = {index: value}
+    value: object = 0
+    for index in range(130):
+        value = {f"level_{index}": value}
 
-    with pytest.raises(ValueError, match="hard limit"):
+    with pytest.raises(ValueError, match="limit"):
         toml.dump(value, path)
 
     assert path.read_bytes() == b"keep me"
@@ -357,18 +347,17 @@ def test_deep_nested_table_round_trip() -> None:
     assert toml.loads(toml.dumps(value)) == value
 
 
-def test_generic_record_path_inference_and_application_alias(
+def test_field_class_path_round_trip(
     tmp_path: pathlib.Path,
 ) -> None:
     value = Order(8, Fill(Decimal("1.25"), dt.datetime(2026, 8, 15)))
     path = tmp_path / "order.toml"
 
-    assert value.into_(path) is None
-    assert Order.from_(path) == value
-    encoded = value.into_(format="application/toml")
+    assert toml.dump(value, path) is None
+    assert toml.loads(path, cls=Order) == value
+    encoded = toml.dumps(value)
     assert isinstance(encoded, bytes)
-    assert Order.from_(encoded, format="application/toml") == value
-    assert Order.from_(encoded, format=".toml") == value
+    assert toml.loads(encoded, cls=Order) == value
 
 
 @pytest.mark.parametrize(
@@ -390,28 +379,8 @@ def test_generic_content_inference_is_stable(
     assert infer_format(source) == expected
 
 
-def test_generic_record_inference_parses_retained_content_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_field_class_stream_decode_reads_retained_content_once() -> None:
     value = Order(9, Fill(Decimal("3.50"), dt.datetime(2026, 8, 15)))
-
-    import yggdryl._codec as codec
-
-    def legacy_two_pass_route_forbidden(*args: object) -> object:
-        raise AssertionError(f"legacy inference/decode route called with {args!r}")
-
-    monkeypatch.setattr(
-        codec._native, "_codec_infer", legacy_two_pass_route_forbidden
-    )
-    monkeypatch.setattr(
-        codec._native, "_codec_decode", legacy_two_pass_route_forbidden
-    )
-    monkeypatch.setattr(
-        codec._native, "_codec_infer_text", legacy_two_pass_route_forbidden
-    )
-    monkeypatch.setattr(
-        codec._native, "_codec_decode_text", legacy_two_pass_route_forbidden
-    )
 
     class ReadOnce:
         def __init__(self, payload: bytes) -> None:
@@ -427,8 +396,8 @@ def test_generic_record_inference_parses_retained_content_once(
                 return b""
             raise AssertionError("anonymous stream was read again")
 
-    source = ReadOnce(value.into_toml())
-    assert Order.from_(source) == value
+    source = ReadOnce(toml.dumps(value))
+    assert toml.loads(source, cls=Order) == value
     assert source.calls == 2
-    assert Order.from_(value.into_toml()) == value
-    assert Order.from_(value.into_toml().decode("utf-8")) == value
+    assert toml.loads(toml.dumps(value), cls=Order) == value
+    assert toml.loads(toml.dumps(value).decode("utf-8"), cls=Order) == value

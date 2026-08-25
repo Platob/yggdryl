@@ -1,5 +1,6 @@
 from ._native import (
     Bound as Bound,
+    BoundStatement as BoundStatement,
     DataType as DataType,
     Expression as Expression,
     Field as Field,
@@ -14,9 +15,12 @@ from ._native import (
     Url as Url,
     Urn as Urn,
     __version__ as __version__,
-    schema_from_pattern as schema_from_pattern,
+    combined as combined,
+    field_from_pattern as field_from_pattern,
 )
 from . import (
+    avro as avro,
+    codec as codec,
     enums as enums,
     fields as fields,
     gzip as gzip,
@@ -27,13 +31,7 @@ from . import (
     zlib as zlib,
     zstd as zstd,
 )
-from .records import (
-    Record as Record,
-    from_dict as from_dict,
-    record as record,
-    schema_field as schema_field,
-    schema_fields as schema_fields,
-    to_dict as to_dict,
-)
+from .fields import field as field
+from .scalar import Scalar as Scalar, scalar as scalar
 
 __all__: list[str]

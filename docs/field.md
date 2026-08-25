@@ -317,8 +317,11 @@ a write forces a copy.
 
 Every write validates before it changes anything. `set_metadata` and `update_metadata` in Rust,
 `update` in the bindings, build and check the whole batch first, so a bad entry in the middle of a
-thousand leaves the field exactly as it was. In Python a field's `hash` is its layout hash, so a
-field stays findable in a `dict` across metadata edits.
+thousand leaves the field exactly as it was. Equality, ordering, and hashing all include metadata
+and dictionary state. In Python, the first `hash(field)` therefore locks every equality-affecting
+mutation on that wrapper; `copy.copy(field)` makes an independent unlocked wrapper when an edit is
+needed. `stable_hash()` computes the same complete identity without locking it. Live metadata and
+protocol views remain unhashable because they can change through their owning field.
 
 ## Reserved keys and protocol properties
 
@@ -405,7 +408,7 @@ canonicalizes on the way in and out. `PARQUET:field_id` is a signed 32-bit integ
 marks a field a schema still declares but a constructor must not accept. `location` parses as a
 [`Url`](uri.md), and `alias`, `catalog_name`, `schema_name`, and `table_name` carry validated text.
 
-Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](enums.md). The
+Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](generic.md). The
 prefix is canonicalized, so `HTTPS:Content-Type`, `HTTP:content-type`, and `http:content-type` are
 one entry, and `get_property` matches HTTP names case-insensitively. The `http:` family is the one
 with parsing accessors on top - `content_type`, `content_length`, `mime_type`, `media_type`,
@@ -505,7 +508,7 @@ The view is a borrow, not a snapshot: it reads out of the field's own metadata a
 field's own cache-aware mutation, so two views of one field see each other's writes and a protocol
 write invalidates a populated Arrow projection exactly as a direct metadata write does. Every
 well-known protocol has a named accessor - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
-the rest of the [`Scheme`](enums.md) vocabulary - and `protocol` takes one that is only known at
+the rest of the [`Scheme`](generic.md) vocabulary - and `protocol` takes one that is only known at
 runtime. There is no `https` accessor, because HTTPS shares the canonical `http:` namespace; the view
 for either scheme reports `http` as its prefix.
 
@@ -683,13 +686,59 @@ take their datatype through `try_new`. The binding-side `VariantField`, `Geometr
 `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography` are
 checker-level views over the one native class exactly like every alias above.
 
+## Converting to one native field
+
+Python's canonical runtime signature is `field(value, name=None) -> Field`; JavaScript spells it
+`intoField(value, name = null)`. The value comes first and the optional replacement name comes
+second. Omitting the name, passing `None`/`null`, or passing the field's existing name returns the
+cached/native value itself; another name returns a renamed clone. A non-string name or a value that
+cannot describe a field is a `TypeError`.
+
+A scalar-decorated or otherwise structured class exposes its root separately. Python uses the
+zero-argument cached staticmethod `Class.field() -> StructField`; JavaScript requires the actual
+static getter `Class.intoStructField`. It must answer a non-null Struct field. Python's `@scalar`
+decorator installs the owner-capturing accessor; JavaScript's global `intoField` validates the
+getter descriptor and memoizes its result. Rust stays precise rather than dynamically inferring: `TypedField<K>::into_field(self)`
+returns the generic field, and `StructField::into_struct_field(self)` is the return-typed Struct
+spelling. None of these accessors introduces a second schema object.
+
+### What cached field access costs
+
+The Rust target measures the two consuming typed accessors with construction
+outside the timer. The binding targets keep the cached class or native Field
+alive across calls and price a renamed clone separately:
+
+```console
+cargo bench -p yggdryl --bench field --all-features -- into_ --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10
+cd python && .venv/Scripts/python benchmarks/fields.py --iterations 10000
+npm run --prefix node bench:schema
+```
+
+One local Windows x86_64 release run (Criterion point estimates for Rust;
+median time per call for Python; whole-loop rate for JavaScript):
+
+| runtime operation | estimate |
+| --- | ---: |
+| Rust `TypedField::into_field` | 41.5 ns |
+| Rust `StructField::into_struct_field` | 34.7 ns |
+| Python cached `Class.field()` | 677 ns |
+| Python global `field(Class)` | 1.27 us |
+| Python renamed `field(Class, name=...)` | 9.26 us |
+| JavaScript `intoField(nativeField)` | 40.0 ns (25.0M calls/s) |
+| JavaScript cached `intoField(Class)` | 72.0 ns (13.9M calls/s) |
+| JavaScript renamed `intoField(Class, name)` | 33.6 us (29.7k calls/s) |
+
+The cached class paths return the same native value rather than rebuilding its
+annotation graph. A replacement name must clone and validate the Field, which
+is why it remains visible as a separate case.
+
 ## Row values are validated against the root
 
-Validating and canonicalizing a [`Value`](generic.md) against a struct root is Rust-only. Python and
+Validating and canonicalizing a [`Scalar`](generic.md) against a struct root is Rust-only. Python and
 JavaScript reconcile Arrow data instead.
 
 ```rust
-use yggdryl::{DataType, Field, Value};
+use yggdryl::{DataType, Field, Scalar};
 
 let schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
@@ -698,19 +747,19 @@ let schema = DataType::from_fields([
 .required_field("trade");
 
 // A row is one ordered sequence with one value per struct child.
-let row = Value::from_sequence([Value::from(7u64), Value::from(0.1f64)]);
+let row = Scalar::from_sequence([Scalar::from(7u64), Scalar::from(0.1f64)]);
 schema.validate_value(&row)?;
 
 // Canonicalizing narrows every value into the representation the root declares.
 let canonical = schema.canonicalize_value(row)?;
-assert_eq!(canonical.get(0), Some(&Value::I64(7)));
+assert_eq!(canonical.get(0), Some(&Scalar::I64(7)));
 assert_eq!(
-    canonical.get(1).and_then(Value::as_f64),
+    canonical.get(1).and_then(Scalar::as_f64),
     Some(f64::from(0.1f32))
 );
 
 // A value that does not fit names the path walked to reach it.
-let wrong = Value::from_sequence([Value::from("seven"), Value::Null]);
+let wrong = Scalar::from_sequence([Scalar::from("seven"), Scalar::Null]);
 let message = schema.validate_value(&wrong).unwrap_err().to_string();
 assert!(message.contains("$.trade.id"), "{message}");
 ```
@@ -726,7 +775,7 @@ dot/bracket path of the first thing that does not fit.
 ## Serializing a schema
 
 `Field` reads and writes the three structured-text formats through **one** structural model. There
-is exactly one `Field` ⇄ `Value` mapping - `to_value`/`from_value` in Rust, `to_dict`/`from_dict` in
+is exactly one `Field` ⇄ `Scalar` mapping - `into_value`/`from_value` in Rust, `into_dict`/`from_dict` in
 Python - and JSON, YAML, and TOML are three writers over it, so the three agree by construction
 rather than by three sets of tests. That is also what makes a schema *embeddable*: a configuration
 document can carry a declared schema inline beside the rest of its settings, with no
@@ -737,26 +786,26 @@ The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`
 `metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
 TOML, which has no null, loses nothing on the way out.
 
-Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; Python spells it as an
+Each format takes the shared [`Formatting`](text.md#formatting) option; Python spells it as an
 `indent` keyword.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Field};
-    use yggdryl::generic::Value;
+    use yggdryl::generic::Scalar;
 
     let field = Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")])?;
 
     // One structural model, three formats over it.
-    assert_eq!(Field::from_value(field.to_value())?, field);
-    assert_eq!(Field::from_json(&field.to_json()?)?, field);
-    assert_eq!(Field::from_yaml(&field.to_yaml()?)?, field);
-    assert_eq!(Field::from_toml(&field.to_toml()?)?, field);
+    assert_eq!(Field::from_value(field.clone().into_value())?, field);
+    assert_eq!(Field::from_json(&field.clone().into_json()?)?, field);
+    assert_eq!(Field::from_yaml(&field.clone().into_yaml()?)?, field);
+    assert_eq!(Field::from_toml(&field.clone().into_toml()?)?, field);
 
-    // The mapping is the shared `Value`, so it drops into any document.
-    let shape = field.to_value();
-    assert_eq!(shape.get_key_str("name").and_then(Value::as_str), Some("price"));
+    // The mapping is the shared `Scalar`, so it drops into any document.
+    let shape = field.into_value();
+    assert_eq!(shape.get_key_str("name").and_then(Scalar::as_utf8), Some("price"));
     // Unset optional attributes are absent rather than null.
     assert!(shape.get_key_str("dictionary_id").is_none());
     ```
@@ -768,12 +817,12 @@ Each format takes the shared [`Formatting`](text.md#laying-out-a-dump) option; P
 
     field = Field("price", "float64", nullable=False, metadata={"venue": "XPAR"})
 
-    assert Field.from_dict(field.to_dict()) == field
-    assert Field.from_json(field.to_json()) == field
-    assert Field.from_yaml(field.to_yaml()) == field
-    assert Field.from_toml(field.to_toml()) == field
+    assert Field.from_dict(field.into_dict()) == field
+    assert Field.from_json(field.into_json()) == field
+    assert Field.from_yaml(field.into_yaml()) == field
+    assert Field.from_toml(field.into_toml()) == field
 
-    shape = field.to_dict()
+    shape = field.into_dict()
     assert shape["name"] == "price"
     assert "dictionary_id" not in shape
     ```
@@ -1073,7 +1122,7 @@ no rows, and the cast is mapped over the engine's batches, so nothing is collect
 collect; and a `pandas` `DataFrame` or `Series`, which crosses through Arrow and comes back as
 itself. Streams are cast batch by batch. `field.cast(value)` is the same dispatch with plain Python
 values allowed - a bare `5` becomes the typed scalar the field declares. `cast_arrow_scalar` and
-`cast_arrow_record_batch` are the spelled-out single-kind names.
+`cast_arrow_batch` are the spelled-out single-kind names.
 
 === "Python"
 

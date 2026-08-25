@@ -7,6 +7,7 @@ const NETWORK_URI: &str =
     "https://user@example.test:8443/archive/2026/report.tar.zst?download=1#summary";
 const WINDOWS_PATH: &str = r"C:\Users\Ada Lovelace\market data\trades.parquet";
 const UNC_PATH: &str = r"\\market-data\shared\prices\2026\ticks.arrow";
+const S3_URI: &str = "s3://market-data.s3.eu-west-3.amazonaws.com/2026/trades.parquet";
 
 fn parsing_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("resource_parse");
@@ -57,6 +58,8 @@ fn value_benchmarks(criterion: &mut Criterion) {
     let file = Uri::from_path(WINDOWS_PATH).expect("the static Windows path must normalize");
     let encoded = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP, MimeType::ZSTD])
         .expect("the static encodings must be valid");
+    let credentials = Uri::from_str(NETWORK_URI).expect("the static URI must parse");
+    let s3 = Uri::from_str(S3_URI).expect("the static S3 URI must parse");
 
     group.bench_function("clone", |bencher| {
         bencher.iter(|| black_box(&uri).clone());
@@ -74,6 +77,18 @@ fn value_benchmarks(criterion: &mut Criterion) {
                 value.query(),
                 value.fragment(),
             ))
+        });
+    });
+    group.bench_function("credential_access", |bencher| {
+        bencher.iter(|| {
+            let value = black_box(&credentials);
+            black_box((value.user(), value.password(), value.hostname()))
+        });
+    });
+    group.bench_function("s3_location_access", |bencher| {
+        bencher.iter(|| {
+            let value = black_box(&s3);
+            black_box((value.hostname(), value.bucket(), value.region()))
         });
     });
     group.bench_function("path_segment_iteration", |bencher| {
@@ -100,7 +115,8 @@ fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("file_path_projection", |bencher| {
         bencher.iter(|| {
             black_box(&file)
-                .to_path()
+                .clone()
+                .into_path()
                 .expect("the static file URI must project")
         });
     });
