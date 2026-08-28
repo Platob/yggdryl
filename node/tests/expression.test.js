@@ -67,7 +67,6 @@ test('text is never taken as a string literal', () => {
 test('a document round-trips', () => {
   const filter = new Expression('size between 1 and 10')
   assert.ok(Expression.fromJson(filter.intoJson()).equals(filter))
-  assert.equal(filter.toJson, undefined)
 })
 
 test('the tree is built from either spelling', () => {

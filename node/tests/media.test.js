@@ -108,7 +108,7 @@ test('MimeType parsing, views, JSON, ordering, and hashes stay native-owned', ()
       MimeType.JSON,
     ),
   )
-  assert.ok(MimeType.fromContentCoding('x-gzip').equals(MimeType.GZIP))
+  assert.ok(MimeType.fromContentCoding('gzip').equals(MimeType.GZIP))
   assert.equal(MimeType.GZIP.contentCoding, 'gzip')
   assert.equal(MimeType.JSON.format, 'json')
   assert.ok(MimeType.fromJSON(MimeType.JSON.toJSON()).equals(MimeType.JSON))

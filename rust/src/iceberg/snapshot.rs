@@ -30,7 +30,7 @@ pub struct Snapshot {
     pub timestamp_ms: i64,
     /// Location of the Avro manifest list this snapshot's manifests are in.
     pub manifest_list: SmolStr,
-    /// Legacy v1 manifest locations stored directly instead of a manifest list.
+    /// V1 manifest locations stored directly instead of a manifest list.
     pub manifests: Option<Vec<SmolStr>>,
     /// What the commit did, keyed by Iceberg's summary vocabulary.
     pub summary: Vec<(SmolStr, SmolStr)>,
@@ -701,10 +701,10 @@ mod strict_json_tests {
         .unwrap();
         assert!(Snapshot::from_json(&both).is_err());
 
-        let legacy =
+        let v1 =
             crate::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2,"manifests":["m.avro"]}"#)
                 .unwrap();
-        let snapshot = Snapshot::from_json(&legacy).unwrap();
+        let snapshot = Snapshot::from_json(&v1).unwrap();
         snapshot.validate_for_version(FormatVersion::V1).unwrap();
     }
 

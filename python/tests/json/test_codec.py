@@ -428,7 +428,7 @@ def test_bounded_reader_and_partial_writer() -> None:
             self.data.extend(value[:count])
             return count
 
-    assert json.load(BoundedReader()) == {"value": 42}
+    assert json.loads(BoundedReader()) == {"value": 42}
     writer = PartialWriter()
     json.dump({"value": 42}, writer)
     assert bytes(writer.data) == json.dumps({"value": 42})
@@ -752,10 +752,10 @@ def test_text_and_io_sources_redirect_without_python_byte_staging(
 
     monkeypatch.setattr(codec, "read_bytes", staged_read_forbidden)
     assert json.loads('{"label":"café"}') == {"label": "café"}
-    assert json.load(io.StringIO('{"label":"café"}')) == {
+    assert json.loads(io.StringIO('{"label":"café"}')) == {
         "label": "café"
     }
-    assert yaml.load(io.BytesIO("label: café\n".encode())) == {
+    assert yaml.loads(io.BytesIO("label: café\n".encode())) == {
         "label": "café"
     }
     assert list(json.loads_all("1\n2\n")) == [1, 2]
@@ -823,7 +823,7 @@ def test_bytes_pathlike_uses_normal_python_path_semantics(
 
     destination = BytesPath(os.fsencode(tmp_path / "value.json"))
     json.dump({"value": 42}, destination)
-    assert json.load(destination) == {"value": 42}
+    assert json.loads(destination) == {"value": 42}
 
 
 @pytest.mark.parametrize("codec", (json, yaml))
@@ -855,14 +855,14 @@ def test_native_reader_rejects_hostile_oversized_chunks() -> None:
             return b" " * (size + 1)
 
     with pytest.raises(OSError, match="more data than requested"):
-        json.load(OversizedReader())
+        json.loads(OversizedReader())
 
 
 def test_text_reader_replays_multibyte_bytes_beyond_requested_buffer() -> None:
     label = "é🙂" * 5_000
     source = io.StringIO('{"label":"' + label + '"}')
 
-    assert json.load(source) == {"label": label}
+    assert json.loads(source) == {"label": label}
 
 
 @pytest.mark.parametrize("codec", (json, yaml))

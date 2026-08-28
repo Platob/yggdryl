@@ -571,7 +571,7 @@ function installRecords({
 
   // Metadata must be an accessor, not a stored value or a method. Looking up
   // the descriptor before reading the property prevents a method/static Field
-  // compatibility path from silently reappearing. An inherited getter remains
+  // path from silently reappearing. An inherited getter remains
   // a getter; its result is still memoized for the concrete owner below.
   function structFieldGetter(owner) {
     for (

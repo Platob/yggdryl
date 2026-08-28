@@ -601,7 +601,6 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
   )
 
   const arrow = source.intoSchemeCompat('arrow')
-  assert.equal(source.toSchemeCompat, undefined)
   assert.ok(arrow.equals(source))
   assert.notEqual(arrow, source)
 

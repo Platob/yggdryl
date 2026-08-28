@@ -51,7 +51,6 @@ def test_text_is_never_taken_as_a_literal() -> None:
 def test_a_document_round_trips() -> None:
     filter = Expression("size between 1 and 10")
     assert Expression.from_json(filter.into_json()) == filter
-    assert not hasattr(filter, "to_json")
 
 
 def test_operators_build_the_tree() -> None:
@@ -136,7 +135,6 @@ def test_a_statement_carries_the_whole_read() -> None:
     assert statement.limit == 10
     assert str(Statement(str(statement))) == str(statement)
     assert Statement.from_json(statement.into_json()).into_json() == statement.into_json()
-    assert not hasattr(statement, "to_json")
     assert copy.copy(statement) == statement
     assert copy.deepcopy(statement) == statement
     assert pickle.loads(pickle.dumps(statement)) == statement

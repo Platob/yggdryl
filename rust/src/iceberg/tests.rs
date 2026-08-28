@@ -1295,7 +1295,7 @@ mod table_metadata {
     }
 
     #[test]
-    fn legacy_v1_manifest_paths_survive_official_metadata_updates() {
+    fn v1_direct_manifest_paths_survive_official_metadata_updates() {
         let mut metadata = metadata(FormatVersion::V1);
         let snapshot = Snapshot {
             snapshot_id: 7,
@@ -1317,7 +1317,7 @@ mod table_metadata {
             added_rows: None,
         };
         metadata.set_current_snapshot(snapshot.clone()).unwrap();
-        metadata.set_property("owner", "legacy").unwrap();
+        metadata.set_property("owner", "v1").unwrap();
 
         let document = metadata.clone().into_json().unwrap();
         let encoded = document
@@ -1772,8 +1772,8 @@ mod tables {
     }
 
     #[test]
-    fn a_legacy_v1_snapshot_with_direct_manifests_scans_and_time_travels() {
-        let path = root("legacy-v1-direct-manifests");
+    fn a_v1_snapshot_with_direct_manifests_scans_and_time_travels() {
+        let path = root("v1-direct-manifests");
         let mut table = Table::create(
             Folder::new(&path).unwrap(),
             FormatVersion::V1,
@@ -1815,10 +1815,10 @@ mod tables {
         std::fs::write(metadata_path, crate::json::into_bytes(&document).unwrap()).unwrap();
 
         let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-        let legacy = reopened.current_snapshot().unwrap();
-        assert_eq!(legacy.snapshot_id, snapshot_id);
-        assert!(legacy.manifest_list.is_empty());
-        assert_eq!(legacy.manifests.as_ref().map(Vec::len), Some(1));
+        let v1 = reopened.current_snapshot().unwrap();
+        assert_eq!(v1.snapshot_id, snapshot_id);
+        assert!(v1.manifest_list.is_empty());
+        assert_eq!(v1.manifests.as_ref().map(Vec::len), Some(1));
         let synthesized = reopened.manifests().unwrap();
         assert_eq!(synthesized.len(), 1);
         assert_eq!(synthesized[0].added_files_count, Some(1));

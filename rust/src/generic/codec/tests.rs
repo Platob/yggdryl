@@ -126,15 +126,15 @@ fn codings_are_recovered_from_filenames_and_media_types() {
 }
 
 #[test]
-fn names_parse_including_the_legacy_x_prefixes() {
+fn only_canonical_codec_names_parse() {
     assert_eq!(Codec::from_str("gzip").unwrap(), Codec::Gzip);
     assert_eq!(Codec::from_str("GZIP").unwrap(), Codec::Gzip);
-    assert_eq!(Codec::from_str("x-gzip").unwrap(), Codec::Gzip);
     assert_eq!(Codec::from_str(" deflate ").unwrap(), Codec::Deflate);
     assert_eq!(Codec::from_str("zstd").unwrap(), Codec::Zstd);
 
-    let message = Codec::from_str("lzma").unwrap_err().to_string();
-    assert!(message.contains("\"lzma\""), "{message}");
+    let invalid = "lzma";
+    let message = Codec::from_str(invalid).unwrap_err().to_string();
+    assert!(message.contains(&format!("{invalid:?}")), "{message}");
     assert!(message.contains("gzip"), "{message}");
 }
 

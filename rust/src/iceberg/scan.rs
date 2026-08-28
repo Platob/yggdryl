@@ -883,7 +883,7 @@ pub(super) fn scan_error(error: Error) -> arrow_schema::ArrowError {
 /// Translate a projection into the names one data file spells them with.
 ///
 /// Iceberg resolves a column by field identifier, not by name, so a file
-/// written before a rename stores the column under its old name. The file's
+/// written before a rename stores the column under its pre-rename name. The file's
 /// own root is read - a footer-only read - and every projected column whose
 /// identifier the file spells under a different name is asked for by *that*
 /// name, so the encoding's pushdown still skips what it should. The decoded

@@ -83,9 +83,6 @@ def loads(
     )
 
 
-load = loads
-
-
 def dumps_all(
     values: Iterable[object],
     *,
@@ -172,7 +169,6 @@ __all__ = [
     "dump_all",
     "dumps",
     "dumps_all",
-    "load",
     "load_all",
     "loads",
     "loads_all",

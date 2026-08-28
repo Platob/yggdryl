@@ -198,13 +198,6 @@ class TestTypedArrowWrites:
 
         assert handle.read_arrow_reader().read_all() == handle.read_arrow_reader().read_all()
 
-    def test_record_options_are_one_keyword_only(self, tmp_path: pathlib.Path) -> None:
-        handle = IOBase(tmp_path / "options.parquet")
-
-        with pytest.raises(TypeError, match="unexpected keyword argument 'field'"):
-            handle.read_arrow_reader(field=SCHEMA)
-
-
 class TestExplicitIntent:
     """Every held Arrow shape exposes overwrite, append, and keyed merge."""
 

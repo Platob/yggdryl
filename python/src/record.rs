@@ -105,17 +105,6 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
         let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)?;
         return Ok(Box::new(reader));
     }
-    // A `RecordBatch` older than the C stream protocol still exports one batch
-    // through the C array protocol, so it is recognized before the reader
-    // fallback, which accepts nothing but a `RecordBatchReader`.
-    if let Ok(batch) = RecordBatch::from_pyarrow_bound(value) {
-        let schema = batch.schema();
-        return Ok(yggdryl::arrow::batch_reader(schema, [batch]));
-    }
-    if value.hasattr("_export_to_c")? {
-        let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)?;
-        return Ok(Box::new(reader));
-    }
     if let Ok(batches) = value.try_iter() {
         let mut collected: Vec<RecordBatch> = Vec::new();
         for batch in batches {
@@ -155,10 +144,7 @@ pub(crate) fn batch_reader_from_arrow_reader(value: &Bound<'_, PyAny>) -> PyResu
         )));
     }
     let reader = pyarrow.getattr("RecordBatchReader")?;
-    if value.is_instance(&reader)?
-        || value.hasattr("__arrow_c_stream__")?
-        || value.hasattr("_export_to_c")?
-    {
+    if value.is_instance(&reader)? || value.hasattr("__arrow_c_stream__")? {
         return batch_reader_from_value(value);
     }
     Err(PyTypeError::new_err(format!(
@@ -307,31 +293,24 @@ fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>>
 /// Hand a polars frame over as Arrow at the newest compat level.
 ///
 /// The newest level keeps polars' view arrays as Arrow view types instead of
-/// downgrading them to the offset layouts, so the crossing moves no bytes. A
-/// polars old enough to lack `CompatLevel` falls back to its default.
+/// downgrading them to the offset layouts, so the crossing moves no bytes.
 pub(crate) fn polars_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     let py = frame.py();
-    if let Ok(level) = py
+    let level = py
         .import("polars")
-        .and_then(|polars| polars.getattr("CompatLevel"))
-        .and_then(|compat| compat.call_method0("newest"))
-    {
-        let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item("compat_level", level)?;
-        if let Ok(table) = frame.call_method("to_arrow", (), Some(&kwargs)) {
-            return Ok(table);
-        }
-    }
-    frame.call_method0("to_arrow")
+        .and_then(|polars| polars.getattr("CompatLevel"))?
+        .call_method0("newest")?;
+    let kwargs = pyo3::types::PyDict::new(py);
+    kwargs.set_item("compat_level", level)?;
+    frame.call_method("to_arrow", (), Some(&kwargs))
 }
 
 /// Read a core batch reader out of anything Python holds rows in.
 ///
 /// This is the widest of the three inference points and the one the generic
 /// entry points use. It accepts, in order: a foreign `pandas` or `polars`
-/// frame, anything exporting an Arrow C stream, a `pyarrow.RecordBatch`, a
-/// `pyarrow.dataset.Scanner` or `Dataset`, an iterable of any of those, and an
-/// iterable of plain rows.
+/// frame, anything exporting an Arrow C stream, a `pyarrow.dataset.Scanner` or
+/// `Dataset`, an iterable of any of those, and an iterable of plain rows.
 ///
 /// Every iterable is consumed lazily: one item is pulled, drained, and dropped
 /// before the next is asked for, so a generator that could stream is never
@@ -435,10 +414,6 @@ fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
     if value.hasattr("__arrow_c_stream__")? {
         return batch_reader_from_value(value).map(Some);
     }
-    if let Ok(batch) = RecordBatch::from_pyarrow_bound(value) {
-        let schema = batch.schema();
-        return Ok(Some(yggdryl::arrow::batch_reader(schema, [batch])));
-    }
     // A `Scanner` already describes one pass over rows, and a `Dataset` makes
     // one on request. Both hand back a reader, so neither is materialized.
     if value.hasattr("to_reader")? {
@@ -447,10 +422,6 @@ fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
     if value.hasattr("scanner")? {
         let scanner = value.call_method0("scanner")?;
         return batch_reader_from_value(&scanner.call_method0("to_reader")?).map(Some);
-    }
-    if value.hasattr("_export_to_c")? {
-        let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)?;
-        return Ok(Some(Box::new(reader)));
     }
     Ok(None)
 }

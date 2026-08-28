@@ -159,8 +159,6 @@ class TestColumnPushdown:
             options=self._reading(stream, wanted)
         ).read_all()
         assert projected.column_names == ["id"]
-        with pytest.raises(TypeError, match=r"unexpected keyword argument .*field"):
-            stream.read_arrow_reader(field=wanted)
 
     def test_a_column_the_stream_lacks_is_supplied_by_the_cast(
         self, stream: IOBase
@@ -306,9 +304,6 @@ class TestOptions:
         options.field = SCHEMA
         assert options.field is not None
         assert options.field.name == "trade"
-        assert not hasattr(options, "schema")
-        with pytest.raises(AttributeError):
-            options.schema = SCHEMA  # type: ignore[attr-defined]
 
     def test_a_parquet_only_setting_is_refused_by_name(self) -> None:
         options = RecordOptions("trades.arrows")

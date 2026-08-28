@@ -72,6 +72,4 @@ def loads(
     max_documents: int | None = None,
 ) -> Any: ...
 
-load = loads
-
 __all__: list[str]

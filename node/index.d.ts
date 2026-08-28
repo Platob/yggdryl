@@ -2075,7 +2075,7 @@ export declare class Snapshot {
   get timestampMs(): number
   /** Location of the Avro manifest list this snapshot's manifests are in. */
   get manifestList(): string
-  /** Direct manifest locations carried by a legacy v1 snapshot. */
+  /** Direct manifest locations carried by a v1 snapshot. */
   get manifests(): Array<string> | null
   /** What the commit did, defaulting to `append`. */
   get operation(): string

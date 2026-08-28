@@ -112,8 +112,8 @@ impl Codec {
 
     /// Parse a canonical content-coding token.
     ///
-    /// Leading/trailing whitespace and the legacy `x-` prefix are accepted, so
-    /// an HTTP `Content-Encoding` header value parses directly.
+    /// Leading/trailing whitespace is accepted so an HTTP `Content-Encoding`
+    /// header value parses directly.
     ///
     /// # Errors
     ///
@@ -274,8 +274,7 @@ impl FromStr for Codec {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        // `x-gzip` and `x-deflate` remain in circulation from older tooling.
-        let normalized = value.trim().trim_start_matches("x-");
+        let normalized = value.trim();
         Self::ALL
             .into_iter()
             .find(|codec| normalized.eq_ignore_ascii_case(codec.as_str()))

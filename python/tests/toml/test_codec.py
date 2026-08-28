@@ -28,7 +28,6 @@ class Order:
 
 
 def test_public_surface_is_deliberately_single_document() -> None:
-    assert toml.load is toml.loads
     for name in ("dump_all", "dumps_all", "load_all", "loads_all"):
         assert not hasattr(toml, name)
 
@@ -175,8 +174,8 @@ def test_source_intent_is_type_driven_for_text_binary_and_paths(
     assert toml.loads(memoryview(b"value = 43\n")) == {"value": 43}
     binary = io.BytesIO(b"value = 44\n")
     text = io.StringIO("value = 45\n")
-    assert toml.load(binary) == {"value": 44}
-    assert toml.load(text) == {"value": 45}
+    assert toml.loads(binary) == {"value": 44}
+    assert toml.loads(text) == {"value": 45}
     assert not binary.closed
     assert not text.closed
 
@@ -197,7 +196,7 @@ def test_pathlike_is_always_a_path_and_bytes_pathlike_is_supported(
 
     destination = BytesPath(os.fsencode(tmp_path / "bytes-path.toml"))
     toml.dump({"value": 46}, destination)
-    assert toml.load(destination) == {"value": 46}
+    assert toml.loads(destination) == {"value": 46}
 
 
 def test_nonexistent_string_is_content_not_a_path() -> None:
@@ -301,10 +300,10 @@ def test_str_and_io_redirect_without_python_byte_staging(
     label = "caf\u0065\u0301"
     document = f'label = "{label}"'
     assert toml.loads(document) == {"label": label}
-    assert toml.load(io.StringIO(document)) == {
+    assert toml.loads(io.StringIO(document)) == {
         "label": label
     }
-    assert toml.load(io.BytesIO(document.encode())) == {
+    assert toml.loads(io.BytesIO(document.encode())) == {
         "label": label
     }
 
@@ -315,7 +314,7 @@ def test_reader_rejects_oversized_return_before_copying() -> None:
             return b" " * (size + 1)
 
     with pytest.raises(OSError, match="more data than requested"):
-        toml.load(OversizedReader())
+        toml.loads(OversizedReader())
 
 
 def test_reader_error_is_preserved() -> None:
@@ -325,7 +324,7 @@ def test_reader_error_is_preserved() -> None:
             raise RuntimeError("deliberate read failure")
 
     with pytest.raises(RuntimeError, match="deliberate read failure"):
-        toml.load(FailingReader())
+        toml.loads(FailingReader())
 
 
 def test_invalid_duplicate_and_trailing_documents_are_rejected() -> None:

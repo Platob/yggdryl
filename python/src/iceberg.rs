@@ -66,7 +66,7 @@ pub(crate) fn iceberg_assign_field_ids(schema: &Bound<'_, PyAny>, start: i32) ->
 
 /// Read one Iceberg schema document as a native root Field.
 ///
-/// The document is an ordinary mapping - what `json.load` produces - because an
+/// The document is an ordinary mapping - what `json.loads` produces - because an
 /// Iceberg schema is ordinary JSON. `name` is what the struct root is called,
 /// since the document names the columns and never the record.
 ///
@@ -263,8 +263,8 @@ fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
     Holder::folder(url.into_path().map_err(value_error)?).map_err(value_error)
 }
 
-/// The Iceberg option fields every Iceberg call also accepts as keywords.
-const ICEBERG_KWARGS: [&str; 10] = [
+/// The keyword fields accepted by the `IcebergOptions` constructor.
+const ICEBERG_OPTION_FIELDS: [&str; 10] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -306,18 +306,13 @@ fn set_iceberg_option(
         "data_mime_type" => options
             .set_data_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)?,
-        _ => unreachable!("apply_iceberg_kwargs checks the key first"),
+        _ => unreachable!("apply_iceberg_option_fields checks the key first"),
     }
     Ok(())
 }
 
-/// Apply the Iceberg option keywords one call carried, in field order.
-///
-/// The same resolver every Iceberg method routes `(options, kwargs)` through:
-/// an explicit keyword always wins over the same field of a passed options
-/// object, and an unknown keyword is a `TypeError` naming the argument,
-/// exactly as a plain Python signature would raise one.
-fn apply_iceberg_kwargs(
+/// Apply `IcebergOptions` constructor fields in canonical order.
+fn apply_iceberg_option_fields(
     method: &str,
     options: &mut IcebergOptions,
     kwargs: Option<&Bound<'_, PyDict>>,
@@ -327,13 +322,13 @@ fn apply_iceberg_kwargs(
     };
     for (key, _) in kwargs.iter() {
         let key = key.extract::<String>()?;
-        if !ICEBERG_KWARGS.contains(&key.as_str()) {
+        if !ICEBERG_OPTION_FIELDS.contains(&key.as_str()) {
             return Err(PyTypeError::new_err(format!(
                 "{method}() got an unexpected keyword argument {key:?}"
             )));
         }
     }
-    for key in ICEBERG_KWARGS {
+    for key in ICEBERG_OPTION_FIELDS {
         if let Some(value) = kwargs.get_item(key)? {
             set_iceberg_option(options, key, &value)?;
         }
@@ -367,28 +362,9 @@ fn core_iceberg_options_from_value(value: &Bound<'_, PyAny>) -> PyResult<Iceberg
     )))
 }
 
-/// Resolve `(options, kwargs)` into the per-call options a method runs under.
-///
-/// `None` means neither was given, so the call runs exactly as the handle is
-/// configured. The base is the `options` argument when one was passed and the
-/// handle's stored explicit override otherwise; each keyword then lands on
-/// top, so a keyword always wins over the same field of the options object.
-fn iceberg_call_options(
-    method: &str,
-    stored: Option<&IcebergOptions>,
-    options: Option<&Bound<'_, PyAny>>,
-    kwargs: Option<&Bound<'_, PyDict>>,
-) -> PyResult<Option<IcebergOptions>> {
-    let empty = kwargs.is_none_or(pyo3::types::PyDictMethods::is_empty);
-    if options.is_none() && empty {
-        return Ok(None);
-    }
-    let mut resolved = match options {
-        Some(value) => core_iceberg_options_from_value(value)?,
-        None => stored.cloned().unwrap_or_default(),
-    };
-    apply_iceberg_kwargs(method, &mut resolved, kwargs)?;
-    Ok(Some(resolved))
+/// Import an optional per-call options value.
+fn iceberg_call_options(options: Option<&Bound<'_, PyAny>>) -> PyResult<Option<IcebergOptions>> {
+    options.map(core_iceberg_options_from_value).transpose()
 }
 
 /// Run one table operation under per-call options, restoring the handle after.
@@ -499,7 +475,7 @@ impl PyIcebergOptions {
     #[pyo3(signature = (**kwargs))]
     fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
         let mut inner = IcebergOptions::new();
-        apply_iceberg_kwargs("IcebergOptions", &mut inner, kwargs)?;
+        apply_iceberg_option_fields("IcebergOptions", &mut inner, kwargs)?;
         Ok(Self::from_core(inner))
     }
 
@@ -507,7 +483,7 @@ impl PyIcebergOptions {
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
         let mut inner = IcebergOptions::new();
-        apply_iceberg_kwargs("IcebergOptions._from_pickle", &mut inner, Some(state))?;
+        apply_iceberg_option_fields("IcebergOptions._from_pickle", &mut inner, Some(state))?;
         Ok(Self::from_core(inner))
     }
 
@@ -772,17 +748,16 @@ impl PyCatalog {
     /// A table that is not there yet takes its schema from the rows: partition
     /// marks riding the Arrow fields' metadata become the spec, so a marked
     /// schema lays its files out partitioned from the very first append.
-    /// `options` and the [`IcebergOptions`] keywords configure this one
-    /// write. Returns the table so the caller can keep going.
-    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    /// `options` configures this write. Returns the table so the caller can
+    /// keep going.
+    #[pyo3(signature = (name, data, *, options = None))]
     fn append(
         &self,
         name: &str,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options("append", None, options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let data = batch_reader_from_value(data)?;
         self.inner
             .tables()
@@ -794,18 +769,16 @@ impl PyCatalog {
     /// Replace the named table's rows with `data`, creating it on first write.
     ///
     /// An existing table keeps its previous snapshot readable, which is what
-    /// makes the overwrite reversible. `options` and the [`IcebergOptions`]
-    /// keywords configure this one write. Returns the table so the caller can
-    /// keep going.
-    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    /// makes the overwrite reversible. `options` configures this write.
+    /// Returns the table so the caller can keep going.
+    #[pyo3(signature = (name, data, *, options = None))]
     fn overwrite(
         &self,
         name: &str,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options("overwrite", None, options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let data = batch_reader_from_value(data)?;
         self.inner
             .tables()
@@ -1167,17 +1140,15 @@ impl PyTable {
     /// as one shape.
     /// That cast is what makes a table whose schema evolved readable as one
     /// shape: a file written before a column existed contributes null for it.
-    /// `options` and the [`IcebergOptions`] keywords configure this one scan.
-    #[pyo3(signature = (field = None, *, options = None, **kwargs))]
+    /// `options` configures this scan.
+    #[pyo3(signature = (field = None, *, options = None))]
     fn scan<'py>(
         &mut self,
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved =
-            iceberg_call_options("scan", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let field = field
             .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
             .transpose()?;
@@ -1197,17 +1168,15 @@ impl PyTable {
     /// bound a file rather than select a row. Either way the rows that come
     /// back are the rows that match. `field` and the options mean exactly what
     /// they mean on [`scan`](Self::scan).
-    #[pyo3(signature = (filters = None, field = None, *, options = None, **kwargs))]
+    #[pyo3(signature = (filters = None, field = None, *, options = None))]
     fn scan_where<'py>(
         &mut self,
         py: Python<'py>,
         filters: Option<&Bound<'_, PyAny>>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved =
-            iceberg_call_options("scan_where", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
             .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
@@ -1226,7 +1195,7 @@ impl PyTable {
     /// [`scan_at`](Self::scan_at), so a ref is read as the schema its snapshot
     /// was written under and `filters` and `field` mean what they mean there.
     /// A name the table does not carry is an error naming the refs it does.
-    #[pyo3(signature = (name, filters = None, field = None, *, options = None, **kwargs))]
+    #[pyo3(signature = (name, filters = None, field = None, *, options = None))]
     fn scan_ref<'py>(
         &mut self,
         py: Python<'py>,
@@ -1234,10 +1203,8 @@ impl PyTable {
         filters: Option<&Bound<'_, PyAny>>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved =
-            iceberg_call_options("scan_ref", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
             .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
@@ -1298,19 +1265,15 @@ impl PyTable {
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
     ///
-    /// `options` and the [`IcebergOptions`] keywords - `target_file_size`,
-    /// `commit_retries`, `data_mime_type`, and the rest - configure this one
-    /// write; an explicit keyword wins over the same field of a passed
-    /// options object, and the handle's own configuration is untouched.
-    #[pyo3(signature = (batches, *, options = None, **kwargs))]
+    /// `options` configures this write without changing the handle's own
+    /// configuration.
+    #[pyo3(signature = (batches, *, options = None))]
     fn append(
         &mut self,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved =
-            iceberg_call_options("append", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let batches = batch_reader_from_value(batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table.append(batches).map_err(value_error)
@@ -1319,17 +1282,15 @@ impl PyTable {
 
     /// Replace every row with `batches` as a new snapshot.
     ///
-    /// `options` and the [`IcebergOptions`] keywords configure this one
-    /// write, exactly as they configure [`append`](Self::append).
-    #[pyo3(signature = (batches, *, options = None, **kwargs))]
+    /// `options` configures this write as it does
+    /// [`append`](Self::append).
+    #[pyo3(signature = (batches, *, options = None))]
     fn overwrite(
         &mut self,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved =
-            iceberg_call_options("overwrite", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let batches = batch_reader_from_value(batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table.overwrite(batches).map_err(value_error)
@@ -1347,20 +1308,14 @@ impl PyTable {
     /// may have replaced, and the incoming rows are already consumed, so it
     /// raises rather than risk losing the winner's rows. The caller re-reads
     /// and retries with fresh input.
-    #[pyo3(signature = (filters, batches, *, options = None, **kwargs))]
+    #[pyo3(signature = (filters, batches, *, options = None))]
     fn overwrite_where(
         &mut self,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(
-            "overwrite_where",
-            self.inner.explicit_options(),
-            options,
-            kwargs,
-        )?;
+        let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let batches = batch_reader_from_value(batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
@@ -1383,17 +1338,15 @@ impl PyTable {
     /// `safe` is the cast strictness the incoming batches are held to: the
     /// default refuses a value the table's column cannot hold rather than
     /// storing a silently wrapped one.
-    #[pyo3(signature = (batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    #[pyo3(signature = (batches, merge_by_names, *, safe = true, options = None))]
     fn merge(
         &mut self,
         batches: &Bound<'_, PyAny>,
         merge_by_names: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved =
-            iceberg_call_options("merge", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
         let batches = batch_reader_from_value(batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
@@ -1409,7 +1362,7 @@ impl PyTable {
     /// reads one partition. Everything else - the match rule, `safe`, the
     /// refusal to rebase after a lost commit - is exactly
     /// [`merge`](Self::merge).
-    #[pyo3(signature = (filters, batches, merge_by_names, *, safe = true, options = None, **kwargs))]
+    #[pyo3(signature = (filters, batches, merge_by_names, *, safe = true, options = None))]
     fn merge_where(
         &mut self,
         filters: Option<&Bound<'_, PyAny>>,
@@ -1417,14 +1370,8 @@ impl PyTable {
         merge_by_names: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(
-            "merge_where",
-            self.inner.explicit_options(),
-            options,
-            kwargs,
-        )?;
+        let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
         let batches = batch_reader_from_value(batches)?;
@@ -1441,21 +1388,10 @@ impl PyTable {
     /// and a field it leaves unset still resolves property-then-default. The
     /// override lives on this handle alone - it is never written to the
     /// table; [`update_properties`](Self::update_properties) is what stores a
-    /// setting on the table itself. Keywords work exactly as they do on the
-    /// per-call methods, so `table.set_options(data_mime_type="avro")` is the
-    /// handle-wide spelling of the per-call keyword.
-    #[pyo3(signature = (options = None, **kwargs))]
-    fn set_options(
-        &mut self,
-        options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<()> {
-        let mut resolved = match options {
-            Some(value) => core_iceberg_options_from_value(value)?,
-            None => IcebergOptions::new(),
-        };
-        apply_iceberg_kwargs("set_options", &mut resolved, kwargs)?;
-        self.inner.set_options(resolved);
+    /// setting on the table itself.
+    fn set_options(&mut self, options: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner
+            .set_options(core_iceberg_options_from_value(options)?);
         Ok(())
     }
 
@@ -1481,7 +1417,7 @@ impl PyTable {
     /// pairs - the vocabulary `IOBase.children_where` uses - answered by the
     /// plan for a partition column and row by row for every other; `schema`
     /// keeps the columns it names, exactly as `scan` does.
-    #[pyo3(signature = (snapshot_id, filters = None, schema = None, *, options = None, **kwargs))]
+    #[pyo3(signature = (snapshot_id, filters = None, schema = None, *, options = None))]
     fn scan_at<'py>(
         &mut self,
         py: Python<'py>,
@@ -1489,10 +1425,8 @@ impl PyTable {
         filters: Option<&Bound<'_, PyAny>>,
         schema: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved =
-            iceberg_call_options("scan_at", self.inner.explicit_options(), options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = schema
             .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
@@ -1594,12 +1528,9 @@ impl PyTable {
         retain_last: Option<usize>,
         snapshot_ids: Option<Vec<i64>>,
     ) -> PyResult<Vec<i64>> {
+        let snapshot_ids = snapshot_ids.unwrap_or_default();
         self.inner
-            .expire_snapshots(
-                older_than_ms,
-                retain_last,
-                snapshot_ids.as_deref().unwrap_or_default(),
-            )
+            .expire_snapshots(older_than_ms, retain_last, &snapshot_ids)
             .map_err(value_error)
     }
 
@@ -1835,8 +1766,8 @@ impl PySchemaUpdate {
         Ok(slf)
     }
 
-    /// Record a rename of the column at `path`; its identifier is kept, which
-    /// is what keeps the rows written under the old name readable.
+    /// Record a rename of the column at `path`; its identifier keeps rows
+    /// written under the pre-rename name readable.
     fn rename_column<'py>(
         mut slf: PyRefMut<'py, Self>,
         path: &str,
@@ -2534,13 +2465,13 @@ impl PySnapshot {
         self.inner.manifest_list.as_str()
     }
 
-    /// Direct manifest locations carried by a legacy v1 snapshot.
+    /// Direct manifest locations carried by a v1 snapshot.
     #[getter]
     fn manifests<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
         self.inner
             .manifests
             .as_ref()
-            .map(|paths| PyTuple::new(py, paths.iter().map(|path| path.as_str())))
+            .map(|paths| PyTuple::new(py, paths.iter().map(<_ as AsRef<str>>::as_ref)))
             .transpose()
     }
 
@@ -3729,18 +3660,17 @@ impl PyTables {
 
     /// Append `data` to the named table, creating it on first write.
     ///
-    /// `options` and the [`IcebergOptions`] keywords configure this one
-    /// write. Returns the table so the caller can keep going.
-    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    /// `options` configures this write. Returns the table so the caller can
+    /// keep going.
+    #[pyo3(signature = (name, data, *, options = None))]
     fn append(
         &self,
         py: Python<'_>,
         name: &str,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options("append", None, options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let data = batch_reader_from_value(data)?;
         let dotted = self.dotted(name);
         self.with_core(py, |view| view.append_with(&dotted, data, resolved))
@@ -3750,18 +3680,17 @@ impl PyTables {
 
     /// Replace the named table's rows with `data`, creating it on first write.
     ///
-    /// `options` and the [`IcebergOptions`] keywords configure this one
-    /// write. Returns the table so the caller can keep going.
-    #[pyo3(signature = (name, data, *, options = None, **kwargs))]
+    /// `options` configures this write. Returns the table so the caller can
+    /// keep going.
+    #[pyo3(signature = (name, data, *, options = None))]
     fn overwrite(
         &self,
         py: Python<'_>,
         name: &str,
         data: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
-        kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options("overwrite", None, options, kwargs)?;
+        let resolved = iceberg_call_options(options)?;
         let data = batch_reader_from_value(data)?;
         let dotted = self.dotted(name);
         self.with_core(py, |view| view.overwrite_with(&dotted, data, resolved))

@@ -280,10 +280,10 @@ impl PyIOBase {
             // An open file knows where it lives; `name` is an `int` for a
             // descriptor-opened one and absent on a plain stream, and neither
             // of those names a place.
-            if let Ok(name) = value.getattr("name") {
-                if name.is_instance_of::<pyo3::types::PyString>() {
-                    return Self::located(&name.extract::<std::path::PathBuf>()?);
-                }
+            if let Ok(name) = value.getattr("name")
+                && name.is_instance_of::<pyo3::types::PyString>()
+            {
+                return Self::located(&name.extract::<std::path::PathBuf>()?);
             }
             let content = value.call_method0("read")?;
             let bytes = if let Ok(bytes) = content.extract::<Vec<u8>>() {

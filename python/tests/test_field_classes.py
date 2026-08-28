@@ -59,8 +59,6 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
     assert root is value.field()
     assert root is field(Order)
     assert root is field(value)
-    assert "FIELD" not in Order.__dict__
-    assert not hasattr(value, "FIELD")
     assert root.name == "Order"
     assert root.data_type.id == "struct"
     assert tuple(child.name for child in root.data_type) == (
@@ -311,37 +309,14 @@ def test_plain_dataclass_field_attribute_does_not_override_annotations() -> None
     class Plain:
         value: int
 
-        FIELD = unrelated
-
         @staticmethod
         def field() -> Field:
             return unrelated
 
-    assert Plain.FIELD is unrelated
     assert Plain.field() is unrelated
     assert DataType.from_pyhint(Plain)["value"].data_type.id == "int64"
     assert Field.from_pyhint("plain", Plain)["value"].data_type.id == "int64"
     assert field(Plain)["value"].data_type.id == "int64"
-
-
-def test_field_name_is_available_for_ordinary_class_and_instance_members() -> None:
-    unrelated = Field("unrelated", "utf8", nullable=False)
-
-    @scalar
-    class WithClassMember:
-        value: int
-
-        FIELD = unrelated
-
-    @scalar
-    class WithInstanceMember:
-        FIELD: int
-        value: int
-
-    assert WithClassMember.FIELD is unrelated
-    assert WithClassMember.field()["value"].data_type.id == "int64"
-    assert WithInstanceMember(7, 9).FIELD == 7
-    assert WithInstanceMember.field()["FIELD"].data_type.id == "int64"
 
 
 def test_generic_inheritance_reinfers_a_specialized_member() -> None:

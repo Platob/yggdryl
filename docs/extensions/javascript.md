@@ -503,7 +503,6 @@ assert.ok(!clone.equals(parquet))
 const root = fields.struct('row', [Field.from('id: int64')], { nullable: false })
 const declared = parquet.withField(root)
 assert.ok(declared.field.equals(root))
-assert.equal('schema' in declared, false)
 
 // A setting one encoding has is absent on the others rather than invented.
 const stream = RecordOptions.from('trades.arrows')
@@ -636,7 +635,6 @@ rejected. None of these paths inspects the ignored source. Otherwise async recor
 `Promise<void>`; synchronous record input and all Arrow methods return `void`.
 
 An empty record iterable carries no inferable columns and therefore requires `options.field`.
-See [migration notes](../migration.md#generic-write-mode) for removed entry points.
 
 ## Iceberg is a namespace
 
@@ -678,7 +676,7 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
 `iceberg.schemaFromJson`, and `iceberg.schemaToJson` are the functions.
 These immutable result values expose `equals`, `compare`, `stableHash`, and
-`clone` over their complete Rust-core identity. Snapshot legacy v1 `manifests`, v3 lineage and
+`clone` over their complete Rust-core identity. Snapshot v1 `manifests`, v3 lineage and
 encryption key, manifest encryption and partition summaries, and complete
 data-file metadata stay available rather than being dropped at the boundary.
 `ScanPlan` is a bounded immutable report whose complete

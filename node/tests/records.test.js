@@ -68,8 +68,6 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   assert.ok(handle.readArrowField().equals(schema()))
 
   const reader = handle.readArrowReader()
-  assert.equal(reader.toIpc, undefined)
-  assert.equal(reader.toTable, undefined)
   assert.ok(reader.field.equals(schema()))
   let read = 0
   for (const batch of reader) {
@@ -325,8 +323,6 @@ test('record options are values, and a setting is set or carried forward', () =>
   assert.ok(declared.field.equals(schema()))
   assert.equal(declared.batchSize, 1024)
   assert.equal(declared.safe, true)
-  assert.equal('schema' in options, false)
-  assert.equal(options.withSchema, undefined)
   // `with*` returns a new value, so the one it was built from is untouched.
   assert.equal(options.batchSize, null)
   assert.equal(options.safe, false)

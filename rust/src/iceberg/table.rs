@@ -79,7 +79,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{
     DataFile, FieldSummary, ManifestContent, ManifestEntry, ManifestFile, is_iceberg_mime_type,
-    read_legacy_manifest_file, read_manifest_list, write_manifest, write_manifest_list,
+    read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list,
 };
 use super::metadata::{FormatVersion, TableMetadata, now_ms, uuid};
 use super::options::{CommitSettings, IcebergOptions};
@@ -381,7 +381,7 @@ impl<H: IOBase> Table<H> {
                 .iter()
                 .map(|path| {
                     let handle = self.child_at(path)?;
-                    read_legacy_manifest_file(&handle, path, snapshot.snapshot_id)
+                    read_v1_direct_manifest_file(&handle, path, snapshot.snapshot_id)
                 })
                 .collect();
         }

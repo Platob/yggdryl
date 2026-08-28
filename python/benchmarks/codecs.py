@@ -86,17 +86,17 @@ YAML_DOCUMENT_READER = io.BytesIO(YAML_DOCUMENTS)
 
 def _decode_json_reader() -> object:
     JSON_READER.seek(0)
-    return json.load(JSON_READER)
+    return json.loads(JSON_READER)
 
 
 def _decode_yaml_reader() -> object:
     YAML_READER.seek(0)
-    return yaml.load(YAML_READER)
+    return yaml.loads(YAML_READER)
 
 
 def _decode_toml_reader() -> object:
     TOML_READER.seek(0)
-    return toml.load(TOML_READER)
+    return toml.loads(TOML_READER)
 
 
 def _decode_json_lines_reader() -> object:

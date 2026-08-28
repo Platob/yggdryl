@@ -186,7 +186,7 @@ Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`,
 the deterministic native `u64`; Python's built-in `hash()` remaps that value to
 `Py_hash_t` without changing equal-value hash agreement. An Avro fingerprint is
 still Parsing Canonical Form, not the schema's complete behavioral identity.
-Snapshot legacy v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every
+Snapshot v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every
 Iceberg data-file count, bound, split, encryption, delete, and row-lineage
 field stay available on these views.
 
@@ -433,9 +433,6 @@ and returns that same object on every call. No codec, dictionary, or Arrow
 methods are injected into the class. An undecorated subclass reuses the
 nearest decorated base's root; decorate the subclass to make it a distinct
 schema owner.
-
-See [migration notes](../migration.md#field-classes-and-declared-record-shape)
-for removed field-class names.
 
 The [core field guide](../field.md#converting-to-one-native-field) owns the
 canonical cross-runtime signatures and error contract. Python's global
@@ -733,16 +730,11 @@ handle.overwrite_records([], options=empty)
 `read_records()` lowers only the current Arrow batch. With no class it yields plain mappings; with
 a stdlib or `@scalar` dataclass type it constructs one instance per row.
 
-### Record API migration
+### Record options
 
-The complete rename table lives in [migration notes](../migration.md#generic-write-mode).
-| mode-less `write_pandas` / `write_pandas_frame` | the matching explicit-intent method or the same name with required `mode` |
-| mode-less `write_polars` / `write_polars_frame` | the matching explicit-intent method or the same name with required `mode` |
-| `options.schema` | `options.field` |
-
-Flattened record keywords such as `field=`, `select_by_names=`, `batch_size=`, and
-`merge_by_names=` are also gone from these methods. Set them on one `RecordOptions` value and pass
-that value as `options=`.
+Record methods select an explicit write intent or require `mode`. Configure
+field, selection, batch sizing, and merge keys on one `RecordOptions` value and
+pass it as `options=`.
 
 ## pandas and polars
 

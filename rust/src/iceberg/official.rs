@@ -11,12 +11,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result, Scalar};
 
-/// Direct manifest paths retained by legacy v1 snapshots while the official
-/// metadata model handles every field it represents.
+/// Direct manifest paths retained by v1 snapshots while the official metadata
+/// model handles every field it represents.
 #[derive(Default)]
-pub(super) struct LegacySnapshotManifests(BTreeMap<i64, Vec<SmolStr>>);
+pub(super) struct V1SnapshotManifests(BTreeMap<i64, Vec<SmolStr>>);
 
-impl LegacySnapshotManifests {
+impl V1SnapshotManifests {
     pub(super) fn insert(&mut self, snapshot_id: i64, manifests: Vec<SmolStr>) {
         self.0.insert(snapshot_id, manifests);
     }
@@ -33,8 +33,8 @@ impl LegacySnapshotManifests {
 /// Parse, normalize, and serialize one table metadata document with the
 /// official implementation.
 pub(super) fn normalize_table_metadata(document: &Scalar) -> Result<Scalar> {
-    let (metadata, legacy) = parse_table_metadata(document)?;
-    table_metadata_document(&metadata, &legacy)
+    let (metadata, v1_manifests) = parse_table_metadata(document)?;
+    table_metadata_document(&metadata, &v1_manifests)
 }
 
 /// Validate one table metadata document with the official implementation.
@@ -47,32 +47,32 @@ pub(super) fn validate_table_metadata(document: &Scalar) -> Result<()> {
 /// snapshot shape its current model rejects.
 pub(super) fn parse_table_metadata(
     document: &Scalar,
-) -> Result<(OfficialTableMetadata, LegacySnapshotManifests)> {
-    let (bridged, legacy) = bridge_legacy_manifests(document)?;
+) -> Result<(OfficialTableMetadata, V1SnapshotManifests)> {
+    let (bridged, v1_manifests) = bridge_v1_manifests(document)?;
     let bytes = crate::json::into_bytes(&bridged)?;
     let metadata = serde_json::from_slice(&bytes)?;
-    Ok((metadata, legacy))
+    Ok((metadata, v1_manifests))
 }
 
 /// Serialize official metadata and restore the direct v1 manifest arrays that
 /// have no lossless representation in the official model.
 pub(super) fn table_metadata_document(
     metadata: &OfficialTableMetadata,
-    legacy: &LegacySnapshotManifests,
+    v1_manifests: &V1SnapshotManifests,
 ) -> Result<Scalar> {
     let document = crate::json::from_bytes(&serde_json::to_vec(metadata)?)?;
-    restore_legacy_manifests(&document, legacy)
+    restore_v1_manifests(&document, v1_manifests)
 }
 
 /// Replace each direct v1 manifest array with a private manifest-list path for
 /// the duration of an official metadata operation.
-fn bridge_legacy_manifests(document: &Scalar) -> Result<(Scalar, LegacySnapshotManifests)> {
-    let mut legacy = LegacySnapshotManifests::default();
+fn bridge_v1_manifests(document: &Scalar) -> Result<(Scalar, V1SnapshotManifests)> {
+    let mut v1_manifests = V1SnapshotManifests::default();
     let Some(snapshots) = document.get_key_str("snapshots") else {
-        return Ok((document.clone(), legacy));
+        return Ok((document.clone(), v1_manifests));
     };
     let Some(snapshots) = snapshots.as_sequence() else {
-        return Ok((document.clone(), legacy));
+        return Ok((document.clone(), v1_manifests));
     };
     let mut bridged = Vec::with_capacity(snapshots.len());
     for snapshot in snapshots {
@@ -83,36 +83,36 @@ fn bridge_legacy_manifests(document: &Scalar) -> Result<(Scalar, LegacySnapshotM
         let snapshot_id = snapshot
             .get_key_str("snapshot-id")
             .and_then(Scalar::as_i64)
-            .ok_or_else(|| invalid("expected a snapshot-id beside legacy manifests"))?;
+            .ok_or_else(|| invalid("expected a snapshot-id beside v1 direct manifests"))?;
         let paths = paths
             .as_sequence()
-            .ok_or_else(|| invalid("expected legacy manifests to be an array"))?
+            .ok_or_else(|| invalid("expected v1 direct manifests to be an array"))?
             .iter()
             .enumerate()
             .map(|(index, path)| {
                 path.as_str().map(SmolStr::new).ok_or_else(|| {
                     invalid(format_smolstr!(
-                        "expected a string at legacy manifests[{index}]"
+                        "expected a string at v1 direct manifests[{index}]"
                     ))
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        legacy.insert(snapshot_id, paths);
+        v1_manifests.insert(snapshot_id, paths);
         let snapshot = without_name(snapshot, "manifests")?;
         bridged.push(with_name(
             &snapshot,
             "manifest-list",
-            legacy_manifest_list(snapshot_id),
+            v1_manifest_list(snapshot_id),
         )?);
     }
     Ok((
         with_name(document, "snapshots", Scalar::from_sequence(bridged))?,
-        legacy,
+        v1_manifests,
     ))
 }
 
-fn restore_legacy_manifests(document: &Scalar, legacy: &LegacySnapshotManifests) -> Result<Scalar> {
-    if legacy.is_empty() {
+fn restore_v1_manifests(document: &Scalar, v1_manifests: &V1SnapshotManifests) -> Result<Scalar> {
+    if v1_manifests.is_empty() {
         return Ok(document.clone());
     }
     let version = document
@@ -136,7 +136,7 @@ fn restore_legacy_manifests(document: &Scalar, legacy: &LegacySnapshotManifests)
             restored.push(snapshot.clone());
             continue;
         };
-        let Some(paths) = legacy.0.get(&snapshot_id) else {
+        let Some(paths) = v1_manifests.0.get(&snapshot_id) else {
             restored.push(snapshot.clone());
             continue;
         };
@@ -150,8 +150,8 @@ fn restore_legacy_manifests(document: &Scalar, legacy: &LegacySnapshotManifests)
     with_name(document, "snapshots", Scalar::from_sequence(restored))
 }
 
-pub(super) fn legacy_manifest_list(snapshot_id: i64) -> String {
-    format!("file:///__iceberg_v1_legacy_manifests/{snapshot_id}.avro")
+pub(super) fn v1_manifest_list(snapshot_id: i64) -> String {
+    format!("file:///__iceberg_v1_direct_manifests/{snapshot_id}.avro")
 }
 
 fn with_name(document: &Scalar, name: &str, value: impl Into<Scalar>) -> Result<Scalar> {

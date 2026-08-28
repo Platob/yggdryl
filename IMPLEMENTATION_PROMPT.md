@@ -15,8 +15,7 @@ across `IOBase`, record options, Parquet, Hive paths, and Iceberg. Follow
 - Push predicates into Hive partitions, Parquet statistics, and Iceberg
   manifests; return a residual for row evaluation.
 - Keep `(column, value)` equality pairs only as construction sugar.
-- Ship Rust first, then Python/JS parity, benchmarks, running docs, and
-  migration notes.
+- Ship Rust first, then Python/JS parity, benchmarks, and running docs.
 
 ## Read first
 
@@ -206,7 +205,7 @@ Measure release builds for:
 Keep fixtures outside measured loops. Publish generated results beside the
 documented methods, with machine/runtime/build and trusted baseline.
 
-## Documentation and migration
+## Documentation
 
 - Update `docs/expression.md`, `docs/generic.md`, `docs/io.md`, media pages,
   extension pages, nav, and API registers.
@@ -214,8 +213,7 @@ documented methods, with machine/runtime/build and trusted baseline.
   scalar evaluation, Arrow batch evaluation, holder selectors, and pushdown.
 - Embed read/overwrite/append/merge benchmark results on the relevant media
   pages.
-- Migration notes list every changed filter/options/method symbol and show the
-  shortest equality-pair-to-Expression replacement.
+- Document only the current filter, options, and method contracts.
 
 ## Completion
 

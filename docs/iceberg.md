@@ -409,7 +409,7 @@ assert!(read.current_snapshot().is_none());
 ```
 
 A snapshot is one complete version of the table: an identifier, its manifests,
-and a commit summary. Modern snapshots use `manifest_list`; legacy v1 metadata
+and a commit summary. Current snapshots use `manifest_list`; v1 metadata
 may instead carry `manifests` directly. The latter is preserved through
 official metadata updates, exposed as `Snapshot.manifests`, and synthesized
 into conservative `ManifestFile` rows so scans and time travel use the same
@@ -2238,10 +2238,9 @@ never rewrites history.
 ## One options value, three layers
 
 !!! note "All three"
-    `IcebergOptions` is the same value in every language. Python takes it as
-    `options=` and each field as its own keyword; JavaScript builds it from a
-    plain object and passes it as the trailing argument of the calls that
-    honour one.
+    `IcebergOptions` is the same value in every language. Python passes it as
+    `options=`; JavaScript builds it from a plain object and passes it as the
+    trailing argument of calls that honour one.
 
 Every knob a table honors lives on one value, `IcebergOptions`, and every field of it resolves
 the same way: an explicit option set on the handle, then the table property of the same name
@@ -2303,8 +2302,6 @@ too:
     import tempfile
 
     import pyarrow as pa
-    import pytest
-
     from yggdryl import IOBase
     from yggdryl.iceberg import IcebergOptions, Table
 
@@ -2327,13 +2324,12 @@ too:
     assert table.options().commit_retries == 2
     assert table.options().commit_min_backoff_ms == 100
 
-    # A keyword is the per-call layer: it configures this write and no later one.
-    table.append(pa.record_batch({"id": [1]}, schema=columns), target_file_size=1 << 20)
+    # One options value configures this write and no later one.
+    table.append(
+        pa.record_batch({"id": [1]}, schema=columns),
+        options=IcebergOptions(target_file_size=1 << 20),
+    )
     assert table.options().target_file_size == 512 * 1024 * 1024
-
-    # A misspelled keyword is a TypeError naming it, not a knob doing nothing.
-    with pytest.raises(TypeError, match="target_file_sze"):
-        table.append(pa.record_batch({"id": [2]}, schema=columns), target_file_sze=1)
 
     shutil.rmtree(root.parent)
     ```
@@ -2384,11 +2380,9 @@ stored value can be shadowed first and repaired after, through the same handle. 
 also scoped to what each operation consults: a commit resolves only the four `commit.retry.*`
 keys, so an unparseable `read.*` property cannot stop the metadata-only commit that fixes it.
 
-In Python, `IcebergOptions` is the same value, and every Iceberg method that takes it also takes
-each field as its own keyword - `table.append(rows, target_file_size=..., commit_retries=...)` -
-resolved by one rule: the `options=` argument (or the handle's stored override) is the base, an
-explicit keyword wins over the same field on it, the passed object is never mutated, and a
-misspelled keyword is a `TypeError` naming it. The generic `RecordOptions` is never accepted here:
+In Python, `IcebergOptions` carries the whole surface. Each operation accepts one `options=`
+value, and `set_options` changes the handle-wide override. A per-call value never mutates the
+passed object or leaks into the handle. The generic `RecordOptions` is never accepted here:
 Iceberg is a table format over the record encodings, and its configuration is its own.
 
 JavaScript has no keyword arguments, so the value carries the whole surface instead: the
@@ -2472,11 +2466,11 @@ authoritative, so mixed Parquet/Avro snapshots scan as one table.
         assign_field_ids(schema),
     )
 
-    # One Parquet append, then one Avro append - the option is one keyword.
+    # One Parquet append, then one Avro append.
     table.append(pa.table({"id": [1]}, schema=schema))
     table.append(
         pa.table({"id": [2]}, schema=schema),
-        data_mime_type=MimeType.AVRO,
+        options=IcebergOptions(data_mime_type=MimeType.AVRO),
     )
 
     formats = sorted(file.mime_type for file, _ in table.data_files())
@@ -3758,7 +3752,7 @@ run and skips itself, naming what is missing, when Java or Spark is absent.
 Two behaviors here were arbitrated against the spec by that exchange and are deliberate:
 
 - **Column resolution is by field id.** A data file written before a rename stores the column
-  under its old name; the scan renames decoded columns to the current schema's names wherever the
+  under its pre-rename name; the scan renames decoded columns to the current schema's names wherever the
   file's recorded field id matches, and a projected read pushes the file's *own* name down so the
   encoding still skips what it should. Names alone would silently null the column, which is what
   the spec's id-based resolution exists to prevent.

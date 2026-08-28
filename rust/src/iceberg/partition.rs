@@ -248,7 +248,7 @@ impl PartitionField {
         Self::from_json_with_field_id(document, None)
     }
 
-    /// Read a field, assigning `default_field_id` only for the legacy v1 array.
+    /// Read a field, assigning `default_field_id` only for the v1 array form.
     fn from_json_with_field_id(document: &Scalar, default_field_id: Option<i32>) -> Result<Self> {
         let name = document
             .get_key_str("name")
@@ -1014,7 +1014,7 @@ mod strict_json_tests {
     }
 
     #[test]
-    fn only_the_legacy_array_synthesizes_field_ids() {
+    fn only_the_v1_array_synthesizes_field_ids() {
         let document =
             crate::json::from_utf8(r#"[{"name":"day","source-id":1,"transform":"identity"}]"#)
                 .unwrap();

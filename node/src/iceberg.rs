@@ -660,7 +660,7 @@ impl JsSnapshot {
         self.inner.manifest_list.to_string()
     }
 
-    /// Direct manifest locations carried by a legacy v1 snapshot.
+    /// Direct manifest locations carried by a v1 snapshot.
     #[napi(getter)]
     pub fn manifests(&self) -> Option<Vec<String>> {
         self.inner

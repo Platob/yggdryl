@@ -309,9 +309,9 @@ toml_source: toml.Source = io.StringIO("value = 42\n")
 json_destination: json.Destination = io.BytesIO()
 yaml_destination: yaml.Destination = Path("value.yaml")
 toml_destination: toml.Destination = io.StringIO()
-decoded_json: dict[str, int] = json.load(json_source)
+decoded_json: dict[str, int] = json.loads(json_source)
 decoded_yaml: dict[str, int] = yaml.loads(yaml_source)
-decoded_toml: dict[str, int] = toml.load(toml_source)
+decoded_toml: dict[str, int] = toml.loads(toml_source)
 typed_json: object = json.loads("42", field=field)
 typed_yaml: object = yaml.loads("42\n", field=field)
 typed_toml: object = toml.loads("value = 42\n", field=typed_struct)
@@ -618,7 +618,7 @@ selected_root: Field = record_handle.read_arrow_field(options=selected_options)
 assert selected_reader
 assert selected_root
 
-# Iceberg keeps its own options type, flattened the same way.
+# Iceberg keeps all configuration in its own options type.
 iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
     commit_retries=2,
     commit_total_timeout_ms=30_000,
@@ -632,12 +632,17 @@ iceberg_retries: int = iceberg_options.commit_retries
 iceberg_timeout: int = iceberg_options.commit_total_timeout_ms
 iceberg_mime_type: MimeType = iceberg_options.data_mime_type
 iceberg_options.data_mime_type = MimeType.PARQUET
-iceberg_table.append(pa.table({"id": [1]}), options=iceberg_options, commit_retries=1)
-iceberg_table.overwrite(pa.table({"id": [1]}), data_mime_type="avro")
-iceberg_table.set_options(target_file_size=2048)
+iceberg_table.append(
+    pa.table({"id": [1]}), options=iceberg.IcebergOptions(commit_retries=1)
+)
+iceberg_table.overwrite(
+    pa.table({"id": [1]}),
+    options=iceberg.IcebergOptions(data_mime_type="avro"),
+)
+iceberg_table.set_options(iceberg.IcebergOptions(target_file_size=2048))
 iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
 iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
-    options=iceberg_options, read_parallelism=2
+    options=iceberg.IcebergOptions(read_parallelism=2)
 )
 
 assert iceberg_retries >= 0
@@ -664,7 +669,9 @@ opened_table: iceberg.Table = namespace_tables.open_or_create(
     "fills", iceberg_schema
 )
 appended_table: iceberg.Table = namespace_tables.append(
-    "orders", pa.table({"id": [1]}), data_mime_type="avro"
+    "orders",
+    pa.table({"id": [1]}),
+    options=iceberg.IcebergOptions(data_mime_type="avro"),
 )
 overwritten_table: iceberg.Table = namespace_tables.overwrite(
     "orders", pa.table({"id": [1]}), options=iceberg_options
@@ -684,12 +691,17 @@ assert created_table and opened_table and appended_table and overwritten_table
 # projection and options every other scan takes.
 filtered_scan: pa.RecordBatchReader = iceberg_table.scan_where({"venue": "XNAS"})
 paired_scan: pa.RecordBatchReader = iceberg_table.scan_where(
-    [("venue", "XNAS")], iceberg_schema, options=iceberg_options, read_parallelism=2
+    [("venue", "XNAS")],
+    iceberg_schema,
+    options=iceberg.IcebergOptions(read_parallelism=2),
 )
 unfiltered_scan: pa.RecordBatchReader = iceberg_table.scan_where()
 branch_scan: pa.RecordBatchReader = iceberg_table.scan_ref("nightly")
 branch_projection: pa.RecordBatchReader = iceberg_table.scan_ref(
-    "nightly", {"venue": "XNAS"}, iceberg_schema, data_mime_type="avro"
+    "nightly",
+    {"venue": "XNAS"},
+    iceberg_schema,
+    options=iceberg.IcebergOptions(data_mime_type="avro"),
 )
 
 # A plan answers in counts, so every getter is an `int` rather than a view.
@@ -710,20 +722,26 @@ assert planned_files >= skipped_files or skipped_files >= planned_files
 assert read_manifests >= 0
 assert skipped_manifests >= 0
 
-# The scoped writes take the filters first and the same flattened keywords.
+# Scoped writes take filters first and one explicit options value.
 iceberg_table.overwrite_where(
-    {"venue": "XNAS"}, pa.table({"id": [1]}), data_mime_type="avro"
+    {"venue": "XNAS"},
+    pa.table({"id": [1]}),
+    options=iceberg.IcebergOptions(data_mime_type="avro"),
 )
 iceberg_table.overwrite_where(None, pa.table({"id": [1]}))
 iceberg_table.merge(pa.table({"id": [1]}), ["id"])
-iceberg_table.merge(pa.table({"id": [1]}), ["id"], safe=False, commit_retries=1)
+iceberg_table.merge(
+    pa.table({"id": [1]}),
+    ["id"],
+    safe=False,
+    options=iceberg.IcebergOptions(commit_retries=1),
+)
 iceberg_table.merge_where(
     [("venue", "XNAS")],
     pa.table({"id": [1]}),
     ["id"],
     safe=True,
-    options=iceberg_options,
-    target_file_size=1024,
+    options=iceberg.IcebergOptions(target_file_size=1024),
 )
 
 # Maintenance answers with the identifiers it acted on, or with nothing.

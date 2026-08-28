@@ -85,7 +85,7 @@ def test_data_type_accepts_only_arrow_type_and_only_real_pyarrow_types() -> None
         with pytest.raises(TypeError, match=r"apply to a Field.*Field\.from_pyhint"):
             DataType.from_pyhint(hint)
 
-    # Legacy all-string annotation metadata stays harmless for a bare datatype.
+    # Unrecognized string annotation metadata is inert for a bare datatype.
     assert DataType.from_pyhint(Annotated[int, {"unit": "items"}]).id == "int64"
 
 

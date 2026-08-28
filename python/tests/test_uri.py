@@ -33,8 +33,6 @@ def test_uri_components_path_collection_and_value_protocols() -> None:
     assert Uri.from_str(str(value)) == value
     assert Uri.from_value(value) == value
     assert Uri.from_json(value.into_json()) == value
-    for legacy in ("to_url", "to_urn", "to_path", "to_json"):
-        assert not hasattr(value, legacy)
     assert eval(repr(value), {"Uri": Uri}) == value
     assert copy.copy(value) == value
     assert pickle.loads(pickle.dumps(value)) == value
@@ -168,8 +166,6 @@ def test_url_converts_through_uri_without_binding_side_parsing() -> None:
         "https://example.com/a/data.json"
     )
     assert Url.from_json(value.into_json()) == value
-    for legacy in ("to_uri", "to_path", "to_json"):
-        assert not hasattr(value, legacy)
     assert eval(repr(value), {"Url": Url}) == value
     assert copy.copy(value) == value
     assert pickle.loads(pickle.dumps(value)) == value
@@ -196,8 +192,6 @@ def test_urn_components_and_uri_conversion() -> None:
     assert value.namespace == "isbn"
     assert value.namespace_specific == "9780141036144"
     assert Urn.from_json(value.into_json()) == value
-    for legacy in ("to_uri", "to_json"):
-        assert not hasattr(value, legacy)
     assert eval(repr(value), {"Urn": Urn}) == value
     assert copy.copy(value) == value
     assert pickle.loads(pickle.dumps(value)) == value

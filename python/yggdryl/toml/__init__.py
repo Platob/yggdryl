@@ -83,8 +83,6 @@ def loads(
     )
 
 
-load = loads
-
 __all__ = [
     "Buffer",
     "Destination",
@@ -93,6 +91,5 @@ __all__ = [
     "Writable",
     "dump",
     "dumps",
-    "load",
     "loads",
 ]

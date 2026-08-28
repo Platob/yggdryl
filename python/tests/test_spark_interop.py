@@ -41,7 +41,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import MimeType
-from yggdryl.iceberg import Catalog, Table
+from yggdryl.iceberg import Catalog, IcebergOptions, Table
 
 pytestmark = pytest.mark.spark_interop
 
@@ -630,7 +630,8 @@ class TestPropertiesAndFormats:
             "props.mixed", pa.table({"id": pa.array([1], pa.int64())})
         )
         table.append(
-            pa.table({"id": pa.array([2], pa.int64())}), data_mime_type="avro"
+            pa.table({"id": pa.array([2], pa.int64())}),
+            options=IcebergOptions(data_mime_type="avro"),
         )
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.PARQUET, MimeType.AVRO}

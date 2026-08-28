@@ -44,8 +44,7 @@ decorator does not add conversion, serialization, or Arrow methods to the
 dataclass.
 
 Use `Class.field()` for the cached Struct field and `field(value)` for general
-conversion. Removed names are listed once in the
-[migration notes](../docs/migration.md#field-classes-and-declared-record-shape).
+conversion.
 
 An undecorated subclass inherits its nearest decorated base's cached root.
 Apply `@scalar` to the subclass when its annotations should declare a distinct

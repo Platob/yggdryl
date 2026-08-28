@@ -162,13 +162,13 @@ impl MimeType {
     pub const TTF: Self = Self(MimeTypeValue::Ttf);
     /// An OpenType font.
     pub const OTF: Self = Self(MimeTypeValue::Otf);
-    /// A legacy Microsoft Excel workbook.
+    /// A binary Microsoft Excel workbook.
     pub const XLS: Self = Self(MimeTypeValue::Xls);
     /// An Office Open XML spreadsheet.
     pub const XLSX: Self = Self(MimeTypeValue::Xlsx);
     /// An OpenDocument spreadsheet.
     pub const ODS: Self = Self(MimeTypeValue::Ods);
-    /// A legacy Microsoft Word document.
+    /// A binary Microsoft Word document.
     pub const DOC: Self = Self(MimeTypeValue::Doc);
     /// An Office Open XML word-processing document.
     pub const DOCX: Self = Self(MimeTypeValue::Docx);
@@ -320,7 +320,7 @@ impl MimeType {
     /// rejected instead of being guessed as custom MIME values.
     pub fn from_content_coding(value: &str) -> Result<Self> {
         let (value, offset) = trim_ows(value);
-        if value.eq_ignore_ascii_case("gzip") || value.eq_ignore_ascii_case("x-gzip") {
+        if value.eq_ignore_ascii_case("gzip") {
             Ok(Self::GZIP)
         } else if value.eq_ignore_ascii_case("zstd") {
             Ok(Self::ZSTD)
@@ -328,8 +328,7 @@ impl MimeType {
             Ok(Self::BROTLI)
         } else if value.eq_ignore_ascii_case("deflate") {
             Ok(Self::ZLIB)
-        } else if value.eq_ignore_ascii_case("compress") || value.eq_ignore_ascii_case("x-compress")
-        {
+        } else if value.eq_ignore_ascii_case("compress") {
             Ok(Self::COMPRESS)
         } else if value.eq_ignore_ascii_case("identity") {
             Err(parse_error(

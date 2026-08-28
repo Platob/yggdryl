@@ -2,10 +2,21 @@
 
 Rust is the source of truth for `DataType`, `Field`, `Scalar`, identifiers,
 I/O, codecs, and generic enums. Python and JavaScript are native runtime views,
-not independent models. Breaking changes are preferred over compatibility
-layers when the public model changes.
+not independent models.
 
 ## Operating mode
+
+### No backward compatibility
+
+- Project-owned APIs and encodings have one current contract. A change deletes
+  the replaced symbol, parser spelling, serialized shape, fallback branch,
+  test, and documentation in the same change.
+- Never add or retain deprecated aliases, shims, migration readers/writers,
+  dual behavior, warning periods, or legacy compatibility code. Update every
+  caller directly.
+- External standards remain supported only where the current contract names
+  the standard and version explicitly. Describe that behavior by its protocol
+  or version, never as a project compatibility layer.
 
 ### Compress everything
 
@@ -21,12 +32,12 @@ layers when the public model changes.
   paths), `Checks` (command and exact result), `Blockers`, and `Next` (exact
   action/command). Omit empty keys plus resolved or stale history.
 - Brevity never removes contracts, safety boundaries, error semantics, edge
-  cases, verification results, migration notes, or material uncertainty.
+  cases, verification results, or material uncertainty.
 
 ### Optimize documentation for lookup
 
 - Put the contract first, then the smallest runnable example, non-obvious edge
-  cases, measured performance, and migration notes only when present.
+  cases, and measured performance.
 - Use canonical symbol names, stable headings, short paragraphs, and compact
   tables only for exact mappings. Keep examples beside the API they prove.
 - One fact lives in one place. Link to it instead of paraphrasing it. Do not
@@ -38,7 +49,7 @@ layers when the public model changes.
 ### Keep code simple
 
 - The simplest correct implementation wins: direct control flow, one source of
-  truth, existing generic traits/types, minimal state, and no legacy aliases.
+  truth, existing generic traits/types, and minimal state.
 - Add an abstraction only when it removes real duplication or enforces an
   invariant. Prefer object or trait methods over isolated helpers when the
   behavior belongs to a value.
@@ -85,7 +96,7 @@ pin an unsettled design by implementing a binding first.
   `IORecordOptions`, and `RecordSettings`. Dispatch enums delegate complete
   contracts and add no variant-specific public vocabulary.
 - `IOMode` modes are `ReadOnly`, `Overwrite`, `Append`, `Merge`, and `Random`;
-  operations reject modes that do not apply. No compatibility alias.
+  operations reject modes that do not apply. No alternate alias.
 - `rust/src/io/` owns the single `IOBase` storage trait, `Buffer`, transparent
   `Coded`, partition routing, and byte streams. `rust/src/buffered/` owns
   `Buffered<H>` only.
@@ -114,7 +125,7 @@ pin an unsettled design by implementing a binding first.
 ### Generic scalar
 
 - `generic::Scalar` is the single cross-platform scalar. Do not add a parallel
-  language value tree or legacy alias.
+  language value tree or retired alias.
 - Variants match native/Arrow widths: real `F16`, `F32`, `F64`; `D128`,
   `D256`; `Date32`, `Date64`; `Time32`, `Time64`; `Duration32`, `Duration64`;
   and one `DateTime64`. Temporal values retain the `TimeUnit` and `TimeZone`
@@ -444,7 +455,7 @@ Both extensions:
   Defaults/factories affect construction, not schema. Generated dataclasses
   derive annotations from the exact native field graph.
 - Do not expose a second row decorator/class, a static field constant,
-  schema/into-field aliases, or any legacy compatibility surface.
+  schema/into-field aliases, or any retired public surface.
 - `pyarrow.RecordBatchReader` is the primitive record shape. Table, batch, and
   dataclass row methods redirect through it over the C Stream interface.
 - Structured codec facades remain byte-oriented and native; `cls=` is explicit
@@ -504,7 +515,7 @@ checks:
 - Python native/codec/parity tests and release boundary benchmarks;
 - Node native/codec/type/parity tests and release boundary benchmarks;
 - docs examples and `python -m mkdocs build --strict`;
-- dead-code, duplicate-logic, legacy-symbol, stale-doc, and Rust-only binding
+- dead-code, duplicate-logic, retired-symbol, stale-doc, and Rust-only binding
   sweeps.
 
 Remove only generated targets, site output, virtual environments, binaries,

@@ -190,11 +190,9 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
 fn content_coding_conversion_is_strict_and_distinguishes_file_only_encodings() {
     for (source, expected, canonical) in [
         ("gzip", MimeType::GZIP, "gzip"),
-        ("X-GZIP", MimeType::GZIP, "gzip"),
         ("br", MimeType::BROTLI, "br"),
         ("deflate", MimeType::ZLIB, "deflate"),
         ("compress", MimeType::COMPRESS, "compress"),
-        ("x-compress", MimeType::COMPRESS, "compress"),
         ("zstd", MimeType::ZSTD, "zstd"),
     ] {
         let mime = MimeType::from_content_coding(source).unwrap();

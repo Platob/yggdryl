@@ -938,7 +938,7 @@ def test_metadata_is_not_reachable_by_subscript_but_is_through_the_view() -> Non
         metadata={"owner": "tests"},
     )
 
-    # The old spelling reaches a child - or reports that there is none.
+    # Subscript lookup is exclusively child lookup.
     with pytest.raises(KeyError):
         row["owner"]
 

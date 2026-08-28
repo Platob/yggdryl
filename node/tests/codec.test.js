@@ -770,8 +770,6 @@ test('reserved transport keys and non-string map keys do not collide', () => {
     'yamlLoadsAllNative',
     'yamlLoadsNative',
   ]
-  assert.equal(publicBinding.TaggedValue, undefined)
-  assert.equal(publicBinding.codecDumps, undefined)
   assert.equal(publicBinding.Scalar._fromJsNative, undefined)
   assert.equal(publicBinding.Scalar.prototype._asJsNative, undefined)
   for (const name of nativeHelpers) assert.equal(publicBinding[name], undefined)

@@ -120,7 +120,6 @@ nav:
   - Home:
       - index.md
       - Architecture: architecture.md
-      - Migration: migration.md
       - Testing: testing.md
       - Benchmarks: benchmarks.md
       - Contributing: contributing.md

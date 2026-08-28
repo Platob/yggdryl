@@ -184,7 +184,7 @@ native shape; it does not inject row conversion, codec, or Arrow methods into
 the class.
 
 Use cached `Class.field()` for decorated dataclasses and `field(value)` for the
-general conversion funnel. See the project migration notes for renamed APIs.
+general conversion funnel.
 
 `DataType.cast_arrow_array` and `Field.cast_arrow_array` use the native Arrow
 kernel plan; their `cast_arrow_batch` forms reconcile Struct columns by

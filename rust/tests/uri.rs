@@ -71,9 +71,9 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     assert_eq!(virtual_host.bucket(), Some("market-data"));
     assert_eq!(virtual_host.region(), Some("ap-south-1"));
 
-    let legacy = Uri::from_str("s3://s3-us-gov-west-1.amazonaws.com/archive/key").unwrap();
-    assert_eq!(legacy.bucket(), Some("archive"));
-    assert_eq!(legacy.region(), Some("us-gov-west-1"));
+    let regional = Uri::from_str("s3://s3-us-gov-west-1.amazonaws.com/archive/key").unwrap();
+    assert_eq!(regional.bucket(), Some("archive"));
+    assert_eq!(regional.region(), Some("us-gov-west-1"));
 
     let china = Uri::from_str("s3://s3.cn-north-1.amazonaws.com.cn/archive/key").unwrap();
     assert_eq!(china.hostname(), Some("s3.cn-north-1.amazonaws.com.cn"));

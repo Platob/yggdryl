@@ -7,19 +7,18 @@ members are `rust/`, `python/`, and `node/`.
 ```text
 src/datatype/          Categorized datatype implementation
 src/field/             Field state, Arrow projection, casting, parsing, diffing
-src/enums/             Shared value vocabularies: units, schemes, MIME values
 src/metadata.rs        Shared immutable metadata map
 src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
 src/io/                The IOBase storage trait, Buffer, and Coded
 src/generic/           Scalar, enums, Holder, Media, and RecordOptions
 src/local/             Local Path, Folder, and memory-mapped File
 src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
-src/{ipc,parquet}/     Record encodings over any handle
+src/{ipc,parquet,avro}/
+                       Record encodings over any handle
 src/iceberg/           Apache Iceberg tables over one container handle
 src/uri.rs             Identifier domain
 src/text/              Structured codecs, dispatch, limits, text utilities
 src/{json,yaml,toml}/  Format-specific parsers, streams, emitters
-src/codec.rs           Compatibility-only public facade
 tests/{datatype,enums,field,text}/
                        Categorized edge cases
 tests/{datatype,enums,field,uri,text,json,toml,yaml}.rs
@@ -74,7 +73,7 @@ python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
 python/.venv/Scripts/python -m maturin develop --release --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
-python/.venv/Scripts/python -m mypy --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
+python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
 The field decorator, annotation mapping, dataclass field definitions, and codec

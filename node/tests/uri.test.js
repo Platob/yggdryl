@@ -99,7 +99,6 @@ test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {
   assert.equal(drive.fileName, 'prices.parquet')
   assert.equal(drive.extension, 'parquet')
   assert.equal(drive.intoPath(), 'C:/Users/alice/ticks/prices.parquet')
-  assert.equal(drive.toPath, undefined)
 
   const unc = Uri.fromPath('\\\\server\\share\\ticks\\prices.tar.zst')
   assert.equal(unc.toString(), 'file://server/share/ticks/prices.tar.zst')
@@ -147,8 +146,6 @@ test('URL conversion is validated by the native URI core', () => {
   assert.ok(new Uri(url).equals(uri))
   assert.ok(url.intoUri().equals(Uri.fromString(url.toString())))
   assert.ok(uri.intoUrl().equals(url))
-  assert.equal(url.toUri, undefined)
-  assert.equal(uri.toUrl, undefined)
   assert.ok(Url.fromString(url.toString()).equals(url))
   assert.ok(Url.fromJSON(JSON.parse(JSON.stringify(url))).equals(url))
   assert.ok(

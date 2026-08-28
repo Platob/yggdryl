@@ -145,15 +145,9 @@ impl ArrowFileSystem for PyArrowFileSystem {
         let wanted = buffer.len();
         let bytes = self.with_gil(|filesystem| {
             let stream = filesystem.call_method1("open_input_file", (path,))?;
-            // `read_at` is the ranged read every pyarrow filesystem offers and
-            // the one that becomes a single ranged GET on an object store.
-            // Only a stream without it pays for a seek.
-            let chunk = if stream.hasattr("read_at").unwrap_or(false) {
-                stream.call_method1("read_at", (wanted, offset))?
-            } else {
-                stream.call_method1("seek", (offset,))?;
-                stream.call_method1("read", (wanted,))?
-            };
+            // The official random-access primitive becomes one ranged GET on
+            // an object store.
+            let chunk = stream.call_method1("read_at", (wanted, offset))?;
             let bytes = chunk.extract::<Vec<u8>>()?;
             stream.call_method0("close")?;
             Ok(bytes)
@@ -169,12 +163,12 @@ impl ArrowFileSystem for PyArrowFileSystem {
             // Creating the parents first is the core's contract; a filesystem
             // that needs no directories (an object store) treats it as a
             // no-op, so this is not a per-backend branch.
-            if let Some((parent, _)) = path.rsplit_once('/') {
-                if !parent.is_empty() {
-                    let kwargs = pyo3::types::PyDict::new(py);
-                    kwargs.set_item("recursive", true)?;
-                    let _ = filesystem.call_method("create_dir", (parent,), Some(&kwargs));
-                }
+            if let Some((parent, _)) = path.rsplit_once('/')
+                && !parent.is_empty()
+            {
+                let kwargs = pyo3::types::PyDict::new(py);
+                kwargs.set_item("recursive", true)?;
+                let _ = filesystem.call_method("create_dir", (parent,), Some(&kwargs));
             }
             // `compression=None` is load-bearing, not a default spelled out:
             // `open_output_stream` otherwise defaults to `"detect"` and picks

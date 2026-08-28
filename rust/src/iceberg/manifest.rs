@@ -13,7 +13,7 @@
 //! materialize unbounded output, produce random or order-dependent Avro bytes,
 //! and encode Iceberg UUID partitions as Avro strings instead of `fixed[16]`.
 //!
-//! A narrow read compatibility path handles the official parser's
+//! A narrow read repair handles the official parser's
 //! Avro-conversion failure for a manifest declaring UUID as `fixed[16]`. It
 //! removes only the unsupported UUID annotation in a bounded temporary view,
 //! preserves the 16 physical bytes, and retries the official parser.
@@ -520,8 +520,8 @@ pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpe
     partition_spec_from_official(metadata.partition_spec())
 }
 
-/// Recover the manifest-list row absent from a legacy v1 snapshot.
-pub(crate) fn read_legacy_manifest_file<H: IOBase + ?Sized>(
+/// Recover the manifest-list row absent from a v1 direct-manifest snapshot.
+pub(crate) fn read_v1_direct_manifest_file<H: IOBase + ?Sized>(
     handle: &H,
     manifest_path: &str,
     snapshot_id: i64,
@@ -544,13 +544,13 @@ pub(crate) fn read_legacy_manifest_file<H: IOBase + ?Sized>(
         };
         *files = files.checked_add(1).ok_or_else(|| {
             invalid(format_smolstr!(
-                "expected fewer than {} entries in legacy manifest {manifest_path:?}",
+                "expected fewer than {} entries in v1 direct manifest {manifest_path:?}",
                 i32::MAX
             ))
         })?;
         *records = records.checked_add(rows).ok_or_else(|| {
             invalid(format_smolstr!(
-                "expected record counts fitting i64 in legacy manifest {manifest_path:?}"
+                "expected record counts fitting i64 in v1 direct manifest {manifest_path:?}"
             ))
         })?;
     }
@@ -562,7 +562,7 @@ pub(crate) fn read_legacy_manifest_file<H: IOBase + ?Sized>(
         manifest_path: SmolStr::new(manifest_path),
         manifest_length: i64::try_from(bytes.len()).map_err(|_| {
             invalid(format_smolstr!(
-                "expected legacy manifest length fitting i64, got {}",
+                "expected v1 direct manifest length fitting i64, got {}",
                 bytes.len()
             ))
         })?,
@@ -714,16 +714,16 @@ fn parse_manifest(bytes: &[u8]) -> Result<OfficialManifest> {
             if error.message() != "Failure in conversion with avro" {
                 return Err(Error::from_iceberg(error));
             }
-            let Some(compatible) = fixed_uuid_compatibility_container(bytes)? else {
+            let Some(reader_view) = fixed_uuid_official_reader_view(bytes)? else {
                 return Err(Error::from_iceberg(error));
             };
-            OfficialManifest::parse_avro(&compatible).map_err(|_| Error::from_iceberg(error))
+            OfficialManifest::parse_avro(&reader_view).map_err(|_| Error::from_iceberg(error))
         }
     }
 }
 
 /// Build an in-memory official-reader view of a fixed UUID manifest.
-fn fixed_uuid_compatibility_container(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     let source = crate::io::Buffer::from(bytes);
     let container = crate::avro::read_container(&source)?;
     let schema = container.schema.into_json();
@@ -754,7 +754,7 @@ fn fixed_uuid_compatibility_container(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     let limit = crate::Limits::default().max_input_bytes();
     if output.len() > limit {
         return Err(invalid(format_smolstr!(
-            "expected a UUID compatibility container of at most {limit} bytes, got {}",
+            "expected a UUID official-reader view of at most {limit} bytes, got {}",
             output.len()
         )));
     }
@@ -1096,7 +1096,7 @@ fn manifest_list_version(bytes: &[u8]) -> Result<OfficialFormatVersion> {
     match version.trim() {
         // Iceberg has used both file-count spellings in v1. The official v2
         // reader carries aliases and v1 defaults, so it preserves the modern
-        // spelling while the v1 reader remains authoritative for legacy rows.
+        // spelling while the v1 reader remains authoritative for v1 rows.
         "1" if has("added_files_count") => Ok(OfficialFormatVersion::V2),
         "1" => Ok(OfficialFormatVersion::V1),
         "2" => Ok(OfficialFormatVersion::V2),
@@ -2968,7 +2968,7 @@ mod official_read_tests {
         write_nonconforming_manifest(&mut handle, &schema, &field, &spec, row);
 
         assert!(
-            fixed_uuid_compatibility_container(handle.as_slice())
+            fixed_uuid_official_reader_view(handle.as_slice())
                 .unwrap()
                 .is_none()
         );

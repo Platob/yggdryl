@@ -159,7 +159,6 @@ class TestCreatingAndOpening:
         assert data_file.content_size_in_bytes is None
         assert data_file.nan_value_counts == {}
         assert data_file.mime_type == MimeType.PARQUET
-        assert not hasattr(data_file, "file_format")
 
         enriched_snapshot = Snapshot.from_json(
             {
@@ -179,7 +178,7 @@ class TestCreatingAndOpening:
         assert enriched_snapshot.added_rows == 2
         assert pickle.loads(pickle.dumps(enriched_snapshot)) == enriched_snapshot
 
-        legacy_snapshot = Snapshot.from_json(
+        v1_snapshot = Snapshot.from_json(
             {
                 "snapshot-id": 7,
                 "timestamp-ms": 900,
@@ -188,16 +187,14 @@ class TestCreatingAndOpening:
                 "schema-id": 0,
             }
         )
-        assert legacy_snapshot.manifest_list == ""
-        assert legacy_snapshot.manifests == (
+        assert v1_snapshot.manifest_list == ""
+        assert v1_snapshot.manifests == (
             "file:///metadata/a.avro",
             "file:///metadata/b.avro",
         )
-        assert legacy_snapshot.into_json(1)["manifests"] == list(
-            legacy_snapshot.manifests
-        )
-        assert eval(repr(legacy_snapshot), {"Snapshot": Snapshot}) == legacy_snapshot
-        assert pickle.loads(pickle.dumps(legacy_snapshot)) == legacy_snapshot
+        assert v1_snapshot.into_json(1)["manifests"] == list(v1_snapshot.manifests)
+        assert eval(repr(v1_snapshot), {"Snapshot": Snapshot}) == v1_snapshot
+        assert pickle.loads(pickle.dumps(v1_snapshot)) == v1_snapshot
 
         rebuild, (state,) = data_file.__reduce__()
         state.update(
@@ -799,10 +796,10 @@ class TestTimeTravel:
         with pytest.raises(ValueError, match="expected a retained snapshot id"):
             table.scan_at(999)
 
-    def test_a_legacy_v1_direct_manifest_snapshot_stays_readable(
+    def test_a_v1_direct_manifest_snapshot_stays_readable(
         self, tmp_path: pathlib.Path, numbered: object
     ) -> None:
-        location = tmp_path / "legacy"
+        location = tmp_path / "v1"
         table = Table.create(IOBase(location), numbered, format_version=1)
         table.append(_rows())
         snapshot = table.current_snapshot
@@ -816,10 +813,10 @@ class TestTimeTravel:
         metadata_path.write_text(json.dumps(document), encoding="utf-8")
 
         reopened = Table.open(IOBase(location))
-        legacy = reopened.current_snapshot
-        assert legacy is not None
-        assert legacy.manifest_list == ""
-        assert legacy.manifests == tuple(direct)
+        v1 = reopened.current_snapshot
+        assert v1 is not None
+        assert v1.manifest_list == ""
+        assert v1.manifests == tuple(direct)
         assert reopened.scan().read_all().num_rows == 3
 
         reopened.append(_rows(10))
@@ -879,7 +876,7 @@ class TestSchemaUpdates:
         assert rows.column("id").to_pylist() == [1]
         assert rows.column("price").to_pylist() == [None]
         # The pre-rename snapshot reads as the schema it was written under, so
-        # the stored value is a time travel away under its old name.
+        # the stored value is a time travel away under its pre-rename name.
         assert narrow.scan_at(first.snapshot_id).read_all().column(
             "venue"
         ).to_pylist() == ["XNAS"]
@@ -1116,7 +1113,7 @@ class TestPromotions:
 
 
 class TestIcebergOptions:
-    """Iceberg keeps its own options type, with the flattened-kwargs rule."""
+    """Iceberg configuration crosses the boundary through one options value."""
 
     def test_the_options_value_records_only_what_was_set(self) -> None:
         options = IcebergOptions()
@@ -1124,7 +1121,6 @@ class TestIcebergOptions:
         assert options.commit_total_timeout_ms == 1_800_000
         assert options.target_file_size == 512 * 1024 * 1024
         assert options.data_mime_type == MimeType.PARQUET
-        assert not hasattr(options, "data_format")
 
         options = IcebergOptions(
             commit_retries=2, commit_total_timeout_ms=500, data_mime_type="avro"
@@ -1157,8 +1153,6 @@ class TestIcebergOptions:
         with pytest.raises(TypeError, match="MimeType or MIME/extension string"):
             options.data_mime_type = object()
         assert options.data_mime_type == MimeType.AVRO
-        with pytest.raises(TypeError, match="unexpected keyword argument"):
-            IcebergOptions(data_format="avro")
 
     def test_native_identity_hash_locks_every_setter_and_copies_unlock(self) -> None:
         options = IcebergOptions(commit_retries=4, data_mime_type="parquet")
@@ -1200,27 +1194,19 @@ class TestIcebergOptions:
             unlocked.commit_retries = 2
             assert unlocked.commit_retries == 2
 
-    def test_append_takes_the_option_fields_as_keywords(
-        self, table: Table
-    ) -> None:
-        table.append(_rows(), target_file_size=1024, commit_retries=1)
-        assert table.scan().read_all().num_rows == 3
-
-    def test_a_keyword_overrides_the_same_field_on_the_options(
-        self, table: Table
-    ) -> None:
-        options = IcebergOptions(data_mime_type="parquet")
-        table.append(_rows(), options=options, data_mime_type="avro")
-        # The keyword won: the data files are Avro, and the manifest says so.
+    def test_append_takes_one_explicit_options_value(self, table: Table) -> None:
+        options = IcebergOptions(
+            target_file_size=1024, commit_retries=1, data_mime_type="avro"
+        )
+        table.append(_rows(), options=options)
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO}
-        # The caller's options object was never touched.
-        assert options.data_mime_type == MimeType.PARQUET
+        assert options.data_mime_type == MimeType.AVRO
 
     def test_an_avro_append_scans_back_and_mixes_with_parquet(
         self, table: Table
     ) -> None:
-        table.append(_rows(), data_mime_type="avro")
+        table.append(_rows(), options=IcebergOptions(data_mime_type="avro"))
         table.append(_rows(10))
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO, MimeType.PARQUET}
@@ -1248,14 +1234,16 @@ class TestIcebergOptions:
     def test_set_options_stores_a_handle_wide_override(
         self, table: Table
     ) -> None:
-        table.set_options(data_mime_type="avro")
+        table.set_options(IcebergOptions(data_mime_type="avro"))
         table.append(_rows())
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO}
         assert table.options().data_mime_type == MimeType.AVRO
-        # A per-call keyword still wins for its one call, without disturbing
-        # the stored override.
-        table.append(_rows(10), data_mime_type="parquet")
+        # A per-call options value wins for one call without disturbing the
+        # stored override.
+        table.append(
+            _rows(10), options=IcebergOptions(data_mime_type="parquet")
+        )
         assert {file.mime_type for file, _ in table.data_files()} == {
             MimeType.AVRO,
             MimeType.PARQUET,
@@ -1274,16 +1262,24 @@ class TestIcebergOptions:
         with pytest.raises(ValueError, match="write.format.default"):
             table.append(_rows(10))
 
-    def test_the_catalog_write_paths_take_the_same_keywords(
+    def test_the_catalog_write_paths_take_the_same_options_value(
         self, tmp_path: pathlib.Path
     ) -> None:
         catalog = Catalog(tmp_path / "warehouse")
-        table = catalog.append("sales.orders", _rows(), data_mime_type="avro")
+        table = catalog.append(
+            "sales.orders",
+            _rows(),
+            options=IcebergOptions(data_mime_type="avro"),
+        )
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO}
 
         tables = catalog.namespaces["sales"].tables
-        table = tables.append("orders", _rows(10), target_file_size=1024)
+        table = tables.append(
+            "orders", _rows(10), options=IcebergOptions(target_file_size=1024)
+        )
         assert table.scan().read_all().num_rows == 6
-        table = tables.overwrite("orders", _rows(), data_mime_type="avro")
+        table = tables.overwrite(
+            "orders", _rows(), options=IcebergOptions(data_mime_type="avro")
+        )
         assert table.scan().read_all().num_rows == 3

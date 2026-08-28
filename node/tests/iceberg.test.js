@@ -413,10 +413,10 @@ test('scanAt reads a retained snapshot after an overwrite', (t) => {
   assert.throws(() => table.scanAt(2 ** 60), /at most 2\^53/)
 })
 
-test('a legacy v1 direct-manifest snapshot scans and stays available for time travel', (t) => {
+test('a v1 direct-manifest snapshot scans and stays available for time travel', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const location = path.join(root, 'legacy')
+  const location = path.join(root, 'v1')
   const table = iceberg.Table.create(location, schema(), undefined, 1)
   table.append(rows([1n], ['XNAS']))
   const snapshotId = table.currentSnapshot.snapshotId
@@ -424,13 +424,13 @@ test('a legacy v1 direct-manifest snapshot scans and stays available for time tr
 
   const metadataPath = path.join(location, 'metadata', table.metadataFileName)
   const encoded = fs.readFileSync(metadataPath, 'utf8')
-  const legacy = encoded.replace(
+  const v1 = encoded.replace(
     /"manifest-list"\s*:\s*"[^"]*"/,
     `"manifests":${JSON.stringify(direct)}`,
   )
-  assert.notEqual(legacy, encoded)
+  assert.notEqual(v1, encoded)
   // Editing the JSON as a JavaScript object would round 64-bit snapshot ids.
-  fs.writeFileSync(metadataPath, legacy)
+  fs.writeFileSync(metadataPath, v1)
 
   const reopened = iceberg.Table.open(location)
   assert.equal(reopened.currentSnapshot.manifestList, '')

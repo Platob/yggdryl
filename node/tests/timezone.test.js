@@ -104,7 +104,6 @@ test('local and UTC readings convert in both directions', () => {
   const summer = utc(2024, 7, 15, 12)
 
   assert.equal(paris.intoLocal(summer), summer + 2 * 3600)
-  assert.equal(paris.toLocal, undefined)
   assert.equal(paris.intoUtc(paris.intoLocal(summer)), summer)
   // The JavaScript spelling is minutes west, as `Date` reports it.
   assert.equal(paris.getTimezoneOffset(summer), -120)

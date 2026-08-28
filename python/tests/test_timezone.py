@@ -69,8 +69,6 @@ class TestOffsets:
         instant = utc(2024, 1, 15, 12)
         assert Timezone.UTC.into_local(instant) == instant
         assert Timezone.UTC.into_utc(instant) == instant
-        assert not hasattr(Timezone.UTC, "to_local")
-        assert not hasattr(Timezone.UTC, "to_utc")
 
     def test_a_southern_zone_is_saving_across_the_new_year(self) -> None:
         sydney = Timezone("Australia/Sydney")

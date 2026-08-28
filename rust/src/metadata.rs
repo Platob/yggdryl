@@ -1449,7 +1449,7 @@ mod tests {
         let metadata = Metadata::from_entries([
             ("postgre", "before"),
             ("postgres", "plain"),
-            ("postgres-legacy", "before-colon"),
+            ("postgres-prefix", "before-colon"),
             ("postgres:alpha", "a"),
             ("postgres:middle", "m"),
             ("postgres:omega", "z"),

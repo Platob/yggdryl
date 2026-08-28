@@ -58,8 +58,6 @@ def test_native_field_materializes_plain_nested_dataclasses() -> None:
     assert isinstance(Event.__dict__["field"], staticmethod)
     assert Event.field() is root
     assert Event.field() is Event.field()
-    assert "FIELD" not in Event.__dict__
-    assert not any(base.__name__ == "Record" for base in Event.__mro__)
 
     members = dataclasses.fields(Event)
     assert tuple(member.name for member in members) == (
@@ -154,18 +152,6 @@ def test_invalid_python_root_name_is_refused() -> None:
     )
     with pytest.raises(TypeError, match="invalid-root"):
         root.into_dataclass()
-
-
-def test_field_is_available_as_a_generated_instance_member() -> None:
-    root = Field.from_arrow_schema(
-        pa.schema([pa.field("FIELD", pa.int64(), nullable=False)]),
-        name="row",
-    )
-    Row = root.into_dataclass(name="RowWithFieldMember")
-
-    assert not isinstance(Row.__dict__["FIELD"], Field)
-    assert Row(FIELD=7).FIELD == 7
-    assert Row.field() is root
 
 
 def test_field_is_reserved_for_generated_classes() -> None:

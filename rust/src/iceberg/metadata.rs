@@ -464,17 +464,17 @@ impl TableMetadata {
             OfficialTableMetadataBuilder,
         ) -> iceberg_official::Result<OfficialTableMetadataBuilder>,
     {
-        self.apply_official_update_with_legacy(
+        self.apply_official_update_with_v1_manifests(
             current_file_location,
-            super::official::LegacySnapshotManifests::default(),
+            super::official::V1SnapshotManifests::default(),
             update,
         )
     }
 
-    fn apply_official_update_with_legacy<F>(
+    fn apply_official_update_with_v1_manifests<F>(
         &mut self,
         current_file_location: Option<String>,
-        additional_legacy: super::official::LegacySnapshotManifests,
+        additional_v1_manifests: super::official::V1SnapshotManifests,
         update: F,
     ) -> Result<()>
     where
@@ -482,9 +482,12 @@ impl TableMetadata {
             OfficialTableMetadataBuilder,
         ) -> iceberg_official::Result<OfficialTableMetadataBuilder>,
     {
-        self.apply_official_update_result(current_file_location, additional_legacy, update, |_| {
-            Ok(())
-        })
+        self.apply_official_update_result(
+            current_file_location,
+            additional_v1_manifests,
+            update,
+            |_| Ok(()),
+        )
     }
 
     /// Apply one official update and extract its authoritative assigned ids
@@ -492,7 +495,7 @@ impl TableMetadata {
     fn apply_official_update_result<F, G, T>(
         &mut self,
         current_file_location: Option<String>,
-        additional_legacy: super::official::LegacySnapshotManifests,
+        additional_v1_manifests: super::official::V1SnapshotManifests,
         update: F,
         extract: G,
     ) -> Result<T>
@@ -503,15 +506,15 @@ impl TableMetadata {
         G: FnOnce(&OfficialTableMetadataBuildResult) -> Result<T>,
     {
         let document = self.clone().into_json_document()?;
-        let (metadata, mut legacy) = super::official::parse_table_metadata(&document)?;
-        for (snapshot_id, manifests) in additional_legacy.into_entries() {
-            legacy.insert(snapshot_id, manifests);
+        let (metadata, mut v1_manifests) = super::official::parse_table_metadata(&document)?;
+        for (snapshot_id, manifests) in additional_v1_manifests.into_entries() {
+            v1_manifests.insert(snapshot_id, manifests);
         }
         let builder =
             update(metadata.into_builder(current_file_location)).map_err(Error::from_iceberg)?;
         let built = builder.build().map_err(Error::from_iceberg)?;
         let extracted = extract(&built)?;
-        let document = super::official::table_metadata_document(&built.metadata, &legacy)?;
+        let document = super::official::table_metadata_document(&built.metadata, &v1_manifests)?;
         let mut replacement = Self::from_normalized_json(&document)?;
         // Apache Iceberg schemas do not carry Yggdryl's inert root protocol
         // properties. Preserve them across metadata-builder updates while the
@@ -773,7 +776,7 @@ impl TableMetadata {
         let mut updated = self.clone();
         let schema_id = updated.apply_official_update_result(
             None,
-            super::official::LegacySnapshotManifests::default(),
+            super::official::V1SnapshotManifests::default(),
             |builder| builder.add_schema(official),
             |built| {
                 let mut ids: Vec<i32> = built
@@ -1256,12 +1259,12 @@ impl TableMetadata {
 
     /// Make `snapshot` the current one, recording it in the log and on `main`.
     pub fn set_current_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
-        let mut legacy = super::official::LegacySnapshotManifests::default();
+        let mut v1_manifests = super::official::V1SnapshotManifests::default();
         if let Some(manifests) = snapshot.manifests.clone() {
-            legacy.insert(snapshot.snapshot_id, manifests);
+            v1_manifests.insert(snapshot.snapshot_id, manifests);
         }
         let snapshot = official_snapshot(snapshot, self.format_version)?;
-        self.apply_official_update_with_legacy(None, legacy, |builder| {
+        self.apply_official_update_with_v1_manifests(None, v1_manifests, |builder| {
             builder.set_branch_snapshot(snapshot, MAIN_BRANCH)
         })
     }
@@ -1475,7 +1478,7 @@ impl TableMetadata {
         let official = official_partition_spec(&spec)?;
         self.apply_official_update_result(
             None,
-            super::official::LegacySnapshotManifests::default(),
+            super::official::V1SnapshotManifests::default(),
             |builder| builder.add_partition_spec(official),
             |built| {
                 built
@@ -1535,7 +1538,7 @@ impl TableMetadata {
         let official = official_sort_order(&order)?;
         self.apply_official_update_result(
             None,
-            super::official::LegacySnapshotManifests::default(),
+            super::official::V1SnapshotManifests::default(),
             |builder| builder.add_sort_order(official),
             |built| {
                 built
@@ -2230,7 +2233,7 @@ impl Hash for TableMetadata {
 fn official_snapshot(snapshot: Snapshot, version: FormatVersion) -> Result<OfficialSnapshot> {
     snapshot.validate_for_version(version)?;
     let manifest_list = if snapshot.manifests.is_some() {
-        super::official::legacy_manifest_list(snapshot.snapshot_id)
+        super::official::v1_manifest_list(snapshot.snapshot_id)
     } else {
         snapshot.manifest_list.to_string()
     };
@@ -2605,7 +2608,7 @@ fn validate_versioned_document(document: &Scalar) -> Result<()> {
     Ok(())
 }
 
-/// Accept the `refs.main` compatibility field emitted by PyIceberg for v1,
+/// Accept the derived `refs.main` field emitted by PyIceberg for v1,
 /// but only when it exactly matches the main ref the official Rust parser
 /// derives from `current-snapshot-id`. Other v1 refs would otherwise be
 /// ignored by serde and disappear during normalization.
