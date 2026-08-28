@@ -179,7 +179,8 @@ assert.equal(decoded.id, 2n ** 100n)
 | `Date` | `DateTime64(ms, UTC)` | `Date` |
 | `URL` | its `href` string | `string` |
 | `RegExp` | its literal string, flags included | `string` |
-| `DataType`, `Field`, `Uri`, `Url`, `Urn` | its canonical string | `string` |
+| `DataType`, `Field` | core structural mapping | plain object |
+| `Uri`, `Url`, `Urn` | canonical string | `string` |
 | `Scalar` | itself | `Date` when one holds it exactly, otherwise `Scalar` |
 
 These are the losses, and they are deliberate: a `Set` comes back a list, a `URL` and a `RegExp`
@@ -211,36 +212,34 @@ native integer and is refused rather than rounded, and reading back a `Date`, a 
 `Map` never depends on a method the caller can replace: the encoder reads those off the intrinsic
 prototypes.
 
-## Width-specific values
+## Scalar families
 
-`Scalar` exposes the native vocabulary directly: `f16`/`f32`/`f64`,
-`d128`/`d256`, `date32`/`date64`, `time32`/`time64`, `datetime64`, and
-`duration32`/`duration64`. Every temporal carries a unit and a non-null zone;
-`NAIVE` is the explicit zone-free marker. Schemaless text writes natural ISO
-strings, while `loads(..., { field })` restores the declared exact value.
+`Scalar.float(value, width = 64)` selects 16, 32, or 64 bits.
+`decimal(coefficient, scale = 0)` selects the narrowest exact decimal. Date and
+time widths follow the unit; duration follows the count; Arrow datetime is
+always 64-bit. Exact `kind` values survive field-directed transport.
 
-The factories share one `(count, unit, timezone)` order. `date32` defaults its
-unit to `d`, `date64` to `ms`, and every omitted timezone becomes `NAIVE`.
-Time-of-day and duration values accept only `NAIVE`; `datetime64` also accepts
-a timezone name or native `Timezone`. The Rust core validates the unit allowed
-by each physical width.
+Temporal factories use `(count, unit, timezone)`. `date` defaults to days; an
+omitted timezone becomes `NAIVE`. Time and duration accept only `NAIVE`, while
+datetime also accepts a timezone name or `Timezone`. Schemaless text writes
+natural ISO strings; `loads(..., { field })` restores the declared exact type.
 
 ```javascript
 const { Timezone, Scalar, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-const price = Scalar.d256(-(2n ** 200n), 7)
+const price = Scalar.decimal(-(2n ** 200n), 7)
 assert.equal(price.kind, 'd256')
 assert.equal(price.scale, 7)
-assert.ok(Scalar.d128(150n, 2).equals(Scalar.d128(15n, 1)))
+assert.ok(Scalar.decimal(150n, 2).equals(Scalar.decimal(15n, 1)))
 
-const at = Scalar.datetime64(1700000000123456n, 'us', 'UTC')
+const at = Scalar.datetime(1700000000123456n, 'us', 'UTC')
 assert.equal(json.loads(json.dumps(at)), '2023-11-14T22:13:20.123456Z')
-assert.equal(Scalar.datetime64(0n, 'ms').zone, 'NAIVE')
-assert.equal(Scalar.time64(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
+assert.equal(Scalar.datetime(0n, 'ms').zone, 'NAIVE')
+assert.equal(Scalar.time(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
 assert.ok(
   Scalar.fromJs(new Date('2026-08-15T12:30:00.000Z'))
-    .equals(Scalar.datetime64(1786797000000n, 'ms', 'UTC')),
+    .equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')),
 )
 ```
 
@@ -286,8 +285,8 @@ as a literal.
 const assert = require('node:assert/strict')
 const { Expression, Scalar } = require('yggdryl')
 
-const half = Scalar.d128(1n, 0).divide(Scalar.d128(2n, 0))
-assert.ok(half.equals(Scalar.d128(5n, 1)))
+const half = Scalar.decimal(1n).divide(Scalar.decimal(2n))
+assert.ok(half.equals(Scalar.decimal(5n, 1)))
 assert.equal(half.clone().compare(half), 0)
 assert.equal(typeof half.stableHash(), 'bigint')
 

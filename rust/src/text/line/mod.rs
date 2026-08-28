@@ -10,7 +10,7 @@
 //!
 //! [`Text<H>`] is the handle. Like [`Coded`](crate::io::Coded),
 //! [`Gzip`](crate::gzip::Gzip), [`Ipc`](crate::ipc::Ipc), and
-//! [`Parquet`](crate::parquet::Parquet), it wraps another handle, mirrors every
+//! Like the `Parquet` wrapper, it wraps another handle, mirrors every
 //! byte method, and exposes the *raw encoded bytes unchanged* - so a `.log.gz`
 //! behind a `Text` can still be copied or uploaded verbatim. It overrides only
 //! [`open`](crate::io::IOBase::open) and [`close`](crate::io::IOBase::close),

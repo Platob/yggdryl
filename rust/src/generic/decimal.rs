@@ -1,24 +1,15 @@
-//! Exact decimals, stored the way an exact decimal has to be stored.
+//! Exact coefficient-and-scale decimals matching Arrow storage.
 //!
-//! A decimal is a coefficient and a scale: the number is `unscaled * 10^-scale`.
-//! That is the one representation that round-trips, because a decimal fraction
-//! such as `0.1` has no finite binary expansion, so a float can only ever hold
-//! the nearest double to it. It is also exactly how Arrow stores `Decimal32`
-//! through `Decimal256`, so the value converts to a column without a decision.
-//!
-//! The scale is carried rather than normalized away, because the scale is data:
-//! `1.50` and `1.5` are the same number written to different precision, and a
-//! schema declaring scale 2 wants the first spelling back. Two decimals still
-//! compare and hash by the *number* they name, so the two spellings are one
-//! mapping key.
+//! `from_decimal` selects `D128` or `D256`. Scale remains part of the stored
+//! value, while equality, ordering, and hashing compare the represented number.
 //!
 //! ```
-//! use yggdryl::Scalar;
+//! use yggdryl::{I256, Scalar};
 //!
-//! let price = Scalar::d128(1_050, 2); // 10.50
+//! let price = Scalar::from_decimal(I256::from_i128(1_050), 2);
 //!
-//! assert_eq!(price.as_d128(), Some((1_050, 2)));
-//! assert_eq!(price, Scalar::d128(105, 1));
+//! assert_eq!(price.as_decimal(), Some((I256::from_i128(1_050), 2)));
+//! assert_eq!(price, Scalar::from_decimal(I256::from_i128(105), 1));
 //! assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
 //! ```
 
@@ -28,6 +19,14 @@ use super::scalar::Scalar;
 use crate::I256;
 
 impl Scalar {
+    /// Build the narrowest exact decimal width that holds `unscaled`.
+    pub fn from_decimal(unscaled: I256, scale: i8) -> Self {
+        unscaled.as_i128().map_or_else(
+            || Self::d256(unscaled, scale),
+            |value| Self::d128(value, scale),
+        )
+    }
+
     /// Build an exact decimal from an unscaled integer and a scale.
     ///
     /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
@@ -57,6 +56,15 @@ impl Scalar {
         }
     }
 
+    /// Return this decimal's coefficient widened to 256 bits and its scale.
+    pub const fn as_decimal(&self) -> Option<(I256, i8)> {
+        match self {
+            Self::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
+            Self::D256(unscaled, scale) => Some((*unscaled, *scale)),
+            _ => None,
+        }
+    }
+
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
         matches!(self, Self::D128(..) | Self::D256(..))
@@ -68,11 +76,8 @@ impl Scalar {
     /// restated at that scale. Restating to fewer fractional digits would throw
     /// digits away, so it answers `None` rather than rounding.
     pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128> {
-        let (unscaled, current) = match self {
-            Self::D128(unscaled, scale) => (*unscaled, *scale),
-            Self::D256(unscaled, scale) => (unscaled.as_i128()?, *scale),
-            _ => return None,
-        };
+        let (unscaled, current) = self.as_decimal()?;
+        let unscaled = unscaled.as_i128()?;
         let shift = i32::from(scale) - i32::from(current);
         match shift.cmp(&0) {
             Ordering::Equal => Some(unscaled),
@@ -87,11 +92,7 @@ impl Scalar {
 
     /// Return this decimal's 256-bit coefficient at `scale`, when exact.
     pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256> {
-        let (unscaled, current) = match self {
-            Self::D128(unscaled, current) => (I256::from_i128(*unscaled), *current),
-            Self::D256(unscaled, current) => (*unscaled, *current),
-            _ => return None,
-        };
+        let (unscaled, current) = self.as_decimal()?;
         let shift = i32::from(scale) - i32::from(current);
         match shift.cmp(&0) {
             Ordering::Equal => Some(unscaled),
@@ -101,12 +102,8 @@ impl Scalar {
     }
 
     /// Render an exact decimal without passing through a float.
-    pub fn as_decimal_utf8(&self) -> Option<String> {
-        let (coefficient, scale) = match self {
-            Self::D128(coefficient, scale) => (I256::from_i128(*coefficient), *scale),
-            Self::D256(coefficient, scale) => (*coefficient, *scale),
-            _ => return None,
-        };
+    pub fn into_decimal_utf8(&self) -> Option<String> {
+        let (coefficient, scale) = self.as_decimal()?;
         Some(decimal_text(coefficient, scale))
     }
 }

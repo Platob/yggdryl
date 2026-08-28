@@ -1770,15 +1770,32 @@
   pub const fn as_f64(self) -> f64
   pub const fn into_f64(self) -> f64
   pub fn stable_hash(&self) -> u64
+  pub enum Float
+  pub const fn bit_width(self) -> u8
+  pub fn as_f64(self) -> f64
+  pub fn as_f32(self) -> Option<f32>
+  pub const fn as_f16(self) -> Option<half::f16>
+  pub const fn into_scalar(self) -> Scalar
+  pub fn stable_hash(&self) -> u64
+  pub struct Integer
+  pub const fn is_negative(self) -> bool
+  pub const fn magnitude(self) -> u128
+  pub const fn as_i128(self) -> Option<i128>
+  pub const fn as_u128(self) -> Option<u128>
+  pub fn into_scalar(self) -> Scalar
+  pub fn stable_hash(&self) -> u64
   pub enum Scalar
+  pub fn from_float(value: f64, bit_width: u8) -> Result<Self>
   pub const fn kind(&self) -> &'static str
   pub fn stable_hash(&self) -> u64
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
   pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
   pub fn from_record<K, I>(entries: I) -> Result<Self> where K: Into<SmolStr>, I: IntoIterator<Item = (K, Self)>
   pub const fn as_bool(&self) -> Option<bool>
+  pub const fn as_integer(&self) -> Option<Integer>
   pub const fn as_i128(&self) -> Option<i128>
   pub const fn as_u128(&self) -> Option<u128>
+  pub const fn as_float(&self) -> Option<Float>
   pub const fn as_f64(&self) -> Option<f64>
   pub fn as_f32(&self) -> Option<f32>
   pub const fn as_f16(&self) -> Option<half::f16>
@@ -1818,6 +1835,18 @@
   pub fn without_field(&self, name: &str) -> Result<Self>
   pub enum Children<'a>
 
+### yggdryl::generic::decimal  [rust\src\generic\decimal.rs]
+  pub fn from_decimal(unscaled: I256, scale: i8) -> Self
+  pub const fn d128(unscaled: i128, scale: i8) -> Self
+  pub const fn d256(unscaled: I256, scale: i8) -> Self
+  pub const fn as_d128(&self) -> Option<(i128, i8)>
+  pub const fn as_d256(&self) -> Option<(I256, i8)>
+  pub const fn as_decimal(&self) -> Option<(I256, i8)>
+  pub const fn is_decimal(&self) -> bool
+  pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
+  pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256>
+  pub fn into_decimal_utf8(&self) -> Option<String>
+
 ### yggdryl::generic::inference  [rust\src\generic\inference.rs]
   pub fn data_type(&self) -> Result<DataType>
   pub fn inferred_scalar_field(&self) -> Result<Field>
@@ -1825,6 +1854,20 @@
   pub fn inferred_struct_field(&self) -> Result<Field>
 
 ### yggdryl::generic::temporal  [rust\src\generic\temporal.rs]
+  pub enum TemporalFamily
+  pub const fn as_str(self) -> &'static str
+  pub struct TemporalRef<'a>
+  pub const fn family(self) -> TemporalFamily
+  pub const fn count(self) -> i64
+  pub const fn unit(self) -> TimeUnit
+  pub const fn timezone(self) -> &'a Timezone
+  pub const fn bit_width(self) -> u8
+  pub fn stable_hash(&self) -> u64
+  pub fn into_scalar(self) -> Result<Scalar>
+  pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_time(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_datetime(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_duration(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
   pub const fn date32(days: i32) -> Self
   pub fn date32_in(days: i32, unit: TimeUnit, zone: Timezone) -> Result<Self>
   pub const fn date64(milliseconds: i64) -> Self
@@ -1844,6 +1887,15 @@
   pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)>
   pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)>
   pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)>
+  pub const fn as_temporal(&self) -> Option<TemporalRef<'_>>
+  pub const fn as_date(&self) -> Option<TemporalRef<'_>>
+  pub const fn as_time(&self) -> Option<TemporalRef<'_>>
+  pub const fn as_datetime(&self) -> Option<TemporalRef<'_>>
+  pub const fn as_duration(&self) -> Option<TemporalRef<'_>>
+  pub const fn temporal_timezone(&self) -> Option<&Timezone>
+  pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
+  pub const fn is_temporal(&self) -> bool
+  pub fn temporal_data_type(&self) -> Option<DataType>
 
 ### yggdryl::toml  [rust\src\toml\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 64;

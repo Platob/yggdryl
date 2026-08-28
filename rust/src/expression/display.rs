@@ -429,7 +429,7 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Scalar) -> Option<SmolS
         Scalar::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
         Scalar::F32(held) => Some(SmolStr::new(float_text(f64::from(held.as_f32())))),
         Scalar::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::D128(..) | Scalar::D256(..) => value.as_decimal_utf8().map(SmolStr::new),
+        Scalar::D128(..) | Scalar::D256(..) => value.into_decimal_utf8().map(SmolStr::new),
         Scalar::String(held) => Some(held.clone()),
         Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the

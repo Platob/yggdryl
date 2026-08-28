@@ -61,8 +61,6 @@ const nonNullableItemValue: readonly [number | null] = defaultedItem.defaultJSVa
 fixed.intoSchemeCompat('postgres')
 // @ts-expect-error private native defaults bridges are not public declarations
 fixed._defaultJSValueNative()
-// @ts-expect-error private native cached-schema bridge is hidden
-fixed._defaultJSValueSchemaNative()
 // @ts-expect-error private native hint-category bridge is hidden
 fixed.dataType._defaultJSHintNative()
 // @ts-expect-error private native Arrow bridge is hidden

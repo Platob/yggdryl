@@ -6,7 +6,7 @@ use std::ops::{
 
 use smol_str::SmolStr;
 
-use super::{Float16, Float32, Float64, I256, Scalar};
+use super::{Float16, Float32, Float64, I256, Scalar, TemporalFamily};
 use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 #[derive(Clone, Copy)]
@@ -214,11 +214,15 @@ fn checked_arithmetic_target(
             decimal_arithmetic(left, operation, right, *wide, *scale)
         }
         ArithmeticTarget::Temporal(data_type) => {
-            if matches!(temporal_target(data_type), Some((3, _)))
-                && ((temporal_value_parts(left).is_some_and(|parts| parts.family == 3)
-                    && integer_value_kind(right).is_some())
-                    || (integer_value_kind(left).is_some()
-                        && temporal_value_parts(right).is_some_and(|parts| parts.family == 3)))
+            if matches!(
+                temporal_target(data_type),
+                Some((TemporalFamily::Duration, _))
+            ) && ((temporal_value_parts(left)
+                .is_some_and(|parts| parts.family == TemporalFamily::Duration)
+                && right.as_integer().is_some())
+                || (left.as_integer().is_some()
+                    && temporal_value_parts(right)
+                        .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
             {
                 duration_integer_arithmetic(left, operation, right, data_type)
             } else {
@@ -262,7 +266,9 @@ fn inferred_target(
         integer_value_kind(right),
         operation,
     ) {
-        (Some(parts), Some(_), Arithmetic::Mul | Arithmetic::Div) if parts.family == 3 => {
+        (Some(parts), Some(_), Arithmetic::Mul | Arithmetic::Div)
+            if parts.family == TemporalFamily::Duration =>
+        {
             return Ok(ArithmeticTarget::Temporal(parts.data_type));
         }
         _ => {}
@@ -272,7 +278,7 @@ fn inferred_target(
         temporal_value_parts(right),
         operation,
     ) {
-        (Some(_), Some(parts), Arithmetic::Mul) if parts.family == 3 => {
+        (Some(_), Some(parts), Arithmetic::Mul) if parts.family == TemporalFamily::Duration => {
             return Ok(ArithmeticTarget::Temporal(parts.data_type));
         }
         _ => {}
@@ -316,8 +322,8 @@ fn inferred_target(
     let left_float = float_value_width(left);
     let right_float = float_value_width(right);
     if left_float.is_some() || right_float.is_some() {
-        if !(left_float.is_some() || integer_value_kind(left).is_some())
-            || !(right_float.is_some() || integer_value_kind(right).is_some())
+        if !(left_float.is_some() || left.as_integer().is_some())
+            || !(right_float.is_some() || right.as_integer().is_some())
         {
             return Err(invalid_binary(
                 operation,
@@ -326,7 +332,7 @@ fn inferred_target(
                 "floats combine only with floats or integers",
             ));
         }
-        let width = if integer_value_kind(left).is_some() || integer_value_kind(right).is_some() {
+        let width = if left.as_integer().is_some() || right.as_integer().is_some() {
             64
         } else {
             left_float.unwrap_or(16).max(right_float.unwrap_or(16))
@@ -512,12 +518,7 @@ const fn integer_kind_name(signed: bool, bits: u16) -> &'static str {
 }
 
 fn float_value_width(value: &Scalar) -> Option<u8> {
-    match value {
-        Scalar::F16(_) => Some(16),
-        Scalar::F32(_) => Some(32),
-        Scalar::F64(_) => Some(64),
-        _ => None,
-    }
+    value.as_float().map(|value| value.bit_width())
 }
 
 fn float_width(data_type: &DataType) -> Option<u8> {
@@ -587,15 +588,11 @@ where
 }
 
 fn is_exact_number(value: &Scalar) -> bool {
-    integer_value_kind(value).is_some() || decimal_value_parts(value).is_some()
+    value.as_integer().is_some() || value.as_decimal().is_some()
 }
 
 fn decimal_value_parts(value: &Scalar) -> Option<(I256, i8)> {
-    match value {
-        Scalar::D128(value, scale) => Some((I256::from_i128(*value), *scale)),
-        Scalar::D256(value, scale) => Some((*value, *scale)),
-        _ => None,
-    }
+    value.as_decimal()
 }
 
 fn exact_value_parts(value: &Scalar) -> Option<(I256, i8)> {
@@ -895,43 +892,45 @@ const fn decimal_overflow(operation: Arithmetic, wide: bool) -> Error {
 
 #[derive(Clone)]
 struct TemporalParts {
-    family: u8,
+    family: TemporalFamily,
     unit: TimeUnit,
     zone: Timezone,
     data_type: DataType,
 }
 
 fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
-    let (family, unit, zone, data_type) = match value {
-        Scalar::Date32(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date32),
-        Scalar::Date64(_, unit, zone) => (0, *unit, zone.clone(), DataType::Date64),
-        Scalar::Time32(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time32(*unit)),
-        Scalar::Time64(_, unit, zone) => (1, *unit, zone.clone(), DataType::Time64(*unit)),
-        Scalar::DateTime64(_, unit, zone) => (
-            2,
-            *unit,
-            zone.clone(),
-            DataType::Timestamp(*unit, (!zone.is_naive()).then(|| zone.clone())),
-        ),
-        Scalar::Duration32(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration32(*unit)),
-        Scalar::Duration64(_, unit, zone) => (3, *unit, zone.clone(), DataType::Duration64(*unit)),
+    let temporal = value.as_temporal()?;
+    let unit = temporal.unit();
+    let zone = temporal.timezone().clone();
+    let data_type = match (temporal.family(), temporal.bit_width()) {
+        (TemporalFamily::Date, 32) => DataType::Date32,
+        (TemporalFamily::Date, 64) => DataType::Date64,
+        (TemporalFamily::Time, 32) => DataType::Time32(unit),
+        (TemporalFamily::Time, 64) => DataType::Time64(unit),
+        (TemporalFamily::DateTime, 64) => {
+            DataType::Timestamp(unit, (!zone.is_naive()).then(|| zone.clone()))
+        }
+        (TemporalFamily::Duration, 32) => DataType::Duration32(unit),
+        (TemporalFamily::Duration, 64) => DataType::Duration64(unit),
         _ => return None,
     };
     Some(TemporalParts {
-        family,
+        family: temporal.family(),
         unit,
         zone,
         data_type,
     })
 }
 
-fn temporal_target(data_type: &DataType) -> Option<(u8, TimeUnit)> {
+fn temporal_target(data_type: &DataType) -> Option<(TemporalFamily, TimeUnit)> {
     match data_type {
-        DataType::Date32 => Some((0, TimeUnit::Day)),
-        DataType::Date64 => Some((0, TimeUnit::Millisecond)),
-        DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::Timestamp(unit, _) => Some((2, *unit)),
-        DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
+        DataType::Date32 => Some((TemporalFamily::Date, TimeUnit::Day)),
+        DataType::Date64 => Some((TemporalFamily::Date, TimeUnit::Millisecond)),
+        DataType::Time32(unit) | DataType::Time64(unit) => Some((TemporalFamily::Time, *unit)),
+        DataType::Timestamp(unit, _) => Some((TemporalFamily::DateTime, *unit)),
+        DataType::Duration32(unit) | DataType::Duration64(unit) => {
+            Some((TemporalFamily::Duration, *unit))
+        }
         _ => None,
     }
 }
@@ -944,9 +943,19 @@ fn temporal_result_type(
     right_parts: TemporalParts,
 ) -> Result<DataType> {
     match (left_parts.family, right_parts.family, operation) {
-        (family, 3, Arithmetic::Add | Arithmetic::Sub) if family != 3 => Ok(left_parts.data_type),
-        (3, family, Arithmetic::Add) if family != 3 => Ok(right_parts.data_type),
-        (family, other, Arithmetic::Sub) if family == other && family != 3 => {
+        (family, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub)
+            if family != TemporalFamily::Duration =>
+        {
+            Ok(left_parts.data_type)
+        }
+        (TemporalFamily::Duration, family, Arithmetic::Add)
+            if family != TemporalFamily::Duration =>
+        {
+            Ok(right_parts.data_type)
+        }
+        (family, other, Arithmetic::Sub)
+            if family == other && family != TemporalFamily::Duration =>
+        {
             if left_parts.zone.is_naive() != right_parts.zone.is_naive() {
                 return Err(invalid_binary(
                     operation,
@@ -959,7 +968,7 @@ fn temporal_result_type(
             DataType::duration64(unit)
                 .map_err(|error| invalid_binary(operation, left, right, error.to_string()))
         }
-        (3, 3, Arithmetic::Add | Arithmetic::Sub) => {
+        (TemporalFamily::Duration, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub) => {
             let unit = finer_unit(left_parts.unit, right_parts.unit);
             let wide = matches!(left_parts.data_type, DataType::Duration64(_))
                 || matches!(right_parts.data_type, DataType::Duration64(_));
@@ -1016,18 +1025,31 @@ fn temporal_arithmetic(
         .ok_or_else(|| invalid_binary(operation, left, right, "left operand is not temporal"))?;
     let right_parts = temporal_value_parts(right)
         .ok_or_else(|| invalid_binary(operation, left, right, "right operand is not temporal"))?;
-    let (target_family, unit) = temporal_target(target).expect("temporal target was checked");
+    let (target_family, unit) = temporal_target(target).ok_or_else(|| {
+        invalid_binary(
+            operation,
+            left,
+            right,
+            "the promoted datatype is not temporal",
+        )
+    })?;
     let (left_count, right_count) = match (left_parts.family, right_parts.family, operation) {
-        (family, 3, Arithmetic::Add | Arithmetic::Sub) if family == target_family => (
-            temporal_at(left, unit, operation, right)?,
-            temporal_at(right, unit, operation, left)?,
-        ),
-        (3, family, Arithmetic::Add) if family == target_family => (
+        (family, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub)
+            if family == target_family =>
+        {
+            (
+                temporal_at(left, unit, operation, right)?,
+                temporal_at(right, unit, operation, left)?,
+            )
+        }
+        (TemporalFamily::Duration, family, Arithmetic::Add) if family == target_family => (
             temporal_at(right, unit, operation, left)?,
             temporal_at(left, unit, operation, right)?,
         ),
         (family, other, Arithmetic::Sub)
-            if family == other && target_family == 3 && family != 3 =>
+            if family == other
+                && target_family == TemporalFamily::Duration
+                && family != TemporalFamily::Duration =>
         {
             if left_parts.zone.is_naive() != right_parts.zone.is_naive() {
                 return Err(invalid_binary(
@@ -1042,10 +1064,14 @@ fn temporal_arithmetic(
                 temporal_at(right, unit, operation, left)?,
             )
         }
-        (3, 3, Arithmetic::Add | Arithmetic::Sub) if target_family == 3 => (
-            temporal_at(left, unit, operation, right)?,
-            temporal_at(right, unit, operation, left)?,
-        ),
+        (TemporalFamily::Duration, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub)
+            if target_family == TemporalFamily::Duration =>
+        {
+            (
+                temporal_at(left, unit, operation, right)?,
+                temporal_at(right, unit, operation, left)?,
+            )
+        }
         _ => {
             return Err(invalid_binary(
                 operation,
@@ -1058,7 +1084,14 @@ fn temporal_arithmetic(
     let held = match operation {
         Arithmetic::Add => left_count.checked_add(right_count),
         Arithmetic::Sub => left_count.checked_sub(right_count),
-        _ => unreachable!(),
+        _ => {
+            return Err(invalid_binary(
+                operation,
+                left,
+                right,
+                "temporal multiplication, division, and remainder are undefined",
+            ));
+        }
     }
     .ok_or_else(|| Error::ArithmeticOverflow {
         operation: operation.name(),
@@ -1077,12 +1110,12 @@ fn duration_integer_arithmetic(
     target: &DataType,
 ) -> Result<Scalar> {
     let (duration, integer, duration_first) = if temporal_value_parts(left)
-        .is_some_and(|parts| parts.family == 3)
-        && integer_value_kind(right).is_some()
+        .is_some_and(|parts| parts.family == TemporalFamily::Duration)
+        && right.as_integer().is_some()
     {
         (left, right, true)
-    } else if integer_value_kind(left).is_some()
-        && temporal_value_parts(right).is_some_and(|parts| parts.family == 3)
+    } else if left.as_integer().is_some()
+        && temporal_value_parts(right).is_some_and(|parts| parts.family == TemporalFamily::Duration)
     {
         (right, left, false)
     } else {
@@ -1104,7 +1137,9 @@ fn duration_integer_arithmetic(
         ));
     }
 
-    let parts = temporal_value_parts(duration).expect("duration operand was checked");
+    let parts = temporal_value_parts(duration).ok_or_else(|| {
+        invalid_binary(operation, left, right, "duration operand is not temporal")
+    })?;
     let count = duration
         .temporal_count_at(parts.unit)
         .map(|value| I256::from_i128(i128::from(value)))
@@ -1131,7 +1166,14 @@ fn duration_integer_arithmetic(
             }
             count.checked_div(scalar)
         }
-        _ => unreachable!(),
+        _ => {
+            return Err(invalid_binary(
+                operation,
+                left,
+                right,
+                "durations support multiplication or exact division by an integer",
+            ));
+        }
     }
     .and_then(I256::as_i128)
     .and_then(|value| i64::try_from(value).ok())

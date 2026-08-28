@@ -8,20 +8,15 @@ const { arrowScalarFromIPC } = require('./values.js')
 
 function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
   const dataTypeDefault = NativeDataType.prototype._defaultJSValueNative
-  const dataTypeDefaultSchema =
-    NativeDataType.prototype._defaultJSValueSchemaNative
   const dataTypeDefaultHint = NativeDataType.prototype._defaultJSHintNative
   const fieldDefault = NativeField.prototype._defaultJSValueNative
-  const fieldDefaultSchema = NativeField.prototype._defaultJSValueSchemaNative
   const dataTypeArrowDefault = NativeDataType.prototype._defaultArrowScalarIpcNative
   const fieldArrowDefault = NativeField.prototype._defaultArrowScalarIpcNative
 
   for (const [name, method] of [
     ['DataType._defaultJSValueNative', dataTypeDefault],
-    ['DataType._defaultJSValueSchemaNative', dataTypeDefaultSchema],
     ['DataType._defaultJSHintNative', dataTypeDefaultHint],
     ['Field._defaultJSValueNative', fieldDefault],
-    ['Field._defaultJSValueSchemaNative', fieldDefaultSchema],
     ['DataType._defaultArrowScalarIpcNative', dataTypeArrowDefault],
     ['Field._defaultArrowScalarIpcNative', fieldArrowDefault],
   ]) {
@@ -31,27 +26,19 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
   }
 
   delete NativeDataType.prototype._defaultJSValueNative
-  delete NativeDataType.prototype._defaultJSValueSchemaNative
   delete NativeDataType.prototype._defaultJSHintNative
   delete NativeField.prototype._defaultJSValueNative
-  delete NativeField.prototype._defaultJSValueSchemaNative
   delete NativeDataType.prototype._defaultArrowScalarIpcNative
   delete NativeField.prototype._defaultArrowScalarIpcNative
 
   const dataTypeEntries = new WeakMap()
   const fieldEntries = new WeakMap()
 
-  function owner() {
-    return { childClasses: new Map() }
-  }
-
   function dataTypeEntry(dataType) {
     let entry = dataTypeEntries.get(dataType)
     if (entry === undefined) {
       entry = {
         hint: undefined,
-        owner: undefined,
-        schema: undefined,
       }
       dataTypeEntries.set(dataType, entry)
     }
@@ -65,38 +52,10 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
         hint: undefined,
         hintDataType: undefined,
         hintNullable: undefined,
-        owner: undefined,
-        schema: undefined,
-        snapshot: undefined,
       }
       fieldEntries.set(field, entry)
     }
     return entry
-  }
-
-  function exactFieldEntry(field) {
-    const entry = fieldEntry(field)
-    if (entry.snapshot === undefined || !field.equals(entry.snapshot)) {
-      entry.owner = owner()
-      entry.schema = Reflect.apply(fieldDefaultSchema, field, [])
-      entry.snapshot = new Field(field)
-    }
-    return entry
-  }
-
-  function exactDataTypeEntry(dataType) {
-    const entry = dataTypeEntry(dataType)
-    if (entry.schema === undefined) {
-      entry.owner = owner()
-      entry.schema = Reflect.apply(dataTypeDefaultSchema, dataType, [])
-    }
-    return entry
-  }
-
-  // A struct value projects positionally as an array, so the native
-  // projection is already the JavaScript value.
-  function projectedDefault(value, nativeMethod, schema) {
-    return Reflect.apply(nativeMethod, value, [schema])
   }
 
   // Indexed by the native JsValueHint discriminant. A struct projects as an
@@ -132,8 +91,7 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     defaultJSValue: {
       configurable: true,
       value() {
-        const entry = exactDataTypeEntry(this)
-        return projectedDefault(this, dataTypeDefault, entry.schema)
+        return Reflect.apply(dataTypeDefault, this, [])
       },
     },
     defaultJSHint: {
@@ -158,8 +116,7 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     defaultJSValue: {
       configurable: true,
       value() {
-        const entry = exactFieldEntry(this)
-        return projectedDefault(this, fieldDefault, entry.schema)
+        return Reflect.apply(fieldDefault, this, [])
       },
     },
     defaultJSHint: {

@@ -125,15 +125,23 @@ test('two JavaScript Map keys that are one native key are refused', () => {
   )
 })
 
-test('native Yggdryl wrappers cross as their canonical text', () => {
+test('schema wrappers cross structurally and locations cross as text', () => {
   const type = DataType.fromString('struct<id:int64 not null>')
+  const field = new Field('id', type, false)
 
   for (const format of [json, yaml]) {
-    const decoded = format.loads(format.dumps({ type }))
-    // The wrapper class does not travel; its canonical spelling does, and
-    // `DataType.from` reads that spelling back.
-    assert.equal(decoded.type, type.toString())
-    assert.ok(DataType.from(decoded.type).equals(type))
+    assert.deepEqual(format.loads(format.dumps(type)), type.toJSON())
+    assert.deepEqual(format.loads(format.dumps(field)), field.toJSON())
+  }
+  assert.equal(Scalar.fromJs(type).kind, 'mapping')
+  assert.equal(Scalar.fromJs(field).kind, 'mapping')
+
+  for (const value of [
+    Uri.fromString('https://example.com/value'),
+    Url.fromString('https://example.com/value'),
+    Urn.fromString('urn:example:value'),
+  ]) {
+    assert.equal(json.loads(json.dumps(value)), value.toString())
   }
 })
 
@@ -147,13 +155,15 @@ test('native wrapper encoding reads native state instead of replaceable methods'
   ]
 
   for (const value of values) {
-    const canonical = value.toString()
+    const expected = value instanceof DataType || value instanceof Field
+      ? value.toJSON()
+      : value.toString()
     Object.defineProperty(value, 'toString', {
       value() {
         throw new Error('replaceable JavaScript method must not run')
       },
     })
-    assert.equal(json.loads(json.dumps(value)), canonical)
+    assert.deepEqual(json.loads(json.dumps(value)), expected)
   }
 })
 
@@ -176,12 +186,12 @@ test('a URL and a Date read their state from the prototype, not the instance', (
 
 test('temporal values cross as classic ISO strings; a decimal stays typed', () => {
   const values = {
-    at: Scalar.datetime64(1700000000000000n, 'us', 'UTC'),
-    naive: Scalar.datetime64(1700000000123456n, 'us', 'NAIVE'),
-    on: Scalar.date32(19723),
-    sinceMidnight: Scalar.time64(45296000000n, 'us'),
-    took: Scalar.duration32(90, 's'),
-    price: Scalar.d128(-1050n, 2),
+    at: Scalar.datetime(1700000000000000n, 'us', 'UTC'),
+    naive: Scalar.datetime(1700000000123456n, 'us', 'NAIVE'),
+    on: Scalar.date(19723),
+    sinceMidnight: Scalar.time(45296000000n, 'us'),
+    took: Scalar.duration(90, 's'),
+    price: Scalar.decimal(-1050n, 2),
   }
 
   for (const format of [json, yaml]) {
@@ -202,20 +212,20 @@ test('temporal values cross as classic ISO strings; a decimal stays typed', () =
   )
   // One instant in two resolutions is one value, and so is one number in two
   // spellings, because the core compares what a value names.
-  assert.ok(Scalar.duration32(1, 's').equals(Scalar.duration64(1000n, 'ms')))
-  assert.ok(Scalar.d128(150n, 2).equals(Scalar.d128(15n, 1)))
+  assert.ok(Scalar.duration(1, 's').equals(Scalar.duration(1000n, 'ms')))
+  assert.ok(Scalar.decimal(150n, 2).equals(Scalar.decimal(15n, 1)))
 })
 
-test('temporal constructors keep one unit and non-null timezone contract', () => {
+test('temporal families select one exact width and non-null timezone', () => {
   const naive = Timezone.from('naive')
   const values = [
-    [Scalar.date32(7), 'date32', 7n, 'd'],
-    [Scalar.date64(7n), 'date64', 7n, 'ms'],
-    [Scalar.time32(7, 's'), 'time32', 7n, 's'],
-    [Scalar.time64(7n, 'us'), 'time64', 7n, 'us'],
-    [Scalar.datetime64(7n, 'ns'), 'datetime64', 7n, 'ns'],
-    [Scalar.duration32(7, 'ms'), 'duration32', 7n, 'ms'],
-    [Scalar.duration64(7n, 'us'), 'duration64', 7n, 'us'],
+    [Scalar.date(7), 'date32', 7n, 'd'],
+    [Scalar.date(7n, 'ms'), 'date64', 7n, 'ms'],
+    [Scalar.time(7, 's'), 'time32', 7n, 's'],
+    [Scalar.time(7n, 'us'), 'time64', 7n, 'us'],
+    [Scalar.datetime(7n, 'ns'), 'datetime64', 7n, 'ns'],
+    [Scalar.duration(7, 'ms'), 'duration32', 7n, 'ms'],
+    [Scalar.duration(2147483648n, 'us'), 'duration64', 2147483648n, 'us'],
   ]
 
   for (const [value, kind, count, unit] of values) {
@@ -225,47 +235,49 @@ test('temporal constructors keep one unit and non-null timezone contract', () =>
     assert.equal(value.zone, 'NAIVE')
   }
 
-  assert.ok(Scalar.date32(7, 'd', naive).equals(Scalar.date32(7)))
-  assert.ok(Scalar.date32(7, null, null).equals(Scalar.date32(7)))
-  assert.ok(Scalar.date64(7n, 'ms', 'NAIVE').equals(Scalar.date64(7n)))
-  assert.ok(Scalar.time32(7, 's', naive).equals(Scalar.time32(7, 's')))
-  assert.ok(Scalar.time64(7n, 'us', 'naive').equals(Scalar.time64(7n, 'us')))
+  assert.ok(Scalar.date(7, 'd', naive).equals(Scalar.date(7)))
+  assert.ok(Scalar.date(7, null, null).equals(Scalar.date(7)))
+  assert.ok(Scalar.date(7n, 'ms', 'NAIVE').equals(Scalar.date(7n, 'ms')))
+  assert.ok(Scalar.time(7, 's', naive).equals(Scalar.time(7, 's')))
+  assert.ok(Scalar.time(7n, 'us', 'naive').equals(Scalar.time(7n, 'us')))
   assert.ok(
-    Scalar.datetime64(7n, 'ns', Timezone.UTC).equals(
-      Scalar.datetime64(7n, 'ns', 'UTC'),
+    Scalar.datetime(7n, 'ns', Timezone.UTC).equals(
+      Scalar.datetime(7n, 'ns', 'UTC'),
     ),
   )
-  assert.ok(Scalar.datetime64(7n, 'ns', null).equals(Scalar.datetime64(7n, 'ns')))
-  assert.ok(
-    Scalar.duration32(7, 'ms', naive).equals(Scalar.duration32(7, 'ms')),
-  )
-  assert.ok(
-    Scalar.duration64(7n, 'us', 'NAIVE').equals(Scalar.duration64(7n, 'us')),
-  )
+  assert.ok(Scalar.datetime(7n, 'ns', null).equals(Scalar.datetime(7n, 'ns')))
+  assert.ok(Scalar.duration(7, 'ms', naive).equals(Scalar.duration(7, 'ms')))
 
-  assert.throws(() => Scalar.date32(1, 'ms'), /date32 unit must be day/)
-  assert.throws(() => Scalar.date64(1n, 's'), /date64 unit must be millisecond/)
-  assert.throws(() => Scalar.time32(1, 'us'), /time32 unit/)
-  assert.throws(() => Scalar.time64(1n, 'ms'), /time64 unit/)
-  assert.throws(() => Scalar.time32(1, 's', 'UTC'), /timezone must be NAIVE/)
-  assert.throws(() => Scalar.time64(1n, 'us', Timezone.UTC), /timezone must be NAIVE/)
-  assert.throws(() => Scalar.duration32(1, 's', 'UTC'), /duration32 timezone must be NAIVE/)
+  assert.throws(() => Scalar.date(1, 's'), /date unit/)
+  assert.throws(() => Scalar.time(1, 'd'), /time unit/)
+  assert.throws(() => Scalar.time(1, 's', 'UTC'), /timezone must be NAIVE/)
+  assert.throws(() => Scalar.time(1n, 'us', Timezone.UTC), /timezone must be NAIVE/)
+  assert.throws(() => Scalar.duration(1, 's', 'UTC'), /timezone must be NAIVE/)
   assert.throws(
-    () => Scalar.duration64(1n, 'ns', Timezone.UTC),
-    /duration64 timezone must be NAIVE/,
+    () => Scalar.duration(1n, 'ns', Timezone.UTC),
+    /timezone must be NAIVE/,
   )
 })
 
-test('Scalar keeps widths, exact coefficients, hashes, and natural accessors', () => {
-  const wide = Scalar.d256(-(2n ** 200n), 7)
-  assert.equal(Scalar.f16(1.5).kind, 'f16')
-  assert.equal(Scalar.f32(1.5).kind, 'f32')
-  assert.equal(Scalar.f64(1.5).kind, 'f64')
+test('Scalar family factories keep selected widths, hashes, and natural accessors', () => {
+  const wide = Scalar.decimal(-(2n ** 200n), 7)
+  const longDuration = Scalar.duration(2147483648n, 'us')
+  assert.equal(Scalar.float(1.5, 16).kind, 'f16')
+  assert.equal(Scalar.float(1.5, 32).kind, 'f32')
+  assert.equal(Scalar.float(1.5).kind, 'f64')
+  assert.equal(Scalar.decimal(1n).scale, 0)
+  assert.throws(() => Scalar.float(1.5, 24), /16, 32, or 64/)
+  assert.throws(() => Scalar.decimal(1n, 128), /scale/)
   assert.equal(wide.kind, 'd256')
   assert.equal(wide.unscaled, -(2n ** 200n))
   assert.equal(wide.scale, 7)
   assert.match(wide.dataType.toString(), /^decimal256/)
   assert.equal(typeof wide.stableHash(), 'bigint')
+  assert.equal(wide.asJs().kind, 'd256')
+  assert.equal(wide.asJs().unscaled, wide.unscaled)
+  assert.equal(longDuration.kind, 'duration64')
+  assert.equal(longDuration.asJs().kind, 'duration64')
+  assert.equal(longDuration.asJs().count, longDuration.count)
 
   const mode = Scalar.fromEnum('io_mode', 'append')
   assert.equal(mode.kind, 'enum')
@@ -290,11 +302,11 @@ test('Scalar keeps widths, exact coefficients, hashes, and natural accessors', (
   assert.equal(clone.compare(record), 0)
   assert.equal(clone.stableHash(), record.stableHash())
   assert.ok(Scalar.fromJs(1).compare(Scalar.fromJs(2)) < 0)
-  assert.equal(Scalar.d128(150n, 2).compare(Scalar.d256(15n, 1)), 0)
+  assert.equal(Scalar.decimal(150n, 2).compare(Scalar.decimal(15n, 1)), 0)
 })
 
 test('Scalar traversal and persistent updates stay entirely native', () => {
-  const instant = Scalar.datetime64(1700000000123456789n, 'ns', 'Europe/Paris')
+  const instant = Scalar.datetime(1700000000123456789n, 'ns', 'Europe/Paris')
   const record = Scalar.fromJs({ z: 2, legs: [{ at: instant }] })
 
   assert.equal(record.length, 2)
@@ -338,10 +350,10 @@ test('Scalar traversal and persistent updates stay entirely native', () => {
   assert.equal(changed.has('legs'), true)
   assert.ok(removed.remove('missing').equals(removed))
 
-  const decimalKey = Scalar.d128(150n, 2)
+  const decimalKey = Scalar.decimal(150n, 2)
   const mapping = Scalar.fromJs(new Map([[decimalKey, instant]]))
   assert.equal(mapping.length, 1)
-  assert.equal(mapping.get(Scalar.d128(15n, 1)).count, instant.count)
+  assert.equal(mapping.get(Scalar.decimal(15n, 1)).count, instant.count)
   assert.equal([...mapping][0].kind, 'd128')
   const added = mapping.set('venue', 'XNAS')
   assert.equal(added.get('venue').asUtf8(), 'XNAS')
@@ -365,36 +377,38 @@ test('Scalar arithmetic infers JavaScript operands once and stays native', () =>
   assert.ok(Scalar.fromJs(-5).absolute().equals(Scalar.fromJs(5)))
 
   assert.ok(
-    Scalar.d128(105n, 2).add(Scalar.d128(2n, 1)).equals(Scalar.d128(125n, 2)),
+    Scalar.decimal(105n, 2)
+      .add(Scalar.decimal(2n, 1))
+      .equals(Scalar.decimal(125n, 2)),
   )
   assert.ok(
-    Scalar.d128(1n, 0)
-      .divide(Scalar.d128(2n, 0))
-      .equals(Scalar.d128(5n, 1)),
+    Scalar.decimal(1n)
+      .divide(Scalar.decimal(2n))
+      .equals(Scalar.decimal(5n, 1)),
   )
   assert.ok(
-    Scalar.d128(1n, 0)
-      .divide(Scalar.d128(128n, 0))
-      .equals(Scalar.d128(78125n, 7)),
+    Scalar.decimal(1n)
+      .divide(Scalar.decimal(128n))
+      .equals(Scalar.decimal(78125n, 7)),
   )
   assert.throws(
-    () => Scalar.d128(1n, 0).divide(Scalar.d128(3n, 0)),
+    () => Scalar.decimal(1n).divide(Scalar.decimal(3n)),
     (error) =>
       error instanceof RangeError &&
       error.code === 'ERR_YGGDRYL_INEXACT_ARITHMETIC',
   )
-  assert.equal(Scalar.f16(1.5).multiply(Scalar.f32(2)).kind, 'f32')
+  assert.equal(Scalar.float(1.5, 16).multiply(Scalar.float(2, 32)).kind, 'f32')
 
-  const instant = Scalar.datetime64(1000n, 'ms', 'UTC')
+  const instant = Scalar.datetime(1000n, 'ms', 'UTC')
   assert.ok(
     instant
-      .add(Scalar.duration64(2n, 's'))
-      .equals(Scalar.datetime64(3000n, 'ms', 'UTC')),
+      .add(Scalar.duration(2n, 's'))
+      .equals(Scalar.datetime(3000n, 'ms', 'UTC')),
   )
   assert.ok(
     instant
-      .subtract(Scalar.datetime64(500n, 'ms', 'UTC'))
-      .equals(Scalar.duration64(500n, 'ms')),
+      .subtract(Scalar.datetime(500n, 'ms', 'UTC'))
+      .equals(Scalar.duration(500n, 'ms')),
   )
 
   assert.throws(
@@ -482,6 +496,20 @@ test('Scalar Arrow scalar and array interop uses standard IPC', () => {
   const scalar = Scalar.fromArrowScalar(scalarVector)
   assert.equal(scalar.kind, 'i32')
   assert.equal(scalar.intoArrowScalar(), 42)
+
+  const coefficient = new Uint32Array(8)
+  coefficient[0] = 1
+  const decimal = Scalar.fromArrowScalar(
+    arrow.vectorFromArray([coefficient], new arrow.Decimal(2, 40, 256)),
+  )
+  const duration = Scalar.fromArrowScalar(
+    arrow.vectorFromArray([1n], new arrow.DurationMicrosecond()),
+  )
+  assert.equal(decimal.kind, 'd256')
+  assert.equal(decimal.asJs().kind, 'd256')
+  assert.equal(duration.kind, 'duration64')
+  assert.equal(duration.asJs().kind, 'duration64')
+
   assert.throws(
     () => Scalar.fromArrowScalar(vector),
     /one-item Arrow Vector/,
@@ -551,17 +579,17 @@ test('Scalar Arrow record and table interop uses the native schema engine', () =
 
 test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
   const date = new Date('2026-08-15T12:30:00.000Z')
-  assert.ok(Scalar.fromJs(date).equals(Scalar.datetime64(1786797000000n, 'ms', 'UTC')))
+  assert.ok(Scalar.fromJs(date).equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')))
   assert.ok(Scalar.fromJs(date).asJs() instanceof Date)
 
   // On the wire every temporal is its classic ISO string; the typed reading
   // comes back wherever a schema names the column's datatype.
   assert.equal(
-    json.loads(json.dumps(Scalar.datetime64(1786797000n, 's', 'NAIVE'))),
+    json.loads(json.dumps(Scalar.datetime(1786797000n, 's', 'NAIVE'))),
     '2026-08-15T12:30:00',
   )
   assert.equal(
-    json.loads(json.dumps(Scalar.datetime64(1786797000000n, 'ms', 'Europe/Paris'))),
+    json.loads(json.dumps(Scalar.datetime(1786797000000n, 'ms', 'Europe/Paris'))),
     '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
   )
 })
@@ -771,6 +799,8 @@ test('reserved transport keys and non-string map keys do not collide', () => {
     'yamlLoadsNative',
   ]
   assert.equal(publicBinding.Scalar._fromJsNative, undefined)
+  assert.equal(publicBinding.Scalar._fromDecimalPartsNative, undefined)
+  assert.equal(publicBinding.Scalar._fromTemporalPartsNative, undefined)
   assert.equal(publicBinding.Scalar.prototype._asJsNative, undefined)
   for (const name of nativeHelpers) assert.equal(publicBinding[name], undefined)
 

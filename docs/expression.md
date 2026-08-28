@@ -106,7 +106,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
 
     // The price is an exact decimal, because the column is exact and so is
     // the comparison: a JavaScript number here would be a different one.
-    const price = Scalar.d128(15000n, 2)
+    const price = Scalar.decimal(15000n, 2)
     assert.equal(bound.matches(Scalar.fromJs(['EUR', price, 5])), true)
     assert.equal(bound.matches(Scalar.fromJs(['USD', price, 5])), false)
     ```

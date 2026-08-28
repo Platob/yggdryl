@@ -55,8 +55,9 @@ pub use options::{DEFAULT_RECORD_BATCH_SIZE, IORecordOptions, RecordOptions};
 pub(crate) use pairs::sorted_pairs;
 #[cfg(feature = "iceberg")]
 pub(crate) use pairs::sorted_values;
-pub use scalar::{Children, Float16, Float32, Float64, Scalar};
+pub use scalar::{Children, Float, Float16, Float32, Float64, Integer, Scalar};
 pub use scheme::Scheme;
+pub use temporal::{TemporalFamily, TemporalRef};
 pub use text::Text;
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;

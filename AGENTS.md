@@ -148,6 +148,9 @@ pin an unsettled design by implementing a binding first.
 - Shared nesting uses immutable references; empty collections avoid backing
   allocation. Caller-controlled input never reaches `unsafe`, `unwrap`, or a
   panic.
+- Rust retains exact-width variants and constructors. Shared logic uses
+  `as_integer`, `as_float`, `as_decimal`, and `as_temporal`; family constructors
+  select physical width once.
 
 ## Public vocabulary
 
@@ -420,6 +423,9 @@ Iceberg contract:
 Both extensions:
 
 - Reach every stable core domain. A missing binding is documented as Rust-only.
+- Expose only `Scalar.float`, `decimal`, `date`, `time`, `datetime`, and
+  `duration` family factories; exact widths remain private Arrow/transport
+  identity.
 - Infer/cast once at the boundary, then redirect to the most specific native
   method. No duplicated parser, schema, suffix, codec, scalar, or record logic.
 - Explicit scalar conversion pairs are Python `as_py`/`from_py` and JavaScript

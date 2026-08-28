@@ -1885,30 +1885,18 @@ export type JsRecordOptions = RecordOptions
 export declare class Scalar {
   /** Build an identity-preserving member of a core enum. */
   static fromEnum(kind: string, value: string): Scalar
-  /** Build a 16-bit float, rounding once to IEEE binary16. */
-  static f16(value: number): Scalar
-  /** Build a real 32-bit float. */
-  static f32(value: number): Scalar
-  /** Build a 64-bit float. */
-  static f64(value: number): Scalar
-  /** Build a 128-bit exact decimal. */
-  static d128(unscaled: bigint, scale: number): Scalar
-  /** Build a 256-bit exact decimal. */
-  static d256(unscaled: bigint, scale: number): Scalar
-  /** Build a Date32 day count with its explicit unit and non-null timezone. */
-  static date32(count: number, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a Date64 millisecond count with its explicit unit and non-null timezone. */
-  static date64(count: bigint, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a 32-bit time-of-day count with a non-null timezone. */
-  static time32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a 64-bit time-of-day count with a non-null timezone. */
-  static time64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a 64-bit epoch or wall-clock datetime with a non-null timezone. */
-  static datetime64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a 32-bit elapsed count whose explicit timezone must be NAIVE. */
-  static duration32(count: number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build a 64-bit elapsed count whose explicit timezone must be NAIVE. */
-  static duration64(count: bigint, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build one floating scalar at 16, 32, or 64 bits. */
+  static float(value: number, width?: number | undefined | null): Scalar
+  /** Build the narrowest exact decimal that holds the coefficient. */
+  static decimal(coefficient: bigint, scale?: number | undefined | null): Scalar
+  /** Build the exact date width selected by its unit. */
+  static date(count: bigint | number, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build the exact time-of-day width selected by its unit. */
+  static time(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build an epoch or wall-clock datetime with a non-null timezone. */
+  static datetime(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /** Build the narrowest duration width that holds the count. */
+  static duration(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
   /** The canonical width-specific vocabulary name. */
   get kind(): string
   /** The enum vocabulary name, when this scalar is an enum. */

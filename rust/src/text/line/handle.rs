@@ -2,7 +2,7 @@
 //!
 //! A wrapping handle in the same shape as [`Coded`](crate::io::Coded),
 //! [`Gzip`](crate::gzip::Gzip), [`Ipc`](crate::ipc::Ipc), and
-//! [`Parquet`](crate::parquet::Parquet): it owns its inner handle, mirrors
+//! `Parquet`: it owns its inner handle, mirrors
 //! every byte method through
 //! [`delegate_iobase!`](crate::delegate_iobase), and exposes the **raw encoded
 //! bytes unchanged** - so a `.log.gz` behind a `Text` can still be copied or

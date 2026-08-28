@@ -64,14 +64,25 @@ def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
     assert Scalar.from_py(MixedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
 
 
-def test_precise_factories_keep_width_scale_unit_and_zone() -> None:
-    assert Scalar.f16(1.5).kind == "f16"
-    assert Scalar.f32(1.5).kind == "f32"
-    assert Scalar.f64(1.5).kind == "f64"
-    assert Scalar.d128(150, 2).as_py() == Decimal("1.50")
+def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
+    field = Field("items", "list<int32>", nullable=False)
+    data_type = Scalar.from_py(field.data_type)
+    field_value = Scalar.from_py(field)
+
+    assert data_type.kind == "mapping"
+    assert data_type.as_py()["type"] == "list"  # type: ignore[index]
+    assert field_value.kind == "mapping"
+    assert field_value.as_py()["name"] == "items"  # type: ignore[index]
+
+
+def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
+    assert Scalar.float(1.5, 16).kind == "f16"
+    assert Scalar.float(1.5, 32).kind == "f32"
+    assert Scalar.float(1.5).kind == "f64"
+    assert Scalar.decimal(150, 2).as_py() == Decimal("1.50")
 
     wide = "12345678901234567890123456789012345678901234567890"
-    d256 = Scalar.d256(wide, 4)
+    d256 = Scalar.decimal(wide, 4)
     assert d256.kind == "d256"
     assert d256.unscaled == int(wide)
     assert d256.scale == 4
@@ -81,23 +92,44 @@ def test_precise_factories_keep_width_scale_unit_and_zone() -> None:
     assert d256.as_py() == Decimal(f"{wide}E-4")
     assert Scalar.from_py(Decimal(wide)).kind == "d256"
 
-    assert Scalar.date32(1).kind == "date32"
-    assert Scalar.date64(86_400_000).kind == "date64"
-    assert Scalar.time32(1, "s").kind == "time32"
-    assert Scalar.time64(1, "us").as_py() == dt.time(microsecond=1)
+    assert Scalar.date(1).kind == "date32"
+    assert Scalar.date(86_400_000, "ms").kind == "date64"
+    assert Scalar.time(1, "s").kind == "time32"
+    assert Scalar.time(1, "us").as_py() == dt.time(microsecond=1)
     with pytest.raises(ValueError, match="timezone"):
-        Scalar.time64(1, "us", "UTC")
-    instant = Scalar.datetime64(0, "us", "UTC")
+        Scalar.time(1, "us", "UTC")
+    instant = Scalar.datetime(0, "us", "UTC")
     assert instant.count == 0
     assert instant.unit == "us"
     assert instant.zone == "UTC"
     assert instant.unscaled is None
     assert instant.scale is None
     assert instant.as_py() == dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
-    assert Scalar.duration32(1, "ms").kind == "duration32"
-    assert Scalar.duration64(1, "us").as_py() == dt.timedelta(microseconds=1)
+    assert Scalar.duration(1, "ms").kind == "duration32"
+    assert Scalar.duration(1, "us").as_py() == dt.timedelta(microseconds=1)
+    assert Scalar.duration(2**31, "us").kind == "duration64"
     with pytest.raises(ValueError, match="NAIVE"):
-        Scalar.duration64(1, "us", "UTC")
+        Scalar.duration(1, "us", "UTC")
+    with pytest.raises(ValueError, match="16, 32, or 64"):
+        Scalar.float(1.5, 8)
+
+
+def test_exact_width_factories_are_private_reconstruction_details() -> None:
+    for name in (
+        "f16",
+        "f32",
+        "f64",
+        "d128",
+        "d256",
+        "date32",
+        "date64",
+        "time32",
+        "time64",
+        "datetime64",
+        "duration32",
+        "duration64",
+    ):
+        assert not hasattr(Scalar, name)
 
 
 def test_enum_scalar_preserves_identity_and_compact_ordinal() -> None:
@@ -116,8 +148,8 @@ def test_enum_scalar_preserves_identity_and_compact_ordinal() -> None:
 
 
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
-    assert Scalar.f32(1.0) == Scalar.f64(1.0)
-    assert hash(Scalar.f32(1.0)) == hash(Scalar.f64(1.0))
+    assert Scalar.float(1.0, 32) == Scalar.float(1.0)
+    assert hash(Scalar.float(1.0, 32)) == hash(Scalar.float(1.0))
     assert Scalar.from_py("text").as_utf8() == "text"
     assert Scalar.from_py("text").as_bytes() is None
     assert Scalar.from_py(b"bytes").as_bytes() == b"bytes"
@@ -169,10 +201,10 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
     assert (-value).as_py() == -8
     assert abs(Scalar.from_py(-8)).as_py() == 8
 
-    assert (Scalar.f16(1.5) + Scalar.f32(0.5)).kind == "f32"
-    assert (Scalar.d128(105, 2) + Decimal("0.20")).as_py() == Decimal("1.25")
-    assert Scalar.d128(1).divide(Scalar.d128(2)) == Scalar.d128(5, 1)
-    assert Scalar.d128(1).divide(Scalar.d128(128)) == Scalar.d128(78_125, 7)
+    assert (Scalar.float(1.5, 16) + Scalar.float(0.5, 32)).kind == "f32"
+    assert (Scalar.decimal(105, 2) + Decimal("0.20")).as_py() == Decimal("1.25")
+    assert Scalar.decimal(1).divide(Scalar.decimal(2)) == Scalar.decimal(5, 1)
+    assert Scalar.decimal(1).divide(Scalar.decimal(128)) == Scalar.decimal(78_125, 7)
 
 
 def test_checked_arithmetic_preserves_python_error_categories() -> None:
@@ -183,13 +215,13 @@ def test_checked_arithmetic_preserves_python_error_categories() -> None:
     with pytest.raises(ZeroDivisionError, match="by zero"):
         _ = Scalar.from_py(1) / 0
     with pytest.raises(ArithmeticError, match="no exact"):
-        _ = Scalar.d128(1) / Scalar.d128(3)
+        _ = Scalar.decimal(1) / Scalar.decimal(3)
 
 
 def test_native_scalar_traversal_keeps_exact_children() -> None:
-    instant = Scalar.datetime64(1, "ns", "UTC")
+    instant = Scalar.datetime(1, "ns", "UTC")
     tree = Scalar.from_py(
-        {"instant": instant, "legs": [{"price": Scalar.f32(12.5)}, None]}
+        {"instant": instant, "legs": [{"price": Scalar.float(12.5, 32)}, None]}
     )
 
     assert len(tree) == 2
@@ -217,7 +249,7 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
 
 def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
     mapping = Scalar.from_py({"symbol": "AAPL", "venue": None})
-    updated = mapping.set("venue", "XNAS").set("price", Scalar.f32(12.5))
+    updated = mapping.set("venue", "XNAS").set("price", Scalar.float(12.5, 32))
     removed = updated.remove("symbol")
 
     assert mapping["venue"].kind == "null"
@@ -250,12 +282,12 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
 
 
 def test_repr_remains_total_when_python_temporal_projection_would_be_lossy() -> None:
-    nanosecond = Scalar.datetime64(1, "ns", "UTC")
+    nanosecond = Scalar.datetime(1, "ns", "UTC")
     with pytest.raises(ValueError, match="microsecond"):
         nanosecond.as_py()
     assert eval(repr(nanosecond), {"Scalar": Scalar}) == nanosecond
 
-    outside_python_date = Scalar.date64(2**63 - 1)
+    outside_python_date = Scalar.date(2**63 - 1, "ms")
     with pytest.raises((OverflowError, ValueError)):
         outside_python_date.as_py()
     assert "date64" in repr(outside_python_date)

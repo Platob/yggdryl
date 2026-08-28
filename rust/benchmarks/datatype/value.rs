@@ -1,7 +1,9 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{EnumScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, TypedScalar};
+use yggdryl::{
+    EnumScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, Timezone, TypedScalar,
+};
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let record = Scalar::from_record([
@@ -39,6 +41,9 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
     let enum_member = EnumScalar::IOMode(IOMode::Append);
+    let family_integer = Scalar::U64(42);
+    let family_decimal = Scalar::d256(integer256, 2);
+    let family_float = Scalar::from_float(1.25, 32).unwrap();
 
     let mut group = criterion.benchmark_group("value");
     group.bench_function("stable_hash_record", |bencher| {
@@ -58,6 +63,45 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("stable_hash_float64", |bencher| {
         bencher.iter(|| black_box(&float64).stable_hash());
+    });
+    group.bench_function("from_float32", |bencher| {
+        bencher.iter(|| Scalar::from_float(black_box(1.25), black_box(32)).unwrap());
+    });
+    group.bench_function("family_constructors", |bencher| {
+        bencher.iter(|| {
+            let date = Scalar::from_date(black_box(20_000), TimeUnit::Day, Timezone::NAIVE);
+            let time = Scalar::from_time(black_box(1), TimeUnit::Nanosecond, Timezone::NAIVE);
+            let datetime =
+                Scalar::from_datetime(black_box(1), TimeUnit::Microsecond, Timezone::UTC);
+            let duration = Scalar::from_duration(black_box(1), TimeUnit::Second, Timezone::NAIVE);
+            let decimal = Scalar::from_decimal(black_box(integer256), black_box(2));
+            black_box((date, time, datetime, duration, decimal))
+        });
+    });
+    group.bench_function("as_float", |bencher| {
+        bencher.iter(|| black_box(&family_float).as_float());
+    });
+    group.bench_function("as_integer", |bencher| {
+        bencher.iter(|| black_box(&family_integer).as_integer());
+    });
+    group.bench_function("as_decimal", |bencher| {
+        bencher.iter(|| black_box(&family_decimal).as_decimal());
+    });
+    group.bench_function("as_temporal", |bencher| {
+        bencher.iter(|| black_box(&instant).as_temporal());
+    });
+    group.bench_function("temporal_family_views", |bencher| {
+        bencher.iter(|| {
+            let value = black_box(&instant);
+            let temporal = value.as_datetime().unwrap();
+            black_box((
+                temporal.family(),
+                temporal.count(),
+                temporal.unit(),
+                temporal.timezone(),
+                temporal.bit_width(),
+            ))
+        });
     });
     group.bench_function("enum_from_parts", |bencher| {
         bencher.iter(|| EnumScalar::from_parts(black_box("io_mode"), black_box("append")).unwrap());

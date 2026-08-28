@@ -26,12 +26,12 @@ const exotic = {
 // The temporal and decimal boundary is its own cost: each value crosses as
 // parts rather than as one number, and a Date is rebuilt on the way back.
 const temporal = {
-  at: Scalar.datetime64(1700000000000000n, 'us', 'UTC'),
+  at: Scalar.datetime(1700000000000000n, 'us', 'UTC'),
   date: new Date('2026-08-15T12:30:00.000Z'),
-  on: Scalar.date32(19723),
-  price: Scalar.d256(-(2n ** 160n), 2),
-  sinceMidnight: Scalar.time64(45296000000n, 'us'),
-  took: Scalar.duration32(90, 's'),
+  on: Scalar.date(19723),
+  price: Scalar.decimal(-(2n ** 160n), 2),
+  sinceMidnight: Scalar.time(45296000000n, 'us'),
+  took: Scalar.duration(90, 's'),
 }
 let deep = { leaf: true }
 for (let depth = 0; depth < 24; depth += 1) deep = { nested: deep }
@@ -175,6 +175,14 @@ async function main() {
     measure('pivot/enum_kind', 1, 10_000, () => enumScalar.enumKind)
     measure('pivot/enum_value', 1, 10_000, () => enumScalar.enumValue)
     measure('pivot/enum_ordinal', 1, 10_000, () => enumScalar.enumOrdinal)
+    measure('pivot/float_family', 8, 10_000, () => Scalar.float(1.5, 32))
+    measure('pivot/decimal_family', 16, 10_000, () => Scalar.decimal(123456n, 2))
+    measure('pivot/date_family', 8, 10_000, () => Scalar.date(19723))
+    measure('pivot/time_family', 8, 10_000, () => Scalar.time(45296, 's'))
+    measure('pivot/datetime_family', 8, 10_000, () =>
+      Scalar.datetime(1700000000000n, 'ms', 'UTC'),
+    )
+    measure('pivot/duration_family', 8, 10_000, () => Scalar.duration(90, 's'))
     const traversed = Scalar.fromJs({ trades: value.trades })
     measure('pivot/native_path', 1, 10_000, () => traversed.path('trades.500.price'))
     measure('pivot/native_get', 1, 10_000, () => traversed.get('trades').at(500))
@@ -185,8 +193,8 @@ async function main() {
     measure('pivot/infer_scalar_field', 1, 1_000, () => scalarValue.intoField())
     measure('pivot/infer_array_field', 2, 1_000, () => arrayValue.intoArrayField())
     measure('pivot/infer_struct_field', 2, 1_000, () => rowValue.intoStructField())
-    const arithmeticLeft = Scalar.d128(123456n, 2)
-    const arithmeticRight = Scalar.d128(25n, 2)
+    const arithmeticLeft = Scalar.decimal(123456n, 2)
+    const arithmeticRight = Scalar.decimal(25n, 2)
     measure('pivot/add_native', 1, 10_000, () => arithmeticLeft.add(arithmeticRight))
     measure('pivot/add_inferred_js', 1, 10_000, () => scalarValue.add(1))
     measure('pivot/subtract_native', 1, 10_000, () =>

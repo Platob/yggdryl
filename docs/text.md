@@ -418,7 +418,7 @@ operators.
     from yggdryl import Scalar
 
     assert (Scalar.from_py(40) + 2).as_py() == 42
-    assert Scalar.d128(1, 0).divide(Scalar.d128(2, 0)) == Scalar.d128(5, 1)
+    assert Scalar.decimal(1, 0).divide(Scalar.decimal(2, 0)) == Scalar.decimal(5, 1)
     ```
 
 === "JavaScript"
@@ -428,7 +428,7 @@ operators.
     const { Scalar } = require('yggdryl')
 
     assert.equal(Scalar.fromJs(40).add(2).asJs(), 42)
-    assert.ok(Scalar.d128(1n, 0).divide(Scalar.d128(2n, 0)).equals(Scalar.d128(5n, 1)))
+    assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
     ```
 
 Every temporal carries a `TimeUnit` and `Timezone`. `Timezone::NAIVE` is the

@@ -528,6 +528,215 @@ impl<'de> Deserialize<'de> for Float32 {
     }
 }
 
+/// A copyable view over any exact floating-point width.
+#[derive(Clone, Copy, Debug)]
+pub enum Float {
+    /// IEEE binary16.
+    F16(Float16),
+    /// IEEE binary32.
+    F32(Float32),
+    /// IEEE binary64.
+    F64(Float64),
+}
+
+impl Float {
+    /// Return the exact physical bit width.
+    pub const fn bit_width(self) -> u8 {
+        match self {
+            Self::F16(_) => 16,
+            Self::F32(_) => 32,
+            Self::F64(_) => 64,
+        }
+    }
+
+    /// Return the value widened exactly to binary64.
+    pub fn as_f64(self) -> f64 {
+        match self {
+            Self::F16(value) => value.as_f64(),
+            Self::F32(value) => value.as_f64(),
+            Self::F64(value) => value.as_f64(),
+        }
+    }
+
+    /// Return the value at binary32 when no binary64 narrowing is needed.
+    pub fn as_f32(self) -> Option<f32> {
+        match self {
+            Self::F16(value) => Some(value.as_f32()),
+            Self::F32(value) => Some(value.as_f32()),
+            Self::F64(_) => None,
+        }
+    }
+
+    /// Return the value only when its exact width is binary16.
+    pub const fn as_f16(self) -> Option<half::f16> {
+        match self {
+            Self::F16(value) => Some(value.as_f16()),
+            Self::F32(_) | Self::F64(_) => None,
+        }
+    }
+
+    /// Rebuild the exact scalar variant this view contains.
+    pub const fn into_scalar(self) -> Scalar {
+        match self {
+            Self::F16(value) => Scalar::F16(value),
+            Self::F32(value) => Scalar::F32(value),
+            Self::F64(value) => Scalar::F64(value),
+        }
+    }
+
+    /// Return the deterministic hash shared by equal widths and values.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
+    fn common(self) -> Float64 {
+        Float64::from_f64(self.as_f64())
+    }
+}
+
+impl PartialEq for Float {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Float {}
+
+impl PartialOrd for Float {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Float {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.common().cmp(&other.common())
+    }
+}
+
+impl Hash for Float {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.common().hash(state);
+    }
+}
+
+impl From<half::f16> for Float {
+    fn from(value: half::f16) -> Self {
+        Self::F16(Float16::from_f16(value))
+    }
+}
+
+impl From<f32> for Float {
+    fn from(value: f32) -> Self {
+        Self::F32(Float32::from_f32(value))
+    }
+}
+
+impl From<f64> for Float {
+    fn from(value: f64) -> Self {
+        Self::F64(Float64::from_f64(value))
+    }
+}
+
+/// A copyable logical view over any integer width.
+///
+/// Positive signed and unsigned values share one representation. Converting
+/// back chooses a signed scalar whenever the magnitude fits `i128`; the exact
+/// source width remains available on the original [`Scalar`].
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct Integer {
+    negative: bool,
+    magnitude: u128,
+}
+
+impl Integer {
+    const fn from_signed(value: i128) -> Self {
+        Self {
+            negative: value < 0,
+            magnitude: value.unsigned_abs(),
+        }
+    }
+
+    const fn from_unsigned(value: u128) -> Self {
+        Self {
+            negative: false,
+            magnitude: value,
+        }
+    }
+
+    /// Return whether this value is negative.
+    pub const fn is_negative(self) -> bool {
+        self.negative
+    }
+
+    /// Return the unsigned magnitude.
+    pub const fn magnitude(self) -> u128 {
+        self.magnitude
+    }
+
+    /// Return the signed value when it fits `i128`.
+    pub const fn as_i128(self) -> Option<i128> {
+        if self.negative {
+            if self.magnitude == (i128::MAX as u128) + 1 {
+                Some(i128::MIN)
+            } else {
+                Some(-(self.magnitude as i128))
+            }
+        } else if self.magnitude <= i128::MAX as u128 {
+            Some(self.magnitude as i128)
+        } else {
+            None
+        }
+    }
+
+    /// Return the unsigned value when it is non-negative.
+    pub const fn as_u128(self) -> Option<u128> {
+        if self.negative {
+            None
+        } else {
+            Some(self.magnitude)
+        }
+    }
+
+    /// Build the canonical 64- or 128-bit scalar holding this integer.
+    pub fn into_scalar(self) -> Scalar {
+        if self.negative {
+            let value = if self.magnitude == (i128::MAX as u128) + 1 {
+                i128::MIN
+            } else {
+                -(self.magnitude as i128)
+            };
+            Scalar::from(value)
+        } else if self.magnitude <= i128::MAX as u128 {
+            Scalar::from(self.magnitude as i128)
+        } else {
+            Scalar::from(self.magnitude)
+        }
+    }
+
+    /// Return the deterministic logical integer hash.
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+}
+
+impl Ord for Integer {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self.negative, other.negative) {
+            (true, true) => other.magnitude.cmp(&self.magnitude),
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => self.magnitude.cmp(&other.magnitude),
+        }
+    }
+}
+
+impl PartialOrd for Integer {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]
 pub enum Scalar {
@@ -949,7 +1158,7 @@ impl PartialOrd for Scalar {
 
 impl Ord for Scalar {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (integer(self), integer(other)) {
+        match (self.as_integer(), other.as_integer()) {
             (Some(left), Some(right)) => return compare_integer(left, right),
             (Some(_), None) | (None, Some(_)) => {
                 return value_rank(self).cmp(&value_rank(other));
@@ -959,7 +1168,7 @@ impl Ord for Scalar {
         // Floats are one family across widths, exactly as the integers are:
         // an `f32` widens to `f64` without loss, so `F32(1.5)` and `F64(1.5)`
         // are one value, not two kinds that happen to print alike.
-        if let (Some(left), Some(right)) = (float(self), float(other)) {
+        if let (Some(left), Some(right)) = (self.as_float(), other.as_float()) {
             return left.cmp(&right);
         }
         if let (Some(left), Some(right)) = (decimal_value(self), decimal_value(other)) {
@@ -1027,13 +1236,13 @@ impl Ord for Scalar {
 impl Hash for Scalar {
     fn hash<H: Hasher>(&self, state: &mut H) {
         value_rank(self).hash(state);
-        if let Some(integer) = integer(self) {
+        if let Some(integer) = self.as_integer() {
             integer.hash(state);
             return;
         }
         // All float widths hash their common 64-bit reading, which is what
         // keeps `Hash` agreeing with `Ord` across the family.
-        if let Some(float) = float(self) {
+        if let Some(float) = self.as_float() {
             float.hash(state);
             return;
         }
@@ -1080,83 +1289,22 @@ impl Hash for Scalar {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum Integer {
-    Negative(u128),
-    NonNegative(u128),
-}
-
-fn integer(value: &Scalar) -> Option<Integer> {
-    fn signed(value: i128) -> Integer {
-        if value < 0 {
-            Integer::Negative(value.unsigned_abs())
-        } else {
-            Integer::NonNegative(value as u128)
-        }
-    }
-    match value {
-        Scalar::I8(value) => Some(signed(i128::from(*value))),
-        Scalar::I16(value) => Some(signed(i128::from(*value))),
-        Scalar::I32(value) => Some(signed(i128::from(*value))),
-        Scalar::I64(value) => Some(signed(i128::from(*value))),
-        Scalar::I128(value) => Some(signed(*value)),
-        Scalar::U8(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Scalar::U16(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Scalar::U32(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Scalar::U64(value) => Some(Integer::NonNegative(u128::from(*value))),
-        Scalar::U128(value) => Some(Integer::NonNegative(*value)),
-        _ => None,
-    }
-}
-
-/// The common 64-bit reading every float width reduces to for ordering.
-///
-/// Widening an `f32` to `f64` is exact, so one total order covers the family;
-/// the width stays on the value itself and on the wire.
-fn float(value: &Scalar) -> Option<Float64> {
-    match value {
-        Scalar::F16(value) => Some(Float64::from_f64(value.as_f64())),
-        Scalar::F32(value) => Some(Float64::from_f64(value.as_f64())),
-        Scalar::F64(value) => Some(*value),
-        _ => None,
-    }
-}
-
 fn decimal_value(value: &Scalar) -> Option<(I256, i8)> {
-    match value {
-        Scalar::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
-        Scalar::D256(unscaled, scale) => Some((*unscaled, *scale)),
-        _ => None,
-    }
+    value.as_decimal()
 }
 
 /// The family, normalized count, and zone of one temporal.
-fn temporal_value(value: &Scalar) -> Option<(u8, (u8, i128), &Timezone)> {
-    match value {
-        Scalar::Date32(count, unit, zone) => {
-            Some((0, temporal_key(i64::from(*count), *unit), zone))
-        }
-        Scalar::Date64(count, unit, zone) => Some((0, temporal_key(*count, *unit), zone)),
-        Scalar::Time32(count, unit, zone) => {
-            Some((1, temporal_key(i64::from(*count), *unit), zone))
-        }
-        Scalar::Time64(count, unit, zone) => Some((1, temporal_key(*count, *unit), zone)),
-        Scalar::DateTime64(count, unit, zone) => Some((2, temporal_key(*count, *unit), zone)),
-        Scalar::Duration32(count, unit, zone) => {
-            Some((3, temporal_key(i64::from(*count), *unit), zone))
-        }
-        Scalar::Duration64(count, unit, zone) => Some((3, temporal_key(*count, *unit), zone)),
-        _ => None,
-    }
+fn temporal_value(value: &Scalar) -> Option<(super::TemporalFamily, (u8, i128), &Timezone)> {
+    let temporal = value.as_temporal()?;
+    Some((
+        temporal.family(),
+        temporal_key(temporal.count(), temporal.unit()),
+        temporal.timezone(),
+    ))
 }
 
 fn compare_integer(left: Integer, right: Integer) -> Ordering {
-    match (left, right) {
-        (Integer::Negative(left), Integer::Negative(right)) => right.cmp(&left),
-        (Integer::Negative(_), Integer::NonNegative(_)) => Ordering::Less,
-        (Integer::NonNegative(_), Integer::Negative(_)) => Ordering::Greater,
-        (Integer::NonNegative(left), Integer::NonNegative(right)) => left.cmp(&right),
-    }
+    left.cmp(&right)
 }
 
 /// The total-ordering key that separates one kind of value from another.
@@ -1198,6 +1346,19 @@ const fn value_rank(value: &Scalar) -> u8 {
 }
 
 impl Scalar {
+    /// Build the requested width, applying IEEE rounding when narrowing.
+    pub fn from_float(value: f64, bit_width: u8) -> Result<Self> {
+        match bit_width {
+            16 => Ok(Self::F16(Float16::from_f16(half::f16::from_f64(value)))),
+            32 => Ok(Self::F32(Float32::from_f32(value as f32))),
+            64 => Ok(Self::F64(Float64::from_f64(value))),
+            _ => Err(Error::InvalidRecord {
+                path: "$".into(),
+                reason: format!("float bit width must be 16, 32, or 64, got {bit_width}").into(),
+            }),
+        }
+    }
+
     /// The canonical vocabulary name for this value's kind, such as `mapping`.
     ///
     /// This is the spelling every error message uses for an observed value, so
@@ -1324,36 +1485,45 @@ impl Scalar {
         }
     }
 
+    /// Return the logical sign and magnitude of any exact integer width.
+    pub const fn as_integer(&self) -> Option<Integer> {
+        match self {
+            Self::I8(value) => Some(Integer::from_signed(*value as i128)),
+            Self::I16(value) => Some(Integer::from_signed(*value as i128)),
+            Self::I32(value) => Some(Integer::from_signed(*value as i128)),
+            Self::I64(value) => Some(Integer::from_signed(*value as i128)),
+            Self::I128(value) => Some(Integer::from_signed(*value)),
+            Self::U8(value) => Some(Integer::from_unsigned(*value as u128)),
+            Self::U16(value) => Some(Integer::from_unsigned(*value as u128)),
+            Self::U32(value) => Some(Integer::from_unsigned(*value as u128)),
+            Self::U64(value) => Some(Integer::from_unsigned(*value as u128)),
+            Self::U128(value) => Some(Integer::from_unsigned(*value)),
+            _ => None,
+        }
+    }
+
     /// Return a signed integer when it fits `i128`.
     pub const fn as_i128(&self) -> Option<i128> {
-        match self {
-            Self::I8(value) => Some(*value as i128),
-            Self::I16(value) => Some(*value as i128),
-            Self::I32(value) => Some(*value as i128),
-            Self::I64(value) => Some(*value as i128),
-            Self::I128(value) => Some(*value),
-            Self::U8(value) => Some(*value as i128),
-            Self::U16(value) => Some(*value as i128),
-            Self::U32(value) => Some(*value as i128),
-            Self::U64(value) => Some(*value as i128),
-            Self::U128(value) if *value <= i128::MAX as u128 => Some(*value as i128),
-            _ => None,
+        match self.as_integer() {
+            Some(value) => value.as_i128(),
+            None => None,
         }
     }
 
     /// Return an unsigned integer when it fits `u128`.
     pub const fn as_u128(&self) -> Option<u128> {
+        match self.as_integer() {
+            Some(value) => value.as_u128(),
+            None => None,
+        }
+    }
+
+    /// Return the exact floating-point width and value.
+    pub const fn as_float(&self) -> Option<Float> {
         match self {
-            Self::I8(value) if *value >= 0 => Some(*value as u128),
-            Self::I16(value) if *value >= 0 => Some(*value as u128),
-            Self::I32(value) if *value >= 0 => Some(*value as u128),
-            Self::I64(value) if *value >= 0 => Some(*value as u128),
-            Self::I128(value) if *value >= 0 => Some(*value as u128),
-            Self::U8(value) => Some(*value as u128),
-            Self::U16(value) => Some(*value as u128),
-            Self::U32(value) => Some(*value as u128),
-            Self::U64(value) => Some(*value as u128),
-            Self::U128(value) => Some(*value),
+            Self::F16(value) => Some(Float::F16(*value)),
+            Self::F32(value) => Some(Float::F32(*value)),
+            Self::F64(value) => Some(Float::F64(*value)),
             _ => None,
         }
     }
@@ -1363,12 +1533,7 @@ impl Scalar {
     /// The 32-bit width widens exactly, so no float answers differently here
     /// than it would at its own width.
     pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            Self::F16(value) => Some(value.as_f64()),
-            Self::F32(value) => Some(value.as_f64()),
-            Self::F64(value) => Some(value.as_f64()),
-            _ => None,
-        }
+        self.as_float().map(Float::as_f64)
     }
 
     /// Return the 32-bit float when this is one.
@@ -1377,18 +1542,14 @@ impl Scalar {
     /// exact and narrowing is not; a caller who wants the rounding asks for
     /// it with `as f32` where the loss is visible.
     pub fn as_f32(&self) -> Option<f32> {
-        match self {
-            Self::F16(value) => Some(value.as_f32()),
-            Self::F32(value) => Some(value.as_f32()),
-            _ => None,
-        }
+        self.as_float().and_then(Float::as_f32)
     }
 
     /// Return the 16-bit float when this is one.
     pub const fn as_f16(&self) -> Option<half::f16> {
-        match self {
-            Self::F16(value) => Some(value.as_f16()),
-            _ => None,
+        match self.as_float() {
+            Some(value) => value.as_f16(),
+            None => None,
         }
     }
 
@@ -1875,6 +2036,18 @@ impl From<f64> for Scalar {
     }
 }
 
+impl From<Float> for Scalar {
+    fn from(value: Float) -> Self {
+        value.into_scalar()
+    }
+}
+
+impl From<Integer> for Scalar {
+    fn from(value: Integer) -> Self {
+        value.into_scalar()
+    }
+}
+
 impl From<&str> for Scalar {
     fn from(value: &str) -> Self {
         Self::String(SmolStr::new(value))
@@ -2047,6 +2220,66 @@ mod tests {
             Float64::from_f64(0.0).stable_hash(),
             Float64::from_f64(-0.0).stable_hash()
         );
+    }
+
+    #[test]
+    fn generic_float_selector_keeps_width_and_common_value_semantics() {
+        let f16 = Scalar::from_float(1.5, 16).unwrap();
+        let f32 = Scalar::from_float(1.5, 32).unwrap();
+        let f64 = Scalar::from_float(1.5, 64).unwrap();
+
+        assert_eq!(f16.as_float().unwrap().bit_width(), 16);
+        assert_eq!(f32.as_float().unwrap().bit_width(), 32);
+        assert_eq!(f64.as_float().unwrap().bit_width(), 64);
+        assert_eq!(f16.as_float().unwrap().into_scalar(), f16);
+        assert_eq!(f32, f64);
+        assert_eq!(
+            f32.as_float().unwrap().stable_hash(),
+            f64.as_float().unwrap().stable_hash()
+        );
+        for invalid in [0, 15, 17, 31, 33, 63, 65, u8::MAX] {
+            assert!(Scalar::from_float(1.5, invalid).is_err());
+        }
+        for width in [16, 32, 64] {
+            assert!(
+                Scalar::from_float(f64::NAN, width)
+                    .unwrap()
+                    .as_f64()
+                    .unwrap()
+                    .is_nan()
+            );
+            assert!(
+                Scalar::from_float(-0.0, width)
+                    .unwrap()
+                    .as_f64()
+                    .unwrap()
+                    .is_sign_negative()
+            );
+        }
+        assert!(Scalar::from(1).as_float().is_none());
+    }
+
+    #[test]
+    fn integer_family_view_is_logical_and_canonical() {
+        let signed = Scalar::I8(7).as_integer().unwrap();
+        let unsigned = Scalar::U64(7).as_integer().unwrap();
+        let minimum = Scalar::I128(i128::MIN).as_integer().unwrap();
+        let maximum = Scalar::U128(u128::MAX).as_integer().unwrap();
+        let first_unsigned_only = Scalar::U128(i128::MAX as u128 + 1).as_integer().unwrap();
+
+        assert_eq!(signed, unsigned);
+        assert_eq!(signed.as_i128(), Some(7));
+        assert_eq!(signed.as_u128(), Some(7));
+        assert_eq!(signed.into_scalar(), Scalar::I64(7));
+        assert_eq!(minimum.into_scalar(), Scalar::I128(i128::MIN));
+        assert_eq!(maximum.as_i128(), None);
+        assert_eq!(maximum.into_scalar(), Scalar::U128(u128::MAX));
+        assert_eq!(first_unsigned_only.as_i128(), None);
+        assert_eq!(
+            first_unsigned_only.into_scalar(),
+            Scalar::U128(i128::MAX as u128 + 1)
+        );
+        assert!(Scalar::from(1.5).as_integer().is_none());
     }
 
     #[test]

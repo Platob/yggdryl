@@ -172,7 +172,7 @@ def test_a_subclass_lowers_as_the_type_it_subclasses() -> None:
     assert restored == ["YWJj", [1.5, -2.25], [1, 2], {"a": 1}, [7]]
 
 
-def test_native_wrappers_lower_to_the_text_their_own_parser_reads() -> None:
+def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> None:
     values = [
         DataType("list<int64>"),
         Field("price", "decimal(18,4)", nullable=False),
@@ -180,14 +180,36 @@ def test_native_wrappers_lower_to_the_text_their_own_parser_reads() -> None:
         Url("https://example.com/orders?id=42"),
         Urn("urn:yggdryl:orders:42"),
     ]
+    expected = [
+        {
+            "field": {
+                "data_type": {"type": "int64"},
+                "metadata": {},
+                "name": "item",
+                "nullable": True,
+            },
+            "type": "list",
+        },
+        {
+            "data_type": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "metadata": {},
+            "name": "price",
+            "nullable": False,
+        },
+        "s3://warehouse/orders/data.parquet",
+        "https://example.com/orders?id=42",
+        "urn:yggdryl:orders:42",
+    ]
 
     for codec in (json, yaml):
         restored = codec.loads(codec.dumps(values))
-        assert restored == [str(value) for value in values]
-        # The class is gone but nothing else is: each spelling is canonical.
+        assert restored == expected
+        assert DataType.from_dict(restored[0]) == values[0]
+        assert Field.from_dict(restored[1]) == values[1]
         assert [
-            type(value).from_str(text) for value, text in zip(values, restored)
-        ] == values
+            type(value).from_str(text)
+            for value, text in zip(values[2:], restored[2:])
+        ] == values[2:]
 
 
 def test_dataclasses_named_tuples_and_enums_lower_to_their_shape() -> None:

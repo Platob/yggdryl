@@ -482,7 +482,7 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
       precision: 10,
       scale: 2,
     }
-    const value = Scalar.d128(18750n, 2)
+    const value = Scalar.decimal(18750n, 2)
     const decoded = avro.loadsSingle(avro.dumpsSingle(value, decimal), decimal)
 
     assert.ok(decoded instanceof Scalar)

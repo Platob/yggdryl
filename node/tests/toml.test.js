@@ -61,7 +61,7 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
   assert.ok(Object.is(decoded.negativeZero, -0))
   assert.equal(decoded.regexp, '/a\\/b(?<name>c)/giu')
   assert.deepEqual(decoded.map, { venues: ['XPAR', 'XNAS'] })
-  assert.equal(decoded.schema, value.schema.toString())
+  assert.deepEqual(decoded.schema, value.schema.toJSON())
   assert.deepEqual(decoded.typed, [0, 65535])
 
   assert.throws(() => toml.dumps({ bigint: 2n ** 100n }), /exceeds i64/i)
@@ -75,10 +75,10 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
 test('TOML writes natural temporals and field-directed exact decimals', () => {
   const written = toml.dumps({
     at: new Date('2026-08-15T12:30:00.000Z'),
-    on: Scalar.date32(19723),
-    since: Scalar.time32(27120, 's'),
-    price: Scalar.d128(-1050n, 2),
-    wide: Scalar.d256(123456789012345678901234567890n, 4),
+    on: Scalar.date(19723),
+    since: Scalar.time(27120, 's'),
+    price: Scalar.decimal(-1050n, 2),
+    wide: Scalar.decimal(123456789012345678901234567890n, 4),
   })
 
   const text = written.toString('utf8')
@@ -90,8 +90,8 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   const decoded = toml.loads(written)
   assert.ok(decoded.at instanceof Date)
   assert.equal(decoded.at.toISOString(), '2026-08-15T12:30:00.000Z')
-  assert.ok(decoded.on.equals(Scalar.date32(19723)))
-  assert.ok(decoded.since.equals(Scalar.time32(27120, 's')))
+  assert.ok(decoded.on.equals(Scalar.date(19723)))
+  assert.ok(decoded.since.equals(Scalar.time(27120, 's')))
   assert.equal(decoded.price, '-10.50')
 
   const field = fields.struct('root', [
@@ -103,10 +103,10 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   ], { nullable: false })
   const typed = toml.loads(written, { field })
   assert.ok(typed.at instanceof Date)
-  assert.ok(typed.on.equals(Scalar.date32(19723)))
-  assert.ok(typed.price.equals(Scalar.d128(-1050n, 2)))
-  assert.ok(typed.since.equals(Scalar.time32(27120, 's')))
-  assert.ok(typed.wide.equals(Scalar.d256(123456789012345678901234567890n, 4)))
+  assert.ok(typed.on.equals(Scalar.date(19723)))
+  assert.ok(typed.price.equals(Scalar.decimal(-1050n, 2)))
+  assert.ok(typed.since.equals(Scalar.time(27120, 's')))
+  assert.ok(typed.wide.equals(Scalar.decimal(123456789012345678901234567890n, 4)))
 })
 
 test('TOML emission applies requested depth to the natural value', () => {
@@ -136,9 +136,9 @@ test('native TOML date-times arrive as temporal values and write back exactly', 
 
   assert.ok(decoded.offset instanceof Date)
   assert.equal(decoded.offset.toISOString(), '1979-05-27T07:32:00.000Z')
-  assert.ok(decoded.local.equals(Scalar.datetime64(296638320n, 's', 'NAIVE')))
-  assert.ok(decoded.date.equals(Scalar.date32(3433)))
-  assert.ok(decoded.time.equals(Scalar.time32(27120, 's')))
+  assert.ok(decoded.local.equals(Scalar.datetime(296638320n, 's', 'NAIVE')))
+  assert.ok(decoded.date.equals(Scalar.date(3433)))
+  assert.ok(decoded.time.equals(Scalar.time(27120, 's')))
 
   assert.equal(
     toml.dumps(decoded).toString('utf8'),

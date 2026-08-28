@@ -24,7 +24,7 @@ use yggdryl::arrow::{
 };
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, EnumScalar, Error as CoreError, Field as CoreField,
-    Float16, Float32, Float64, I256, Scalar, TimeUnit, Timezone,
+    Float16, Float32, Float64, I256, Scalar, TemporalFamily, TemporalRef, TimeUnit, Timezone,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -107,7 +107,7 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<I256> {
         || !(value.is_instance_of::<PyInt>() || value.is_instance_of::<PyString>())
     {
         return Err(PyTypeError::new_err(
-            "a D256 coefficient must be an integer or base-10 integer string",
+            "a decimal coefficient must be an integer or base-10 integer string",
         ));
     }
     value
@@ -598,30 +598,17 @@ impl PyScalar {
     }
 
     #[staticmethod]
-    fn f16(value: f64) -> Self {
-        Self::from_inner(Scalar::F16(Float16::from_f16(half::f16::from_f64(value))))
-    }
-
-    #[staticmethod]
-    fn f32(value: f32) -> Self {
-        Self::from_inner(Scalar::F32(Float32::from_f32(value)))
-    }
-
-    #[staticmethod]
-    fn f64(value: f64) -> Self {
-        Self::from_inner(Scalar::F64(Float64::from_f64(value)))
+    #[pyo3(signature = (value, width=64))]
+    fn float(value: f64, width: u8) -> PyResult<Self> {
+        Scalar::from_float(value, width)
+            .map(Self::from_inner)
+            .map_err(value_error)
     }
 
     #[staticmethod]
     #[pyo3(signature = (coefficient, scale=0))]
-    fn d128(coefficient: i128, scale: i8) -> Self {
-        Self::from_inner(Scalar::d128(coefficient, scale))
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (coefficient, scale=0))]
-    fn d256(coefficient: &Bound<'_, PyAny>, scale: i8) -> PyResult<Self> {
-        Ok(Self::from_inner(Scalar::d256(
+    fn decimal(coefficient: &Bound<'_, PyAny>, scale: i8) -> PyResult<Self> {
+        Ok(Self::from_inner(Scalar::from_decimal(
             i256_from_py(coefficient)?,
             scale,
         )))
@@ -629,56 +616,32 @@ impl PyScalar {
 
     #[staticmethod]
     #[pyo3(signature = (count, unit="d", timezone=None))]
-    fn date32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::date32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit="ms", timezone=None))]
-    fn date64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::date64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn date(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        Scalar::from_date(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
-    fn time32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::time32(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn time(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        Scalar::from_time(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
-    fn time64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::time64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn datetime(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        Scalar::from_datetime(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
     #[staticmethod]
     #[pyo3(signature = (count, unit, timezone=None))]
-    fn datetime64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::datetime64(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn duration32(count: i32, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::duration32_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn duration64(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::duration64_in(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn duration(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        Scalar::from_duration(count, time_unit(unit)?, timezone_or_naive(timezone)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -869,40 +832,21 @@ impl PyScalar {
     /// The count carried by a temporal value, or `None`.
     #[getter]
     fn count(&self) -> Option<i64> {
-        self.inner
-            .as_date32()
-            .map(|(count, _, _)| i64::from(count))
-            .or_else(|| self.inner.as_date64().map(|(count, _, _)| count))
-            .or_else(|| self.inner.as_time32().map(|(count, _, _)| i64::from(count)))
-            .or_else(|| self.inner.as_time64().map(|(count, _, _)| count))
-            .or_else(|| self.inner.as_datetime64().map(|(count, _, _)| count))
-            .or_else(|| {
-                self.inner
-                    .as_duration32()
-                    .map(|(count, _, _)| i64::from(count))
-            })
-            .or_else(|| self.inner.as_duration64().map(|(count, _, _)| count))
+        self.inner.as_temporal().map(TemporalRef::count)
     }
 
     /// The unit carried by a temporal value, or `None`.
     #[getter]
     fn unit(&self) -> Option<&'static str> {
-        self.inner
-            .as_date32()
-            .map(|(_, unit, _)| unit)
-            .or_else(|| self.inner.as_date64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_time32().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_time64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_datetime64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_duration32().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_duration64().map(|(_, unit, _)| unit))
-            .map(TimeUnit::as_str)
+        self.inner.as_temporal().map(|value| value.unit().as_str())
     }
 
     /// The non-null timezone marker carried by a temporal value, or `None`.
     #[getter]
     fn zone(&self) -> Option<&str> {
-        self.inner.temporal_timezone().map(Timezone::as_str)
+        self.inner
+            .as_temporal()
+            .map(|value| value.timezone().as_str())
     }
 
     /// The exact decimal coefficient as a Python integer, or `None`.
@@ -910,13 +854,8 @@ impl PyScalar {
     fn unscaled(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let coefficient = self
             .inner
-            .as_d128()
-            .map(|(unscaled, _)| unscaled.to_string())
-            .or_else(|| {
-                self.inner
-                    .as_d256()
-                    .map(|(unscaled, _)| unscaled.to_string())
-            });
+            .as_decimal()
+            .map(|(unscaled, _)| unscaled.to_string());
         coefficient
             .map(|coefficient| {
                 py.import("builtins")?
@@ -930,10 +869,7 @@ impl PyScalar {
     /// The scale carried by an exact decimal, or `None`.
     #[getter]
     fn scale(&self) -> Option<i32> {
-        self.inner
-            .as_d128()
-            .map(|(_, scale)| i32::from(scale))
-            .or_else(|| self.inner.as_d256().map(|(_, scale)| i32::from(scale)))
+        self.inner.as_decimal().map(|(_, scale)| i32::from(scale))
     }
 
     #[getter]
@@ -1327,8 +1263,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::F16(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
         Scalar::F32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
         Scalar::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Scalar::D128(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
-        Scalar::D256(unscaled, scale) => decimal_as_py(py, &unscaled.to_string(), *scale),
+        Scalar::D128(..) | Scalar::D256(..) => decimal_as_py(py, value),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
@@ -1336,10 +1271,13 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Bytes(value) | Scalar::Geospatial(value) => {
             Ok(PyBytes::new(py, value).into_any().unbind())
         }
-        Scalar::Date32(..) | Scalar::Date64(..) => date_as_py(py, value),
-        Scalar::Time32(..) | Scalar::Time64(..) => time_as_py(py, value),
-        Scalar::DateTime64(..) => datetime_as_py(py, value),
-        Scalar::Duration32(..) | Scalar::Duration64(..) => duration_as_py(py, value),
+        Scalar::Date32(..)
+        | Scalar::Date64(..)
+        | Scalar::Time32(..)
+        | Scalar::Time64(..)
+        | Scalar::DateTime64(..)
+        | Scalar::Duration32(..)
+        | Scalar::Duration64(..) => temporal_as_py(py, value),
         Scalar::Sequence(items) => {
             let items = items
                 .iter()
@@ -1995,19 +1933,16 @@ fn push_dataclass_field(
     Ok(())
 }
 
-/// Convert a native Yggdryl wrapper into its canonical text, when it is one.
-///
-/// Each of these round-trips through its own `from_str`, so the text is the
-/// whole value; what a document loses is only which wrapper class held it.
+/// Convert a native Yggdryl wrapper into its canonical scalar shape.
 fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyDataType>>() {
-        return Some(Scalar::String(value.inner.to_string().into()));
+        return Some(Scalar::from(&value.inner));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
-        return Some(Scalar::String(value.inner.to_string().into()));
+        return Some(Scalar::from(&value.inner));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
         return Some(Scalar::String(value.inner.to_string().into()));
@@ -2094,14 +2029,14 @@ fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let unscaled = digits.parse::<I256>().map_err(|_| {
         PyOverflowError::new_err("decimal coefficient exceeds the 256 bits D256 holds")
     })?;
-    if let Some(unscaled) = unscaled.as_i128() {
-        return Ok(Scalar::d128(unscaled, scale));
-    }
-    Ok(Scalar::d256(unscaled, scale))
+    Ok(Scalar::from_decimal(unscaled, scale))
 }
 
 /// Build the `decimal.Decimal` one coefficient and scale name.
-fn decimal_as_py(py: Python<'_>, unscaled: &str, scale: i8) -> PyResult<Py<PyAny>> {
+fn decimal_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    let (unscaled, scale) = value.as_decimal().ok_or_else(|| {
+        PyValueError::new_err(format!("expected a decimal, got {}", value.kind()))
+    })?;
     // `<coefficient>E<-scale>` is exact and keeps the written precision, so a
     // value at scale 2 comes back as `10.50`. `Decimal(unscaled).scaleb(-scale)`
     // would instead round the coefficient at the active context's precision.
@@ -2112,16 +2047,30 @@ fn decimal_as_py(py: Python<'_>, unscaled: &str, scale: i8) -> PyResult<Py<PyAny
         .map(Bound::unbind)
 }
 
+/// Lower any exact temporal through its family view.
+fn temporal_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    let temporal = value.as_temporal().ok_or_else(|| {
+        PyValueError::new_err(format!("expected a temporal, got {}", value.kind()))
+    })?;
+    match temporal.family() {
+        TemporalFamily::Date => date_as_py(py, value),
+        TemporalFamily::Time => time_as_py(py, value),
+        TemporalFamily::DateTime => datetime_as_py(py, value),
+        TemporalFamily::Duration => duration_as_py(py, value),
+    }
+}
+
 /// Convert a `datetime.date` into its day count since the Unix epoch.
 fn date_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     let ordinal = value.call_method0("toordinal")?.extract::<i64>()?;
-    let days = i32::try_from(ordinal - EPOCH_ORDINAL)
-        .map_err(|_| PyOverflowError::new_err("date is outside the days a date value counts"))?;
-    Ok(Scalar::date32(days))
+    Scalar::from_date(ordinal - EPOCH_ORDINAL, TimeUnit::Day, Timezone::NAIVE).map_err(value_error)
 }
 
 /// Build the `datetime.date` one epoch day count names.
 fn date_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    value
+        .as_date()
+        .ok_or_else(|| PyValueError::new_err(format!("expected a date, got {}", value.kind())))?;
     let days = value.temporal_count_at(TimeUnit::Day).ok_or_else(|| {
         PyValueError::new_err(format!(
             "a {} does not name an exact whole-day date",
@@ -2140,7 +2089,7 @@ fn date_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
 /// Time32/64 has no Arrow timezone parameter, so a zoned Python time is
 /// refused by the core rather than losing its zone during type inference.
 fn time_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    Scalar::time64(
+    Scalar::from_time(
         microseconds_of_day(value)?,
         TimeUnit::Microsecond,
         temporal_zone(value)?,
@@ -2161,6 +2110,9 @@ fn temporal_zone(value: &Bound<'_, PyAny>) -> PyResult<Timezone> {
 
 /// Build the `datetime.time` one microsecond count since midnight names.
 fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    let temporal = value
+        .as_time()
+        .ok_or_else(|| PyValueError::new_err(format!("expected a time, got {}", value.kind())))?;
     let count = exact_microseconds(value)?;
     if !(0..MICROSECONDS_PER_DAY).contains(&count) {
         return Err(PyValueError::new_err(format!(
@@ -2169,9 +2121,7 @@ fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     }
     let (hour, minute, second, microsecond) = split_day(count);
     let datetime = py.import("datetime")?;
-    let zone = value.temporal_timezone().ok_or_else(|| {
-        PyValueError::new_err(format!("expected a time value, got {}", value.kind()))
-    })?;
+    let zone = temporal.timezone();
     if zone.is_naive() {
         return datetime
             .getattr("time")?
@@ -2188,11 +2138,19 @@ fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
 
 /// Convert a `datetime.timedelta` into its elapsed microsecond count.
 fn duration_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    Scalar::duration64(timedelta_microseconds(value)?, TimeUnit::Microsecond).map_err(value_error)
+    Scalar::from_duration(
+        timedelta_microseconds(value)?,
+        TimeUnit::Microsecond,
+        Timezone::NAIVE,
+    )
+    .map_err(value_error)
 }
 
 /// Build the `datetime.timedelta` one elapsed microsecond count names.
 fn duration_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
+    value.as_duration().ok_or_else(|| {
+        PyValueError::new_err(format!("expected a duration, got {}", value.kind()))
+    })?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("microseconds", exact_microseconds(value)?)?;
     py.import("datetime")?
@@ -2216,14 +2174,14 @@ fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
         .ok_or_else(overflowing_timestamp)?;
     let offset = value.call_method0("utcoffset")?;
     if offset.is_none() {
-        return Scalar::datetime64(local, TimeUnit::Microsecond, Timezone::NAIVE)
+        return Scalar::from_datetime(local, TimeUnit::Microsecond, Timezone::NAIVE)
             .map_err(value_error);
     }
     let count = local
         .checked_sub(timedelta_microseconds(&offset)?)
         .ok_or_else(overflowing_timestamp)?;
     let zone = core_timezone_from_value(&value.getattr("tzinfo")?)?;
-    Scalar::datetime64(count, TimeUnit::Microsecond, zone).map_err(value_error)
+    Scalar::from_datetime(count, TimeUnit::Microsecond, zone).map_err(value_error)
 }
 
 /// The error a datetime beyond a 64-bit microsecond count reports.
@@ -2234,9 +2192,10 @@ fn overflowing_timestamp() -> PyErr {
 /// Build the `datetime.datetime` one UTC-relative count and zone name.
 fn datetime_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let count = exact_microseconds(value)?;
-    let (_, _, zone) = value.as_datetime64().ok_or_else(|| {
-        PyValueError::new_err(format!("expected a datetime64, got {}", value.kind()))
+    let temporal = value.as_datetime().ok_or_else(|| {
+        PyValueError::new_err(format!("expected a datetime, got {}", value.kind()))
     })?;
+    let zone = temporal.timezone();
     let datetime = py.import("datetime")?;
     let date = datetime
         .getattr("date")?

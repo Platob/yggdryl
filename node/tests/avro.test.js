@@ -231,7 +231,7 @@ test('single-object framing uses and verifies the schema fingerprint', () => {
     scale: 2,
   }
   const exact = avro.loadsSingle(
-    avro.dumpsSingle(Scalar.d128(18750n, 2), decimalSchema),
+    avro.dumpsSingle(Scalar.decimal(18750n, 2), decimalSchema),
     decimalSchema,
   )
   assert.ok(exact instanceof Scalar)

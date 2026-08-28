@@ -113,22 +113,22 @@ def test_a_naive_fold_is_dropped_and_zoned_times_are_refused() -> None:
 
 def test_a_temporal_python_cannot_hold_is_refused_not_truncated() -> None:
     with pytest.raises(ValueError, match="no exact microsecond count"):
-        Scalar.datetime64(1, "ns", "UTC").as_py()
+        Scalar.datetime(1, "ns", "UTC").as_py()
 
     with pytest.raises(OverflowError, match="microseconds a duration counts"):
         Scalar.from_py(dt.timedelta.max)
 
     with pytest.raises(ValueError, match="within one day of midnight"):
-        Scalar.time32(99_999_999, "s").as_py()
+        Scalar.time(99_999_999, "s").as_py()
 
 
 def test_a_zone_with_no_rules_anywhere_is_named_in_the_error() -> None:
     with pytest.raises(ValueError, match='"Mars/Olympus"'):
-        Scalar.datetime64(0, "s", "Mars/Olympus").as_py()
+        Scalar.datetime(0, "s", "Mars/Olympus").as_py()
 
 
 def test_a_coarser_unit_is_restated_exactly() -> None:
-    value = Scalar.datetime64(1_700_000_000, "s", "UTC")
+    value = Scalar.datetime(1_700_000_000, "s", "UTC")
     assert value.as_py() == dt.datetime(
         2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc
     )
@@ -147,7 +147,7 @@ def test_mapping_keys_cross_in_a_hashable_python_shape() -> None:
 
 
 def test_equal_cross_width_numbers_share_a_hash() -> None:
-    f32 = Scalar.f32(1.0)
-    f64 = Scalar.f64(1.0)
+    f32 = Scalar.float(1.0, 32)
+    f64 = Scalar.float(1.0)
     assert f32 == f64
     assert hash(f32) == hash(f64)

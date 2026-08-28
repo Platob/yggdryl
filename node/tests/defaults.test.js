@@ -198,7 +198,7 @@ test('every native hint category matches its schema-directed default projection'
   }
 })
 
-test('hint-only calls skip default values and exact Field schema caches', () => {
+test('hint-only calls skip default value projection', () => {
   const packagePath = join(__dirname, '..')
   const script = String.raw`
     'use strict'
@@ -208,9 +208,7 @@ test('hint-only calls skip default values and exact Field schema caches', () => 
     const native = require(path.join(packagePath, 'index.js'))
     const calls = {
       dataHint: 0,
-      dataSchema: 0,
       dataValue: 0,
-      fieldSchema: 0,
       fieldValue: 0,
     }
 
@@ -228,9 +226,7 @@ test('hint-only calls skip default values and exact Field schema caches', () => 
 
     instrument(native.DataType.prototype, '_defaultJSHintNative', 'dataHint')
     instrument(native.DataType.prototype, '_defaultJSValueNative', 'dataValue')
-    instrument(native.DataType.prototype, '_defaultJSValueSchemaNative', 'dataSchema')
     instrument(native.Field.prototype, '_defaultJSValueNative', 'fieldValue')
-    instrument(native.Field.prototype, '_defaultJSValueSchemaNative', 'fieldSchema')
 
     const { fields } = require(path.join(packagePath, 'binding.js'))
     const huge = fields.fixedSizeBinary('huge', 67_108_865, { nullable: true })
@@ -261,15 +257,12 @@ test('hint-only calls skip default values and exact Field schema caches', () => 
     assert.equal(nothing.defaultJSHint().constructor, null)
     assert.deepEqual(calls, {
       dataHint: 7,
-      dataSchema: 0,
       dataValue: 0,
-      fieldSchema: 0,
       fieldValue: 0,
     })
 
     const small = fields.int32('small', { nullable: false })
     assert.equal(small.defaultJSValue(), 0)
-    assert.equal(calls.fieldSchema, 1)
     assert.equal(calls.fieldValue, 1)
   `
   const child = spawnSync(process.execPath, ['-e', script, packagePath], {
@@ -646,7 +639,6 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
 test('public defaults expose no private native bridge names', () => {
   for (const prototype of [DataType.prototype, Field.prototype]) {
     assert.equal('_defaultJSValueNative' in prototype, false)
-    assert.equal('_defaultJSValueSchemaNative' in prototype, false)
     assert.equal('_defaultJSHintNative' in prototype, false)
     assert.equal('_defaultArrowScalarIpcNative' in prototype, false)
   }

@@ -4,6 +4,7 @@ use crate::Scalar;
 
 mod representation {
     use super::Scalar;
+    use crate::I256;
 
     #[test]
     fn a_decimal_keeps_the_coefficient_and_the_scale_it_was_given() {
@@ -30,23 +31,46 @@ mod representation {
     #[test]
     fn one_renderer_restores_the_exact_plain_text() {
         assert_eq!(
-            Scalar::d128(1_050, 2).as_decimal_utf8().as_deref(),
+            Scalar::d128(1_050, 2).into_decimal_utf8().as_deref(),
             Some("10.50")
         );
         assert_eq!(
-            Scalar::d128(-5, 3).as_decimal_utf8().as_deref(),
+            Scalar::d128(-5, 3).into_decimal_utf8().as_deref(),
             Some("-0.005")
         );
         assert_eq!(
-            Scalar::d128(12, -2).as_decimal_utf8().as_deref(),
+            Scalar::d128(12, -2).into_decimal_utf8().as_deref(),
             Some("1200")
         );
         assert_eq!(
             Scalar::d256(crate::I256::from_i128(1_050), 2)
-                .as_decimal_utf8()
+                .into_decimal_utf8()
                 .as_deref(),
             Some("10.50")
         );
+    }
+
+    #[test]
+    fn generic_decimal_selects_width_and_has_one_family_view() {
+        let narrow = Scalar::from_decimal(I256::from_i128(i128::MAX), 2);
+        let wide = Scalar::from_decimal(
+            "170141183460469231731687303715884105728".parse().unwrap(),
+            3,
+        );
+        let narrow_minimum = Scalar::from_decimal(I256::from_i128(i128::MIN), -2);
+        let wide_negative = Scalar::from_decimal(
+            "-170141183460469231731687303715884105729".parse().unwrap(),
+            -3,
+        );
+
+        assert!(matches!(narrow, Scalar::D128(..)));
+        assert!(matches!(wide, Scalar::D256(..)));
+        assert!(matches!(narrow_minimum, Scalar::D128(..)));
+        assert!(matches!(wide_negative, Scalar::D256(..)));
+        assert_eq!(narrow.as_decimal(), Some((I256::from_i128(i128::MAX), 2)));
+        assert_eq!(wide.as_decimal().map(|parts| parts.1), Some(3));
+        assert_eq!(wide_negative.as_decimal().map(|parts| parts.1), Some(-3));
+        assert!(Scalar::from(1).as_decimal().is_none());
     }
 }
 

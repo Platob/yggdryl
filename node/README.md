@@ -25,7 +25,7 @@ backpressure and remain caller-owned.
 ```javascript
 const { Scalar, fields, json } = require('yggdryl')
 
-const price = Scalar.d256(123456789012345678901234n, 4)
+const price = Scalar.decimal(123456789012345678901234n, 4)
 const field = fields.decimal256('price', 40, 4, { nullable: false })
 const restored = json.loads(json.dumps(price), { field })
 
@@ -36,11 +36,10 @@ console.assert(price.clone().compare(price) === 0)
 console.assert(price.asJsonUtf8() === '"12345678901234567890.1234"')
 ```
 
-`Scalar` factories retain `f16`/`f32`/`f64`, `d128`/`d256`, `date32`/`date64`,
-`time32`/`time64`, `datetime64`, and `duration32`/`duration64`. Plain objects
-become sorted named Records; JavaScript `Map` remains a Mapping.
-Temporal factories take `(count, unit, timezone)`, accept a timezone name or
-native `Timezone`, and use the explicit non-null `NAIVE` marker when omitted.
+`Scalar.float(value, width = 64)`, `decimal(coefficient, scale = 0)`, `date`,
+`time`, `datetime`, and `duration` centralize width selection in Rust. Plain
+objects become sorted named Records; JavaScript `Map` remains a Mapping.
+Temporal factories take `(count, unit, timezone)` and default to `NAIVE`.
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
 whenever the Rust value has those semantics. JavaScript has no object hash
 protocol, so `stableHash()` is the explicit deterministic `bigint`; JavaScript

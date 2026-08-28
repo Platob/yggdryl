@@ -67,7 +67,7 @@ const throughSchema: Trade = schema.fromSingleObject<Trade>(
   limits,
 )
 const exact: Scalar = avro.loadsSingle<Scalar>(
-  avro.dumpsSingle(Scalar.d128(18750n, 2), {
+  avro.dumpsSingle(Scalar.decimal(18750n, 2), {
     type: 'bytes',
     logicalType: 'decimal',
     precision: 10,

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import pyarrow as pa
 
-from yggdryl import Expression, Field, Url, Scalar
+from yggdryl import Expression, Field, Scalar, Url
 from yggdryl.iceberg import IcebergOptions, PartitionSpec, ScanPlan
 
 
@@ -31,8 +31,8 @@ class InferredRow:
 PYTHON_VALUE = {"id": 42, "symbol": "AAPL", "levels": [1.0, 2.0, 3.0]}
 NATIVE_VALUE = Scalar.from_py(PYTHON_VALUE)
 NATIVE_LEGS = NATIVE_VALUE["levels"]
-NATIVE_TEMPORAL = Scalar.datetime64(1_700_000_000_000_000, "us", "UTC")
-NATIVE_DECIMAL = Scalar.d256("1234567890123456789012345678901234567890", 6)
+NATIVE_TEMPORAL = Scalar.datetime(1_700_000_000_000_000, "us", "UTC")
+NATIVE_DECIMAL = Scalar.decimal("1234567890123456789012345678901234567890", 6)
 NATIVE_INTEGER = Scalar.from_py(84)
 NATIVE_DIVISOR = Scalar.from_py(2)
 NATIVE_ENUM = Scalar.from_enum("io_mode", "append")
@@ -80,6 +80,16 @@ def main() -> None:
         for name, operation, iterations in (
             ("from Python", lambda: Scalar.from_py(PYTHON_VALUE), small),
             ("into Python", NATIVE_VALUE.as_py, small),
+            ("float construction", lambda: Scalar.float(12.5, 32), small),
+            ("decimal construction", lambda: Scalar.decimal(1_050, 2), small),
+            ("date construction", lambda: Scalar.date(20_000), small),
+            ("time construction", lambda: Scalar.time(45_000, "ms"), small),
+            (
+                "datetime construction",
+                lambda: Scalar.datetime(1_700_000_000, "s", "UTC"),
+                small,
+            ),
+            ("duration construction", lambda: Scalar.duration(90, "s"), small),
             ("stable hash", NATIVE_VALUE.stable_hash, small),
             ("enum construction", lambda: Scalar.from_enum("io_mode", "append"), small),
             ("enum kind", lambda: NATIVE_ENUM.enum_kind, small),

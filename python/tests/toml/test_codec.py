@@ -70,7 +70,7 @@ def test_exact_scalars_use_toml_syntax_or_natural_text() -> None:
     assert restored["delta"] == "-PT172796.999996S"
 
 
-def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:
+def test_values_lower_to_their_canonical_native_shape() -> None:
     value = {
         "huge": 1 << 300,
         "uuid": uuid.UUID("12345678-1234-5678-1234-567812345678"),
@@ -95,8 +95,21 @@ def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:
         "deque": [1, 2],
         "ordered": {"b": 2, "a": 1},
         "path": "nested/file.arrow",
-        "datatype": str(value["datatype"]),
-        "field": str(value["field"]),
+        "datatype": {
+            "field": {
+                "data_type": {"type": "int64"},
+                "metadata": {},
+                "name": "item",
+                "nullable": True,
+            },
+            "type": "list",
+        },
+        "field": {
+            "data_type": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "metadata": {},
+            "name": "price",
+            "nullable": False,
+        },
     }
     # Named records are sorted maps in the core.
     assert list(restored["ordered"]) == ["a", "b"]

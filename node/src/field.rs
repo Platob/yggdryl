@@ -19,7 +19,7 @@ use crate::{
     },
     napi_error, ordering_value,
     record::arrow_scalar_to_ipc,
-    record::{field_value_schema, field_value_to_js},
+    record::field_value_to_js,
     uri::{JsUri, JsUrl, JsUrn, url_from_input},
 };
 
@@ -1181,20 +1181,9 @@ impl JsField {
     /// Materialize the bounded canonical Field default through the exact native
     /// schema-guided JavaScript scalar projection.
     #[napi(js_name = "_defaultJSValueNative", skip_typescript)]
-    pub fn default_js_value_native<'env>(
-        &self,
-        env: &'env Env,
-        schema: &JsField,
-    ) -> Result<Unknown<'env>> {
+    pub fn default_js_value_native<'env>(&self, env: &'env Env) -> Result<Unknown<'env>> {
         let value = self.inner.default_value().map_err(napi_error)?;
-        field_value_to_js(env, &self.inner, &value, &schema.inner)
-    }
-
-    /// Internal shared one-column schema for repeated exact-Field JavaScript
-    /// default projection.
-    #[napi(js_name = "_defaultJSValueSchemaNative", skip_typescript)]
-    pub fn default_js_value_schema_native(&self) -> Result<JsField> {
-        field_value_schema(&self.inner).map(JsField::from_core)
+        field_value_to_js(env, &self.inner, &value)
     }
 
     /// Internal one-row copied IPC projection for Apache Arrow JS scalar

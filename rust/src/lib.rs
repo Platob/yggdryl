@@ -66,8 +66,9 @@ pub use field::{
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
 pub use generic::{
-    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, EnumScalar, IOKind, IOMode, Level,
-    MediaType, MimeType, Scheme, TimeUnit, Timezone, UnionMode,
+    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, EnumScalar, Float, IOKind, IOMode,
+    Integer, Level, MediaType, MimeType, Scheme, TemporalFamily, TemporalRef, TimeUnit, Timezone,
+    UnionMode,
 };
 pub use generic::{I256, Scalar};
 pub use metadata::{

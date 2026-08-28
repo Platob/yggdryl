@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit};
+use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
 
 use crate::napi_error;
 
@@ -115,40 +115,23 @@ pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
     })
 }
 
-/// Build the one-column root used to project a single value into JavaScript.
-pub(crate) fn field_value_schema(field: &CoreField) -> Result<CoreField> {
-    let root_data_type = DataType::from_fields([field.clone()]).map_err(napi_error)?;
-    let root = CoreField::new("default", root_data_type, false);
-    root.validate_struct_root().map_err(napi_error)?;
-    Ok(root)
-}
-
-/// Project one value through its field, using a one-column root for paths.
+/// Project one value through its exact field.
 pub(crate) fn field_value_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
     value: &Scalar,
-    root_schema: &CoreField,
 ) -> Result<Unknown<'env>> {
-    value_to_js(env, field, value, root_schema, &[0])
+    value_to_js(env, field, value)
 }
 
-fn value_to_js<'env>(
-    env: &'env Env,
-    field: &CoreField,
-    value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
-) -> Result<Unknown<'env>> {
-    data_type_to_js(env, field.data_type(), value, root_schema, path)
+fn value_to_js<'env>(env: &'env Env, field: &CoreField, value: &Scalar) -> Result<Unknown<'env>> {
+    data_type_to_js(env, field.data_type(), value)
 }
 
 fn data_type_to_js<'env>(
     env: &'env Env,
     data_type: &DataType,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     use DataType as D;
 
@@ -170,17 +153,12 @@ fn data_type_to_js<'env>(
         | D::ListView(item)
         | D::FixedSizeList(item, _)
         | D::LargeList(item)
-        | D::LargeListView(item) => {
-            let child_path = appended_path(path, 0);
-            sequence_to_js(env, item, value, root_schema, &child_path)
-        }
-        D::Struct(fields) => struct_to_js(env, fields, value, root_schema, path),
-        D::Union(fields, _) => union_to_js(env, fields, value, root_schema, path),
-        D::Dictionary(dictionary) => {
-            data_type_to_js(env, dictionary.value(), value, root_schema, path)
-        }
-        D::Map(map) => map_to_js(env, map, value, root_schema, path),
-        D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value, root_schema, path),
+        | D::LargeListView(item) => sequence_to_js(env, item, value),
+        D::Struct(fields) => struct_to_js(env, fields, value),
+        D::Union(fields, _) => union_to_js(env, fields, value),
+        D::Dictionary(dictionary) => data_type_to_js(env, dictionary.value(), value),
+        D::Map(map) => map_to_js(env, map, value),
+        D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value),
         // A non-null variant value crosses as the Parquet Variant binary
         // encoding, which the Iceberg v3 layer owns; refuse by name until
         // that codec lands rather than inventing a second encoding here.
@@ -238,15 +216,16 @@ fn numeric_to_js<'env>(
             .as_f64()
             .ok_or_else(|| napi_error("invalid native floating record value"))?
             .into_unknown(env)?,
-        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => BigInt::from(
-            value
-                .as_d128()
-                .map(|(unscaled, _)| unscaled)
-                .or_else(|| value.as_i128())
-                .ok_or_else(|| napi_error("invalid native decimal record value"))?,
-        )
-        .into_unknown(env)?,
-        D::Decimal256 { .. } => decimal256_to_js(env, value)?,
+        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
+            BigInt::from(
+                value
+                    .decimal_unscaled_at(*scale)
+                    .or_else(|| value.as_i128())
+                    .ok_or_else(|| napi_error("invalid native decimal record value"))?,
+            )
+            .into_unknown(env)?
+        }
+        D::Decimal256 { scale, .. } => decimal256_to_js(env, value, *scale)?,
         _ => return Ok(None),
     };
     Ok(Some(output))
@@ -260,18 +239,20 @@ fn temporal_to_js<'env>(
     use DataType as D;
 
     let output = match data_type {
-        D::Date32 => temporal32_to_js(env, value.as_date32().map(|(count, _, _)| count), value)?,
-        D::Time32(_) => temporal32_to_js(env, value.as_time32().map(|(count, _, _)| count), value)?,
-        D::Duration32(_) => {
-            temporal32_to_js(env, value.as_duration32().map(|(count, _, _)| count), value)?
+        D::Date32 => temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Day, 32)?,
+        D::Date64 => {
+            temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Millisecond, 64)?
         }
-        D::Timestamp(..) => {
-            temporal64_to_js(env, value.as_datetime64().map(|(count, _, _)| count), value)?
+        D::Time32(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 32)?,
+        D::Time64(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 64)?,
+        D::Timestamp(unit, _) => {
+            temporal_value_to_js(env, value, TemporalFamily::DateTime, *unit, 64)?
         }
-        D::Date64 => temporal64_to_js(env, value.as_date64().map(|(count, _, _)| count), value)?,
-        D::Time64(_) => temporal64_to_js(env, value.as_time64().map(|(count, _, _)| count), value)?,
-        D::Duration64(_) => {
-            temporal64_to_js(env, value.as_duration64().map(|(count, _, _)| count), value)?
+        D::Duration32(unit) => {
+            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 32)?
+        }
+        D::Duration64(unit) => {
+            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 64)?
         }
         D::Interval(TimeUnit::YearMonth) => i32::try_from(
             value
@@ -289,28 +270,27 @@ fn temporal_to_js<'env>(
     Ok(Some(output))
 }
 
-fn temporal32_to_js<'env>(
+fn temporal_value_to_js<'env>(
     env: &'env Env,
-    temporal: Option<i32>,
     value: &Scalar,
+    family: TemporalFamily,
+    unit: TimeUnit,
+    bit_width: u8,
 ) -> Result<Unknown<'env>> {
-    temporal
-        .or_else(|| value.as_i128().and_then(|count| i32::try_from(count).ok()))
-        .ok_or_else(|| napi_error("invalid native 32-bit temporal record value"))?
-        .into_unknown(env)
-}
-
-fn temporal64_to_js<'env>(
-    env: &'env Env,
-    temporal: Option<i64>,
-    value: &Scalar,
-) -> Result<Unknown<'env>> {
-    BigInt::from(
-        temporal
-            .or_else(|| value.as_i128().and_then(|count| i64::try_from(count).ok()))
-            .ok_or_else(|| napi_error("invalid native 64-bit temporal record value"))?,
-    )
-    .into_unknown(env)
+    let temporal = value.as_temporal();
+    if temporal.is_some_and(|value| value.family() != family) {
+        return Err(napi_error("invalid native temporal family"));
+    }
+    let count = temporal
+        .and_then(|_| value.temporal_count_at(unit))
+        .or_else(|| value.as_i128().and_then(|count| i64::try_from(count).ok()))
+        .ok_or_else(|| napi_error("invalid native temporal record value"))?;
+    if bit_width == 32 {
+        return i32::try_from(count)
+            .map_err(|_| napi_error("native temporal count exceeds signed 32 bits"))?
+            .into_unknown(env);
+    }
+    BigInt::from(count).into_unknown(env)
 }
 
 fn text_or_binary_to_js<'env>(
@@ -379,8 +359,6 @@ fn sequence_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     let values = value
         .as_sequence()
@@ -389,10 +367,7 @@ fn sequence_to_js<'env>(
     for (index, value) in values.iter().enumerate() {
         let js_index = u32::try_from(index)
             .map_err(|_| napi_error("list index exceeds the JavaScript array limit"))?;
-        output.set(
-            js_index,
-            projected_value_to_js(env, field, value, root_schema, path)?,
-        )?;
+        output.set(js_index, projected_value_to_js(env, field, value)?)?;
     }
     output.into_unknown(env)
 }
@@ -401,13 +376,11 @@ fn projected_value_to_js<'env>(
     env: &'env Env,
     field: &CoreField,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     if matches!(value, Scalar::Null) {
         return Null.into_unknown(env);
     }
-    value_to_js(env, field, value, root_schema, path)
+    value_to_js(env, field, value)
 }
 
 /// Project one struct value as a positional JavaScript array.
@@ -415,8 +388,6 @@ fn struct_to_js<'env>(
     env: &'env Env,
     fields: &yggdryl::Fields,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     let values = value
         .as_sequence()
@@ -432,11 +403,7 @@ fn struct_to_js<'env>(
     for (index, (field, value)) in fields.iter().zip(values).enumerate() {
         let js_index = u32::try_from(index)
             .map_err(|_| napi_error("struct index exceeds the JavaScript array limit"))?;
-        let child_path = appended_path(path, index);
-        output.set(
-            js_index,
-            projected_value_to_js(env, field, value, root_schema, &child_path)?,
-        )?;
+        output.set(js_index, projected_value_to_js(env, field, value)?)?;
     }
     output.into_unknown(env)
 }
@@ -445,8 +412,6 @@ fn union_to_js<'env>(
     env: &'env Env,
     fields: &yggdryl::UnionFields,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     let values = value
         .as_sequence()
@@ -462,26 +427,21 @@ fn union_to_js<'env>(
             .ok_or_else(|| napi_error("invalid native union type id"))?,
     )
     .map_err(napi_error)?;
-    let (field_index, (_, field)) = fields
+    let (_, field) = fields
         .iter()
-        .enumerate()
-        .find(|(_, (candidate, _))| *candidate == type_id)
+        .find(|(candidate, _)| *candidate == type_id)
         .ok_or_else(|| napi_error(format!("unknown native union type id {type_id}")))?;
-    let child_path = appended_path(path, field_index);
     let mut output = Object::new(env)?;
     output.set("typeId", i32::from(type_id))?;
-    output.set(
-        "value",
-        value_to_js(env, field, payload, root_schema, &child_path)?,
-    )?;
+    output.set("value", value_to_js(env, field, payload)?)?;
     output.into_unknown(env)
 }
 
-fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar) -> Result<Unknown<'env>> {
+fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar, scale: i8) -> Result<Unknown<'env>> {
     let encoded = value
-        .as_d256()
-        .map(|(unscaled, _)| unscaled.to_string())
-        .or_else(|| value.as_i128().map(|unscaled| unscaled.to_string()))
+        .decimal256_unscaled_at(scale)
+        .or_else(|| value.as_i128().map(I256::from_i128))
+        .map(|unscaled| unscaled.to_string())
         .ok_or_else(|| napi_error("invalid native decimal256 record value"))?;
     let global = env.get_global()?;
     let bigint: Function<'_, FnArgs<(String,)>, Unknown<'_>> =
@@ -493,8 +453,6 @@ fn map_to_js<'env>(
     env: &'env Env,
     map: &yggdryl::MapType,
     value: &Scalar,
-    root_schema: &CoreField,
-    path: &[usize],
 ) -> Result<Unknown<'env>> {
     let entries = value
         .as_mapping()
@@ -514,27 +472,17 @@ fn map_to_js<'env>(
     let set: Function<'_, FnArgs<(Unknown<'_>, Unknown<'_>)>, Unknown<'_>> =
         required_property(&object, "set")?;
     let has: Function<'_, FnArgs<(Unknown<'_>,)>, bool> = required_property(&object, "has")?;
-    let entry_path = appended_path(path, 0);
-    let key_path = appended_path(&entry_path, 0);
-    let value_path = appended_path(&entry_path, 1);
     for (key, value) in entries {
-        let key = projected_value_to_js(env, key_field, key, root_schema, &key_path)?;
+        let key = projected_value_to_js(env, key_field, key)?;
         if has.apply(object, (key,).into())? {
             return Err(napi_error(
                 "native map contains distinct keys that collide under JavaScript Map semantics",
             ));
         }
-        let value = projected_value_to_js(env, value_field, value, root_schema, &value_path)?;
+        let value = projected_value_to_js(env, value_field, value)?;
         set.apply(object, (key, value).into())?;
     }
     map_value.into_unknown(env)
-}
-
-fn appended_path(path: &[usize], child: usize) -> Vec<usize> {
-    let mut output = Vec::with_capacity(path.len() + 1);
-    output.extend_from_slice(path);
-    output.push(child);
-    output
 }
 
 fn required_property<T>(object: &Object<'_>, name: &str) -> Result<T>

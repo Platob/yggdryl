@@ -182,6 +182,10 @@ const {
 // needs the intrinsic tables assembled below and `asJs` needs the transport
 // reader, and neither of those belongs on the published class.
 const nativeScalarFromJs = NativeScalar._fromJsNative.bind(NativeScalar)
+const nativeScalarFromDecimalParts =
+  NativeScalar._fromDecimalPartsNative.bind(NativeScalar)
+const nativeScalarFromTemporalParts =
+  NativeScalar._fromTemporalPartsNative.bind(NativeScalar)
 const nativeScalarAsJs = NativeScalar.prototype._asJsNative
 const nativeScalarIter = NativeScalar.prototype._iterNative
 const nativeScalarGet = NativeScalar.prototype._getNative
@@ -356,6 +360,8 @@ const Scalar = publicNativeClass(
   'Scalar',
   new Set([
     '_fromJsNative',
+    '_fromDecimalPartsNative',
+    '_fromTemporalPartsNative',
     '_fromArrowScalarIpcNative',
     '_fromArrowArrayIpcNative',
     '_fromArrowBatchIpcNative',
@@ -961,11 +967,10 @@ function markerShape(value, kind, keys) {
 // exactly, and a decimal fraction has no finite binary expansion at all.
 function fromTypedMarker(value) {
   const decimalKeys = [TRANSPORT_KEY, 'scale', 'value'].sort()
-  if (markerShape(value, 'd128', decimalKeys)) {
-    return Scalar.d128(BigInt(value.value), value.scale)
-  }
-  if (markerShape(value, 'd256', decimalKeys)) {
-    return Scalar.d256(BigInt(value.value), value.scale)
+  for (const id of ['decimal128', 'decimal256']) {
+    if (markerShape(value, id, decimalKeys)) {
+      return nativeScalarFromDecimalParts(id, BigInt(value.value), value.scale)
+    }
   }
   const temporalKeys = [TRANSPORT_KEY, 'date', 'unit', 'value', 'zone'].sort()
   const temporalKinds = new Set([
@@ -973,7 +978,7 @@ function fromTypedMarker(value) {
     'date64',
     'time32',
     'time64',
-    'datetime64',
+    'timestamp',
     'duration32',
     'duration64',
   ])
@@ -981,27 +986,15 @@ function fromTypedMarker(value) {
   if (!temporalKinds.has(kind) || !markerShape(value, kind, temporalKeys)) {
     return undefined
   }
-  if (value.date !== null && kind === 'datetime64') {
+  if (value.date !== null && kind === 'timestamp') {
     return new Date(value.date)
   }
-  switch (kind) {
-    case 'date32':
-      return Scalar.date32(Number(value.value))
-    case 'date64':
-      return Scalar.date64(BigInt(value.value))
-    case 'time32':
-      return Scalar.time32(Number(value.value), value.unit)
-    case 'time64':
-      return Scalar.time64(BigInt(value.value), value.unit)
-    case 'datetime64':
-      return Scalar.datetime64(BigInt(value.value), value.unit, value.zone)
-    case 'duration32':
-      return Scalar.duration32(Number(value.value), value.unit)
-    case 'duration64':
-      return Scalar.duration64(BigInt(value.value), value.unit)
-    default:
-      return undefined
-  }
+  return nativeScalarFromTemporalParts(
+    kind,
+    BigInt(value.value),
+    value.unit,
+    value.zone,
+  )
 }
 
 function fromTransport(value) {

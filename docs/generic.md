@@ -483,27 +483,32 @@ assert!(message.contains("with_field"), "{message}");
 
 Content codings are ignored when deriving options: `for_media_type` looks only at the base type, because the coding belongs to the handle. This is the same derivation [`IOMedia::record_options`](io.md) performs, which is how a record call on a bare handle knows its encoding without a format argument.
 
-## Exact numeric identity
+## Scalar families
 
-`I256` and the `Float16`, `Float32`, and `Float64` wrappers are immutable,
-totally ordered, hashable values. Their `stable_hash` methods use the core's
-deterministic structural hasher. Float construction canonicalizes every NaN
-payload; signed zero remains distinct, matching equality and total ordering.
+`Scalar` keeps exact physical variants for Arrow, but family constructors and
+views avoid width cascades. Units select date/time widths, duration selects the
+narrowest fitting count, decimal selects by coefficient, and datetime remains
+64-bit because Arrow timestamps are 64-bit.
 
 ```rust
-use yggdryl::generic::{Float32, I256};
+use yggdryl::{I256, Scalar, TemporalFamily, TimeUnit, Timezone};
 
-let wide: I256 = "170141183460469231731687303715884105728".parse()?;
-assert_eq!(wide.stable_hash(), wide.stable_hash());
+let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
+let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
+let duration = Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)?;
+let decimal = Scalar::from_decimal(I256::from_i128(1_250), 2);
 
-let zero = Float32::from_f32(0.0);
-let negative_zero = Float32::from_f32(-0.0);
-assert_ne!(zero, negative_zero);
-assert_ne!(zero.stable_hash(), negative_zero.stable_hash());
+assert_eq!(date.as_date().unwrap().bit_width(), 32);
+assert_eq!(time.as_time().unwrap().bit_width(), 64);
+assert_eq!(duration.as_duration().unwrap().bit_width(), 64);
+assert_eq!(time.as_temporal().unwrap().family(), TemporalFamily::Time);
+assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
 ```
 
-Criterion covers all four stable-hash entry points in the datatype/value
-benchmark group.
+`as_integer`, `as_float`, `as_decimal`, and `as_temporal` are the shared core
+views used by validation, arithmetic, and both extensions. Exact constructors
+remain available in Rust when a physical Arrow identity is required. All views
+preserve total equality, ordering, and hash semantics.
 
 ## TypedScalar: one value and its datatype
 

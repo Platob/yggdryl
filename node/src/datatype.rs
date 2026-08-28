@@ -12,7 +12,7 @@ use crate::{
     field::JsField,
     napi_error, ordering_value,
     record::arrow_scalar_to_ipc,
-    record::{JsValueHint, data_type_js_hint, field_value_schema, field_value_to_js},
+    record::{JsValueHint, data_type_js_hint, field_value_to_js},
 };
 
 pub(crate) fn data_type_from_input(
@@ -482,25 +482,10 @@ impl JsDataType {
     /// Materialize the bounded canonical default through the exact native
     /// schema-guided JavaScript scalar projection.
     #[napi(js_name = "_defaultJSValueNative", skip_typescript)]
-    pub fn default_js_value_native<'env>(
-        &self,
-        env: &'env Env,
-        schema: &JsField,
-    ) -> Result<Unknown<'env>> {
+    pub fn default_js_value_native<'env>(&self, env: &'env Env) -> Result<Unknown<'env>> {
         let value = self.inner.default_value().map_err(napi_error)?;
-        let field = schema
-            .inner
-            .get_field(0)
-            .ok_or_else(|| napi_error("default DataType projection schema has no value field"))?;
-        field_value_to_js(env, field, &value, &schema.inner)
-    }
-
-    /// Internal shared one-column schema for repeated JavaScript default
-    /// projection.
-    #[napi(js_name = "_defaultJSValueSchemaNative", skip_typescript)]
-    pub fn default_js_value_schema_native(&self) -> Result<JsField> {
         let field = CoreField::new("value", self.inner.clone(), false);
-        field_value_schema(&field).map(JsField::from_core)
+        field_value_to_js(env, &field, &value)
     }
 
     /// Internal allocation-independent JavaScript constructor category.

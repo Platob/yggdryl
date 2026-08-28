@@ -13,7 +13,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::value_is_logically_null;
-use crate::{DataType, Error, Field, Fields, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -190,34 +190,19 @@ fn restated(data_type: &DataType, value: &Scalar) -> Option<i128> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum TemporalFamily {
-    Date,
-    Time,
-    DateTime,
-    Duration,
-}
-
 /// Check the logical temporal family and the zone a datatype can preserve.
 fn temporal_matches(
     value: &Scalar,
     family: TemporalFamily,
     expected_zone: Option<&Timezone>,
 ) -> bool {
-    let matched = match family {
-        TemporalFamily::Date => matches!(value, Scalar::Date32(..) | Scalar::Date64(..)),
-        TemporalFamily::Time => matches!(value, Scalar::Time32(..) | Scalar::Time64(..)),
-        TemporalFamily::DateTime => matches!(value, Scalar::DateTime64(..)),
-        TemporalFamily::Duration => {
-            matches!(value, Scalar::Duration32(..) | Scalar::Duration64(..))
-        }
+    let Some(temporal) = value.as_temporal() else {
+        return false;
     };
-    if !matched {
+    if temporal.family() != family {
         return false;
     }
-    let Some(zone) = value.temporal_timezone() else {
-        return false;
-    };
+    let zone = temporal.timezone();
     match (family, expected_zone) {
         (TemporalFamily::DateTime, Some(expected)) => zone == expected,
         (TemporalFamily::DateTime, None) => zone.is_naive(),

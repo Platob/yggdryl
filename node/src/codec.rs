@@ -21,9 +21,9 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, EnumScalar, Field as CoreField, Fields as CoreFields,
-    Float16, Float32, Float64, I256, MapType as CoreMapType, TimeUnit, Timezone, json, text, toml,
-    yaml,
+    ArrowCast, DataType as CoreDataType, DataTypeId, EnumScalar, Field as CoreField,
+    Fields as CoreFields, I256, MapType as CoreMapType, TemporalFamily, TimeUnit, Timezone, json,
+    text, toml, yaml,
 };
 
 use crate::timezone::{TimezoneInput, timezone_from_input};
@@ -156,164 +156,134 @@ impl JsScalar {
             .map_err(napi_error)
     }
 
-    /// Build a 16-bit float, rounding once to IEEE binary16.
+    /// Build one floating scalar at 16, 32, or 64 bits.
     #[napi(factory)]
-    pub fn f16(value: f64) -> Self {
-        Self {
-            inner: Scalar::F16(Float16::from_f16(half::f16::from_f64(value))),
-        }
+    pub fn float(value: f64, width: Option<f64>) -> Result<Self> {
+        Scalar::from_float(value, crate::exact_u8(width.unwrap_or(64.0), "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
-    /// Build a real 32-bit float.
+    /// Build the narrowest exact decimal that holds the coefficient.
     #[napi(factory)]
-    pub fn f32(value: f64) -> Self {
-        Self {
-            #[allow(clippy::cast_possible_truncation)]
-            inner: Scalar::F32(Float32::from_f32(value as f32)),
-        }
+    pub fn decimal(coefficient: BigInt, scale: Option<f64>) -> Result<Self> {
+        Ok(Self::from_core(Scalar::from_decimal(
+            exact_i256(&coefficient, "coefficient")?,
+            crate::exact_i8(scale.unwrap_or(0.0), "scale")?,
+        )))
     }
 
-    /// Build a 64-bit float.
+    /// Build the exact date width selected by its unit.
     #[napi(factory)]
-    pub fn f64(value: f64) -> Self {
-        Self {
-            inner: Scalar::F64(Float64::from_f64(value)),
-        }
+    pub fn date(
+        count: Either<BigInt, f64>,
+        unit: Option<String>,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Scalar::from_date(
+            exact_i64_input(count, "count")?,
+            time_unit(unit.as_deref().unwrap_or("d"))?,
+            timezone_or_naive(timezone)?,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
-    /// Build a 128-bit exact decimal.
+    /// Build the exact time-of-day width selected by its unit.
     #[napi(factory)]
-    pub fn d128(unscaled: BigInt, scale: f64) -> Result<Self> {
+    pub fn time(
+        count: Either<BigInt, f64>,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Scalar::from_time(
+            exact_i64_input(count, "count")?,
+            time_unit(&unit)?,
+            timezone_or_naive(timezone)?,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
+    }
+
+    /// Build an epoch or wall-clock datetime with a non-null timezone.
+    #[napi(factory)]
+    pub fn datetime(
+        count: Either<BigInt, f64>,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Scalar::from_datetime(
+            exact_i64_input(count, "count")?,
+            time_unit(&unit)?,
+            timezone_or_naive(timezone)?,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
+    }
+
+    /// Build the narrowest duration width that holds the count.
+    #[napi(factory)]
+    pub fn duration(
+        count: Either<BigInt, f64>,
+        unit: String,
+        timezone: Option<TimezoneInput<'_>>,
+    ) -> Result<Self> {
+        Scalar::from_duration(
+            exact_i64_input(count, "count")?,
+            time_unit(&unit)?,
+            timezone_or_naive(timezone)?,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
+    }
+
+    /// Rehydrate one exact decimal variant for the private JavaScript transport.
+    #[napi(factory, js_name = "_fromDecimalPartsNative", skip_typescript)]
+    pub fn from_decimal_parts_native(id: String, unscaled: BigInt, scale: f64) -> Result<Self> {
+        let unscaled = exact_i256(&unscaled, "unscaled")?;
         let scale = crate::exact_i8(scale, "scale")?;
-        Ok(Self {
-            inner: Scalar::d128(exact_i128(&unscaled, "unscaled")?, scale),
-        })
-    }
-
-    /// Build a 256-bit exact decimal.
-    #[napi(factory)]
-    pub fn d256(unscaled: BigInt, scale: f64) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::d256(
-                exact_i256(&unscaled, "unscaled")?,
-                crate::exact_i8(scale, "scale")?,
+        let inner = match DataTypeId::from_str(&id).map_err(napi_error)? {
+            DataTypeId::Decimal128 => Scalar::d128(
+                unscaled
+                    .as_i128()
+                    .ok_or_else(|| napi_error("decimal128 coefficient must fit signed 128 bits"))?,
+                scale,
             ),
-        })
+            DataTypeId::Decimal256 => Scalar::d256(unscaled, scale),
+            _ => return Err(napi_error(format!("{id:?} is not an exact decimal id"))),
+        };
+        Ok(Self::from_core(inner))
     }
 
-    /// Build a Date32 day count with its explicit unit and non-null timezone.
-    #[napi(factory)]
-    pub fn date32(
-        count: f64,
-        unit: Option<String>,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::date32_in(
-                crate::exact_i32(count, "count")?,
-                time_unit(unit.as_deref().unwrap_or("d"))?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a Date64 millisecond count with its explicit unit and non-null timezone.
-    #[napi(factory)]
-    pub fn date64(
-        count: BigInt,
-        unit: Option<String>,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::date64_in(
-                exact_i64(&count, "count")?,
-                time_unit(unit.as_deref().unwrap_or("ms"))?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a 32-bit time-of-day count with a non-null timezone.
-    #[napi(factory)]
-    pub fn time32(count: f64, unit: String, timezone: Option<TimezoneInput<'_>>) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::time32(
-                crate::exact_i32(count, "count")?,
-                time_unit(&unit)?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a 64-bit time-of-day count with a non-null timezone.
-    #[napi(factory)]
-    pub fn time64(
+    /// Rehydrate one exact temporal variant for the private JavaScript transport.
+    #[napi(factory, js_name = "_fromTemporalPartsNative", skip_typescript)]
+    pub fn from_temporal_parts_native(
+        id: String,
         count: BigInt,
         unit: String,
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::time64(
-                exact_i64(&count, "count")?,
-                time_unit(&unit)?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a 64-bit epoch or wall-clock datetime with a non-null timezone.
-    #[napi(factory)]
-    pub fn datetime64(
-        count: BigInt,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::datetime64(
-                exact_i64(&count, "count")?,
-                time_unit(&unit)?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a 32-bit elapsed count whose explicit timezone must be NAIVE.
-    #[napi(factory)]
-    pub fn duration32(
-        count: f64,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::duration32_in(
-                crate::exact_i32(count, "count")?,
-                time_unit(&unit)?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
-    }
-
-    /// Build a 64-bit elapsed count whose explicit timezone must be NAIVE.
-    #[napi(factory)]
-    pub fn duration64(
-        count: BigInt,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Ok(Self {
-            inner: Scalar::duration64_in(
-                exact_i64(&count, "count")?,
-                time_unit(&unit)?,
-                timezone_or_naive(timezone)?,
-            )
-            .map_err(napi_error)?,
-        })
+        let count = exact_i64(&count, "count")?;
+        let unit = time_unit(&unit)?;
+        let zone = timezone_or_naive(timezone)?;
+        let inner = match DataTypeId::from_str(&id).map_err(napi_error)? {
+            DataTypeId::Date32 => {
+                Scalar::date32_in(i32::try_from(count).map_err(napi_error)?, unit, zone)
+            }
+            DataTypeId::Date64 => Scalar::date64_in(count, unit, zone),
+            DataTypeId::Time32 => {
+                Scalar::time32(i32::try_from(count).map_err(napi_error)?, unit, zone)
+            }
+            DataTypeId::Time64 => Scalar::time64(count, unit, zone),
+            DataTypeId::Timestamp => Scalar::datetime64(count, unit, zone),
+            DataTypeId::Duration32 => {
+                Scalar::duration32_in(i32::try_from(count).map_err(napi_error)?, unit, zone)
+            }
+            DataTypeId::Duration64 => Scalar::duration64_in(count, unit, zone),
+            _ => return Err(napi_error(format!("{id:?} is not an exact temporal id"))),
+        }
+        .map_err(napi_error)?;
+        Ok(Self::from_core(inner))
     }
 
     /// The canonical width-specific vocabulary name.
@@ -439,37 +409,17 @@ impl JsScalar {
     /// The count a temporal holds, or `null`.
     #[napi(getter)]
     pub fn count(&self) -> Option<BigInt> {
-        let count = self
-            .inner
-            .as_date32()
-            .map(|(count, _, _)| i64::from(count))
-            .or_else(|| self.inner.as_date64().map(|(count, _, _)| count))
-            .or_else(|| self.inner.as_time32().map(|(count, _, _)| i64::from(count)))
-            .or_else(|| self.inner.as_time64().map(|(count, _, _)| count))
-            .or_else(|| self.inner.as_datetime64().map(|(count, _, _)| count))
-            .or_else(|| {
-                self.inner
-                    .as_duration32()
-                    .map(|(count, _, _)| i64::from(count))
-            })
-            .or_else(|| self.inner.as_duration64().map(|(count, _, _)| count))?;
-        Some(BigInt::from(count))
+        self.inner
+            .as_temporal()
+            .map(|value| BigInt::from(value.count()))
     }
 
     /// The unit carried by a temporal, or `null`.
     #[napi(getter)]
     pub fn unit(&self) -> Option<String> {
-        let unit = self
-            .inner
-            .as_date32()
-            .map(|(_, unit, _)| unit)
-            .or_else(|| self.inner.as_date64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_time32().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_time64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_datetime64().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_duration32().map(|(_, unit, _)| unit))
-            .or_else(|| self.inner.as_duration64().map(|(_, unit, _)| unit))?;
-        Some(unit.as_str().to_owned())
+        self.inner
+            .as_temporal()
+            .map(|value| value.unit().as_str().to_owned())
     }
 
     /// The non-null timezone marker carried by a temporal, or `null`.
@@ -482,22 +432,14 @@ impl JsScalar {
     #[napi(getter)]
     pub fn unscaled(&self) -> Option<BigInt> {
         self.inner
-            .as_d128()
-            .map(|(unscaled, _)| BigInt::from(unscaled))
-            .or_else(|| {
-                self.inner
-                    .as_d256()
-                    .map(|(unscaled, _)| bigint_from_i256(unscaled))
-            })
+            .as_decimal()
+            .map(|(unscaled, _)| bigint_from_i256(unscaled))
     }
 
     /// The scale of an exact decimal, or `null`.
     #[napi(getter)]
     pub fn scale(&self) -> Option<i32> {
-        self.inner
-            .as_d128()
-            .map(|(_, scale)| i32::from(scale))
-            .or_else(|| self.inner.as_d256().map(|(_, scale)| i32::from(scale)))
+        self.inner.as_decimal().map(|(_, scale)| i32::from(scale))
     }
 
     /// Infer the exact native datatype this value names.
@@ -906,14 +848,11 @@ fn exact_i64(value: &BigInt, name: &str) -> Result<i64> {
     Ok(value)
 }
 
-fn exact_i128(value: &BigInt, name: &str) -> Result<i128> {
-    let (value, lossless) = value.get_i128();
-    if !lossless {
-        return Err(napi_error(format!(
-            "{name} must fit in a signed 128-bit integer"
-        )));
+fn exact_i64_input(value: Either<BigInt, f64>, name: &str) -> Result<i64> {
+    match value {
+        Either::A(value) => exact_i64(&value, name),
+        Either::B(value) => crate::exact_i64(value, name),
     }
-    Ok(value)
 }
 
 /// Assemble the read-side options from the boundary's two switches.
@@ -1901,7 +1840,7 @@ impl<'env> JsEncoder<'env> {
     fn encode_number(value: Unknown<'env>) -> Result<Scalar> {
         let value = value.coerce_to_number()?.get_double()?;
         if value == 0.0 && value.is_sign_negative() {
-            return Ok(Scalar::F64(Float64::from_f64(value)));
+            return Ok(Scalar::from(value));
         }
         if value.is_finite()
             && value.fract() == 0.0
@@ -1909,7 +1848,7 @@ impl<'env> JsEncoder<'env> {
         {
             return Ok(Scalar::I64(value as i64));
         }
-        Ok(Scalar::F64(Float64::from_f64(value)))
+        Ok(Scalar::from(value))
     }
 
     /// Encode a `bigint` as the narrowest native integer that holds it exactly.
@@ -2102,16 +2041,11 @@ impl<'env> JsEncoder<'env> {
             };
         }
 
-        // A Scalar is already a native value, so it crosses as itself. Every
-        // other wrapper crosses as the canonical text it round-trips through,
-        // because that is the one spelling every runtime can read back.
+        // Schema wrappers use the core structural Scalar conversion. Location
+        // wrappers use their canonical cross-runtime text.
         native_wrapper!(JsScalar, "Scalar", 0, Clone::clone);
-        native_wrapper!(JsDataType, "DataType", 1, |inner| Scalar::from(
-            ToString::to_string(inner)
-        ));
-        native_wrapper!(JsField, "Field", 2, |inner| Scalar::from(
-            ToString::to_string(inner)
-        ));
+        native_wrapper!(JsDataType, "DataType", 1, Scalar::from);
+        native_wrapper!(JsField, "Field", 2, Scalar::from);
         native_wrapper!(JsUri, "Uri", 3, |inner| Scalar::from(ToString::to_string(
             inner
         )));
@@ -2367,9 +2301,12 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::U64(value) => unsigned_transport(u128::from(*value)),
         Scalar::I128(value) => integer_transport(*value),
         Scalar::U128(value) => unsigned_transport(*value),
-        Scalar::F16(value) => float_transport(value.as_f64()),
-        Scalar::F32(value) => float_transport(value.as_f64()),
-        Scalar::F64(value) => float_transport(value.as_f64()),
+        Scalar::F16(_) | Scalar::F32(_) | Scalar::F64(_) => float_transport(
+            value
+                .as_float()
+                .ok_or_else(|| napi_error("invalid native float"))?
+                .as_f64(),
+        ),
         Scalar::String(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
@@ -2386,57 +2323,55 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         // A count is carried as text because a nanosecond instant needs more
         // than the 53 bits a JSON number keeps exactly; the JavaScript side
         // reads it as a bigint.
-        Scalar::D128(unscaled, scale) => Ok(marker(
-            "d128",
-            [
-                ("value", JsonValue::String(unscaled.to_string())),
-                ("scale", JsonValue::Number(JsonNumber::from(*scale))),
-            ],
-        )),
-        Scalar::D256(unscaled, scale) => Ok(marker(
-            "d256",
-            [
-                ("value", JsonValue::String(unscaled.to_string())),
-                ("scale", JsonValue::Number(JsonNumber::from(*scale))),
-            ],
-        )),
-        Scalar::Date32(count, unit, zone) => Ok(temporal_transport(
-            "date32",
-            i64::from(*count),
-            *unit,
-            zone,
-            None,
-        )),
-        Scalar::Date64(count, unit, zone) => {
-            Ok(temporal_transport("date64", *count, *unit, zone, None))
+        Scalar::D128(..) | Scalar::D256(..) => {
+            let (unscaled, scale) = value
+                .as_decimal()
+                .ok_or_else(|| napi_error("invalid native decimal"))?;
+            let id = if matches!(value, Scalar::D128(..)) {
+                "decimal128"
+            } else {
+                "decimal256"
+            };
+            Ok(marker(
+                id,
+                [
+                    ("value", JsonValue::String(unscaled.to_string())),
+                    ("scale", JsonValue::Number(JsonNumber::from(scale))),
+                ],
+            ))
         }
-        Scalar::Time32(count, unit, zone) => Ok(temporal_transport(
-            "time32",
-            i64::from(*count),
-            *unit,
-            zone,
-            None,
-        )),
-        Scalar::Time64(count, unit, zone) => {
-            Ok(temporal_transport("time64", *count, *unit, zone, None))
-        }
-        Scalar::DateTime64(count, unit, zone) => {
-            let date = zone
-                .is_utc()
-                .then(|| value.temporal_count_at(TimeUnit::Millisecond))
-                .flatten()
-                .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
-            Ok(temporal_transport("datetime64", *count, *unit, zone, date))
-        }
-        Scalar::Duration32(count, unit, zone) => Ok(temporal_transport(
-            "duration32",
-            i64::from(*count),
-            *unit,
-            zone,
-            None,
-        )),
-        Scalar::Duration64(count, unit, zone) => {
-            Ok(temporal_transport("duration64", *count, *unit, zone, None))
+        Scalar::Date32(..)
+        | Scalar::Date64(..)
+        | Scalar::Time32(..)
+        | Scalar::Time64(..)
+        | Scalar::DateTime64(..)
+        | Scalar::Duration32(..)
+        | Scalar::Duration64(..) => {
+            let temporal = value
+                .as_temporal()
+                .ok_or_else(|| napi_error("invalid native temporal"))?;
+            let id = match (temporal.family(), temporal.bit_width()) {
+                (TemporalFamily::Date, 32) => "date32",
+                (TemporalFamily::Date, 64) => "date64",
+                (TemporalFamily::Time, 32) => "time32",
+                (TemporalFamily::Time, 64) => "time64",
+                (TemporalFamily::DateTime, 64) => "timestamp",
+                (TemporalFamily::Duration, 32) => "duration32",
+                (TemporalFamily::Duration, 64) => "duration64",
+                _ => return Err(napi_error("invalid native temporal family width")),
+            };
+            let date = (temporal.family() == TemporalFamily::DateTime
+                && temporal.timezone().is_utc())
+            .then(|| value.temporal_count_at(TimeUnit::Millisecond))
+            .flatten()
+            .filter(|millis| millis.unsigned_abs() <= MAX_DATE_MILLISECONDS);
+            Ok(temporal_transport(
+                id,
+                temporal.count(),
+                temporal.unit(),
+                temporal.timezone(),
+                date,
+            ))
         }
         Scalar::Mapping(entries) => mapping_transport(entries, depth, max_depth),
         Scalar::Record(entries) => record_transport(entries, depth, max_depth),

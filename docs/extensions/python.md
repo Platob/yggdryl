@@ -81,8 +81,8 @@ constructor.
 
 ## Native `Scalar`
 
-`Scalar` is a Python view of the Rust tree, not a Python-side model. Its factories
-name exact widths; `from_py` chooses the natural language-native shape.
+`Scalar` is a Python view of the Rust tree. Family factories select the native
+width; `from_py` chooses the natural Python shape.
 
 ```python
 from decimal import Decimal
@@ -91,9 +91,14 @@ import pyarrow as pa
 
 from yggdryl import Scalar
 
-price = Scalar.d256("1234567890123456789012345678901234567890", 2)
+price = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 assert price.kind == "d256"
 assert price.as_py() == Decimal("12345678901234567890123456789012345678.90")
+assert Scalar.float(1.5, 32).kind == "f32"
+assert Scalar.date(1).kind == "date32"
+assert Scalar.time(1, "us").kind == "time64"
+assert Scalar.datetime(0, "s", "UTC").zone == "UTC"
+assert Scalar.duration(1, "ms").kind == "duration32"
 
 values = Scalar.from_arrow_array(pa.array([1, 2], type=pa.int16()))
 assert values.into_arrow_array().type == pa.int16()
@@ -111,10 +116,11 @@ Array conversion uses one native builder. A table is imported through Arrow C
 Stream batch by batch, then owned as rows because a `Scalar` is materialized by
 definition.
 
-The exact temporal factories are `date32`, `date64`, `time32`, `time64`,
-`datetime64`, `duration32`, and `duration64`. Every value carries a non-null
-zone marker. Only `datetime64` accepts a real zone; the other Arrow datatypes
-require `NAIVE`, and a zoned `datetime.time` is refused instead of stripped.
+The factories are `float(value, width=64)`, `decimal(coefficient, scale=0)`,
+`date(count, unit="d", timezone=None)`, and `time`, `datetime`, or `duration`
+with `(count, unit, timezone=None)`. Exact physical variants remain visible in
+`kind` and survive Arrow, pickle, and repr round trips. Only `datetime` accepts
+a non-`NAIVE` zone; the core rejects it for date, time, and duration.
 
 All values are hashable. `kind` and `data_type` expose their exact native type;
 `as_bytes` and `as_utf8` expose the matching scalar payload, while
