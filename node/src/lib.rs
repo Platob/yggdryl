@@ -137,6 +137,16 @@ pub(crate) fn exact_u64(value: f64, name: &str) -> napi::Result<u64> {
     Ok(value as u64)
 }
 
+pub(crate) fn exact_f64(value: u64, name: &str) -> napi::Result<f64> {
+    if value > 9_007_199_254_740_992 {
+        return Err(Error::from_reason(format!(
+            "{name} cannot be represented exactly as a JavaScript number; expected at most 2^53"
+        )));
+    }
+    #[allow(clippy::cast_precision_loss)]
+    Ok(value as f64)
+}
+
 pub(crate) fn exact_u8(value: f64, name: &str) -> napi::Result<u8> {
     if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(u8::MAX) {
         return Err(Error::from_reason(format!(

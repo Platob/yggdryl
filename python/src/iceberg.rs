@@ -14,7 +14,7 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
@@ -263,10 +263,11 @@ fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
 }
 
 /// The Iceberg option fields every Iceberg call also accepts as keywords.
-const ICEBERG_KWARGS: [&str; 9] = [
+const ICEBERG_KWARGS: [&str; 10] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
+    "commit_total_timeout_ms",
     "target_file_size",
     "read_parallelism",
     "read_parallel_min_files",
@@ -293,6 +294,9 @@ fn set_iceberg_option(
         "commit_retries" => options.set_commit_retries(value.extract::<u32>()?),
         "commit_min_backoff_ms" => options.set_commit_min_backoff_ms(value.extract::<u64>()?),
         "commit_max_backoff_ms" => options.set_commit_max_backoff_ms(value.extract::<u64>()?),
+        "commit_total_timeout_ms" => {
+            options.set_commit_total_timeout_ms(value.extract::<u64>()?);
+        }
         "target_file_size" => options
             .set_target_file_size_bytes(value.extract::<u64>()?)
             .map_err(value_error)?,
@@ -468,6 +472,9 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.commit_max_backoff_ms_option() {
             state.set_item("commit_max_backoff_ms", value)?;
         }
+        if let Some(value) = self.inner.commit_total_timeout_ms_option() {
+            state.set_item("commit_total_timeout_ms", value)?;
+        }
         if let Some(value) = self.inner.target_file_size_bytes_option() {
             state.set_item("target_file_size", value)?;
         }
@@ -545,6 +552,19 @@ impl PyIcebergOptions {
     fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_commit_max_backoff_ms(wait_ms);
+        Ok(())
+    }
+
+    /// The total commit retry-delay budget in milliseconds. Default: 1800000.
+    #[getter]
+    fn commit_total_timeout_ms(&self) -> u64 {
+        self.inner.commit_total_timeout_ms()
+    }
+
+    #[setter]
+    fn set_commit_total_timeout_ms(&mut self, timeout_ms: u64) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_commit_total_timeout_ms(timeout_ms);
         Ok(())
     }
 
@@ -987,19 +1007,19 @@ impl PyTable {
     /// The table's base location, as a URI.
     #[getter]
     fn location(&self) -> &str {
-        self.inner.metadata().location.as_str()
+        self.inner.metadata().location()
     }
 
     /// The revision of the specification the metadata is written to.
     #[getter]
     fn format_version(&self) -> i32 {
-        self.inner.metadata().format_version.number()
+        self.inner.metadata().format_version().number()
     }
 
     /// The stable identifier of the table itself.
     #[getter]
     fn table_uuid(&self) -> &str {
-        self.inner.metadata().table_uuid.as_str()
+        self.inner.metadata().table_uuid()
     }
 
     /// The version number of the current metadata document.
@@ -1058,7 +1078,7 @@ impl PyTable {
     fn snapshots(&self) -> Vec<PySnapshot> {
         self.inner
             .metadata()
-            .snapshots
+            .snapshots()
             .iter()
             .cloned()
             .map(PySnapshot::from_core)
@@ -1069,7 +1089,7 @@ impl PyTable {
     #[getter]
     fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let properties = PyDict::new(py);
-        for (key, value) in &self.inner.metadata().properties {
+        for (key, value) in self.inner.metadata().properties() {
             properties.set_item(key.as_str(), value.as_str())?;
         }
         Ok(properties)
@@ -1080,7 +1100,7 @@ impl PyTable {
     fn schemas(&self) -> Vec<PyField> {
         self.inner
             .metadata()
-            .schemas
+            .schemas()
             .iter()
             .cloned()
             .map(PyField::from_inner)
@@ -1110,7 +1130,7 @@ impl PyTable {
         let metadata = self.inner.metadata();
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
             let retained: Vec<String> = metadata
-                .snapshots
+                .snapshots()
                 .iter()
                 .map(|snapshot| snapshot.snapshot_id.to_string())
                 .collect();
@@ -1277,7 +1297,7 @@ impl PyTable {
         answer.set_item("files_skipped", plan.files_skipped())?;
         answer.set_item("manifests_read", plan.manifests_read)?;
         answer.set_item("manifests_skipped", plan.manifests_skipped())?;
-        answer.set_item("record_count", plan.record_count())?;
+        answer.set_item("record_count", plan.record_count().map_err(value_error)?)?;
         Ok(answer)
     }
 
@@ -1501,10 +1521,11 @@ impl PyTable {
     #[pyo3(signature = (filters = None))]
     fn plan(&self, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
         let pairs = filter_pairs_from_value(filters)?;
-        self.inner
+        let plan = self
+            .inner
             .plan(&borrowed_pairs(&pairs))
-            .map(|plan| PyScanPlan::from_core(&plan))
-            .map_err(value_error)
+            .map_err(value_error)?;
+        PyScanPlan::from_core(&plan).map_err(value_error)
     }
 
     /// Plan one retained snapshot's scan: the planning half of time travel.
@@ -1520,10 +1541,11 @@ impl PyTable {
         filters: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyScanPlan> {
         let pairs = filter_pairs_from_value(filters)?;
-        self.inner
+        let plan = self
+            .inner
             .plan_at(snapshot_id, &borrowed_pairs(&pairs))
-            .map(|plan| PyScanPlan::from_core(&plan))
-            .map_err(value_error)
+            .map_err(value_error)?;
+        PyScanPlan::from_core(&plan).map_err(value_error)
     }
 
     /// Create a branch at one retained snapshot, as one metadata commit.
@@ -1567,16 +1589,22 @@ impl PyTable {
 
     /// Expire the snapshots retention no longer keeps, returning their ids.
     ///
-    /// `older_than_ms` is the default age cutoff, in milliseconds since the
-    /// Unix epoch; every branch's and tag's own retention settings are honored
-    /// first, so a tagged snapshot survives a cutoff that would otherwise
-    /// reach it. A table with nothing old commits nothing at all - the check
-    /// runs on a copy first - so an empty expiry costs no version. The
-    /// metadata stops naming the expired snapshots; their files are left
-    /// where they are.
-    fn expire_snapshots(&mut self, older_than_ms: i64) -> PyResult<Vec<i64>> {
+    /// Omitted cutoff and retain count use table properties. Explicit snapshot
+    /// ids join age-based selection; retained heads cannot be removed.
+    /// Statistics metadata is removed, while physical files remain.
+    #[pyo3(signature = (older_than_ms = None, retain_last = None, snapshot_ids = None))]
+    fn expire_snapshots(
+        &mut self,
+        older_than_ms: Option<i64>,
+        retain_last: Option<usize>,
+        snapshot_ids: Option<Vec<i64>>,
+    ) -> PyResult<Vec<i64>> {
         self.inner
-            .expire_snapshots(older_than_ms)
+            .expire_snapshots(
+                older_than_ms,
+                retain_last,
+                snapshot_ids.as_deref().unwrap_or_default(),
+            )
             .map_err(value_error)
     }
 
@@ -1669,7 +1697,7 @@ impl PyTable {
                     metadata.set_property(key.as_str(), value.as_str())?;
                 }
                 for key in &removes {
-                    metadata.remove_property(key);
+                    metadata.remove_property(key)?;
                 }
                 Ok(())
             })
@@ -1693,8 +1721,8 @@ impl PyTable {
     fn __repr__(&self) -> String {
         format!(
             "Table({:?}, format_version={}, version={})",
-            self.inner.metadata().location.as_str(),
-            self.inner.metadata().format_version.number(),
+            self.inner.metadata().location(),
+            self.inner.metadata().format_version().number(),
             self.inner.version(),
         )
     }
@@ -1990,14 +2018,14 @@ pub(crate) struct PyScanPlan {
 }
 
 impl PyScanPlan {
-    fn from_core(plan: &ScanPlan) -> Self {
-        Self {
-            record_count: plan.record_count(),
+    fn from_core(plan: &ScanPlan) -> yggdryl::Result<Self> {
+        Ok(Self {
+            record_count: plan.record_count()?,
             files_planned: plan.tasks.len(),
             files_skipped: plan.files_skipped(),
             manifests_read: plan.manifests_read,
             manifests_skipped: plan.manifests_skipped(),
-        }
+        })
     }
 
     const fn identity(&self) -> (i64, usize, usize, usize, usize) {
@@ -2511,6 +2539,16 @@ impl PySnapshot {
         self.inner.manifest_list.as_str()
     }
 
+    /// Direct manifest locations carried by a legacy v1 snapshot.
+    #[getter]
+    fn manifests<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        self.inner
+            .manifests
+            .as_ref()
+            .map(|paths| PyTuple::new(py, paths.iter().map(|path| path.as_str())))
+            .transpose()
+    }
+
     /// What the commit did, defaulting to `append`.
     #[getter]
     fn operation(&self) -> &str {
@@ -2521,6 +2559,24 @@ impl PySnapshot {
     #[getter]
     fn schema_id(&self) -> Option<i32> {
         self.inner.schema_id
+    }
+
+    /// V3 encryption key used by this snapshot, when encrypted.
+    #[getter]
+    fn encryption_key_id(&self) -> Option<&str> {
+        self.inner.encryption_key_id.as_deref()
+    }
+
+    /// First row identifier assigned by a v3 snapshot.
+    #[getter]
+    fn first_row_id(&self) -> Option<i64> {
+        self.inner.first_row_id
+    }
+
+    /// Rows added by a v3 snapshot.
+    #[getter]
+    fn added_rows(&self) -> Option<i64> {
+        self.inner.added_rows
     }
 
     /// Everything the commit recorded about itself.
@@ -2542,7 +2598,12 @@ impl PySnapshot {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
-        let document = self.into_json(py, 3)?;
+        let version = if self.inner.sequence_number.is_none() {
+            1
+        } else {
+            3
+        };
+        let document = self.into_json(py, version)?;
         Ok(format!(
             "Snapshot.from_json({})",
             document.bind(py).repr()?.to_str()?
@@ -2569,9 +2630,14 @@ impl PySnapshot {
     }
 
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        let version = if self.inner.sequence_number.is_none() {
+            1
+        } else {
+            3
+        };
         Ok((
             py.get_type::<Self>().getattr("from_json")?.unbind(),
-            (self.into_json(py, 3)?,),
+            (self.into_json(py, version)?,),
         ))
     }
 
@@ -2601,6 +2667,36 @@ impl PyManifestFile {
         Self { inner }
     }
 
+    fn partitions_view<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let mut partitions = Vec::with_capacity(self.inner.partitions.len());
+        for summary in &self.inner.partitions {
+            let contains_null = summary
+                .contains_null
+                .into_pyobject(py)?
+                .to_owned()
+                .into_any()
+                .unbind();
+            let contains_nan = match summary.contains_nan {
+                Some(value) => value.into_pyobject(py)?.to_owned().into_any().unbind(),
+                None => py.None(),
+            };
+            let lower_bound = summary.lower_bound.as_deref().map_or_else(
+                || py.None(),
+                |value| PyBytes::new(py, value).into_any().unbind(),
+            );
+            let upper_bound = summary.upper_bound.as_deref().map_or_else(
+                || py.None(),
+                |value| PyBytes::new(py, value).into_any().unbind(),
+            );
+            partitions.push(
+                PyTuple::new(py, [contains_null, contains_nan, lower_bound, upper_bound])?
+                    .into_any()
+                    .unbind(),
+            );
+        }
+        PyTuple::new(py, partitions)
+    }
+
     fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let state = PyDict::new(py);
         state.set_item("manifest_path", self.inner.manifest_path.as_str())?;
@@ -2616,20 +2712,11 @@ impl PyManifestFile {
         state.set_item("added_rows_count", self.inner.added_rows_count)?;
         state.set_item("existing_rows_count", self.inner.existing_rows_count)?;
         state.set_item("deleted_rows_count", self.inner.deleted_rows_count)?;
-        let partitions = self
-            .inner
-            .partitions
-            .iter()
-            .map(|summary| {
-                (
-                    summary.contains_null,
-                    summary.contains_nan,
-                    summary.lower_bound.clone(),
-                    summary.upper_bound.clone(),
-                )
-            })
-            .collect::<Vec<_>>();
-        state.set_item("partitions", partitions)?;
+        state.set_item("partitions", self.partitions_view(py)?)?;
+        match self.inner.key_metadata.as_deref() {
+            Some(bytes) => state.set_item("key_metadata", PyBytes::new(py, bytes))?,
+            None => state.set_item("key_metadata", py.None())?,
+        }
         state.set_item("first_row_id", self.inner.first_row_id)?;
         Ok(state)
     }
@@ -2670,6 +2757,7 @@ impl PyManifestFile {
             existing_rows_count: required_pickle_item(state, "existing_rows_count")?.extract()?,
             deleted_rows_count: required_pickle_item(state, "deleted_rows_count")?.extract()?,
             partitions,
+            key_metadata: required_pickle_item(state, "key_metadata")?.extract()?,
             first_row_id: required_pickle_item(state, "first_row_id")?.extract()?,
         }))
     }
@@ -2692,6 +2780,16 @@ impl PyManifestFile {
         self.inner.partition_spec_id
     }
 
+    /// Whether the manifest lists `data` files or `deletes`.
+    #[getter]
+    fn content(&self) -> String {
+        match self.inner.content {
+            ManifestContent::Data => "data".to_owned(),
+            ManifestContent::Deletes => "deletes".to_owned(),
+            other => other.code().to_string(),
+        }
+    }
+
     /// Whether the manifest lists data files rather than delete files.
     fn is_data(&self) -> bool {
         self.inner.content == ManifestContent::Data
@@ -2703,6 +2801,12 @@ impl PyManifestFile {
         self.inner.sequence_number
     }
 
+    /// The lowest commit order of any entry in the manifest.
+    #[getter]
+    fn min_sequence_number(&self) -> i64 {
+        self.inner.min_sequence_number
+    }
+
     /// The snapshot that added the manifest.
     #[getter]
     fn added_snapshot_id(&self) -> i64 {
@@ -2711,32 +2815,59 @@ impl PyManifestFile {
 
     /// The files the manifest marks added.
     #[getter]
-    fn added_files_count(&self) -> i32 {
+    fn added_files_count(&self) -> Option<i32> {
         self.inner.added_files_count
     }
 
     /// The files the manifest marks existing.
     #[getter]
-    fn existing_files_count(&self) -> i32 {
+    fn existing_files_count(&self) -> Option<i32> {
         self.inner.existing_files_count
     }
 
     /// The files the manifest marks deleted.
     #[getter]
-    fn deleted_files_count(&self) -> i32 {
+    fn deleted_files_count(&self) -> Option<i32> {
         self.inner.deleted_files_count
     }
 
     /// The rows in the added files.
     #[getter]
-    fn added_rows_count(&self) -> i64 {
+    fn added_rows_count(&self) -> Option<i64> {
         self.inner.added_rows_count
     }
 
     /// The rows in the existing files.
     #[getter]
-    fn existing_rows_count(&self) -> i64 {
+    fn existing_rows_count(&self) -> Option<i64> {
         self.inner.existing_rows_count
+    }
+
+    /// The rows in the deleted files, when reported.
+    #[getter]
+    fn deleted_rows_count(&self) -> Option<i64> {
+        self.inner.deleted_rows_count
+    }
+
+    /// Partition summaries in the partition spec's field order.
+    #[getter]
+    fn partitions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        self.partitions_view(py)
+    }
+
+    /// Implementation-specific encryption metadata for the manifest file.
+    #[getter]
+    fn key_metadata<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .key_metadata
+            .as_deref()
+            .map(|bytes| PyBytes::new(py, bytes))
+    }
+
+    /// First row identifier assigned by a v3 manifest.
+    #[getter]
+    fn first_row_id(&self) -> Option<i64> {
+        self.inner.first_row_id
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2819,9 +2950,20 @@ impl PyDataFile {
         state.set_item("nan_value_counts", self.inner.nan_value_counts.clone())?;
         state.set_item("lower_bounds", self.inner.lower_bounds.clone())?;
         state.set_item("upper_bounds", self.inner.upper_bounds.clone())?;
+        match self.inner.key_metadata.as_deref() {
+            Some(bytes) => state.set_item("key_metadata", PyBytes::new(py, bytes))?,
+            None => state.set_item("key_metadata", py.None())?,
+        }
         state.set_item("split_offsets", self.inner.split_offsets.clone())?;
+        state.set_item("equality_ids", self.inner.equality_ids.clone())?;
         state.set_item("sort_order_id", self.inner.sort_order_id)?;
         state.set_item("first_row_id", self.inner.first_row_id)?;
+        state.set_item(
+            "referenced_data_file",
+            self.inner.referenced_data_file.as_deref(),
+        )?;
+        state.set_item("content_offset", self.inner.content_offset)?;
+        state.set_item("content_size_in_bytes", self.inner.content_size_in_bytes)?;
         Ok(state)
     }
 }
@@ -2853,9 +2995,17 @@ impl PyDataFile {
             nan_value_counts: required_pickle_item(state, "nan_value_counts")?.extract()?,
             lower_bounds: required_pickle_item(state, "lower_bounds")?.extract()?,
             upper_bounds: required_pickle_item(state, "upper_bounds")?.extract()?,
+            key_metadata: required_pickle_item(state, "key_metadata")?.extract()?,
             split_offsets: required_pickle_item(state, "split_offsets")?.extract()?,
+            equality_ids: required_pickle_item(state, "equality_ids")?.extract()?,
             sort_order_id: required_pickle_item(state, "sort_order_id")?.extract()?,
             first_row_id: required_pickle_item(state, "first_row_id")?.extract()?,
+            referenced_data_file: required_pickle_item(state, "referenced_data_file")?
+                .extract::<Option<String>>()?
+                .map(Into::into),
+            content_offset: required_pickle_item(state, "content_offset")?.extract()?,
+            content_size_in_bytes: required_pickle_item(state, "content_size_in_bytes")?
+                .extract()?,
         }))
     }
 
@@ -2905,6 +3055,12 @@ impl PyDataFile {
         counts_by_id(py, &self.inner.null_value_counts)
     }
 
+    /// The NaN values per column, keyed by field identifier.
+    #[getter]
+    fn nan_value_counts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        counts_by_id(py, &self.inner.nan_value_counts)
+    }
+
     /// The stored bytes per column, keyed by field identifier.
     #[getter]
     fn column_sizes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
@@ -2933,10 +3089,49 @@ impl PyDataFile {
         self.inner.split_offsets.clone()
     }
 
+    /// Implementation-specific encryption key metadata.
+    #[getter]
+    fn key_metadata<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .key_metadata
+            .as_deref()
+            .map(|bytes| PyBytes::new(py, bytes))
+    }
+
+    /// Field identifiers used by an equality-delete file.
+    #[getter]
+    fn equality_ids(&self) -> Option<Vec<i32>> {
+        self.inner.equality_ids.clone()
+    }
+
     /// The sort order the file was written in, when one applies.
     #[getter]
     fn sort_order_id(&self) -> Option<i32> {
         self.inner.sort_order_id
+    }
+
+    /// First row identifier assigned to this v3 data file.
+    #[getter]
+    fn first_row_id(&self) -> Option<i64> {
+        self.inner.first_row_id
+    }
+
+    /// Data file referenced by position-delete metadata.
+    #[getter]
+    fn referenced_data_file(&self) -> Option<&str> {
+        self.inner.referenced_data_file.as_deref()
+    }
+
+    /// Byte offset of referenced v3 content.
+    #[getter]
+    fn content_offset(&self) -> Option<i64> {
+        self.inner.content_offset
+    }
+
+    /// Byte length of referenced v3 content.
+    #[getter]
+    fn content_size_in_bytes(&self) -> Option<i64> {
+        self.inner.content_size_in_bytes
     }
 
     /// Zero for rows, one for position deletes, two for equality deletes.

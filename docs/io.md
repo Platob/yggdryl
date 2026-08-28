@@ -3370,7 +3370,7 @@ for the next reader to prune with.
     let table = catalog
         .tables()
         .append("logs.app", day_two.into_arrow_lines(&options)?)?;
-    assert_eq!(table.metadata().snapshots.len(), 2);
+    assert_eq!(table.metadata().snapshots().len(), 2);
     assert_eq!(table.current_snapshot().unwrap().summary_value("total-records"), Some("4"));
     assert_eq!(table.manifests()?.len(), 2, "one manifest per append");
 

@@ -225,10 +225,10 @@ and resource-path views in both languages.
 
 ## Build and test
 
-The core supports Rust 1.85. Building either extension requires the newer
-toolchain its binding dependencies need. The Parquet encoding and the Iceberg
-table format over it are behind non-default features, so the test and Clippy
-passes run twice: once with default features and once with both enabled.
+Default and schema-only core builds support Rust 1.85. The optional `iceberg`
+feature and both bindings require Rust 1.94 because they include official
+Iceberg 0.10.1. Parquet and Iceberg are non-default core features, so test and
+Clippy passes cover both the default core and the feature-enabled workspace.
 
 ```console
 cargo fmt --manifest-path rust/Cargo.toml

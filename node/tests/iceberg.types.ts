@@ -104,10 +104,18 @@ const recordCount: number = file.recordCount
 const fileSize: number = file.fileSizeInBytes
 const valueCounts: FieldCount[] = file.valueCounts
 const nullCounts: FieldCount[] = file.nullValueCounts
+const nanCounts: FieldCount[] = file.nanValueCounts
 const columnSizes: FieldCount[] = file.columnSizes
 const lower: FieldBound[] = file.lowerBounds
 const upper: FieldBound[] = file.upperBounds
+const keyMetadata: Buffer | null = file.keyMetadata
+const splitOffsets: number[] = file.splitOffsets
+const equalityIds: number[] | null = file.equalityIds
 const sortOrderId: number | null = file.sortOrderId
+const fileFirstRowId: bigint | null = file.firstRowId
+const referencedDataFile: string | null = file.referencedDataFile
+const contentOffset: number | null = file.contentOffset
+const contentSizeInBytes: number | null = file.contentSizeInBytes
 const clonedFile: DataFile = file.clone()
 const equalFile: boolean = file.equals(clonedFile)
 const fileOrder: number = file.compare(clonedFile)
@@ -120,8 +128,10 @@ const timestampMs: number = view.timestampMs
 const operation: string = view.operation
 const summary: Record<string, string> = view.summary
 const manifestList: string = view.manifestList
+const legacyManifests: string[] | null = view.manifests
 const snapshotSequence: number | null = view.sequenceNumber
 const snapshotSchemaId: number | null = view.schemaId
+const snapshotEncryptionKeyId: string | null = view.encryptionKeyId
 const snapshotFirstRowId: bigint | null = view.firstRowId
 const snapshotAddedRows: number | null = view.addedRows
 const clonedSnapshot: Snapshot = view.clone()
@@ -132,9 +142,15 @@ const snapshotHash: bigint = view.stableHash()
 declare const manifest: ManifestFile
 const manifestPath: string = manifest.manifestPath
 const addedSnapshotId: bigint = manifest.addedSnapshotId
-const addedFilesCount: number = manifest.addedFilesCount
+const addedFilesCount: number | null = manifest.addedFilesCount
+const existingFilesCount: number | null = manifest.existingFilesCount
+const deletedFilesCount: number | null = manifest.deletedFilesCount
+const addedRowsCount: number | null = manifest.addedRowsCount
+const existingRowsCount: number | null = manifest.existingRowsCount
+const deletedRowsCount: number | null = manifest.deletedRowsCount
 const manifestContent: string = manifest.content
 const manifestPartitions: FieldSummaryView[] = manifest.partitions
+const manifestKeyMetadata: Buffer | null = manifest.keyMetadata
 const manifestFirstRowId: bigint | null = manifest.firstRowId
 const clonedManifest: ManifestFile = manifest.clone()
 const equalManifest: boolean = manifest.equals(clonedManifest)
@@ -221,6 +237,7 @@ const options: IcebergOptions = new IcebergOptions({
   commitRetries: 4,
   commitMinBackoffMs: 100,
   commitMaxBackoffMs: 60_000,
+  commitTotalTimeoutMs: 1_800_000,
   targetFileSize: 4096,
   readParallelism: 2,
   readParallelMinFiles: 16,
@@ -228,6 +245,7 @@ const options: IcebergOptions = new IcebergOptions({
   compactAfterCommits: 8,
   dataFormat: 'avro',
 })
+const puffinOptions: IcebergOptions = new IcebergOptions({ dataFormat: 'puffin' })
 const emptyOptions: IcebergOptions = new IcebergOptions()
 const clonedOptions: IcebergOptions = options.clone()
 const equalOptions: boolean = options.equals(clonedOptions)
@@ -236,6 +254,7 @@ const optionsHash: bigint = options.stableHash()
 options.commitRetries = 2
 options.commitMinBackoffMs = 50
 options.commitMaxBackoffMs = 5_000
+options.commitTotalTimeoutMs = 30_000
 options.targetFileSize = 8192
 options.readParallelism = 1
 options.readParallelMinFiles = 4
@@ -245,12 +264,14 @@ options.dataFormat = 'parquet'
 const commitRetries: number = options.commitRetries
 const commitMinBackoffMs: number = options.commitMinBackoffMs
 const commitMaxBackoffMs: number = options.commitMaxBackoffMs
+const commitTotalTimeoutMs: number = options.commitTotalTimeoutMs
 const targetFileSizeOption: number = options.targetFileSize
 const readParallelism: number = options.readParallelism
 const readParallelMinFiles: number = options.readParallelMinFiles
 const readParallelMinFileSize: number = options.readParallelMinFileSize
 const compactAfterCommits: number | null = options.compactAfterCommits
 const dataFormat: string = options.dataFormat
+const puffinFormat: string = puffinOptions.dataFormat
 
 created.setOptions(options)
 const resolvedOptions: IcebergOptions = created.options()
@@ -296,7 +317,8 @@ created.overwriteWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), options)
 created.merge(BatchReader.from(arrowTable), ['id'], false, options)
 created.mergeWhere({ venue: 'XNAS' }, BatchReader.from(arrowTable), ['id'], true, options)
 
-const expired: bigint[] = created.expireSnapshots(1)
+const expired: bigint[] = created.expireSnapshots()
+const explicitlyExpired: bigint[] = created.expireSnapshots(1, 1, [1n, 2])
 const pastManifests: ManifestFile[] = created.manifestsAt(1n)
 created.createBranch('audit', 1n)
 created.createTag('nightly', 1)

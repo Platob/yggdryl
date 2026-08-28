@@ -25,11 +25,13 @@
 //! either side. A type outside that set has no bound rather than a bound that
 //! means something else.
 
-use std::cmp::Ordering;
-
+use iceberg_official::spec::{
+    Datum as OfficialDatum, PrimitiveLiteral as OfficialPrimitiveLiteral,
+    PrimitiveType as OfficialPrimitiveType,
+};
 use smol_str::SmolStr;
 
-use crate::{DataType, Scalar};
+use crate::{DataType, Scalar, TimeUnit};
 
 /// The literal Iceberg writes for a null partition value.
 pub(super) const NULL_TEXT: &str = crate::io::partition::NULL_PARTITION;
@@ -64,8 +66,8 @@ pub(super) const fn is_portable(data_type: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
             | DataType::Date32
-            | DataType::Time64(_)
-            | DataType::Timestamp(_, _)
+            | DataType::Time64(TimeUnit::Microsecond)
+            | DataType::Timestamp(TimeUnit::Microsecond | TimeUnit::Nanosecond, _)
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
@@ -83,28 +85,52 @@ pub(super) const fn is_portable(data_type: &DataType) -> bool {
 /// [`Scalar::I64`]. A value that does not fit the column, and every type whose
 /// encoding is not [`is_portable`], has no bytes rather than the wrong ones.
 pub(super) fn single_value(value: &Scalar, data_type: &DataType) -> Option<Vec<u8>> {
-    match data_type {
-        DataType::Boolean => value.as_bool().map(|flag| vec![u8::from(flag)]),
-        DataType::Int32 | DataType::Date32 => i32::try_from(count(value)?)
-            .ok()
-            .map(|number| number.to_le_bytes().to_vec()),
-        DataType::Int64 | DataType::Time64(_) | DataType::Timestamp(_, _) => {
-            Some(count(value)?.to_le_bytes().to_vec())
-        }
+    let datum = match data_type {
+        DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
+        DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
+        DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
+        DataType::Int64 => OfficialDatum::long(count(value)?),
         #[allow(clippy::cast_possible_truncation)]
-        DataType::Float32 => value
-            .as_f64()
-            .map(|number| (number as f32).to_le_bytes().to_vec()),
-        DataType::Float64 => value.as_f64().map(|number| number.to_le_bytes().to_vec()),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            value.as_str().map(|text| text.as_bytes().to_vec())
+        DataType::Float32 => OfficialDatum::float(value.as_f64()? as f32),
+        DataType::Float64 => OfficialDatum::double(value.as_f64()?),
+        DataType::Time64(TimeUnit::Microsecond) => {
+            OfficialDatum::time_micros(count(value)?).ok()?
         }
-        DataType::Binary
-        | DataType::LargeBinary
-        | DataType::BinaryView
-        | DataType::FixedSizeBinary(_) => value.as_bytes().map(<[u8]>::to_vec),
-        _ => None,
+        DataType::Timestamp(TimeUnit::Microsecond, None) => {
+            OfficialDatum::timestamp_micros(count(value)?)
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, Some(_)) => {
+            OfficialDatum::timestamptz_micros(count(value)?)
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, None) => {
+            OfficialDatum::timestamp_nanos(count(value)?)
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) => {
+            OfficialDatum::timestamptz_nanos(count(value)?)
+        }
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
+            OfficialDatum::string(value.as_str()?)
+        }
+        DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
+            OfficialDatum::binary(value.as_bytes()?.iter().copied())
+        }
+        DataType::FixedSizeBinary(width) => {
+            let bytes = value.as_bytes()?;
+            if usize::try_from(*width).ok()? != bytes.len() {
+                return None;
+            }
+            OfficialDatum::fixed(bytes.iter().copied())
+        }
+        _ => return None,
+    };
+    // Iceberg orders floating values for comparisons, but its metrics contract
+    // explicitly forbids NaN as either bound. Keep that semantic validation at
+    // the shared bound codec so data-file and manifest summaries cannot emit a
+    // decodable-but-invalid value.
+    if datum.is_nan() {
+        return None;
     }
+    datum.to_bytes().ok().map(|bytes| bytes.into_vec())
 }
 
 /// Read one scalar back out of the single value a manifest bound carries.
@@ -115,29 +141,87 @@ pub(super) fn single_value(value: &Scalar, data_type: &DataType) -> Option<Vec<u
 /// encoding [`is_portable`] does not cover has no value rather than a wrong
 /// one, and the pruner then simply declines.
 pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Scalar> {
-    match data_type {
-        DataType::Boolean => bytes.first().map(|byte| Scalar::Bool(*byte != 0)),
-        DataType::Int32 => Some(Scalar::I32(int32(bytes))),
-        DataType::Date32 => Some(Scalar::date32(int32(bytes))),
-        DataType::Int64 => Some(Scalar::I64(int64(bytes))),
-        DataType::Time64(unit) => Scalar::time64(int64(bytes), *unit, crate::Timezone::NAIVE).ok(),
-        DataType::Timestamp(unit, Some(zone)) => {
-            Scalar::datetime64(int64(bytes), *unit, zone.clone()).ok()
+    let datum = official_datum(bytes, data_type)?;
+    match (data_type, datum.literal()) {
+        (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Some(Scalar::Bool(*value)),
+        (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::I32(*value)),
+        (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::date32(*value)),
+        (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Some(Scalar::I64(*value)),
+        (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
+            Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()
         }
-        DataType::Timestamp(unit, None) => {
-            Scalar::datetime64(int64(bytes), *unit, crate::Timezone::NAIVE).ok()
+        (DataType::Timestamp(unit, Some(zone)), OfficialPrimitiveLiteral::Long(value)) => {
+            Scalar::datetime64(*value, *unit, zone.clone()).ok()
         }
-        DataType::Float32 => Some(Scalar::F32(crate::Float32::from_f32(float32(bytes)))),
-        DataType::Float64 => Some(Scalar::F64(crate::Float64::from_f64(float64(bytes)))),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            std::str::from_utf8(bytes).ok().map(Scalar::from)
+        (DataType::Timestamp(unit, None), OfficialPrimitiveLiteral::Long(value)) => {
+            Scalar::datetime64(*value, *unit, crate::Timezone::NAIVE).ok()
         }
-        DataType::Binary
-        | DataType::LargeBinary
-        | DataType::BinaryView
-        | DataType::FixedSizeBinary(_) => Some(Scalar::from(bytes)),
+        (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => {
+            Some(Scalar::F32(crate::Float32::from_f32((*value).into_inner())))
+        }
+        (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => {
+            Some(Scalar::F64(crate::Float64::from_f64((*value).into_inner())))
+        }
+        (
+            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+            OfficialPrimitiveLiteral::String(value),
+        ) => Some(Scalar::from(value.as_str())),
+        (
+            DataType::Binary
+            | DataType::LargeBinary
+            | DataType::BinaryView
+            | DataType::FixedSizeBinary(_),
+            OfficialPrimitiveLiteral::Binary(value),
+        ) => Some(Scalar::from(value.as_slice())),
         _ => None,
     }
+}
+
+/// Decode only a well-formed single-value representation.
+///
+/// Apache Iceberg handles promoted Int-to-Long and Float-to-Double bounds. Its
+/// boolean and fixed decoders are deliberately permissive, so exact wire
+/// widths are checked here before delegating. A malformed external bound is
+/// unknown rather than a synthetic value a planner could prune against.
+fn official_datum(bytes: &[u8], data_type: &DataType) -> Option<OfficialDatum> {
+    let primitive = match data_type {
+        DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
+        DataType::Int32 if bytes.len() == 4 => OfficialPrimitiveType::Int,
+        DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
+        DataType::Int64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Long,
+        DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,
+        DataType::Float64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Double,
+        DataType::Time64(TimeUnit::Microsecond) if bytes.len() == 8 => OfficialPrimitiveType::Time,
+        DataType::Timestamp(TimeUnit::Microsecond, None) if bytes.len() == 8 => {
+            OfficialPrimitiveType::Timestamp
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, Some(_)) if bytes.len() == 8 => {
+            OfficialPrimitiveType::Timestamptz
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, None) if bytes.len() == 8 => {
+            OfficialPrimitiveType::TimestampNs
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) if bytes.len() == 8 => {
+            OfficialPrimitiveType::TimestamptzNs
+        }
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => OfficialPrimitiveType::String,
+        DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
+            OfficialPrimitiveType::Binary
+        }
+        DataType::FixedSizeBinary(width)
+            if usize::try_from(*width)
+                .ok()
+                .is_some_and(|width| width == bytes.len()) =>
+        {
+            OfficialPrimitiveType::Fixed(u64::try_from(*width).ok()?)
+        }
+        _ => return None,
+    };
+    let datum = OfficialDatum::try_from_bytes(bytes, primitive).ok()?;
+    // Treat invalid external NaN bounds as unknown. A planner may use an
+    // unknown bound only conservatively; admitting NaN here could prove a file
+    // disjoint under total float ordering and hide matching rows.
+    (!datum.is_nan()).then_some(datum)
 }
 
 /// Read the integer count a value holds, whatever it counts.
@@ -163,47 +247,89 @@ fn count(value: &Scalar) -> Option<i64> {
 /// row groups, and testing a filter against one, has to decode before it
 /// compares. Text and bytes are the exception: they order lexicographically in
 /// both encodings.
-pub(super) fn compare_single(left: &[u8], right: &[u8], data_type: &DataType) -> Ordering {
-    match data_type {
-        DataType::Boolean => left.first().cmp(&right.first()),
-        DataType::Int32 | DataType::Date32 => int32(left).cmp(&int32(right)),
-        DataType::Int64 | DataType::Time64(_) | DataType::Timestamp(_, _) => {
-            int64(left).cmp(&int64(right))
-        }
-        DataType::Float32 => float32(left).total_cmp(&float32(right)),
-        DataType::Float64 => float64(left).total_cmp(&float64(right)),
-        _ => left.cmp(right),
+pub(super) fn compare_single(
+    left: &[u8],
+    right: &[u8],
+    data_type: &DataType,
+) -> Option<std::cmp::Ordering> {
+    Some(single_to_value(left, data_type)?.cmp(&single_to_value(right, data_type)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn promoted_bounds_decode_under_the_current_type() {
+        let int = 37_i32.to_le_bytes();
+        assert_eq!(
+            single_to_value(&int, &DataType::Int64),
+            Some(Scalar::I64(37))
+        );
+        assert_eq!(
+            compare_single(&int, &38_i64.to_le_bytes(), &DataType::Int64),
+            Some(std::cmp::Ordering::Less)
+        );
+
+        let float = 1.5_f32.to_le_bytes();
+        assert_eq!(
+            single_to_value(&float, &DataType::Float64).and_then(|value| value.as_f64()),
+            Some(1.5)
+        );
+        assert_eq!(
+            compare_single(&float, &2.0_f64.to_le_bytes(), &DataType::Float64),
+            Some(std::cmp::Ordering::Less)
+        );
     }
-}
 
-/// Decode a little-endian 32-bit integer, treating a short value as zero.
-fn int32(bytes: &[u8]) -> i32 {
-    bytes
-        .get(..4)
-        .and_then(|slice| <[u8; 4]>::try_from(slice).ok())
-        .map_or(0, i32::from_le_bytes)
-}
+    #[test]
+    fn malformed_bounds_are_unknown_instead_of_zero() {
+        for bytes in [vec![], vec![0; 3], vec![0; 5], vec![0; 7], vec![0; 9]] {
+            assert!(single_to_value(&bytes, &DataType::Int32).is_none());
+            assert!(single_to_value(&bytes, &DataType::Int64).is_none());
+            assert!(single_to_value(&bytes, &DataType::Float32).is_none());
+            assert!(single_to_value(&bytes, &DataType::Float64).is_none());
+            assert!(compare_single(&bytes, &0_i64.to_le_bytes(), &DataType::Int64).is_none());
+        }
+        assert!(single_to_value(&[], &DataType::Boolean).is_none());
+        assert!(single_to_value(&[0, 1], &DataType::Boolean).is_none());
+        assert!(single_to_value(&[2], &DataType::Boolean).is_none());
+        assert!(single_to_value(&[0; 3], &DataType::FixedSizeBinary(4)).is_none());
+        assert!(single_to_value(&[0; 5], &DataType::FixedSizeBinary(4)).is_none());
+        assert!(single_to_value(&[0xff], &DataType::Utf8).is_none());
+    }
 
-/// Decode a little-endian 64-bit integer, treating a short value as zero.
-fn int64(bytes: &[u8]) -> i64 {
-    bytes
-        .get(..8)
-        .and_then(|slice| <[u8; 8]>::try_from(slice).ok())
-        .map_or(0, i64::from_le_bytes)
-}
+    #[test]
+    fn nan_is_never_encoded_or_decoded_as_a_bound() {
+        let f32_nan = f32::NAN.to_le_bytes();
+        let f64_nan = f64::NAN.to_le_bytes();
 
-/// Decode a little-endian 32-bit float, treating a short value as zero.
-fn float32(bytes: &[u8]) -> f32 {
-    bytes
-        .get(..4)
-        .and_then(|slice| <[u8; 4]>::try_from(slice).ok())
-        .map_or(0.0, f32::from_le_bytes)
-}
+        assert!(single_value(&Scalar::from(f32::NAN), &DataType::Float32).is_none());
+        assert!(single_value(&Scalar::from(f64::NAN), &DataType::Float64).is_none());
+        assert!(single_to_value(&f32_nan, &DataType::Float32).is_none());
+        assert!(single_to_value(&f64_nan, &DataType::Float64).is_none());
+        assert!(compare_single(&f64_nan, &1.5_f64.to_le_bytes(), &DataType::Float64).is_none());
 
-/// Decode a little-endian 64-bit float, treating a short value as zero.
-fn float64(bytes: &[u8]) -> f64 {
-    bytes
-        .get(..8)
-        .and_then(|slice| <[u8; 8]>::try_from(slice).ok())
-        .map_or(0.0, f64::from_le_bytes)
+        // Signed zero and infinities are valid Iceberg bounds.
+        for value in [-0.0_f64, 0.0, f64::NEG_INFINITY, f64::INFINITY] {
+            let scalar = Scalar::from(value);
+            let encoded = single_value(&scalar, &DataType::Float64).unwrap();
+            assert_eq!(single_to_value(&encoded, &DataType::Float64), Some(scalar));
+        }
+    }
+
+    #[test]
+    fn official_single_value_bytes_round_trip_supported_values() {
+        let cases = [
+            (Scalar::Bool(true), DataType::Boolean),
+            (Scalar::I32(-7), DataType::Int32),
+            (Scalar::I64(9), DataType::Int64),
+            (Scalar::from("é"), DataType::Utf8),
+            (Scalar::from([0_u8, 1, 2].as_slice()), DataType::Binary),
+        ];
+        for (value, data_type) in cases {
+            let bytes = single_value(&value, &data_type).expect("a supported value");
+            assert_eq!(single_to_value(&bytes, &data_type), Some(value));
+        }
+    }
 }

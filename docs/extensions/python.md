@@ -186,6 +186,9 @@ Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`,
 the deterministic native `u64`; Python's built-in `hash()` remaps that value to
 `Py_hash_t` without changing equal-value hash agreement. An Avro fingerprint is
 still Parsing Canonical Form, not the schema's complete behavioral identity.
+Snapshot legacy v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every
+Iceberg data-file count, bound, split, encryption, delete, and row-lineage
+field stay available on these views.
 
 Mutable identity wrappers - `Field`, `MediaType`, `Uri`, `Url`, `Urn`,
 `RecordOptions`, and `IcebergOptions` - stay mutable until built-in `hash()` is

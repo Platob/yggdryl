@@ -77,15 +77,15 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   assert.ok(table.spec.isUnpartitioned())
   assert.equal(table.formatVersion, 2)
   assert.equal(table.version, 1)
-  assert.equal(table.metadataFileName, 'v1.metadata.json')
-  assert.ok(table.metadataLocation.endsWith('/metadata/v1.metadata.json'))
+  assert.match(table.metadataFileName, /^00001-[0-9a-f-]+\.metadata\.json$/)
+  assert.ok(table.metadataLocation.endsWith(`/metadata/${table.metadataFileName}`))
   assert.ok(table.toString().startsWith('file:///'))
 
   // Everything is a child of the one handle the table was built from.
   const handle = new IOBase(location)
   assert.deepEqual(
     [...handle.joinpath('metadata').iterdir()].map((child) => child.name).sort(),
-    ['v1.metadata.json', 'version-hint.text'],
+    [table.metadataFileName, 'version-hint.text'],
   )
 
   // A table that has never been written to reads as no rows, not as a failure.
@@ -106,6 +106,8 @@ test('an append commits a snapshot, one data file per partition', (t) => {
 
   const snapshot = table.currentSnapshot
   assert.ok(snapshot instanceof iceberg.Snapshot)
+  assert.equal(snapshot.encryptionKeyId, null)
+  assert.equal(snapshot.manifests, null)
   assert.equal(snapshot.operation, 'append')
   assert.equal(typeof snapshot.snapshotId, 'bigint')
   assert.equal(snapshot.summary['added-records'], '3')
@@ -124,6 +126,7 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   assert.equal(manifest.addedRowsCount, 3)
   assert.equal(manifest.addedSnapshotId, snapshot.snapshotId)
   assert.ok(Array.isArray(manifest.partitions))
+  assert.equal(manifest.keyMetadata, null)
   const manifestClone = manifest.clone()
   assert.notEqual(manifestClone, manifest)
   assert.ok(manifestClone.equals(manifest))
@@ -137,6 +140,13 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   assert.equal(files.length, 2)
   assert.equal(files[0].fileFormat, 'PARQUET')
   assert.deepEqual(files[0].partitionNames, ['venue'])
+  assert.equal(files[0].keyMetadata, null)
+  assert.equal(files[0].equalityIds, null)
+  assert.equal(files[0].firstRowId, null)
+  assert.equal(files[0].referencedDataFile, null)
+  assert.equal(files[0].contentOffset, null)
+  assert.equal(files[0].contentSizeInBytes, null)
+  assert.ok(Array.isArray(files[0].nanValueCounts))
   // The manifest is the authority on a partition value, not the directory name.
   assert.deepEqual(
     files.map((file) => file.partition.map((value) => value.asJs())),
@@ -160,6 +170,19 @@ test('an append commits a snapshot, one data file per partition', (t) => {
   )
 
   assert.equal(table.scan().intoTable().numRows, 3)
+})
+
+test('v3 snapshot lineage stays exact at the JavaScript boundary', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), undefined, 3)
+  table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+
+  assert.equal(table.formatVersion, 3)
+  assert.equal(table.currentSnapshot.encryptionKeyId, null)
+  assert.equal(table.currentSnapshot.firstRowId, 0n)
+  assert.equal(table.currentSnapshot.addedRows, 2)
 })
 
 test('a scan pushes columns down and casts what each file gives back', (t) => {
@@ -273,6 +296,27 @@ test('a transform that cannot place a row is refused by name', (t) => {
   }
   assert.deepEqual(spec.intoJSON(), document)
   assert.ok(iceberg.PartitionSpec.fromJSON(document).equals(spec))
+  const unknown = iceberg.PartitionSpec.fromJSON({
+    'spec-id': 2,
+    fields: [
+      {
+        name: 'venue_opaque',
+        transform: 'unknown',
+        'source-id': 2,
+        'field-id': 1001,
+      },
+      {
+        name: 'venue_bucket',
+        transform: 'bucket[4294967295]',
+        'source-id': 2,
+        'field-id': 1002,
+      },
+    ],
+  })
+  assert.deepEqual(
+    unknown.fields.map((field) => field.transform),
+    ['unknown', 'bucket[4294967295]'],
+  )
   assert.deepEqual(JSON.parse(JSON.stringify(spec)), document)
   assert.equal(iceberg.PartitionSpec._fromScalarNative, undefined)
   assert.equal(spec._intoScalarNative, undefined)
@@ -362,6 +406,40 @@ test('scanAt reads a retained snapshot after an overwrite', (t) => {
   // table does not retain is refused naming the ids it does.
   assert.throws(() => table.scanAt(7), new RegExp(`got 7; the table retains \\[.*${first}`))
   assert.throws(() => table.scanAt(2 ** 60), /at most 2\^53/)
+})
+
+test('a legacy v1 direct-manifest snapshot scans and stays available for time travel', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const location = path.join(root, 'legacy')
+  const table = iceberg.Table.create(location, schema(), undefined, 1)
+  table.append(rows([1n], ['XNAS']))
+  const snapshotId = table.currentSnapshot.snapshotId
+  const direct = table.manifests().map((manifest) => manifest.manifestPath)
+
+  const metadataPath = path.join(location, 'metadata', table.metadataFileName)
+  const encoded = fs.readFileSync(metadataPath, 'utf8')
+  const legacy = encoded.replace(
+    /"manifest-list"\s*:\s*"[^"]*"/,
+    `"manifests":${JSON.stringify(direct)}`,
+  )
+  assert.notEqual(legacy, encoded)
+  // Editing the JSON as a JavaScript object would round 64-bit snapshot ids.
+  fs.writeFileSync(metadataPath, legacy)
+
+  const reopened = iceberg.Table.open(location)
+  assert.equal(reopened.currentSnapshot.manifestList, '')
+  assert.deepEqual(reopened.currentSnapshot.manifests, direct)
+  assert.equal(reopened.manifests().length, 1)
+  assert.equal(reopened.scan().intoTable().numRows, 1)
+
+  reopened.append(rows([2n], ['XNYS']))
+  assert.equal(reopened.scan().intoTable().numRows, 2)
+  assert.equal(reopened.scanAt(snapshotId).intoTable().numRows, 1)
+  assert.deepEqual(
+    reopened.snapshots.find((snapshot) => snapshot.snapshotId === snapshotId).manifests,
+    direct,
+  )
 })
 
 test('a schema evolves through one recorded chain, committed once', (t) => {
@@ -554,7 +632,16 @@ test('a schema is a document in both directions', () => {
   })
 
   const read = iceberg.schemaFromJson('row', document)
-  assert.ok(read.equals(declared))
+  assert.ok(read.equals(declared, false))
+  assert.equal(read.iceberg.get('schema-id'), '0')
+  assert.deepEqual(iceberg.schemaToJson(read).asJs(), {
+    type: 'struct',
+    'schema-id': 0,
+    fields: [
+      { id: 1, name: 'id', required: false, type: 'long' },
+      { id: 2, name: 'venue', required: false, type: 'string' },
+    ],
+  })
 
   // A document another catalog handed over reads the same way, as the native
   // value or as the plain object a JSON decoder produced.
@@ -607,6 +694,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(untouched.commitRetries, 4)
   assert.equal(untouched.commitMinBackoffMs, 100)
   assert.equal(untouched.commitMaxBackoffMs, 60_000)
+  assert.equal(untouched.commitTotalTimeoutMs, 1_800_000)
   assert.equal(untouched.targetFileSize, 512 * 1024 * 1024)
   assert.equal(untouched.readParallelMinFiles, 16)
   assert.equal(untouched.readParallelMinFileSize, 4 * 1024 * 1024)
@@ -620,6 +708,7 @@ test('an options value answers the fields it was given and defaults the rest', (
     commitRetries: 9,
     commitMinBackoffMs: 5,
     commitMaxBackoffMs: 50,
+    commitTotalTimeoutMs: 500,
     targetFileSize: 4096,
     readParallelism: 2,
     readParallelMinFiles: 3,
@@ -630,6 +719,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.commitRetries, 9)
   assert.equal(given.commitMinBackoffMs, 5)
   assert.equal(given.commitMaxBackoffMs, 50)
+  assert.equal(given.commitTotalTimeoutMs, 500)
   assert.equal(given.targetFileSize, 4096)
   assert.equal(given.readParallelism, 2)
   assert.equal(given.readParallelMinFiles, 3)
@@ -656,18 +746,45 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(partial.targetFileSize, 8192)
   assert.equal(partial.compactAfterCommits, 2)
   assert.equal(partial.commitMinBackoffMs, 100)
+
+  for (const invalid of [-1, 1.5, 2 ** 54]) {
+    assert.throws(
+      () => new iceberg.IcebergOptions({ commitTotalTimeoutMs: invalid }),
+      /commitTotalTimeoutMs/,
+    )
+  }
 })
 
-test('a data format is named in any case and refused when no writer has it', () => {
+test('property-derived option integers never round at the JavaScript boundary', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const table = iceberg.Table.create(root, fields.struct('row', [Field.from('id: int64')], { nullable: false }))
+  table.updateProperties({ 'commit.retry.total-timeout-ms': String(2 ** 54) })
+  const options = table.options()
+  assert.throws(() => options.commitTotalTimeoutMs, /cannot be represented exactly/)
+})
+
+test('a data format is named in any case and refused when no writer has it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
   const options = new iceberg.IcebergOptions({ dataFormat: 'avro' })
   assert.equal(options.dataFormat, 'AVRO')
   options.dataFormat = 'PaRqUeT'
   assert.equal(options.dataFormat, 'PARQUET')
   assert.equal(new iceberg.IcebergOptions({ dataFormat: 'AVRO' }).dataFormat, 'AVRO')
+  const puffin = new iceberg.IcebergOptions({ dataFormat: 'puffin' })
+  assert.equal(puffin.dataFormat, 'PUFFIN')
+  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  assert.throws(
+    () => table.append(rows([1n], ['XNAS']), puffin),
+    /write\.format\.default.*PUFFIN/,
+  )
+  assert.equal(table.currentSnapshot, null)
 
   assert.throws(
     () => new iceberg.IcebergOptions({ dataFormat: 'csv' }),
-    /expected an Iceberg file format of PARQUET, AVRO, or ORC, got "CSV"/,
+    /expected an Iceberg file format of PARQUET, AVRO, ORC, or PUFFIN, got "CSV"/,
   )
   assert.throws(() => {
     options.dataFormat = 'csv'
@@ -867,7 +984,7 @@ test('a tag and a branch name a snapshot, and removing one reports what it held'
 
   // Dropping a ref that was never there is a typo far more often than it is a
   // no-op, so it is refused naming the refs the table does have.
-  assert.throws(() => table.removeRef('nightly'), /got "nightly"; it has \[main, audit\]/)
+  assert.throws(() => table.removeRef('nightly'), /got "nightly"; it has \[audit, main\]/)
   assert.equal(table.snapshotByRef('audit').snapshotId, first)
   const branch = table.removeRef('audit')
   assert.notEqual(removed.compare(branch), 0)
@@ -1092,7 +1209,7 @@ test('mergeWhere narrows a merge to the files its filters admit', (t) => {
   assert.equal(table.scan().intoTable().numRows, 4)
 })
 
-test('expireSnapshots drops nothing when the cutoff is older than every snapshot', (t) => {
+test('expireSnapshots supports defaults, retain overrides, and explicit ids', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
@@ -1102,15 +1219,25 @@ test('expireSnapshots drops nothing when the cutoff is older than every snapshot
   table.append(rows([2n], ['XNYS']))
   assert.equal(table.snapshots.length, 2)
 
-  // One millisecond after the epoch is older than anything a table can hold,
-  // so the check runs on a copy and no version is spent.
+  // Fresh snapshots survive the default cutoff. Retaining two also protects
+  // both from a future cutoff, and an unknown explicit id is ignored.
   const version = table.version
+  assert.deepEqual(table.expireSnapshots(), [])
+  assert.deepEqual(table.expireSnapshots(Date.now() + 60_000, 2), [])
+  assert.deepEqual(table.expireSnapshots(1, undefined, [999n]), [])
   assert.deepEqual(table.expireSnapshots(1), [])
   assert.equal(table.version, version)
   assert.equal(table.snapshots.length, 2)
 
-  // A cutoff ahead of now drops the ancestors the branch no longer needs.
-  assert.deepEqual(table.expireSnapshots(Date.now() + 60_000), [first])
+  assert.throws(() => table.expireSnapshots(undefined, 0), /retain_last.*at least 1/)
+  assert.throws(
+    () => table.expireSnapshots(undefined, undefined, [table.currentSnapshot.snapshotId]),
+    /cannot expire current snapshot/,
+  )
+
+  // Explicit ids join age selection, so an old cutoff does not protect this
+  // known, unreferenced ancestor.
+  assert.deepEqual(table.expireSnapshots(1, undefined, [first]), [first])
   assert.equal(table.snapshots.length, 1)
   assert.ok(table.version > version)
   // Expiry drops history, never rows: what the current snapshot holds is what

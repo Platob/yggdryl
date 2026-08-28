@@ -2,7 +2,7 @@
 
 use std::hash::Hash;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 
@@ -50,11 +50,13 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         sequence_number: Some(2),
         timestamp_ms: 123,
         manifest_list: "metadata/snap.avro".into(),
+        manifests: None,
         summary: vec![
             ("operation".into(), "append".into()),
             ("added-records".into(), "4".into()),
         ],
         schema_id: Some(1),
+        encryption_key_id: None,
         first_row_id: None,
         added_rows: Some(4),
     };
@@ -73,6 +75,12 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         record_count: 4,
         file_size_in_bytes: 128,
         value_counts: vec![(2, 4), (1, 4)],
+        key_metadata: Some(vec![1, 2]),
+        equality_ids: Some(vec![1]),
+        first_row_id: Some(8),
+        referenced_data_file: Some("data/base.parquet".into()),
+        content_offset: Some(32),
+        content_size_in_bytes: Some(64),
         ..DataFile::default()
     };
     let summary = FieldSummary {
@@ -88,13 +96,14 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         sequence_number: 2,
         min_sequence_number: 1,
         added_snapshot_id: 10,
-        added_files_count: 1,
-        existing_files_count: 0,
-        deleted_files_count: 0,
-        added_rows_count: 4,
-        existing_rows_count: 0,
-        deleted_rows_count: 0,
+        added_files_count: Some(1),
+        existing_files_count: Some(0),
+        deleted_files_count: Some(0),
+        added_rows_count: Some(4),
+        existing_rows_count: Some(0),
+        deleted_rows_count: Some(0),
         partitions: vec![summary.clone()],
+        key_metadata: Some(vec![3, 1, 4]),
         first_row_id: None,
     };
     let mut equivalent_data = data.clone();
@@ -177,6 +186,7 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         .with_commit_retries(2)
         .with_commit_min_backoff_ms(3)
         .with_commit_max_backoff_ms(4)
+        .with_commit_total_timeout_ms(9)
         .with_compact_after_commits(0)
         .with_read_parallel_min_files(6)
         .with_read_parallel_min_file_size_bytes(7)
@@ -187,6 +197,7 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
     assert_eq!(options.commit_retries_option(), Some(2));
     assert_eq!(options.commit_min_backoff_ms_option(), Some(3));
     assert_eq!(options.commit_max_backoff_ms_option(), Some(4));
+    assert_eq!(options.commit_total_timeout_ms_option(), Some(9));
     assert_eq!(options.compact_after_commits_option(), Some(0));
     assert_eq!(options.target_file_size_bytes_option(), Some(5));
     assert_eq!(options.read_parallel_min_files_option(), Some(6));
@@ -194,6 +205,88 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
     assert_eq!(options.read_parallelism_option(), Some(8));
     assert_eq!(options.data_format_option(), Some(super::FileFormat::Avro));
     assert_eq!(IcebergOptions::new().commit_retries_option(), None);
+}
+
+#[test]
+fn scan_plan_record_count_reports_invalid_manifest_totals() {
+    let task = ScanTask {
+        entry: ManifestEntry::added(
+            1,
+            DataFile {
+                record_count: i64::MAX,
+                ..DataFile::default()
+            },
+        ),
+        spec: PartitionSpec::unpartitioned(),
+        residual: Vec::new(),
+    };
+    let overflowing = ScanPlan {
+        tasks: vec![task.clone(), task.clone()],
+        ..ScanPlan::default()
+    };
+    let error = overflowing.record_count().unwrap_err();
+    assert!(matches!(
+        error,
+        crate::Error::InvalidRecord { path, reason }
+            if path == "$.tasks[1].data_file.record_count"
+                && reason.contains("does not fit in i64")
+    ));
+
+    let mut negative = task;
+    negative.entry.data_file.record_count = -1;
+    let error = ScanPlan {
+        tasks: vec![negative],
+        ..ScanPlan::default()
+    }
+    .record_count()
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        crate::Error::InvalidRecord { path, reason }
+            if path == "$.tasks[0].data_file.record_count"
+                && reason.contains("non-negative")
+    ));
+}
+
+#[test]
+fn table_metadata_state_is_read_only_through_complete_accessors() {
+    let metadata = TableMetadata::new(
+        FormatVersion::V2,
+        "file:///table",
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+
+    assert_eq!(metadata.format_version(), metadata.format_version);
+    assert_eq!(metadata.table_uuid(), metadata.table_uuid.as_str());
+    assert_eq!(metadata.location(), metadata.location.as_str());
+    assert_eq!(
+        metadata.last_sequence_number(),
+        metadata.last_sequence_number
+    );
+    assert_eq!(metadata.last_updated_ms(), metadata.last_updated_ms);
+    assert_eq!(metadata.last_column_id(), metadata.last_column_id);
+    assert_eq!(metadata.schemas(), metadata.schemas.as_slice());
+    assert_eq!(metadata.current_schema_id(), metadata.current_schema_id);
+    assert_eq!(
+        metadata.partition_specs(),
+        metadata.partition_specs.as_slice()
+    );
+    assert_eq!(metadata.default_spec_id(), metadata.default_spec_id);
+    assert_eq!(metadata.last_partition_id(), metadata.last_partition_id);
+    assert_eq!(metadata.sort_orders(), metadata.sort_orders.as_slice());
+    assert_eq!(
+        metadata.default_sort_order_id(),
+        metadata.default_sort_order_id
+    );
+    assert_eq!(metadata.properties(), metadata.properties.as_slice());
+    assert_eq!(metadata.current_snapshot_id(), metadata.current_snapshot_id);
+    assert_eq!(metadata.snapshots(), metadata.snapshots.as_slice());
+    assert_eq!(metadata.snapshot_log(), metadata.snapshot_log.as_slice());
+    assert_eq!(metadata.metadata_log(), metadata.metadata_log.as_slice());
+    assert_eq!(metadata.refs(), metadata.refs.as_slice());
+    assert_eq!(metadata.next_row_id(), metadata.next_row_id);
 }
 
 /// An Arrow filesystem that publishes one version hint and then reports that
@@ -241,6 +334,105 @@ impl crate::arrowfs::ArrowFileSystem for PublishedHintFailure {
                 "injected acknowledgement failure after publishing the version hint",
             )));
         }
+        Ok(())
+    }
+
+    fn create_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.create_dir(path)
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_file(path)
+    }
+}
+
+/// A memory filesystem that lands one competing metadata document after a
+/// writer's version preflight but before its same-version collision listing.
+///
+/// The injected document is the attempted document with the loser's property
+/// replaced by the winner's. This isolates the race inside `commit_metadata`:
+/// the writer already passed `find_metadata`, yet its publication finds a
+/// valid competing document and must return through the retry gate.
+#[derive(Debug, Default)]
+struct SameVersionWinner {
+    inner: crate::arrowfs::MemoryFileSystem,
+    armed: AtomicBool,
+    injections: AtomicUsize,
+}
+
+impl SameVersionWinner {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::Relaxed);
+    }
+
+    fn injections(&self) -> usize {
+        self.injections.load(Ordering::Relaxed)
+    }
+
+    fn invalid(reason: &'static str) -> crate::Error {
+        crate::Error::Codec {
+            format: "iceberg",
+            position: 0,
+            reason: reason.into(),
+        }
+    }
+}
+
+impl crate::arrowfs::ArrowFileSystem for SameVersionWinner {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<crate::arrowfs::FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, path: &str, recursive: bool) -> crate::arrowfs::FileInfos {
+        self.inner.list(path, recursive)
+    }
+
+    fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+        self.inner.read_range(path, offset, buffer)
+    }
+
+    fn write_full(&self, path: &str, bytes: &[u8]) -> crate::Result<()> {
+        self.inner.write_full(path, bytes)?;
+        if !path.contains("/metadata/00002-")
+            || !path.ends_with(".metadata.json")
+            || !self.armed.swap(false, Ordering::Relaxed)
+        {
+            return Ok(());
+        }
+
+        let mut document: serde_json::Value = serde_json::from_slice(bytes)?;
+        let properties = document
+            .as_object_mut()
+            .and_then(|metadata| metadata.get_mut("properties"))
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| Self::invalid("expected generated metadata properties"))?;
+        if properties.remove("loser").is_none() {
+            return Err(Self::invalid(
+                "expected the attempted metadata to carry the loser's intent",
+            ));
+        }
+        properties.insert(
+            "winner".to_owned(),
+            serde_json::Value::String("visible".to_owned()),
+        );
+
+        let (directory, candidate) = path
+            .rsplit_once('/')
+            .ok_or_else(|| Self::invalid("expected a metadata directory"))?;
+        let first = "00002-00000000-0000-0000-0000-000000000000.metadata.json";
+        let second = "00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json";
+        let competitor = if candidate == first { second } else { first };
+        self.inner.write_full(
+            &format!("{directory}/{competitor}"),
+            &serde_json::to_vec(&document)?,
+        )?;
+        self.inner
+            .write_full(&format!("{directory}/version-hint.text"), b"2")?;
+        self.injections.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -436,7 +628,93 @@ mod schema_documents {
         )
         .unwrap();
         let message = schema_from_json("row", &document).unwrap_err().to_string();
-        assert!(message.contains("required"), "{message}");
+        assert!(message.contains("invalid schema JSON"), "{message}");
+    }
+
+    #[test]
+    fn official_schema_validation_rejects_duplicate_field_ids() {
+        let document = crate::json::from_utf8(
+            r#"{"type":"struct","fields":[
+                {"id":1,"name":"left","required":true,"type":"long"},
+                {"id":1,"name":"right","required":true,"type":"string"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let message = schema_from_json("row", &document).unwrap_err().to_string();
+        assert!(message.contains("duplicate 'field.id' 1"), "{message}");
+    }
+
+    #[test]
+    fn official_schema_validation_enforces_identifier_fields() {
+        let document = crate::json::from_utf8(
+            r#"{"type":"struct","schema-id":4,"identifier-field-ids":[1],"fields":[
+                {"id":1,"name":"id","required":false,"type":"long"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let message = schema_from_json("row", &document).unwrap_err().to_string();
+        assert!(message.contains("optional field"), "{message}");
+    }
+
+    #[test]
+    fn official_schema_normalization_supplies_the_default_schema_id() {
+        let document = crate::json::from_utf8(
+            r#"{"type":"struct","fields":[
+                {"id":1,"name":"id","required":true,"type":"long"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(schema.get_metadata("iceberg:schema-id"), Some("0"));
+        assert_eq!(
+            schema_to_json(&schema)
+                .unwrap()
+                .get_key_str("schema-id")
+                .and_then(Scalar::as_i64),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn official_schema_normalization_sorts_identifier_field_ids() {
+        let document = crate::json::from_utf8(
+            r#"{"type":"struct","schema-id":3,"identifier-field-ids":[2,1],"fields":[
+                {"id":1,"name":"left","required":true,"type":"long"},
+                {"id":2,"name":"right","required":true,"type":"string"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(
+            schema.get_metadata("iceberg:identifier-field-ids"),
+            Some("1,2")
+        );
+        let emitted = schema_to_json(&schema).unwrap();
+        let identifiers: Vec<i64> = emitted
+            .get_key_str("identifier-field-ids")
+            .into_iter()
+            .flat_map(Scalar::sequence_iter)
+            .filter_map(Scalar::as_i64)
+            .collect();
+        assert_eq!(identifiers, [1, 2]);
+    }
+
+    #[test]
+    fn emitted_schema_is_checked_by_the_official_model() {
+        let mut schema = DataType::from_fields([DataType::Int64.nullable_field("id")])
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+            .insert_metadata("iceberg:identifier-field-ids", "1")
+            .unwrap();
+
+        let message = schema_to_json(&schema).unwrap_err().to_string();
+        assert!(message.contains("optional field"), "{message}");
     }
 
     #[test]
@@ -473,7 +751,19 @@ mod schema_documents {
             schema.fields()[0].get_metadata("iceberg:initial-default"),
             Some("\"XNAS\"")
         );
-        assert_eq!(schema_to_json(&schema).unwrap(), document);
+        let emitted = schema_to_json(&schema).unwrap();
+        assert_eq!(
+            emitted.get_key_str("schema-id").and_then(Scalar::as_i64),
+            Some(0)
+        );
+        assert_eq!(
+            emitted
+                .get_key_str("fields")
+                .and_then(Scalar::as_sequence)
+                .and_then(|fields| fields.first())
+                .and_then(|field| field.get_key_str("initial-default")),
+            Some(&Scalar::from("XNAS"))
+        );
     }
 
     #[test]
@@ -668,14 +958,135 @@ mod partition_specs {
     }
 
     #[test]
-    fn a_transform_that_cannot_place_a_row_is_refused_by_name() {
+    fn every_known_transform_is_writable_and_unknown_is_refused() {
         let schema = trade_schema();
         let mut spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        spec.fields[0].transform = Transform::Bucket(16);
+        for transform in [
+            Transform::Identity,
+            Transform::Bucket(16),
+            Transform::Truncate(4),
+            Transform::Year,
+            Transform::Month,
+            Transform::Day,
+            Transform::Hour,
+            Transform::Void,
+        ] {
+            spec.fields[0].transform = transform;
+            spec.require_writable().unwrap();
+        }
 
+        spec.fields[0].transform = Transform::Unknown;
         let message = spec.require_writable().unwrap_err().to_string();
-        assert!(message.contains("bucket[16]"), "{message}");
-        assert!(message.contains("invertible"), "{message}");
+        assert!(message.contains("unknown"), "{message}");
+
+        for transform in [Transform::Bucket(0), Transform::Truncate(0)] {
+            spec.fields[0].transform = transform;
+            assert!(spec.require_writable().is_err(), "{transform}");
+        }
+    }
+
+    #[test]
+    fn transform_result_types_and_validation_are_owned_by_apache_iceberg() {
+        let timestamp = DataType::Timestamp(crate::TimeUnit::Microsecond, None);
+        assert_eq!(
+            Transform::Day.result_type(&timestamp).unwrap(),
+            DataType::Date32
+        );
+        for transform in [Transform::Year, Transform::Month, Transform::Hour] {
+            assert_eq!(transform.result_type(&timestamp).unwrap(), DataType::Int32);
+        }
+        assert_eq!(
+            Transform::Bucket(16).result_type(&DataType::Utf8).unwrap(),
+            DataType::Int32
+        );
+        assert_eq!(
+            Transform::Truncate(3)
+                .result_type(&DataType::Binary)
+                .unwrap(),
+            DataType::Binary
+        );
+
+        assert!(Transform::Year.result_type(&DataType::Int64).is_err());
+        assert!(
+            Transform::Bucket(16)
+                .result_type(&DataType::Boolean)
+                .is_err()
+        );
+        assert!(
+            Transform::Truncate(3)
+                .result_type(&DataType::Date32)
+                .is_err()
+        );
+        assert!(Transform::Bucket(0).result_type(&DataType::Int32).is_err());
+    }
+
+    #[test]
+    fn scalar_transform_plan_is_total_at_date_extremes_and_truncates_binary() {
+        let mut schema = DataType::from_fields([
+            DataType::Date32.required_field("day"),
+            DataType::Binary.required_field("payload"),
+        ])
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![
+                super::PartitionField {
+                    source_id: 1,
+                    field_id: 1000,
+                    name: "year".into(),
+                    transform: Transform::Year,
+                },
+                super::PartitionField {
+                    source_id: 2,
+                    field_id: 1001,
+                    name: "prefix".into(),
+                    transform: Transform::Truncate(2),
+                },
+            ],
+        };
+        let partition = spec.partition_field(&schema).unwrap();
+        let plan = spec.write_transforms(&schema, &partition).unwrap();
+
+        assert!(matches!(
+            plan[0].partition_value(Scalar::date32(i32::MAX)).unwrap(),
+            Scalar::I32(_)
+        ));
+        assert_eq!(
+            plan[1].partition_value(Scalar::from(&b"abcd"[..])).unwrap(),
+            Scalar::from(&b"ab"[..])
+        );
+    }
+
+    #[test]
+    fn transform_parameters_keep_the_official_unsigned_width_and_unknown_is_opaque() {
+        let widest = Transform::from_str("bucket[4294967295]").unwrap();
+        assert_eq!(widest, Transform::Bucket(u32::MAX));
+        assert_eq!(widest.to_string(), "bucket[4294967295]");
+        assert!(Transform::from_str("truncate[-1]").is_err());
+        assert!(Transform::from_str("bucket[4294967296]").is_err());
+
+        let unknown = Transform::from_str("unknown").unwrap();
+        assert_eq!(unknown, Transform::Unknown);
+        assert_eq!(
+            unknown.result_type(&DataType::Int64).unwrap(),
+            DataType::Utf8
+        );
+        assert_eq!(
+            Transform::Void.result_type(&DataType::Int64).unwrap(),
+            DataType::Int64
+        );
+        assert!(!unknown.is_invertible());
+
+        let mut spec = PartitionSpec::identity(1, &trade_schema(), &["venue"]).unwrap();
+        spec.fields[0].transform = unknown;
+        assert!(
+            spec.require_writable()
+                .unwrap_err()
+                .to_string()
+                .contains("unknown")
+        );
     }
 
     #[test]
@@ -694,6 +1105,8 @@ mod partition_specs {
 
 mod table_metadata {
     use std::hash::{Hash, Hasher};
+
+    use crate::Scalar;
 
     use super::super::{Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata, Transform};
     use super::{FormatVersion, PartitionSpec, trade_schema};
@@ -720,6 +1133,43 @@ mod table_metadata {
             assert_eq!(read.last_column_id, 3);
             assert!(read.current_snapshot().is_none());
         }
+    }
+
+    #[test]
+    fn sort_order_identifiers_keep_the_official_signed_64_bit_width() {
+        let order_id = i64::from(i32::MAX) + 41;
+        let order = SortOrder {
+            order_id,
+            fields: vec![SortField {
+                source_id: 1,
+                transform: Transform::Identity,
+                direction: "asc".into(),
+                null_order: "nulls-first".into(),
+            }],
+        };
+        assert_eq!(
+            SortOrder::from_json(&order.clone().into_json().unwrap()).unwrap(),
+            order
+        );
+
+        let mut metadata = metadata(FormatVersion::V2);
+        metadata.sort_orders.push(order);
+        metadata.default_sort_order_id = order_id;
+        let document = metadata.into_json().unwrap();
+        let read = TableMetadata::from_json(&document).unwrap();
+        assert_eq!(read.default_sort_order_id, order_id);
+        assert!(
+            read.sort_orders
+                .iter()
+                .any(|order| order.order_id == order_id)
+        );
+
+        let missing = crate::json::from_utf8(r#"{"fields":[]}"#).unwrap();
+        let message = SortOrder::from_json(&missing).unwrap_err().to_string();
+        assert!(
+            message.contains("order-id") && message.contains("64-bit"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -751,18 +1201,23 @@ mod table_metadata {
             .unwrap();
         metadata.set_property("z", "last").unwrap();
         metadata.set_property("a", "first").unwrap();
+        let timestamp = metadata.last_updated_ms + 60_000;
         for (snapshot_id, parent_snapshot_id) in [(1, None), (2, Some(1))] {
-            metadata.set_current_snapshot(Snapshot {
-                snapshot_id,
-                parent_snapshot_id,
-                sequence_number: Some(snapshot_id),
-                timestamp_ms: 100 + snapshot_id,
-                manifest_list: format!("metadata/snap-{snapshot_id}.avro").into(),
-                summary: vec![("operation".into(), "append".into())],
-                schema_id: Some(0),
-                first_row_id: None,
-                added_rows: None,
-            });
+            metadata
+                .set_current_snapshot(Snapshot {
+                    snapshot_id,
+                    parent_snapshot_id,
+                    sequence_number: Some(snapshot_id),
+                    timestamp_ms: timestamp + snapshot_id,
+                    manifest_list: format!("metadata/snap-{snapshot_id}.avro").into(),
+                    manifests: None,
+                    summary: vec![("operation".into(), "append".into())],
+                    schema_id: Some(0),
+                    encryption_key_id: None,
+                    first_row_id: None,
+                    added_rows: None,
+                })
+                .unwrap();
         }
         metadata
             .set_snapshot_ref("v1", SnapshotRef::tag(1))
@@ -821,7 +1276,7 @@ mod table_metadata {
     #[test]
     fn a_v1_document_written_by_someone_else_reads_without_the_plural_keys() {
         let document = crate::json::from_utf8(
-            r#"{"format-version":1,"table-uuid":"u","location":"file:///t",
+            r#"{"format-version":1,"table-uuid":"0b4f7721-755e-5df5-ab6b-8a23c7905a82","location":"file:///t",
                 "last-updated-ms":1,"last-column-id":1,
                 "schema":{"type":"struct","fields":[
                     {"id":1,"name":"id","required":true,"type":"long"}]},
@@ -836,23 +1291,86 @@ mod table_metadata {
     }
 
     #[test]
-    fn a_v3_document_carries_its_row_lineage() {
-        let mut metadata = metadata(FormatVersion::V3);
-        metadata.next_row_id = Some(12);
-        metadata.set_current_snapshot(Snapshot {
-            snapshot_id: 5,
+    fn legacy_v1_manifest_paths_survive_official_metadata_updates() {
+        let mut metadata = metadata(FormatVersion::V1);
+        let snapshot = Snapshot {
+            snapshot_id: 7,
             parent_snapshot_id: None,
-            sequence_number: Some(1),
-            timestamp_ms: 7,
-            manifest_list: SmolStr::new_static("file:///t/metadata/snap.avro"),
+            sequence_number: None,
+            timestamp_ms: metadata.last_updated_ms + 1,
+            manifest_list: SmolStr::new_static(""),
+            manifests: Some(vec![
+                SmolStr::new_static("file:///t/metadata/a.avro"),
+                SmolStr::new_static("file:///t/metadata/b.avro"),
+            ]),
             summary: vec![(
                 SmolStr::new_static("operation"),
                 SmolStr::new_static("append"),
             )],
             schema_id: Some(0),
-            first_row_id: Some(0),
-            added_rows: Some(12),
-        });
+            encryption_key_id: None,
+            first_row_id: None,
+            added_rows: None,
+        };
+        metadata.set_current_snapshot(snapshot.clone()).unwrap();
+        metadata.set_property("owner", "legacy").unwrap();
+
+        let document = metadata.clone().into_json().unwrap();
+        let encoded = document
+            .get_key_str("snapshots")
+            .into_iter()
+            .flat_map(Scalar::sequence_iter)
+            .next()
+            .unwrap();
+        assert!(encoded.get_key_str("manifest-list").is_none());
+        assert_eq!(
+            encoded
+                .get_key_str("manifests")
+                .map(Scalar::sequence_iter)
+                .unwrap_or_default()
+                .count(),
+            2
+        );
+
+        let mut read = TableMetadata::from_json(&document).unwrap();
+        assert_eq!(read.current_snapshot().unwrap(), &snapshot);
+        read.set_location("file:///moved").unwrap();
+        assert_eq!(
+            read.current_snapshot().unwrap().manifests,
+            snapshot.manifests
+        );
+        assert_eq!(
+            TableMetadata::from_json(&read.into_json().unwrap())
+                .unwrap()
+                .current_snapshot()
+                .unwrap()
+                .manifests,
+            snapshot.manifests
+        );
+    }
+
+    #[test]
+    fn a_v3_document_carries_its_row_lineage() {
+        let mut metadata = metadata(FormatVersion::V3);
+        let timestamp_ms = metadata.last_updated_ms + 60_000;
+        metadata
+            .set_current_snapshot(Snapshot {
+                snapshot_id: 5,
+                parent_snapshot_id: None,
+                sequence_number: Some(1),
+                timestamp_ms,
+                manifest_list: SmolStr::new_static("file:///t/metadata/snap.avro"),
+                manifests: None,
+                summary: vec![(
+                    SmolStr::new_static("operation"),
+                    SmolStr::new_static("append"),
+                )],
+                schema_id: Some(0),
+                encryption_key_id: None,
+                first_row_id: Some(0),
+                added_rows: Some(12),
+            })
+            .unwrap();
 
         let document = metadata.into_json().unwrap();
         assert_eq!(
@@ -866,6 +1384,95 @@ mod table_metadata {
         assert_eq!(snapshot.first_row_id, Some(0));
         assert_eq!(snapshot.added_rows, Some(12));
         assert_eq!(snapshot.operation(), "append");
+    }
+
+    #[test]
+    fn official_metadata_sections_survive_an_official_builder_update() {
+        let metadata = metadata(FormatVersion::V3);
+        let timestamp_ms = metadata.last_updated_ms;
+        let snapshot = Snapshot {
+            snapshot_id: 7,
+            parent_snapshot_id: None,
+            sequence_number: Some(0),
+            timestamp_ms,
+            manifest_list: SmolStr::new_static("file:///t/metadata/snap-7.avro"),
+            manifests: None,
+            summary: vec![(
+                SmolStr::new_static("operation"),
+                SmolStr::new_static("append"),
+            )],
+            schema_id: Some(0),
+            encryption_key_id: Some(SmolStr::new_static("key-1")),
+            first_row_id: Some(0),
+            added_rows: Some(0),
+        }
+        .into_json(FormatVersion::V3)
+        .unwrap();
+        let statistics = crate::json::from_utf8(
+            r#"[{"snapshot-id":7,"statistics-path":"s3://bucket/stats.puffin",
+                "file-size-in-bytes":413,"file-footer-size-in-bytes":42,
+                "key-metadata":"c3RhdHMta2V5",
+                "blob-metadata":[{"type":"apache-datasketches-theta-v1",
+                    "snapshot-id":7,"sequence-number":0,"fields":[1,2],
+                    "properties":{"compression":"zstd","ndv":"2"}}]}]"#,
+        )
+        .unwrap();
+        let partition_statistics = crate::json::from_utf8(
+            r#"[{"snapshot-id":7,
+                "statistics-path":"s3://bucket/partition-stats.parquet",
+                "file-size-in-bytes":43}]"#,
+        )
+        .unwrap();
+        let encryption_keys = crate::json::from_utf8(
+            r#"[{"key-id":"key-1","encrypted-key-metadata":"aWNlYmVyZw==",
+                "encrypted-by-id":"kms-1",
+                "properties":{"algorithm":"AES-256","rotation":"1"}}]"#,
+        )
+        .unwrap();
+
+        let mut document = metadata.into_json().unwrap();
+        document = document
+            .with_key("snapshots", Scalar::from_sequence([snapshot]))
+            .unwrap()
+            .with_key("statistics", statistics.clone())
+            .unwrap()
+            .with_key("partition-statistics", partition_statistics.clone())
+            .unwrap()
+            .with_key("encryption-keys", encryption_keys.clone())
+            .unwrap();
+
+        let mut parsed = TableMetadata::from_json(&document).unwrap();
+        assert_eq!(
+            parsed
+                .snapshot_by_id(7)
+                .and_then(|snapshot| snapshot.encryption_key_id.as_deref()),
+            Some("key-1")
+        );
+        parsed.set_property("owner", "official-builder").unwrap();
+        assert_eq!(parsed.property("owner"), Some("official-builder"));
+
+        let emitted = parsed.into_json().unwrap();
+        assert_eq!(emitted.get_key_str("statistics"), Some(&statistics));
+        assert_eq!(
+            emitted.get_key_str("partition-statistics"),
+            Some(&partition_statistics)
+        );
+        assert_eq!(
+            emitted.get_key_str("encryption-keys"),
+            Some(&encryption_keys)
+        );
+        assert_eq!(
+            emitted
+                .get_key_str("snapshots")
+                .into_iter()
+                .flat_map(Scalar::sequence_iter)
+                .find(|snapshot| {
+                    snapshot.get_key_str("snapshot-id").and_then(Scalar::as_i64) == Some(7)
+                })
+                .and_then(|snapshot| snapshot.get_key_str("key-id"))
+                .and_then(Scalar::as_str),
+            Some("key-1")
+        );
     }
 
     #[test]
@@ -911,12 +1518,21 @@ mod table_metadata {
 }
 
 mod tables {
+    use std::sync::Arc;
+
+    use arrow_array::{
+        ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, StructArray,
+        TimestampMicrosecondArray,
+    };
+    use arrow_schema::DataType as ArrowDataType;
+
     use super::{
-        Folder, FormatVersion, IOBase, PartitionSpec, Table, collect, root, trade_schema, trades,
+        Folder, FormatVersion, IOBase, IcebergOptions, PartitionField, PartitionSpec, Table,
+        Transform, assign_field_ids, collect, root, trade_schema, trades,
     };
     use crate::generic::IORecordOptions;
     use crate::io::IOMedia;
-    use crate::{DataType, Scalar};
+    use crate::{DataType, Scalar, TimeUnit};
 
     #[test]
     fn create_numbers_an_unnumbered_schema_itself() {
@@ -1010,6 +1626,110 @@ mod tables {
     }
 
     #[test]
+    fn open_preserves_an_official_uuid_metadata_name_in_history() {
+        let path = root("official-metadata-name");
+        let table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let generated_name = table.metadata_file_name();
+        drop(table);
+
+        let official_name = "00001-123e4567-e89b-12d3-a456-426614174000.metadata.json";
+        std::fs::rename(
+            path.join("metadata").join(generated_name),
+            path.join("metadata").join(official_name),
+        )
+        .unwrap();
+
+        let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_file_name(), official_name);
+        reopened
+            .commit_changes(|metadata| {
+                metadata.set_property("owner", "interop")?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            reopened
+                .metadata()
+                .metadata_log
+                .iter()
+                .any(|(_, location)| location.ends_with(official_name))
+        );
+    }
+
+    #[test]
+    fn metadata_compression_uses_the_official_property_and_gzip_magic() {
+        let path = root("gzip-metadata");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_changes(|metadata| {
+                metadata.set_property("write.metadata.compression-codec", "GZIP")?;
+                Ok(())
+            })
+            .unwrap();
+
+        assert!(table.metadata_file_name().starts_with("00002-"));
+        assert!(table.metadata_file_name().ends_with(".gz.metadata.json"));
+        assert!(
+            std::fs::read(path.join("metadata").join(table.metadata_file_name()))
+                .unwrap()
+                .starts_with(&[0x1f, 0x8b])
+        );
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_file_name(), table.metadata_file_name());
+        assert_eq!(reopened.metadata().property("owner"), None);
+    }
+
+    #[test]
+    fn direct_create_refuses_to_replace_an_existing_table() {
+        let path = root("create-conflict");
+        Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let error = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+        assert_eq!(
+            Table::open(Folder::new(&path).unwrap()).unwrap().version(),
+            1
+        );
+    }
+
+    #[test]
+    fn child_locations_require_a_table_path_boundary() {
+        let path = root("location-boundary");
+        let table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let sibling = format!("{}2/data/file.parquet", table.metadata().location);
+        assert!(table.child_at(&sibling).is_err());
+    }
+
+    #[test]
     fn an_unpartitioned_table_round_trips_its_rows() {
         let path = root("unpartitioned");
         let schema = trade_schema();
@@ -1045,6 +1765,81 @@ mod tables {
         // And a reopened table sees exactly the same thing.
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()), rows);
+    }
+
+    #[test]
+    fn a_legacy_v1_snapshot_with_direct_manifests_scans_and_time_travels() {
+        let path = root("legacy-v1-direct-manifests");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V1,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        table
+            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .unwrap();
+        let snapshot_id = table.current_snapshot().unwrap().snapshot_id;
+        let manifest_paths: Vec<Scalar> = table
+            .manifests()
+            .unwrap()
+            .into_iter()
+            .map(|manifest| Scalar::from(manifest.manifest_path))
+            .collect();
+
+        // This is the original v1 snapshot fixture: manifests were embedded
+        // directly in metadata before manifest lists became universal.
+        let mut document = table.metadata().clone().into_json().unwrap();
+        let snapshots = document
+            .get_key_str("snapshots")
+            .unwrap()
+            .sequence_iter()
+            .map(|snapshot| {
+                snapshot
+                    .without_key("manifest-list")
+                    .unwrap()
+                    .with_key("manifests", Scalar::from_sequence(manifest_paths.clone()))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        document = document
+            .with_key("snapshots", Scalar::from_sequence(snapshots))
+            .unwrap();
+        let metadata_path = path.join("metadata").join(table.metadata_file_name());
+        std::fs::write(metadata_path, crate::json::into_bytes(&document).unwrap()).unwrap();
+
+        let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let legacy = reopened.current_snapshot().unwrap();
+        assert_eq!(legacy.snapshot_id, snapshot_id);
+        assert!(legacy.manifest_list.is_empty());
+        assert_eq!(legacy.manifests.as_ref().map(Vec::len), Some(1));
+        let synthesized = reopened.manifests().unwrap();
+        assert_eq!(synthesized.len(), 1);
+        assert_eq!(synthesized[0].added_files_count, Some(1));
+        assert_eq!(collect(reopened.scan(None).unwrap()).len(), 1);
+
+        let second = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
+        reopened
+            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .unwrap();
+        assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
+        assert_eq!(
+            collect(reopened.scan_at(snapshot_id, &[], None).unwrap())
+                .into_iter()
+                .map(|row| row.0)
+                .collect::<Vec<_>>(),
+            [1]
+        );
+        assert!(
+            reopened
+                .metadata()
+                .snapshot_by_id(snapshot_id)
+                .unwrap()
+                .manifests
+                .is_some()
+        );
     }
 
     #[test]
@@ -1091,6 +1886,162 @@ mod tables {
 
         let rows = collect(table.scan(None).unwrap());
         assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn data_writes_compute_all_supported_partition_transforms() {
+        let path = root("transformed-partitions");
+        let mut schema = DataType::from_fields([
+            DataType::Int32.required_field("id"),
+            DataType::Utf8.required_field("text"),
+            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_year"),
+            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_month"),
+            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_day"),
+            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_hour"),
+            DataType::Int64.required_field("retired"),
+        ])
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let transforms = [
+            (1, "id_bucket", Transform::Bucket(16)),
+            (2, "text_prefix", Transform::Truncate(3)),
+            (3, "year", Transform::Year),
+            (4, "month", Transform::Month),
+            (5, "day", Transform::Day),
+            (6, "hour", Transform::Hour),
+            (7, "retired_null", Transform::Void),
+        ];
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: transforms
+                .into_iter()
+                .enumerate()
+                .map(|(offset, (source_id, name, transform))| PartitionField {
+                    source_id,
+                    field_id: 1000 + i32::try_from(offset).unwrap(),
+                    name: name.into(),
+                    transform,
+                })
+                .collect(),
+        };
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        // 2017-11-16T22:31:08, the timestamp used by Apache Iceberg's own
+        // transform fixtures.
+        let timestamp = 1_510_871_468_000_000_i64;
+        let arrow = crate::arrow::arrow_schema_from_field(&schema).unwrap();
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int32Array::from(vec![34, 34])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["iceberg", "icecube"])) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(vec![
+                    timestamp,
+                    timestamp + 1_000_000,
+                ])) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(vec![
+                    timestamp,
+                    timestamp + 1_000_000,
+                ])) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(vec![
+                    timestamp,
+                    timestamp + 1_000_000,
+                ])) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(vec![
+                    timestamp,
+                    timestamp + 1_000_000,
+                ])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![9, 10])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        table
+            .append(crate::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].0.partition,
+            vec![
+                Scalar::I32(3),
+                Scalar::from("ice"),
+                Scalar::I32(47),
+                Scalar::I32(574),
+                Scalar::date32(17_486),
+                Scalar::I32(419_686),
+                Scalar::Null,
+            ]
+        );
+        assert!(
+            files[0].0.file_path.contains(
+                "id_bucket=3/text_prefix=ice/year=47/month=574/day=2017-11-16/\
+                 hour=419686/retired_null=null"
+            ),
+            "{}",
+            files[0].0.file_path
+        );
+        assert_eq!(
+            table
+                .scan(None)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_nested_struct_partition_source_is_resolved_by_field_id() {
+        let path = root("nested-transformed-partition");
+        let nested = DataType::from_fields([DataType::Utf8.required_field("category")])
+            .unwrap()
+            .required_field("payload");
+        let mut schema = DataType::from_fields([nested])
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 2,
+                field_id: 1000,
+                name: "category_prefix".into(),
+                transform: Transform::Truncate(2),
+            }],
+        };
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        let arrow = crate::arrow::arrow_schema_from_field(&schema).unwrap();
+        let ArrowDataType::Struct(children) = arrow.field(0).data_type() else {
+            panic!("payload must be a struct")
+        };
+        let payload = StructArray::from(vec![(
+            children[0].clone(),
+            Arc::new(StringArray::from(vec!["iceberg", "icecube"])) as ArrayRef,
+        )]);
+        let batch = RecordBatch::try_new(arrow.clone(), vec![Arc::new(payload)]).unwrap();
+        table
+            .append(crate::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0.partition, vec![Scalar::from("ic")]);
+        assert!(files[0].0.file_path.contains("category_prefix=ic"));
     }
 
     #[test]
@@ -1353,13 +2304,27 @@ mod tables {
         assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(0));
         assert_eq!(table.current_snapshot().unwrap().added_rows, Some(2));
         assert_eq!(table.metadata().next_row_id, Some(2));
+        assert_eq!(table.manifests().unwrap()[0].first_row_id, Some(0));
+        assert_eq!(table.data_files().unwrap()[0].0.first_row_id, Some(0));
 
         let second = trades(&[3], &[Some("NVDA")], &[Some("XNYS")]);
         table
             .append(crate::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
         assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(2));
+        assert_eq!(table.current_snapshot().unwrap().added_rows, Some(1));
         assert_eq!(table.metadata().next_row_id, Some(3));
+        let manifests = table.manifests().unwrap();
+        assert_eq!(manifests[0].first_row_id, Some(0));
+        assert_eq!(manifests[1].first_row_id, Some(2));
+        let mut row_ids: Vec<i64> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(file, _)| file.first_row_id)
+            .collect();
+        row_ids.sort_unstable();
+        assert_eq!(row_ids, [0, 2]);
 
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata().next_row_id, Some(3));
@@ -1367,20 +2332,184 @@ mod tables {
     }
 
     #[test]
-    fn a_write_against_a_spec_that_cannot_place_a_row_is_refused() {
+    fn v3_rewrites_are_rejected_before_reader_or_storage_mutation() {
+        let path = root("v3-rewrite-lineage");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V3,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table.set_options(IcebergOptions::default().with_compact_after_commits(2));
+
+        for id in [1_i64, 2] {
+            let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
+            table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+        assert_eq!(table.data_files().unwrap().len(), 2);
+        assert!(
+            table
+                .metadata()
+                .snapshots
+                .iter()
+                .all(|snapshot| snapshot.operation() == "append"),
+            "v3 auto-compaction must not rewrite retained rows"
+        );
+
+        let children = |directory: &str| {
+            let mut paths: Vec<_> = std::fs::read_dir(path.join(directory))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            paths.sort();
+            paths
+        };
+        let version = table.version();
+        let metadata_hash = table.metadata().stable_hash();
+        let data_files = children("data");
+        let metadata_files = children("metadata");
+
+        let incoming = trades(&[1], &[Some("AAPL.L")], &[Some("XLON")]);
+        let reader_schema = incoming.schema();
+        let pulls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let reader_pulls = Arc::clone(&pulls);
+        let mut incoming = Some(incoming);
+        let reader = crate::arrow::batch_reader(
+            reader_schema,
+            std::iter::from_fn(move || {
+                reader_pulls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                incoming.take()
+            }),
+        );
+        let merge_error = table
+            .merge_where(&[], reader, &["id".to_owned()], true)
+            .expect_err("v3 keyed merge must preserve existing row IDs");
+        assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(
+            matches!(&merge_error, crate::Error::Iceberg { source: None, .. }),
+            "{merge_error:?}"
+        );
+        assert!(merge_error.to_string().contains("merge"), "{merge_error}");
+        assert!(merge_error.to_string().contains("row IDs"), "{merge_error}");
+
+        let compact_error = table
+            .compact()
+            .expect_err("v3 compaction must preserve existing row IDs");
+        assert!(
+            matches!(&compact_error, crate::Error::Iceberg { source: None, .. }),
+            "{compact_error:?}"
+        );
+        assert!(
+            compact_error.to_string().contains("compaction"),
+            "{compact_error}"
+        );
+        assert!(
+            compact_error.to_string().contains("row IDs"),
+            "{compact_error}"
+        );
+
+        assert_eq!(table.version(), version);
+        assert_eq!(table.metadata().stable_hash(), metadata_hash);
+        assert_eq!(children("data"), data_files);
+        assert_eq!(children("metadata"), metadata_files);
+    }
+
+    #[test]
+    fn v2_still_permits_keyed_merge_and_compaction() {
+        let path = root("v2-rewrite-lineage");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        for id in [1_i64, 2] {
+            let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
+            table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+
+        let incoming = trades(&[1], &[Some("AAPL.L")], &[Some("XLON")]);
+        table
+            .merge(
+                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                &["id".to_owned()],
+                true,
+            )
+            .unwrap();
+        assert_eq!(table.data_files().unwrap().len(), 2);
+
+        let compaction = table.compact().unwrap();
+        assert_eq!(compaction.files_before, 2);
+        assert_eq!(compaction.files_after, 1);
+        let mut rows = collect(table.scan(None).unwrap());
+        rows.sort_by_key(|(id, _, _)| *id);
+        assert_eq!(
+            rows,
+            vec![
+                (1, Some("AAPL.L".to_owned()), Some("XLON".to_owned())),
+                (2, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_first_v3_commit_after_upgrade_assigns_retained_rows() {
+        let path = root("v3-upgrade-lineage");
+        let schema = trade_schema();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let old = trades(&[1, 2], &[Some("AAPL"), Some("MSFT")], &[Some("XNAS"); 2]);
+        table
+            .append(crate::arrow::batch_reader(old.schema(), [old]))
+            .unwrap();
+        table
+            .commit_changes(|metadata| metadata.upgrade_format_version(FormatVersion::V3))
+            .unwrap();
+        assert_eq!(table.metadata().next_row_id, Some(0));
+
+        let added = trades(&[3], &[Some("NVDA")], &[Some("XNYS")]);
+        table
+            .append(crate::arrow::batch_reader(added.schema(), [added]))
+            .unwrap();
+        let snapshot = table.current_snapshot().unwrap();
+        assert_eq!(snapshot.first_row_id, Some(0));
+        assert_eq!(snapshot.added_rows, Some(3));
+        assert_eq!(table.metadata().next_row_id, Some(3));
+        let manifests = table.manifests().unwrap();
+        assert_eq!(manifests[0].first_row_id, Some(0));
+        assert_eq!(manifests[1].first_row_id, Some(2));
+        let mut row_ids: Vec<i64> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(file, _)| file.first_row_id)
+            .collect();
+        row_ids.sort_unstable();
+        assert_eq!(row_ids, [0, 2]);
+    }
+
+    #[test]
+    fn a_spec_conflicting_with_its_source_name_is_refused_at_creation() {
         let path = root("unwritable-spec");
         let schema = trade_schema();
         let mut spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         spec.fields[0].transform = super::Transform::Bucket(8);
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
-
-        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
-        let message = table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        let message = Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("bucket[8]"), "{message}");
+        assert!(message.contains("venue"), "{message}");
+        assert!(message.contains("conflicts"), "{message}");
     }
 
     #[test]
@@ -1484,7 +2613,7 @@ mod planning {
 
         let filtered = table.plan(&[("venue", "XNYS")]).unwrap();
         assert_eq!(filtered.tasks.len(), 1);
-        assert_eq!(filtered.record_count(), 1);
+        assert_eq!(filtered.record_count().unwrap(), 1);
         // Two manifests were excluded by their summaries alone, so two Avro
         // files were never opened.
         assert_eq!(filtered.manifests_skipped(), 2);
@@ -2557,11 +3686,7 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
     // A tag names the snapshot, and an unknown ref says which refs exist.
     table
         .commit_changes(|metadata| {
-            metadata.refs.push((
-                smol_str::SmolStr::new("audit"),
-                crate::iceberg::SnapshotRef::tag(past),
-            ));
-            Ok(())
+            metadata.set_snapshot_ref("audit", crate::iceberg::SnapshotRef::tag(past))
         })
         .unwrap();
     assert_eq!(table.snapshot_by_ref("audit").unwrap().snapshot_id, past);
@@ -2592,10 +3717,7 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
 
     table
         .commit_changes(|metadata| {
-            metadata.properties.push((
-                smol_str::SmolStr::new("owner"),
-                smol_str::SmolStr::new("desk"),
-            ));
+            metadata.set_property("owner", "desk")?;
             Ok(())
         })
         .unwrap();
@@ -2654,6 +3776,50 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let reopened = Table::open(folder).unwrap();
     assert_eq!(reopened.version(), table.version());
     assert_eq!(reopened.metadata().property("owner"), Some("desk"));
+}
+
+#[test]
+fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
+    let filesystem = Arc::new(SameVersionWinner::default());
+    let folder = crate::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+    let mut table = Table::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(1)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm();
+    let applications = AtomicUsize::new(0);
+    table
+        .commit_changes(|metadata| {
+            applications.fetch_add(1, Ordering::Relaxed);
+            metadata.set_property("loser", "visible")?;
+            Ok(())
+        })
+        .unwrap();
+
+    assert_eq!(filesystem.injections(), 1);
+    assert_eq!(
+        applications.load(Ordering::Relaxed),
+        2,
+        "the change must be reapplied to the competing winner"
+    );
+    assert_eq!(table.version(), 3);
+    assert_eq!(table.metadata().property("winner"), Some("visible"));
+    assert_eq!(table.metadata().property("loser"), Some("visible"));
+
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(reopened.version(), 3);
+    assert_eq!(reopened.metadata().property("winner"), Some("visible"));
+    assert_eq!(reopened.metadata().property("loser"), Some("visible"));
 }
 
 #[test]
@@ -3054,6 +4220,23 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     assert_eq!(collect(table.scan(None).unwrap()), before_rows);
     assert_eq!(table.metadata().snapshots.len(), snapshots_before + 1);
     assert_eq!(table.current_snapshot().unwrap().operation(), "replace");
+    assert_eq!(
+        table.metadata().snapshots.last().unwrap().operation(),
+        "replace",
+        "the retained snapshot view stays oldest first after official map normalization"
+    );
+    let inspected: Vec<RecordBatch> = table
+        .inspect_snapshots()
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    let operations = inspected[0]
+        .column_by_name("operation")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(operations.value(operations.len() - 1), "replace");
 
     // The pre-compaction snapshot is untouched, so time travel still reads
     // the five small files it names.
@@ -3250,6 +4433,7 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     assert_eq!(options.commit_retries(), 4);
     assert_eq!(options.commit_min_backoff_ms(), 100);
     assert_eq!(options.commit_max_backoff_ms(), 60_000);
+    assert_eq!(options.commit_total_timeout_ms(), 1_800_000);
     assert_eq!(options.target_file_size_bytes(), 512 * 1024 * 1024);
     assert!((1..=8).contains(&options.read_parallelism()));
     assert_eq!(options.read_parallel_min_files(), 16);
@@ -3259,12 +4443,14 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     table
         .commit_changes(|metadata| {
             metadata.set_property(IcebergOptions::COMMIT_RETRIES_KEY, "7")?;
+            metadata.set_property(IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY, "7000")?;
             metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, "3")?;
             Ok(())
         })
         .unwrap();
     let options = table.options().unwrap();
     assert_eq!(options.commit_retries(), 7);
+    assert_eq!(options.commit_total_timeout_ms(), 7000);
     assert_eq!(options.read_parallel_min_files(), 3);
     assert_eq!(options.commit_min_backoff_ms(), 100, "untouched: default");
 
@@ -3277,6 +4463,48 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
         3,
         "property still speaks"
     );
+
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+#[test]
+fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
+    use super::IcebergOptions;
+
+    let path = root("commit-total-timeout");
+    let mut winner = Table::create(
+        Folder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let mut stale = Table::open(Folder::new(&path).unwrap()).unwrap();
+    winner.set_options(IcebergOptions::new().with_commit_total_timeout_ms(0));
+    stale.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(10)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_total_timeout_ms(0),
+    );
+
+    winner
+        .commit_changes(|metadata| {
+            metadata.set_property("winner", "visible")?;
+            Ok(())
+        })
+        .unwrap();
+    stale
+        .commit_changes(|metadata| {
+            metadata.set_property("loser", "hidden")?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(stale.version(), 3);
+
+    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    assert_eq!(reopened.metadata().property("winner"), Some("visible"));
+    assert_eq!(reopened.metadata().property("loser"), Some("hidden"));
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -3459,6 +4687,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     let error = second
         .overwrite(crate::arrow::batch_reader(incoming.schema(), [incoming]))
         .unwrap_err();
+    assert!(error.is_conflict(), "{error}");
     let message = error.to_string();
     assert!(
         message.contains("expected to commit version 3"),
@@ -3621,7 +4850,7 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     // With nothing anchoring the first snapshot, expiring everything older
     // than the near future removes exactly it - and the table still reads.
     let cutoff = table.metadata().last_updated_ms + 10_000;
-    let expired = table.expire_snapshots(cutoff).unwrap();
+    let expired = table.expire_snapshots(Some(cutoff), None, &[]).unwrap();
     assert_eq!(expired, vec![past]);
     assert_eq!(table.metadata().snapshots.len(), 1);
     assert_eq!(collect(table.scan(None).unwrap()).len(), 2);
@@ -3629,7 +4858,10 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
 
     // Nothing left to expire commits nothing: no new version is written.
     let version = table.version();
-    assert_eq!(table.expire_snapshots(i64::MAX).unwrap(), Vec::<i64>::new());
+    assert_eq!(
+        table.expire_snapshots(Some(i64::MAX), None, &[]).unwrap(),
+        Vec::<i64>::new()
+    );
     assert_eq!(table.version(), version);
 
     let _ = std::fs::remove_dir_all(&path);
@@ -4516,12 +5748,10 @@ mod manifest_planning {
     }
 
     #[test]
-    fn a_schema_defining_a_named_type_under_a_dropped_field_still_plans() {
-        // Avro lets a writer define a named type inside one field and
-        // reference it by bare name from another. Projecting away the
-        // defining field (column_sizes) orphans the reference kept in
-        // value_counts; such a manifest degrades to a full decode instead
-        // of failing the scan.
+    fn an_avro_container_without_required_iceberg_metadata_is_not_a_manifest() {
+        // Avro named-type references are valid container syntax, but a real
+        // Iceberg manifest must also carry its schema and partition metadata.
+        // The official parser owns that distinction for both planning modes.
         let schema = crate::json::from_utf8(
             r#"{"type":"record","name":"manifest_entry","fields":[
                 {"name":"status","type":"int"},
@@ -4549,18 +5779,15 @@ mod manifest_planning {
         let mut handle = Buffer::new();
         crate::avro::write_container(&mut handle, &schema, &[], &[row]).unwrap();
 
-        let entries = read_manifest_for_plan(&handle, true).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].snapshot_id, Some(77));
-        assert_eq!(
-            entries[0].data_file.file_path,
-            "file:///t/data/part-0.parquet"
-        );
-        assert_eq!(entries[0].data_file.value_counts, vec![(1, 100)]);
-        // Without statistics nothing references the orphaned type and the
-        // projected plan applies as usual.
-        let pruned = read_manifest_for_plan(&handle, false).unwrap();
-        assert!(pruned[0].data_file.value_counts.is_empty());
+        for statistics in [false, true] {
+            let message = read_manifest_for_plan(&handle, statistics)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                message.contains("schema is required in manifest metadata"),
+                "{message}"
+            );
+        }
     }
 }
 
@@ -4647,27 +5874,28 @@ mod data_format {
     }
 
     #[test]
-    fn an_orc_format_is_refused_up_front_naming_the_format() {
-        let path = root("format-orc");
-        let mut table = Table::create(
-            Folder::new(&path).unwrap(),
-            FormatVersion::V2,
-            trade_schema(),
-            PartitionSpec::unpartitioned(),
-        )
-        .unwrap();
-        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Orc));
+    fn metadata_only_formats_are_refused_up_front_naming_the_format() {
+        for (format, name) in [(FileFormat::Orc, "ORC"), (FileFormat::Puffin, "PUFFIN")] {
+            let path = root(&format!("format-{}", name.to_ascii_lowercase()));
+            let mut table = Table::create(
+                Folder::new(&path).unwrap(),
+                FormatVersion::V2,
+                trade_schema(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            table.set_options(IcebergOptions::new().with_data_format(format));
 
-        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
-        let message = table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("ORC"), "{message}");
-        assert!(message.contains("PARQUET, AVRO"), "{message}");
-        // The refusal happened before anything was written.
-        assert!(table.current_snapshot().is_none());
-        assert!(!path.join("data").exists());
+            let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+            let message = table
+                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains(name), "{message}");
+            assert!(message.contains("PARQUET, AVRO"), "{message}");
+            assert!(table.current_snapshot().is_none());
+            assert!(!path.join("data").exists());
+        }
     }
 
     #[test]

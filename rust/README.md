@@ -47,8 +47,9 @@ cargo test --manifest-path rust/Cargo.toml
 cargo test --manifest-path rust/Cargo.toml --features "parquet iceberg"
 ```
 
-The core supports Rust 1.85. Building every workspace member requires the newer
-toolchain the Node-API and PyO3 dependencies need.
+Default and schema-only core builds support Rust 1.85. The optional `iceberg`
+feature and both bindings require Rust 1.94 because they include official
+Iceberg 0.10.1.
 
 Arrow scalars, arrays, RecordBatch, and IPC live in the core `yggdryl::arrow`
 module and are enabled by default. A schema-only consumer may disable the

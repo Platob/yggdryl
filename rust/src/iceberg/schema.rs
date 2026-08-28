@@ -47,7 +47,7 @@ const IDENTIFIER: &str = "identifier-field-ids";
 /// the declared spelling rides the field's metadata: a schema read from a
 /// table that says `uuid` writes `uuid` back, rather than quietly demoting
 /// the column to `fixed[16]` on the next metadata commit.
-const DECLARED_TYPE: &str = "type";
+pub(super) const DECLARED_TYPE: &str = "type";
 
 /// Read an Iceberg schema object into a non-null struct root field.
 ///
@@ -78,6 +78,8 @@ pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
         )));
     }
 
+    let normalized = super::official::normalize_schema(schema)?;
+    let schema = &normalized;
     let mut root = struct_field_from_json(name, schema, false)?;
     if let Some(id) = schema.get_key_str("schema-id").and_then(Scalar::as_i64) {
         root.iceberg_mut().insert(SCHEMA_ID, id.to_string())?;
@@ -134,7 +136,7 @@ pub fn schema_to_json(root: &Field) -> Result<Scalar> {
             Scalar::from_sequence(parsed),
         ));
     }
-    Scalar::from_record(entries.into_iter().map(|(key, value)| {
+    let document = Scalar::from_record(entries.into_iter().map(|(key, value)| {
         (
             SmolStr::new(
                 key.as_str()
@@ -142,7 +144,9 @@ pub fn schema_to_json(root: &Field) -> Result<Scalar> {
             ),
             value,
         )
-    }))
+    }))?;
+    super::official::validate_schema(&document)?;
+    Ok(document)
 }
 
 /// Number every field in a tree that does not already carry an identifier.

@@ -421,6 +421,29 @@ class TestMerging:
 class TestExpiringSnapshots:
     """Expiry drops what retention no longer names, and nothing else."""
 
+    def test_defaults_retain_override_and_explicit_ids(self, filled: Table) -> None:
+        first = filled.snapshots[0].snapshot_id
+        assert filled.current_snapshot is not None
+        current = filled.current_snapshot.snapshot_id
+        before = filled.version
+
+        # Fresh snapshots survive the default five-day cutoff. A retain
+        # override also protects both snapshots from a future cutoff.
+        assert filled.expire_snapshots() == []
+        assert filled.expire_snapshots(int(time.time() * 1000) + 60_000, 2) == []
+        assert filled.expire_snapshots(0, snapshot_ids=[999]) == []
+        assert filled.version == before
+
+        with pytest.raises(ValueError, match="retain_last.*at least 1"):
+            filled.expire_snapshots(retain_last=0)
+        with pytest.raises(ValueError, match="cannot expire current snapshot"):
+            filled.expire_snapshots(snapshot_ids=[current])
+
+        # Explicit ids join age selection, so an old cutoff does not stop this
+        # known, unprotected ancestor from being removed.
+        assert filled.expire_snapshots(0, snapshot_ids=[first]) == [first]
+        assert filled.scan().read_all().num_rows == 6
+
     def test_a_cutoff_older_than_everything_expires_nothing_and_spends_no_version(
         self, filled: Table
     ) -> None:

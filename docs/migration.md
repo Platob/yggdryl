@@ -337,3 +337,69 @@ aliases. Python exposes `is_io()`, `row_size`, and `column_size`; JavaScript
 exposes `isIo()`, `rowSize`, and `columnSize`. Dimensions name the whole
 logical media and ignore read projection/filter/limit settings. They use
 format metadata where possible and cache only for an explicitly open handle.
+
+## Iceberg metadata ownership
+
+The `iceberg` feature now pins official Iceberg 0.10.1 for metadata/schema
+normalization, metadata updates, and full manifest/list reads. Its types stay
+internal: public `Field`, Arrow, and I/O APIs remain on Yggdryl's Arrow 59 and
+`IOBase` boundary. Iceberg-enabled builds and both bindings require Rust 1.94;
+default and schema-only core builds retain Rust 1.85.
+
+Breaking Rust changes:
+
+- `TableMetadata` state fields are now read-only accessors (`location()`,
+  `schemas()`, `snapshots()`, `properties()`, and the matching names for the
+  remaining fields). Mutate through its official-builder-backed `set_*`,
+  `add_*`, `remove_*`, ref, snapshot, and evolution methods.
+- `ScanPlan::record_count()` now returns `Result<i64>` and rejects negative or
+  overflowing manifest totals.
+- `IcebergOptions` adds `commit_total_timeout_ms` for Iceberg's
+  `commit.retry.total-timeout-ms` cumulative backoff budget. JavaScript spells
+  it `commitTotalTimeoutMs`.
+- `SortOrder::order_id`, `TableMetadata::default_sort_order_id`,
+  `add_sort_order`, and `set_default_sort_order` now use the Iceberg model's
+  signed 64-bit identifier. Allocation at `i64::MAX` fails before entering the
+  official builder.
+- `Transform::Bucket` and `Transform::Truncate` now hold the official `u32`
+  parameter width. `Transform::Unknown` is preserved and remains opaque to
+  writes and pruning.
+- `TableMetadata::remove_property` and `remove_snapshot_ref` changed from
+  `Option<_>` to `Result<Option<_>>`; `set_location` changed from `()` to
+  `Result<()>`. Propagate errors with `?` before using the previous value.
+- Snapshot expiry is one official-action-shaped call:
+  `expire_snapshots(older_than_ms, retain_last, snapshot_ids)`. All arguments
+  are optional at the Python/JavaScript boundary; Rust uses `Option`, `Option`,
+  and a slice. The raw `TableMetadata::remove_snapshots` and age-only
+  `expire_snapshots_older_than` surfaces were removed.
+- `ManifestFile`'s `added_files_count`, `existing_files_count`,
+  `deleted_files_count`, `added_rows_count`, `existing_rows_count`, and
+  `deleted_rows_count` are now `Option`; null means unreported, not zero.
+  Python and JavaScript expose the same distinction as `None`/`null`.
+- `write_manifest_list` now takes the snapshot `first_row_id` before
+  `manifests` and returns the next unassigned row id. V3 commits assign
+  manifest and data-file row ranges, including retained files after upgrade.
+- Bucket, truncate, and calendar partition transforms are now writable through
+  the official scalar transform engine. Only `unknown` remains write-rejected.
+- Metadata discovery accepts only exact Hadoop `vN[.gz].metadata.json` or
+  official `<version>-<uuid>[.gz].metadata.json` names; lookalikes are ignored.
+- Equivalent schemas, partition specs, and sort orders reuse the official
+  builder's identifier. A conflicting requested identifier is reassigned.
+- `FileFormat::Puffin` now crosses Python and JavaScript as `PUFFIN`.
+  Puffin metadata is retained; table data writes still reject it explicitly.
+- `Table::open` preserves exact UUID metadata filenames and detects gzip by
+  magic bytes. Commits honor `write.metadata.compression-codec`; direct
+  `Table::create` now returns a conflict instead of replacing an existing
+  table.
+
+Full manifest reads now retain fields that the old projection dropped:
+
+| Value | Python getters | JavaScript getters |
+| --- | --- | --- |
+| `Snapshot` | `manifests`, `encryption_key_id`, `first_row_id`, `added_rows` | `manifests`, `encryptionKeyId`, `firstRowId`, `addedRows` |
+| `ManifestFile` | `content`, `min_sequence_number`, `partitions`, `key_metadata`, `first_row_id` | `content`, `minSequenceNumber`, `partitions`, `keyMetadata`, `firstRowId` |
+| `DataFile` | `key_metadata`, `split_offsets`, `equality_ids`, `first_row_id`, `referenced_data_file`, `content_offset`, `content_size_in_bytes` | `keyMetadata`, `splitOffsets`, `equalityIds`, `firstRowId`, `referencedDataFile`, `contentOffset`, `contentSizeInBytes` |
+
+Scans now return a typed unsupported error for live position/equality deletes
+instead of silently skipping them; delete manifests proven to contain no live
+files remain inert.

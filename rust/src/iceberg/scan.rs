@@ -92,11 +92,35 @@ impl ScanPlan {
     }
 
     /// Return the rows the planned files hold, as the manifests counted them.
-    pub fn record_count(&self) -> i64 {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a manifest carries a negative count or the total
+    /// does not fit in a signed 64-bit integer.
+    pub fn record_count(&self) -> Result<i64> {
         self.tasks
             .iter()
-            .map(|task| task.data_file().record_count)
-            .sum()
+            .enumerate()
+            .try_fold(0_i64, |total, (index, task)| {
+                let count = task.data_file().record_count;
+                let path = format_smolstr!("$.tasks[{index}].data_file.record_count");
+                if count < 0 {
+                    return Err(Error::InvalidRecord {
+                        path,
+                        reason: SmolStr::new_static(
+                            "expected an Iceberg manifest record count to be non-negative",
+                        ),
+                    });
+                }
+                total
+                    .checked_add(count)
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path,
+                        reason: SmolStr::new_static(
+                            "planned Iceberg record count does not fit in i64",
+                        ),
+                    })
+            })
     }
 
     /// Return how many live data files the metadata let the scan skip.
@@ -310,7 +334,7 @@ fn bound(bounds: &[(i32, Vec<u8>)], id: i32) -> Option<&[u8]> {
 /// decoded.
 pub(super) fn plan(
     manifests: &[ManifestFile],
-    spec_of: &dyn Fn(i32) -> PartitionSpec,
+    spec_of: &dyn Fn(i32) -> Result<PartitionSpec>,
     manifest_at: &dyn Fn(&str) -> Result<Holder>,
     conjuncts: &[Bound],
     schema: &Field,
@@ -318,10 +342,16 @@ pub(super) fn plan(
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
     for manifest in manifests {
-        if manifest.content != ManifestContent::Data {
-            continue;
+        if manifest.content == ManifestContent::Deletes {
+            if manifest.added_files_count == Some(0) && manifest.existing_files_count == Some(0) {
+                continue;
+            }
+            return Err(unsupported_deletes(
+                &manifest.manifest_path,
+                "delete manifest",
+            ));
         }
-        let spec = spec_of(manifest.partition_spec_id);
+        let spec = spec_of(manifest.partition_spec_id)?;
         let summary = manifest_bounds(manifest, &spec, schema);
         if !conjuncts
             .iter()
@@ -341,11 +371,14 @@ pub(super) fn plan(
         } else {
             super::manifest::read_manifest(&handle)?
         };
+        let mut next_row_id = manifest.first_row_id;
         for mut entry in entries {
+            validate_data_entry(&entry, manifest, &spec)?;
             if entry.status == EntryStatus::Deleted {
                 continue;
             }
-            entry.inherit(manifest);
+            entry.inherit(manifest)?;
+            inherit_first_row_id(&mut entry, &mut next_row_id)?;
             // A file with no rows is neither read nor carried: reading it would
             // cost a footer for an empty batch, and keeping it would carry a
             // name that holds nothing.
@@ -366,6 +399,78 @@ pub(super) fn plan(
         }
     }
     Ok(plan)
+}
+
+/// Fill one null data-file row id from its v3 manifest range.
+fn inherit_first_row_id(entry: &mut ManifestEntry, next_row_id: &mut Option<i64>) -> Result<()> {
+    if entry.data_file.first_row_id.is_some() {
+        return Ok(());
+    }
+    let Some(first_row_id) = *next_row_id else {
+        return Ok(());
+    };
+    let record_count = entry.data_file.record_count;
+    if first_row_id < 0 || record_count < 0 {
+        return Err(invalid(format_smolstr!(
+            "expected non-negative row lineage for {:?}, got first_row_id {first_row_id} and record_count {record_count}",
+            entry.data_file.file_path
+        )));
+    }
+    let next = first_row_id.checked_add(record_count).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "row id overflow for {:?}: {first_row_id} + {record_count}",
+            entry.data_file.file_path
+        ))
+    })?;
+    entry.data_file.first_row_id = Some(first_row_id);
+    *next_row_id = Some(next);
+    Ok(())
+}
+
+/// Reject manifest rows a data scan cannot interpret without changing rows.
+fn validate_data_entry(
+    entry: &ManifestEntry,
+    manifest: &ManifestFile,
+    spec: &PartitionSpec,
+) -> Result<()> {
+    match entry.data_file.content {
+        0 => {}
+        1 => {
+            return Err(unsupported_deletes(
+                &manifest.manifest_path,
+                "position-delete data file",
+            ));
+        }
+        2 => {
+            return Err(unsupported_deletes(
+                &manifest.manifest_path,
+                "equality-delete data file",
+            ));
+        }
+        content => {
+            return Err(invalid(format_smolstr!(
+                "expected data-file content 0 in data manifest {:?}, got {content}",
+                manifest.manifest_path
+            )));
+        }
+    }
+    if entry.data_file.partition.len() != spec.fields.len() {
+        return Err(invalid(format_smolstr!(
+            "expected {} partition values for spec {}, got {} in {:?}",
+            spec.fields.len(),
+            spec.spec_id,
+            entry.data_file.partition.len(),
+            entry.data_file.file_path
+        )));
+    }
+    Ok(())
+}
+
+/// Report row-delete semantics this scan does not yet apply.
+fn unsupported_deletes(path: &str, kind: &'static str) -> Error {
+    Error::iceberg(format_smolstr!(
+        "{kind} row application is not supported by yggdryl scans (manifest: {path})"
+    ))
 }
 
 /// One data file a scan still has to open.
@@ -969,5 +1074,284 @@ fn invalid(reason: SmolStr) -> Error {
         format: "iceberg",
         position: 0,
         reason,
+    }
+}
+
+#[cfg(test)]
+mod delete_tests {
+    use super::*;
+    use crate::iceberg::{FileFormat, PartitionField};
+
+    fn manifest(content: ManifestContent) -> ManifestFile {
+        ManifestFile {
+            manifest_path: "metadata/delete-manifest.avro".into(),
+            manifest_length: 128,
+            partition_spec_id: 0,
+            content,
+            sequence_number: 2,
+            min_sequence_number: 1,
+            added_snapshot_id: 7,
+            added_files_count: Some(1),
+            existing_files_count: Some(0),
+            deleted_files_count: Some(0),
+            added_rows_count: Some(1),
+            existing_rows_count: Some(0),
+            deleted_rows_count: Some(0),
+            partitions: Vec::new(),
+            key_metadata: None,
+            first_row_id: None,
+        }
+    }
+
+    fn schema() -> Field {
+        DataType::from_fields([DataType::Int64.required_field("id")])
+            .unwrap()
+            .required_field("row")
+    }
+
+    fn entry(content: i32) -> ManifestEntry {
+        ManifestEntry::added(
+            7,
+            DataFile {
+                content,
+                file_path: "data/part.parquet".into(),
+                file_format: FileFormat::Parquet,
+                record_count: 1,
+                file_size_in_bytes: 128,
+                ..DataFile::default()
+            },
+        )
+    }
+
+    fn assert_unsupported(error: Error, kind: &str) {
+        let Error::Iceberg { reason, source } = error else {
+            panic!("expected a typed Iceberg unsupported error, got {error}");
+        };
+        assert!(source.is_none());
+        assert!(reason.contains(kind), "{reason}");
+    }
+
+    #[test]
+    fn live_delete_manifests_fail_before_any_file_is_read() {
+        let error = plan(
+            &[manifest(ManifestContent::Deletes)],
+            &|_| Ok(PartitionSpec::unpartitioned()),
+            &|_| panic!("delete manifest must not be opened as row data"),
+            &[],
+            &schema(),
+            true,
+        )
+        .unwrap_err();
+        assert_unsupported(error, "delete manifest");
+    }
+
+    #[test]
+    fn delete_manifests_with_unknown_counts_are_not_assumed_empty() {
+        let mut unknown = manifest(ManifestContent::Deletes);
+        unknown.added_files_count = None;
+        unknown.existing_files_count = None;
+        let error = plan(
+            &[unknown],
+            &|_| Ok(PartitionSpec::unpartitioned()),
+            &|_| panic!("unknown delete counts must fail before the manifest is opened"),
+            &[],
+            &schema(),
+            true,
+        )
+        .unwrap_err();
+        assert_unsupported(error, "delete manifest");
+    }
+
+    #[test]
+    fn delete_manifests_without_live_files_are_inert() {
+        let mut deleted = manifest(ManifestContent::Deletes);
+        deleted.added_files_count = Some(0);
+        deleted.deleted_files_count = Some(1);
+        deleted.added_rows_count = Some(0);
+        deleted.deleted_rows_count = Some(1);
+        let planned = plan(
+            &[deleted],
+            &|_| panic!("an inert delete manifest has no spec to resolve"),
+            &|_| panic!("an inert delete manifest has no entries to read"),
+            &[],
+            &schema(),
+            true,
+        )
+        .unwrap();
+        assert_eq!(planned, ScanPlan::default());
+    }
+
+    #[test]
+    fn missing_partition_specs_fail_before_pruning() {
+        let error = plan(
+            &[manifest(ManifestContent::Data)],
+            &|spec_id| {
+                Err(invalid(format_smolstr!(
+                    "expected partition spec id {spec_id}, got none"
+                )))
+            },
+            &|_| panic!("a manifest with an unresolved spec must not be opened"),
+            &[],
+            &schema(),
+            true,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("expected partition spec id 0, got none"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn delete_files_hidden_in_data_manifests_are_rejected() {
+        let manifest = manifest(ManifestContent::Data);
+        for (content, kind) in [(1, "position-delete"), (2, "equality-delete")] {
+            let error =
+                validate_data_entry(&entry(content), &manifest, &PartitionSpec::unpartitioned())
+                    .unwrap_err();
+            assert_unsupported(error, kind);
+        }
+    }
+
+    #[test]
+    fn partition_tuples_must_match_the_referenced_spec() {
+        let spec = PartitionSpec {
+            spec_id: 3,
+            fields: vec![PartitionField::identity(1, 1_000, "id")],
+        };
+        let error = validate_data_entry(&entry(0), &manifest(ManifestContent::Data), &spec)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("expected 1 partition values for spec 3, got 0"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn unknown_transforms_never_supply_pruning_bounds() {
+        let mut schema = schema();
+        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 3,
+            fields: vec![PartitionField {
+                source_id: 1,
+                field_id: 1_000,
+                name: "id_opaque".into(),
+                transform: Transform::Unknown,
+            }],
+        };
+        assert!(identity_column(&spec, 0, &schema).is_none());
+    }
+
+    #[test]
+    fn data_files_inherit_contiguous_row_ids_without_moving_explicit_ids() {
+        let mut cursor = Some(10);
+        let mut first = entry(0);
+        first.data_file.record_count = 3;
+        inherit_first_row_id(&mut first, &mut cursor).unwrap();
+        assert_eq!(first.data_file.first_row_id, Some(10));
+        assert_eq!(cursor, Some(13));
+
+        let mut explicit = entry(0);
+        explicit.data_file.first_row_id = Some(100);
+        explicit.data_file.record_count = 7;
+        inherit_first_row_id(&mut explicit, &mut cursor).unwrap();
+        assert_eq!(explicit.data_file.first_row_id, Some(100));
+        assert_eq!(cursor, Some(13));
+
+        let mut last = entry(0);
+        last.data_file.record_count = 2;
+        inherit_first_row_id(&mut last, &mut cursor).unwrap();
+        assert_eq!(last.data_file.first_row_id, Some(13));
+        assert_eq!(cursor, Some(15));
+    }
+
+    #[test]
+    fn data_files_keep_null_row_ids_without_a_manifest_range() {
+        let mut entry = entry(0);
+        let mut cursor = None;
+        inherit_first_row_id(&mut entry, &mut cursor).unwrap();
+        assert_eq!(entry.data_file.first_row_id, None);
+        assert_eq!(cursor, None);
+    }
+
+    #[test]
+    fn row_id_overflow_fails_without_mutating_the_file_or_cursor() {
+        let mut entry = entry(0);
+        entry.data_file.record_count = 2;
+        let mut cursor = Some(i64::MAX);
+        let error = inherit_first_row_id(&mut entry, &mut cursor)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("row id overflow"), "{error}");
+        assert_eq!(entry.data_file.first_row_id, None);
+        assert_eq!(cursor, Some(i64::MAX));
+    }
+}
+
+#[cfg(test)]
+mod bound_tests {
+    use super::*;
+
+    fn schema(data_type: DataType) -> Field {
+        let mut schema = DataType::from_fields([data_type.required_field("value")])
+            .unwrap()
+            .required_field("row");
+        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    fn residual(
+        data_type: DataType,
+        lower: Vec<u8>,
+        upper: Vec<u8>,
+        value: Scalar,
+    ) -> Option<Vec<usize>> {
+        let schema = schema(data_type);
+        let file = DataFile {
+            record_count: 1,
+            lower_bounds: vec![(1, lower)],
+            upper_bounds: vec![(1, upper)],
+            ..DataFile::default()
+        };
+        let filter = Expression::column("value").eq(Expression::literal(value));
+        let conjuncts = conjuncts(&schema, &filter).unwrap();
+        file_residual(
+            &file_bounds(&file, &PartitionSpec::unpartitioned(), &schema),
+            &conjuncts,
+        )
+    }
+
+    #[test]
+    fn promoted_bounds_prune_under_the_current_schema_type() {
+        let int = 37_i32.to_le_bytes().to_vec();
+        assert_eq!(
+            residual(DataType::Int64, int.clone(), int, Scalar::I64(37)),
+            Some(Vec::new()),
+            "an Int bound evolved to Long proves the matching value"
+        );
+
+        let float = 1.5_f32.to_le_bytes().to_vec();
+        assert_eq!(
+            residual(
+                DataType::Float64,
+                float.clone(),
+                float,
+                Scalar::from(1.5_f64)
+            ),
+            Some(Vec::new()),
+            "a Float bound evolved to Double proves the matching value"
+        );
+    }
+
+    #[test]
+    fn malformed_bounds_leave_the_filter_for_rows() {
+        assert_eq!(
+            residual(DataType::Int64, vec![0; 3], vec![0; 9], Scalar::I64(37)),
+            Some(vec![0]),
+            "malformed statistics cannot exclude or settle a file"
+        );
     }
 }

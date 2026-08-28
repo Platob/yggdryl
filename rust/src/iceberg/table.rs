@@ -46,7 +46,8 @@
 //! that finds itself beaten *rebases* when that is safe - it reloads the
 //! winner's document and re-applies its own intent on top, with exponential
 //! jittered backoff between attempts, bounded by
-//! [`IcebergOptions::commit_retries`] - and otherwise reports a
+//! [`IcebergOptions::commit_retries`] and
+//! [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
 //! [`CommitConflict`] naming both versions. An append and a metadata-only
 //! change rebase; [`Table::overwrite_where`], [`Table::merge_where`], and
 //! [`Table::compact`] cannot, because they planned against files a concurrent
@@ -72,16 +73,16 @@
 
 use std::collections::HashMap;
 
-use arrow_array::{Array, ArrayRef, RecordBatch, UInt32Array};
+use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_schema::SortOptions;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{
     DataFile, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
-    read_manifest_list, write_manifest, write_manifest_list,
+    read_legacy_manifest_file, read_manifest_list, write_manifest, write_manifest_list,
 };
 use super::metadata::{FormatVersion, TableMetadata, now_ms, uuid};
-use super::options::IcebergOptions;
+use super::options::{CommitSettings, IcebergOptions};
 use super::partition::PartitionSpec;
 use super::scan::{ScanPart, ScanPlan, ScanTask};
 use super::snapshot::{Snapshot, SnapshotRef};
@@ -116,6 +117,8 @@ pub struct Table<H: IOBase> {
     metadata: TableMetadata,
     /// The version number of the metadata document that was last written.
     version: u32,
+    /// The exact discovered metadata filename, including UUID and compression.
+    metadata_file_name: SmolStr,
     /// An explicit options override the resolvers consult before properties.
     options: Option<IcebergOptions>,
 }
@@ -133,9 +136,9 @@ impl<H: IOBase> Table<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the handle is not a container, when the schema is
-    /// not a non-null struct root, or when the metadata document cannot be
-    /// written.
+    /// Returns a conflict when the handle already contains a table, or an
+    /// error when the handle is not a container, the schema is not a non-null
+    /// struct root, or the metadata document cannot be written.
     pub fn create(
         root: H,
         format_version: FormatVersion,
@@ -152,6 +155,7 @@ impl<H: IOBase> Table<H> {
             root,
             metadata,
             version: 0,
+            metadata_file_name: SmolStr::new_static(""),
             options: None,
         };
         table.commit_metadata()?;
@@ -171,10 +175,11 @@ impl<H: IOBase> Table<H> {
     pub fn open(root: H) -> Result<Self> {
         let metadata_dir = root.child_by_path(METADATA_DIR)?;
         match find_metadata(&metadata_dir)? {
-            Some((version, document)) => Ok(Self {
+            Some((version, metadata_file_name, document)) => Ok(Self {
                 root,
                 metadata: TableMetadata::from_json(&document)?,
                 version,
+                metadata_file_name,
                 options: None,
             }),
             None => Err(missing_metadata(&metadata_dir)),
@@ -207,13 +212,14 @@ impl<H: IOBase> Table<H> {
     /// handle you gave, untouched.
     pub(crate) fn locate_keeping(root: H) -> Result<std::result::Result<Self, H>> {
         let metadata_dir = root.child_by_path(METADATA_DIR)?;
-        let Some((version, document)) = find_metadata(&metadata_dir)? else {
+        let Some((version, metadata_file_name, document)) = find_metadata(&metadata_dir)? else {
             return Ok(Err(root));
         };
         Ok(Ok(Self {
             root,
             metadata: TableMetadata::from_json(&document)?,
             version,
+            metadata_file_name,
             options: None,
         }))
     }
@@ -256,7 +262,7 @@ impl<H: IOBase> Table<H> {
 
     /// Return the name of the current metadata document.
     pub fn metadata_file_name(&self) -> String {
-        format!("v{}.metadata.json", self.version)
+        self.metadata_file_name.to_string()
     }
 
     /// Return the location of the current metadata document, as a URI.
@@ -368,8 +374,17 @@ impl<H: IOBase> Table<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the manifest list cannot be reached or decoded.
+    /// Returns an error when a manifest or manifest list cannot be reached or decoded.
     pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>> {
+        if let Some(paths) = &snapshot.manifests {
+            return paths
+                .iter()
+                .map(|path| {
+                    let handle = self.child_at(path)?;
+                    read_legacy_manifest_file(&handle, path, snapshot.snapshot_id)
+                })
+                .collect();
+        }
         if snapshot.manifest_list.is_empty() {
             return Ok(Vec::new());
         }
@@ -563,7 +578,11 @@ impl<H: IOBase> Table<H> {
                 self.metadata
                     .spec_by_id(spec_id)
                     .cloned()
-                    .unwrap_or_else(PartitionSpec::unpartitioned)
+                    .ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected partition spec id {spec_id} among the table's partition specs, got none"
+                        ))
+                    })
             },
             &|location| self.child_at(location),
             conjuncts,
@@ -602,7 +621,8 @@ impl<H: IOBase> Table<H> {
     /// meant to write *rebases*: it reloads the winner's document and runs
     /// `change` again on it - which is why the closure is `FnMut` - retrying
     /// with jittered exponential backoff up to
-    /// [`IcebergOptions::commit_retries`] times, and reporting a
+    /// [`IcebergOptions::commit_retries`] times within
+    /// [`IcebergOptions::commit_total_timeout_ms`], and reporting a
     /// [`CommitConflict`] when the retries run out. The check is best-effort
     /// on plain storage - [`IOBase`] has no compare-and-swap, so retries
     /// shrink the undetected-race window without closing it.
@@ -632,7 +652,6 @@ impl<H: IOBase> Table<H> {
             // The change runs on a copy, so a rejected change costs nothing.
             let mut updated = table.metadata.clone();
             change(&mut updated)?;
-            updated.last_updated_ms = now_ms();
             Ok(updated)
         })
     }
@@ -647,8 +666,9 @@ impl<H: IOBase> Table<H> {
     /// again, because version numbers never move backwards and the caller said
     /// re-applying is unsafe - its attempts exist to bound the wait and to
     /// count an honest report. Being beaten more than
-    /// [`IcebergOptions::commit_retries`] times restores the in-memory state
-    /// and returns a [`CommitConflict`].
+    /// [`IcebergOptions::commit_retries`] times or reserving more cumulative
+    /// backoff than [`IcebergOptions::commit_total_timeout_ms`] restores the
+    /// in-memory state and returns a [`CommitConflict`].
     ///
     /// The check-then-write pair is not atomic - [`IOBase`] has no
     /// compare-and-swap - so a writer landing between the two still goes
@@ -661,10 +681,17 @@ impl<H: IOBase> Table<H> {
         let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
         let saved_metadata = self.metadata.clone();
         let saved_version = self.version;
+        let saved_metadata_file_name = self.metadata_file_name.clone();
+        let expected_version = saved_version.checked_add(1).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "cannot commit metadata after version {saved_version}: the version overflows u32"
+            ))
+        })?;
         let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
         let restore = |table: &mut Self, error: Error| {
             table.metadata = saved_metadata.clone();
             table.version = saved_version;
+            table.metadata_file_name = saved_metadata_file_name.clone();
             Err(error)
         };
         let reconcile_visible = |table: &mut Self, error: Error| {
@@ -676,47 +703,51 @@ impl<H: IOBase> Table<H> {
             // visibility itself is uncertain.
             match find_metadata(&metadata_dir).and_then(|visible| {
                 visible
-                    .map(|(version, document)| {
-                        TableMetadata::from_json(&document).map(|metadata| (version, metadata))
+                    .map(|(version, metadata_file_name, document)| {
+                        TableMetadata::from_json(&document)
+                            .map(|metadata| (version, metadata_file_name, metadata))
                     })
                     .transpose()
             }) {
-                Ok(Some((version, metadata))) => {
+                Ok(Some((version, metadata_file_name, metadata))) => {
                     table.metadata = metadata;
                     table.version = version;
+                    table.metadata_file_name = metadata_file_name;
                 }
                 Ok(None) | Err(_) => {
                     table.metadata = saved_metadata.clone();
                     table.version = saved_version;
+                    table.metadata_file_name = saved_metadata_file_name.clone();
                 }
             }
             Err(error)
         };
 
         let mut beaten: u32 = 0;
+        let mut backoff_spent_ms = 0_u64;
         loop {
             match find_metadata(&metadata_dir) {
-                Ok(Some((version, document))) if version > self.version => {
-                    beaten += 1;
-                    if beaten > settings.retries {
-                        let conflict = CommitConflict {
-                            expected_version: saved_version + 1,
-                            beaten,
-                            last_seen_version: version,
-                        };
-                        return restore(self, conflict.into());
-                    }
+                Ok(Some((version, metadata_file_name, document))) if version > self.version => {
+                    let wait = match retry_wait_ms(
+                        &settings,
+                        &mut beaten,
+                        &mut backoff_spent_ms,
+                        expected_version,
+                        version,
+                    ) {
+                        Ok(wait) => wait,
+                        Err(error) => return restore(self, error),
+                    };
                     if on_conflict == OnConflict::Rebase {
                         match TableMetadata::from_json(&document) {
                             Ok(fresh) => {
                                 self.metadata = fresh;
                                 self.version = version;
+                                self.metadata_file_name = metadata_file_name;
                             }
                             Err(error) => return restore(self, error),
                         }
                     }
-                    let wait =
-                        backoff_ms(beaten - 1, settings.min_backoff_ms, settings.max_backoff_ms);
                     if wait > 0 {
                         std::thread::sleep(std::time::Duration::from_millis(wait));
                     }
@@ -732,7 +763,42 @@ impl<H: IOBase> Table<H> {
             };
             self.metadata = updated;
             if let Err(error) = self.commit_metadata() {
-                return reconcile_visible(self, error);
+                if !error.is_conflict() {
+                    return reconcile_visible(self, error);
+                }
+                let winner = find_metadata(&metadata_dir).and_then(|visible| {
+                    visible
+                        .map(|(version, metadata_file_name, document)| {
+                            TableMetadata::from_json(&document)
+                                .map(|metadata| (version, metadata_file_name, metadata))
+                        })
+                        .transpose()
+                });
+                let Ok(Some((version, metadata_file_name, metadata))) = winner else {
+                    return reconcile_visible(self, error);
+                };
+                if version <= self.version {
+                    return reconcile_visible(self, error);
+                }
+                let wait = match retry_wait_ms(
+                    &settings,
+                    &mut beaten,
+                    &mut backoff_spent_ms,
+                    expected_version,
+                    version,
+                ) {
+                    Ok(wait) => wait,
+                    Err(error) => return restore(self, error),
+                };
+                if on_conflict == OnConflict::Rebase {
+                    self.metadata = metadata;
+                    self.version = version;
+                    self.metadata_file_name = metadata_file_name;
+                }
+                if wait > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(wait));
+                }
+                continue;
             }
             return Ok(());
         }
@@ -908,10 +974,11 @@ impl<H: IOBase> Table<H> {
     /// An append beaten by a concurrent commit *rebases*: the data files are
     /// already written, so only the manifest list and the document are rebuilt
     /// on the winner's metadata - fresh parent, fresh sequence number - with
-    /// backoff between attempts, up to [`IcebergOptions::commit_retries`]
-    /// times. The version check is best-effort on plain storage: [`IOBase`]
-    /// has no compare-and-swap, so retries shrink the undetected-race window
-    /// without closing it, and serialized writers are what closes it.
+    /// backoff between attempts, bounded by [`IcebergOptions::commit_retries`]
+    /// and [`IcebergOptions::commit_total_timeout_ms`]. The version check is
+    /// best-effort on plain storage: [`IOBase`] has no compare-and-swap, so
+    /// retries shrink the undetected-race window without closing it, and
+    /// serialized writers are what closes it.
     ///
     /// # Errors
     ///
@@ -948,9 +1015,10 @@ impl<H: IOBase> Table<H> {
     /// was planned against a snapshot the winner may have replaced, and the
     /// incoming reader is already consumed, so re-planning could lose the
     /// winner's rows or double this write's. It reports a [`CommitConflict`]
-    /// naming both versions instead, after the bounded waits of
-    /// [`IcebergOptions::commit_retries`]; the caller re-reads and retries
-    /// with fresh input.
+    /// naming both versions instead, after the waits bounded by
+    /// [`IcebergOptions::commit_retries`] and
+    /// [`IcebergOptions::commit_total_timeout_ms`]; the caller re-reads and
+    /// retries with fresh input.
     ///
     /// # Errors
     ///
@@ -1004,8 +1072,9 @@ impl<H: IOBase> Table<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error when `merge_by_names` names a column the schema does not
-    /// declare, and the failure of any read, join, or write otherwise,
+    /// Returns an error for a keyed merge on format v3, whose existing row IDs
+    /// this writer cannot yet preserve, when `merge_by_names` names a column
+    /// the schema does not declare, or for any read, join, or write failure,
     /// including a [`CommitConflict`] when a concurrent commit won.
     pub fn merge_where(
         &mut self,
@@ -1017,6 +1086,7 @@ impl<H: IOBase> Table<H> {
         if merge_by_names.is_empty() {
             return self.overwrite_where(filters, batches);
         }
+        self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
 
         // The incoming side is held, and this is why: the files a merge has to
@@ -1084,10 +1154,11 @@ impl<H: IOBase> Table<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the target size is configured but unparseable,
-    /// when a manifest cannot be read, or when any read or write of the
-    /// rewrite fails.
+    /// Returns an error for format v3, whose existing row IDs this writer
+    /// cannot yet preserve, when the target size is configured but
+    /// unparseable, or when any read or write of the rewrite fails.
     pub fn compact(&mut self) -> Result<Compaction> {
+        self.require_row_id_preserving_rewrite("compaction")?;
         let target = i64::try_from(self.target_file_size()?).unwrap_or(i64::MAX);
         let plan = self.plan(&[])?;
 
@@ -1125,10 +1196,16 @@ impl<H: IOBase> Table<H> {
         }
 
         let files_before = selected.len();
-        let bytes_rewritten: i64 = selected
-            .iter()
-            .map(|task| task.entry.data_file.file_size_in_bytes)
-            .sum();
+        let bytes_rewritten = selected.iter().try_fold(0_i64, |total, task| {
+            total
+                .checked_add(task.entry.data_file.file_size_in_bytes)
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected compacted byte size fitting i64, overflowed at {:?}",
+                        task.entry.data_file.file_path
+                    ))
+                })
+        })?;
 
         let schema = self.schema()?.clone();
         let rows = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
@@ -1163,7 +1240,7 @@ impl<H: IOBase> Table<H> {
         let mut schema_id = 0;
         self.commit_changes(|metadata| {
             schema_id = metadata.add_schema(schema.clone())?;
-            metadata.current_schema_id = schema_id;
+            metadata.set_current_schema(schema_id)?;
             Ok(())
         })?;
         Ok(schema_id)
@@ -1211,7 +1288,7 @@ impl<H: IOBase> Table<H> {
     /// not one of them, or when the commit fails.
     pub fn remove_ref(&mut self, name: &str) -> Result<SnapshotRef> {
         let mut removed = None;
-        self.commit_changes(|metadata| match metadata.remove_snapshot_ref(name) {
+        self.commit_changes(|metadata| match metadata.remove_snapshot_ref(name)? {
             Some(reference) => {
                 removed = Some(reference);
                 Ok(())
@@ -1252,23 +1329,28 @@ impl<H: IOBase> Table<H> {
 
     /// Expire the snapshots retention no longer keeps, as one metadata commit.
     ///
-    /// `older_than_ms` is the default age cutoff
-    /// [`TableMetadata::expire_snapshots_older_than`] applies; every ref's own
-    /// retention fields are honored first. Returns the expired snapshot ids,
-    /// sorted. A table with nothing old commits nothing - the check runs on a
-    /// copy first, so an empty expiry costs no version.
+    /// Optional cutoffs, retain counts, and explicit ids have the same union
+    /// and precedence as [`TableMetadata::expire_snapshots`]. Returns sorted
+    /// expired ids and commits nothing when neither a snapshot nor stale ref
+    /// changes.
     ///
     /// # Errors
     ///
     /// Returns the expiry's own failure, or the commit failure.
-    pub fn expire_snapshots(&mut self, older_than_ms: i64) -> Result<Vec<i64>> {
+    pub fn expire_snapshots(
+        &mut self,
+        older_than_ms: Option<i64>,
+        retain_last: Option<usize>,
+        snapshot_ids: &[i64],
+    ) -> Result<Vec<i64>> {
         let mut probe = self.metadata.clone();
-        if probe.expire_snapshots_older_than(older_than_ms)?.is_empty() {
+        probe.expire_snapshots(older_than_ms, retain_last, snapshot_ids)?;
+        if probe == self.metadata {
             return Ok(Vec::new());
         }
         let mut expired = Vec::new();
         self.commit_changes(|metadata| {
-            expired = metadata.expire_snapshots_older_than(older_than_ms)?;
+            expired = metadata.expire_snapshots(older_than_ms, retain_last, snapshot_ids)?;
             Ok(())
         })?;
         Ok(expired)
@@ -1311,24 +1393,58 @@ impl<H: IOBase> Table<H> {
         let previous = (self.version > 0)
             .then(|| self.metadata_location())
             .transpose()?;
-        self.version += 1;
-        if let Some(previous) = previous {
-            self.metadata
-                .metadata_log
-                .push((self.metadata.last_updated_ms, SmolStr::new(previous)));
-        }
-
-        let document = self.metadata.clone().into_json()?;
+        let next_version = self.version.checked_add(1).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "cannot commit metadata after version {}: the version overflows u32",
+                self.version
+            ))
+        })?;
+        let mut metadata = self.metadata.clone();
+        metadata.finalize_official(previous)?;
+        let compression = metadata.metadata_compression_codec()?;
+        let document = metadata.clone().into_json()?;
         let encoded = crate::json::into_bytes(&document)?;
-        let name = self.metadata_file_name();
+        let (suffix, encoded) = match compression {
+            iceberg_official::compression::CompressionCodec::None => ("", encoded),
+            iceberg_official::compression::CompressionCodec::Gzip(_) => {
+                (".gz", crate::gzip::dump(&encoded)?)
+            }
+            other => {
+                return Err(invalid(format_smolstr!(
+                    "unsupported Iceberg metadata compression codec {other}; expected none or gzip"
+                )));
+            }
+        };
+        let name = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
+        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
         let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
         handle.write_all_bytes(&encoded)?;
+
+        // UUID filenames make the write itself the create/commit attempt.
+        // Another document at this version means a table or concurrent writer
+        // already won; remove only our unpublished candidate and report it.
+        let competitors = metadata_names_at_version(&metadata_dir, next_version)?
+            .into_iter()
+            .filter(|candidate| candidate != &name)
+            .collect::<Vec<_>>();
+        if !competitors.is_empty() {
+            handle.remove(false)?;
+            return Err(Error::conflict(
+                "Iceberg metadata version",
+                "Iceberg metadata version",
+                format!("{next_version}: {}", competitors.join(", ")),
+            ));
+        }
 
         // The hint is how a catalog-free reader finds the current document.
         let mut hint = self
             .root
             .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
-        hint.write_all_bytes(self.version.to_string().as_bytes())
+        hint.write_all_bytes(next_version.to_string().as_bytes())?;
+        self.metadata = metadata;
+        self.version = next_version;
+        self.metadata_file_name = name;
+        Ok(())
     }
 
     /// Write the data files, the manifest, the manifest list, and the metadata.
@@ -1359,10 +1475,10 @@ impl<H: IOBase> Table<H> {
         // fails up front rather than after data files were written.
         let format = IcebergOptions::write_format(self.options.as_ref(), &self.metadata)?;
         require_encodable(format)?;
+        let initial_sequence = next_sequence_number(&self.metadata)?;
 
         let snapshot_id = snapshot_id();
         let partition = spec.partition_field(&schema)?;
-        let sources = spec.source_names(&schema)?;
 
         let write = FileWrite {
             snapshot_id,
@@ -1371,16 +1487,22 @@ impl<H: IOBase> Table<H> {
             format,
         };
         let mut written = Vec::new();
-        for (values, group) in grouped_batches(batches, &schema, &spec, &sources, &partition)? {
+        for (values, group) in grouped_batches(batches, &schema, &spec, &partition)? {
             for file in rolled(group, target) {
                 written.push(self.write_data_file(&write, written.len(), &values, file)?);
             }
         }
         let files_written = written.len();
 
-        let added_records: i64 = written.iter().map(|file| file.record_count).sum();
-        let added_size: i64 = written.iter().map(|file| file.file_size_in_bytes).sum();
-        let added_files = i32::try_from(written.len()).unwrap_or(i32::MAX);
+        let added_records = checked_file_sum(&written, |file| file.record_count, "record count")?;
+        let added_size = checked_file_sum(&written, |file| file.file_size_in_bytes, "file size")?;
+        let added_files = i32::try_from(written.len()).map_err(|_| {
+            invalid(format_smolstr!(
+                "expected fewer than {} files in one commit, got {}",
+                i32::MAX,
+                written.len()
+            ))
+        })?;
 
         // The new manifest holds only `added` entries, whose snapshot and
         // sequence numbers are inherited from the manifest list row, so its
@@ -1399,10 +1521,10 @@ impl<H: IOBase> Table<H> {
                 &spec,
                 &entries,
                 snapshot_id,
-                self.metadata.last_sequence_number + 1,
+                initial_sequence,
             )?;
-            manifest.added_files_count = added_files;
-            manifest.added_rows_count = added_records;
+            manifest.added_files_count = Some(added_files);
+            manifest.added_rows_count = Some(added_records);
             Some(manifest)
         };
 
@@ -1417,7 +1539,7 @@ impl<H: IOBase> Table<H> {
                     &entries,
                     &schema,
                     snapshot_id,
-                    self.metadata.last_sequence_number + 1,
+                    initial_sequence,
                 )?);
                 (OnConflict::Fail, Some(kept))
             }
@@ -1426,7 +1548,7 @@ impl<H: IOBase> Table<H> {
         let operation = SmolStr::new(operation);
         let compacting = operation == "replace";
         self.commit_document(on_conflict, move |table| {
-            let sequence_number = table.metadata.last_sequence_number + 1;
+            let sequence_number = next_sequence_number(&table.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
                 None => table.manifests()?,
@@ -1443,24 +1565,83 @@ impl<H: IOBase> Table<H> {
             let mut list = table
                 .root
                 .child_by_path(&format!("{METADATA_DIR}/{list_name}"))?;
-            write_manifest_list(
+            let first_row_id = if table.metadata.format_version >= FormatVersion::V3 {
+                Some(
+                    table
+                        .metadata
+                        .next_row_id
+                        .ok_or_else(|| Error::InvalidRecord {
+                            path: "$.iceberg.next-row-id".into(),
+                            reason: SmolStr::new_static("expected a v3 next-row-id, got none"),
+                        })?,
+                )
+            } else {
+                None
+            };
+            let next_row_id = write_manifest_list(
                 &mut list,
                 table.metadata.format_version,
                 snapshot_id,
                 table.metadata.current_snapshot_id,
                 sequence_number,
+                first_row_id,
                 &manifests,
             )?;
 
-            let total_records: i64 = manifests
-                .iter()
-                .map(|manifest| manifest.added_rows_count + manifest.existing_rows_count)
-                .sum();
-            let total_files: i32 = manifests
-                .iter()
-                .map(|manifest| manifest.added_files_count + manifest.existing_files_count)
-                .sum();
+            let total_records = checked_manifest_total_i64(
+                &manifests,
+                |manifest| (manifest.added_rows_count, manifest.existing_rows_count),
+                "row count",
+            )?;
+            let total_files = checked_manifest_total_i32(
+                &manifests,
+                |manifest| (manifest.added_files_count, manifest.existing_files_count),
+                "file count",
+            )?;
+            let mut summary = vec![
+                (
+                    SmolStr::new_static("operation"),
+                    SmolStr::new(operation.clone()),
+                ),
+                (
+                    SmolStr::new_static("added-data-files"),
+                    format_smolstr!("{added_files}"),
+                ),
+                (
+                    SmolStr::new_static("added-records"),
+                    format_smolstr!("{added_records}"),
+                ),
+                (
+                    SmolStr::new_static("added-files-size"),
+                    format_smolstr!("{added_size}"),
+                ),
+            ];
+            if let Some(total) = total_files {
+                summary.push((
+                    SmolStr::new_static("total-data-files"),
+                    format_smolstr!("{total}"),
+                ));
+            }
+            if let Some(total) = total_records {
+                summary.push((
+                    SmolStr::new_static("total-records"),
+                    format_smolstr!("{total}"),
+                ));
+            }
 
+            let assigned_rows = match (first_row_id, next_row_id) {
+                (Some(first), Some(next)) => Some(next.checked_sub(first).ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected manifest-list row ids to advance from {first}, got {next}"
+                    ))
+                })?),
+                (None, None) => None,
+                (first, next) => {
+                    return Err(invalid(format_smolstr!(
+                        "expected matching snapshot and manifest-list row-id state, got {first:?} and {next:?}"
+                    )));
+                }
+            };
             let snapshot = Snapshot {
                 snapshot_id,
                 parent_snapshot_id: table.metadata.current_snapshot_id,
@@ -1468,44 +1649,16 @@ impl<H: IOBase> Table<H> {
                     .then_some(sequence_number),
                 timestamp_ms: now_ms(),
                 manifest_list: SmolStr::new(table.location_of(METADATA_DIR, &list_name)),
-                summary: vec![
-                    (
-                        SmolStr::new_static("operation"),
-                        SmolStr::new(operation.clone()),
-                    ),
-                    (
-                        SmolStr::new_static("added-data-files"),
-                        format_smolstr!("{added_files}"),
-                    ),
-                    (
-                        SmolStr::new_static("added-records"),
-                        format_smolstr!("{added_records}"),
-                    ),
-                    (
-                        SmolStr::new_static("added-files-size"),
-                        format_smolstr!("{added_size}"),
-                    ),
-                    (
-                        SmolStr::new_static("total-data-files"),
-                        format_smolstr!("{total_files}"),
-                    ),
-                    (
-                        SmolStr::new_static("total-records"),
-                        format_smolstr!("{total_records}"),
-                    ),
-                ],
+                manifests: None,
+                summary,
                 schema_id: Some(table.metadata.current_schema_id),
-                first_row_id: (table.metadata.format_version >= FormatVersion::V3)
-                    .then(|| table.metadata.next_row_id.unwrap_or_default()),
-                added_rows: (table.metadata.format_version >= FormatVersion::V3)
-                    .then_some(added_records),
+                encryption_key_id: None,
+                first_row_id,
+                added_rows: assigned_rows,
             };
 
             let mut updated = table.metadata.clone();
-            if updated.format_version >= FormatVersion::V3 {
-                updated.next_row_id = Some(updated.next_row_id.unwrap_or_default() + added_records);
-            }
-            updated.set_current_snapshot(snapshot);
+            updated.set_current_snapshot(snapshot)?;
             Ok(updated)
         })?;
         self.maybe_auto_compact(compacting)?;
@@ -1523,7 +1676,10 @@ impl<H: IOBase> Table<H> {
     /// next cadence point retries what this one left - while any other
     /// failure surfaces, because the data commit already stands either way.
     fn maybe_auto_compact(&mut self, compacting: bool) -> Result<()> {
-        if compacting {
+        // Automatic compaction is optional. Skipping it on v3 keeps a
+        // successful data commit successful without rewriting retained rows
+        // under fresh row IDs.
+        if compacting || self.metadata.format_version >= FormatVersion::V3 {
             return Ok(());
         }
         let Some(cadence) = IcebergOptions::resolved(self.options.as_ref(), &self.metadata)?
@@ -1549,6 +1705,16 @@ impl<H: IOBase> Table<H> {
             Err(error) if error.to_string().contains("got beaten") => Ok(()),
             Err(error) => Err(error),
         }
+    }
+
+    /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
+    fn require_row_id_preserving_rewrite(&self, operation: &'static str) -> Result<()> {
+        if self.metadata.format_version >= FormatVersion::V3 {
+            return Err(Error::iceberg(format_smolstr!(
+                "{operation} is not supported for Iceberg format v3: rewritten rows cannot yet preserve their existing row IDs"
+            )));
+        }
+        Ok(())
     }
 
     /// Write one partition's rows as a data file in `format` and describe it.
@@ -1620,7 +1786,12 @@ impl<H: IOBase> Table<H> {
             }
         }));
         file.file_format = format;
-        file.file_size_in_bytes = i64::try_from(handle.size()).unwrap_or_default();
+        file.file_size_in_bytes = i64::try_from(handle.size()).map_err(|_| {
+            invalid(format_smolstr!(
+                "expected a data file size fitting i64, got {}",
+                handle.size()
+            ))
+        })?;
         file.partition = values.to_vec();
         Ok(file)
     }
@@ -1650,7 +1821,12 @@ impl<H: IOBase> Table<H> {
         handle.flush()?;
         Ok(ManifestFile {
             manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)),
-            manifest_length: i64::try_from(handle.size()).unwrap_or_default(),
+            manifest_length: i64::try_from(handle.size()).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a manifest size fitting i64, got {}",
+                    handle.size()
+                ))
+            })?,
             partition_spec_id: spec.spec_id,
             content: ManifestContent::Data,
             sequence_number,
@@ -1664,13 +1840,14 @@ impl<H: IOBase> Table<H> {
                 .unwrap_or(sequence_number)
                 .min(sequence_number),
             added_snapshot_id: snapshot_id,
-            added_files_count: 0,
-            existing_files_count: 0,
-            deleted_files_count: 0,
-            added_rows_count: 0,
-            existing_rows_count: 0,
-            deleted_rows_count: 0,
+            added_files_count: Some(0),
+            existing_files_count: Some(0),
+            deleted_files_count: Some(0),
+            added_rows_count: Some(0),
+            existing_rows_count: Some(0),
+            deleted_rows_count: Some(0),
             partitions: summaries(spec, schema, entries)?,
+            key_metadata: None,
             first_row_id: None,
         })
     }
@@ -1700,7 +1877,29 @@ impl<H: IOBase> Table<H> {
 
         let mut manifests = Vec::with_capacity(grouped.len());
         for (index, (spec, entries)) in grouped.into_iter().enumerate() {
-            let name = format!("{snapshot_id}-m{}.avro", index + 1);
+            let suffix = index.checked_add(1).ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "cannot number more than usize::MAX carried manifests",
+                ))
+            })?;
+            let existing_files_count = i32::try_from(entries.len()).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected fewer than {} existing files in a manifest, got {}",
+                    i32::MAX,
+                    entries.len()
+                ))
+            })?;
+            let existing_rows_count = entries.iter().try_fold(0_i64, |total, entry| {
+                total
+                    .checked_add(entry.data_file.record_count)
+                    .ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected existing row count fitting i64, overflowed at {:?}",
+                            entry.data_file.file_path
+                        ))
+                    })
+            })?;
+            let name = format!("{snapshot_id}-m{suffix}.avro");
             let mut manifest = self.write_manifest_file(
                 &name,
                 schema,
@@ -1709,11 +1908,8 @@ impl<H: IOBase> Table<H> {
                 snapshot_id,
                 sequence_number,
             )?;
-            manifest.existing_files_count = i32::try_from(entries.len()).unwrap_or(i32::MAX);
-            manifest.existing_rows_count = entries
-                .iter()
-                .map(|entry| entry.data_file.record_count)
-                .sum();
+            manifest.existing_files_count = Some(existing_files_count);
+            manifest.existing_rows_count = Some(existing_rows_count);
             manifests.push(manifest);
         }
         Ok(manifests)
@@ -1867,7 +2063,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
                 ))
             });
         }
-        u64::try_from(self.plan(&[])?.record_count()).map_err(|_| {
+        u64::try_from(self.plan(&[])?.record_count()?).map_err(|_| {
             invalid(format_smolstr!(
                 "expected snapshot {} manifests to carry a non-negative record count",
                 snapshot.snapshot_id
@@ -2039,10 +2235,8 @@ enum OnConflict {
 
 /// A commit that lost the race to concurrent writers and ran out of retries.
 ///
-/// The crate's error enum is closed, so this crosses the [`Result`] boundary
-/// as the module's `iceberg` codec error carrying exactly this value's
-/// [`Display`](std::fmt::Display) - which names both versions, so a caller
-/// can see how far the table moved while this writer was being beaten.
+/// This crosses the [`Result`] boundary as [`Error::Conflict`], retaining this
+/// value's [`Display`](std::fmt::Display) in the reported location.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct CommitConflict {
     /// The document version this writer expected to publish.
@@ -2074,32 +2268,122 @@ impl std::error::Error for CommitConflict {}
 
 impl From<CommitConflict> for Error {
     fn from(value: CommitConflict) -> Self {
-        invalid(format_smolstr!("{value}"))
+        Error::conflict(
+            "Iceberg metadata commit",
+            "concurrent Iceberg metadata commit",
+            value,
+        )
+    }
+}
+
+/// Count one conflict and reserve its randomized wait from the official total
+/// retry-delay budget.
+fn retry_wait_ms(
+    settings: &CommitSettings,
+    beaten: &mut u32,
+    backoff_spent_ms: &mut u64,
+    expected_version: u32,
+    last_seen_version: u32,
+) -> Result<u64> {
+    *beaten = beaten.checked_add(1).ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "cannot count more than u32::MAX metadata commit conflicts",
+        ))
+    })?;
+    let conflict = || {
+        CommitConflict {
+            expected_version,
+            beaten: *beaten,
+            last_seen_version,
+        }
+        .into()
+    };
+    if *beaten > settings.retries {
+        return Err(conflict());
+    }
+
+    let wait = backoff_ms(
+        *beaten - 1,
+        settings.min_backoff_ms,
+        settings.max_backoff_ms,
+    );
+    if !reserve_retry_backoff(backoff_spent_ms, wait, settings.total_timeout_ms) {
+        return Err(conflict());
+    }
+    Ok(wait)
+}
+
+fn reserve_retry_backoff(spent_ms: &mut u64, wait_ms: u64, limit_ms: u64) -> bool {
+    match spent_ms.checked_add(wait_ms) {
+        Some(total) if total <= limit_ms => {
+            *spent_ms = total;
+            true
+        }
+        _ => false,
     }
 }
 
 /// The wait before one retry attempt, exponential with full jitter.
 ///
-/// The window doubles from `min` per attempt and is capped at `max` - a floor
-/// configured above the ceiling waits the ceiling - and the wait is drawn
-/// uniformly from floor..=window with the same per-process hashing randomness
-/// [`snapshot_id`] uses, so beaten writers spread out rather than colliding
-/// again in step.
+/// The window doubles from `min` per attempt and is capped at `max`; full
+/// jitter draws uniformly from zero through that window so beaten writers do
+/// not collide again in step.
 fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
     use std::hash::{BuildHasher, Hasher};
 
-    let floor = min.min(max);
-    let window = floor
+    let window = min
         .saturating_mul(1_u64.checked_shl(attempt).unwrap_or(u64::MAX))
-        .clamp(floor, max);
-    if window <= floor {
-        return floor;
+        .min(max);
+    if window == 0 {
+        return 0;
     }
     let state = std::collections::hash_map::RandomState::new();
     let mut hasher = state.build_hasher();
     hasher.write_i64(now_ms());
     hasher.write_u32(attempt);
-    floor + hasher.finish() % (window - floor + 1)
+    window
+        .checked_add(1)
+        .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::{CommitSettings, backoff_ms, reserve_retry_backoff, retry_wait_ms};
+
+    #[test]
+    fn retry_budget_includes_its_exact_boundary_and_exhaustion_is_a_conflict() {
+        let mut spent = 4;
+        assert!(reserve_retry_backoff(&mut spent, 1, 5));
+        assert_eq!(spent, 5);
+        assert!(!reserve_retry_backoff(&mut spent, 1, 5));
+        assert_eq!(spent, 5, "a refused wait does not consume budget");
+
+        let settings = CommitSettings {
+            retries: 1,
+            min_backoff_ms: 0,
+            max_backoff_ms: 0,
+            total_timeout_ms: 0,
+        };
+        let mut beaten = 0;
+        let mut spent = 0;
+        assert_eq!(
+            retry_wait_ms(&settings, &mut beaten, &mut spent, 2, 2).unwrap(),
+            0
+        );
+        let error = retry_wait_ms(&settings, &mut beaten, &mut spent, 2, 2).unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+    }
+
+    #[test]
+    fn full_jitter_never_exceeds_its_exponential_window() {
+        for attempt in 0..8 {
+            let cap = 10_u64.saturating_mul(1_u64 << attempt).min(100);
+            for _ in 0..32 {
+                assert!(backoff_ms(attempt, 10, 100) <= cap);
+            }
+        }
+        assert_eq!(backoff_ms(4, 0, 100), 0);
+    }
 }
 
 /// Split one partition group's batches into files of roughly `target` bytes.
@@ -2195,8 +2479,10 @@ fn fold(current: &mut Option<Vec<u8>>, candidate: &[u8], data_type: &DataType, m
     match current {
         None => *current = Some(candidate.to_vec()),
         Some(held) => {
-            let ordering = compare_single(candidate, held, data_type);
-            if (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt()) {
+            let replace = compare_single(candidate, held, data_type).is_some_and(|ordering| {
+                (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt())
+            });
+            if replace {
                 *current = Some(candidate.to_vec());
             }
         }
@@ -2257,11 +2543,13 @@ impl KeyBounds {
                 lower: None,
                 upper: None,
             };
+            let mut has_non_null = false;
             for batch in batches {
                 let Some(column) = batch.column_by_name(name) else {
                     continue;
                 };
                 bound.has_null = bound.has_null || column.null_count() > 0;
+                has_non_null = has_non_null || column.null_count() < column.len();
                 if bound.unbounded {
                     continue;
                 }
@@ -2271,6 +2559,12 @@ impl KeyBounds {
                 if let Some(encoded) = extreme(column, field, true)? {
                     fold(&mut bound.upper, &encoded, &bound.data_type, false);
                 }
+            }
+            // A non-null NaN is valid as a merge key but forbidden as an
+            // Iceberg bound. If either extreme was therefore omitted, retain
+            // every candidate file rather than treating the key as null-only.
+            if has_non_null && (bound.lower.is_none() || bound.upper.is_none()) {
+                bound.unbounded = true;
             }
             columns.push(bound);
         }
@@ -2315,8 +2609,113 @@ impl KeyBound {
             // A file that records no range for the key has to be read.
             return true;
         };
-        !(compare_single(upper, file_lower, &self.data_type).is_lt()
-            || compare_single(lower, file_upper, &self.data_type).is_gt())
+        let before = compare_single(upper, file_lower, &self.data_type);
+        let after = compare_single(lower, file_upper, &self.data_type);
+        match (before, after) {
+            (Some(before), Some(after)) => !(before.is_lt() || after.is_gt()),
+            // A malformed external bound cannot prove a file disjoint.
+            _ => true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod key_bound_tests {
+    use std::sync::Arc;
+
+    use arrow_array::Float64Array;
+
+    use super::*;
+
+    #[test]
+    fn malformed_external_bounds_cannot_exclude_a_merge_file() {
+        let incoming = 37_i64.to_le_bytes().to_vec();
+        let bound = KeyBound {
+            id: 1,
+            data_type: DataType::Int64,
+            unbounded: false,
+            has_null: false,
+            lower: Some(incoming.clone()),
+            upper: Some(incoming),
+        };
+        let file = DataFile {
+            record_count: 1,
+            lower_bounds: vec![(1, vec![0; 3])],
+            upper_bounds: vec![(1, vec![0; 9])],
+            null_value_counts: vec![(1, 0)],
+            ..DataFile::default()
+        };
+        assert!(bound.may_hold(&file));
+
+        let incoming = 1.5_f64.to_le_bytes().to_vec();
+        let float_bound = KeyBound {
+            id: 1,
+            data_type: DataType::Float64,
+            unbounded: false,
+            has_null: false,
+            lower: Some(incoming.clone()),
+            upper: Some(incoming),
+        };
+        let nan = f64::NAN.to_le_bytes().to_vec();
+        let file = DataFile {
+            record_count: 1,
+            lower_bounds: vec![(1, nan.clone())],
+            upper_bounds: vec![(1, nan)],
+            null_value_counts: vec![(1, 0)],
+            ..DataFile::default()
+        };
+        assert!(float_bound.may_hold(&file));
+    }
+
+    #[test]
+    fn generated_nan_merge_bounds_are_conservatively_unbounded() {
+        let mut schema = DataType::from_fields([DataType::Float64.required_field("ratio")])
+            .unwrap()
+            .required_field("row");
+        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+        let arrow_schema = crate::arrow::arrow_schema_from_field(&schema).unwrap();
+        let batch = RecordBatch::try_new(
+            arrow_schema,
+            vec![Arc::new(Float64Array::from(vec![1.5, f64::NAN]))],
+        )
+        .unwrap();
+
+        let bounds = KeyBounds::of(&[batch], &schema, &["ratio".to_owned()]).unwrap();
+        assert!(bounds.columns[0].unbounded);
+    }
+
+    #[test]
+    fn partition_summaries_omit_nan_bounds() {
+        let mut schema = DataType::from_fields([DataType::Float64.required_field("ratio")])
+            .unwrap()
+            .required_field("row");
+        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec::identity(0, &schema, &["ratio"]).unwrap();
+        let entry = |value| {
+            ManifestEntry::added(
+                1,
+                DataFile {
+                    record_count: 1,
+                    partition: vec![value],
+                    ..DataFile::default()
+                },
+            )
+        };
+
+        let only_nan = summaries(&spec, &schema, &[entry(Scalar::from(f64::NAN))]).unwrap();
+        assert!(only_nan[0].lower_bound.is_none());
+        assert!(only_nan[0].upper_bound.is_none());
+
+        let finite = Scalar::from(1.5_f64);
+        let encoded = single_value(&finite, &DataType::Float64).unwrap();
+        let mixed = summaries(
+            &spec,
+            &schema,
+            &[entry(Scalar::from(f64::NAN)), entry(finite)],
+        )
+        .unwrap();
+        assert_eq!(mixed[0].lower_bound.as_deref(), Some(encoded.as_slice()));
+        assert_eq!(mixed[0].upper_bound.as_deref(), Some(encoded.as_slice()));
     }
 }
 
@@ -2344,7 +2743,7 @@ pub(super) fn extreme(
     let Some(row) = indices.values().first().copied() else {
         return Ok(None);
     };
-    let slice = column.slice(usize::try_from(row).unwrap_or_default(), 1);
+    let slice = column.slice(row as usize, 1);
     let scalar = crate::arrow::scalar_value(&field.clone().with_nullable(true), slice.as_ref())
         .map_err(|error| invalid(format_smolstr!("{error}")))?;
     Ok(single_value(&scalar, field.data_type()))
@@ -2359,11 +2758,11 @@ fn grouped_batches(
     batches: BatchReader,
     schema: &Field,
     spec: &PartitionSpec,
-    sources: &[SmolStr],
     partition: &Field,
 ) -> Result<Vec<(Vec<Scalar>, Vec<RecordBatch>)>> {
     let mut groups: Vec<(Vec<Scalar>, Vec<RecordBatch>)> = Vec::new();
-    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut index: HashMap<Vec<Scalar>, usize> = HashMap::new();
+    let transforms = spec.write_transforms(schema, partition)?;
 
     for batch in batches {
         let batch = schema.cast_arrow_batch(batch.map_err(Error::Arrow)?, false)?;
@@ -2378,14 +2777,12 @@ fn grouped_batches(
             continue;
         }
 
-        for (key, rows) in row_groups(&batch, sources)? {
-            let position = match index.get(&key) {
+        for (values, rows) in row_groups(&batch, &transforms)? {
+            let position = match index.get(&values) {
                 Some(position) => *position,
                 None => {
-                    let first = *rows.first().unwrap_or(&0);
-                    let values = tuple_at(&batch, sources, partition, first)?;
-                    groups.push((values, Vec::new()));
-                    index.insert(key, groups.len() - 1);
+                    groups.push((values.clone(), Vec::new()));
+                    index.insert(values, groups.len() - 1);
                     groups.len() - 1
                 }
             };
@@ -2397,50 +2794,27 @@ fn grouped_batches(
     Ok(groups)
 }
 
-/// Group a batch's row indices by the text of their partition source values.
-fn row_groups(batch: &RecordBatch, sources: &[SmolStr]) -> Result<Vec<(String, Vec<u32>)>> {
-    let mut formatters = Vec::with_capacity(sources.len());
-    for source in sources {
-        let column = batch.column_by_name(source).ok_or_else(|| {
+/// Group row indices by their computed, typed partition tuple.
+fn row_groups(
+    batch: &RecordBatch,
+    transforms: &[super::partition::PartitionTransform],
+) -> Result<Vec<(Vec<Scalar>, Vec<u32>)>> {
+    let mut order: Vec<(Vec<Scalar>, Vec<u32>)> = Vec::new();
+    let mut seen: HashMap<Vec<Scalar>, usize> = HashMap::new();
+    for row in 0..batch.num_rows() {
+        let row = u32::try_from(row).map_err(|_| {
             invalid(format_smolstr!(
-                "expected a partition source column {source:?} in the batch, got none"
+                "expected at most {} rows in one partitioning batch, got {}",
+                u32::MAX,
+                batch.num_rows()
             ))
         })?;
-        formatters.push(arrow_cast::display::ArrayFormatter::try_new(
-            column.as_ref(),
-            &arrow_cast::display::FormatOptions::default(),
-        )?);
-    }
-
-    let mut order: Vec<(String, Vec<u32>)> = Vec::new();
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    for row in 0..batch.num_rows() {
-        let mut key = String::new();
-        for (offset, formatter) in formatters.iter().enumerate() {
-            if offset > 0 {
-                key.push('\u{1}');
-            }
-            // A null is not the text a formatter prints for it, so it gets a
-            // marker no formatted value can collide with.
-            let column = batch.column(
-                batch
-                    .schema()
-                    .index_of(&sources[offset])
-                    .map_err(Error::Arrow)?,
-            );
-            if column.is_null(row) {
-                key.push('\u{0}');
-            } else {
-                key.push_str(&formatter.value(row).to_string());
-            }
-        }
-        match seen.get(&key) {
-            Some(position) => order[*position]
-                .1
-                .push(u32::try_from(row).unwrap_or_default()),
+        let values = tuple_at(batch, transforms, row)?;
+        match seen.get(&values) {
+            Some(position) => order[*position].1.push(row),
             None => {
-                seen.insert(key.clone(), order.len());
-                order.push((key, vec![u32::try_from(row).unwrap_or_default()]));
+                seen.insert(values.clone(), order.len());
+                order.push((values, vec![row]));
             }
         }
     }
@@ -2450,31 +2824,68 @@ fn row_groups(batch: &RecordBatch, sources: &[SmolStr]) -> Result<Vec<(String, V
 /// Read one row's partition tuple out of a batch.
 fn tuple_at(
     batch: &RecordBatch,
-    sources: &[SmolStr],
-    partition: &Field,
+    transforms: &[super::partition::PartitionTransform],
     row: u32,
 ) -> Result<Vec<Scalar>> {
-    let mut values = Vec::with_capacity(sources.len());
-    for (source, field) in sources.iter().zip(partition.fields()) {
-        let column = batch.column_by_name(source).ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a partition source column {source:?} in the batch, got none"
-            ))
-        })?;
-        let slice = column.slice(row as usize, 1);
-        values.push(
-            crate::arrow::scalar_value(field, slice.as_ref())
-                .map_err(|error| invalid(format_smolstr!("{error}")))?,
-        );
+    let mut values = Vec::with_capacity(transforms.len());
+    for transform in transforms {
+        let value = source_value(batch, transform, row as usize)?;
+        values.push(transform.partition_value(value)?);
     }
     Ok(values)
 }
 
-/// Return the metadata document with the highest version, and its number.
+/// Read one primitive source through top-level and nested Struct arrays.
+fn source_value(
+    batch: &RecordBatch,
+    transform: &super::partition::PartitionTransform,
+    row: usize,
+) -> Result<Scalar> {
+    let (first, nested) = transform.path().split_first().ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "expected a non-empty partition source path",
+        ))
+    })?;
+    let mut column = batch.column_by_name(first).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "expected a partition source column {first:?} in the batch, got none"
+        ))
+    })?;
+    if column.is_null(row) {
+        return Ok(Scalar::Null);
+    }
+    for name in nested {
+        let parent = column
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a struct on the partition source path before {name:?}, got {}",
+                    column.data_type()
+                ))
+            })?;
+        column = parent.column_by_name(name).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a nested partition source column {name:?}, got none"
+            ))
+        })?;
+        if column.is_null(row) {
+            return Ok(Scalar::Null);
+        }
+    }
+    let slice = column.slice(row, 1);
+    crate::arrow::scalar_value(
+        &transform.source().clone().with_nullable(true),
+        slice.as_ref(),
+    )
+    .map_err(|error| invalid(format_smolstr!("{error}")))
+}
+
+/// Return the metadata document with the highest version, exact name, and number.
 ///
 /// A folder that holds none is `None` rather than an error, because that is the
 /// question "is this a table" and the answer "no" is not a failure.
-fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Scalar)>> {
+fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>> {
     // A folder that is not a table has no metadata directory at all, and the
     // laziness contract makes that a handle that simply is not a container.
     if !metadata_dir.is_container() {
@@ -2482,23 +2893,32 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Scalar)>> {
     }
 
     let hint = metadata_dir.child_by_path(VERSION_HINT)?;
-    if hint.size() > 0 {
-        let text = String::from_utf8_lossy(&hint.read_all_bytes()?)
-            .trim()
-            .to_owned();
-        if let Ok(version) = text.parse::<u32>() {
-            let document = metadata_dir.child_by_path(&format!("v{version}.metadata.json"))?;
-            if document.size() > 0 {
+    let hinted_version = String::from_utf8_lossy(&hint.read_all_bytes()?)
+        .trim()
+        .parse::<u32>()
+        .ok();
+
+    // Prefer the conventional Hadoop filename named by a usable hint.
+    if let Some(version) = hinted_version {
+        for name in [
+            format!("v{version}.metadata.json"),
+            format!("v{version}.gz.metadata.json"),
+        ] {
+            let document = metadata_dir.child_by_path(&name)?;
+            let bytes = document.read_all_bytes()?;
+            if !bytes.is_empty() {
                 return Ok(Some((
                     version,
-                    crate::json::from_bytes(&document.read_all_bytes()?)?,
+                    SmolStr::new(name),
+                    parse_metadata_bytes(&bytes)?,
                 )));
             }
         }
     }
 
-    // No usable hint: take the highest-numbered document that is actually there.
-    let mut best: Option<(u32, Holder)> = None;
+    // No conventional hint target: inspect exact filenames. A UUID filename
+    // is never rewritten into a synthetic `vN` path.
+    let mut candidates: Vec<(u32, SmolStr, Holder)> = Vec::new();
     for entry in metadata_dir.ls(false, false) {
         let entry = entry?;
         let Some(name) = entry
@@ -2507,30 +2927,124 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, Scalar)>> {
         else {
             continue;
         };
-        let Some(stem) = name.strip_suffix(".metadata.json") else {
+        let Some(version) = metadata_version_from_name(&name) else {
             continue;
         };
-        // Both `v3` and Iceberg's own `00003-<uuid>` numbering start with digits.
-        let digits: String = stem
-            .trim_start_matches('v')
-            .chars()
-            .take_while(char::is_ascii_digit)
-            .collect();
-        let Ok(version) = digits.parse::<u32>() else {
-            continue;
+        candidates.push((version, SmolStr::new(name), entry));
+    }
+
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    candidates.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+    let highest_version = candidates
+        .iter()
+        .map(|candidate| candidate.0)
+        .max()
+        .ok_or_else(|| invalid(SmolStr::new_static("expected a metadata candidate")))?;
+    let chosen_version = hinted_version
+        .filter(|hint| candidates.iter().any(|candidate| candidate.0 == *hint))
+        .unwrap_or(highest_version);
+    // A catalog normally stores the exact UUID filename. This catalog-free
+    // surface has only a numeric hint, so concurrent same-version candidates
+    // resolve by exact filename order rather than backend listing order.
+    let chosen = candidates
+        .iter()
+        .rposition(|candidate| candidate.0 == chosen_version)
+        .ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected a matching metadata candidate",
+            ))
+        })?;
+    let (version, name, document) = candidates.swap_remove(chosen);
+    let bytes = document.read_all_bytes()?;
+    Ok(Some((version, name, parse_metadata_bytes(&bytes)?)))
+}
+
+/// Parse the version prefix of Hadoop (`v3`) and official UUID (`00003-id`) names.
+fn metadata_version_from_name(name: &str) -> Option<u32> {
+    let stem = name.strip_suffix(".metadata.json")?;
+    let stem = stem.strip_suffix(".gz").unwrap_or(stem);
+    if let Some(version) = stem.strip_prefix('v') {
+        return if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) {
+            None
+        } else {
+            version.parse().ok()
         };
-        if best.as_ref().is_none_or(|(highest, _)| version > *highest) {
-            best = Some((version, entry));
+    }
+
+    format!("/metadata/{name}")
+        .parse::<iceberg_official::MetadataLocation>()
+        .ok()?;
+    let (version, _) = stem.split_once('-')?;
+    if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) {
+        None
+    } else {
+        version.parse().ok()
+    }
+}
+
+#[cfg(test)]
+mod metadata_name_tests {
+    use super::metadata_version_from_name;
+
+    #[test]
+    fn accepts_exact_hadoop_and_official_metadata_names() {
+        for (name, version) in [
+            ("v3.metadata.json", 3),
+            ("v00003.gz.metadata.json", 3),
+            (
+                "00003-2cd22b57-5127-4198-92ba-e4e67c79821b.metadata.json",
+                3,
+            ),
+            ("9-2cd22b57-5127-4198-92ba-e4e67c79821b.gz.metadata.json", 9),
+        ] {
+            assert_eq!(metadata_version_from_name(name), Some(version), "{name}");
         }
     }
 
-    let Some((version, document)) = best else {
-        return Ok(None);
+    #[test]
+    fn rejects_metadata_lookalikes() {
+        for name in [
+            "v.metadata.json",
+            "v2backup.metadata.json",
+            "vv2.metadata.json",
+            "00002-not-a-uuid.metadata.json",
+            "00002-2cd22b57-5127-4198-92ba-e4e67c79821b.extra.metadata.json",
+            "00002-2cd22b57-5127-4198-92ba-e4e67c79821b.zst.metadata.json",
+            "2.metadata.json",
+            "v2.json",
+        ] {
+            assert_eq!(metadata_version_from_name(name), None, "{name}");
+        }
+    }
+}
+
+/// List exact metadata filenames at one version, deterministically.
+fn metadata_names_at_version(metadata_dir: &Holder, version: u32) -> Result<Vec<SmolStr>> {
+    let mut names = Vec::new();
+    for entry in metadata_dir.ls(false, false) {
+        let entry = entry?;
+        let Some(name) = entry.url().and_then(|url| url.file_name()) else {
+            continue;
+        };
+        if metadata_version_from_name(name) == Some(version) {
+            names.push(SmolStr::new(name));
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// Decode Iceberg metadata exactly as the official reader does: gzip is
+/// detected from its magic bytes, independent of the filename.
+fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
+    let decoded = if bytes.starts_with(&[0x1f, 0x8b]) {
+        crate::gzip::load(bytes)?
+    } else {
+        bytes.to_vec()
     };
-    Ok(Some((
-        version,
-        crate::json::from_bytes(&document.read_all_bytes()?)?,
-    )))
+    crate::json::from_bytes(&decoded)
 }
 
 /// Report a folder that holds no Iceberg metadata document.
@@ -2550,15 +3064,14 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     let normalized_base = base.replace('\\', "/");
     let normalized_base = normalized_base.trim_end_matches('/');
     let normalized = location.replace('\\', "/");
-    if let Some(rest) = normalized.strip_prefix(normalized_base) {
-        return Ok(rest.trim_start_matches('/').to_owned());
+    if normalized == normalized_base {
+        return Ok(String::new());
     }
-    // A table moved after it was written names its own old location; falling
-    // back to the last `data/` or `metadata/` segment keeps it readable.
-    for directory in [DATA_DIR, METADATA_DIR] {
-        if let Some(position) = normalized.rfind(&format!("/{directory}/")) {
-            return Ok(normalized[position + 1..].to_owned());
-        }
+    if let Some(rest) = normalized
+        .strip_prefix(normalized_base)
+        .and_then(|rest| rest.strip_prefix('/'))
+    {
+        return Ok(rest.to_owned());
     }
     Err(invalid(format_smolstr!(
         "expected a location inside the table at {normalized_base:?}, got {location:?}"
@@ -2587,6 +3100,80 @@ fn require_encodable(format: FileFormat) -> Result<()> {
         FileFormat::Parquet | FileFormat::Avro => Ok(()),
         other => Err(not_encodable(other)),
     }
+}
+
+fn next_sequence_number(metadata: &TableMetadata) -> Result<i64> {
+    if metadata.format_version == FormatVersion::V1 {
+        return Ok(0);
+    }
+    metadata.last_sequence_number.checked_add(1).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "expected last-sequence-number below {}, got {}",
+            i64::MAX,
+            metadata.last_sequence_number
+        ))
+    })
+}
+
+fn checked_file_sum(
+    files: &[DataFile],
+    value: impl Fn(&DataFile) -> i64,
+    name: &str,
+) -> Result<i64> {
+    files.iter().try_fold(0_i64, |total, file| {
+        total.checked_add(value(file)).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected total {name} fitting i64, overflowed at {:?}",
+                file.file_path
+            ))
+        })
+    })
+}
+
+fn checked_manifest_total_i64(
+    manifests: &[ManifestFile],
+    values: impl Fn(&ManifestFile) -> (Option<i64>, Option<i64>),
+    name: &str,
+) -> Result<Option<i64>> {
+    let mut total = 0_i64;
+    for manifest in manifests {
+        let (Some(first), Some(second)) = values(manifest) else {
+            return Ok(None);
+        };
+        total = total
+            .checked_add(first)
+            .and_then(|value| value.checked_add(second))
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected total {name} fitting i64, overflowed at {:?}",
+                    manifest.manifest_path
+                ))
+            })?;
+    }
+    Ok(Some(total))
+}
+
+fn checked_manifest_total_i32(
+    manifests: &[ManifestFile],
+    values: impl Fn(&ManifestFile) -> (Option<i32>, Option<i32>),
+    name: &str,
+) -> Result<Option<i32>> {
+    let mut total = 0_i32;
+    for manifest in manifests {
+        let (Some(first), Some(second)) = values(manifest) else {
+            return Ok(None);
+        };
+        total = total
+            .checked_add(first)
+            .and_then(|value| value.checked_add(second))
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected total {name} fitting i32, overflowed at {:?}",
+                    manifest.manifest_path
+                ))
+            })?;
+    }
+    Ok(Some(total))
 }
 
 /// The typed refusal [`require_encodable`] reports.

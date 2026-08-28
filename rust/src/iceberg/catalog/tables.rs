@@ -92,9 +92,9 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
     /// ancestor namespace folder - nothing checks for them and nothing makes
     /// them in advance. The conflict comes from the same one classification
     /// the open paths use, never from a separate probe. Storage has no
-    /// compare-and-swap, so a rival creator can land between that
-    /// classification and this write - the two then converge on one table or
-    /// the loser gets the typed conflict, never a silent third state.
+    /// compare-and-swap, so callers that require concurrent-create exclusion
+    /// must serialize publication through their catalog. Sequential creation
+    /// still returns a typed conflict and never replaces the table.
     ///
     /// # Errors
     ///

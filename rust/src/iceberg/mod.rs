@@ -1,27 +1,19 @@
-//! Apache Iceberg tables, read and written through one [`IOBase`] handle.
+//! Apache Iceberg tables over one [`IOBase`] handle.
 //!
-//! **An Iceberg table is a folder.** `metadata/` holds the JSON documents and
-//! the Avro manifests, `data/` holds the Parquet files, and this module reaches
-//! every one of them with [`IOBase::child_by_path`] and [`IOBase::ls`] against the
-//! handle a [`Table`] was constructed from. Nothing here opens a path or calls
-//! the file system, so the same code works over a local directory today and
-//! over an object store the moment a backend for one exists. The relationship
-//! runs both ways: [`Table`] itself implements [`IOBase`], so the generic
-//! record surface ([`crate::io::IOMedia::read_arrow_reader`],
-//! [`crate::io::IOMedia::overwrite_arrow_reader`], [`crate::io::IOMedia::append_arrow_reader`], and
-//! [`crate::io::IOMedia::merge_arrow_reader`])
-//! works on the table value directly, answered from the metadata it already
-//! holds rather than by probing the location again.
+//! The optional `iceberg` feature delegates metadata and schema builders and
+//! manifest/list readers to official Iceberg 0.10.1. That dependency requires
+//! Rust 1.94 and keeps its Arrow 58 types internal. Yggdryl owns the public
+//! [`Field`](crate::Field), Arrow 59 record boundary, [`IOBase`] storage and
+//! publication, data-file writes, deterministic manifest/list writers,
+//! planning, and scans. The local writers remain because the official 0.10.1
+//! writers materialize unbounded output, produce random or order-dependent
+//! Avro bytes, and encode Iceberg UUID partitions as Avro strings instead of
+//! `fixed[16]`.
 //!
-//! The vocabulary is the crate's own. A schema is a non-null struct
-//! [`Field`](crate::Field) whose children carry `PARQUET:field_id`, a metadata
-//! document is a [`Scalar`](crate::Scalar) read by [`crate::json`], a data file
-//! is whatever
-//! [`crate::parquet`] wrote plus the statistics it reported, and a scan is a
-//! [`BatchReader`](crate::arrow::BatchReader) with the same column pushdown
-//! every other read in the crate gets. No dependency is added for the table
-//! format itself: even the Avro container the manifests live in is implemented
-//! here, because it is a header and some blocks.
+//! A table is one container: `metadata/` holds metadata and manifests, and
+//! `data/` holds record files. [`Table`] reaches both through its supplied
+//! handle and implements [`IOBase`], so [`crate::io::IOMedia`] operations use
+//! the same storage path.
 //!
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
@@ -79,27 +71,22 @@
 //! # }
 //! ```
 //!
-//! # What this module is not
+//! # Scope
 //!
-//! It holds no catalog client, no network code, and no transaction protocol.
-//! Committing a snapshot means writing metadata somewhere, and *where* is the
-//! [`IOBase`] handle the caller supplies, so the format and the transport stay
-//! separate. A table found by [`Table::open`] is located the way `HadoopTables`
-//! locates one - `metadata/version-hint.text`, falling back to the
-//! highest-numbered document - because that is the only way to find a table
-//! without a catalog.
+//! Yggdryl supplies storage and publication, not a remote catalog client.
+//! [`Table::open`] resolves `metadata/version-hint.text`, then falls back to the
+//! highest-numbered metadata document.
 //!
-//! Two transforms can place a row: `identity` and `void`. A write against a
-//! spec using `bucket`, `truncate`, or a calendar transform is refused by name
-//! rather than silently writing rows into the wrong partition; reading such a
-//! table is unaffected, because a manifest already records which partition each
-//! file belongs to.
+//! Writes support `bucket`, `truncate`, `year`, `month`, `day`, `hour`,
+//! `identity`, and `void` through the official scalar transform contract.
+//! Unknown transforms remain readable metadata but are rejected for writes.
 
 mod catalog;
 mod evolve;
 mod inspect;
 mod manifest;
 mod metadata;
+mod official;
 mod options;
 mod partition;
 mod scan;
@@ -382,7 +369,7 @@ impl Located {
         let pairs = self.pairs();
         let plan = self.table.plan(&pairs)?;
         if plan.tasks.iter().all(|task| task.residual.is_empty()) {
-            return u64::try_from(plan.record_count()).map_err(|_| Error::InvalidRecord {
+            return u64::try_from(plan.record_count()?).map_err(|_| Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$"),
                 reason: smol_str::SmolStr::new_static(
                     "expected Iceberg manifests to carry non-negative record counts",

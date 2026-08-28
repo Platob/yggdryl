@@ -160,6 +160,8 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 ## Feature boundaries
 
 `arrow` is on by default. `parquet` and `iceberg` are not: Parquet version-locks to the pinned Arrow
-release and pulls a thrift and compression stack, and Iceberg is a table format on top of it. A
-consumer that needs only schemas, identifiers, and text codecs builds with
-`default-features = false`.
+release and pulls a thrift and compression stack. Iceberg adds official
+Iceberg 0.10.1 behind a private Arrow 58 adapter and requires Rust 1.94; the
+public runtime remains Arrow 59. A consumer that needs only schemas,
+identifiers, and text codecs builds with `default-features = false` on Rust
+1.85.

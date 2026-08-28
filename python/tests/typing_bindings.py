@@ -557,6 +557,34 @@ iceberg_files: list[tuple[iceberg.DataFile, iceberg.PartitionSpec]] = (
 )
 iceberg_manifests: list[iceberg.ManifestFile] = iceberg_table.manifests()
 iceberg_evolved: int = iceberg_table.evolve_schema(iceberg_schema)
+if iceberg_manifests:
+    iceberg_manifest = iceberg_manifests[0]
+    manifest_content: str = iceberg_manifest.content
+    manifest_min_sequence: int = iceberg_manifest.min_sequence_number
+    manifest_key: bytes | None = iceberg_manifest.key_metadata
+    manifest_partitions: tuple[
+        tuple[bool, bool | None, bytes | None, bytes | None], ...
+    ] = iceberg_manifest.partitions
+    manifest_first_row: int | None = iceberg_manifest.first_row_id
+    added_file_count: int | None = iceberg_manifest.added_files_count
+    existing_file_count: int | None = iceberg_manifest.existing_files_count
+    deleted_file_count: int | None = iceberg_manifest.deleted_files_count
+    added_row_count: int | None = iceberg_manifest.added_rows_count
+    existing_row_count: int | None = iceberg_manifest.existing_rows_count
+    deleted_row_count: int | None = iceberg_manifest.deleted_rows_count
+if iceberg_snapshot is not None:
+    snapshot_key: str | None = iceberg_snapshot.encryption_key_id
+    snapshot_direct_manifests: tuple[str, ...] | None = iceberg_snapshot.manifests
+    snapshot_first_row: int | None = iceberg_snapshot.first_row_id
+    snapshot_added_rows: int | None = iceberg_snapshot.added_rows
+if iceberg_files:
+    iceberg_file = iceberg_files[0][0]
+    file_key: bytes | None = iceberg_file.key_metadata
+    nan_counts: dict[int, int] = iceberg_file.nan_value_counts
+    equality_ids: list[int] | None = iceberg_file.equality_ids
+    referenced_file: str | None = iceberg_file.referenced_data_file
+    content_offset: int | None = iceberg_file.content_offset
+    content_size: int | None = iceberg_file.content_size_in_bytes
 
 assert record_mime_type
 assert declared_field is None or declared_field
@@ -591,9 +619,16 @@ assert selected_root
 
 # Iceberg keeps its own options type, flattened the same way.
 iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
-    commit_retries=2, target_file_size=1024, data_format="avro"
+    commit_retries=2,
+    commit_total_timeout_ms=30_000,
+    target_file_size=1024,
+    data_format="avro",
+)
+iceberg_puffin_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
+    data_format="puffin"
 )
 iceberg_retries: int = iceberg_options.commit_retries
+iceberg_timeout: int = iceberg_options.commit_total_timeout_ms
 iceberg_format: str = iceberg_options.data_format
 iceberg_options.data_format = "parquet"
 iceberg_table.append(pa.table({"id": [1]}), options=iceberg_options, commit_retries=1)
@@ -605,7 +640,9 @@ iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
 )
 
 assert iceberg_retries >= 0
+assert iceberg_timeout >= 0
 assert iceberg_format
+assert iceberg_puffin_options
 assert iceberg_resolved
 assert iceberg_options_scan
 
@@ -689,11 +726,13 @@ iceberg_table.merge_where(
 )
 
 # Maintenance answers with the identifiers it acted on, or with nothing.
-expired_snapshots: list[int] = iceberg_table.expire_snapshots(0)
+expired_snapshots: list[int] = iceberg_table.expire_snapshots()
+explicitly_expired: list[int] = iceberg_table.expire_snapshots(0, 1, [2, 3])
 iceberg_table.fast_forward("nightly", 1)
 snapshot_manifests: list[iceberg.ManifestFile] = iceberg_table.manifests_at(1)
 
 assert expired_snapshots == [] or expired_snapshots
+assert explicitly_expired == [] or explicitly_expired
 assert snapshot_manifests == [] or snapshot_manifests
 
 # More deliberate negative checks: a filter is not one string, a plan getter is

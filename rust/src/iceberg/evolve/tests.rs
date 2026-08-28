@@ -50,18 +50,20 @@ fn snapshot(snapshot_id: i64, timestamp_ms: i64) -> Snapshot {
         sequence_number: Some(1),
         timestamp_ms,
         manifest_list: SmolStr::new_static("file:///tmp/evolve/metadata/snap.avro"),
+        manifests: None,
         summary: vec![(
             SmolStr::new_static("operation"),
             SmolStr::new_static("append"),
         )],
         schema_id: Some(0),
+        encryption_key_id: None,
         first_row_id: None,
         added_rows: None,
     }
 }
 
 /// The one-column ascending sort order every sort order test adds.
-fn identity_order(order_id: i32) -> SortOrder {
+fn identity_order(order_id: i64) -> SortOrder {
     SortOrder {
         order_id,
         fields: vec![SortField {
@@ -133,7 +135,7 @@ mod promotions {
 }
 
 mod schema_updates {
-    use super::{DataType, SchemaUpdate, metadata};
+    use super::{DataType, FormatVersion, SchemaUpdate, metadata};
 
     #[test]
     fn an_added_top_level_column_is_numbered_above_the_last_column_id() {
@@ -180,7 +182,7 @@ mod schema_updates {
         update.add_column(
             "",
             DataType::Int64
-                .required_field("trade_id")
+                .nullable_field("trade_id")
                 .with_parquet_field_id(1),
         );
         let evolved = update.apply().unwrap();
@@ -365,21 +367,111 @@ mod schema_updates {
     }
 
     #[test]
+    fn schema_ids_come_from_the_official_result_and_overflow_is_atomic() {
+        let mut metadata = metadata();
+        metadata.schemas[0]
+            .iceberg_mut()
+            .insert("schema-id", i32::MAX.to_string())
+            .unwrap();
+        metadata.current_schema_id = i32::MAX;
+
+        let mut reusable = metadata.current_schema().unwrap().clone();
+        reusable.iceberg_mut().insert("schema-id", "7").unwrap();
+        assert_eq!(metadata.add_schema(reusable).unwrap(), i32::MAX);
+        assert_eq!(metadata.schemas.len(), 1);
+
+        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        update.add_column("", DataType::Int64.nullable_field("overflow"));
+        let added = update.apply().unwrap();
+        let before = metadata.clone();
+        let message = metadata.add_schema(added).unwrap_err().to_string();
+        assert!(message.contains("schema id") && message.contains("i32::MAX"));
+        assert_eq!(metadata, before, "schema-id overflow changes nothing");
+    }
+
+    #[test]
+    fn direct_schema_add_refuses_retired_ids_and_illegal_type_changes() {
+        let mut metadata = metadata();
+        let mut incompatible = metadata.current_schema().unwrap().clone();
+        let mut replacement = DataType::Int32.nullable_field("symbol");
+        replacement.set_parquet_field_id(2);
+        incompatible
+            .set_field_by_name("symbol", replacement)
+            .unwrap();
+        let message = metadata.add_schema(incompatible).unwrap_err().to_string();
+        assert!(message.contains("field id 2"), "{message}");
+        assert!(
+            message.contains("string") && message.contains("int"),
+            "{message}"
+        );
+
+        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        update.drop_column("symbol");
+        let schema_id = metadata.add_schema(update.apply().unwrap()).unwrap();
+        metadata.set_current_schema(schema_id).unwrap();
+
+        let mut reused = metadata.current_schema().unwrap().clone();
+        let mut replacement = DataType::Utf8.nullable_field("replacement");
+        replacement.set_parquet_field_id(2);
+        reused
+            .set_field_by_name("replacement", replacement)
+            .unwrap();
+        let message = metadata.add_schema(reused).unwrap_err().to_string();
+        assert!(message.contains("retired field id 2"), "{message}");
+    }
+
+    #[test]
+    fn direct_schema_add_requires_and_preserves_initial_defaults() {
+        let mut metadata = metadata();
+        let mut required = metadata.current_schema().unwrap().clone();
+        required
+            .set_field_by_name("quantity", DataType::Int64.required_field("quantity"))
+            .unwrap();
+        let message = metadata.add_schema(required).unwrap_err().to_string();
+        assert!(
+            message.contains("initial-default") && message.contains("required"),
+            "{message}"
+        );
+
+        metadata.upgrade_format_version(FormatVersion::V3).unwrap();
+        let mut with_default = metadata.current_schema().unwrap().clone();
+        let mut quantity = DataType::Int64.required_field("quantity");
+        quantity
+            .insert_metadata("iceberg:initial-default", "0")
+            .unwrap();
+        with_default
+            .set_field_by_name("quantity", quantity)
+            .unwrap();
+        let schema_id = metadata.add_schema(with_default).unwrap();
+        metadata.set_current_schema(schema_id).unwrap();
+
+        let mut changed = metadata.current_schema().unwrap().clone();
+        let mut quantity = changed.get_field_by_name("quantity").unwrap().clone();
+        quantity
+            .insert_metadata("iceberg:initial-default", "1")
+            .unwrap();
+        changed.set_field_by_name("quantity", quantity).unwrap();
+        let message = metadata.add_schema(changed).unwrap_err().to_string();
+        assert!(message.contains("immutable initial-default"), "{message}");
+    }
+
+    #[test]
     fn set_current_schema_of_an_unknown_id_is_refused() {
         let message = metadata().set_current_schema(9).unwrap_err().to_string();
         assert!(message.contains("9"), "{message}");
-        assert!(message.contains("1 schemas"), "{message}");
+        assert!(message.contains("unknown schema"), "{message}");
     }
 }
 
 mod metadata_updates {
     use super::{
         DataType, FormatVersion, PartitionSpec, SchemaUpdate, SmolStr, SnapshotRef, TableMetadata,
-        identity_order, metadata, snapshot,
+        identity_order, metadata, quote_schema, snapshot,
     };
+    use crate::Scalar;
 
     #[test]
-    fn properties_keep_insertion_order_and_round_trip_through_the_document() {
+    fn properties_are_canonical_and_round_trip_through_the_document() {
         let mut metadata = metadata();
         assert_eq!(metadata.set_property("owner", "kaiju").unwrap(), None);
         assert_eq!(metadata.set_property("commit.retry", "4").unwrap(), None);
@@ -389,8 +481,12 @@ mod metadata_updates {
             "a replaced value is returned"
         );
         assert_eq!(
-            metadata.properties[0].0, "owner",
-            "replacing keeps insertion order"
+            metadata
+                .properties
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>(),
+            ["commit.retry", "owner"]
         );
 
         let document = metadata.into_json().unwrap();
@@ -398,17 +494,120 @@ mod metadata_updates {
         assert_eq!(read.property("owner"), Some("mothra"));
         assert_eq!(read.property("commit.retry"), Some("4"));
         assert_eq!(
-            read.remove_property("owner"),
+            read.remove_property("owner").unwrap(),
             Some(SmolStr::new_static("mothra"))
         );
         assert_eq!(read.property("owner"), None);
-        assert_eq!(read.remove_property("owner"), None);
+        assert_eq!(read.remove_property("owner").unwrap(), None);
+    }
+
+    #[test]
+    fn metadata_compression_consults_only_its_official_property() {
+        use iceberg_official::compression::CompressionCodec;
+        use iceberg_official::spec::TableProperties;
+
+        let mut metadata = metadata();
+        metadata
+            .set_property("write.target-file-size-bytes", "not-an-integer")
+            .unwrap();
+        assert_eq!(
+            metadata.metadata_compression_codec().unwrap(),
+            CompressionCodec::None
+        );
+
+        metadata
+            .set_property(TableProperties::PROPERTY_METADATA_COMPRESSION_CODEC, "GzIp")
+            .unwrap();
+        assert!(matches!(
+            metadata.metadata_compression_codec().unwrap(),
+            CompressionCodec::Gzip(_)
+        ));
+
+        metadata
+            .set_property(TableProperties::PROPERTY_METADATA_COMPRESSION_CODEC, "zstd")
+            .unwrap();
+        let message = metadata
+            .metadata_compression_codec()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("zstd") && message.contains("gzip"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn official_statistics_and_encryption_mutations_round_trip() {
+        let mut metadata = metadata();
+        metadata
+            .set_current_snapshot(snapshot(3, metadata.last_updated_ms + 1))
+            .unwrap();
+        let statistics = crate::json::from_utf8(
+            r#"{"snapshot-id":3,"statistics-path":"s3://a/stats.puffin",
+                "file-size-in-bytes":413,"file-footer-size-in-bytes":42,
+                "blob-metadata":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(metadata.set_statistics(statistics.clone()).unwrap(), None);
+        assert_eq!(metadata.statistics(), std::slice::from_ref(&statistics));
+        assert_eq!(metadata.remove_statistics(3).unwrap(), Some(statistics));
+        assert!(metadata.statistics().is_empty());
+
+        let partition_statistics = crate::json::from_utf8(
+            r#"{"snapshot-id":3,"statistics-path":"s3://a/partition.parquet",
+                "file-size-in-bytes":43}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            metadata
+                .set_partition_statistics(partition_statistics.clone())
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            metadata.remove_partition_statistics(3).unwrap(),
+            Some(partition_statistics)
+        );
+
+        metadata.upgrade_format_version(FormatVersion::V3).unwrap();
+        let key = crate::json::from_utf8(
+            r#"{"key-id":"key-1","encrypted-key-metadata":"aWNlYmVyZw==",
+                "encrypted-by-id":"kms"}"#,
+        )
+        .unwrap();
+        assert!(metadata.add_encryption_key(key.clone()).unwrap());
+        assert!(!metadata.add_encryption_key(key.clone()).unwrap());
+        assert_eq!(metadata.encryption_keys(), std::slice::from_ref(&key));
+        assert_eq!(metadata.remove_encryption_key("key-1").unwrap(), Some(key));
+        assert!(metadata.encryption_keys().is_empty());
+
+        let mut v2 = super::metadata();
+        let message = v2.add_encryption_key(Scalar::Null).unwrap_err().to_string();
+        assert!(
+            message.contains("v3") && message.contains("encryption"),
+            "{message}"
+        );
     }
 
     #[test]
     fn an_empty_property_key_is_refused() {
         let message = metadata().set_property("", "x").unwrap_err().to_string();
         assert!(message.contains("non-empty"), "{message}");
+    }
+
+    #[test]
+    fn official_property_and_location_rules_are_atomic() {
+        let mut metadata = metadata();
+        let before = metadata.clone();
+        let message = metadata
+            .remove_property("format-version")
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("reserved"), "{message}");
+        assert_eq!(metadata, before);
+
+        metadata.set_location("file:///tmp/evolve/").unwrap();
+        assert_eq!(metadata.location, "file:///tmp/evolve");
     }
 
     #[test]
@@ -436,13 +635,80 @@ mod metadata_updates {
         assert_eq!(metadata.format_version, FormatVersion::V3);
         assert_eq!(metadata.next_row_id, Some(0));
 
+        let mut missing = metadata.clone();
+        missing.next_row_id = None;
+        let message = missing.validate().unwrap_err().to_string();
+        assert!(
+            message.contains("next-row-id") && message.contains("none"),
+            "{message}"
+        );
+        let mut negative = metadata.clone();
+        negative.next_row_id = Some(-1);
+        let message = negative.validate().unwrap_err().to_string();
+        assert!(
+            message.contains("next-row-id") && message.contains("-1"),
+            "{message}"
+        );
+
         let message = metadata
             .upgrade_format_version(FormatVersion::V2)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("at least 3"), "{message}");
-        assert!(message.contains("got 2"), "{message}");
+        assert!(message.contains("Cannot downgrade"), "{message}");
+        assert!(message.contains("v3"), "{message}");
+        assert!(message.contains("v2"), "{message}");
         assert_eq!(metadata.format_version, FormatVersion::V3);
+    }
+
+    #[test]
+    fn versioned_snapshot_fields_and_refs_never_disappear_silently() {
+        let mut v1 = TableMetadata::new(
+            FormatVersion::V1,
+            "file:///tmp/evolve-v1",
+            quote_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut first = snapshot(7, v1.last_updated_ms + 1);
+        first.sequence_number = None;
+        v1.set_current_snapshot(first).unwrap();
+        let message = v1
+            .set_snapshot_ref("audit", SnapshotRef::tag(7))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("v2 or v3") && message.contains("refs"),
+            "{message}"
+        );
+        assert!(v1.into_json().unwrap().get_key_str("refs").is_none());
+
+        let mut v2 = metadata();
+        let mut missing_sequence = snapshot(8, v2.last_updated_ms + 1);
+        missing_sequence.sequence_number = None;
+        let message = v2
+            .set_current_snapshot(missing_sequence)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("sequence-number") && message.contains("v2"),
+            "{message}"
+        );
+
+        let mut encrypted = snapshot(9, v2.last_updated_ms + 1);
+        encrypted.encryption_key_id = Some(SmolStr::new_static("key-1"));
+        let message = v2.set_current_snapshot(encrypted).unwrap_err().to_string();
+        assert!(
+            message.contains("key-id") && message.contains("v2"),
+            "{message}"
+        );
+
+        let mut dangling = snapshot(10, v2.last_updated_ms + 1);
+        dangling.schema_id = Some(999);
+        let message = v2.set_current_snapshot(dangling).unwrap_err().to_string();
+        assert!(
+            message.contains("schema id 999") && message.contains("snapshot 10"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -456,8 +722,13 @@ mod metadata_updates {
         assert!(message.contains("7"), "{message}");
         assert!(metadata.refs.is_empty(), "an error records nothing");
 
-        metadata.set_current_snapshot(snapshot(7, 100));
-        metadata.set_current_snapshot(snapshot(9, 200));
+        let timestamp = metadata.last_updated_ms + 60_000;
+        metadata
+            .set_current_snapshot(snapshot(7, timestamp))
+            .unwrap();
+        metadata
+            .set_current_snapshot(snapshot(9, timestamp + 1))
+            .unwrap();
         metadata
             .set_snapshot_ref("audit", SnapshotRef::branch(7))
             .unwrap();
@@ -471,45 +742,90 @@ mod metadata_updates {
         assert_eq!(metadata.snapshot_log.last().map(|(_, id)| *id), Some(7));
 
         // And removing main clears it.
-        let removed = metadata.remove_snapshot_ref("main").unwrap();
+        let removed = metadata.remove_snapshot_ref("main").unwrap().unwrap();
         assert_eq!(removed.snapshot_id, 7);
         assert_eq!(metadata.current_snapshot_id, None);
-        assert!(metadata.remove_snapshot_ref("main").is_none());
+        assert!(metadata.remove_snapshot_ref("main").unwrap().is_none());
     }
 
     #[test]
-    fn remove_snapshots_trims_the_log_and_protects_refs() {
+    fn explicit_expiration_protects_heads_and_trims_metadata() {
         let mut metadata = metadata();
-        metadata.set_current_snapshot(snapshot(1, 100));
-        metadata.set_current_snapshot(snapshot(2, 200));
+        let timestamp = metadata.last_updated_ms + 60_000;
+        metadata
+            .set_current_snapshot(snapshot(1, timestamp))
+            .unwrap();
+        metadata
+            .set_current_snapshot(snapshot(2, timestamp + 1))
+            .unwrap();
 
-        let message = metadata.remove_snapshots(&[2]).unwrap_err().to_string();
-        assert!(message.contains("current snapshot 2"), "{message}");
+        let message = metadata
+            .expire_snapshots(Some(0), None, &[2])
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("current snapshot"), "{message}");
 
         metadata
             .set_snapshot_ref("audit", SnapshotRef::branch(1))
             .unwrap();
-        let message = metadata.remove_snapshots(&[1]).unwrap_err().to_string();
-        assert!(message.contains("audit"), "{message}");
-        assert_eq!(metadata.snapshots.len(), 2, "an error removes nothing");
-
-        assert!(metadata.remove_snapshot_ref("audit").is_some());
-        metadata.remove_snapshots(&[1]).unwrap();
+        let message = metadata
+            .expire_snapshots(Some(0), None, &[1])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("audit") && message.contains('1'),
+            "{message}"
+        );
+        metadata.remove_snapshot_ref("audit").unwrap();
+        metadata
+            .set_statistics(
+                crate::json::from_utf8(
+                    r#"{"snapshot-id":1,"statistics-path":"s3://a/1.puffin",
+                        "file-size-in-bytes":10,"file-footer-size-in-bytes":1,
+                        "blob-metadata":[]}"#,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        metadata
+            .set_partition_statistics(
+                crate::json::from_utf8(
+                    r#"{"snapshot-id":1,"statistics-path":"s3://a/1.parquet",
+                        "file-size-in-bytes":10}"#,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            metadata.expire_snapshots(Some(0), None, &[1]).unwrap(),
+            vec![1]
+        );
+        assert!(metadata.ref_by_name("audit").is_none());
         assert_eq!(metadata.snapshots.len(), 1);
-        assert_eq!(metadata.snapshot_log, vec![(200, 2)]);
+        assert_eq!(metadata.snapshot_log, vec![(timestamp + 1, 2)]);
+        assert!(metadata.statistics().is_empty());
+        assert!(metadata.partition_statistics().is_empty());
     }
 
     #[test]
-    fn add_spec_rejects_a_colliding_spec_id_and_keeps_last_partition_id_monotone() {
+    fn add_spec_reuses_equivalent_specs_and_renumbers_new_ones() {
         let mut metadata = metadata();
         let spec =
             PartitionSpec::identity(1, metadata.current_schema().unwrap(), &["symbol"]).unwrap();
         assert_eq!(metadata.add_spec(spec.clone()).unwrap(), 1);
         assert_eq!(metadata.last_partition_id, 1000);
 
-        let message = metadata.add_spec(spec).unwrap_err().to_string();
-        assert!(message.contains("got 1"), "{message}");
+        let mut different_ids = spec.clone();
+        different_ids.spec_id = 99;
+        different_ids.fields[0].field_id = 77_777;
+        assert_eq!(metadata.add_spec(different_ids).unwrap(), 1);
         assert_eq!(metadata.partition_specs.len(), 2);
+
+        let mut different = spec;
+        different.fields[0].name = "symbol_bucket".into();
+        different.fields[0].transform = super::Transform::Bucket(8);
+        assert_eq!(metadata.add_spec(different).unwrap(), 2);
+        assert_eq!(metadata.last_partition_id, 1001);
 
         metadata.set_default_spec(1).unwrap();
         assert_eq!(metadata.default_spec_id, 1);
@@ -524,22 +840,61 @@ mod metadata_updates {
         );
         let message = metadata.set_default_spec(9).unwrap_err().to_string();
         assert!(message.contains("9"), "{message}");
+
+        let mut exhausted = super::metadata();
+        exhausted.partition_specs[0].spec_id = i32::MAX;
+        exhausted.default_spec_id = i32::MAX;
+        assert_eq!(
+            exhausted.add_spec(PartitionSpec::unpartitioned()).unwrap(),
+            i32::MAX,
+            "a compatible spec reuses the official maximum id"
+        );
+        let before = exhausted.clone();
+        let spec =
+            PartitionSpec::identity(0, exhausted.current_schema().unwrap(), &["symbol"]).unwrap();
+        let message = exhausted.add_spec(spec).unwrap_err().to_string();
+        assert!(
+            message.contains("partition spec id") && message.contains(&i32::MAX.to_string()),
+            "{message}"
+        );
+        assert_eq!(exhausted, before, "spec-id overflow changes nothing");
     }
 
     #[test]
-    fn add_sort_order_rejects_a_colliding_order_id() {
+    fn add_sort_order_reuses_equivalent_orders_and_renumbers_new_ones() {
         let mut metadata = metadata();
         assert_eq!(metadata.add_sort_order(identity_order(1)).unwrap(), 1);
-        let message = metadata
-            .add_sort_order(identity_order(1))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("got 1"), "{message}");
+        assert_eq!(metadata.add_sort_order(identity_order(1)).unwrap(), 1);
+
+        let mut different = identity_order(1);
+        different.fields[0].direction = "desc".into();
+        assert_eq!(metadata.add_sort_order(different).unwrap(), 2);
 
         metadata.set_default_sort_order(1).unwrap();
         assert_eq!(metadata.default_sort_order_id, 1);
         let message = metadata.set_default_sort_order(9).unwrap_err().to_string();
         assert!(message.contains("9"), "{message}");
+    }
+
+    #[test]
+    fn add_sort_order_preflights_the_official_identifier_increment() {
+        let mut metadata = metadata();
+        metadata.sort_orders.push(identity_order(i64::MAX));
+
+        assert_eq!(
+            metadata.add_sort_order(identity_order(1)).unwrap(),
+            i64::MAX,
+            "an equivalent order reuses the assigned maximum"
+        );
+        let before = metadata.clone();
+        let mut different = identity_order(1);
+        different.fields[0].direction = "desc".into();
+        let message = metadata.add_sort_order(different).unwrap_err().to_string();
+        assert!(
+            message.contains("64-bit") && message.contains("i64::MAX"),
+            "{message}"
+        );
+        assert_eq!(metadata, before, "overflow changes nothing");
     }
 
     #[test]
@@ -555,8 +910,11 @@ mod metadata_updates {
             .unwrap();
         duplicated.schemas[0] = schema;
         let message = duplicated.validate().unwrap_err().to_string();
-        assert!(message.contains("unique field ids"), "{message}");
-        assert!(message.contains("got 1"), "{message}");
+        assert!(message.to_lowercase().contains("duplicate"), "{message}");
+        assert!(
+            message.contains("field") && message.contains('1'),
+            "{message}"
+        );
 
         let mut stale = metadata();
         stale.last_column_id = 2;
@@ -572,9 +930,13 @@ mod metadata_updates {
         metadata
             .assign_uuid("0b4f7721-755e-5df5-ab6b-8a23c7905a82")
             .unwrap();
-        metadata.set_location("file:///tmp/evolve-moved");
+        metadata.set_location("file:///tmp/evolve-moved").unwrap();
         metadata.upgrade_format_version(FormatVersion::V3).unwrap();
-        metadata.set_current_snapshot(snapshot(3, 300));
+        let timestamp = metadata.last_updated_ms + 60_000;
+        let mut snapshot = snapshot(3, timestamp);
+        snapshot.first_row_id = metadata.next_row_id;
+        snapshot.added_rows = Some(0);
+        metadata.set_current_snapshot(snapshot).unwrap();
         metadata
             .set_snapshot_ref("audit", SnapshotRef::branch(3))
             .unwrap();

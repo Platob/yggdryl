@@ -111,6 +111,18 @@ pub enum Error {
     Io(std::io::Error),
     /// An Arrow schema value could not be converted.
     Arrow(arrow_schema::ArrowError),
+    /// Apache Iceberg metadata rejected an update or document.
+    ///
+    /// The dependency error is erased so its version never becomes part of
+    /// Yggdryl's public API. [`std::error::Error::source`] retains it when the
+    /// failure originated in the official implementation.
+    #[cfg(feature = "iceberg")]
+    Iceberg {
+        /// Stable, dependency-independent failure text.
+        reason: SmolStr,
+        /// The original dependency failure, when there is one.
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
 }
 
 impl fmt::Display for Error {
@@ -181,6 +193,8 @@ impl fmt::Display for Error {
             ),
             Self::Io(error) => write!(formatter, "codec I/O error: {error}"),
             Self::Arrow(error) => write!(formatter, "Arrow schema error: {error}"),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg { reason, .. } => write!(formatter, "Iceberg error: {reason}"),
         }
     }
 }
@@ -191,6 +205,10 @@ impl std::error::Error for Error {
             Self::Arrow(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::Io(error) => Some(error),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg { source, .. } => source
+                .as_ref()
+                .map(|error| error.as_ref() as &(dyn std::error::Error + 'static)),
             _ => None,
         }
     }
@@ -221,6 +239,22 @@ impl From<std::convert::Infallible> for Error {
 }
 
 impl Error {
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn iceberg(reason: impl Into<SmolStr>) -> Self {
+        Self::Iceberg {
+            reason: reason.into(),
+            source: None,
+        }
+    }
+
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn from_iceberg(value: iceberg_official::Error) -> Self {
+        Self::Iceberg {
+            reason: SmolStr::new(value.to_string()),
+            source: Some(Box::new(value)),
+        }
+    }
+
     /// Report that nothing is at `path` where a `expected` was addressed.
     pub fn absent(expected: &'static str, path: impl fmt::Display) -> Self {
         Self::Absent {
@@ -296,7 +330,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "iceberg")]
+    use std::error::Error as _;
+
     use super::Error;
+
+    #[cfg(feature = "iceberg")]
+    #[test]
+    fn official_iceberg_failures_keep_their_source_behind_the_core_error() {
+        let error = Error::from_iceberg(iceberg_official::Error::new(
+            iceberg_official::ErrorKind::DataInvalid,
+            "invalid metadata",
+        ));
+        assert!(matches!(
+            error,
+            Error::Iceberg {
+                source: Some(_),
+                ..
+            }
+        ));
+        assert!(error.source().is_some());
+    }
 
     #[test]
     fn an_absence_names_what_was_expected_and_where() {

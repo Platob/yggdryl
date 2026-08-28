@@ -222,7 +222,7 @@ fn a_table_written_by_pyiceberg_reads_here() {
     let table = Table::open(Folder::new(&path).expect("a folder")).expect("an external table");
     let metadata = table.metadata();
     assert!(
-        metadata.format_version >= FormatVersion::V1,
+        metadata.format_version() >= FormatVersion::V1,
         "an external table declares a format version"
     );
     let snapshot = table

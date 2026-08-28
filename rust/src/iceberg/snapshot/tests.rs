@@ -36,11 +36,13 @@ fn snapshot(snapshot_id: i64, parent_snapshot_id: Option<i64>, timestamp_ms: i64
         sequence_number: Some(snapshot_id),
         timestamp_ms,
         manifest_list: SmolStr::new_static("file:///tmp/branches/metadata/snap.avro"),
+        manifests: None,
         summary: vec![(
             SmolStr::new_static("operation"),
             SmolStr::new_static("append"),
         )],
         schema_id: Some(0),
+        encryption_key_id: None,
         first_row_id: None,
         added_rows: None,
     }
@@ -51,9 +53,18 @@ fn snapshot(snapshot_id: i64, parent_snapshot_id: Option<i64>, timestamp_ms: i64
 fn chained(count: i64, step_ms: i64) -> TableMetadata {
     let mut metadata = table();
     let now = now_ms();
+    let commit_start = metadata.last_updated_ms + 60_000;
     for id in 1..=count {
         let parent = (id > 1).then_some(id - 1);
-        metadata.set_current_snapshot(snapshot(id, parent, now - (count - id + 1) * step_ms));
+        metadata
+            .set_current_snapshot(snapshot(id, parent, commit_start + id))
+            .unwrap();
+    }
+    for snapshot in &mut metadata.snapshots {
+        snapshot.timestamp_ms = now - (count - snapshot.snapshot_id + 1) * step_ms;
+    }
+    for (timestamp, snapshot_id) in &mut metadata.snapshot_log {
+        *timestamp = now - (count - *snapshot_id + 1) * step_ms;
     }
     metadata
 }
@@ -375,6 +386,7 @@ mod branches {
 
 mod expiration {
     use super::{MAIN_BRANCH, SnapshotRef, chained, now_ms, table};
+    use crate::Scalar;
 
     #[test]
     fn a_chain_of_five_expires_exactly_what_retention_leaves_unprotected() {
@@ -402,7 +414,7 @@ mod expiration {
         // 4 by count, 2 by the tag; 1 and 3 have nothing keeping them.
         let cutoff = now_ms() - 150_000;
         assert_eq!(
-            metadata.expire_snapshots_older_than(cutoff).unwrap(),
+            metadata.expire_snapshots(Some(cutoff), None, &[]).unwrap(),
             vec![1, 3]
         );
         assert_eq!(
@@ -428,7 +440,7 @@ mod expiration {
             )
             .unwrap();
         assert_eq!(
-            metadata.expire_snapshots_older_than(cutoff).unwrap(),
+            metadata.expire_snapshots(Some(cutoff), None, &[]).unwrap(),
             vec![2]
         );
         assert!(
@@ -469,7 +481,7 @@ mod expiration {
         // The default cutoff would keep everything; the branch's own 250
         // second limit keeps only the two youngest snapshots.
         let removed = metadata
-            .expire_snapshots_older_than(now_ms() - 600_000)
+            .expire_snapshots(Some(now_ms() - 600_000), None, &[])
             .unwrap();
         assert_eq!(removed, vec![1, 2, 3]);
         assert_eq!(metadata.snapshots.len(), 2);
@@ -481,7 +493,7 @@ mod expiration {
         // Everything is younger than a cutoff a week in the past.
         assert_eq!(
             metadata
-                .expire_snapshots_older_than(now_ms() - 604_800_000)
+                .expire_snapshots(Some(now_ms() - 604_800_000), None, &[])
                 .unwrap(),
             Vec::<i64>::new()
         );
@@ -490,14 +502,226 @@ mod expiration {
         // A table with no snapshots at all has nothing to remove either.
         let mut empty = table();
         assert_eq!(
-            empty.expire_snapshots_older_than(now_ms()).unwrap(),
+            empty.expire_snapshots(Some(now_ms()), None, &[]).unwrap(),
             Vec::<i64>::new()
         );
+    }
+
+    #[test]
+    fn a_recent_unreferenced_snapshot_is_retained() {
+        let mut metadata = chained(3, 1_000);
+        metadata
+            .set_snapshot_ref(MAIN_BRANCH, SnapshotRef::branch(1))
+            .unwrap();
+
+        // Snapshots 2 and 3 are no longer reachable from main, but Apache
+        // retains recent orphans until the default cutoff passes them.
+        let cutoff = now_ms() - 10_000;
+        assert!(
+            metadata
+                .expire_snapshots(Some(cutoff), None, &[])
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(metadata.snapshots.len(), 3);
+    }
+
+    #[test]
+    fn official_table_property_defaults_and_ref_overrides_drive_retention() {
+        let mut metadata = chained(3, 100_000);
+        metadata
+            .set_property("history.expire.min-snapshots-to-keep", "3")
+            .unwrap();
+        assert!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), None, &[])
+                .unwrap()
+                .is_empty(),
+            "the official table minimum protects the complete three-snapshot chain"
+        );
+
+        metadata
+            .set_snapshot_ref(
+                MAIN_BRANCH,
+                SnapshotRef::branch(3)
+                    .with_min_snapshots_to_keep(1)
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), None, &[])
+                .unwrap(),
+            vec![1, 2],
+            "a per-ref minimum overrides the table property"
+        );
+    }
+
+    #[test]
+    fn table_cutoff_and_action_retain_defaults_match_official_precedence() {
+        let mut metadata = chained(3, 100_000);
+        metadata
+            .set_property("history.expire.max-snapshot-age-ms", "150000")
+            .unwrap();
+        assert_eq!(
+            metadata.expire_snapshots(None, None, &[]).unwrap(),
+            vec![1, 2]
+        );
+
+        let mut metadata = chained(3, 100_000);
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), Some(2), &[])
+                .unwrap(),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn explicit_ids_union_with_age_selection_and_ignore_unknown_ids() {
+        let mut metadata = chained(4, 100_000);
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(now_ms() - 250_000), None, &[3, 99])
+                .unwrap(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn explicit_zero_retain_is_atomic_but_the_official_zero_property_is_valid() {
+        let mut metadata = chained(2, 100_000);
+        let before = metadata.clone();
+        let message = metadata
+            .expire_snapshots(Some(i64::MAX), Some(0), &[])
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("retain_last") && message.contains('0'));
+        assert_eq!(metadata, before);
+
+        metadata
+            .set_property("history.expire.min-snapshots-to-keep", "0")
+            .unwrap();
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), None, &[])
+                .unwrap(),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn an_aged_ref_is_committed_even_when_no_snapshot_expires() {
+        let mut metadata = chained(2, 1_000);
+        metadata
+            .set_snapshot_ref("stale", SnapshotRef::tag(1).with_max_ref_age_ms(1).unwrap())
+            .unwrap();
+        assert!(
+            metadata
+                .expire_snapshots(Some(now_ms() - 10_000), None, &[])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(metadata.ref_by_name("stale").is_none());
+    }
+
+    #[test]
+    fn the_official_default_ref_age_removes_a_stale_tag() {
+        let mut metadata = chained(3, 100_000);
+        metadata.snapshots[2].parent_snapshot_id = None;
+        metadata
+            .set_snapshot_ref(MAIN_BRANCH, SnapshotRef::branch(3))
+            .unwrap();
+        metadata
+            .set_snapshot_ref("stale", SnapshotRef::tag(1))
+            .unwrap();
+        metadata
+            .set_property("history.expire.max-ref-age-ms", "50")
+            .unwrap();
+
+        let removed = metadata
+            .expire_snapshots(Some(now_ms() - 50_000), None, &[])
+            .unwrap();
+        assert_eq!(removed, vec![1, 2]);
+        assert!(metadata.ref_by_name("stale").is_none());
+    }
+
+    #[test]
+    fn disabled_gc_refuses_expiration_atomically() {
+        let mut metadata = chained(3, 100_000);
+        metadata.set_property("gc.enabled", "false").unwrap();
+        let before = metadata.clone();
+
+        let message = metadata
+            .expire_snapshots(Some(i64::MAX), None, &[])
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("gc.enabled") && message.contains("false"));
+        assert_eq!(metadata, before);
+    }
+
+    #[test]
+    fn expiration_resolves_only_the_properties_its_explicit_cutoff_needs() {
+        let mut metadata = chained(2, 100_000);
+        metadata
+            .set_property("history.expire.max-snapshot-age-ms", "invalid")
+            .unwrap();
+        metadata
+            .set_property("commit.retry.num-retries", "invalid")
+            .unwrap();
+        metadata
+            .set_property("history.expire.min-snapshots-to-keep", "invalid")
+            .unwrap();
+        metadata
+            .set_property("history.expire.max-ref-age-ms", "invalid")
+            .unwrap();
+
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), Some(1), &[])
+                .unwrap(),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn expiring_snapshots_removes_both_statistics_kinds() {
+        let mut metadata = chained(2, 100_000);
+        for snapshot_id in [1_i64, 2] {
+            let statistics = crate::json::from_utf8(&format!(
+                r#"{{"snapshot-id":{snapshot_id},"statistics-path":"s3://a/{snapshot_id}.puffin","file-size-in-bytes":10,"file-footer-size-in-bytes":1,"blob-metadata":[]}}"#
+            ))
+            .unwrap();
+            metadata.set_statistics(statistics).unwrap();
+            let partition_statistics = crate::json::from_utf8(&format!(
+                r#"{{"snapshot-id":{snapshot_id},"statistics-path":"s3://a/{snapshot_id}.parquet","file-size-in-bytes":10}}"#
+            ))
+            .unwrap();
+            metadata
+                .set_partition_statistics(partition_statistics)
+                .unwrap();
+        }
+
+        assert_eq!(
+            metadata
+                .expire_snapshots(Some(i64::MAX), None, &[])
+                .unwrap(),
+            vec![1]
+        );
+        for values in [metadata.statistics(), metadata.partition_statistics()] {
+            assert_eq!(values.len(), 1);
+            assert_eq!(
+                values[0]
+                    .get_key_str("snapshot-id")
+                    .and_then(Scalar::as_i64),
+                Some(2)
+            );
+        }
     }
 }
 
 mod validation {
-    use super::{SmolStr, SnapshotRef, TableMetadata, chained};
+    use super::{SmolStr, SnapshotRef, chained};
 
     #[test]
     fn validate_names_a_tag_carrying_a_branch_retention_field() {
@@ -529,8 +753,7 @@ mod validation {
         let message = metadata.validate().unwrap_err().to_string();
         assert!(message.contains("max-snapshot-age-ms"), "{message}");
 
-        // A malformed document can be written but never read back quietly.
-        let document = metadata.into_json().unwrap();
-        assert!(TableMetadata::from_json(&document).is_err());
+        // Invalid metadata is refused before it reaches storage.
+        assert!(metadata.into_json().is_err());
     }
 }

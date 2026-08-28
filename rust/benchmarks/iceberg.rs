@@ -19,7 +19,7 @@ use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
-    read_manifest, read_manifest_for_plan, write_manifest,
+    read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
 use yggdryl::io::partition::partition_text;
 use yggdryl::io::{Buffer, IOBase};
@@ -182,27 +182,34 @@ fn synthesized_metadata() -> TableMetadata {
             .add_schema(wide_schema(revision))
             .expect("the evolved schema adds");
     }
+    let base_timestamp_ms = metadata.last_updated_ms();
     for index in 1..=100_i64 {
-        metadata.set_current_snapshot(Snapshot {
-            snapshot_id: index,
-            parent_snapshot_id: (index > 1).then(|| index - 1),
-            sequence_number: Some(index),
-            timestamp_ms: 1_700_000_000_000 + index,
-            manifest_list: SmolStr::new(format!("file:///bench/table/metadata/snap-{index}.avro")),
-            summary: vec![
-                (
-                    SmolStr::new_static("operation"),
-                    SmolStr::new_static("append"),
-                ),
-                (
-                    SmolStr::new_static("added-records"),
-                    SmolStr::new_static("4"),
-                ),
-            ],
-            schema_id: Some(0),
-            first_row_id: None,
-            added_rows: None,
-        });
+        metadata
+            .set_current_snapshot(Snapshot {
+                snapshot_id: index,
+                parent_snapshot_id: (index > 1).then(|| index - 1),
+                sequence_number: Some(index),
+                timestamp_ms: base_timestamp_ms + index,
+                manifest_list: SmolStr::new(format!(
+                    "file:///bench/table/metadata/snap-{index}.avro"
+                )),
+                manifests: None,
+                summary: vec![
+                    (
+                        SmolStr::new_static("operation"),
+                        SmolStr::new_static("append"),
+                    ),
+                    (
+                        SmolStr::new_static("added-records"),
+                        SmolStr::new_static("4"),
+                    ),
+                ],
+                schema_id: Some(0),
+                encryption_key_id: None,
+                first_row_id: None,
+                added_rows: None,
+            })
+            .expect("the snapshot adds");
     }
     metadata
 }
@@ -210,7 +217,9 @@ fn synthesized_metadata() -> TableMetadata {
 /// `TableMetadata::from_json` throughput over a long-lived table's document.
 fn metadata_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("metadata");
-    let document = synthesized_metadata()
+    let metadata = synthesized_metadata();
+    let document = metadata
+        .clone()
         .into_json()
         .expect("the synthetic metadata projects to JSON");
     let text = String::from_utf8(
@@ -223,9 +232,9 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
     let parsed =
         TableMetadata::from_json(&yggdryl::json::from_utf8(&text).expect("the text parses"))
             .expect("the document reads back");
-    assert_eq!(parsed.snapshots.len(), 100);
-    assert_eq!(parsed.schemas.len(), 3);
-    assert_eq!(parsed.snapshot_log.len(), 100);
+    assert_eq!(parsed.snapshots().len(), 100);
+    assert_eq!(parsed.schemas().len(), 3);
+    assert_eq!(parsed.snapshot_log().len(), 100);
 
     group.throughput(Throughput::Bytes(text.len() as u64));
     group.bench_function("parse_json", |bencher| {
@@ -234,6 +243,27 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
                 .expect("the serialized document parses");
             TableMetadata::from_json(&value).expect("the parsed document reads")
         });
+    });
+    let mut expired = metadata.clone();
+    assert_eq!(
+        expired
+            .expire_snapshots(Some(i64::MAX), Some(1), &[])
+            .expect("the synthetic snapshots expire")
+            .len(),
+        99
+    );
+    group.bench_function("expire_snapshots_100", |bencher| {
+        bencher.iter_batched(
+            || metadata.clone(),
+            |mut metadata| {
+                black_box(
+                    metadata
+                        .expire_snapshots(Some(i64::MAX), Some(1), &[])
+                        .expect("the synthetic snapshots expire"),
+                )
+            },
+            BatchSize::SmallInput,
+        );
     });
     group.finish();
 }
@@ -318,6 +348,10 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
                 .len(),
             scale
         );
+        assert_eq!(
+            read_manifest_spec(&stored).expect("the manifest header reads"),
+            spec
+        );
         let elements = u64::try_from(scale).expect("the scale fits");
         group.throughput(Throughput::Elements(elements));
         if scale > 1_000 {
@@ -336,6 +370,13 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
                 read_manifest_for_plan(black_box(&stored), false).expect("the plan path decodes")
             });
         });
+        if scale == 100_000 {
+            group.bench_function("decode_spec_header/100000", |bencher| {
+                bencher.iter(|| {
+                    read_manifest_spec(black_box(&stored)).expect("the manifest header decodes")
+                });
+            });
+        }
     }
     group.finish();
 }
@@ -370,7 +411,7 @@ fn identity_benchmarks(criterion: &mut Criterion) {
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("valid partition spec");
     let partition = spec.fields[0].clone();
     let metadata = synthesized_metadata();
-    let snapshot = metadata.snapshots[0].clone();
+    let snapshot = metadata.snapshots()[0].clone();
     let entry = manifest_entries(1).into_iter().next().expect("one entry");
     let data = entry.data_file.clone();
     let summary = FieldSummary::default();
@@ -382,13 +423,14 @@ fn identity_benchmarks(criterion: &mut Criterion) {
         sequence_number: 1,
         min_sequence_number: 1,
         added_snapshot_id: snapshot.snapshot_id,
-        added_files_count: 1,
-        existing_files_count: 0,
-        deleted_files_count: 0,
-        added_rows_count: data.record_count,
-        existing_rows_count: 0,
-        deleted_rows_count: 0,
+        added_files_count: Some(1),
+        existing_files_count: Some(0),
+        deleted_files_count: Some(0),
+        added_rows_count: Some(data.record_count),
+        existing_rows_count: Some(0),
+        deleted_rows_count: Some(0),
         partitions: vec![summary.clone()],
+        key_metadata: None,
         first_row_id: None,
     };
     let snapshot_ref = SnapshotRef::branch(snapshot.snapshot_id);
@@ -569,7 +611,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
         .expect("the priming merge commits");
     let plan = table.plan(&[]).expect("the merged table plans");
     assert_eq!(
-        plan.record_count(),
+        plan.record_count().expect("the planned row count fits i64"),
         50,
         "an upsert of stored keys adds no row"
     );

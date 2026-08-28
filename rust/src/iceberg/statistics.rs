@@ -146,11 +146,16 @@ fn fold_encoded(
     data_type: &DataType,
     minimum: bool,
 ) {
+    if compare_single(candidate, candidate, data_type).is_none() {
+        return;
+    }
     match current {
         None => *current = Some(candidate.to_vec()),
         Some(held) => {
-            let ordering = compare_single(candidate, held, data_type);
-            if (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt()) {
+            let replace = compare_single(candidate, held, data_type).is_some_and(|ordering| {
+                (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt())
+            });
+            if replace {
                 *current = Some(candidate.to_vec());
             }
         }
@@ -195,15 +200,19 @@ fn fold_bound(
     let Some(candidate) = candidate else {
         return;
     };
+    if compare_single(candidate, candidate, data_type).is_none() {
+        return;
+    }
     match current {
         None => *current = Some(candidate.clone()),
         Some(held) => {
-            let ordering = compare_single(held, candidate, data_type);
-            let replace = if minimum {
-                ordering == std::cmp::Ordering::Greater
-            } else {
-                ordering == std::cmp::Ordering::Less
-            };
+            let replace = compare_single(held, candidate, data_type).is_some_and(|ordering| {
+                if minimum {
+                    ordering == std::cmp::Ordering::Greater
+                } else {
+                    ordering == std::cmp::Ordering::Less
+                }
+            });
             if replace {
                 *current = Some(candidate.clone());
             }
@@ -217,5 +226,33 @@ fn invalid(reason: SmolStr) -> Error {
         format: "iceberg",
         position: 0,
         reason,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_encoded_candidates_never_become_written_bounds() {
+        let mut lower = None;
+        fold_encoded(&mut lower, &[0; 3], &DataType::Int64, true);
+        assert!(lower.is_none());
+
+        let mut upper = None;
+        fold_encoded(
+            &mut upper,
+            &f64::NAN.to_le_bytes(),
+            &DataType::Float64,
+            false,
+        );
+        assert!(upper.is_none());
+
+        let promoted = 7_i32.to_le_bytes();
+        fold_encoded(&mut lower, &promoted, &DataType::Int64, true);
+        assert_eq!(lower.as_deref(), Some(promoted.as_slice()));
+
+        fold_encoded(&mut lower, &[0; 9], &DataType::Int64, true);
+        assert_eq!(lower.as_deref(), Some(promoted.as_slice()));
     }
 }

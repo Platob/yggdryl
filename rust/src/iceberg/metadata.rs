@@ -16,8 +16,22 @@
 //! ones, so the rest of the module never asks which version it is looking at.
 //! Writing emits exactly what the declared version requires.
 
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use iceberg_official::TableUpdate as OfficialTableUpdate;
+use iceberg_official::spec::{
+    EncryptedKey as OfficialEncryptedKey, FormatVersion as OfficialFormatVersion,
+    Operation as OfficialOperation, PartitionStatisticsFile as OfficialPartitionStatisticsFile,
+    PrimitiveType as OfficialPrimitiveType, Schema as OfficialSchema, Snapshot as OfficialSnapshot,
+    SnapshotReference as OfficialSnapshotReference, SnapshotRetention as OfficialSnapshotRetention,
+    SortOrder as OfficialSortOrder, StatisticsFile as OfficialStatisticsFile,
+    Summary as OfficialSummary, TableMetadataBuildResult as OfficialTableMetadataBuildResult,
+    TableMetadataBuilder as OfficialTableMetadataBuilder,
+    TableProperties as OfficialTableProperties, Transform as OfficialTransform,
+    Type as OfficialType, UnboundPartitionSpec as OfficialUnboundPartitionSpec,
+};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::partition::PartitionSpec;
@@ -89,7 +103,7 @@ impl SortField {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SortOrder {
     /// Identifier of this order within the table.
-    pub order_id: i32,
+    pub order_id: i64,
     /// The sort columns, most significant first.
     pub fields: Vec<SortField>,
 }
@@ -117,41 +131,106 @@ impl SortOrder {
         let order_id = document
             .get_key_str("order-id")
             .and_then(Scalar::as_i64)
-            .and_then(|id| i32::try_from(id).ok())
-            .unwrap_or_default();
-        let mut fields = Vec::new();
-        for entry in document
+            .ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected a 64-bit integer sort order \"order-id\"",
+                ))
+            })?;
+        let entries = document
             .get_key_str("fields")
-            .map(Scalar::sequence_iter)
-            .unwrap_or_default()
-        {
+            .and_then(Scalar::as_sequence)
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a sort field array on sort order {order_id}"
+                ))
+            })?;
+        let mut fields = Vec::with_capacity(entries.len());
+        for (index, entry) in entries.iter().enumerate() {
+            let source_id = entry
+                .get_key_str("source-id")
+                .and_then(Scalar::as_i64)
+                .and_then(|id| i32::try_from(id).ok())
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a 32-bit integer source-id on sort order {order_id} field {index}"
+                    ))
+                })?;
+            let transform = entry
+                .get_key_str("transform")
+                .and_then(Scalar::as_str)
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a transform string on sort order {order_id} field {index}"
+                    ))
+                })?;
+            let direction = entry
+                .get_key_str("direction")
+                .and_then(Scalar::as_str)
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a direction string on sort order {order_id} field {index}"
+                    ))
+                })?;
+            let null_order = entry
+                .get_key_str("null-order")
+                .and_then(Scalar::as_str)
+                .ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a null-order string on sort order {order_id} field {index}"
+                    ))
+                })?;
             fields.push(SortField {
-                source_id: entry
-                    .get_key_str("source-id")
-                    .and_then(Scalar::as_i64)
-                    .and_then(|id| i32::try_from(id).ok())
-                    .unwrap_or_default(),
-                transform: Transform::from_str(
-                    entry
-                        .get_key_str("transform")
-                        .and_then(Scalar::as_str)
-                        .unwrap_or("identity"),
-                )?,
-                direction: SmolStr::new(
-                    entry
-                        .get_key_str("direction")
-                        .and_then(Scalar::as_str)
-                        .unwrap_or("asc"),
-                ),
-                null_order: SmolStr::new(
-                    entry
-                        .get_key_str("null-order")
-                        .and_then(Scalar::as_str)
-                        .unwrap_or("nulls-first"),
-                ),
+                source_id,
+                transform: Transform::from_str(transform)?,
+                direction: SmolStr::new(direction),
+                null_order: SmolStr::new(null_order),
             });
         }
-        Ok(Self { order_id, fields })
+        let order = Self { order_id, fields };
+        order.validate_shape()?;
+        Ok(order)
+    }
+
+    fn validate_shape(&self) -> Result<()> {
+        if self.order_id < 0 {
+            return Err(invalid(format_smolstr!(
+                "expected a non-negative sort order id, got {}",
+                self.order_id
+            )));
+        }
+        if self.fields.is_empty() {
+            if self.order_id != 0 {
+                return Err(invalid(format_smolstr!(
+                    "expected only sort order 0 to be unsorted, got empty order {}",
+                    self.order_id
+                )));
+            }
+        } else if self.order_id == 0 {
+            return Err(invalid(SmolStr::new_static(
+                "expected sort order 0 to be unsorted",
+            )));
+        }
+        for field in &self.fields {
+            if field.source_id <= 0 {
+                return Err(invalid(format_smolstr!(
+                    "expected a positive sort source-id, got {}",
+                    field.source_id
+                )));
+            }
+            if !matches!(field.direction.as_str(), "asc" | "desc") {
+                return Err(invalid(format_smolstr!(
+                    "expected a sort direction of asc or desc, got {:?}",
+                    crate::text::elide_to(&field.direction, 64)
+                )));
+            }
+            if !matches!(field.null_order.as_str(), "nulls-first" | "nulls-last") {
+                return Err(invalid(format_smolstr!(
+                    "expected a null order of nulls-first or nulls-last, got {:?}",
+                    crate::text::elide_to(&field.null_order, 64)
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Write one sort order object.
@@ -160,6 +239,7 @@ impl SortOrder {
     ///
     /// Returns an error only when the mapping cannot be built.
     pub fn into_json(self) -> Result<Scalar> {
+        self.validate_shape()?;
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
             fields.push(Scalar::from_mapping([
@@ -182,10 +262,7 @@ impl SortOrder {
             ])?);
         }
         Scalar::from_mapping([
-            (
-                Scalar::from("order-id"),
-                Scalar::from(i64::from(self.order_id)),
-            ),
+            (Scalar::from("order-id"), Scalar::from(self.order_id)),
             (Scalar::from("fields"), Scalar::from_sequence(fields)),
         ])
     }
@@ -195,45 +272,53 @@ impl SortOrder {
 #[derive(Clone, Debug)]
 pub struct TableMetadata {
     /// Which revision of the specification this document is written to.
-    pub format_version: FormatVersion,
+    pub(super) format_version: FormatVersion,
     /// A stable identifier for the table itself, not for any one version.
-    pub table_uuid: SmolStr,
+    pub(super) table_uuid: SmolStr,
     /// The table's base location, as a URI.
-    pub location: SmolStr,
+    pub(super) location: SmolStr,
     /// Highest assigned sequence number, absent in v1.
-    pub last_sequence_number: i64,
+    pub(super) last_sequence_number: i64,
     /// When this document was written, in milliseconds since the Unix epoch.
-    pub last_updated_ms: i64,
+    pub(super) last_updated_ms: i64,
     /// Highest assigned column identifier.
-    pub last_column_id: i32,
+    pub(super) last_column_id: i32,
     /// Every schema the table has had, by identifier.
-    pub schemas: Vec<Field>,
+    pub(super) schemas: Vec<Field>,
     /// The schema new data is written against.
-    pub current_schema_id: i32,
+    pub(super) current_schema_id: i32,
     /// Every partition spec the table has had.
-    pub partition_specs: Vec<PartitionSpec>,
+    pub(super) partition_specs: Vec<PartitionSpec>,
     /// The spec new data is written against.
-    pub default_spec_id: i32,
+    pub(super) default_spec_id: i32,
     /// Highest assigned partition field identifier.
-    pub last_partition_id: i32,
+    pub(super) last_partition_id: i32,
     /// Every sort order the table has had.
-    pub sort_orders: Vec<SortOrder>,
+    pub(super) sort_orders: Vec<SortOrder>,
     /// The order new data is written in.
-    pub default_sort_order_id: i32,
+    pub(super) default_sort_order_id: i64,
     /// Free-form table properties.
-    pub properties: Vec<(SmolStr, SmolStr)>,
+    pub(super) properties: Vec<(SmolStr, SmolStr)>,
     /// The snapshot a reader sees, when the table has one.
-    pub current_snapshot_id: Option<i64>,
-    /// Every retained snapshot.
-    pub snapshots: Vec<Snapshot>,
+    pub(super) current_snapshot_id: Option<i64>,
+    /// Every retained snapshot, oldest first.
+    pub(super) snapshots: Vec<Snapshot>,
     /// When each snapshot became current, oldest first.
-    pub snapshot_log: Vec<(i64, i64)>,
+    pub(super) snapshot_log: Vec<(i64, i64)>,
     /// Every previous metadata document, oldest first.
-    pub metadata_log: Vec<(i64, SmolStr)>,
+    pub(super) metadata_log: Vec<(i64, SmolStr)>,
     /// Named branches and tags.
-    pub refs: Vec<(SmolStr, SnapshotRef)>,
+    pub(super) refs: Vec<(SmolStr, SnapshotRef)>,
+    /// Snapshot-level Puffin statistics descriptors retained by the official
+    /// metadata model.
+    statistics: Vec<Scalar>,
+    /// Partition statistics descriptors retained by the official metadata
+    /// model.
+    partition_statistics: Vec<Scalar>,
+    /// V3 encryption keys retained by the official metadata model.
+    encryption_keys: Vec<Scalar>,
     /// Next unassigned row identifier, required in v3.
-    pub next_row_id: Option<i64>,
+    pub(super) next_row_id: Option<i64>,
 }
 
 /// Complete semantic metadata identity. Iceberg models schemas, specs, sort
@@ -253,17 +338,225 @@ struct TableMetadataIdentity<'a> {
     default_spec_id: i32,
     last_partition_id: i32,
     sort_orders: Vec<&'a SortOrder>,
-    default_sort_order_id: i32,
+    default_sort_order_id: i64,
     properties: Vec<&'a (SmolStr, SmolStr)>,
     current_snapshot_id: Option<i64>,
     snapshots: Vec<&'a Snapshot>,
     snapshot_log: &'a [(i64, i64)],
     metadata_log: &'a [(i64, SmolStr)],
     refs: Vec<&'a (SmolStr, SnapshotRef)>,
+    statistics: Vec<&'a Scalar>,
+    partition_statistics: Vec<&'a Scalar>,
+    encryption_keys: Vec<&'a Scalar>,
     next_row_id: Option<i64>,
 }
 
 impl TableMetadata {
+    /// Iceberg specification revision of this document.
+    pub const fn format_version(&self) -> FormatVersion {
+        self.format_version
+    }
+
+    /// Stable table identifier.
+    pub fn table_uuid(&self) -> &str {
+        &self.table_uuid
+    }
+
+    /// Canonical table location.
+    pub fn location(&self) -> &str {
+        &self.location
+    }
+
+    /// Highest assigned sequence number.
+    pub const fn last_sequence_number(&self) -> i64 {
+        self.last_sequence_number
+    }
+
+    /// Document update time in Unix epoch milliseconds.
+    pub const fn last_updated_ms(&self) -> i64 {
+        self.last_updated_ms
+    }
+
+    /// Highest assigned column identifier.
+    pub const fn last_column_id(&self) -> i32 {
+        self.last_column_id
+    }
+
+    /// Retained schemas.
+    pub fn schemas(&self) -> &[Field] {
+        &self.schemas
+    }
+
+    /// Current schema identifier.
+    pub const fn current_schema_id(&self) -> i32 {
+        self.current_schema_id
+    }
+
+    /// Retained partition specs.
+    pub fn partition_specs(&self) -> &[PartitionSpec] {
+        &self.partition_specs
+    }
+
+    /// Default partition-spec identifier.
+    pub const fn default_spec_id(&self) -> i32 {
+        self.default_spec_id
+    }
+
+    /// Highest assigned partition-field identifier.
+    pub const fn last_partition_id(&self) -> i32 {
+        self.last_partition_id
+    }
+
+    /// Retained sort orders.
+    pub fn sort_orders(&self) -> &[SortOrder] {
+        &self.sort_orders
+    }
+
+    /// Default sort-order identifier.
+    pub const fn default_sort_order_id(&self) -> i64 {
+        self.default_sort_order_id
+    }
+
+    /// Sorted table properties.
+    pub fn properties(&self) -> &[(SmolStr, SmolStr)] {
+        &self.properties
+    }
+
+    /// Current snapshot identifier.
+    pub const fn current_snapshot_id(&self) -> Option<i64> {
+        self.current_snapshot_id
+    }
+
+    /// Retained snapshots, oldest first.
+    pub fn snapshots(&self) -> &[Snapshot] {
+        &self.snapshots
+    }
+
+    /// Current-snapshot history, oldest first.
+    pub fn snapshot_log(&self) -> &[(i64, i64)] {
+        &self.snapshot_log
+    }
+
+    /// Previous metadata files, oldest first.
+    pub fn metadata_log(&self) -> &[(i64, SmolStr)] {
+        &self.metadata_log
+    }
+
+    /// Sorted branch and tag references.
+    pub fn refs(&self) -> &[(SmolStr, SnapshotRef)] {
+        &self.refs
+    }
+
+    /// Next unassigned v3 row identifier.
+    pub const fn next_row_id(&self) -> Option<i64> {
+        self.next_row_id
+    }
+
+    /// Apply one official metadata-builder operation and replace this view
+    /// only after the complete result validates.
+    fn apply_official_update<F>(
+        &mut self,
+        current_file_location: Option<String>,
+        update: F,
+    ) -> Result<()>
+    where
+        F: FnOnce(
+            OfficialTableMetadataBuilder,
+        ) -> iceberg_official::Result<OfficialTableMetadataBuilder>,
+    {
+        self.apply_official_update_with_legacy(
+            current_file_location,
+            super::official::LegacySnapshotManifests::default(),
+            update,
+        )
+    }
+
+    fn apply_official_update_with_legacy<F>(
+        &mut self,
+        current_file_location: Option<String>,
+        additional_legacy: super::official::LegacySnapshotManifests,
+        update: F,
+    ) -> Result<()>
+    where
+        F: FnOnce(
+            OfficialTableMetadataBuilder,
+        ) -> iceberg_official::Result<OfficialTableMetadataBuilder>,
+    {
+        self.apply_official_update_result(current_file_location, additional_legacy, update, |_| {
+            Ok(())
+        })
+    }
+
+    /// Apply one official update and extract its authoritative assigned ids
+    /// before publishing the converted local view.
+    fn apply_official_update_result<F, G, T>(
+        &mut self,
+        current_file_location: Option<String>,
+        additional_legacy: super::official::LegacySnapshotManifests,
+        update: F,
+        extract: G,
+    ) -> Result<T>
+    where
+        F: FnOnce(
+            OfficialTableMetadataBuilder,
+        ) -> iceberg_official::Result<OfficialTableMetadataBuilder>,
+        G: FnOnce(&OfficialTableMetadataBuildResult) -> Result<T>,
+    {
+        let document = self.clone().into_json_document()?;
+        let (metadata, mut legacy) = super::official::parse_table_metadata(&document)?;
+        for (snapshot_id, manifests) in additional_legacy.into_entries() {
+            legacy.insert(snapshot_id, manifests);
+        }
+        let builder =
+            update(metadata.into_builder(current_file_location)).map_err(Error::from_iceberg)?;
+        let built = builder.build().map_err(Error::from_iceberg)?;
+        let extracted = extract(&built)?;
+        let document = super::official::table_metadata_document(&built.metadata, &legacy)?;
+        let mut replacement = Self::from_normalized_json(&document)?;
+        // Apache Iceberg schemas do not carry Yggdryl's inert root protocol
+        // properties. Preserve them across metadata-builder updates while the
+        // official model remains authoritative for Iceberg schema state.
+        for schema in &mut replacement.schemas {
+            let schema_id = field_schema_id(schema);
+            if let Some(previous) = self
+                .schemas
+                .iter()
+                .find(|candidate| field_schema_id(candidate) == schema_id)
+            {
+                schema.update_metadata(
+                    previous
+                        .metadata_iter()
+                        .map(|(key, value)| (key.to_owned(), value.to_owned())),
+                )?;
+            }
+        }
+        *self = replacement;
+        Ok(extracted)
+    }
+
+    /// Let the official builder finalize timestamps, metadata history, and
+    /// configured history expiry immediately before publication.
+    pub(super) fn finalize_official(
+        &mut self,
+        current_file_location: Option<String>,
+    ) -> Result<()> {
+        self.apply_official_update(current_file_location, Ok)
+    }
+
+    /// Resolve metadata-file compression with Apache Iceberg's property parser.
+    pub(super) fn metadata_compression_codec(
+        &self,
+    ) -> Result<iceberg_official::compression::CompressionCodec> {
+        let key = OfficialTableProperties::PROPERTY_METADATA_COMPRESSION_CODEC;
+        let properties = self
+            .property(key)
+            .map(|value| HashMap::from([(key.to_owned(), value.to_owned())]))
+            .unwrap_or_default();
+        OfficialTableProperties::try_from(&properties)
+            .map(|properties| properties.metadata_compression_codec)
+            .map_err(Error::from_iceberg)
+    }
+
     fn identity(&self) -> TableMetadataIdentity<'_> {
         TableMetadataIdentity {
             format_version: self.format_version,
@@ -285,6 +578,9 @@ impl TableMetadata {
             snapshot_log: &self.snapshot_log,
             metadata_log: &self.metadata_log,
             refs: crate::generic::sorted_pairs(&self.refs),
+            statistics: crate::generic::sorted_values(&self.statistics),
+            partition_statistics: crate::generic::sorted_values(&self.partition_statistics),
+            encryption_keys: crate::generic::sorted_values(&self.encryption_keys),
             next_row_id: self.next_row_id,
         }
     }
@@ -320,6 +616,9 @@ impl TableMetadata {
         let start = super::last_field_id(&schema)?.saturating_add(1);
         super::assign_field_ids(&mut schema, start)?;
         let last_column_id = super::last_field_id(&schema)?;
+        if schema.iceberg().get(super::schema::SCHEMA_ID).is_none() {
+            schema.iceberg_mut().insert(super::schema::SCHEMA_ID, "0")?;
+        }
         // The schema says how the table is laid out, so the columns the spec
         // partitions on are marked on it rather than only named beside it.
         let schema = spec.mark_partitions(&schema)?;
@@ -329,7 +628,7 @@ impl TableMetadata {
             .get(super::schema::SCHEMA_ID)
             .and_then(|id| id.parse::<i32>().ok())
             .unwrap_or_default();
-        Ok(Self {
+        let mut metadata = Self {
             format_version,
             table_uuid: uuid(),
             location: location.into(),
@@ -349,8 +648,13 @@ impl TableMetadata {
             snapshot_log: Vec::new(),
             metadata_log: Vec::new(),
             refs: Vec::new(),
+            statistics: Vec::new(),
+            partition_statistics: Vec::new(),
+            encryption_keys: Vec::new(),
             next_row_id: (format_version >= FormatVersion::V3).then_some(0),
-        })
+        };
+        metadata.finalize_official(None)?;
+        Ok(metadata)
     }
 
     /// Return the schema new data is written against.
@@ -426,7 +730,7 @@ impl TableMetadata {
             .find_map(|(name, value)| (name == key).then(|| value.as_str()))
     }
 
-    /// Add a schema, numbering any unnumbered column, and return its fresh id.
+    /// Add a schema, numbering any unnumbered column, and return its canonical id.
     ///
     /// This is what schema evolution is at the metadata level: the old schema
     /// stays, so a snapshot written under it still reads correctly, and the
@@ -442,32 +746,70 @@ impl TableMetadata {
     /// a column identifier would overflow.
     pub fn add_schema(&mut self, mut schema: Field) -> Result<i32> {
         schema.validate_struct_root()?;
-        let start = self.last_column_id.checked_add(1).ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a last-column-id below {}, got {}",
-                i32::MAX,
-                self.last_column_id
-            ))
-        })?;
+        // A fully numbered reusable schema remains valid at i32::MAX. Missing
+        // ids still fail inside the checked depth-first assignment.
+        let start = self.last_column_id.saturating_add(1);
         schema.assign_parquet_field_ids(start)?;
-        let next_id = self
+        validate_schema_evolution(
+            self.current_schema()?,
+            &schema,
+            self.last_column_id,
+            self.format_version,
+        )?;
+        let official = official_schema(&schema)?;
+        let reuses_existing = self
             .schemas
             .iter()
-            .map(|existing| {
-                existing
-                    .iceberg()
-                    .get(super::schema::SCHEMA_ID)
-                    .and_then(|id| id.parse::<i32>().ok())
-                    .unwrap_or_default()
-            })
-            .max()
-            .map_or(0, |highest| highest + 1);
-        schema
-            .iceberg_mut()
-            .insert(super::schema::SCHEMA_ID, next_id.to_string())?;
-        self.last_column_id = self.last_column_id.max(super::last_field_id(&schema)?);
-        self.schemas.push(schema);
-        Ok(next_id)
+            .map(official_schema)
+            .collect::<Result<Vec<_>>>()?
+            .iter()
+            .any(|existing| official_schemas_same(existing, &official));
+        if !reuses_existing && self.schemas.iter().map(field_schema_id).max() == Some(i32::MAX) {
+            return Err(invalid(SmolStr::new_static(
+                "expected an available signed 32-bit schema id, got i32::MAX already assigned",
+            )));
+        }
+        let target = official.clone();
+        let mut updated = self.clone();
+        let schema_id = updated.apply_official_update_result(
+            None,
+            super::official::LegacySnapshotManifests::default(),
+            |builder| builder.add_schema(official),
+            |built| {
+                let mut ids: Vec<i32> = built
+                    .metadata
+                    .schemas_iter()
+                    .filter(|candidate| official_schemas_same(candidate, &target))
+                    .map(|candidate| candidate.schema_id())
+                    .collect();
+                ids.sort_unstable();
+                match ids.as_slice() {
+                    [schema_id] => Ok(*schema_id),
+                    [] => Err(invalid(SmolStr::new_static(
+                        "official Iceberg schema update returned no matching schema",
+                    ))),
+                    _ => Err(invalid(format_smolstr!(
+                        "official Iceberg schema update returned ambiguous matching ids {ids:?}"
+                    ))),
+                }
+            },
+        )?;
+        if let Some(added) = updated
+            .schemas
+            .iter_mut()
+            .find(|candidate| field_schema_id(candidate) == schema_id)
+        {
+            added.update_metadata(
+                schema
+                    .metadata_iter()
+                    .map(|(key, value)| (key.to_owned(), value.to_owned())),
+            )?;
+            added
+                .iceberg_mut()
+                .insert(super::schema::SCHEMA_ID, schema_id.to_string())?;
+        }
+        *self = updated;
+        Ok(schema_id)
     }
 
     /// Read a table metadata document of any format version.
@@ -478,6 +820,13 @@ impl TableMetadata {
     /// version is not one this build implements, or when a nested document is
     /// malformed.
     pub fn from_json(document: &Scalar) -> Result<Self> {
+        validate_versioned_document(document)?;
+        let normalized = super::official::normalize_table_metadata(document)?;
+        Self::from_normalized_json(&normalized)
+    }
+
+    /// Build the Yggdryl view from an official, normalized document.
+    fn from_normalized_json(document: &Scalar) -> Result<Self> {
         let format_version = FormatVersion::from_number(
             document
                 .get_key_str("format-version")
@@ -517,6 +866,13 @@ impl TableMetadata {
                 "expected a table metadata \"schemas\" array or a v1 \"schema\" object",
             )));
         }
+        schemas.sort_by_key(|schema| {
+            schema
+                .iceberg()
+                .get(super::schema::SCHEMA_ID)
+                .and_then(|id| id.parse::<i32>().ok())
+                .unwrap_or_default()
+        });
 
         let mut partition_specs = Vec::new();
         for entry in document
@@ -532,6 +888,7 @@ impl TableMetadata {
                 None => PartitionSpec::unpartitioned(),
             });
         }
+        partition_specs.sort_by_key(|spec| spec.spec_id);
 
         // A document records the layout in its spec; a Field records it on the
         // columns. Marking them here is what makes a table read back with the
@@ -561,6 +918,7 @@ impl TableMetadata {
         if sort_orders.is_empty() {
             sort_orders.push(SortOrder::unsorted());
         }
+        sort_orders.sort_by_key(|order| order.order_id);
 
         let mut snapshots = Vec::new();
         for entry in document
@@ -585,6 +943,60 @@ impl TableMetadata {
                 }
             }
         }
+        refs.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut properties: Vec<(SmolStr, SmolStr)> = document
+            .get_key_str("properties")
+            .map(|entries| {
+                if let Some(record) = entries.as_record() {
+                    record
+                        .iter()
+                        .map(|(key, value)| (key.clone(), super::value::scalar_text(value)))
+                        .collect()
+                } else {
+                    entries
+                        .mapping_iter()
+                        .filter_map(|(key, value)| {
+                            Some((
+                                SmolStr::new(key.as_str()?),
+                                super::value::scalar_text(value),
+                            ))
+                        })
+                        .collect()
+                }
+            })
+            .unwrap_or_default();
+        properties.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut statistics = sequence(document, "statistics");
+        statistics.sort();
+        let mut partition_statistics = sequence(document, "partition-statistics");
+        partition_statistics.sort();
+        let mut encryption_keys = sequence(document, "encryption-keys");
+        encryption_keys.sort();
+        let mut snapshot_log = log_entries(document, "snapshot-log", "snapshot-id");
+        // Updating `main` retention through the official builder currently
+        // records the unchanged head again. Consecutive identical heads carry
+        // no time-travel information, so keep the first transition only.
+        snapshot_log.dedup_by_key(|(_, snapshot_id)| *snapshot_id);
+        let log_positions: HashMap<i64, usize> = snapshot_log
+            .iter()
+            .enumerate()
+            .map(|(position, (_, snapshot_id))| (*snapshot_id, position))
+            .collect();
+        // Official metadata stores snapshots in a map. Restore the public
+        // oldest-first view by commit time; the log breaks timestamp ties and
+        // snapshot id makes branch-only snapshots deterministic.
+        snapshots.sort_by_key(|snapshot| {
+            (
+                snapshot.timestamp_ms,
+                log_positions
+                    .get(&snapshot.snapshot_id)
+                    .copied()
+                    .unwrap_or(usize::MAX),
+                snapshot.snapshot_id,
+            )
+        });
 
         // A table with no snapshot spells that as an absent key or as -1.
         let current_snapshot_id = document
@@ -638,35 +1050,21 @@ impl TableMetadata {
             default_sort_order_id: document
                 .get_key_str("default-sort-order-id")
                 .and_then(Scalar::as_i64)
-                .and_then(|id| i32::try_from(id).ok())
-                .unwrap_or_default(),
+                .ok_or_else(|| {
+                    invalid(SmolStr::new_static(
+                        "expected a 64-bit integer table metadata \"default-sort-order-id\"",
+                    ))
+                })?,
             sort_orders,
-            properties: document
-                .get_key_str("properties")
-                .map(|entries| {
-                    if let Some(record) = entries.as_record() {
-                        record
-                            .iter()
-                            .map(|(key, value)| (key.clone(), super::value::scalar_text(value)))
-                            .collect()
-                    } else {
-                        entries
-                            .mapping_iter()
-                            .filter_map(|(key, value)| {
-                                Some((
-                                    SmolStr::new(key.as_str()?),
-                                    super::value::scalar_text(value),
-                                ))
-                            })
-                            .collect()
-                    }
-                })
-                .unwrap_or_default(),
+            properties,
             current_snapshot_id,
             snapshots,
-            snapshot_log: log_entries(document, "snapshot-log", "snapshot-id"),
+            snapshot_log,
             metadata_log: metadata_log(document),
             refs,
+            statistics,
+            partition_statistics,
+            encryption_keys,
             next_row_id: document.get_key_str("next-row-id").and_then(Scalar::as_i64),
         };
         metadata.validate()?;
@@ -680,6 +1078,12 @@ impl TableMetadata {
     /// Returns an error when a schema has no field identifiers or a nested
     /// document cannot be built.
     pub fn into_json(self) -> Result<Scalar> {
+        self.validate()?;
+        self.into_json_document()
+    }
+
+    /// Render the local metadata view without re-entering official validation.
+    fn into_json_document(self) -> Result<Scalar> {
         let mut entries: Vec<(Scalar, Scalar)> = vec![
             (
                 Scalar::from("format-version"),
@@ -756,7 +1160,7 @@ impl TableMetadata {
         entries.push((Scalar::from("sort-orders"), Scalar::from_sequence(orders)));
         entries.push((
             Scalar::from("default-sort-order-id"),
-            Scalar::from(i64::from(self.default_sort_order_id)),
+            Scalar::from(self.default_sort_order_id),
         ));
 
         entries.push((
@@ -806,46 +1210,65 @@ impl TableMetadata {
             ),
         ));
 
-        let mut refs = Vec::with_capacity(self.refs.len());
-        for (name, reference) in &self.refs {
-            refs.push((Scalar::from(name.clone()), reference.clone().into_json()?));
+        if self.format_version >= FormatVersion::V2 {
+            let mut refs = Vec::with_capacity(self.refs.len());
+            for (name, reference) in &self.refs {
+                refs.push((Scalar::from(name.clone()), reference.clone().into_json()?));
+            }
+            entries.push((Scalar::from("refs"), Scalar::from_mapping(refs)?));
         }
-        entries.push((Scalar::from("refs"), Scalar::from_mapping(refs)?));
+
+        if !self.statistics.is_empty() {
+            entries.push((
+                Scalar::from("statistics"),
+                Scalar::from_sequence(self.statistics),
+            ));
+        }
+        if !self.partition_statistics.is_empty() {
+            entries.push((
+                Scalar::from("partition-statistics"),
+                Scalar::from_sequence(self.partition_statistics),
+            ));
+        }
+        if self.format_version >= FormatVersion::V3 && !self.encryption_keys.is_empty() {
+            entries.push((
+                Scalar::from("encryption-keys"),
+                Scalar::from_sequence(self.encryption_keys),
+            ));
+        }
 
         if self.format_version >= FormatVersion::V3 {
-            entries.push((
-                Scalar::from("next-row-id"),
-                Scalar::from(self.next_row_id.unwrap_or_default()),
-            ));
+            let next_row_id = self.next_row_id.ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected next-row-id in Iceberg v3 metadata, got none",
+                ))
+            })?;
+            if next_row_id < 0 {
+                return Err(invalid(format_smolstr!(
+                    "expected a non-negative next-row-id in Iceberg v3 metadata, got {next_row_id}"
+                )));
+            }
+            entries.push((Scalar::from("next-row-id"), Scalar::from(next_row_id)));
         }
 
         Scalar::from_mapping(entries)
     }
 
     /// Make `snapshot` the current one, recording it in the log and on `main`.
-    pub fn set_current_snapshot(&mut self, snapshot: Snapshot) {
-        self.last_updated_ms = snapshot.timestamp_ms;
-        if let Some(sequence) = snapshot.sequence_number {
-            self.last_sequence_number = self.last_sequence_number.max(sequence);
+    pub fn set_current_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
+        let mut legacy = super::official::LegacySnapshotManifests::default();
+        if let Some(manifests) = snapshot.manifests.clone() {
+            legacy.insert(snapshot.snapshot_id, manifests);
         }
-        self.current_snapshot_id = Some(snapshot.snapshot_id);
-        self.snapshot_log
-            .push((snapshot.timestamp_ms, snapshot.snapshot_id));
-        let reference = SnapshotRef::branch(snapshot.snapshot_id);
-        match self.refs.iter_mut().find(|(name, _)| name == MAIN_BRANCH) {
-            Some(entry) => entry.1 = reference,
-            None => self
-                .refs
-                .push((SmolStr::new_static(MAIN_BRANCH), reference)),
-        }
-        self.snapshots.push(snapshot);
+        let snapshot = official_snapshot(snapshot, self.format_version)?;
+        self.apply_official_update_with_legacy(None, legacy, |builder| {
+            builder.set_branch_snapshot(snapshot, MAIN_BRANCH)
+        })
     }
 
     /// Set one table property, returning the value it replaces.
     ///
-    /// Keys are unique and keep their insertion order, so a document written
-    /// after repeated updates lists its properties in the order they first
-    /// appeared.
+    /// Keys are unique and exposed in deterministic lexical order.
     ///
     /// # Errors
     ///
@@ -862,24 +1285,118 @@ impl TableMetadata {
             )));
         }
         let value = value.into();
-        match self.properties.iter_mut().find(|(name, _)| *name == key) {
-            Some(entry) => Ok(Some(std::mem::replace(&mut entry.1, value))),
-            None => {
-                self.properties.push((key, value));
-                Ok(None)
-            }
-        }
+        let previous = self.property(&key).map(SmolStr::new);
+        let property = HashMap::from([(key.to_string(), value.to_string())]);
+        self.apply_official_update(None, |builder| builder.set_properties(property))?;
+        Ok(previous)
     }
 
     /// Remove one table property, returning the value it held.
-    pub fn remove_property(&mut self, key: &str) -> Option<SmolStr> {
-        let index = self.properties.iter().position(|(name, _)| name == key)?;
-        Some(self.properties.remove(index).1)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Apache Iceberg reserves the key; the metadata is
+    /// unchanged.
+    pub fn remove_property(&mut self, key: &str) -> Result<Option<SmolStr>> {
+        let previous = self.property(key).map(SmolStr::new);
+        let key = key.to_owned();
+        self.apply_official_update(None, |builder| builder.remove_properties(&[key]))?;
+        Ok(previous)
+    }
+
+    /// Borrow Apache-compatible statistics-file objects.
+    pub fn statistics(&self) -> &[Scalar] {
+        &self.statistics
+    }
+
+    /// Add or replace one snapshot's statistics through Apache's builder.
+    pub fn set_statistics(&mut self, value: Scalar) -> Result<Option<Scalar>> {
+        let statistics: OfficialStatisticsFile = official_from_scalar(&value)?;
+        let snapshot_id = statistics.snapshot_id;
+        let previous = scalar_by_i64(&self.statistics, "snapshot-id", snapshot_id).cloned();
+        self.apply_official_update(None, |builder| Ok(builder.set_statistics(statistics)))?;
+        Ok(previous)
+    }
+
+    /// Remove and return one snapshot's statistics object.
+    pub fn remove_statistics(&mut self, snapshot_id: i64) -> Result<Option<Scalar>> {
+        let previous = scalar_by_i64(&self.statistics, "snapshot-id", snapshot_id).cloned();
+        self.apply_official_update(None, |builder| Ok(builder.remove_statistics(snapshot_id)))?;
+        Ok(previous)
+    }
+
+    /// Borrow Apache-compatible partition-statistics objects.
+    pub fn partition_statistics(&self) -> &[Scalar] {
+        &self.partition_statistics
+    }
+
+    /// Add or replace one snapshot's partition statistics through Apache's builder.
+    pub fn set_partition_statistics(&mut self, value: Scalar) -> Result<Option<Scalar>> {
+        let statistics: OfficialPartitionStatisticsFile = official_from_scalar(&value)?;
+        let snapshot_id = statistics.snapshot_id;
+        let previous =
+            scalar_by_i64(&self.partition_statistics, "snapshot-id", snapshot_id).cloned();
+        self.apply_official_update(None, |builder| {
+            Ok(builder.set_partition_statistics(statistics))
+        })?;
+        Ok(previous)
+    }
+
+    /// Remove and return one snapshot's partition-statistics object.
+    pub fn remove_partition_statistics(&mut self, snapshot_id: i64) -> Result<Option<Scalar>> {
+        let previous =
+            scalar_by_i64(&self.partition_statistics, "snapshot-id", snapshot_id).cloned();
+        self.apply_official_update(None, |builder| {
+            Ok(builder.remove_partition_statistics(snapshot_id))
+        })?;
+        Ok(previous)
+    }
+
+    /// Borrow Apache-compatible v3 encryption-key objects.
+    pub fn encryption_keys(&self) -> &[Scalar] {
+        &self.encryption_keys
+    }
+
+    /// Add one v3 encryption key through Apache's builder.
+    pub fn add_encryption_key(&mut self, value: Scalar) -> Result<bool> {
+        self.require_v3_encryption()?;
+        let key: OfficialEncryptedKey = official_from_scalar(&value)?;
+        let key_id = key.key_id().to_owned();
+        let inserted = scalar_by_str(&self.encryption_keys, "key-id", &key_id).is_none();
+        self.apply_official_update(None, |builder| Ok(builder.add_encryption_key(key)))?;
+        Ok(inserted)
+    }
+
+    /// Remove and return one v3 encryption-key object.
+    pub fn remove_encryption_key(&mut self, key_id: &str) -> Result<Option<Scalar>> {
+        self.require_v3_encryption()?;
+        let previous = scalar_by_str(&self.encryption_keys, "key-id", key_id).cloned();
+        let key_id = key_id.to_owned();
+        self.apply_official_update(None, |builder| Ok(builder.remove_encryption_key(&key_id)))?;
+        Ok(previous)
+    }
+
+    fn require_v3_encryption(&self) -> Result<()> {
+        if self.format_version >= FormatVersion::V3 {
+            return Ok(());
+        }
+        Err(invalid(format_smolstr!(
+            "expected Iceberg v3 metadata for encryption keys, got v{}",
+            self.format_version.number()
+        )))
     }
 
     /// Replace the table's base location.
-    pub fn set_location(&mut self, location: impl Into<SmolStr>) {
-        self.location = location.into();
+    ///
+    /// Apache Iceberg canonicalizes trailing separators.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the resulting metadata does not validate; the
+    /// metadata is unchanged.
+    pub fn set_location(&mut self, location: impl Into<SmolStr>) -> Result<()> {
+        let location = location.into().to_string();
+        self.apply_official_update(None, |builder| Ok(builder.set_location(location)))
     }
 
     /// Replace the table's UUID, validating the canonical 8-4-4-4-12 shape.
@@ -890,14 +1407,13 @@ impl TableMetadata {
     /// shape; the stored UUID is unchanged.
     pub fn assign_uuid(&mut self, uuid: impl Into<SmolStr>) -> Result<()> {
         let uuid = uuid.into();
-        if !is_uuid_shaped(&uuid) {
-            return Err(invalid(format_smolstr!(
+        let parsed = uuid::Uuid::parse_str(&uuid).map_err(|_| {
+            invalid(format_smolstr!(
                 "expected a UUID shaped 8-4-4-4-12 hex, got {:?}",
                 crate::text::elide_to(&uuid, 64)
-            )));
-        }
-        self.table_uuid = uuid;
-        Ok(())
+            ))
+        })?;
+        self.apply_official_update(None, |builder| Ok(builder.assign_uuid(parsed)))
     }
 
     /// Raise the format version, which is the only direction it can move.
@@ -910,18 +1426,12 @@ impl TableMetadata {
     /// Returns an error naming both versions when `version` is below the
     /// current one; the metadata is unchanged.
     pub fn upgrade_format_version(&mut self, version: FormatVersion) -> Result<()> {
-        if version < self.format_version {
-            return Err(invalid(format_smolstr!(
-                "expected a format version of at least {}, got {}",
-                self.format_version.number(),
-                version.number()
-            )));
-        }
-        self.format_version = version;
-        if version >= FormatVersion::V3 && self.next_row_id.is_none() {
-            self.next_row_id = Some(0);
-        }
-        Ok(())
+        let version = match version {
+            FormatVersion::V1 => OfficialFormatVersion::V1,
+            FormatVersion::V2 => OfficialFormatVersion::V2,
+            FormatVersion::V3 => OfficialFormatVersion::V3,
+        };
+        self.apply_official_update(None, |builder| builder.upgrade_format_version(version))
     }
 
     /// Make one already-added schema the one new data is written against.
@@ -930,17 +1440,10 @@ impl TableMetadata {
     ///
     /// Returns an error naming the id when no schema carries it.
     pub fn set_current_schema(&mut self, schema_id: i32) -> Result<()> {
-        if self.schema_by_id(schema_id).is_none() {
-            return Err(invalid(format_smolstr!(
-                "expected a schema with id {schema_id}, got {} schemas",
-                self.schemas.len()
-            )));
-        }
-        self.current_schema_id = schema_id;
-        Ok(())
+        self.apply_official_update(None, |builder| builder.set_current_schema(schema_id))
     }
 
-    /// Add a partition spec under the identifier it carries.
+    /// Add a partition spec and return the identifier selected by Iceberg.
     ///
     /// `last-partition-id` stays monotone: it grows to cover the new spec's
     /// highest field and never shrinks, so a retired partition field id is
@@ -948,19 +1451,48 @@ impl TableMetadata {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the id when the table already has a spec with
-    /// it; the specs are unchanged.
+    /// Returns an error when the spec cannot bind to the current schema; the
+    /// specs are unchanged.
     pub fn add_spec(&mut self, spec: PartitionSpec) -> Result<i32> {
-        if self.spec_by_id(spec.spec_id).is_some() {
+        let equivalent = self
+            .partition_specs
+            .iter()
+            .any(|existing| partition_specs_compatible(existing, &spec));
+        if !equivalent
+            && self
+                .partition_specs
+                .iter()
+                .map(|existing| existing.spec_id)
+                .max()
+                == Some(i32::MAX)
+        {
             return Err(invalid(format_smolstr!(
-                "expected an unused partition spec id, got {} which the table already has",
-                spec.spec_id
+                "expected a partition spec id below {}, got {}",
+                i32::MAX,
+                i32::MAX
             )));
         }
-        self.last_partition_id = self.last_partition_id.max(spec.last_field_id());
-        let spec_id = spec.spec_id;
-        self.partition_specs.push(spec);
-        Ok(spec_id)
+        let official = official_partition_spec(&spec)?;
+        self.apply_official_update_result(
+            None,
+            super::official::LegacySnapshotManifests::default(),
+            |builder| builder.add_partition_spec(official),
+            |built| {
+                built
+                    .changes
+                    .iter()
+                    .rev()
+                    .find_map(|change| match change {
+                        OfficialTableUpdate::AddSpec { spec } => spec.spec_id(),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        invalid(SmolStr::new_static(
+                            "official Iceberg partition update returned no assigned spec id",
+                        ))
+                    })
+            },
+        )
     }
 
     /// Make one already-added spec the one new data is written against.
@@ -974,42 +1506,55 @@ impl TableMetadata {
     /// Returns an error naming the id when no spec carries it, or a marking
     /// failure; the metadata is unchanged on error.
     pub fn set_default_spec(&mut self, spec_id: i32) -> Result<()> {
-        let Some(spec) = self.spec_by_id(spec_id) else {
-            return Err(invalid(format_smolstr!(
-                "expected a partition spec with id {spec_id}, got {} specs",
-                self.partition_specs.len()
-            )));
-        };
-        let spec = spec.clone();
-        let mut schemas = Vec::with_capacity(self.schemas.len());
-        for schema in &self.schemas {
-            schemas.push(spec.mark_partitions(schema)?);
-        }
-        self.schemas = schemas;
-        self.default_spec_id = spec_id;
-        Ok(())
+        self.apply_official_update(None, |builder| builder.set_default_partition_spec(spec_id))
     }
 
-    /// Add a sort order under the identifier it carries.
+    /// Add a sort order and return the identifier selected by Iceberg.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the id when the table already has an order with
-    /// it; the orders are unchanged.
-    pub fn add_sort_order(&mut self, order: SortOrder) -> Result<i32> {
-        if self
+    /// Returns an error when the order cannot bind to the current schema; the
+    /// orders are unchanged.
+    pub fn add_sort_order(&mut self, order: SortOrder) -> Result<i64> {
+        let reuses_existing = self
             .sort_orders
             .iter()
-            .any(|existing| existing.order_id == order.order_id)
+            .any(|existing| existing.fields == order.fields);
+        if !reuses_existing
+            && self
+                .sort_orders
+                .iter()
+                .map(|existing| existing.order_id)
+                .max()
+                == Some(i64::MAX)
         {
-            return Err(invalid(format_smolstr!(
-                "expected an unused sort order id, got {} which the table already has",
-                order.order_id
+            return Err(invalid(SmolStr::new_static(
+                "expected an available signed 64-bit sort order id, got i64::MAX already assigned",
             )));
         }
-        let order_id = order.order_id;
-        self.sort_orders.push(order);
-        Ok(order_id)
+        let official = official_sort_order(&order)?;
+        self.apply_official_update_result(
+            None,
+            super::official::LegacySnapshotManifests::default(),
+            |builder| builder.add_sort_order(official),
+            |built| {
+                built
+                    .changes
+                    .iter()
+                    .rev()
+                    .find_map(|change| match change {
+                        OfficialTableUpdate::AddSortOrder { sort_order } => {
+                            Some(sort_order.order_id)
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        invalid(SmolStr::new_static(
+                            "official Iceberg sort update returned no assigned order id",
+                        ))
+                    })
+            },
+        )
     }
 
     /// Make one already-added sort order the one new data is written in.
@@ -1017,19 +1562,8 @@ impl TableMetadata {
     /// # Errors
     ///
     /// Returns an error naming the id when no order carries it.
-    pub fn set_default_sort_order(&mut self, order_id: i32) -> Result<()> {
-        if !self
-            .sort_orders
-            .iter()
-            .any(|order| order.order_id == order_id)
-        {
-            return Err(invalid(format_smolstr!(
-                "expected a sort order with id {order_id}, got {} orders",
-                self.sort_orders.len()
-            )));
-        }
-        self.default_sort_order_id = order_id;
-        Ok(())
+    pub fn set_default_sort_order(&mut self, order_id: i64) -> Result<()> {
+        self.apply_official_update(None, |builder| builder.set_default_sort_order(order_id))
     }
 
     /// Point a named branch or tag at one retained snapshot.
@@ -1047,33 +1581,14 @@ impl TableMetadata {
         name: impl Into<SmolStr>,
         reference: SnapshotRef,
     ) -> Result<()> {
-        let name = name.into();
-        if self.snapshot_by_id(reference.snapshot_id).is_none() {
-            return Err(invalid(format_smolstr!(
-                "expected a retained snapshot for ref {:?}, got unknown snapshot id {}",
-                crate::text::elide_to(&name, 64),
-                reference.snapshot_id
+        if self.format_version == FormatVersion::V1 {
+            return Err(invalid(SmolStr::new_static(
+                "expected Iceberg v2 or v3 metadata for snapshot refs, got v1",
             )));
         }
-        if name == MAIN_BRANCH {
-            if reference.kind != "branch" {
-                return Err(invalid(format_smolstr!(
-                    "expected the reserved \"main\" ref to be a branch, got {:?}",
-                    crate::text::elide_to(&reference.kind, 64)
-                )));
-            }
-            if self.current_snapshot_id != Some(reference.snapshot_id) {
-                self.last_updated_ms = now_ms();
-                self.current_snapshot_id = Some(reference.snapshot_id);
-                self.snapshot_log
-                    .push((self.last_updated_ms, reference.snapshot_id));
-            }
-        }
-        match self.refs.iter_mut().find(|(existing, _)| *existing == name) {
-            Some(entry) => entry.1 = reference,
-            None => self.refs.push((name, reference)),
-        }
-        Ok(())
+        let name = name.into();
+        let reference = official_snapshot_reference(&reference)?;
+        self.apply_official_update(None, |builder| builder.set_ref(name.as_str(), reference))
     }
 
     /// Remove one named reference, returning what it pointed at.
@@ -1081,16 +1596,18 @@ impl TableMetadata {
     /// Removing the reserved `main` branch clears `current-snapshot-id`, which
     /// keeps the two spellings of "what a reader sees" agreeing: a table whose
     /// main branch is gone has no current snapshot.
-    pub fn remove_snapshot_ref(&mut self, name: &str) -> Option<SnapshotRef> {
-        let index = self
-            .refs
-            .iter()
-            .position(|(existing, _)| existing == name)?;
-        let (_, reference) = self.refs.remove(index);
-        if name == MAIN_BRANCH {
-            self.current_snapshot_id = None;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the resulting metadata does not validate; the
+    /// metadata is unchanged.
+    pub fn remove_snapshot_ref(&mut self, name: &str) -> Result<Option<SnapshotRef>> {
+        let previous = self.ref_by_name(name).cloned();
+        if previous.is_none() {
+            return Ok(None);
         }
-        Some(reference)
+        self.apply_official_update(None, |builder| Ok(builder.remove_ref(name)))?;
+        Ok(previous)
     }
 
     /// Return one named reference, when the table has it.
@@ -1117,17 +1634,20 @@ impl TableMetadata {
     ///     schema,
     ///     PartitionSpec::unpartitioned(),
     /// )?;
+    /// let timestamp_ms = metadata.last_updated_ms + 1;
     /// metadata.set_current_snapshot(Snapshot {
     ///     snapshot_id: 7,
     ///     parent_snapshot_id: None,
     ///     sequence_number: Some(1),
-    ///     timestamp_ms: 0,
+    ///     timestamp_ms,
     ///     manifest_list: "".into(),
-    ///     summary: Vec::new(),
+    ///     manifests: None,
+    ///     summary: vec![("operation".into(), "append".into())],
     ///     schema_id: Some(0),
+    ///     encryption_key_id: None,
     ///     first_row_id: None,
     ///     added_rows: None,
-    /// });
+    /// })?;
     ///
     /// metadata.create_branch("dev", 7)?;
     /// metadata.create_tag("v1", 7)?;
@@ -1184,10 +1704,11 @@ impl TableMetadata {
             )));
         };
         self.expect_no_ref(&to)?;
-        let reference = reference.clone();
-        self.set_snapshot_ref(to, reference)?;
-        self.remove_snapshot_ref(from);
-        Ok(())
+        let reference = official_snapshot_reference(reference)?;
+        self.apply_official_update(None, |builder| {
+            let builder = builder.set_ref(to.as_str(), reference)?;
+            Ok(builder.remove_ref(from))
+        })
     }
 
     /// Move a branch forward to a descendant of its current head.
@@ -1235,95 +1756,222 @@ impl TableMetadata {
         self.set_snapshot_ref(SmolStr::new(name), moved)
     }
 
-    /// Expire snapshots, honoring what every reference says to retain.
+    /// Expire snapshots with Apache Iceberg's complete retention contract.
     ///
-    /// `older_than_ms` is the default age cutoff: a snapshot committed before
-    /// it is old. What survives is exactly what the Iceberg retention rules
-    /// name - every ref target; for each branch, its head's ancestors younger
-    /// than the branch's own `max-snapshot-age-ms` when it has one (younger
-    /// than `older_than_ms` otherwise) and at least `min-snapshots-to-keep`
-    /// most recent ones; and the current snapshot, always. A tag keeps only
-    /// its target. Before any of that, a reference older than its own
-    /// `max-ref-age-ms` - measured from its snapshot's commit time - is
-    /// removed, except `main`, which never expires. The snapshot log is
-    /// trimmed with the removed snapshots, as [`Self::remove_snapshots`]
-    /// trims it.
+    /// `older_than_ms` and `retain_last` override the corresponding table
+    /// defaults when present. Per-branch settings override both. Explicit
+    /// `snapshot_ids` are unioned with age-based selection, but a retained ref
+    /// head or the current snapshot cannot be named. `main` never ages out;
+    /// tags retain only their target; branches retain their selected ancestry;
+    /// and recent unreferenced snapshots survive until the default cutoff.
+    /// `gc.enabled=false` refuses the complete operation.
     ///
     /// Returns the removed snapshot ids, sorted; a table with nothing old
-    /// returns an empty list.
+    /// returns an empty list. Statistics metadata for removed snapshots is
+    /// removed in the same atomic metadata update.
     ///
     /// # Errors
     ///
-    /// Returns an error only when the removal machinery refuses an id, which
-    /// the retained set rules out; nothing is removed on error.
-    pub fn expire_snapshots_older_than(&mut self, older_than_ms: i64) -> Result<Vec<i64>> {
-        let now = now_ms();
+    /// Returns an error for invalid consulted retention properties, an
+    /// explicit zero retain count, a protected explicit id, disabled garbage
+    /// collection, or an official metadata-builder failure. Nothing is
+    /// removed on error.
+    pub fn expire_snapshots(
+        &mut self,
+        older_than_ms: Option<i64>,
+        retain_last: Option<usize>,
+        snapshot_ids: &[i64],
+    ) -> Result<Vec<i64>> {
+        let mut property_keys = vec![OfficialTableProperties::PROPERTY_GC_ENABLED];
+        if retain_last.is_none() {
+            property_keys.push(OfficialTableProperties::PROPERTY_MIN_SNAPSHOTS_TO_KEEP);
+        }
+        if older_than_ms.is_none() {
+            property_keys.push(OfficialTableProperties::PROPERTY_MAX_SNAPSHOT_AGE_MS);
+        }
+        if self
+            .refs
+            .iter()
+            .any(|(name, reference)| name != MAIN_BRANCH && reference.max_ref_age_ms.is_none())
+        {
+            property_keys.push(OfficialTableProperties::PROPERTY_MAX_REF_AGE_MS);
+        }
+        let properties: HashMap<String, String> = property_keys
+            .into_iter()
+            .filter_map(|key| {
+                self.property(key)
+                    .map(|value| (key.to_owned(), value.to_owned()))
+            })
+            .collect();
+        let properties =
+            OfficialTableProperties::try_from(&properties).map_err(Error::from_iceberg)?;
+        if !properties.gc_enabled {
+            return Err(invalid(SmolStr::new_static(
+                "Cannot expire snapshots: gc.enabled is false",
+            )));
+        }
+        if retain_last == Some(0) {
+            return Err(invalid(SmolStr::new_static(
+                "expected retain_last to be at least 1, got 0",
+            )));
+        }
 
-        // Refs expire first, so a snapshot a dead ref pointed at is no longer
-        // anchored when retention is computed.
-        let expired: Vec<SmolStr> = self
+        let now = now_ms();
+        let default_cutoff =
+            older_than_ms.unwrap_or_else(|| now.saturating_sub(properties.max_snapshot_age_ms));
+        let default_minimum = retain_last.unwrap_or(properties.min_snapshots_to_keep);
+
+        // Match Apache's expiry planner: age refs first, then resolve every
+        // retained branch independently. `main` never ages out.
+        let mut expired_refs: Vec<SmolStr> = self
             .refs
             .iter()
             .filter(|(name, reference)| {
                 if name == MAIN_BRANCH {
                     return false;
                 }
-                let Some(limit) = reference.max_ref_age_ms else {
-                    return false;
-                };
+                let limit = reference
+                    .max_ref_age_ms
+                    .unwrap_or(properties.max_ref_age_ms);
                 self.snapshot_by_id(reference.snapshot_id)
                     .is_some_and(|snapshot| now.saturating_sub(snapshot.timestamp_ms) > limit)
             })
             .map(|(name, _)| name.clone())
             .collect();
-        for name in &expired {
-            self.remove_snapshot_ref(name);
+        expired_refs.sort();
+        let expired_ref_names: HashSet<&str> = expired_refs.iter().map(SmolStr::as_str).collect();
+
+        let retained_refs: Vec<&SnapshotRef> = self
+            .refs
+            .iter()
+            .filter(|(name, _)| !expired_ref_names.contains(name.as_str()))
+            .map(|(_, reference)| reference)
+            .collect();
+        let mut ref_heads: HashSet<i64> = retained_refs
+            .iter()
+            .map(|reference| reference.snapshot_id)
+            .collect();
+        ref_heads.extend(self.current_snapshot_id);
+
+        let existing_ids: HashSet<i64> = self
+            .snapshots
+            .iter()
+            .map(|snapshot| snapshot.snapshot_id)
+            .collect();
+        let mut removing = HashSet::new();
+        for snapshot_id in snapshot_ids {
+            if ref_heads.contains(snapshot_id) {
+                let reason = if self.current_snapshot_id == Some(*snapshot_id) {
+                    format_smolstr!("cannot expire current snapshot {snapshot_id}")
+                } else {
+                    let names: Vec<&str> = self
+                        .refs
+                        .iter()
+                        .filter(|(_, reference)| reference.snapshot_id == *snapshot_id)
+                        .map(|(name, _)| name.as_str())
+                        .collect();
+                    format_smolstr!(
+                        "cannot expire snapshot {snapshot_id}; retained refs [{}] still name it",
+                        names.join(", ")
+                    )
+                };
+                return Err(invalid(reason));
+            }
+            if existing_ids.contains(snapshot_id) {
+                removing.insert(*snapshot_id);
+            }
         }
 
-        let mut retained: Vec<i64> = self.current_snapshot_id.into_iter().collect();
-        for (_, reference) in &self.refs {
-            retained.push(reference.snapshot_id);
-            if !reference.is_branch() {
-                continue;
+        let mut retained = ref_heads.clone();
+        let mut referenced = ref_heads;
+        let mut branches = Vec::new();
+        for reference in retained_refs {
+            if reference.is_branch() {
+                let minimum = reference
+                    .min_snapshots_to_keep
+                    .and_then(|count| usize::try_from(count).ok())
+                    .unwrap_or(default_minimum);
+                let cutoff = reference
+                    .max_snapshot_age_ms
+                    .map_or(default_cutoff, |age| now.saturating_sub(age));
+                branches.push((reference.snapshot_id, minimum, cutoff));
+            } else {
+                referenced.insert(reference.snapshot_id);
             }
-            let cutoff = match reference.max_snapshot_age_ms {
-                Some(age_ms) => now.saturating_sub(age_ms),
-                None => older_than_ms,
-            };
-            let keep_at_least = reference
-                .min_snapshots_to_keep
-                .and_then(|count| usize::try_from(count).ok())
-                .unwrap_or(1);
-            let mut position = 1_usize;
-            let mut cursor = self
-                .snapshot_by_id(reference.snapshot_id)
-                .and_then(|head| head.parent_snapshot_id);
+        }
+        if let Some(current) = self.current_snapshot_id
+            && !branches.iter().any(|(head, _, _)| *head == current)
+        {
+            branches.push((current, default_minimum, default_cutoff));
+        }
+
+        for (head, minimum, cutoff) in branches {
+            let mut position = 0_usize;
+            let mut cursor = Some(head);
             while let Some(id) = cursor {
-                position += 1;
                 // A corrupt parent chain could cycle; the walk is bounded by
                 // the ancestors a table can actually hold.
                 let Some(snapshot) = self
                     .snapshot_by_id(id)
-                    .filter(|_| position <= self.snapshots.len())
+                    .filter(|_| position < self.snapshots.len())
                 else {
                     break;
                 };
-                if position <= keep_at_least || snapshot.timestamp_ms >= cutoff {
-                    retained.push(id);
+                referenced.insert(id);
+                if position < minimum || snapshot.timestamp_ms >= cutoff {
+                    retained.insert(id);
                 }
+                position += 1;
                 cursor = snapshot.parent_snapshot_id;
             }
         }
 
-        let mut removed: Vec<i64> = self
-            .snapshots
-            .iter()
-            .map(|snapshot| snapshot.snapshot_id)
-            .filter(|id| !retained.contains(id))
-            .collect();
+        // A young orphan may be adopted by a concurrent branch later. Apache
+        // keeps it until the explicit default cutoff even though no current
+        // ancestry reaches it.
+        for snapshot in &self.snapshots {
+            if !referenced.contains(&snapshot.snapshot_id)
+                && snapshot.timestamp_ms >= default_cutoff
+            {
+                retained.insert(snapshot.snapshot_id);
+            }
+        }
+
+        removing.extend(
+            self.snapshots
+                .iter()
+                .map(|snapshot| snapshot.snapshot_id)
+                .filter(|id| !retained.contains(id)),
+        );
+        let mut removed: Vec<i64> = removing.into_iter().collect();
         removed.sort_unstable();
-        if !removed.is_empty() {
-            self.remove_snapshots(&removed)?;
+        if !expired_refs.is_empty() || !removed.is_empty() {
+            let expired_refs: Vec<String> = expired_refs.into_iter().map(String::from).collect();
+            let remove_statistics: Vec<i64> = removed
+                .iter()
+                .copied()
+                .filter(|id| scalar_by_i64(&self.statistics, "snapshot-id", *id).is_some())
+                .collect();
+            let remove_partition_statistics: Vec<i64> = removed
+                .iter()
+                .copied()
+                .filter(|id| {
+                    scalar_by_i64(&self.partition_statistics, "snapshot-id", *id).is_some()
+                })
+                .collect();
+            self.apply_official_update(None, |mut builder| {
+                for name in &expired_refs {
+                    builder = builder.remove_ref(name);
+                }
+                builder = builder.remove_snapshots(&removed);
+                for snapshot_id in &remove_statistics {
+                    builder = builder.remove_statistics(*snapshot_id);
+                }
+                for snapshot_id in &remove_partition_statistics {
+                    builder = builder.remove_partition_statistics(*snapshot_id);
+                }
+                Ok(builder)
+            })?;
         }
         Ok(removed)
     }
@@ -1361,40 +2009,6 @@ impl TableMetadata {
         false
     }
 
-    /// Expire snapshots by id, trimming the snapshot log with them.
-    ///
-    /// An id the table does not hold is ignored, so a caller can expire a set
-    /// without checking it first.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the snapshot - and the ref, when one points at
-    /// it - when an id is the current snapshot or a named reference's target;
-    /// nothing is removed on error.
-    pub fn remove_snapshots(&mut self, ids: &[i64]) -> Result<()> {
-        for id in ids {
-            if self.current_snapshot_id == Some(*id) {
-                return Err(invalid(format_smolstr!(
-                    "expected non-current snapshots to remove, got the current snapshot {id}"
-                )));
-            }
-            if let Some((name, _)) = self
-                .refs
-                .iter()
-                .find(|(_, reference)| reference.snapshot_id == *id)
-            {
-                return Err(invalid(format_smolstr!(
-                    "expected unreferenced snapshots to remove, got {id} which ref {name:?} \
-                     points at"
-                )));
-            }
-        }
-        self.snapshots
-            .retain(|snapshot| !ids.contains(&snapshot.snapshot_id));
-        self.snapshot_log.retain(|(_, id)| !ids.contains(id));
-        Ok(())
-    }
-
     /// Check that this document's cross-references resolve.
     ///
     /// This is what [`Self::from_json`] runs after reading and what a commit
@@ -1407,6 +2021,107 @@ impl TableMetadata {
     ///
     /// Returns an error naming the first identifier that does not hold.
     pub fn validate(&self) -> Result<()> {
+        match self.format_version {
+            FormatVersion::V1 if self.last_sequence_number != 0 => {
+                return Err(invalid(format_smolstr!(
+                    "expected no last sequence number in Iceberg v1 metadata, got {}",
+                    self.last_sequence_number
+                )));
+            }
+            FormatVersion::V2 | FormatVersion::V3 if self.last_sequence_number < 0 => {
+                return Err(invalid(format_smolstr!(
+                    "expected a non-negative last-sequence-number in Iceberg v{} metadata, got {}",
+                    self.format_version.number(),
+                    self.last_sequence_number
+                )));
+            }
+            _ => {}
+        }
+        match (self.format_version, self.next_row_id) {
+            (FormatVersion::V3, Some(value)) if value >= 0 => {}
+            (FormatVersion::V3, None) => {
+                return Err(invalid(SmolStr::new_static(
+                    "expected a non-negative next-row-id in Iceberg v3 metadata, got none",
+                )));
+            }
+            (FormatVersion::V3, Some(value)) => {
+                return Err(invalid(format_smolstr!(
+                    "expected a non-negative next-row-id in Iceberg v3 metadata, got {value}"
+                )));
+            }
+            (_, None) => {}
+            (version, Some(value)) => {
+                return Err(invalid(format_smolstr!(
+                    "expected no next-row-id in Iceberg v{} metadata, got {value}",
+                    version.number()
+                )));
+            }
+        }
+        if self.format_version == FormatVersion::V1 {
+            let refs_are_derived_main = match (self.current_snapshot_id, self.refs.as_slice()) {
+                (_, []) => true,
+                (Some(snapshot_id), [(name, reference)]) => {
+                    name == MAIN_BRANCH && *reference == SnapshotRef::branch(snapshot_id)
+                }
+                _ => false,
+            };
+            if !refs_are_derived_main {
+                return Err(invalid(format_smolstr!(
+                    "expected no refs or only the official derived main ref in Iceberg v1 metadata, got {} refs",
+                    self.refs.len()
+                )));
+            }
+        }
+        if self.format_version < FormatVersion::V3 && !self.encryption_keys.is_empty() {
+            return Err(invalid(format_smolstr!(
+                "expected no encryption-keys in Iceberg v{} metadata, got {}",
+                self.format_version.number(),
+                self.encryption_keys.len()
+            )));
+        }
+        for snapshot in &self.snapshots {
+            snapshot.validate_for_version(self.format_version)?;
+            if let Some(sequence) = snapshot.sequence_number
+                && sequence > self.last_sequence_number
+            {
+                return Err(invalid(format_smolstr!(
+                    "expected snapshot {} sequence-number at most {}, got {}",
+                    snapshot.snapshot_id,
+                    self.last_sequence_number,
+                    sequence
+                )));
+            }
+            if let Some(schema_id) = snapshot.schema_id
+                && self.schema_by_id(schema_id).is_none()
+            {
+                return Err(invalid(format_smolstr!(
+                    "expected schema id {schema_id} for snapshot {}, got {} retained schemas",
+                    snapshot.snapshot_id,
+                    self.schemas.len()
+                )));
+            }
+        }
+        ensure_unique(self.schemas.iter().map(field_schema_id), "schema id")?;
+        ensure_unique(
+            self.partition_specs.iter().map(|spec| spec.spec_id),
+            "partition spec id",
+        )?;
+        ensure_unique(
+            self.sort_orders.iter().map(|order| order.order_id),
+            "sort order id",
+        )?;
+        ensure_unique(
+            self.snapshots.iter().map(|snapshot| snapshot.snapshot_id),
+            "snapshot id",
+        )?;
+        ensure_unique(self.refs.iter().map(|(name, _)| name), "snapshot ref name")?;
+        ensure_unique(
+            self.properties.iter().map(|(name, _)| name),
+            "property name",
+        )?;
+        validate_schema_history(&self.schemas, self.last_column_id, self.format_version)?;
+        validate_partition_spec_history(&self.partition_specs, &self.schemas)?;
+        validate_sort_order_history(&self.sort_orders, &self.schemas)?;
         let schema = self.current_schema()?;
         let mut ids = Vec::new();
         collect_field_ids(schema, &mut ids)?;
@@ -1466,6 +2181,12 @@ impl TableMetadata {
             }
         }
         for (name, reference) in &self.refs {
+            if let Err(error) = reference.validate() {
+                return Err(invalid(format_smolstr!(
+                    "expected a valid snapshot ref {:?}, got {error}",
+                    crate::text::elide_to(name, 64)
+                )));
+            }
             if self.snapshot_by_id(reference.snapshot_id).is_none() {
                 return Err(invalid(format_smolstr!(
                     "expected a retained snapshot for ref {:?}, got unknown snapshot id {}",
@@ -1473,26 +2194,9 @@ impl TableMetadata {
                     reference.snapshot_id
                 )));
             }
-            // The two branch retention limits describe ancestors, which only
-            // a branch has, so anything else carrying one is malformed.
-            if !reference.is_branch() {
-                let branch_only = if reference.min_snapshots_to_keep.is_some() {
-                    Some("min-snapshots-to-keep")
-                } else if reference.max_snapshot_age_ms.is_some() {
-                    Some("max-snapshot-age-ms")
-                } else {
-                    None
-                };
-                if let Some(key) = branch_only {
-                    return Err(invalid(format_smolstr!(
-                        "expected a branch for {key} on ref {:?}, got a {:?}",
-                        crate::text::elide_to(name, 64),
-                        crate::text::elide_to(&reference.kind, 64)
-                    )));
-                }
-            }
         }
-        Ok(())
+        let document = self.clone().into_json_document()?;
+        super::official::validate_table_metadata(&document)
     }
 }
 
@@ -1522,6 +2226,184 @@ impl Hash for TableMetadata {
     }
 }
 
+/// Convert the public Yggdryl snapshot view into the official metadata type.
+fn official_snapshot(snapshot: Snapshot, version: FormatVersion) -> Result<OfficialSnapshot> {
+    snapshot.validate_for_version(version)?;
+    let manifest_list = if snapshot.manifests.is_some() {
+        super::official::legacy_manifest_list(snapshot.snapshot_id)
+    } else {
+        snapshot.manifest_list.to_string()
+    };
+    let mut summary: HashMap<String, String> = snapshot
+        .summary
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+    let operation = match summary.remove("operation").as_deref() {
+        Some("append") => OfficialOperation::Append,
+        Some("replace") => OfficialOperation::Replace,
+        Some("overwrite") => OfficialOperation::Overwrite,
+        Some("delete") => OfficialOperation::Delete,
+        Some(other) => {
+            return Err(invalid(format_smolstr!(
+                "expected an Iceberg snapshot operation, got {:?}",
+                crate::text::elide_to(other, 64)
+            )));
+        }
+        None => {
+            return Err(invalid(SmolStr::new_static(
+                "expected an Iceberg snapshot summary operation",
+            )));
+        }
+    };
+    let sequence_number = match version {
+        FormatVersion::V1 => 0,
+        FormatVersion::V2 | FormatVersion::V3 => snapshot.sequence_number.ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a sequence-number on Iceberg v{} snapshot {}",
+                version.number(),
+                snapshot.snapshot_id
+            ))
+        })?,
+    };
+    let builder = OfficialSnapshot::builder()
+        .with_snapshot_id(snapshot.snapshot_id)
+        .with_parent_snapshot_id(snapshot.parent_snapshot_id)
+        .with_sequence_number(sequence_number)
+        .with_timestamp_ms(snapshot.timestamp_ms)
+        .with_manifest_list(manifest_list)
+        .with_summary(OfficialSummary {
+            operation,
+            additional_properties: summary,
+        })
+        .schema_id_opt(snapshot.schema_id)
+        .with_encryption_key_id(snapshot.encryption_key_id.map(String::from));
+    let row_range = match (snapshot.first_row_id, snapshot.added_rows) {
+        (Some(first), Some(added)) => {
+            let first = u64::try_from(first).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a non-negative first-row-id, got {first}"
+                ))
+            })?;
+            let added = u64::try_from(added).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a non-negative added-rows, got {added}"
+                ))
+            })?;
+            Some((first, added))
+        }
+        (None, None) => None,
+        _ => {
+            return Err(invalid(SmolStr::new_static(
+                "expected first-row-id and added-rows together",
+            )));
+        }
+    };
+    Ok(match row_range {
+        Some((first, added)) => builder.with_row_range(first, added).build(),
+        None => builder.build(),
+    })
+}
+
+/// Convert the public Yggdryl reference view into the official metadata type.
+fn official_snapshot_reference(reference: &SnapshotRef) -> Result<OfficialSnapshotReference> {
+    reference.validate()?;
+    let retention = match reference.kind.as_str() {
+        "branch" => OfficialSnapshotRetention::branch(
+            reference.min_snapshots_to_keep,
+            reference.max_snapshot_age_ms,
+            reference.max_ref_age_ms,
+        ),
+        "tag"
+            if reference.min_snapshots_to_keep.is_none()
+                && reference.max_snapshot_age_ms.is_none() =>
+        {
+            OfficialSnapshotRetention::Tag {
+                max_ref_age_ms: reference.max_ref_age_ms,
+            }
+        }
+        other => {
+            return Err(invalid(format_smolstr!(
+                "expected an Iceberg branch or tag, got {:?}",
+                crate::text::elide_to(other, 64)
+            )));
+        }
+    };
+    Ok(OfficialSnapshotReference::new(
+        reference.snapshot_id,
+        retention,
+    ))
+}
+
+fn field_schema_id(schema: &Field) -> i32 {
+    schema
+        .iceberg()
+        .get(super::schema::SCHEMA_ID)
+        .and_then(|id| id.parse().ok())
+        .unwrap_or_default()
+}
+
+fn official_schema(schema: &Field) -> Result<OfficialSchema> {
+    let document = schema_to_json(schema)?;
+    let bytes = crate::json::into_bytes(&document)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+/// Match the identity Apache's builder uses, excluding its assigned schema id.
+fn official_schemas_same(left: &OfficialSchema, right: &OfficialSchema) -> bool {
+    left.as_struct() == right.as_struct()
+        && left.identifier_field_ids().collect::<HashSet<_>>()
+            == right.identifier_field_ids().collect::<HashSet<_>>()
+}
+
+fn official_from_scalar<T: serde::de::DeserializeOwned>(value: &Scalar) -> Result<T> {
+    let bytes = crate::json::into_bytes(value)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+fn scalar_by_i64<'a>(values: &'a [Scalar], key: &str, expected: i64) -> Option<&'a Scalar> {
+    values
+        .iter()
+        .find(|value| value.get_key_str(key).and_then(Scalar::as_i64) == Some(expected))
+}
+
+fn scalar_by_str<'a>(values: &'a [Scalar], key: &str, expected: &str) -> Option<&'a Scalar> {
+    values
+        .iter()
+        .find(|value| value.get_key_str(key).and_then(Scalar::as_str) == Some(expected))
+}
+
+fn official_partition_spec(spec: &PartitionSpec) -> Result<OfficialUnboundPartitionSpec> {
+    let mut builder = OfficialUnboundPartitionSpec::builder();
+    for field in &spec.fields {
+        let transform = field
+            .transform
+            .to_string()
+            .parse::<OfficialTransform>()
+            .map_err(Error::from_iceberg)?;
+        builder = builder
+            .add_partition_field(field.source_id, &field.name, transform)
+            .map_err(Error::from_iceberg)?;
+    }
+    Ok(builder.build())
+}
+
+/// Match Apache's compatibility rule; field and spec ids are assigned state.
+fn partition_specs_compatible(left: &PartitionSpec, right: &PartitionSpec) -> bool {
+    left.fields.len() == right.fields.len()
+        && left.fields.iter().zip(&right.fields).all(|(left, right)| {
+            left.source_id == right.source_id
+                && left.name == right.name
+                && left.transform == right.transform
+        })
+}
+
+fn official_sort_order(order: &SortOrder) -> Result<OfficialSortOrder> {
+    let document = order.clone().into_json()?;
+    let bytes = crate::json::into_bytes(&document)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 /// Collect every field identifier below a schema root, depth first.
 fn collect_field_ids(node: &Field, ids: &mut Vec<i32>) -> Result<()> {
     for index in 0..node.data_type().field_len() {
@@ -1536,16 +2418,402 @@ fn collect_field_ids(node: &Field, ids: &mut Vec<i32>) -> Result<()> {
     Ok(())
 }
 
-/// Return whether text has the canonical hyphenated 8-4-4-4-12 UUID shape.
-fn is_uuid_shaped(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    if bytes.len() != 36 {
-        return false;
+/// Prevent direct metadata updates from reusing retired ids or changing an
+/// existing column incompatibly. Apache's low-level builder intentionally
+/// leaves this compatibility check to its caller.
+fn validate_schema_evolution(
+    current: &Field,
+    candidate: &Field,
+    last_id: i32,
+    version: FormatVersion,
+) -> Result<()> {
+    let mut current_parents = HashMap::new();
+    collect_field_parents(current, None, &mut current_parents)?;
+    let mut candidate_parents = HashMap::new();
+    collect_field_parents(candidate, None, &mut candidate_parents)?;
+    let current = official_schema(current)?;
+    let candidate = official_schema(candidate)?;
+
+    for (id, parent) in candidate_parents {
+        let new = candidate.field_by_id(id).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected candidate schema field id {id}, got no field"
+            ))
+        })?;
+        if version < FormatVersion::V3
+            && (new.initial_default.is_some() || new.write_default.is_some())
+        {
+            return Err(invalid(format_smolstr!(
+                "expected no field defaults before Iceberg v3, got defaults on field id {id}"
+            )));
+        }
+        if id > last_id {
+            if parent.is_none_or(|parent_id| parent_id <= last_id)
+                && new.required
+                && new.initial_default.is_none()
+            {
+                return Err(invalid(format_smolstr!(
+                    "expected an initial-default on new required field id {id} ({:?})",
+                    new.name
+                )));
+            }
+            continue;
+        }
+        let old_parent = current_parents.get(&id).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a fresh field id above {last_id}, got retired field id {id}"
+            ))
+        })?;
+        if *old_parent != parent {
+            return Err(invalid(format_smolstr!(
+                "expected field id {id} to remain under parent {old_parent:?}, got {parent:?}"
+            )));
+        }
+        let old = current.field_by_id(id).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected current schema field id {id}, got no field"
+            ))
+        })?;
+        if old.initial_default != new.initial_default {
+            return Err(invalid(format_smolstr!(
+                "expected immutable initial-default on field id {id} ({:?})",
+                new.name
+            )));
+        }
+        if !old.required && new.required {
+            return Err(invalid(format_smolstr!(
+                "expected field id {id} to stay optional, got required field {:?}",
+                new.name
+            )));
+        }
+        if !official_type_can_promote(&old.field_type, &new.field_type) {
+            return Err(invalid(format_smolstr!(
+                "expected an Iceberg-legal promotion for field id {id}, got {} to {}",
+                old.field_type,
+                new.field_type
+            )));
+        }
     }
-    bytes.iter().enumerate().all(|(index, byte)| match index {
-        8 | 13 | 18 | 23 => *byte == b'-',
-        _ => byte.is_ascii_hexdigit(),
-    })
+    Ok(())
+}
+
+fn collect_field_parents(
+    node: &Field,
+    parent: Option<i32>,
+    fields: &mut HashMap<i32, Option<i32>>,
+) -> Result<()> {
+    for index in 0..node.data_type().field_len() {
+        let Some(child) = node.data_type().get_field(index) else {
+            continue;
+        };
+        let id = child.parquet_field_id()?.ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a PARQUET:field_id on {:?}",
+                child.name()
+            ))
+        })?;
+        if fields.insert(id, parent).is_some() {
+            return Err(invalid(format_smolstr!(
+                "expected unique field ids, got {id} more than once"
+            )));
+        }
+        collect_field_parents(child, Some(id), fields)?;
+    }
+    Ok(())
+}
+
+fn official_type_can_promote(from: &OfficialType, to: &OfficialType) -> bool {
+    if from == to {
+        return true;
+    }
+    match (from, to) {
+        (
+            OfficialType::Primitive(OfficialPrimitiveType::Int),
+            OfficialType::Primitive(OfficialPrimitiveType::Long),
+        )
+        | (
+            OfficialType::Primitive(OfficialPrimitiveType::Float),
+            OfficialType::Primitive(OfficialPrimitiveType::Double),
+        ) => true,
+        (
+            OfficialType::Primitive(OfficialPrimitiveType::Decimal { precision, scale }),
+            OfficialType::Primitive(OfficialPrimitiveType::Decimal {
+                precision: to_precision,
+                scale: to_scale,
+            }),
+        ) => to_scale == scale && to_precision >= precision && *to_precision <= 38,
+        (OfficialType::Struct(_), OfficialType::Struct(_))
+        | (OfficialType::List(_), OfficialType::List(_))
+        | (OfficialType::Map(_), OfficialType::Map(_)) => true,
+        _ => false,
+    }
+}
+
+/// Reject known versioned keys before serde can ignore them as unknown.
+fn validate_versioned_document(document: &Scalar) -> Result<()> {
+    let version = FormatVersion::from_number(
+        document
+            .get_key_str("format-version")
+            .and_then(Scalar::as_i64)
+            .ok_or_else(|| {
+                invalid(SmolStr::new_static(
+                    "expected a table metadata \"format-version\"",
+                ))
+            })?,
+    )?;
+    let forbidden = match version {
+        FormatVersion::V1 => [
+            Some("last-sequence-number"),
+            Some("next-row-id"),
+            Some("encryption-keys"),
+            None,
+        ],
+        FormatVersion::V2 => [Some("next-row-id"), Some("encryption-keys"), None, None],
+        FormatVersion::V3 => [None, None, None, None],
+    };
+    if let Some(key) = forbidden
+        .into_iter()
+        .flatten()
+        .find(|key| document.get_key_str(key).is_some())
+    {
+        return Err(invalid(format_smolstr!(
+            "expected no {key} in Iceberg v{} metadata",
+            version.number()
+        )));
+    }
+    if version == FormatVersion::V1 {
+        validate_v1_wire_refs(document)?;
+    }
+    for (collection, id) in [
+        ("schemas", "schema-id"),
+        ("partition-specs", "spec-id"),
+        ("sort-orders", "order-id"),
+        ("snapshots", "snapshot-id"),
+        ("statistics", "snapshot-id"),
+        ("partition-statistics", "snapshot-id"),
+    ] {
+        reject_duplicate_document_ids(document, collection, id)?;
+    }
+    reject_duplicate_document_string_ids(document, "encryption-keys", "key-id")?;
+    for snapshot in document
+        .get_key_str("snapshots")
+        .map(Scalar::sequence_iter)
+        .unwrap_or_default()
+    {
+        Snapshot::from_json(snapshot)?.validate_for_version(version)?;
+    }
+    Ok(())
+}
+
+/// Accept the `refs.main` compatibility field emitted by PyIceberg for v1,
+/// but only when it exactly matches the main ref the official Rust parser
+/// derives from `current-snapshot-id`. Other v1 refs would otherwise be
+/// ignored by serde and disappear during normalization.
+fn validate_v1_wire_refs(document: &Scalar) -> Result<()> {
+    let Some(entries) = document.get_key_str("refs") else {
+        return Ok(());
+    };
+    let refs = if let Some(record) = entries.as_record() {
+        record
+            .iter()
+            .map(|(name, value)| Ok((name.clone(), SnapshotRef::from_json(value)?)))
+            .collect::<Result<Vec<_>>>()?
+    } else if let Some(mapping) = entries.as_mapping() {
+        mapping
+            .iter()
+            .map(|(name, value)| {
+                let name = name.as_str().ok_or_else(|| {
+                    invalid(SmolStr::new_static(
+                        "expected string snapshot ref names in Iceberg v1 metadata",
+                    ))
+                })?;
+                Ok((SmolStr::new(name), SnapshotRef::from_json(value)?))
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        return Err(invalid(SmolStr::new_static(
+            "expected refs to be an object in Iceberg v1 metadata",
+        )));
+    };
+    let current_snapshot_id = document
+        .get_key_str("current-snapshot-id")
+        .and_then(Scalar::as_i64)
+        .filter(|id| *id >= 0);
+    let refs_are_derived_main = match (current_snapshot_id, refs.as_slice()) {
+        (_, []) => true,
+        (Some(snapshot_id), [(name, reference)]) => {
+            name == MAIN_BRANCH && *reference == SnapshotRef::branch(snapshot_id)
+        }
+        _ => false,
+    };
+    if refs_are_derived_main {
+        return Ok(());
+    }
+    Err(invalid(format_smolstr!(
+        "expected only main to match current-snapshot-id in Iceberg v1 refs, got {} refs",
+        refs.len()
+    )))
+}
+
+fn reject_duplicate_document_string_ids(
+    document: &Scalar,
+    collection: &str,
+    key: &str,
+) -> Result<()> {
+    let mut seen = HashSet::new();
+    for entry in document
+        .get_key_str(collection)
+        .map(Scalar::sequence_iter)
+        .unwrap_or_default()
+    {
+        let Some(id) = entry.get_key_str(key).and_then(Scalar::as_str) else {
+            continue;
+        };
+        if !seen.insert(id) {
+            return Err(invalid(format_smolstr!(
+                "expected unique {key} values in {collection}, got {:?} more than once",
+                crate::text::elide_to(id, 64)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_duplicate_document_ids(document: &Scalar, collection: &str, key: &str) -> Result<()> {
+    let mut seen = HashSet::new();
+    for entry in document
+        .get_key_str(collection)
+        .map(Scalar::sequence_iter)
+        .unwrap_or_default()
+    {
+        let Some(id) = entry.get_key_str(key).and_then(Scalar::as_i64) else {
+            continue;
+        };
+        if !seen.insert(id) {
+            return Err(invalid(format_smolstr!(
+                "expected unique {key} values in {collection}, got {id} more than once"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_unique<T: Copy + Eq + std::hash::Hash + fmt::Debug>(
+    values: impl IntoIterator<Item = T>,
+    name: &str,
+) -> Result<()> {
+    let mut seen = HashSet::new();
+    for value in values {
+        if !seen.insert(value) {
+            return Err(invalid(format_smolstr!(
+                "expected unique {name}s, got {value:?} more than once"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_partition_spec_history(specs: &[PartitionSpec], schemas: &[Field]) -> Result<()> {
+    for spec in specs {
+        spec.validate_shape()?;
+        let document = spec.clone().into_json()?;
+        let official: OfficialUnboundPartitionSpec = official_from_scalar(&document)?;
+        let mut last_error = None;
+        let mut matched = false;
+        for schema in schemas {
+            let schema = std::sync::Arc::new(official_schema(schema)?);
+            match official.clone().bind(schema) {
+                Ok(_) => {
+                    matched = true;
+                    break;
+                }
+                Err(error) => last_error = Some(error.to_string()),
+            }
+        }
+        if !matched {
+            let reason = last_error.as_deref().unwrap_or("no retained schemas");
+            return Err(invalid(format_smolstr!(
+                "expected partition spec {} to bind to a retained schema, got {}",
+                spec.spec_id,
+                crate::text::elide_to(reason, 160)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_sort_order_history(orders: &[SortOrder], schemas: &[Field]) -> Result<()> {
+    for order in orders {
+        order.validate_shape()?;
+        let official = official_sort_order(order)?;
+        let mut last_error = None;
+        let mut matched = false;
+        for schema in schemas {
+            let schema = official_schema(schema)?;
+            let result = OfficialSortOrder::builder()
+                .with_order_id(official.order_id)
+                .with_fields(official.fields.clone())
+                .build(&schema);
+            match result {
+                Ok(_) => {
+                    matched = true;
+                    break;
+                }
+                Err(error) => last_error = Some(error.to_string()),
+            }
+        }
+        if !matched {
+            let reason = last_error.as_deref().unwrap_or("no retained schemas");
+            return Err(invalid(format_smolstr!(
+                "expected sort order {} to bind to a retained schema, got {}",
+                order.order_id,
+                crate::text::elide_to(reason, 160)
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_schema_history(
+    schemas: &[Field],
+    last_column_id: i32,
+    version: FormatVersion,
+) -> Result<()> {
+    let mut schemas: Vec<&Field> = schemas.iter().collect();
+    schemas.sort_by_key(|schema| field_schema_id(schema));
+    let Some(first) = schemas.first().copied() else {
+        return Ok(());
+    };
+    validate_schema_version(first, version)?;
+    let mut highest = first.max_parquet_field_id()?.unwrap_or_default();
+    for pair in schemas.windows(2) {
+        validate_schema_evolution(pair[0], pair[1], highest, version)?;
+        highest = highest.max(pair[1].max_parquet_field_id()?.unwrap_or_default());
+    }
+    if highest > last_column_id {
+        return Err(invalid(format_smolstr!(
+            "expected last-column-id of at least {highest}, got {last_column_id}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_schema_version(schema: &Field, version: FormatVersion) -> Result<()> {
+    if version >= FormatVersion::V3 {
+        return Ok(());
+    }
+    let schema = official_schema(schema)?;
+    for id in 1..=schema.highest_field_id() {
+        let Some(field) = schema.field_by_id(id) else {
+            continue;
+        };
+        if field.initial_default.is_some() || field.write_default.is_some() {
+            return Err(invalid(format_smolstr!(
+                "expected no field defaults before Iceberg v3, got defaults on field id {id}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Read a `snapshot-log`-shaped array of timestamped identifiers.
@@ -1578,6 +2846,16 @@ fn metadata_log(document: &Scalar) -> Vec<(i64, SmolStr)> {
         .collect()
 }
 
+/// Clone one optional metadata array from an official normalized document.
+fn sequence(document: &Scalar, key: &str) -> Vec<Scalar> {
+    document
+        .get_key_str(key)
+        .map(Scalar::sequence_iter)
+        .unwrap_or_default()
+        .cloned()
+        .collect()
+}
+
 /// Return the current wall-clock time in milliseconds since the Unix epoch.
 pub(super) fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -1586,34 +2864,9 @@ pub(super) fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-/// Produce a random version-4 UUID for a newly created table.
-///
-/// A table identifier only has to be unique, so process-seeded hashing is
-/// enough and avoids a dependency whose only job would be sixteen bytes.
+/// Produce the time-ordered UUID used by official Iceberg table creation.
 pub(super) fn uuid() -> SmolStr {
-    use std::hash::{BuildHasher, Hasher};
-
-    let state = std::collections::hash_map::RandomState::new();
-    let mut bytes = [0_u8; 16];
-    for (half, chunk) in bytes.chunks_mut(8).enumerate() {
-        let mut hasher = state.build_hasher();
-        hasher.write_usize(half);
-        hasher.write_i64(now_ms());
-        chunk.copy_from_slice(&hasher.finish().to_le_bytes()[..chunk.len()]);
-    }
-    // Stamp the version and variant so the value is a well-formed UUIDv4.
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    format_smolstr!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
+    SmolStr::new(uuid::Uuid::now_v7().hyphenated().to_string())
 }
 
 /// Report a malformed Iceberg table metadata document.
@@ -1622,5 +2875,178 @@ fn invalid(reason: SmolStr) -> Error {
         format: "iceberg",
         position: 0,
         reason,
+    }
+}
+
+#[cfg(test)]
+mod strict_metadata_tests {
+    use super::{FormatVersion, SortOrder, TableMetadata};
+    use crate::iceberg::{PartitionSpec, Snapshot, SnapshotRef};
+    use crate::{DataType, Scalar};
+    use smol_str::SmolStr;
+
+    fn document(version: FormatVersion) -> Scalar {
+        let schema = DataType::from_fields([DataType::Int64.required_field("id")])
+            .unwrap()
+            .required_field("row");
+        TableMetadata::new(
+            version,
+            "file:///tmp/strict-metadata",
+            schema,
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap()
+        .into_json()
+        .unwrap()
+    }
+
+    #[test]
+    fn normalization_cannot_hide_duplicate_statistics_or_key_ids() {
+        for collection in ["statistics", "partition-statistics"] {
+            let duplicates =
+                crate::json::from_utf8(r#"[{"snapshot-id":7},{"snapshot-id":7}]"#).unwrap();
+            let candidate = document(FormatVersion::V2)
+                .with_key(collection, duplicates)
+                .unwrap();
+            let message = TableMetadata::from_json(&candidate)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains(collection), "{message}");
+            assert!(message.contains("more than once"), "{message}");
+        }
+
+        let duplicates = crate::json::from_utf8(r#"[{"key-id":"k"},{"key-id":"k"}]"#).unwrap();
+        let candidate = document(FormatVersion::V3)
+            .with_key("encryption-keys", duplicates)
+            .unwrap();
+        let message = TableMetadata::from_json(&candidate)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("encryption-keys"), "{message}");
+        assert!(message.contains("more than once"), "{message}");
+    }
+
+    #[test]
+    fn sequence_counters_must_be_non_negative() {
+        let candidate = document(FormatVersion::V2)
+            .with_key("last-sequence-number", -1_i64)
+            .unwrap();
+        let message = TableMetadata::from_json(&candidate)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("non-negative last-sequence-number"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn v1_accepts_only_the_derived_main_ref_emitted_by_pyiceberg() {
+        let mut metadata = TableMetadata::from_json(&document(FormatVersion::V1)).unwrap();
+        metadata
+            .set_current_snapshot(Snapshot {
+                snapshot_id: 7,
+                parent_snapshot_id: None,
+                sequence_number: None,
+                timestamp_ms: metadata.last_updated_ms + 1,
+                manifest_list: SmolStr::new_static("file:///tmp/manifest-list.avro"),
+                manifests: None,
+                summary: vec![(
+                    SmolStr::new_static("operation"),
+                    SmolStr::new_static("append"),
+                )],
+                schema_id: Some(metadata.current_schema_id),
+                encryption_key_id: None,
+                first_row_id: None,
+                added_rows: None,
+            })
+            .unwrap();
+        let document = metadata.into_json().unwrap();
+        assert!(document.get_key_str("refs").is_none());
+
+        let empty = document
+            .clone()
+            .with_key("refs", crate::json::from_utf8("{}").unwrap())
+            .unwrap();
+        assert!(TableMetadata::from_json(&empty).is_ok());
+
+        let refs = Scalar::from_mapping([(
+            Scalar::from("main"),
+            SnapshotRef::branch(7).into_json().unwrap(),
+        )])
+        .unwrap();
+        let candidate = document.clone().with_key("refs", refs).unwrap();
+        let loaded = TableMetadata::from_json(&candidate).unwrap();
+        assert!(loaded.refs.is_empty());
+
+        let wrong_refs = Scalar::from_mapping([(
+            Scalar::from("main"),
+            SnapshotRef::branch(8).into_json().unwrap(),
+        )])
+        .unwrap();
+        let message = TableMetadata::from_json(&document.with_key("refs", wrong_refs).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("current-snapshot-id"), "{message}");
+    }
+
+    #[test]
+    fn sort_order_json_has_no_implicit_fields_or_options() {
+        for text in [
+            r#"{"order-id":0}"#,
+            r#"{"order-id":1,"fields":[{"source-id":1,"transform":"identity","direction":"asc"}]}"#,
+            r#"{"order-id":1,"fields":[{"source-id":2147483648,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
+            r#"{"order-id":0,"fields":[{"source-id":1,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
+        ] {
+            let value = crate::json::from_utf8(text).unwrap();
+            assert!(SortOrder::from_json(&value).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn every_historical_layout_must_bind_to_a_retained_schema() {
+        let mut partition_document = document(FormatVersion::V2);
+        let mut specs: Vec<Scalar> = partition_document
+            .get_key_str("partition-specs")
+            .unwrap()
+            .sequence_iter()
+            .cloned()
+            .collect();
+        specs.push(
+            crate::json::from_utf8(
+                r#"{"spec-id":1,"fields":[{"source-id":999,"field-id":1000,"name":"missing","transform":"identity"}]}"#,
+            )
+            .unwrap(),
+        );
+        partition_document = partition_document
+            .with_key("partition-specs", Scalar::from_sequence(specs))
+            .unwrap();
+        let message = TableMetadata::from_json(&partition_document)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("partition spec 1"), "{message}");
+        assert!(message.contains("retained schema"), "{message}");
+
+        let mut sort_document = document(FormatVersion::V2);
+        let mut orders: Vec<Scalar> = sort_document
+            .get_key_str("sort-orders")
+            .unwrap()
+            .sequence_iter()
+            .cloned()
+            .collect();
+        orders.push(
+            crate::json::from_utf8(
+                r#"{"order-id":1,"fields":[{"source-id":999,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
+            )
+            .unwrap(),
+        );
+        sort_document = sort_document
+            .with_key("sort-orders", Scalar::from_sequence(orders))
+            .unwrap();
+        let message = TableMetadata::from_json(&sort_document)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("sort order 1"), "{message}");
+        assert!(message.contains("retained schema"), "{message}");
     }
 }

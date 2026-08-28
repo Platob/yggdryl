@@ -870,15 +870,15 @@ mod call_counts {
             .unwrap();
 
         // One child resolution (the backend's own file_info), one presence
-        // answer, and the locate that *is* the open: the version hint's
-        // resolution and read, and the current document's resolution and
-        // read. Before the audit, `get` ran `contains` - a full
+        // answer, and the locate that *is* the open. Official UUID metadata
+        // names require one bounded metadata-directory listing after reading
+        // the numeric version hint. Before the audit, `get` ran `contains` - a full
         // resolve-plus-locate - and then resolved and located again: double
         // this.
         let calls = cost(&filesystem, || {
             catalog.tables().get("sales.orders").unwrap();
         });
-        assert_eq!(calls, 11, "get on an existing table");
+        assert_eq!(calls, 13, "get on an existing table");
     }
 
     #[test]
@@ -902,7 +902,8 @@ mod call_counts {
     fn a_create_into_a_missing_ancestry_never_walks_the_ancestry() {
         let (filesystem, catalog) = counted();
 
-        // One resolution, one presence answer, then the create's own writes:
+        // One resolution, one presence answer, then the create's own writes
+        // and one same-version collision listing:
         // the ancestor namespaces are never probed, never listed, and never
         // made in advance - the metadata write is what brings them into
         // being. Before the audit this path ran `contains` (resolve + locate)
@@ -913,7 +914,7 @@ mod call_counts {
                 .create("a.b.c.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(calls, 9, "create into three missing namespace levels");
+        assert_eq!(calls, 10, "create into three missing namespace levels");
 
         // And the table it made opens.
         catalog.tables().get("a.b.c.orders").unwrap();
@@ -931,7 +932,7 @@ mod call_counts {
                 .open_or_create("sales.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(absent, 9, "open_or_create when absent");
+        assert_eq!(absent, 10, "open_or_create when absent");
 
         // The present branch: one classification, whose locate already opened
         // the table - exactly what `get` costs, because it is the same
@@ -942,6 +943,6 @@ mod call_counts {
                 .open_or_create("sales.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(present, 11, "open_or_create when present");
+        assert_eq!(present, 13, "open_or_create when present");
     }
 }

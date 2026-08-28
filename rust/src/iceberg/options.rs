@@ -16,6 +16,7 @@
 //! property that is present but unparseable is a typed error naming the key
 //! and the value, never a silent default.
 
+use iceberg_official::spec::TableProperties as OfficialTableProperties;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::FileFormat;
@@ -51,6 +52,8 @@ pub struct IcebergOptions {
     commit_min_backoff_ms: Option<u64>,
     /// The largest retry wait in milliseconds, when set.
     commit_max_backoff_ms: Option<u64>,
+    /// The total retry-delay budget in milliseconds, when set.
+    commit_total_timeout_ms: Option<u64>,
     /// The size a data file aims for in bytes, when set.
     target_file_size_bytes: Option<u64>,
     /// How many data files a scan decodes at once, when set.
@@ -72,21 +75,28 @@ impl IcebergOptions {
     }
 
     /// The property naming how many beaten commit attempts are retried.
-    pub const COMMIT_RETRIES_KEY: &'static str = "commit.retry.num-retries";
+    pub const COMMIT_RETRIES_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_COMMIT_NUM_RETRIES;
     /// The property naming the first retry wait, in milliseconds.
-    pub const COMMIT_MIN_BACKOFF_MS_KEY: &'static str = "commit.retry.min-wait-ms";
+    pub const COMMIT_MIN_BACKOFF_MS_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_COMMIT_MIN_RETRY_WAIT_MS;
     /// The property naming the largest retry wait, in milliseconds.
-    pub const COMMIT_MAX_BACKOFF_MS_KEY: &'static str = "commit.retry.max-wait-ms";
+    pub const COMMIT_MAX_BACKOFF_MS_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_COMMIT_MAX_RETRY_WAIT_MS;
+    /// The property naming the total retry-delay budget, in milliseconds.
+    pub const COMMIT_TOTAL_TIMEOUT_MS_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_COMMIT_TOTAL_RETRY_TIME_MS;
 
     /// The table property naming the automatic compaction cadence.
     pub const COMPACT_AFTER_COMMITS_KEY: &'static str = "write.auto-compact.commit-interval";
     /// The property naming the size a data file aims for, in bytes.
-    pub const TARGET_FILE_SIZE_KEY: &'static str = "write.target-file-size-bytes";
+    pub const TARGET_FILE_SIZE_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_WRITE_TARGET_FILE_SIZE_BYTES;
     /// The property naming the format new data files are written in.
     ///
     /// This is the spec's own key, so a table whose property says `avro` writes
     /// Avro data files here exactly as it would under Spark.
-    pub const DATA_FORMAT_KEY: &'static str = "write.format.default";
+    pub const DATA_FORMAT_KEY: &'static str = OfficialTableProperties::PROPERTY_DEFAULT_FILE_FORMAT;
     /// The property naming how many data files a scan decodes at once.
     pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
     /// The property naming how many large-enough files justify parallelism.
@@ -95,13 +105,20 @@ impl IcebergOptions {
     pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
 
     /// The retry count nothing configures: Iceberg's own default of 4.
-    pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
+    pub const DEFAULT_COMMIT_RETRIES: u32 =
+        OfficialTableProperties::PROPERTY_COMMIT_NUM_RETRIES_DEFAULT as u32;
     /// The first retry wait nothing configures: 100 milliseconds.
-    pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 = 100;
+    pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 =
+        OfficialTableProperties::PROPERTY_COMMIT_MIN_RETRY_WAIT_MS_DEFAULT;
     /// The largest retry wait nothing configures: one minute.
-    pub const DEFAULT_COMMIT_MAX_BACKOFF_MS: u64 = 60_000;
+    pub const DEFAULT_COMMIT_MAX_BACKOFF_MS: u64 =
+        OfficialTableProperties::PROPERTY_COMMIT_MAX_RETRY_WAIT_MS_DEFAULT;
+    /// The total retry-delay budget nothing configures: thirty minutes.
+    pub const DEFAULT_COMMIT_TOTAL_TIMEOUT_MS: u64 =
+        OfficialTableProperties::PROPERTY_COMMIT_TOTAL_RETRY_TIME_MS_DEFAULT;
     /// The file size nothing configures: Iceberg's own 512 MiB.
-    pub const DEFAULT_TARGET_FILE_SIZE_BYTES: u64 = 512 * 1024 * 1024;
+    pub const DEFAULT_TARGET_FILE_SIZE_BYTES: u64 =
+        OfficialTableProperties::PROPERTY_WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT as u64;
     /// The file count nothing configures: 16 large-enough files.
     pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 16;
     /// The size floor nothing configures: 4 MiB recorded bytes.
@@ -158,6 +175,17 @@ impl IcebergOptions {
     /// Return the explicitly configured maximum retry wait.
     pub const fn commit_max_backoff_ms_option(&self) -> Option<u64> {
         self.commit_max_backoff_ms
+    }
+
+    /// Return the total retry-delay budget in milliseconds. Default: 1 800 000.
+    pub fn commit_total_timeout_ms(&self) -> u64 {
+        self.commit_total_timeout_ms
+            .unwrap_or(Self::DEFAULT_COMMIT_TOTAL_TIMEOUT_MS)
+    }
+
+    /// Return the explicitly configured total retry-delay budget.
+    pub const fn commit_total_timeout_ms_option(&self) -> Option<u64> {
+        self.commit_total_timeout_ms
     }
 
     /// Return the automatic compaction cadence, when one is set.
@@ -302,6 +330,18 @@ impl IcebergOptions {
         self
     }
 
+    /// Set the total retry-delay budget in milliseconds.
+    pub fn set_commit_total_timeout_ms(&mut self, timeout_ms: u64) {
+        self.commit_total_timeout_ms = Some(timeout_ms);
+    }
+
+    /// Set the total retry-delay budget in milliseconds, persistently.
+    #[must_use]
+    pub fn with_commit_total_timeout_ms(mut self, timeout_ms: u64) -> Self {
+        self.set_commit_total_timeout_ms(timeout_ms);
+        self
+    }
+
     /// Set the size a data file aims for, in bytes.
     ///
     /// # Errors
@@ -430,6 +470,7 @@ impl IcebergOptions {
             commit_retries: commit_retries_layer(explicit, metadata)?,
             commit_min_backoff_ms: commit_min_backoff_layer(explicit, metadata)?,
             commit_max_backoff_ms: commit_max_backoff_layer(explicit, metadata)?,
+            commit_total_timeout_ms: commit_total_timeout_layer(explicit, metadata)?,
             target_file_size_bytes: target_file_size_layer(explicit, metadata)?,
             read_parallelism: read_parallelism_layer(explicit, metadata)?,
             read_parallel_min_files: read_parallel_min_files_layer(explicit, metadata)?,
@@ -454,6 +495,8 @@ impl IcebergOptions {
                 .unwrap_or(Self::DEFAULT_COMMIT_MIN_BACKOFF_MS),
             max_backoff_ms: commit_max_backoff_layer(explicit, metadata)?
                 .unwrap_or(Self::DEFAULT_COMMIT_MAX_BACKOFF_MS),
+            total_timeout_ms: commit_total_timeout_layer(explicit, metadata)?
+                .unwrap_or(Self::DEFAULT_COMMIT_TOTAL_TIMEOUT_MS),
         })
     }
 
@@ -496,6 +539,8 @@ pub(super) struct CommitSettings {
     pub(super) min_backoff_ms: u64,
     /// The largest retry wait, in milliseconds.
     pub(super) max_backoff_ms: u64,
+    /// The cumulative backoff budget, in milliseconds.
+    pub(super) total_timeout_ms: u64,
 }
 
 /// What a scan's parallel-read decision runs with, fully resolved.
@@ -518,7 +563,7 @@ fn data_format_layer(
         explicit.and_then(|options| options.data_format),
         metadata,
         IcebergOptions::DATA_FORMAT_KEY,
-        "a data file format of parquet, avro, or orc",
+        "a data file format of parquet, avro, orc, or puffin",
         |_| true,
     )
 }
@@ -574,6 +619,20 @@ fn commit_max_backoff_layer(
         explicit.and_then(|options| options.commit_max_backoff_ms),
         metadata,
         IcebergOptions::COMMIT_MAX_BACKOFF_MS_KEY,
+        "a whole number of milliseconds",
+        |_| true,
+    )
+}
+
+/// The one resolver for [`IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY`].
+fn commit_total_timeout_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<u64>> {
+    layered(
+        explicit.and_then(|options| options.commit_total_timeout_ms),
+        metadata,
+        IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY,
         "a whole number of milliseconds",
         |_| true,
     )

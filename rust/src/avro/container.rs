@@ -809,6 +809,9 @@ pub struct Blocks<'handle, H: IOBase + ?Sized> {
     schema: Schema,
     /// The header's metadata, minus the reserved keys.
     metadata: Vec<(SmolStr, SmolStr)>,
+    /// Exact header metadata bytes for the Iceberg adapter.
+    #[cfg(feature = "iceberg")]
+    raw_metadata: HeaderEntries,
     /// The block compression.
     coding: BlockCoding,
     /// The marker that closes every block.
@@ -950,16 +953,21 @@ fn open_blocks<'handle, H: IOBase + ?Sized>(
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,
         None => BlockCoding::Shared(Codec::Identity),
     };
-    let metadata = entries
+    let raw_metadata: HeaderEntries = entries
         .into_iter()
         .filter(|(key, _)| key != SCHEMA_KEY && key != CODEC_KEY)
-        .map(|(key, value)| (key, SmolStr::new(String::from_utf8_lossy(&value))))
+        .collect();
+    let metadata = raw_metadata
+        .iter()
+        .map(|(key, value)| (key.clone(), SmolStr::new(String::from_utf8_lossy(value))))
         .collect();
 
     Ok(Blocks {
         source,
         schema,
         metadata,
+        #[cfg(feature = "iceberg")]
+        raw_metadata,
         coding,
         sync,
         limits,
@@ -975,6 +983,12 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
     /// Return the header's metadata, minus the reserved schema and codec.
     pub fn metadata(&self) -> &[(SmolStr, SmolStr)] {
         &self.metadata
+    }
+
+    /// Return exact header metadata bytes for crate-native adapters.
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn metadata_bytes(&self) -> &[(SmolStr, Vec<u8>)] {
+        &self.raw_metadata
     }
 
     /// Return one metadata value by key.

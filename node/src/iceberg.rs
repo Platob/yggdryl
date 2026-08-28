@@ -161,7 +161,7 @@ fn file_format_from_name(name: &str) -> Result<FileFormat> {
 /// Every field is optional because an options value records only what was set
 /// on it: a field left out is not "the default" but unresolved, and a table
 /// still answers it from its own properties. The names are the ones the
-/// getters carry, so the object and the setters spell the same nine things.
+/// getters carry, so the object and the setters spell the same ten things.
 #[napi(object)]
 pub struct IcebergOptionsInput {
     /// How many beaten commit attempts are retried.
@@ -170,6 +170,8 @@ pub struct IcebergOptionsInput {
     pub commit_min_backoff_ms: Option<f64>,
     /// The largest commit retry wait, in milliseconds.
     pub commit_max_backoff_ms: Option<f64>,
+    /// The total commit retry-delay budget, in milliseconds.
+    pub commit_total_timeout_ms: Option<f64>,
     /// The size a data file aims for, in bytes.
     pub target_file_size: Option<f64>,
     /// How many data files a scan decodes at once.
@@ -181,7 +183,7 @@ pub struct IcebergOptionsInput {
     pub read_parallel_min_file_size: Option<f64>,
     /// After how many data commits an automatic compaction runs.
     pub compact_after_commits: Option<u32>,
-    /// The format new data files are written in, as `PARQUET` or `AVRO`.
+    /// An Iceberg file-format name. Table writes currently encode Parquet and Avro.
     pub data_format: Option<String>,
 }
 
@@ -203,6 +205,9 @@ fn apply_options_input(options: &mut CoreIcebergOptions, input: IcebergOptionsIn
     }
     if let Some(wait_ms) = input.commit_max_backoff_ms {
         options.set_commit_max_backoff_ms(crate::exact_u64(wait_ms, "commitMaxBackoffMs")?);
+    }
+    if let Some(timeout_ms) = input.commit_total_timeout_ms {
+        options.set_commit_total_timeout_ms(crate::exact_u64(timeout_ms, "commitTotalTimeoutMs")?);
     }
     if let Some(bytes) = input.target_file_size {
         options
@@ -283,8 +288,8 @@ impl JsIcebergOptions {
 
     /// The first commit retry wait, in milliseconds. Default: 100.
     #[napi(getter)]
-    pub fn commit_min_backoff_ms(&self) -> f64 {
-        self.inner.commit_min_backoff_ms() as f64
+    pub fn commit_min_backoff_ms(&self) -> Result<f64> {
+        crate::exact_f64(self.inner.commit_min_backoff_ms(), "commitMinBackoffMs")
     }
 
     /// Set the first commit retry wait, in milliseconds.
@@ -301,8 +306,8 @@ impl JsIcebergOptions {
 
     /// The largest commit retry wait, in milliseconds. Default: 60000.
     #[napi(getter)]
-    pub fn commit_max_backoff_ms(&self) -> f64 {
-        self.inner.commit_max_backoff_ms() as f64
+    pub fn commit_max_backoff_ms(&self) -> Result<f64> {
+        crate::exact_f64(self.inner.commit_max_backoff_ms(), "commitMaxBackoffMs")
     }
 
     /// Set the largest commit retry wait, in milliseconds.
@@ -317,10 +322,28 @@ impl JsIcebergOptions {
         Ok(())
     }
 
+    /// The total commit retry-delay budget, in milliseconds. Default: 1800000.
+    #[napi(getter)]
+    pub fn commit_total_timeout_ms(&self) -> Result<f64> {
+        crate::exact_f64(self.inner.commit_total_timeout_ms(), "commitTotalTimeoutMs")
+    }
+
+    /// Set the total commit retry-delay budget, in milliseconds.
+    ///
+    /// # Errors
+    ///
+    /// Throws when the timeout is not a whole non-negative number of at most 2^53.
+    #[napi(setter)]
+    pub fn set_commit_total_timeout_ms(&mut self, timeout_ms: f64) -> Result<()> {
+        self.inner
+            .set_commit_total_timeout_ms(crate::exact_u64(timeout_ms, "commitTotalTimeoutMs")?);
+        Ok(())
+    }
+
     /// The size a data file aims for, in bytes. Default: 512 MiB.
     #[napi(getter)]
-    pub fn target_file_size(&self) -> f64 {
-        self.inner.target_file_size_bytes() as f64
+    pub fn target_file_size(&self) -> Result<f64> {
+        crate::exact_f64(self.inner.target_file_size_bytes(), "targetFileSize")
     }
 
     /// Set the size a data file aims for, in bytes.
@@ -340,8 +363,9 @@ impl JsIcebergOptions {
     /// How many data files a scan decodes at once. Default: the host's own
     /// parallelism, kept in 1..=8.
     #[napi(getter)]
-    pub fn read_parallelism(&self) -> u32 {
-        u32::try_from(self.inner.read_parallelism()).unwrap_or(u32::MAX)
+    pub fn read_parallelism(&self) -> Result<u32> {
+        u32::try_from(self.inner.read_parallelism())
+            .map_err(|_| napi::Error::from_reason("readParallelism exceeds a JavaScript u32"))
     }
 
     /// Set how many data files a scan decodes at once.
@@ -359,8 +383,9 @@ impl JsIcebergOptions {
 
     /// How many large-enough files justify a parallel scan. Default: 16.
     #[napi(getter)]
-    pub fn read_parallel_min_files(&self) -> u32 {
-        u32::try_from(self.inner.read_parallel_min_files()).unwrap_or(u32::MAX)
+    pub fn read_parallel_min_files(&self) -> Result<u32> {
+        u32::try_from(self.inner.read_parallel_min_files())
+            .map_err(|_| napi::Error::from_reason("readParallelMinFiles exceeds a JavaScript u32"))
     }
 
     /// Set how many large-enough files justify a parallel scan.
@@ -372,8 +397,11 @@ impl JsIcebergOptions {
     /// The recorded size below which a file does not count toward justifying a
     /// parallel scan, in bytes. Default: 4 MiB.
     #[napi(getter)]
-    pub fn read_parallel_min_file_size(&self) -> f64 {
-        self.inner.read_parallel_min_file_size_bytes() as f64
+    pub fn read_parallel_min_file_size(&self) -> Result<f64> {
+        crate::exact_f64(
+            self.inner.read_parallel_min_file_size_bytes(),
+            "readParallelMinFileSize",
+        )
     }
 
     /// Set the size below which a file does not count toward justifying a
@@ -634,6 +662,17 @@ impl JsSnapshot {
         self.inner.manifest_list.to_string()
     }
 
+    /// Direct manifest locations carried by a legacy v1 snapshot.
+    #[napi(getter)]
+    pub fn manifests(&self) -> Option<Vec<String>> {
+        self.inner.manifests.as_ref().map(|paths| {
+            paths
+                .iter()
+                .map(|path| path.to_string())
+                .collect::<Vec<_>>()
+        })
+    }
+
     /// What the commit did, defaulting to `append`.
     #[napi(getter)]
     pub fn operation(&self) -> String {
@@ -654,6 +693,15 @@ impl JsSnapshot {
     #[napi(getter)]
     pub const fn schema_id(&self) -> Option<i32> {
         self.inner.schema_id
+    }
+
+    /// V3 encryption key used by this snapshot, when encrypted.
+    #[napi(getter)]
+    pub fn encryption_key_id(&self) -> Option<String> {
+        self.inner
+            .encryption_key_id
+            .as_ref()
+            .map(ToString::to_string)
     }
 
     /// First row id assigned by a v3 snapshot, when row lineage is present.
@@ -840,37 +888,37 @@ impl JsManifestFile {
 
     /// Files the manifest marks added.
     #[napi(getter)]
-    pub const fn added_files_count(&self) -> i32 {
+    pub const fn added_files_count(&self) -> Option<i32> {
         self.inner.added_files_count
     }
 
     /// Files the manifest marks existing.
     #[napi(getter)]
-    pub const fn existing_files_count(&self) -> i32 {
+    pub const fn existing_files_count(&self) -> Option<i32> {
         self.inner.existing_files_count
     }
 
     /// Files the manifest marks deleted.
     #[napi(getter)]
-    pub const fn deleted_files_count(&self) -> i32 {
+    pub const fn deleted_files_count(&self) -> Option<i32> {
         self.inner.deleted_files_count
     }
 
     /// Rows in the added files.
     #[napi(getter)]
-    pub const fn added_rows_count(&self) -> i64 {
+    pub const fn added_rows_count(&self) -> Option<i64> {
         self.inner.added_rows_count
     }
 
     /// Rows in the existing files.
     #[napi(getter)]
-    pub const fn existing_rows_count(&self) -> i64 {
+    pub const fn existing_rows_count(&self) -> Option<i64> {
         self.inner.existing_rows_count
     }
 
     /// Rows in the deleted files.
     #[napi(getter)]
-    pub const fn deleted_rows_count(&self) -> i64 {
+    pub const fn deleted_rows_count(&self) -> Option<i64> {
         self.inner.deleted_rows_count
     }
 
@@ -887,6 +935,12 @@ impl JsManifestFile {
                 upper_bound: summary.upper_bound.clone().map(Into::into),
             })
             .collect()
+    }
+
+    /// Implementation-specific encryption metadata for the manifest file.
+    #[napi(getter)]
+    pub fn key_metadata(&self) -> Option<Buffer> {
+        self.inner.key_metadata.clone().map(Into::into)
     }
 
     /// First row id assigned by a v3 manifest, when row lineage is present.
@@ -942,14 +996,14 @@ pub struct JsScanPlan {
 }
 
 impl JsScanPlan {
-    fn from_core(plan: CoreScanPlan) -> Self {
-        Self {
-            record_count: plan.record_count(),
+    fn from_core(plan: CoreScanPlan) -> yggdryl::Result<Self> {
+        Ok(Self {
+            record_count: plan.record_count()?,
             files_planned: plan.tasks.len(),
             files_skipped: plan.files_skipped(),
             manifests_read: plan.manifests_read,
             manifests_skipped: plan.manifests_skipped(),
-        }
+        })
     }
 
     fn identity_value(&self) -> CoreScalar {
@@ -1117,6 +1171,12 @@ impl JsDataFile {
         counts(&self.file.null_value_counts)
     }
 
+    /// Not-a-number values per column.
+    #[napi(getter)]
+    pub fn nan_value_counts(&self) -> Vec<FieldCount> {
+        counts(&self.file.nan_value_counts)
+    }
+
     /// Serialized minimum per column, where the two encodings agree on one.
     #[napi(getter)]
     pub fn lower_bounds(&self) -> Vec<FieldBound> {
@@ -1129,10 +1189,55 @@ impl JsDataFile {
         bounds(&self.file.upper_bounds)
     }
 
+    /// Implementation-specific encryption key metadata.
+    #[napi(getter)]
+    pub fn key_metadata(&self) -> Option<Buffer> {
+        self.file.key_metadata.clone().map(Into::into)
+    }
+
+    /// Byte offsets a reader may split the file at.
+    #[napi(getter)]
+    pub fn split_offsets(&self) -> Vec<i64> {
+        self.file.split_offsets.clone()
+    }
+
+    /// Field identifiers used by an equality-delete file.
+    #[napi(getter)]
+    pub fn equality_ids(&self) -> Option<Vec<i32>> {
+        self.file.equality_ids.clone()
+    }
+
     /// The sort order the file was written in, when one applies.
     #[napi(getter)]
     pub const fn sort_order_id(&self) -> Option<i32> {
         self.file.sort_order_id
+    }
+
+    /// First row identifier assigned to this v3 data file.
+    #[napi(getter)]
+    pub fn first_row_id(&self) -> Option<BigInt> {
+        self.file.first_row_id.map(BigInt::from)
+    }
+
+    /// Data file referenced by position-delete metadata.
+    #[napi(getter)]
+    pub fn referenced_data_file(&self) -> Option<String> {
+        self.file
+            .referenced_data_file
+            .as_ref()
+            .map(ToString::to_string)
+    }
+
+    /// Byte offset of referenced v3 content.
+    #[napi(getter)]
+    pub const fn content_offset(&self) -> Option<i64> {
+        self.file.content_offset
+    }
+
+    /// Byte length of referenced v3 content.
+    #[napi(getter)]
+    pub const fn content_size_in_bytes(&self) -> Option<i64> {
+        self.file.content_size_in_bytes
     }
 
     /// Return the file's location, so a data file prints as where it is.
@@ -1403,19 +1508,19 @@ impl JsTable {
     /// The table's base location, as a URI.
     #[napi(getter)]
     pub fn location(&self) -> String {
-        self.inner.metadata().location.to_string()
+        self.inner.metadata().location().to_owned()
     }
 
     /// A stable identifier for the table itself, not for any one version.
     #[napi(getter)]
     pub fn table_uuid(&self) -> String {
-        self.inner.metadata().table_uuid.to_string()
+        self.inner.metadata().table_uuid().to_owned()
     }
 
     /// Which revision of the specification the metadata is written to.
     #[napi(getter)]
     pub const fn format_version(&self) -> i32 {
-        self.inner.metadata().format_version.number()
+        self.inner.metadata().format_version().number()
     }
 
     /// The version number of the current metadata document.
@@ -1429,7 +1534,7 @@ impl JsTable {
     pub fn properties(&self) -> HashMap<String, String> {
         self.inner
             .metadata()
-            .properties
+            .properties()
             .iter()
             .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect()
@@ -1458,16 +1563,13 @@ impl JsTable {
 
     /// The partition spec new data is written against.
     #[napi(getter)]
-    pub fn spec(&self) -> JsPartitionSpec {
-        let metadata = self.inner.metadata();
-        JsPartitionSpec::from_core(
-            metadata
-                .partition_specs
-                .iter()
-                .find(|spec| spec.spec_id == metadata.default_spec_id)
-                .cloned()
-                .unwrap_or_else(CorePartitionSpec::unpartitioned),
-        )
+    pub fn spec(&self) -> Result<JsPartitionSpec> {
+        self.inner
+            .metadata()
+            .default_spec()
+            .cloned()
+            .map(JsPartitionSpec::from_core)
+            .map_err(napi_error)
     }
 
     /// The snapshot a reader sees, or `null` when the table has none.
@@ -1484,7 +1586,7 @@ impl JsTable {
     pub fn schemas(&self) -> Vec<JsField> {
         self.inner
             .metadata()
-            .schemas
+            .schemas()
             .iter()
             .cloned()
             .map(JsField::from_core)
@@ -1496,7 +1598,7 @@ impl JsTable {
     pub fn snapshots(&self) -> Vec<JsSnapshot> {
         self.inner
             .metadata()
-            .snapshots
+            .snapshots()
             .iter()
             .map(snapshot_view)
             .collect()
@@ -1525,7 +1627,7 @@ impl JsTable {
         let metadata = self.inner.metadata();
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
             let retained: Vec<String> = metadata
-                .snapshots
+                .snapshots()
                 .iter()
                 .map(|snapshot| snapshot.snapshot_id.to_string())
                 .collect();
@@ -1616,7 +1718,7 @@ impl JsTable {
             files_skipped: i64::try_from(plan.files_skipped()).unwrap_or(i64::MAX),
             manifests_read: i64::try_from(plan.manifests_read).unwrap_or(i64::MAX),
             manifests_skipped: i64::try_from(plan.manifests_skipped()).unwrap_or(i64::MAX),
-            record_count: plan.record_count(),
+            record_count: plan.record_count().map_err(napi_error)?,
         })
     }
 
@@ -1682,10 +1784,11 @@ impl JsTable {
     #[napi]
     pub fn plan(&self, filters: Option<ScanFilters>) -> Result<JsScanPlan> {
         let pairs = filter_pairs(filters);
-        self.inner
+        let plan = self
+            .inner
             .plan(&borrowed_pairs(&pairs))
-            .map(JsScanPlan::from_core)
-            .map_err(napi_error)
+            .map_err(napi_error)?;
+        JsScanPlan::from_core(plan).map_err(napi_error)
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -1701,10 +1804,11 @@ impl JsTable {
     ) -> Result<JsScanPlan> {
         let snapshot_id = snapshot_id_from_input(snapshot_id)?;
         let pairs = filter_pairs(filters);
-        self.inner
+        let plan = self
+            .inner
             .plan_at(snapshot_id, &borrowed_pairs(&pairs))
-            .map(JsScanPlan::from_core)
-            .map_err(napi_error)
+            .map_err(napi_error)?;
+        JsScanPlan::from_core(plan).map_err(napi_error)
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
@@ -1924,16 +2028,33 @@ impl JsTable {
 
     /// Expire the snapshots retention no longer keeps, returning their ids.
     ///
-    /// `olderThanMs` is the default age cutoff; every ref's own retention
-    /// fields are honored first, so a tagged snapshot outlives the cutoff. A
-    /// table with nothing old commits nothing at all - the check runs on a copy
-    /// first, so an empty expiry costs no version.
+    /// Omitted cutoff and retain count use table properties. Explicit snapshot
+    /// ids join age-based selection; retained heads cannot be removed.
+    /// Statistics metadata is removed, while physical files remain.
     #[napi]
-    pub fn expire_snapshots(&mut self, older_than_ms: f64) -> Result<Vec<BigInt>> {
-        let older_than_ms = crate::exact_i64(older_than_ms, "olderThanMs")?;
+    pub fn expire_snapshots(
+        &mut self,
+        older_than_ms: Option<f64>,
+        retain_last: Option<f64>,
+        snapshot_ids: Option<Vec<SnapshotIdInput>>,
+    ) -> Result<Vec<BigInt>> {
+        let older_than_ms = older_than_ms
+            .map(|value| crate::exact_i64(value, "olderThanMs"))
+            .transpose()?;
+        let retain_last = retain_last
+            .map(|value| {
+                usize::try_from(crate::exact_u64(value, "retainLast")?)
+                    .map_err(|_| napi_error("retainLast exceeds this platform's usize"))
+            })
+            .transpose()?;
+        let snapshot_ids = snapshot_ids
+            .unwrap_or_default()
+            .into_iter()
+            .map(snapshot_id_from_input)
+            .collect::<Result<Vec<_>>>()?;
         Ok(self
             .inner
-            .expire_snapshots(older_than_ms)
+            .expire_snapshots(older_than_ms, retain_last, &snapshot_ids)
             .map_err(napi_error)?
             .into_iter()
             .map(BigInt::from)
@@ -2048,7 +2169,7 @@ impl JsTable {
                     metadata.set_property(key.as_str(), value.as_str())?;
                 }
                 for key in &removes {
-                    metadata.remove_property(key);
+                    metadata.remove_property(key)?;
                 }
                 Ok(())
             })

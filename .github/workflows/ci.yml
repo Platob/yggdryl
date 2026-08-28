@@ -16,10 +16,8 @@ env:
 
 jobs:
   rust:
-    # The Parquet encoding and the Iceberg table format over it are behind
-    # non-default features, so a single-configuration job never compiles them
-    # at all: their code, their tests, and their documentation are only checked
-    # by the second leg.
+    # Keep the core's non-default Parquet/Iceberg contract explicit. The
+    # bindings enable it too, then exercise their runtime surfaces below.
     name: Rust quality (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -58,6 +56,31 @@ jobs:
         run: |
           cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
           cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
+
+  iceberg-msrv:
+    name: Iceberg Rust 1.94
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Iceberg MSRV
+        run: rustup toolchain install 1.94.0 --profile minimal
+      - name: Check the official Iceberg boundary at its declared MSRV
+        run: cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
+
+  pyiceberg-interop:
+    name: PyIceberg exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Install the external implementation
+        run: python -m pip install "pyiceberg[pyarrow,sql-sqlite]==0.11.1" "pyarrow==25.0.1"
+      - name: Exchange v1, v2, and v3 tables
+        run: python scripts/check_iceberg_interop.py
 
   python:
     name: Python binding (${{ matrix.pyarrow }})

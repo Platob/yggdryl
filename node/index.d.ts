@@ -267,12 +267,28 @@ export declare class DataFile {
   get valueCounts(): Array<FieldCount>
   /** Nulls per column. */
   get nullValueCounts(): Array<FieldCount>
+  /** Not-a-number values per column. */
+  get nanValueCounts(): Array<FieldCount>
   /** Serialized minimum per column, where the two encodings agree on one. */
   get lowerBounds(): Array<FieldBound>
   /** Serialized maximum per column, where the two encodings agree on one. */
   get upperBounds(): Array<FieldBound>
+  /** Implementation-specific encryption key metadata. */
+  get keyMetadata(): Buffer | null
+  /** Byte offsets a reader may split the file at. */
+  get splitOffsets(): Array<number>
+  /** Field identifiers used by an equality-delete file. */
+  get equalityIds(): Array<number> | null
   /** The sort order the file was written in, when one applies. */
   get sortOrderId(): number | null
+  /** First row identifier assigned to this v3 data file. */
+  get firstRowId(): bigint | null
+  /** Data file referenced by position-delete metadata. */
+  get referencedDataFile(): string | null
+  /** Byte offset of referenced v3 content. */
+  get contentOffset(): number | null
+  /** Byte length of referenced v3 content. */
+  get contentSizeInBytes(): number | null
   /** Return the file's location, so a data file prints as where it is. */
   toString(): string
   /** Return whether two views carry the same complete core data file. */
@@ -780,6 +796,16 @@ export declare class IcebergOptions {
    * Throws when the wait is not a whole non-negative number of at most 2^53.
    */
   set commitMaxBackoffMs(waitMs: number)
+  /** The total commit retry-delay budget, in milliseconds. Default: 1800000. */
+  get commitTotalTimeoutMs(): number
+  /**
+   * Set the total commit retry-delay budget, in milliseconds.
+   *
+   * # Errors
+   *
+   * Throws when the timeout is not a whole non-negative number of at most 2^53.
+   */
+  set commitTotalTimeoutMs(timeoutMs: number)
   /** The size a data file aims for, in bytes. Default: 512 MiB. */
   get targetFileSize(): number
   /**
@@ -1304,19 +1330,21 @@ export declare class ManifestFile {
   /** The snapshot that added the manifest. */
   get addedSnapshotId(): bigint
   /** Files the manifest marks added. */
-  get addedFilesCount(): number
+  get addedFilesCount(): number | null
   /** Files the manifest marks existing. */
-  get existingFilesCount(): number
+  get existingFilesCount(): number | null
   /** Files the manifest marks deleted. */
-  get deletedFilesCount(): number
+  get deletedFilesCount(): number | null
   /** Rows in the added files. */
-  get addedRowsCount(): number
+  get addedRowsCount(): number | null
   /** Rows in the existing files. */
-  get existingRowsCount(): number
+  get existingRowsCount(): number | null
   /** Rows in the deleted files. */
-  get deletedRowsCount(): number
+  get deletedRowsCount(): number | null
   /** Partition summaries in the partition spec's field order. */
   get partitions(): Array<FieldSummaryView>
+  /** Implementation-specific encryption metadata for the manifest file. */
+  get keyMetadata(): Buffer | null
   /** First row id assigned by a v3 manifest, when row lineage is present. */
   get firstRowId(): bigint | null
   /** Return whether the complete core manifest-list rows are equal. */
@@ -2047,12 +2075,16 @@ export declare class Snapshot {
   get timestampMs(): number
   /** Location of the Avro manifest list this snapshot's manifests are in. */
   get manifestList(): string
+  /** Direct manifest locations carried by a legacy v1 snapshot. */
+  get manifests(): Array<string> | null
   /** What the commit did, defaulting to `append`. */
   get operation(): string
   /** The commit summary, keyed by Iceberg's summary vocabulary. */
   get summary(): Record<string, string>
   /** The schema in effect when the snapshot was written. */
   get schemaId(): number | null
+  /** V3 encryption key used by this snapshot, when encrypted. */
+  get encryptionKeyId(): string | null
   /** First row id assigned by a v3 snapshot, when row lineage is present. */
   get firstRowId(): bigint | null
   /** Rows this v3 snapshot added, when row lineage is present. */
@@ -2368,12 +2400,11 @@ export declare class Table {
   /**
    * Expire the snapshots retention no longer keeps, returning their ids.
    *
-   * `olderThanMs` is the default age cutoff; every ref's own retention
-   * fields are honored first, so a tagged snapshot outlives the cutoff. A
-   * table with nothing old commits nothing at all - the check runs on a copy
-   * first, so an empty expiry costs no version.
+   * Omitted cutoff and retain count use table properties. Explicit snapshot
+   * ids join age-based selection; retained heads cannot be removed.
+   * Statistics metadata is removed, while physical files remain.
    */
-  expireSnapshots(olderThanMs: number): Array<bigint>
+  expireSnapshots(olderThanMs?: number | undefined | null, retainLast?: number | undefined | null, snapshotIds?: Array<SnapshotIdInput> | undefined | null): Array<bigint>
   /**
    * Store an explicit options override every later call resolves first.
    *
@@ -3009,7 +3040,7 @@ export interface FieldSummaryView {
  * Every field is optional because an options value records only what was set
  * on it: a field left out is not "the default" but unresolved, and a table
  * still answers it from its own properties. The names are the ones the
- * getters carry, so the object and the setters spell the same nine things.
+ * getters carry, so the object and the setters spell the same ten things.
  */
 export interface IcebergOptionsInput {
   /** How many beaten commit attempts are retried. */
@@ -3018,6 +3049,8 @@ export interface IcebergOptionsInput {
   commitMinBackoffMs?: number
   /** The largest commit retry wait, in milliseconds. */
   commitMaxBackoffMs?: number
+  /** The total commit retry-delay budget, in milliseconds. */
+  commitTotalTimeoutMs?: number
   /** The size a data file aims for, in bytes. */
   targetFileSize?: number
   /** How many data files a scan decodes at once. */
@@ -3031,7 +3064,7 @@ export interface IcebergOptionsInput {
   readParallelMinFileSize?: number
   /** After how many data commits an automatic compaction runs. */
   compactAfterCommits?: number
-  /** The format new data files are written in, as `PARQUET` or `AVRO`. */
+  /** An Iceberg file-format name. Table writes currently encode Parquet and Avro. */
   dataFormat?: string
 }
 

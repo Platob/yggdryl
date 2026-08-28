@@ -140,18 +140,17 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-**An Iceberg table is a folder.** `metadata/` holds the JSON documents and the Avro manifests,
-`data/` holds the Parquet files, and everything here is reached with
-[`IOBase::child_by_path`](io.md) and [`IOBase::ls`](io.md) against the handle the table was constructed
-from. Nothing in this module opens a path or calls the file system, so the same code works over a
-local directory today and over an object store the moment a backend for one exists.
+The `iceberg` feature delegates metadata/schema mutation, validation, property
+parsing, and manifest/list reads to official Iceberg 0.10.1. Yggdryl owns
+[`IOBase`](io.md) publication, the public [`Field`](field.md)/Arrow 59 boundary,
+data-file writes, deterministic manifest/list writers, planning, and scans. The
+local writers remain because the official 0.10.1 writers use an async `FileIO`
+and Arrow 58 boundary outside `IOBase`, produce non-deterministic Avro bytes,
+and encode Iceberg UUID partitions as Avro strings instead of `fixed[16]`.
+The official crate's Arrow 58 types stay private.
 
-The vocabulary is the crate's own. A schema is a non-null struct [`Field`](field.md) whose children
-carry `PARQUET:field_id`; a metadata document is a [`Scalar`](json.md) read by the crate's own JSON
-parser; a data file is whatever [parquet](parquet.md) wrote plus the statistics it reported; a scan
-is a `BatchReader` with the same [column pushdown](io.md) every other read gets. No dependency is
-added for the table format itself - even the Avro container the manifests live in is implemented
-here, because it is a header and some blocks.
+An Iceberg table is one `IOBase` container: metadata and manifests live under
+`metadata/`, and record files live under `data/`.
 
 ## The `iceberg` feature
 
@@ -162,8 +161,15 @@ here, because it is a header and some blocks.
 yggdryl = { version = "0.1", features = ["iceberg"] }
 ```
 
-It implies `parquet`, which implies `arrow`. A table format sits on top of the record encodings, so
-a consumer that only needs schemas never compiles it.
+It enables Yggdryl's Parquet/Arrow 59 stack and official Iceberg 0.10.1.
+Iceberg-enabled builds require Rust 1.94; default and schema-only builds retain
+the workspace's Rust 1.85 baseline. No Arrow 58 value crosses the Rust, Python,
+or JavaScript API. The boundary follows the
+[Iceberg specification](https://iceberg.apache.org/spec/) and the official
+[`TableMetadataBuilder`](https://docs.rs/iceberg/0.10.1/iceberg/spec/struct.TableMetadataBuilder.html),
+[`TableProperties`](https://docs.rs/iceberg/0.10.1/iceberg/spec/struct.TableProperties.html),
+and [`ManifestList`](https://docs.rs/iceberg/0.10.1/iceberg/spec/struct.ManifestList.html)
+contracts.
 
 ## What a table writes
 
@@ -209,8 +215,8 @@ a consumer that only needs schemas never compiles it.
     assert!(names.iter().any(|name| name.ends_with(".parquet")));
     assert!(names.iter().any(|name| name.starts_with("snap-") && name.ends_with(".avro")));
     assert!(names.iter().any(|name| name.ends_with("-m0.avro")));
-    assert!(names.contains(&"v1.metadata.json".to_owned()));
-    assert!(names.contains(&"v2.metadata.json".to_owned()));
+    assert!(names.iter().any(|name| name.starts_with("00001-") && name.ends_with(".metadata.json")));
+    assert!(names.iter().any(|name| name.starts_with("00002-") && name.ends_with(".metadata.json")));
     assert!(names.contains(&"version-hint.text".to_owned()));
     ```
 
@@ -247,8 +253,8 @@ a consumer that only needs schemas never compiles it.
     assert any(name.endswith(".parquet") for name in names)
     assert any(name.startswith("snap-") and name.endswith(".avro") for name in names)
     assert any(name.endswith("-m0.avro") for name in names)
-    assert "v1.metadata.json" in names
-    assert "v2.metadata.json" in names
+    assert any(name.startswith("00001-") and name.endswith(".metadata.json") for name in names)
+    assert any(name.startswith("00002-") and name.endswith(".metadata.json") for name in names)
     assert "version-hint.text" in names
     ```
 
@@ -278,8 +284,8 @@ a consumer that only needs schemas never compiles it.
     assert.ok(names.some((name) => name.endsWith('.parquet')))
     assert.ok(names.some((name) => name.startsWith('snap-') && name.endsWith('.avro')))
     assert.ok(names.some((name) => name.endsWith('-m0.avro')))
-    assert.ok(names.includes('v1.metadata.json'))
-    assert.ok(names.includes('v2.metadata.json'))
+    assert.ok(names.some((name) => name.startsWith('00001-') && name.endsWith('.metadata.json')))
+    assert.ok(names.some((name) => name.startsWith('00002-') && name.endsWith('.metadata.json')))
     assert.ok(names.includes('version-hint.text'))
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
@@ -289,6 +295,10 @@ Committing means writing a new metadata document; nothing is mutated in place, w
 the previous snapshot still readable afterwards. `Table::open` finds the current document the way
 `HadoopTables` does - `metadata/version-hint.text`, falling back to the highest-numbered
 `*.metadata.json` - because that is the only way to find a table without a catalog.
+It retains the discovered filename, including official `00003-<uuid>` names, so the next
+`metadata-log` entry is exact. Metadata is gzip-decoded by magic bytes; setting
+`write.metadata.compression-codec` to `gzip` makes later commits write `.gz.metadata.json`.
+Apache Iceberg's property parser rejects unsupported codecs before publication.
 
 ## Table metadata, v1 through v3
 
@@ -332,20 +342,20 @@ let v3 = TableMetadata::new(
     schema,
     PartitionSpec::unpartitioned(),
 )?;
-assert_eq!(v3.next_row_id, Some(0));
+assert_eq!(v3.next_row_id(), Some(0));
 assert!(v3.clone().into_json()?.contains_key("next-row-id"));
 
 // Every version reads back as itself.
 for original in [v1, v2, v3] {
     let read = TableMetadata::from_json(&original.clone().into_json()?)?;
-    assert_eq!(read.format_version, original.format_version);
+    assert_eq!(read.format_version(), original.format_version());
     assert!(read.current_snapshot().is_none());
 }
 ```
 
-Reading normalizes: a v1 document's `schema` becomes a one-element `schemas`, and its bare
-`partition-spec` array becomes a spec with id zero, so nothing downstream has to ask which version
-it is looking at. Writing emits exactly what the declared version requires.
+`TableMetadata::from_json` parses and normalizes versions 1 through 3 through
+the official crate. `into_json` renders Yggdryl's deterministic public view,
+then validates the complete document with the official model.
 
 `TableMetadata` has canonical value identity: schemas, partition specs, sort orders, snapshots,
 properties, and refs compare as keyed collections independent of document order, while snapshot
@@ -353,10 +363,20 @@ and metadata logs retain their meaningful order. `Eq`, `Ord`, `Hash`, and `stabl
 that same identity. The Iceberg identity benchmark measures `stable_hash` over representative
 metadata.
 
-The v3 additions this module implements are `next-row-id` on the table, `first-row-id` and
-`added-rows` on each snapshot, the nanosecond temporals `timestamp_ns` and `timestamptz_ns`, the
-`unknown` type, and the `initial-default` / `write-default` column values, which travel as reserved
-`iceberg:*` [Field metadata](field.md).
+Official validation covers the version-specific shape. Round trips retain
+table and partition statistics, encryption keys, snapshot key and row-lineage
+fields, nanosecond temporals, `unknown`, and column defaults.
+Rust mutates `statistics`, `partition-statistics`, and v3 `encryption-keys`
+through the corresponding `TableMetadata` methods, all backed by the official
+metadata builder.
+
+Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1:
+
+| Metadata operation | Median | Throughput |
+| --- | ---: | ---: |
+| Parse 100 snapshots and three 50-column schemas | 12.168 ms | 2.8613 MiB/s |
+| Expire 99 of 100 snapshots | 9.5145 ms | 3.6592 MiB/s |
+| Stable hash of the same metadata | 61.634 us | - |
 
 ## Snapshots and the current snapshot
 
@@ -384,14 +404,17 @@ assert!(metadata.current_snapshot().is_none());
 // `-1` is the other way a document spells "no current snapshot".
 let document = metadata.into_json()?.with_key("current-snapshot-id", -1_i64)?;
 let read = TableMetadata::from_json(&document)?;
-assert!(read.current_snapshot_id.is_none());
+assert!(read.current_snapshot_id().is_none());
 assert!(read.current_snapshot().is_none());
 ```
 
-A snapshot is one complete version of the table: an identifier, the manifest list naming every
-manifest alive at that moment, and a summary of what the commit did. The *current* snapshot is a
-pointer, which is why `current_snapshot` returns an `Option` and why reading a table without one
-must yield no rows rather than fail.
+A snapshot is one complete version of the table: an identifier, its manifests,
+and a commit summary. Modern snapshots use `manifest_list`; legacy v1 metadata
+may instead carry `manifests` directly. The latter is preserved through
+official metadata updates, exposed as `Snapshot.manifests`, and synthesized
+into conservative `ManifestFile` rows so scans and time travel use the same
+planner. The *current* snapshot is a pointer, so a table without one reads as
+zero rows.
 
 ## Manifest lists and manifests
 
@@ -433,8 +456,8 @@ must yield no rows rather than fail.
     // A snapshot names one manifest list; each of its rows is a manifest.
     let manifests = table.manifests()?;
     assert_eq!(manifests.len(), 1);
-    assert_eq!(manifests[0].added_files_count, 1);
-    assert_eq!(manifests[0].added_rows_count, 2);
+    assert_eq!(manifests[0].added_files_count, Some(1));
+    assert_eq!(manifests[0].added_rows_count, Some(2));
 
     // A manifest is self-describing: its Avro header carries the schema and the spec.
     let name = manifests[0].manifest_path.rsplit('/').next().unwrap().to_owned();
@@ -536,22 +559,41 @@ must yield no rows rather than fail.
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-Iceberg puts two levels of indirection between a snapshot and its rows, and both are Avro,
-implemented by the [`avro`](avro.md) codec module: a container is a header naming a writer schema,
-then blocks of records separated by a synchronization marker. Manifest rows cross the boundary as
-the same [`Scalar`](json.md) the JSON parser produces, so a manifest row and a metadata document are
-read with one vocabulary. The writer is deterministic - the marker is derived from the content - so
-two writers given the same entries produce the same bytes, which is what lets a conformance check
-diff manifests instead of only comparing what they mean.
+Iceberg puts two Avro levels between a snapshot and its rows. Full manifest and
+manifest-list reads use the official parser after bounded input checks, then
+map complete entries into Yggdryl values. This preserves encryption,
+delete-file, split, bound, and v3 row-lineage fields. Writes use the core
+[`avro`](avro.md) codec through `IOBase`.
 
-Two readers serve two needs. `read_manifest` decodes every field, and is what any path that may
-*carry an entry forward* - an overwrite, a merge, a compaction - must use, because a carried entry
-keeps its statistics. `read_manifest_for_plan` is the read-only planning fast path: it decodes
-through a compiled schema-resolution plan that keeps only what pruning consults - file identity, the
-partition tuple, sizes, and (for a filtered plan) the counts and bounds - and skips every other
-statistics map as raw bytes. On wide manifests it decodes several times faster than the full read;
-[the avro page's baselines](avro.md#against-fastavro-and-pyiceberg-on-identical-bytes) put numbers and outside implementations on that claim. A table's scans use
-it automatically; the function is public for callers walking manifests themselves.
+`read_manifest_spec` reads only the bounded Avro header and delegates its
+metadata to the official parser; manifest entries are never decoded.
+
+For UUID partitions, only the official parser's Avro-conversion failure on a
+manifest declaring `fixed[16]` triggers a bounded compatibility view. That view
+removes the unsupported UUID annotation without changing the 16 physical bytes,
+then retries the official parser; other failures are returned unchanged.
+
+Both readers validate through the official manifest parser. `read_manifest`
+keeps every field for paths that may carry entries forward, such as overwrite,
+merge, and compaction. `read_manifest_for_plan` then projects that validated
+view to the file identity, partition, size, counts, and bounds used by pruning.
+Scans select the planning view automatically.
+
+All six manifest file/row counts are optional because the Iceberg wire format
+permits null. Callers can distinguish an unreported count from zero.
+
+For v3, the manifest-list writer follows the official row-id cursor rules:
+existing assignments are preserved, new manifest ranges are contiguous, and
+scans inherit missing data-file ids in manifest order. A first post-upgrade
+commit assigns retained v2 files as well as new files, as required by
+[first-row-id inheritance](https://iceberg.apache.org/spec/#first-row-id-inheritance).
+
+Release Criterion on the machine above:
+
+| Manifest operation, 100,000 entries | Median | Throughput |
+| --- | ---: | ---: |
+| Full official-validated decode | 5.8718 s | 17.031 K entries/s |
+| Spec/header only; entries untouched | 190.02 us | 526.26 M nominal entries/s |
 
 Statistics come from the Parquet footer the write just produced. Counts and sizes are emitted for
 every top-level column; *bounds* are emitted only for the types whose Parquet statistic bytes are
@@ -562,9 +604,8 @@ column gets counts but no bounds, rather than bounds that mean something else.
 ## Partition specs and the Hive layout
 
 !!! note "Rust only"
-    The bindings build the identity spec a table is created with, and read
-    one back off the table; the transform vocabulary and the path rendering
-    are Rust.
+    Rust applies transforms and renders partition paths. The bindings build
+    identity specs and preserve every transform name when reading metadata.
 
 ```rust
 use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
@@ -590,13 +631,23 @@ assert_eq!(spec.partition_path(&[Scalar::Null])?, "venue=null");
 let partition = spec.partition_field(&schema)?;
 assert!(partition.fields()[0].is_nullable());
 
-// Only the invertible transforms can place a row.
+// Invertibility controls restoration, not write support.
 assert!(Transform::Identity.is_invertible());
 assert!(!Transform::from_str("bucket[16]")?.is_invertible());
+assert!(!Transform::Unknown.is_invertible());
+assert_eq!(Transform::Bucket(u32::MAX).to_string(), "bucket[4294967295]");
 let mut hashed = spec.clone();
+hashed.fields[0].name = "venue_bucket".into();
 hashed.fields[0].transform = Transform::Bucket(16);
-assert!(hashed.require_writable().unwrap_err().to_string().contains("bucket[16]"));
+assert!(hashed.require_writable().is_ok());
+hashed.fields[0].transform = Transform::Unknown;
+assert!(hashed.require_writable().is_err());
 ```
+
+Writes compute bucket, truncate, year, month, day, hour, identity, and void
+values with the official scalar transform implementation. Typed scalar tuples
+are grouping keys, so text or binary delimiter bytes cannot merge partitions.
+Unknown transforms remain readable metadata but are rejected for writes.
 
 Iceberg writes partition directories in exactly the `column=value` shape
 [`Url::hive_partitions`](uri.md) already reads, so a table this module writes is also a lake the rest
@@ -922,7 +973,7 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
     // summaries exclude two manifests before either Avro file is opened.
     let plan = table.plan(&[("venue", "XNYS")])?;
     assert_eq!(plan.tasks.len(), 1);
-    assert_eq!(plan.record_count(), 1);
+    assert_eq!(plan.record_count()?, 1);
     assert_eq!(plan.manifests_read, 1);
     assert_eq!(plan.manifests_skipped(), 2);
 
@@ -1073,7 +1124,7 @@ Reading one is an ordinary scan with the snapshot named:
 
     # The inspection readers render the table's own record as record batches.
     assert table.inspect_history().read_all().num_rows == 2
-    assert table.inspect_snapshots().read_all().column("operation").to_pylist() == [
+    assert sorted(table.inspect_snapshots().read_all().column("operation").to_pylist()) == [
         "append",
         "overwrite",
     ]
@@ -1109,7 +1160,10 @@ Reading one is an ordinary scan with the snapshot named:
 
     // The inspection readers render the table's own record as record batches.
     assert.equal(table.inspectHistory().intoTable().numRows, 2)
-    assert.equal(table.inspectSnapshots().intoTable().getChild('operation').get(1), 'overwrite')
+    assert.deepEqual(
+      Array.from(table.inspectSnapshots().intoTable().getChild('operation')).sort(),
+      ['append', 'overwrite'],
+    )
     assert.equal(table.inspectFiles().intoTable().numRows, 1)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
@@ -1195,7 +1249,7 @@ over the snapshot a branch or tag names.
     // per-partition summaries exclude two manifests before either is read.
     let plan = table.plan(&[("venue", "XNYS")])?;
     assert_eq!(plan.tasks.len(), 1);
-    assert_eq!(plan.record_count(), 1);
+    assert_eq!(plan.record_count()?, 1);
     assert_eq!(plan.manifests_read, 1);
     assert_eq!(plan.manifests_skipped(), 2);
     assert_eq!(table.scan_where(&[("venue", "XNYS")], None)?.count(), 1);
@@ -1466,7 +1520,7 @@ have replaced, so both raise and leave the caller to re-plan.
 
     // Each call was one commit, and the read went through the last one.
     let table = Table::open(Folder::new(&path)?)?;
-    assert_eq!(table.metadata().snapshots.len(), 3);
+    assert_eq!(table.metadata().snapshots().len(), 3);
     ```
 
 === "Python"
@@ -1648,7 +1702,7 @@ let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
 table.append_arrow_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
 let merging = options.clone().with_merge_by_names(["id"]);
 table.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
-assert_eq!(table.metadata().snapshots.len(), 2);
+assert_eq!(table.metadata().snapshots().len(), 2);
 assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
 
 // A partition filter is answered by the scan plan, so the other partitions'
@@ -2193,8 +2247,9 @@ Every knob a table honors lives on one value, `IcebergOptions`, and every field 
 the same way: an explicit option set on the handle, then the table property of the same name
 (falling back to the schema root's `iceberg:`-prefixed protocol property), then the documented
 default. The keys are Iceberg's own spellings - `commit.retry.num-retries`,
-`commit.retry.min-wait-ms`, `commit.retry.max-wait-ms`, `write.target-file-size-bytes`,
-`write.format.default`, `read.parallelism`, `read.parallel.min-files`,
+`commit.retry.min-wait-ms`, `commit.retry.max-wait-ms`,
+`commit.retry.total-timeout-ms`, `write.target-file-size-bytes`, `write.format.default`,
+`read.parallelism`, `read.parallel.min-files`,
 `read.parallel.min-file-size-bytes` - so a property another engine wrote configures this reader
 too:
 
@@ -2221,6 +2276,7 @@ too:
 
     // Nothing set: every field answers its documented default.
     assert_eq!(table.options()?.commit_retries(), 4);
+    assert_eq!(table.options()?.commit_total_timeout_ms(), 1_800_000);
     assert_eq!(table.options()?.target_file_size_bytes(), 512 * 1024 * 1024);
 
     // The property layer is the table's own metadata, one commit away.
@@ -2258,6 +2314,7 @@ too:
 
     # Nothing set: every field answers its documented default.
     assert table.options().commit_retries == 4
+    assert table.options().commit_total_timeout_ms == 1_800_000
     assert table.options().target_file_size == 512 * 1024 * 1024
 
     # The property layer is the table's own metadata, one commit away.
@@ -2297,6 +2354,7 @@ too:
 
     // Nothing set: every field answers its documented default.
     assert.equal(table.options().commitRetries, 4)
+    assert.equal(table.options().commitTotalTimeoutMs, 1_800_000)
     assert.equal(table.options().targetFileSize, 512 * 1024 * 1024)
 
     // The property layer is the table's own metadata, one commit away.
@@ -2323,7 +2381,7 @@ too:
 A property that is present but does not parse is a typed error naming the key and the value, never
 a silent default - and because an explicit option never reads the property it shadows, a broken
 stored value can be shadowed first and repaired after, through the same handle. The resolvers are
-also scoped to what each operation consults: a commit resolves only the three `commit.retry.*`
+also scoped to what each operation consults: a commit resolves only the four `commit.retry.*`
 keys, so an unparseable `read.*` property cannot stop the metadata-only commit that fixes it.
 
 In Python, `IcebergOptions` is the same value, and every Iceberg method that takes it also takes
@@ -2334,7 +2392,7 @@ misspelled keyword is a `TypeError` naming it. The generic `RecordOptions` is ne
 Iceberg is a table format over the record encodings, and its configuration is its own.
 
 JavaScript has no keyword arguments, so the value carries the whole surface instead: the
-constructor takes an object naming any of the nine fields, every field is also a getter and a
+constructor takes an object naming any of the ten fields, every field is also a getter and a
 setter, and a call that honours options takes one as its last argument -
 `table.scan(field, options)`, `table.scanAt(id, filters, field, options)`,
 `table.append(rows, options)`, `table.overwrite(rows, options)`, and the same trailing argument on
@@ -2344,10 +2402,11 @@ never leaks into the handle's own override; `setOptions` is what changes that.
 ## The data file format
 
 `write.format.default` - the spec's own property key - names the format new data files are written
-in: `parquet`, the default, or `avro`. Like every option it resolves per call, per handle, or per
+in: `parquet`, the default, or `avro`. Iceberg metadata may also name `orc` and `puffin`; Yggdryl
+preserves both but does not write table data in either format. Like every option it resolves per call, per handle, or per
 table, so one call can drop Avro files into a Parquet table; the manifest records the format each
 file was *actually* written in, and a scan decodes each file as its manifest entry says, so a
-table whose files mix formats still reads as one shape. A format the build cannot encode - `orc` -
+table whose files mix formats still reads as one shape. A format the build cannot encode - `orc` or `puffin` -
 is a typed error naming the key and the format before anything is written, never a silent fall
 back to Parquet.
 
@@ -2456,10 +2515,14 @@ back to Parquet.
     table.updateProperties({ 'write.format.default': 'avro' })
     assert.equal(table.options().dataFormat, 'AVRO')
 
-    // A format the build cannot encode is named before anything is written.
+    // Formats the build cannot encode are named before anything is written.
     assert.throws(
       () => table.append(rows(3n), new iceberg.IcebergOptions({ dataFormat: 'orc' })),
       /ORC/,
+    )
+    assert.throws(
+      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataFormat: 'puffin' })),
+      /PUFFIN/,
     )
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
@@ -2469,17 +2532,18 @@ back to Parquet.
 
 !!! note "Rust only"
     The commit gate is the core's, so every binding's writes retry through it
-    and every binding sets the three `commit.retry.*` keys - as
-    `commit_retries` and its two backoff neighbours, or as `commitRetries` and
-    theirs. The race itself is shown once, in Rust, because staging it needs
-    two handles and no rows.
+    and every binding sets the four `commit.retry.*` keys - the retry count,
+    two backoff bounds, and total timeout. The race itself is shown once, in
+    Rust, because staging it needs two handles and no rows.
 
 Two writers holding the same table race the moment both commit, and what this module can promise
 depends on what [`IOBase`](io.md) offers: positional reads and writes, no compare-and-swap. So the
 one commit gate every write goes through re-checks the current version before writing, counts each
 newer version it finds as being *beaten* once, and retries with jittered exponential backoff up to
-`commit.retry.num-retries` times. What a retry does depends on the operation. An `append` and every
-metadata-only `commit_changes` **rebase**: they reload the winner's document and re-apply their
+`commit.retry.num-retries` times and within the cumulative backoff budget named by
+`commit.retry.total-timeout-ms`. What a retry does depends on the operation. An `append` and every
+metadata-only `commit_changes` **rebase**: they
+reload the winner's document and re-apply their
 intent on it - the data files and the manifest of added entries are written once and reused, only
 the manifest list and the document are rebuilt - so both writers' rows survive in one line of
 history:
@@ -2620,7 +2684,9 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
 
     // Expiry honors every ref's retention: the tagged snapshot survives
     // a cutoff that would otherwise expire everything old.
-    assert!(table.expire_snapshots(i64::MAX)?.is_empty());
+    assert!(table
+        .expire_snapshots(Some(i64::MAX), None, &[])?
+        .is_empty());
 
     let _ = std::fs::remove_dir_all(&root);
     ```
@@ -2724,12 +2790,15 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-Each ref carries its own retention - `min-snapshots-to-keep` and `max-snapshot-age-ms` for a
-branch's history, `max-ref-age-ms` for the ref itself - and `expire_snapshots` applies them before
-its own age cutoff; `main` itself never expires. A branch or tag commits through the same retrying
-gate as everything else, so two writers tagging at once behave like two writers appending at once.
-Writing *to* a branch other than `main` remains future work: a commit's parent is always the
-current snapshot, so today a branch is read with `scan_ref` and moved with `fast_forward`.
+Each ref carries its own retention. Omitted cutoff and retain count resolve
+from `history.expire.max-snapshot-age-ms` and
+`history.expire.min-snapshots-to-keep`; per-ref settings override them.
+Explicit snapshot ids join age selection but cannot remove retained heads.
+`main` never expires, recent unreferenced snapshots survive until the cutoff,
+and `gc.enabled=false` refuses the atomic update. Expired snapshots lose their
+statistics descriptors, but physical file cleanup is separate. Ref changes use
+the same retry gate as writes. Non-`main` branches are currently read with
+`scan_ref` and moved with `fast_forward`, not written directly.
 
 ## Reading many files at once
 
@@ -2944,7 +3013,7 @@ commit writes is ever mutated in place.
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
     use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
@@ -2971,15 +3040,13 @@ commit writes is ever mutated in place.
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
     // can never be confused with a dropped one.
-    let evolved = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Int64.nullable_field("quantity"),
-    ])?
-    .required_field("row");
+    let mut update = SchemaUpdate::for_metadata(table.metadata())?;
+    update.add_column("", DataType::Int64.nullable_field("quantity"));
+    let evolved = update.apply()?;
     assert_eq!(table.evolve_schema(evolved)?, 1, "the new schema's id");
 
     // The old schema is retained, so the snapshot written under it still reads.
-    assert_eq!(table.metadata().schemas.len(), 2);
+    assert_eq!(table.metadata().schemas().len(), 2);
     assert_eq!(table.metadata().schema_by_id(0).unwrap().field_len(), 1);
 
     // And the file written before the column existed reads it as null.
@@ -3010,11 +3077,8 @@ commit writes is ever mutated in place.
 
     # Add a column. Numbering continues above `last-column-id`, so the new column
     # can never be confused with a dropped one.
-    evolved = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("quantity", pa.int64()),
-    ])
-    assert table.evolve_schema(evolved) == 1, "the new schema's id"
+    with table.update_schema() as update:
+        update.add_column("", "quantity: int64")
 
     # The old schema is retained, so the snapshot written under it still reads.
     assert len(table.schemas) == 2
@@ -3044,10 +3108,8 @@ commit writes is ever mutated in place.
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
     // can never be confused with a dropped one.
-    const evolved = fields.struct('row', [Field.from('id: int64'), Field.from('quantity: int64')], {
-      nullable: false,
-    })
-    assert.equal(table.evolveSchema(evolved), 1, "the new schema's id")
+    const schemaId = table.updateSchema().addColumn('', 'quantity: int64').commit()
+    assert.equal(schemaId, 1, "the new schema's id")
 
     // The old schema is retained, so the snapshot written under it still reads.
     assert.equal(table.schemas.length, 2)
@@ -3343,10 +3405,11 @@ accepted, so a change that would reinterpret stored values is refused naming bot
 
 `TableMetadata` carries the rest of the update vocabulary - `set_property`/`remove_property`,
 `set_location`, `assign_uuid`, `upgrade_format_version`, `set_snapshot_ref`/`remove_snapshot_ref`,
-`remove_snapshots`, `add_spec`/`set_default_spec`, `add_sort_order`/`set_default_sort_order` - and
-every one of them commits through the same `commit_changes`, which validates the whole document
-before a byte of it is written. Dropping a column never frees its identifier: `last-column-id` only
-grows, so a reader of an old file can never mistake a retired column for a new one.
+`remove_snapshots`, `add_spec`/`set_default_spec`, `add_sort_order`/`set_default_sort_order`.
+Each operation goes through the official metadata builder before `commit_changes`
+publishes it. Equivalent schemas, specs, and orders reuse the builder's canonical
+identifier; conflicting requested identifiers are reassigned. Dropping a column
+never frees its identifier.
 
 ## Schemas as documents
 
@@ -3448,9 +3511,9 @@ There is no Iceberg schema type in this module. An Iceberg schema *is* a non-nul
 mirror: what comes back is a field the rest of the crate already reads, writes, casts, and projects
 into [Arrow](arrow.md).
 
-Documents are read and written by the crate's own [JSON](json.md) parser, so an Iceberg document is
-an ordinary [`Scalar`](json.md) - the same value a YAML or TOML document decodes to - and no second
-JSON model enters the crate through this module.
+Documents enter and leave through the core [JSON](json.md) codec as ordinary
+[`Scalar`](json.md) values. The official Iceberg model validates and
+normalizes that document before Yggdryl projects it into `Field`.
 
 Three things the field model spells differently, all of which survive the round trip:
 
@@ -3582,7 +3645,7 @@ use yggdryl::iceberg::{schema_from_json, schema_to_json};
 use yggdryl::{json, DataType};
 
 let document = json::from_utf8(
-    r#"{"type":"struct","fields":[
+    r#"{"type":"struct","schema-id":0,"fields":[
         {"id":1,"name":"legs","required":false,"type":{
             "type":"list","element-id":2,"element":{
                 "type":"struct","fields":[
@@ -3708,12 +3771,14 @@ preserved through a metadata round trip rather than demoted to the physically id
 
 ## What is not here
 
-No catalog client and no network code: nothing here resolves a table name, lists a namespace, or
-speaks to a catalog service. Committing a snapshot means writing metadata somewhere, and *where* is
-the [`IOBase`](io.md) handle the caller supplies.
+No remote catalog client or network transport. `yggdryl::iceberg::Catalog` is
+an [`IOBase`](io.md) warehouse view; commits publish through the supplied
+handle.
 
-No deletes. This module writes and reads data files; position and equality delete files are read as
-manifest content that a scan skips, not produced.
+Delete-file writing and row application are not implemented. Scans reject live
+position/equality delete manifests with a typed unsupported error; they never
+silently return undeleted rows. Manifests proven to contain no live delete
+files are inert.
 
 No writes to a branch other than `main`: a commit's parent is always the current snapshot, so a
 branch is read with `scan_ref` and moved with `fast_forward` until commits learn to parent a
@@ -3722,11 +3787,6 @@ branch's head.
 No compare-and-swap. The commit gate re-checks the current version and retries when beaten, but
 `IOBase` cannot make check-then-write atomic, so the guarantee is honest best-effort on plain
 storage and exact only where the storage itself serializes writers.
-
-Two partition transforms can place a row: `identity` and `void`. A write against a spec using
-`bucket`, `truncate`, or a calendar transform is refused by name rather than silently writing rows
-into the wrong partition; *reading* such a table is unaffected, because a manifest already records
-which partition each file belongs to.
 
 <!-- notebooks: generated by scripts/build_docs_notebooks.py -->
 

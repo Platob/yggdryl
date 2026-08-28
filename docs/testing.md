@@ -29,7 +29,8 @@ Every check runs from the repository root, which owns the Cargo workspace.
     ```
 
 Run the Rust pass twice: once with default features and once with `--features "parquet iceberg"`.
-Both are non-default, so a default-only run never compiles them.
+Both are non-default core features. Default and schema-only core checks use
+Rust 1.85; the Iceberg pass and both bindings use Rust 1.94 or newer.
 
 ## The documentation is tested too
 

@@ -29,12 +29,12 @@ by unmodified PyIceberg.
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
 import shutil
 import subprocess
-import sys
 import warnings
 from pathlib import Path
 from urllib.parse import urlparse
@@ -45,9 +45,11 @@ REPO = Path(__file__).resolve().parent.parent
 INTEROP = REPO / "target" / "iceberg-interop"
 FROM_RUST = INTEROP / "from-rust"
 FROM_PYICEBERG = INTEROP / "from-pyiceberg"
-VENV_PYTHON = REPO / "python" / ".venv" / "Scripts" / "python.exe"
-if not VENV_PYTHON.exists():
-    VENV_PYTHON = REPO / "python" / ".venv" / "bin" / "python"
+METADATA_NAME = re.compile(
+    r"^(?:v(?P<hadoop>\d+)|(?P<official>\d+)-"
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\.gz)?\.metadata\.json$"
+)
 
 # What PyIceberg writes, and what the Rust side reads back from it.
 APPENDED = [
@@ -93,11 +95,50 @@ def file_uri(path: Path) -> str:
     return "file:///" + str(path.resolve()).replace("\\", "/").lstrip("/")
 
 
+def metadata_version(path: Path) -> int | None:
+    """Return the version encoded by a Hadoop or official metadata name."""
+    matched = METADATA_NAME.fullmatch(path.name)
+    if matched is None:
+        return None
+    return int(matched.group("hadoop") or matched.group("official"))
+
+
+def current_metadata_path(root: Path) -> Path:
+    """Resolve the exact current metadata file without inventing its name."""
+    metadata_dir = root / "metadata"
+    hint = int((metadata_dir / "version-hint.text").read_text().strip())
+
+    for name in (f"v{hint}.metadata.json", f"v{hint}.gz.metadata.json"):
+        conventional = metadata_dir / name
+        if conventional.is_file():
+            return conventional
+
+    candidates = sorted(
+        path
+        for path in metadata_dir.iterdir()
+        if path.is_file() and metadata_version(path) == hint
+    )
+    if not candidates:
+        raise AssertionError(
+            f"no metadata file for version {hint} under {metadata_dir}"
+        )
+    return candidates[-1]
+
+
+def read_metadata_document(path: Path) -> dict:
+    """Decode metadata by gzip magic, independent of its filename."""
+    encoded = path.read_bytes()
+    if encoded.startswith(b"\x1f\x8b"):
+        encoded = gzip.decompress(encoded)
+    return json.loads(encoded)
+
+
 def run_cargo() -> str:
     """Run the Rust half of the exchange and return its output."""
     command = [
         "cargo",
         "test",
+        "--locked",
         "--features",
         "parquet iceberg",
         "--test",
@@ -120,9 +161,7 @@ def rows_of(table) -> list[tuple]:
     """Read a PyIceberg table as sorted (id, symbol, venue) triples."""
     arrow = table.scan().to_arrow()
     columns = arrow.to_pydict()
-    triples = list(
-        zip(columns["id"], columns["symbol"], columns["venue"], strict=True)
-    )
+    triples = list(zip(columns["id"], columns["symbol"], columns["venue"], strict=True))
     return sorted(triples)
 
 
@@ -130,13 +169,12 @@ def read_with_pyiceberg() -> None:
     """Open the Rust-written table with PyIceberg and check what it holds."""
     from pyiceberg.table import StaticTable
 
-    metadata_dir = FROM_RUST / "metadata"
-    hint = (metadata_dir / "version-hint.text").read_text().strip()
-    location = file_uri(metadata_dir / f"v{hint}.metadata.json")
+    metadata_path = current_metadata_path(FROM_RUST)
+    location = file_uri(metadata_path)
     print(f"\n== PyIceberg reads {location}")
 
     table = StaticTable.from_metadata(location)
-    document = json.loads((metadata_dir / f"v{hint}.metadata.json").read_text())
+    document = read_metadata_document(metadata_path)
 
     assert table.metadata.format_version == 2, table.metadata.format_version
     assert document["format-version"] == 2
@@ -164,13 +202,15 @@ def read_with_pyiceberg() -> None:
     # A manifest list row summarizes the partition values below it, which is
     # what lets a planner skip the whole manifest.
     summarized = [
-        summary
-        for manifest in manifests
-        for summary in (manifest.partitions or [])
+        summary for manifest in manifests for summary in (manifest.partitions or [])
     ]
     assert summarized, "the manifest list carries partition field summaries"
 
-    entries = [entry for manifest in manifests for entry in manifest.fetch_manifest_entry(table.io)]
+    entries = [
+        entry
+        for manifest in manifests
+        for entry in manifest.fetch_manifest_entry(table.io)
+    ]
     assert len(entries) == 4, f"one data file per venue, including null: {len(entries)}"
     partitions = sorted(
         str(entry.data_file.partition[0] if entry.data_file.partition else None)
@@ -190,8 +230,12 @@ def read_with_pyiceberg() -> None:
 
     actual = rows_of(table)
     assert actual == sorted(EXPECTED), f"{actual} != {sorted(EXPECTED)}"
-    print(f"   schema, spec, snapshot, {len(entries)} manifest entries and {len(actual)} rows agree")
-    print(f"   {len(existing)} of them are carried-over `existing` entries the merge never read")
+    print(
+        f"   schema, spec, snapshot, {len(entries)} manifest entries and {len(actual)} rows agree"
+    )
+    print(
+        f"   {len(existing)} of them are carried-over `existing` entries the merge never read"
+    )
 
 
 def write_with_pyiceberg() -> None:
@@ -253,15 +297,29 @@ def write_with_pyiceberg() -> None:
 
 def read_versions_with_pyiceberg() -> None:
     """Read the v1 and v3 tables the Rust half wrote."""
+    from pyiceberg.avro.file import AvroFile
     from pyiceberg.table import StaticTable
 
     for version in (1, 3):
         root = INTEROP / f"from-rust-v{version}"
-        hint = (root / "metadata" / "version-hint.text").read_text().strip()
-        table = StaticTable.from_metadata(
-            file_uri(root / "metadata" / f"v{hint}.metadata.json")
-        )
+        table = StaticTable.from_metadata(file_uri(current_metadata_path(root)))
         assert table.metadata.format_version == version, table.metadata.format_version
+        if version == 3:
+            snapshot = table.current_snapshot()
+            assert snapshot is not None
+            assert table.metadata.next_row_id == len(APPENDED)
+            assert snapshot.first_row_id == 0
+            assert snapshot.added_rows == len(APPENDED)
+            # PyIceberg 0.11's ManifestFile model omits v3 field 520, but its
+            # generic official Avro reader retains the complete file schema.
+            manifest_list = table.io.new_input(snapshot.manifest_list)
+            with AvroFile(manifest_list) as reader:
+                first_row_id = next(
+                    index
+                    for index, field in enumerate(reader.schema.fields)
+                    if field.field_id == 520
+                )
+                assert [record[first_row_id] for record in reader] == [0]
         rows = sorted(
             (row["id"], row["symbol"], row["venue"])
             for row in table.scan().to_arrow().to_pylist()
@@ -331,10 +389,6 @@ def write_versions_with_pyiceberg() -> list[int]:
 
 
 def main() -> int:
-    if VENV_PYTHON.exists() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
-        print(f"re-running under {VENV_PYTHON}")
-        return subprocess.call([str(VENV_PYTHON), __file__, *sys.argv[1:]])
-
     patch_pyiceberg_windows_uris()
 
     print("== Rust writes its half")
@@ -353,7 +407,9 @@ def main() -> int:
     print("\n== Rust reads the PyIceberg half")
     second = run_cargo()
     if "SKIPPED" in second:
-        raise SystemExit("the Rust side skipped the external table; nothing was cross-validated")
+        raise SystemExit(
+            "the Rust side skipped the external table; nothing was cross-validated"
+        )
     if "iceberg-interop: read" not in second:
         raise SystemExit("the Rust side did not report reading the external table")
     for version in versions:

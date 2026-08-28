@@ -678,9 +678,10 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
 `iceberg.schemaFromJson`, and `iceberg.schemaToJson` are the functions.
 These immutable result values expose `equals`, `compare`, `stableHash`, and
-`clone` over their complete Rust-core identity. Snapshot v3 lineage and
-manifest partition summaries stay in that identity rather than being dropped
-at the boundary. `ScanPlan` is a bounded immutable report whose complete
+`clone` over their complete Rust-core identity. Snapshot legacy v1 `manifests`, v3 lineage and
+encryption key, manifest encryption and partition summaries, and complete
+data-file metadata stay available rather than being dropped at the boundary.
+`ScanPlan` is a bounded immutable report whose complete
 identity, in comparison order, is `(recordCount, filesPlanned, filesSkipped,
 manifestsRead, manifestsSkipped)`; physical scan tasks and paths are not part
 of that public report. A 64-bit identifier crosses as a `bigint` so a snapshot

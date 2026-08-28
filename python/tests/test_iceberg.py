@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import pathlib
 import pickle
 
@@ -141,6 +142,106 @@ class TestCreatingAndOpening:
         manifest = table.manifests()[0]
         data_file, file_spec = table.data_files()[0]
 
+        assert snapshot.encryption_key_id is None
+        assert snapshot.first_row_id is None
+        assert snapshot.added_rows is None
+        assert snapshot.manifests is None
+        assert manifest.content == "data"
+        assert manifest.min_sequence_number == manifest.sequence_number
+        assert isinstance(manifest.partitions, tuple)
+        assert manifest.key_metadata is None
+        assert manifest.first_row_id is None
+        assert data_file.key_metadata is None
+        assert data_file.equality_ids is None
+        assert data_file.first_row_id is None
+        assert data_file.referenced_data_file is None
+        assert data_file.content_offset is None
+        assert data_file.content_size_in_bytes is None
+        assert data_file.nan_value_counts == {}
+
+        enriched_snapshot = Snapshot.from_json(
+            {
+                "snapshot-id": 9,
+                "sequence-number": 3,
+                "timestamp-ms": 1_000,
+                "manifest-list": "file:///metadata/snap.avro",
+                "summary": {"operation": "append"},
+                "schema-id": 0,
+                "key-id": "kms-key",
+                "first-row-id": 40,
+                "added-rows": 2,
+            }
+        )
+        assert enriched_snapshot.encryption_key_id == "kms-key"
+        assert enriched_snapshot.first_row_id == 40
+        assert enriched_snapshot.added_rows == 2
+        assert pickle.loads(pickle.dumps(enriched_snapshot)) == enriched_snapshot
+
+        legacy_snapshot = Snapshot.from_json(
+            {
+                "snapshot-id": 7,
+                "timestamp-ms": 900,
+                "manifests": ["file:///metadata/a.avro", "file:///metadata/b.avro"],
+                "summary": {"operation": "append"},
+                "schema-id": 0,
+            }
+        )
+        assert legacy_snapshot.manifest_list == ""
+        assert legacy_snapshot.manifests == (
+            "file:///metadata/a.avro",
+            "file:///metadata/b.avro",
+        )
+        assert legacy_snapshot.into_json(1)["manifests"] == list(
+            legacy_snapshot.manifests
+        )
+        assert eval(repr(legacy_snapshot), {"Snapshot": Snapshot}) == legacy_snapshot
+        assert pickle.loads(pickle.dumps(legacy_snapshot)) == legacy_snapshot
+
+        rebuild, (state,) = data_file.__reduce__()
+        state.update(
+            key_metadata=b"key",
+            nan_value_counts=[(2, 1)],
+            equality_ids=[1, 2],
+            first_row_id=40,
+            referenced_data_file="file:///data/base.parquet",
+            content_offset=8,
+            content_size_in_bytes=16,
+        )
+        enriched_file = rebuild(state)
+        assert enriched_file.key_metadata == b"key"
+        assert enriched_file.nan_value_counts == {2: 1}
+        assert enriched_file.equality_ids == [1, 2]
+        assert enriched_file.first_row_id == 40
+        assert enriched_file.referenced_data_file == "file:///data/base.parquet"
+        assert enriched_file.content_offset == 8
+        assert enriched_file.content_size_in_bytes == 16
+        assert pickle.loads(pickle.dumps(enriched_file)) == enriched_file
+
+        rebuild_manifest, (manifest_state,) = manifest.__reduce__()
+        manifest_state["key_metadata"] = b"manifest-key"
+        manifest_state["partitions"] = ((True, False, b"a", b"z"),)
+        manifest_state["first_row_id"] = 40
+        for count_name in (
+            "added_files_count",
+            "existing_files_count",
+            "deleted_files_count",
+            "added_rows_count",
+            "existing_rows_count",
+            "deleted_rows_count",
+        ):
+            manifest_state[count_name] = None
+        enriched_manifest = rebuild_manifest(manifest_state)
+        assert enriched_manifest.key_metadata == b"manifest-key"
+        assert enriched_manifest.partitions == ((True, False, b"a", b"z"),)
+        assert enriched_manifest.first_row_id == 40
+        assert enriched_manifest.added_files_count is None
+        assert enriched_manifest.existing_files_count is None
+        assert enriched_manifest.deleted_files_count is None
+        assert enriched_manifest.added_rows_count is None
+        assert enriched_manifest.existing_rows_count is None
+        assert enriched_manifest.deleted_rows_count is None
+        assert pickle.loads(pickle.dumps(enriched_manifest)) == enriched_manifest
+
         values = [spec, field, snapshot, manifest, data_file]
         namespaces = {
             "PartitionSpec": PartitionSpec,
@@ -169,6 +270,24 @@ class TestCreatingAndOpening:
         assert PartitionField.from_json(field.into_json()) == field
         assert Snapshot.from_json(snapshot.into_json()) == snapshot
 
+        unknown = PartitionField.from_json(
+            {
+                "name": "venue_opaque",
+                "transform": "unknown",
+                "source-id": 2,
+                "field-id": 1001,
+            }
+        )
+        assert unknown.transform == "unknown"
+        assert PartitionField.from_json(
+            {
+                "name": "venue_bucket",
+                "transform": "bucket[4294967295]",
+                "source-id": 2,
+                "field-id": 1002,
+            }
+        ).transform == "bucket[4294967295]"
+
     def test_create_numbers_a_plain_pyarrow_schema_itself(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -185,12 +304,13 @@ class TestCreatingAndOpening:
     def test_the_metadata_document_is_where_a_reader_looks(
         self, table: Table, tmp_path: pathlib.Path
     ) -> None:
-        assert table.metadata_file_name == "v1.metadata.json"
-        assert table.metadata_location.endswith("metadata/v1.metadata.json")
+        assert table.metadata_file_name.startswith("00001-")
+        assert table.metadata_file_name.endswith(".metadata.json")
+        assert table.metadata_location.endswith(f"metadata/{table.metadata_file_name}")
 
         metadata = IOBase(tmp_path / "trades" / "metadata")
         assert {entry.name for entry in metadata} == {
-            "v1.metadata.json",
+            table.metadata_file_name,
             "version-hint.text",
         }
         assert metadata.joinpath("version-hint.text").read_text() == "1"
@@ -677,6 +797,39 @@ class TestTimeTravel:
         with pytest.raises(ValueError, match="expected a retained snapshot id"):
             table.scan_at(999)
 
+    def test_a_legacy_v1_direct_manifest_snapshot_stays_readable(
+        self, tmp_path: pathlib.Path, numbered: object
+    ) -> None:
+        location = tmp_path / "legacy"
+        table = Table.create(IOBase(location), numbered, format_version=1)
+        table.append(_rows())
+        snapshot = table.current_snapshot
+        assert snapshot is not None
+        direct = [manifest.path for manifest in table.manifests()]
+
+        metadata_path = location / "metadata" / table.metadata_file_name
+        document = json.loads(metadata_path.read_text(encoding="utf-8"))
+        document["snapshots"][0]["manifests"] = direct
+        del document["snapshots"][0]["manifest-list"]
+        metadata_path.write_text(json.dumps(document), encoding="utf-8")
+
+        reopened = Table.open(IOBase(location))
+        legacy = reopened.current_snapshot
+        assert legacy is not None
+        assert legacy.manifest_list == ""
+        assert legacy.manifests == tuple(direct)
+        assert reopened.scan().read_all().num_rows == 3
+
+        reopened.append(_rows(10))
+        assert reopened.scan().read_all().num_rows == 6
+        assert reopened.scan_at(snapshot.snapshot_id).read_all().column(
+            "id"
+        ).to_pylist() == [1, 2, 3]
+        retained = next(
+            item for item in reopened.snapshots if item.snapshot_id == snapshot.snapshot_id
+        )
+        assert retained.manifests == tuple(direct)
+
     def test_snapshot_by_ref_follows_main(self, table: Table) -> None:
         table.append(_rows())
         current = table.current_snapshot
@@ -966,16 +1119,29 @@ class TestIcebergOptions:
     def test_the_options_value_records_only_what_was_set(self) -> None:
         options = IcebergOptions()
         assert options.commit_retries == 4
+        assert options.commit_total_timeout_ms == 1_800_000
         assert options.target_file_size == 512 * 1024 * 1024
         assert options.data_format == "PARQUET"
 
-        options = IcebergOptions(commit_retries=2, data_format="avro")
+        options = IcebergOptions(
+            commit_retries=2, commit_total_timeout_ms=500, data_format="avro"
+        )
         assert options.commit_retries == 2
+        assert options.commit_total_timeout_ms == 500
         assert options.data_format == "AVRO"
         options.target_file_size = 1024
         assert options.target_file_size == 1024
         with pytest.raises(TypeError, match="commit_retres"):
             IcebergOptions(commit_retres=2)
+
+    def test_puffin_is_a_native_format_but_not_a_table_data_writer(
+        self, table: Table
+    ) -> None:
+        options = IcebergOptions(data_format="puffin")
+        assert options.data_format == "PUFFIN"
+        with pytest.raises(ValueError, match=r"write\.format\.default.*PUFFIN"):
+            table.append(_rows(), options=options)
+        assert table.current_snapshot is None
 
     def test_native_identity_hash_locks_every_setter_and_copies_unlock(self) -> None:
         options = IcebergOptions(commit_retries=4, data_format="parquet")
@@ -996,6 +1162,7 @@ class TestIcebergOptions:
             ("commit_retries", 3),
             ("commit_min_backoff_ms", 1),
             ("commit_max_backoff_ms", 2),
+            ("commit_total_timeout_ms", 3),
             ("target_file_size", 1024),
             ("read_parallelism", 1),
             ("read_parallel_min_files", 1),

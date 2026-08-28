@@ -2070,6 +2070,7 @@ class IcebergOptions:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2091,6 +2092,10 @@ class IcebergOptions:
     def commit_max_backoff_ms(self) -> int: ...
     @commit_max_backoff_ms.setter
     def commit_max_backoff_ms(self, wait_ms: int) -> None: ...
+    @property
+    def commit_total_timeout_ms(self) -> int: ...
+    @commit_total_timeout_ms.setter
+    def commit_total_timeout_ms(self, timeout_ms: int) -> None: ...
     @property
     def target_file_size(self) -> int: ...
     @target_file_size.setter
@@ -2211,6 +2216,7 @@ class Tables:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2227,6 +2233,7 @@ class Tables:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2266,6 +2273,7 @@ class Catalog:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2282,6 +2290,7 @@ class Catalog:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2353,6 +2362,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2369,6 +2379,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2386,6 +2397,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2409,6 +2421,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2429,7 +2442,12 @@ class Table:
     def create_tag(self, name: str, snapshot_id: int) -> None: ...
     def remove_ref(self, name: str) -> None: ...
     def fast_forward(self, name: str, snapshot_id: int) -> None: ...
-    def expire_snapshots(self, older_than_ms: int) -> list[int]: ...
+    def expire_snapshots(
+        self,
+        older_than_ms: int | None = None,
+        retain_last: int | None = None,
+        snapshot_ids: Sequence[int] | None = None,
+    ) -> list[int]: ...
     @property
     def target_file_size(self) -> int: ...
     def append(
@@ -2440,6 +2458,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2455,6 +2474,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2471,6 +2491,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2488,6 +2509,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2506,6 +2528,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2520,6 +2543,7 @@ class Table:
         commit_retries: int | None = None,
         commit_min_backoff_ms: int | None = None,
         commit_max_backoff_ms: int | None = None,
+        commit_total_timeout_ms: int | None = None,
         target_file_size: int | None = None,
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
@@ -2698,9 +2722,17 @@ class Snapshot:
     @property
     def manifest_list(self) -> str: ...
     @property
+    def manifests(self) -> tuple[str, ...] | None: ...
+    @property
     def operation(self) -> str: ...
     @property
     def schema_id(self) -> int | None: ...
+    @property
+    def encryption_key_id(self) -> str | None: ...
+    @property
+    def first_row_id(self) -> int | None: ...
+    @property
+    def added_rows(self) -> int | None: ...
     @property
     def summary(self) -> dict[str, str]: ...
     def into_json(self, version: int = 3) -> object: ...
@@ -2729,19 +2761,33 @@ class ManifestFile:
     @property
     def partition_spec_id(self) -> int: ...
     @property
+    def content(self) -> str: ...
+    @property
     def sequence_number(self) -> int: ...
+    @property
+    def min_sequence_number(self) -> int: ...
     @property
     def added_snapshot_id(self) -> int: ...
     @property
-    def added_files_count(self) -> int: ...
+    def added_files_count(self) -> int | None: ...
     @property
-    def existing_files_count(self) -> int: ...
+    def existing_files_count(self) -> int | None: ...
     @property
-    def deleted_files_count(self) -> int: ...
+    def deleted_files_count(self) -> int | None: ...
     @property
-    def added_rows_count(self) -> int: ...
+    def added_rows_count(self) -> int | None: ...
     @property
-    def existing_rows_count(self) -> int: ...
+    def existing_rows_count(self) -> int | None: ...
+    @property
+    def deleted_rows_count(self) -> int | None: ...
+    @property
+    def partitions(
+        self,
+    ) -> tuple[tuple[bool, bool | None, bytes | None, bytes | None], ...]: ...
+    @property
+    def key_metadata(self) -> bytes | None: ...
+    @property
+    def first_row_id(self) -> int | None: ...
     def is_data(self) -> bool: ...
     def stable_hash(self) -> int: ...
     def __repr__(self) -> str: ...
@@ -2776,6 +2822,8 @@ class DataFile:
     @property
     def null_value_counts(self) -> dict[int, int]: ...
     @property
+    def nan_value_counts(self) -> dict[int, int]: ...
+    @property
     def column_sizes(self) -> dict[int, int]: ...
     @property
     def lower_bounds(self) -> dict[int, bytes]: ...
@@ -2784,7 +2832,19 @@ class DataFile:
     @property
     def split_offsets(self) -> list[int]: ...
     @property
+    def key_metadata(self) -> bytes | None: ...
+    @property
+    def equality_ids(self) -> list[int] | None: ...
+    @property
     def sort_order_id(self) -> int | None: ...
+    @property
+    def first_row_id(self) -> int | None: ...
+    @property
+    def referenced_data_file(self) -> str | None: ...
+    @property
+    def content_offset(self) -> int | None: ...
+    @property
+    def content_size_in_bytes(self) -> int | None: ...
     @property
     def content(self) -> int: ...
     def stable_hash(self) -> int: ...
