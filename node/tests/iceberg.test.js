@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { DataType, Field, IOBase, Scalar, fields, iceberg } = require('yggdryl')
+const { DataType, Field, IOBase, MimeType, Scalar, fields, iceberg } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-iceberg-'))
@@ -29,6 +29,10 @@ function rows(ids, venues) {
     id: arrow.vectorFromArray(ids, new arrow.Int64()),
     venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
   })
+}
+
+function dataMimeTypes(table) {
+  return table.dataFiles().map((file) => file.mimeType.toString()).sort()
 }
 
 test('numbering a schema is a copy, and the numbers are Arrow field ids', () => {
@@ -138,7 +142,8 @@ test('an append commits a snapshot, one data file per partition', (t) => {
     left.filePath.localeCompare(right.filePath),
   )
   assert.equal(files.length, 2)
-  assert.equal(files[0].fileFormat, 'PARQUET')
+  assert.ok(files[0].mimeType instanceof MimeType)
+  assert.ok(files[0].mimeType.equals(MimeType.PARQUET))
   assert.deepEqual(files[0].partitionNames, ['venue'])
   assert.equal(files[0].keyMetadata, null)
   assert.equal(files[0].equalityIds, null)
@@ -698,7 +703,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(untouched.targetFileSize, 512 * 1024 * 1024)
   assert.equal(untouched.readParallelMinFiles, 16)
   assert.equal(untouched.readParallelMinFileSize, 4 * 1024 * 1024)
-  assert.equal(untouched.dataFormat, 'PARQUET')
+  assert.ok(untouched.dataMimeType.equals(MimeType.PARQUET))
   // Nothing compacts on its own until a cadence says so.
   assert.equal(untouched.compactAfterCommits, null)
   // Read parallelism defaults to what the host offers, kept inside 1..=8.
@@ -714,7 +719,7 @@ test('an options value answers the fields it was given and defaults the rest', (
     readParallelMinFiles: 3,
     readParallelMinFileSize: 1024,
     compactAfterCommits: 7,
-    dataFormat: 'avro',
+    dataMimeType: MimeType.AVRO,
   })
   assert.equal(given.commitRetries, 9)
   assert.equal(given.commitMinBackoffMs, 5)
@@ -725,7 +730,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.readParallelMinFiles, 3)
   assert.equal(given.readParallelMinFileSize, 1024)
   assert.equal(given.compactAfterCommits, 7)
-  assert.equal(given.dataFormat, 'AVRO')
+  assert.ok(given.dataMimeType.equals(MimeType.AVRO))
   const cloned = given.clone()
   assert.notEqual(cloned, given)
   assert.ok(cloned.equals(given))
@@ -764,33 +769,36 @@ test('property-derived option integers never round at the JavaScript boundary', 
   assert.throws(() => options.commitTotalTimeoutMs, /cannot be represented exactly/)
 })
 
-test('a data format is named in any case and refused when no writer has it', (t) => {
+test('a data MIME type accepts native/parser input and rejects unsupported types', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const options = new iceberg.IcebergOptions({ dataFormat: 'avro' })
-  assert.equal(options.dataFormat, 'AVRO')
-  options.dataFormat = 'PaRqUeT'
-  assert.equal(options.dataFormat, 'PARQUET')
-  assert.equal(new iceberg.IcebergOptions({ dataFormat: 'AVRO' }).dataFormat, 'AVRO')
-  const puffin = new iceberg.IcebergOptions({ dataFormat: 'puffin' })
-  assert.equal(puffin.dataFormat, 'PUFFIN')
+  const options = new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO })
+  assert.ok(options.dataMimeType.equals(MimeType.AVRO))
+  options.dataMimeType = 'PaRqUeT'
+  assert.ok(options.dataMimeType.equals(MimeType.PARQUET))
+  assert.ok(
+    new iceberg.IcebergOptions({ dataMimeType: 'application/avro' })
+      .dataMimeType.equals(MimeType.AVRO),
+  )
+  const puffin = new iceberg.IcebergOptions({ dataMimeType: MimeType.PUFFIN })
+  assert.ok(puffin.dataMimeType.equals(MimeType.PUFFIN))
   const table = iceberg.Table.create(path.join(root, 'trades'), schema())
   assert.throws(
     () => table.append(rows([1n], ['XNAS']), puffin),
-    /write\.format\.default.*PUFFIN/,
+    /write\.format\.default.*puffin/i,
   )
   assert.equal(table.currentSnapshot, null)
 
   assert.throws(
-    () => new iceberg.IcebergOptions({ dataFormat: 'csv' }),
-    /expected an Iceberg file format of PARQUET, AVRO, ORC, or PUFFIN, got "CSV"/,
+    () => new iceberg.IcebergOptions({ dataMimeType: MimeType.CSV }),
+    /data MIME type.*parquet.*avro.*orc.*puffin/i,
   )
   assert.throws(() => {
-    options.dataFormat = 'csv'
-  }, /got "CSV"/)
+    options.dataMimeType = 'csv'
+  }, /data MIME type.*puffin/i)
   // A refused write leaves the field holding what it held.
-  assert.equal(options.dataFormat, 'PARQUET')
+  assert.ok(options.dataMimeType.equals(MimeType.PARQUET))
 })
 
 test('a zero file size and a zero read parallelism are refused by property name', () => {
@@ -817,20 +825,20 @@ test('a zero file size and a zero read parallelism are refused by property name'
   assert.equal(options.readParallelism, 2)
 })
 
-test('a per-call data format writes AVRO files beside the PARQUET ones', (t) => {
+test('a per-call data MIME type writes AVRO files beside the PARQUET ones', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const table = iceberg.Table.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
-  table.append(rows([3n], ['XASE']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  table.append(rows([3n], ['XASE']), new iceberg.IcebergOptions({ dataMimeType: 'avro' }))
 
   // The format is the assertion. A wrapper that dropped the options argument
   // would still commit, still return, and still scan - and write Parquet
   // twice, which nothing but the manifest entry would reveal.
   assert.deepEqual(
-    table.dataFiles().map((file) => file.fileFormat).sort(),
-    ['AVRO', 'PARQUET'],
+    dataMimeTypes(table),
+    [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 
   // A scan decodes each file as the format its manifest entry records, so a
@@ -842,7 +850,7 @@ test('a per-call data format writes AVRO files beside the PARQUET ones', (t) => 
     [1n, 2n, 3n],
   )
   // The call configured itself alone: nothing was stored on the handle.
-  assert.equal(table.options().dataFormat, 'PARQUET')
+  assert.ok(table.options().dataMimeType.equals(MimeType.PARQUET))
 })
 
 test('setOptions is what later calls resolve, and a per-call option outlives only its call', (t) => {
@@ -850,23 +858,23 @@ test('setOptions is what later calls resolve, and a per-call option outlives onl
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const table = iceberg.Table.create(path.join(root, 'trades'), schema())
-  table.setOptions(new iceberg.IcebergOptions({ targetFileSize: 4096, dataFormat: 'avro' }))
-  assert.equal(table.options().dataFormat, 'AVRO')
+  table.setOptions(new iceberg.IcebergOptions({ targetFileSize: 4096, dataMimeType: MimeType.AVRO }))
+  assert.ok(table.options().dataMimeType.equals(MimeType.AVRO))
   // The override shadows the table property the getter would otherwise read.
   assert.equal(table.targetFileSize, 4096)
 
   table.append(rows([1n], ['XNAS']))
-  assert.deepEqual(table.dataFiles().map((file) => file.fileFormat), ['AVRO'])
+  assert.deepEqual(dataMimeTypes(table), [MimeType.AVRO.toString()])
 
-  table.append(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataFormat: 'parquet' }))
+  table.append(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.PARQUET }))
   assert.deepEqual(
-    table.dataFiles().map((file) => file.fileFormat).sort(),
-    ['AVRO', 'PARQUET'],
+    dataMimeTypes(table),
+    [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 
   // The override is put back whatever the call did, and a field the per-call
   // value never named was never in question.
-  assert.equal(table.options().dataFormat, 'AVRO')
+  assert.ok(table.options().dataMimeType.equals(MimeType.AVRO))
   assert.equal(table.options().targetFileSize, 4096)
 })
 
@@ -875,38 +883,37 @@ test('setOptions is what later calls resolve, and a per-call option outlives onl
 // it, napi discarded the extra, and every one of them committed, returned, and
 // scanned exactly as if it had worked. One case per write is the only shape of
 // this test that would have caught it.
-test('every write that takes a per-call data format actually writes it', (t) => {
+test('every write that takes a per-call data MIME type actually writes it', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const avro = () => new iceberg.IcebergOptions({ dataFormat: 'avro' })
-  const formats = (table) => table.dataFiles().map((file) => file.fileFormat).sort()
+  const avro = () => new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO })
 
   const overwritten = iceberg.Table.create(path.join(root, 'ow'), schema(), ['venue'])
   overwritten.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   overwritten.overwriteWhere({ venue: 'XNAS' }, rows([9n], ['XNAS']), avro())
   // XNYS is carried forward as the PARQUET file it already was; only the
   // partition this call rewrote is AVRO.
-  assert.deepEqual(formats(overwritten), ['AVRO', 'PARQUET'])
+  assert.deepEqual(dataMimeTypes(overwritten), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
 
   const merged = iceberg.Table.create(path.join(root, 'mg'), schema())
   merged.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   merged.merge(rows([2n, 3n], ['XLON', 'XASE']), ['id'], true, avro())
-  assert.deepEqual(formats(merged), ['AVRO'])
+  assert.deepEqual(dataMimeTypes(merged), [MimeType.AVRO.toString()])
   assert.equal(merged.scan().intoTable().numRows, 3)
 
   const mergedWhere = iceberg.Table.create(path.join(root, 'mw'), schema(), ['venue'])
   mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
-  assert.deepEqual(formats(mergedWhere), ['AVRO', 'PARQUET'])
+  assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
 
   const replaced = iceberg.Table.create(path.join(root, 'ov'), schema())
   replaced.append(rows([1n], ['XNAS']))
   replaced.overwrite(rows([2n], ['XNYS']), avro())
-  assert.deepEqual(formats(replaced), ['AVRO'])
+  assert.deepEqual(dataMimeTypes(replaced), [MimeType.AVRO.toString()])
 
   // None of them stored anything on the handle.
   for (const table of [overwritten, merged, mergedWhere, replaced]) {
-    assert.equal(table.options().dataFormat, 'PARQUET')
+    assert.ok(table.options().dataMimeType.equals(MimeType.PARQUET))
   }
 })
 
@@ -920,17 +927,17 @@ test('the catalog write shorthands honour a per-call data format', (t) => {
   // has no way to see without opening the manifest.
   const catalog = new iceberg.Catalog(root)
   catalog.tables.create('sales.orders', schema())
-  catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
-  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+  catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
+  assert.deepEqual(dataMimeTypes(catalog.table('sales.orders')), [MimeType.AVRO.toString()])
 
-  catalog.overwrite('sales.orders', rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
-  assert.deepEqual(catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat), ['AVRO'])
+  catalog.overwrite('sales.orders', rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
+  assert.deepEqual(dataMimeTypes(catalog.table('sales.orders')), [MimeType.AVRO.toString()])
 
   // The view spelling agrees, which is the whole point of there being two.
   catalog.namespaces.get('sales').tables.append('orders', rows([3n], ['XLON']))
   assert.deepEqual(
-    catalog.table('sales.orders').dataFiles().map((f) => f.fileFormat).sort(),
-    ['AVRO', 'PARQUET'],
+    dataMimeTypes(catalog.table('sales.orders')),
+    [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 })
 
@@ -1299,19 +1306,19 @@ test('the tables view creates on first write and takes the same per-call options
 
   // A write through the view creates the table from the rows' own schema, and
   // forwards the trailing options the way the table's own writes do.
-  tables.append('orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+  tables.append('orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
   tables.append('orders', rows([2n], ['XNYS']))
   assert.deepEqual(
-    tables.get('orders').dataFiles().map((file) => file.fileFormat).sort(),
-    ['AVRO', 'PARQUET'],
+    dataMimeTypes(tables.get('orders')),
+    [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 
   const replaced = tables.overwrite(
     'orders',
     rows([3n], ['XASE']),
-    new iceberg.IcebergOptions({ dataFormat: 'avro' }),
+    new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }),
   )
-  assert.deepEqual(replaced.dataFiles().map((file) => file.fileFormat), ['AVRO'])
+  assert.deepEqual(dataMimeTypes(replaced), [MimeType.AVRO.toString()])
   assert.equal(replaced.scan().intoTable().numRows, 1)
   assert.deepEqual(tables.names(), ['orders', 'quotes'])
   assert.equal(tables.size(), 2)

@@ -358,6 +358,7 @@
   pub const ARROW_STREAM: Self = Self(MimeTypeValue::ArrowStream);
   pub const AVRO: Self = Self(MimeTypeValue::Avro);
   pub const ORC: Self = Self(MimeTypeValue::Orc);
+  pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
   pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
   pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
   pub const HTML: Self = Self(MimeTypeValue::Html);
@@ -1097,7 +1098,6 @@
   pub enum EntryStatus
   pub const fn code(self) -> i32
   pub fn from_code(code: i64) -> Result<Self>
-  pub enum FileFormat
   pub struct DataFile
   pub struct ManifestEntry
   pub const fn added(snapshot_id: i64, data_file: DataFile) -> Self
@@ -1287,12 +1287,14 @@
   pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
   pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
   pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
+  pub const DATA_MIME_TYPE_KEY: &'static str = "write.format.default";
   pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
   pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 = 100;
   pub const DEFAULT_COMMIT_MAX_BACKOFF_MS: u64 = 60_000;
   pub const DEFAULT_TARGET_FILE_SIZE_BYTES: u64 = 512 * 1024 * 1024;
   pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 16;
   pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 4 * 1024 * 1024;
+  pub const DEFAULT_DATA_MIME_TYPE: MimeType = MimeType::PARQUET;
   pub fn new() -> Self
   pub fn default_read_parallelism() -> usize
   pub fn commit_retries(&self) -> u32
@@ -1302,6 +1304,10 @@
   pub fn read_parallelism(&self) -> usize
   pub fn read_parallel_min_files(&self) -> usize
   pub fn read_parallel_min_file_size_bytes(&self) -> u64
+  pub fn data_mime_type(&self) -> MimeType
+  pub const fn data_mime_type_option(&self) -> Option<&MimeType>
+  pub fn set_data_mime_type(&mut self, mime_type: MimeType) -> Result<()>
+  pub fn try_with_data_mime_type(mut self, mime_type: MimeType) -> Result<Self>
   pub fn set_commit_retries(&mut self, retries: u32)
   pub fn with_commit_retries(mut self, retries: u32) -> Self
   pub fn set_commit_min_backoff_ms(&mut self, wait_ms: u64)

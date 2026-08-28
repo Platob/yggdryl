@@ -422,12 +422,12 @@ zero rows.
 
     ```rust
     use yggdryl::iceberg::{
-        EntryStatus, FileFormat, FormatVersion, PartitionSpec, Table, assign_field_ids, read_manifest,
+        EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids, read_manifest,
         read_manifest_spec,
     };
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{arrow, DataType, MimeType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
@@ -467,7 +467,7 @@ zero rows.
     let entries = read_manifest(&handle)?;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].status, EntryStatus::Added);
-    assert_eq!(entries[0].data_file.file_format, FileFormat::Parquet);
+    assert_eq!(entries[0].data_file.mime_type, MimeType::PARQUET);
     assert_eq!(entries[0].data_file.record_count, 2);
 
     // Statistics are keyed by field id, which is what lets a planner skip a file.
@@ -483,7 +483,7 @@ zero rows.
 
     import pyarrow as pa
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, MimeType
     from yggdryl.iceberg import Table
 
     columns = pa.schema([
@@ -507,7 +507,7 @@ zero rows.
 
     # Each manifest row is a data file plus what the writer measured about it.
     (file, spec), = table.data_files()
-    assert file.file_format == "PARQUET"
+    assert file.mime_type == MimeType.PARQUET
     assert file.record_count == 2
     assert spec.fields[0].name == "venue"
 
@@ -524,7 +524,7 @@ zero rows.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('yggdryl')
+    const { Field, MimeType, fields, iceberg } = require('yggdryl')
 
     const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
       nullable: false,
@@ -548,7 +548,7 @@ zero rows.
 
     // Each manifest row is a data file plus what the writer measured about it.
     const [file] = table.dataFiles()
-    assert.equal(file.fileFormat, 'PARQUET')
+    assert.ok(file.mimeType.equals(MimeType.PARQUET))
     assert.equal(file.recordCount, 2)
     assert.deepEqual(file.partitionNames, ['venue'])
 
@@ -2399,16 +2399,14 @@ setter, and a call that honours options takes one as its last argument -
 the tables view's `append` and `overwrite`. A per-call value is put back after the call, so it
 never leaks into the handle's own override; `setOptions` is what changes that.
 
-## The data file format
+## The data-file MIME type
 
-`write.format.default` - the spec's own property key - names the format new data files are written
-in: `parquet`, the default, or `avro`. Iceberg metadata may also name `orc` and `puffin`; Yggdryl
-preserves both but does not write table data in either format. Like every option it resolves per call, per handle, or per
-table, so one call can drop Avro files into a Parquet table; the manifest records the format each
-file was *actually* written in, and a scan decodes each file as its manifest entry says, so a
-table whose files mix formats still reads as one shape. A format the build cannot encode - `orc` or `puffin` -
-is a typed error naming the key and the format before anything is written, never a silent fall
-back to Parquet.
+`data_mime_type` / `dataMimeType` accepts the generic `MimeType` or anything its
+parser accepts, including `parquet`, `.avro`, and canonical MIME names.
+`write.format.default` remains Iceberg's stored property key. Parquet is the
+default; Avro is also writable. ORC and Puffin metadata are preserved, but a
+write using either fails before consuming rows. Each manifest remains
+authoritative, so mixed Parquet/Avro snapshots scan as one table.
 
 === "Rust"
 
@@ -2416,9 +2414,9 @@ back to Parquet.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::iceberg::{FileFormat, FormatVersion, IcebergOptions, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, MimeType};
 
     let root = std::env::temp_dir().join("yggdryl-doc-data-format");
     let _ = std::fs::remove_dir_all(&root);
@@ -2439,17 +2437,19 @@ back to Parquet.
 
     // One Parquet append, then one Avro append via the explicit option.
     table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]))?;
-    table.set_options(IcebergOptions::new().with_data_format(FileFormat::Avro));
+    table.set_options(
+        IcebergOptions::new().try_with_data_mime_type(MimeType::AVRO)?,
+    );
     table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     // The manifest records what was written, and the mixed table scans whole.
-    let mut formats: Vec<FileFormat> = table
+    let mut formats: Vec<MimeType> = table
         .data_files()?
         .into_iter()
-        .map(|(file, _)| file.file_format)
+        .map(|(file, _)| file.mime_type)
         .collect();
     formats.sort();
-    assert_eq!(formats, [FileFormat::Parquet, FileFormat::Avro]);
+    assert_eq!(formats, [MimeType::AVRO, MimeType::PARQUET]);
     assert_eq!(table.scan(None)?.count(), 2);
 
     let _ = std::fs::remove_dir_all(&root);
@@ -2463,7 +2463,7 @@ back to Parquet.
 
     import pyarrow as pa
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, MimeType
     from yggdryl.iceberg import IcebergOptions, Table, assign_field_ids
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
@@ -2474,15 +2474,18 @@ back to Parquet.
 
     # One Parquet append, then one Avro append - the option is one keyword.
     table.append(pa.table({"id": [1]}, schema=schema))
-    table.append(pa.table({"id": [2]}, schema=schema), data_format="avro")
+    table.append(
+        pa.table({"id": [2]}, schema=schema),
+        data_mime_type=MimeType.AVRO,
+    )
 
-    formats = sorted(file.file_format for file, _ in table.data_files())
-    assert formats == ["AVRO", "PARQUET"]
+    formats = sorted(file.mime_type for file, _ in table.data_files())
+    assert formats == [MimeType.AVRO, MimeType.PARQUET]
     assert table.scan().read_all().num_rows == 2
 
     # Stored per table, the spec's own key configures every writer.
     table.update_properties({"write.format.default": "avro"})
-    assert table.options().data_format == "AVRO"
+    assert table.options().data_mime_type == MimeType.AVRO
     ```
 
 === "JavaScript"
@@ -2493,7 +2496,7 @@ back to Parquet.
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { Field, fields, iceberg } = require('yggdryl')
+    const { Field, MimeType, fields, iceberg } = require('yggdryl')
 
     const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-')), 'trades')
@@ -2505,24 +2508,24 @@ back to Parquet.
     // One Parquet append, then one Avro append - the option is the trailing
     // argument every write already takes.
     table.append(rows(1n))
-    table.append(rows(2n), new iceberg.IcebergOptions({ dataFormat: 'avro' }))
+    table.append(rows(2n), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
 
-    const formats = table.dataFiles().map((file) => file.fileFormat).sort()
-    assert.deepEqual(formats, ['AVRO', 'PARQUET'])
+    const formats = table.dataFiles().map((file) => file.mimeType.toString()).sort()
+    assert.deepEqual(formats, [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
     assert.equal(table.scan().intoTable().numRows, 2)
 
     // Stored per table, the spec's own key configures every writer.
     table.updateProperties({ 'write.format.default': 'avro' })
-    assert.equal(table.options().dataFormat, 'AVRO')
+    assert.ok(table.options().dataMimeType.equals(MimeType.AVRO))
 
     // Formats the build cannot encode are named before anything is written.
     assert.throws(
-      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataFormat: 'orc' })),
-      /ORC/,
+      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataMimeType: MimeType.ORC })),
+      /orc/i,
     )
     assert.throws(
-      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataFormat: 'puffin' })),
-      /PUFFIN/,
+      () => table.append(rows(3n), new iceberg.IcebergOptions({ dataMimeType: MimeType.PUFFIN })),
+      /puffin/i,
     )
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })

@@ -190,7 +190,8 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         .with_compact_after_commits(0)
         .with_read_parallel_min_files(6)
         .with_read_parallel_min_file_size_bytes(7)
-        .with_data_format(super::FileFormat::Avro);
+        .try_with_data_mime_type(crate::MimeType::AVRO)
+        .unwrap();
     options.set_target_file_size_bytes(5).unwrap();
     options.set_read_parallelism(8).unwrap();
     assert_eq!(options.stable_hash(), options.clone().stable_hash());
@@ -203,7 +204,10 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
     assert_eq!(options.read_parallel_min_files_option(), Some(6));
     assert_eq!(options.read_parallel_min_file_size_bytes_option(), Some(7));
     assert_eq!(options.read_parallelism_option(), Some(8));
-    assert_eq!(options.data_format_option(), Some(super::FileFormat::Avro));
+    assert_eq!(
+        options.data_mime_type_option(),
+        Some(&crate::MimeType::AVRO)
+    );
     assert_eq!(IcebergOptions::new().commit_retries_option(), None);
 }
 
@@ -2557,10 +2561,7 @@ mod tables {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].status, super::super::EntryStatus::Added);
         assert_eq!(entries[0].data_file.record_count, 1);
-        assert_eq!(
-            entries[0].data_file.file_format,
-            super::super::FileFormat::Parquet
-        );
+        assert_eq!(entries[0].data_file.mime_type, crate::MimeType::PARQUET);
         // Statistics are keyed by field id, which is what a planner needs.
         assert!(
             entries[0]
@@ -5791,23 +5792,37 @@ mod manifest_planning {
     }
 }
 
-/// The data file format: per-call option, table property, default, and mixing.
-mod data_format {
+/// The data-file MIME type: option, property, default, and mixing.
+mod data_mime_type {
     use super::*;
-    use crate::iceberg::{FileFormat, IcebergOptions};
+    use crate::MimeType;
+    use crate::iceberg::IcebergOptions;
 
-    /// The manifests' `(file_format, path)` pairs of the current snapshot.
-    fn formats(table: &Table<Folder>) -> Vec<(FileFormat, String)> {
+    /// The manifests' `(mime_type, path)` pairs of the current snapshot.
+    fn formats(table: &Table<Folder>) -> Vec<(MimeType, String)> {
         table
             .data_files()
             .unwrap()
             .into_iter()
-            .map(|(file, _)| (file.file_format, file.file_path.to_string()))
+            .map(|(file, _)| (file.mime_type, file.file_path.to_string()))
             .collect()
     }
 
     #[test]
-    fn the_default_format_is_parquet_and_the_option_layers_resolve() {
+    fn options_accept_only_iceberg_mime_types_atomically() {
+        let mut options = IcebergOptions::new();
+        let before = options.clone();
+        assert!(options.set_data_mime_type(MimeType::JSON).is_err());
+        assert_eq!(options, before);
+
+        let options = options
+            .try_with_data_mime_type(MimeType::from_str("application/avro").unwrap())
+            .unwrap();
+        assert_eq!(options.data_mime_type(), MimeType::AVRO);
+    }
+
+    #[test]
+    fn the_default_mime_type_is_parquet_and_the_option_layers_resolve() {
         let path = root("format-layers");
         let mut table = Table::create(
             Folder::new(&path).unwrap(),
@@ -5818,7 +5833,7 @@ mod data_format {
         .unwrap();
 
         // Nothing configured: the default is the spec's own, Parquet.
-        assert_eq!(table.options().unwrap().data_format(), FileFormat::Parquet);
+        assert_eq!(table.options().unwrap().data_mime_type(), MimeType::PARQUET);
 
         // The table property layer, under the spec's own key, in the spec's
         // own lowercase spelling.
@@ -5829,11 +5844,15 @@ mod data_format {
                     .map(|_| ())
             })
             .unwrap();
-        assert_eq!(table.options().unwrap().data_format(), FileFormat::Avro);
+        assert_eq!(table.options().unwrap().data_mime_type(), MimeType::AVRO);
 
         // The explicit option shadows the property.
-        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Parquet));
-        assert_eq!(table.options().unwrap().data_format(), FileFormat::Parquet);
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_data_mime_type(MimeType::PARQUET)
+                .unwrap(),
+        );
+        assert_eq!(table.options().unwrap().data_mime_type(), MimeType::PARQUET);
     }
 
     #[test]
@@ -5867,7 +5886,11 @@ mod data_format {
             .unwrap_err()
             .to_string();
         assert!(message.contains("write.format.default"), "{message}");
-        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Parquet));
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_data_mime_type(MimeType::PARQUET)
+                .unwrap(),
+        );
         table
             .append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
@@ -5875,7 +5898,8 @@ mod data_format {
 
     #[test]
     fn metadata_only_formats_are_refused_up_front_naming_the_format() {
-        for (format, name) in [(FileFormat::Orc, "ORC"), (FileFormat::Puffin, "PUFFIN")] {
+        for mime_type in [MimeType::ORC, MimeType::PUFFIN] {
+            let name = mime_type.extension().unwrap();
             let path = root(&format!("format-{}", name.to_ascii_lowercase()));
             let mut table = Table::create(
                 Folder::new(&path).unwrap(),
@@ -5884,15 +5908,19 @@ mod data_format {
                 PartitionSpec::unpartitioned(),
             )
             .unwrap();
-            table.set_options(IcebergOptions::new().with_data_format(format));
+            table.set_options(
+                IcebergOptions::new()
+                    .try_with_data_mime_type(mime_type.clone())
+                    .unwrap(),
+            );
 
             let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
             let message = table
                 .append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap_err()
                 .to_string();
-            assert!(message.contains(name), "{message}");
-            assert!(message.contains("PARQUET, AVRO"), "{message}");
+            assert!(message.contains(mime_type.as_str()), "{message}");
+            assert!(message.contains("application/avro"), "{message}");
             assert!(table.current_snapshot().is_none());
             assert!(!path.join("data").exists());
         }
@@ -5914,7 +5942,11 @@ mod data_format {
         table
             .append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
-        table.set_options(IcebergOptions::new().with_data_format(FileFormat::Avro));
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_data_mime_type(MimeType::AVRO)
+                .unwrap(),
+        );
         let second = trades(&[2], &[None], &[None]);
         table
             .append(crate::arrow::batch_reader(second.schema(), [second]))
@@ -5925,10 +5957,16 @@ mod data_format {
         let mut recorded = formats(&table);
         recorded.sort();
         assert_eq!(recorded.len(), 2);
-        assert!(matches!(recorded[0], (FileFormat::Parquet, _)));
-        assert!(matches!(recorded[1], (FileFormat::Avro, _)));
-        assert!(recorded[0].1.ends_with(".parquet"), "{}", recorded[0].1);
-        assert!(recorded[1].1.ends_with(".avro"), "{}", recorded[1].1);
+        assert!(
+            recorded
+                .iter()
+                .any(|(mime, path)| { mime == &MimeType::PARQUET && path.ends_with(".parquet") })
+        );
+        assert!(
+            recorded
+                .iter()
+                .any(|(mime, path)| mime == &MimeType::AVRO && path.ends_with(".avro"))
+        );
 
         // The mixed table scans as one shape.
         assert_eq!(
@@ -5946,7 +5984,7 @@ mod data_format {
             .unwrap()
             .into_iter()
             .map(|(file, _)| file)
-            .find(|file| file.file_format == FileFormat::Avro)
+            .find(|file| file.mime_type == MimeType::AVRO)
             .unwrap();
         assert_eq!(avro_file.record_count, 1);
         assert!(!avro_file.value_counts.is_empty());
@@ -5981,7 +6019,7 @@ mod data_format {
         assert!(
             recorded
                 .iter()
-                .all(|(format, _)| *format == FileFormat::Avro),
+                .all(|(mime_type, _)| mime_type == &MimeType::AVRO),
             "{recorded:?}"
         );
         // A fresh open reads the mixed chain from storage alone.

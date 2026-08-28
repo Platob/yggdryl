@@ -25,7 +25,7 @@ use arrow_array::{
 use crate::arrow::BatchReader;
 use crate::{Error, Result};
 
-use super::manifest::DataFile;
+use super::manifest::{DataFile, file_format_name};
 use super::metadata::TableMetadata;
 use super::partition::PartitionSpec;
 
@@ -141,7 +141,7 @@ pub(super) fn files(entries: &[(DataFile, PartitionSpec)]) -> Result<BatchReader
     let mut file_sizes = Vec::with_capacity(entries.len());
     for (file, spec) in entries {
         file_paths.push(file.file_path.to_string());
-        file_formats.push(file.file_format.to_string());
+        file_formats.push(file_format_name(&file.mime_type)?);
         spec_ids.push(spec.spec_id);
         partitions.push(spec.partition_path(&file.partition)?);
         record_counts.push(file.record_count);

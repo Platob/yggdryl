@@ -40,6 +40,7 @@ from typing import Any, Iterator
 import pyarrow as pa
 import pytest
 
+from yggdryl import MimeType
 from yggdryl.iceberg import Catalog, Table
 
 pytestmark = pytest.mark.spark_interop
@@ -614,10 +615,10 @@ class TestPropertiesAndFormats:
             "SET TBLPROPERTIES ('write.format.default' = 'avro')"
         )
         reopened = catalog.table("props.shared")
-        assert reopened.options().data_format == "AVRO"
+        assert reopened.options().data_mime_type == MimeType.AVRO
         reopened.append(pa.table({"id": pa.array([2], pa.int64())}))
-        formats = {file.file_format for file, _ in reopened.data_files()}
-        assert formats == {"PARQUET", "AVRO"}
+        formats = {file.mime_type for file, _ in reopened.data_files()}
+        assert formats == {MimeType.PARQUET, MimeType.AVRO}
         assert spark_rows(
             spark, f"SELECT id FROM {CATALOG}.props.shared ORDER BY id"
         ) == [(1,), (2,)]
@@ -629,10 +630,10 @@ class TestPropertiesAndFormats:
             "props.mixed", pa.table({"id": pa.array([1], pa.int64())})
         )
         table.append(
-            pa.table({"id": pa.array([2], pa.int64())}), data_format="avro"
+            pa.table({"id": pa.array([2], pa.int64())}), data_mime_type="avro"
         )
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"PARQUET", "AVRO"}
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.PARQUET, MimeType.AVRO}
 
         got = spark_rows(
             spark, f"SELECT id FROM {CATALOG}.props.mixed ORDER BY id"
@@ -655,7 +656,7 @@ class TestPropertiesAndFormats:
             f"INSERT INTO {CATALOG}.props.spark_avro VALUES (1, 'a'), (2, null)"
         )
         table = catalog.table("props.spark_avro")
-        assert {file.file_format for file, _ in table.data_files()} == {"AVRO"}
+        assert {file.mime_type for file, _ in table.data_files()} == {MimeType.AVRO}
         assert scan_rows(table) == [(1, "a"), (2, None)]
 
 

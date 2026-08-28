@@ -22,6 +22,7 @@ KNOWN_MIME_TYPES = {
     "ARROW_STREAM": "application/vnd.apache.arrow.stream",
     "AVRO": "application/avro",
     "ORC": "application/vnd.apache.orc",
+    "PUFFIN": "application/vnd.apache.puffin",
     "PLAIN_TEXT": "text/plain",
     "MARKDOWN": "text/markdown",
     "HTML": "text/html",
@@ -70,7 +71,7 @@ KNOWN_MIME_TYPES = {
 
 
 def test_mime_type_complete_known_constants_and_default() -> None:
-    assert len(KNOWN_MIME_TYPES) == 56
+    assert len(KNOWN_MIME_TYPES) == 57
     assert MimeType() == MimeType.OCTET_STREAM
     values = []
     for name, canonical in KNOWN_MIME_TYPES.items():
@@ -103,6 +104,11 @@ def test_mime_type_native_parsing_views_and_value_protocols(tmp_path: Path) -> N
     assert custom.is_structured()
 
     assert MimeType.from_extension(".json") == MimeType.JSON
+    assert MimeType.from_extension(".puffin") == MimeType.PUFFIN
+    assert MimeType.PUFFIN.extension == "puffin"
+    assert MimeType.PUFFIN.is_binary()
+    assert MimeType.PUFFIN.is_structured()
+    assert not MimeType.PUFFIN.is_tabular()
     assert MimeType.from_path(tmp_path / "events.csv") == MimeType.CSV
     assert MimeType.from_content_type('Application/JSON; charset="utf-8"') == MimeType.JSON
     assert MimeType.from_content_coding("x-gzip") == MimeType.GZIP

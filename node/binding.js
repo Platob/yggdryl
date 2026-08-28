@@ -440,6 +440,7 @@ const knownMimeNames = Object.freeze([
   'ARROW_STREAM',
   'AVRO',
   'ORC',
+  'PUFFIN',
   'PLAIN_TEXT',
   'MARKDOWN',
   'HTML',

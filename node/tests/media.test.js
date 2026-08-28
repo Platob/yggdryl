@@ -18,6 +18,7 @@ const knownMimeTypes = Object.freeze({
   ARROW_STREAM: 'application/vnd.apache.arrow.stream',
   AVRO: 'application/avro',
   ORC: 'application/vnd.apache.orc',
+  PUFFIN: 'application/vnd.apache.puffin',
   PLAIN_TEXT: 'text/plain',
   MARKDOWN: 'text/markdown',
   HTML: 'text/html',
@@ -65,7 +66,7 @@ const knownMimeTypes = Object.freeze({
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 56)
+  assert.equal(Object.keys(knownMimeTypes).length, 57)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {
@@ -96,6 +97,11 @@ test('MimeType parsing, views, JSON, ordering, and hashes stay native-owned', ()
   assert.equal(custom.isStructured(), true)
 
   assert.ok(MimeType.fromExtension('.json').equals(MimeType.JSON))
+  assert.ok(MimeType.fromExtension('.puffin').equals(MimeType.PUFFIN))
+  assert.equal(MimeType.PUFFIN.extension, 'puffin')
+  assert.equal(MimeType.PUFFIN.isBinary(), true)
+  assert.equal(MimeType.PUFFIN.isStructured(), true)
+  assert.equal(MimeType.PUFFIN.isTabular(), false)
   assert.ok(MimeType.fromPath('events.csv').equals(MimeType.CSV))
   assert.ok(
     MimeType.fromContentType('Application/JSON; charset="utf-8"').equals(

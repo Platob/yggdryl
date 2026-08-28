@@ -1080,7 +1080,7 @@ fn invalid(reason: SmolStr) -> Error {
 #[cfg(test)]
 mod delete_tests {
     use super::*;
-    use crate::iceberg::{FileFormat, PartitionField};
+    use crate::iceberg::PartitionField;
 
     fn manifest(content: ManifestContent) -> ManifestFile {
         ManifestFile {
@@ -1115,7 +1115,7 @@ mod delete_tests {
             DataFile {
                 content,
                 file_path: "data/part.parquet".into(),
-                file_format: FileFormat::Parquet,
+                mime_type: crate::MimeType::PARQUET,
                 record_count: 1,
                 file_size_in_bytes: 128,
                 ..DataFile::default()

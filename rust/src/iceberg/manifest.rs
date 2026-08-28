@@ -24,9 +24,7 @@
 //! implementation read a manifest this module wrote: an Avro reader matches
 //! fields by `field-id`, not by name or position.
 
-use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
 
 use iceberg_official::spec::{
     DataContentType as OfficialDataContentType, DataFile as OfficialDataFile,
@@ -44,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::FormatVersion;
 use super::partition::{PartitionField, PartitionSpec, Transform};
 use crate::io::IOBase;
-use crate::{Error, Field, Result, Scalar, TimeUnit, Timezone};
+use crate::{Error, Field, MimeType, Result, Scalar, TimeUnit, Timezone};
 
 /// What a manifest's entries describe.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -123,57 +121,15 @@ impl EntryStatus {
     }
 }
 
-/// The encoding one data file uses.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum FileFormat {
-    /// Apache Parquet, which is what this module writes.
-    #[default]
-    Parquet,
-    /// Apache Avro.
-    Avro,
-    /// Apache ORC.
-    Orc,
-    /// Apache Puffin, used by v3 deletion vectors and other blobs.
-    Puffin,
-}
-
-impl FromStr for FileFormat {
-    type Err = Error;
-
-    fn from_str(value: &str) -> Result<Self> {
-        match value.to_ascii_uppercase().as_str() {
-            "PARQUET" => Ok(Self::Parquet),
-            "AVRO" => Ok(Self::Avro),
-            "ORC" => Ok(Self::Orc),
-            "PUFFIN" => Ok(Self::Puffin),
-            other => Err(invalid(format_smolstr!(
-                "expected an Iceberg file format of PARQUET, AVRO, ORC, or PUFFIN, got {other:?}"
-            ))),
-        }
-    }
-}
-
-impl fmt::Display for FileFormat {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Parquet => "PARQUET",
-            Self::Avro => "AVRO",
-            Self::Orc => "ORC",
-            Self::Puffin => "PUFFIN",
-        })
-    }
-}
-
 /// One data file, its partition tuple, and the statistics its writer reported.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DataFile {
     /// Zero for rows, one for position deletes, two for equality deletes.
     pub content: i32,
     /// The file's location, as a URI.
     pub file_path: SmolStr,
     /// The encoding the file uses.
-    pub file_format: FileFormat,
+    pub mime_type: MimeType,
     /// One value per partition field of the spec, in spec order.
     pub partition: Vec<Scalar>,
     /// Rows in the file.
@@ -214,7 +170,7 @@ pub struct DataFile {
 struct DataFileIdentity<'a> {
     content: i32,
     file_path: &'a SmolStr,
-    file_format: FileFormat,
+    mime_type: &'a MimeType,
     partition: &'a [Scalar],
     record_count: i64,
     file_size_in_bytes: i64,
@@ -244,7 +200,7 @@ impl DataFile {
         DataFileIdentity {
             content: self.content,
             file_path: &self.file_path,
-            file_format: self.file_format,
+            mime_type: &self.mime_type,
             partition: &self.partition,
             record_count: self.record_count,
             file_size_in_bytes: self.file_size_in_bytes,
@@ -262,6 +218,33 @@ impl DataFile {
             referenced_data_file: &self.referenced_data_file,
             content_offset: self.content_offset,
             content_size_in_bytes: self.content_size_in_bytes,
+        }
+    }
+}
+
+impl Default for DataFile {
+    fn default() -> Self {
+        Self {
+            content: 0,
+            file_path: SmolStr::new_static(""),
+            mime_type: MimeType::PARQUET,
+            partition: Vec::new(),
+            record_count: 0,
+            file_size_in_bytes: 0,
+            column_sizes: Vec::new(),
+            value_counts: Vec::new(),
+            null_value_counts: Vec::new(),
+            nan_value_counts: Vec::new(),
+            lower_bounds: Vec::new(),
+            upper_bounds: Vec::new(),
+            key_metadata: None,
+            split_offsets: Vec::new(),
+            equality_ids: None,
+            sort_order_id: None,
+            first_row_id: None,
+            referenced_data_file: None,
+            content_offset: None,
+            content_size_in_bytes: None,
         }
     }
 }
@@ -1169,7 +1152,34 @@ fn entry_from_official_owned(
     })
 }
 
-/// Project an official data-file description onto the existing public type.
+/// Return whether one MIME type belongs to Iceberg's file-format vocabulary.
+pub(super) fn is_iceberg_mime_type(mime_type: &MimeType) -> bool {
+    iceberg_file_format(mime_type).is_some()
+}
+
+/// Project one generic MIME type onto Iceberg's closed file-format vocabulary.
+fn iceberg_file_format(mime_type: &MimeType) -> Option<OfficialDataFileFormat> {
+    mime_type
+        .extension()
+        .and_then(|extension| extension.parse().ok())
+}
+
+/// Return the manifest token for one supported MIME type.
+pub(super) fn file_format_name(mime_type: &MimeType) -> Result<&'static str> {
+    let format = iceberg_file_format(mime_type).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "expected an Iceberg MIME type for Parquet, Avro, ORC, or Puffin, got {mime_type}"
+        ))
+    })?;
+    Ok(match format {
+        OfficialDataFileFormat::Parquet => "PARQUET",
+        OfficialDataFileFormat::Avro => "AVRO",
+        OfficialDataFileFormat::Orc => "ORC",
+        OfficialDataFileFormat::Puffin => "PUFFIN",
+    })
+}
+
+/// Project an official data-file description onto the public MIME-based view.
 fn data_file_from_official(
     file: &OfficialDataFile,
     partition_type: &OfficialStructType,
@@ -1201,11 +1211,11 @@ fn data_file_from_official(
             OfficialDataContentType::EqualityDeletes => 2,
         },
         file_path: SmolStr::new(file.file_path()),
-        file_format: match file.file_format() {
-            OfficialDataFileFormat::Parquet => FileFormat::Parquet,
-            OfficialDataFileFormat::Avro => FileFormat::Avro,
-            OfficialDataFileFormat::Orc => FileFormat::Orc,
-            OfficialDataFileFormat::Puffin => FileFormat::Puffin,
+        mime_type: match file.file_format() {
+            OfficialDataFileFormat::Parquet => MimeType::PARQUET,
+            OfficialDataFileFormat::Avro => MimeType::AVRO,
+            OfficialDataFileFormat::Orc => MimeType::ORC,
+            OfficialDataFileFormat::Puffin => MimeType::PUFFIN,
         },
         partition,
         record_count: signed_u64(file.record_count(), "record count")?,
@@ -1859,7 +1869,7 @@ fn entry_to_value(
     ));
     data_file.push((
         Scalar::from("file_format"),
-        Scalar::from(file.file_format.to_string()),
+        Scalar::from(file_format_name(&file.mime_type)?),
     ));
     data_file.push((Scalar::from("partition"), Scalar::from_mapping(tuple)?));
     data_file.push((
@@ -2046,9 +2056,10 @@ fn validate_entry_version(entry: &ManifestEntry, version: FormatVersion) -> Resu
         file.content_offset,
         file.content_size_in_bytes,
     );
-    match (file.file_format, file.content, vector_fields) {
-        (FileFormat::Puffin, 1, (true, Some(offset), Some(size))) if offset >= 0 && size >= 0 => {}
-        (FileFormat::Puffin, _, _) => {
+    match (&file.mime_type, file.content, vector_fields) {
+        (mime_type, 1, (true, Some(offset), Some(size)))
+            if mime_type == &MimeType::PUFFIN && offset >= 0 && size >= 0 => {}
+        (mime_type, _, _) if mime_type == &MimeType::PUFFIN => {
             return Err(invalid(format_smolstr!(
                 "expected a Puffin position-delete file with referenced_data_file, non-negative content_offset, and non-negative content_size_in_bytes, got {:?}",
                 file.file_path
@@ -2114,7 +2125,7 @@ fn validate_entry_version(entry: &ManifestEntry, version: FormatVersion) -> Resu
                 file.file_path
             )));
         }
-        if file.file_format == FileFormat::Puffin {
+        if file.mime_type == MimeType::PUFFIN {
             return Err(invalid(format_smolstr!(
                 "expected Puffin only in an Iceberg v3 manifest, got v{} for {:?}",
                 version.number(),
@@ -3227,6 +3238,32 @@ mod official_read_tests {
     }
 
     #[test]
+    fn manifest_writer_rejects_non_iceberg_mime_types_without_writing() {
+        let field = field();
+        let spec = PartitionSpec::unpartitioned();
+        let entry = ManifestEntry::added(
+            41,
+            DataFile {
+                file_path: "s3://warehouse/table/data/part.json".into(),
+                mime_type: MimeType::JSON,
+                record_count: 1,
+                file_size_in_bytes: 2,
+                ..DataFile::default()
+            },
+        );
+        let mut handle = Buffer::new();
+
+        let message = write_manifest(&mut handle, FormatVersion::V2, &field, &spec, &[entry])
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("Iceberg MIME type"), "{message}");
+        assert!(message.contains(MimeType::JSON.as_str()), "{message}");
+        assert!(handle.as_slice().is_empty());
+        assert!(OfficialManifest::parse_avro(handle.as_slice()).is_err());
+    }
+
+    #[test]
     fn delete_manifest_metadata_is_official_and_mixed_content_is_refused() {
         let field = field();
         let spec = PartitionSpec::identity(3, &field, &["venue"]).unwrap();
@@ -3286,7 +3323,7 @@ mod official_read_tests {
             DataFile {
                 content: 1,
                 file_path: "s3://warehouse/table/data/deletes.puffin".into(),
-                file_format: FileFormat::Puffin,
+                mime_type: MimeType::PUFFIN,
                 partition: vec![Scalar::from("XNAS")],
                 record_count: 1,
                 file_size_in_bytes: 128,

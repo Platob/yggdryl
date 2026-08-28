@@ -10,7 +10,7 @@ import pickle
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase
+from yggdryl import DataType, Field, IOBase, MimeType
 from yggdryl.iceberg import (
     Catalog,
     Compaction,
@@ -158,6 +158,8 @@ class TestCreatingAndOpening:
         assert data_file.content_offset is None
         assert data_file.content_size_in_bytes is None
         assert data_file.nan_value_counts == {}
+        assert data_file.mime_type == MimeType.PARQUET
+        assert not hasattr(data_file, "file_format")
 
         enriched_snapshot = Snapshot.from_json(
             {
@@ -388,7 +390,7 @@ class TestPartitioning:
             "XNYS",
         ]
         assert [spec.fields[0].name for _, spec in files] == ["venue"] * 3
-        assert all(file.file_format == "PARQUET" for file, _ in files)
+        assert all(file.mime_type == MimeType.PARQUET for file, _ in files)
         assert {file.record_count for file, _ in files} == {1}
 
     def test_a_null_partition_is_the_absence_and_not_the_word(
@@ -1121,14 +1123,15 @@ class TestIcebergOptions:
         assert options.commit_retries == 4
         assert options.commit_total_timeout_ms == 1_800_000
         assert options.target_file_size == 512 * 1024 * 1024
-        assert options.data_format == "PARQUET"
+        assert options.data_mime_type == MimeType.PARQUET
+        assert not hasattr(options, "data_format")
 
         options = IcebergOptions(
-            commit_retries=2, commit_total_timeout_ms=500, data_format="avro"
+            commit_retries=2, commit_total_timeout_ms=500, data_mime_type="avro"
         )
         assert options.commit_retries == 2
         assert options.commit_total_timeout_ms == 500
-        assert options.data_format == "AVRO"
+        assert options.data_mime_type == MimeType.AVRO
         options.target_file_size = 1024
         assert options.target_file_size == 1024
         with pytest.raises(TypeError, match="commit_retres"):
@@ -1137,15 +1140,29 @@ class TestIcebergOptions:
     def test_puffin_is_a_native_format_but_not_a_table_data_writer(
         self, table: Table
     ) -> None:
-        options = IcebergOptions(data_format="puffin")
-        assert options.data_format == "PUFFIN"
-        with pytest.raises(ValueError, match=r"write\.format\.default.*PUFFIN"):
+        options = IcebergOptions(data_mime_type=MimeType.PUFFIN)
+        assert options.data_mime_type == MimeType.PUFFIN
+        with pytest.raises(
+            ValueError,
+            match=r"write\.format\.default.*application/vnd\.apache\.puffin",
+        ):
             table.append(_rows(), options=options)
         assert table.current_snapshot is None
 
+    def test_only_iceberg_data_mime_types_are_accepted_atomically(self) -> None:
+        options = IcebergOptions(data_mime_type=MimeType.AVRO)
+        with pytest.raises(ValueError, match=r"write\.format\.default.*application/json"):
+            options.data_mime_type = MimeType.JSON
+        assert options.data_mime_type == MimeType.AVRO
+        with pytest.raises(TypeError, match="MimeType or MIME/extension string"):
+            options.data_mime_type = object()
+        assert options.data_mime_type == MimeType.AVRO
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            IcebergOptions(data_format="avro")
+
     def test_native_identity_hash_locks_every_setter_and_copies_unlock(self) -> None:
-        options = IcebergOptions(commit_retries=4, data_format="parquet")
-        same = IcebergOptions(commit_retries=4, data_format="parquet")
+        options = IcebergOptions(commit_retries=4, data_mime_type="parquet")
+        same = IcebergOptions(commit_retries=4, data_mime_type=MimeType.PARQUET)
         unset = IcebergOptions()
 
         # Explicit defaults and an unset option resolve to the same getters but
@@ -1168,7 +1185,7 @@ class TestIcebergOptions:
             ("read_parallel_min_files", 1),
             ("read_parallel_min_file_size", 1),
             ("compact_after_commits", 1),
-            ("data_format", "avro"),
+            ("data_mime_type", "avro"),
         ]:
             with pytest.raises(TypeError, match="hashed IcebergOptions"):
                 setattr(options, name, value)
@@ -1192,21 +1209,21 @@ class TestIcebergOptions:
     def test_a_keyword_overrides_the_same_field_on_the_options(
         self, table: Table
     ) -> None:
-        options = IcebergOptions(data_format="parquet")
-        table.append(_rows(), options=options, data_format="avro")
+        options = IcebergOptions(data_mime_type="parquet")
+        table.append(_rows(), options=options, data_mime_type="avro")
         # The keyword won: the data files are Avro, and the manifest says so.
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"AVRO"}
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO}
         # The caller's options object was never touched.
-        assert options.data_format == "PARQUET"
+        assert options.data_mime_type == MimeType.PARQUET
 
     def test_an_avro_append_scans_back_and_mixes_with_parquet(
         self, table: Table
     ) -> None:
-        table.append(_rows(), data_format="avro")
+        table.append(_rows(), data_mime_type="avro")
         table.append(_rows(10))
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"AVRO", "PARQUET"}
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO, MimeType.PARQUET}
         got = table.scan().read_all().sort_by("id")
         assert got.column("id").to_pylist() == [1, 2, 3, 10, 11, 12]
 
@@ -1231,26 +1248,27 @@ class TestIcebergOptions:
     def test_set_options_stores_a_handle_wide_override(
         self, table: Table
     ) -> None:
-        table.set_options(data_format="avro")
+        table.set_options(data_mime_type="avro")
         table.append(_rows())
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"AVRO"}
-        assert table.options().data_format == "AVRO"
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO}
+        assert table.options().data_mime_type == MimeType.AVRO
         # A per-call keyword still wins for its one call, without disturbing
         # the stored override.
-        table.append(_rows(10), data_format="parquet")
-        assert sorted(
-            {file.file_format for file, _ in table.data_files()}
-        ) == ["AVRO", "PARQUET"]
-        assert table.options().data_format == "AVRO"
+        table.append(_rows(10), data_mime_type="parquet")
+        assert {file.mime_type for file, _ in table.data_files()} == {
+            MimeType.AVRO,
+            MimeType.PARQUET,
+        }
+        assert table.options().data_mime_type == MimeType.AVRO
 
     def test_the_property_layer_sets_the_format_per_table(
         self, table: Table
     ) -> None:
         table.update_properties({"write.format.default": "avro"})
         table.append(_rows())
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"AVRO"}
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO}
         # An unencodable format is a typed error naming the key, up front.
         table.update_properties({"write.format.default": "orc"})
         with pytest.raises(ValueError, match="write.format.default"):
@@ -1260,12 +1278,12 @@ class TestIcebergOptions:
         self, tmp_path: pathlib.Path
     ) -> None:
         catalog = Catalog(tmp_path / "warehouse")
-        table = catalog.append("sales.orders", _rows(), data_format="avro")
-        formats = {file.file_format for file, _ in table.data_files()}
-        assert formats == {"AVRO"}
+        table = catalog.append("sales.orders", _rows(), data_mime_type="avro")
+        formats = {file.mime_type for file, _ in table.data_files()}
+        assert formats == {MimeType.AVRO}
 
         tables = catalog.namespaces["sales"].tables
         table = tables.append("orders", _rows(10), target_file_size=1024)
         assert table.scan().read_all().num_rows == 6
-        table = tables.overwrite("orders", _rows(), data_format="avro")
+        table = tables.overwrite("orders", _rows(), data_mime_type="avro")
         assert table.scan().read_all().num_rows == 3

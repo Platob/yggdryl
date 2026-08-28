@@ -18,9 +18,9 @@ use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog, Compaction, DataFile, FieldSummary, FileFormat, FormatVersion, IcebergOptions,
-    ManifestContent, ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot,
-    Table, assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
+    Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
+    ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
+    assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
 };
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
@@ -28,6 +28,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 use crate::datatype::core_data_type_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::io::PyIOBase;
+use crate::media::{PyMimeType, core_mime_type_from_value};
 use crate::record::{batch_reader_from_value, batch_reader_to_pyarrow, core_root_field_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
@@ -273,16 +274,8 @@ const ICEBERG_KWARGS: [&str; 10] = [
     "read_parallel_min_files",
     "read_parallel_min_file_size",
     "compact_after_commits",
-    "data_format",
+    "data_mime_type",
 ];
-
-/// Read a data file format out of the name Python spells it with.
-fn file_format_from_value(value: &Bound<'_, PyAny>) -> PyResult<FileFormat> {
-    let name = value.extract::<&str>().map_err(|_| {
-        PyTypeError::new_err("expected a data format name such as \"parquet\" or \"avro\"")
-    })?;
-    name.parse::<FileFormat>().map_err(value_error)
-}
 
 /// Set one Iceberg option field from the Python value a keyword carries.
 fn set_iceberg_option(
@@ -310,7 +303,9 @@ fn set_iceberg_option(
             options.set_read_parallel_min_file_size_bytes(value.extract::<u64>()?);
         }
         "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
-        "data_format" => options.set_data_format(file_format_from_value(value)?),
+        "data_mime_type" => options
+            .set_data_mime_type(core_mime_type_from_value(value)?)
+            .map_err(value_error)?,
         _ => unreachable!("apply_iceberg_kwargs checks the key first"),
     }
     Ok(())
@@ -490,8 +485,8 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.compact_after_commits_option() {
             state.set_item("compact_after_commits", value)?;
         }
-        if let Some(value) = self.inner.data_format_option() {
-            state.set_item("data_format", value.to_string())?;
+        if let Some(value) = self.inner.data_mime_type_option() {
+            state.set_item("data_mime_type", value.as_str())?;
         }
         Ok(state)
     }
@@ -638,23 +633,23 @@ impl PyIcebergOptions {
         Ok(())
     }
 
-    /// The format new data files are written in, as the spec spells it.
-    /// Default: `PARQUET`.
+    /// The MIME type used for new data files. Default: `MimeType.PARQUET`.
     ///
     /// Only what a write produces is decided here: a scan decodes each data
     /// file as the format its manifest entry records, so one table can mix
     /// formats and still read as one shape. The table property is the spec's
     /// own `write.format.default`.
     #[getter]
-    fn data_format(&self) -> String {
-        self.inner.data_format().to_string()
+    fn data_mime_type(&self) -> PyMimeType {
+        PyMimeType::from_core(self.inner.data_mime_type())
     }
 
     #[setter]
-    fn set_data_format(&mut self, format: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_data_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_data_format(file_format_from_value(format)?);
-        Ok(())
+        self.inner
+            .set_data_mime_type(core_mime_type_from_value(value)?)
+            .map_err(value_error)
     }
 
     /// Return a deterministic hash of every explicitly configured option.
@@ -1304,7 +1299,7 @@ impl PyTable {
     /// Append `batches` as a new snapshot, keeping everything already stored.
     ///
     /// `options` and the [`IcebergOptions`] keywords - `target_file_size`,
-    /// `commit_retries`, `data_format`, and the rest - configure this one
+    /// `commit_retries`, `data_mime_type`, and the rest - configure this one
     /// write; an explicit keyword wins over the same field of a passed
     /// options object, and the handle's own configuration is untouched.
     #[pyo3(signature = (batches, *, options = None, **kwargs))]
@@ -1447,7 +1442,7 @@ impl PyTable {
     /// override lives on this handle alone - it is never written to the
     /// table; [`update_properties`](Self::update_properties) is what stores a
     /// setting on the table itself. Keywords work exactly as they do on the
-    /// per-call methods, so `table.set_options(data_format="avro")` is the
+    /// per-call methods, so `table.set_options(data_mime_type="avro")` is the
     /// handle-wide spelling of the per-call keyword.
     #[pyo3(signature = (options = None, **kwargs))]
     fn set_options(
@@ -2934,7 +2929,7 @@ impl PyDataFile {
         let state = PyDict::new(py);
         state.set_item("content", self.inner.content)?;
         state.set_item("file_path", self.inner.file_path.as_str())?;
-        state.set_item("file_format", self.inner.file_format.to_string())?;
+        state.set_item("mime_type", self.inner.mime_type.as_str())?;
         let partition = self
             .inner
             .partition
@@ -2982,10 +2977,7 @@ impl PyDataFile {
             file_path: required_pickle_item(state, "file_path")?
                 .extract::<String>()?
                 .into(),
-            file_format: required_pickle_item(state, "file_format")?
-                .extract::<String>()?
-                .parse()
-                .map_err(value_error)?,
+            mime_type: core_mime_type_from_value(&required_pickle_item(state, "mime_type")?)?,
             partition,
             record_count: required_pickle_item(state, "record_count")?.extract()?,
             file_size_in_bytes: required_pickle_item(state, "file_size_in_bytes")?.extract()?,
@@ -3015,10 +3007,10 @@ impl PyDataFile {
         self.inner.file_path.as_str()
     }
 
-    /// The encoding the file uses, such as `PARQUET`.
+    /// The encoding the file uses.
     #[getter]
-    fn file_format(&self) -> String {
-        self.inner.file_format.to_string()
+    fn mime_type(&self) -> PyMimeType {
+        PyMimeType::from_core(self.inner.mime_type.clone())
     }
 
     /// The partition tuple, one value per partition field of the spec.

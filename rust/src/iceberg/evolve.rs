@@ -43,7 +43,7 @@
 //!
 //! let schema_id = metadata.add_schema(evolved)?;
 //! metadata.set_current_schema(schema_id)?;
-//! assert_eq!(metadata.last_column_id, 3);
+//! assert_eq!(metadata.last_column_id(), 3);
 //! # Ok(())
 //! # }
 //! ```

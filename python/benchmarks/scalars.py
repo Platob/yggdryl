@@ -51,7 +51,7 @@ ARROW_TABLE = pa.Table.from_batches([ARROW_BATCH])
 URL_TEXT = "https://example.com/archive/data.json"
 URL_VALUE = Url(URL_TEXT)
 ICEBERG_SPEC = PartitionSpec.unpartitioned()
-ICEBERG_OPTIONS = IcebergOptions(commit_retries=4, data_format="parquet")
+ICEBERG_OPTIONS = IcebergOptions(commit_retries=4, data_mime_type="parquet")
 SCAN_REPORT = ScanPlan._from_pickle(4096, 8, 24, 2, 6)
 
 

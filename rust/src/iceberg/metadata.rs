@@ -1634,7 +1634,7 @@ impl TableMetadata {
     ///     schema,
     ///     PartitionSpec::unpartitioned(),
     /// )?;
-    /// let timestamp_ms = metadata.last_updated_ms + 1;
+    /// let timestamp_ms = metadata.last_updated_ms() + 1;
     /// metadata.set_current_snapshot(Snapshot {
     ///     snapshot_id: 7,
     ///     parent_snapshot_id: None,

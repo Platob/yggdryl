@@ -82,6 +82,7 @@ impl JsMimeType {
             "ARROW_STREAM" => CoreMimeType::ARROW_STREAM,
             "AVRO" => CoreMimeType::AVRO,
             "ORC" => CoreMimeType::ORC,
+            "PUFFIN" => CoreMimeType::PUFFIN,
             "PLAIN_TEXT" => CoreMimeType::PLAIN_TEXT,
             "MARKDOWN" => CoreMimeType::MARKDOWN,
             "HTML" => CoreMimeType::HTML,

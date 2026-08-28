@@ -439,7 +439,10 @@ fn identity_benchmarks(criterion: &mut Criterion) {
         files_after: 2,
         bytes_rewritten: 32_768,
     };
-    let options = IcebergOptions::new().with_commit_retries(2);
+    let options = IcebergOptions::new()
+        .with_commit_retries(2)
+        .try_with_data_mime_type(MimeType::AVRO)
+        .expect("Avro is an Iceberg data MIME type");
     let sort = SortField {
         source_id: 1,
         transform: Transform::Identity,

@@ -5,6 +5,7 @@ import {
   DataType,
   Field,
   IOBase,
+  MimeType,
   Url,
   Scalar,
   iceberg,
@@ -96,7 +97,7 @@ const schemaId: number = created.evolveSchema(numbered)
 
 declare const file: DataFile
 const filePath: string = file.filePath
-const fileFormat: string = file.fileFormat
+const fileMimeType: MimeType = file.mimeType
 const content: number = file.content
 const partition: Scalar[] = file.partition
 const partitionNames: string[] = file.partitionNames
@@ -243,9 +244,9 @@ const options: IcebergOptions = new IcebergOptions({
   readParallelMinFiles: 16,
   readParallelMinFileSize: 4096,
   compactAfterCommits: 8,
-  dataFormat: 'avro',
+  dataMimeType: MimeType.AVRO,
 })
-const puffinOptions: IcebergOptions = new IcebergOptions({ dataFormat: 'puffin' })
+const puffinOptions: IcebergOptions = new IcebergOptions({ dataMimeType: 'puffin' })
 const emptyOptions: IcebergOptions = new IcebergOptions()
 const clonedOptions: IcebergOptions = options.clone()
 const equalOptions: boolean = options.equals(clonedOptions)
@@ -260,7 +261,7 @@ options.readParallelism = 1
 options.readParallelMinFiles = 4
 options.readParallelMinFileSize = 1024
 options.compactAfterCommits = 3
-options.dataFormat = 'parquet'
+options.dataMimeType = MimeType.PARQUET
 const commitRetries: number = options.commitRetries
 const commitMinBackoffMs: number = options.commitMinBackoffMs
 const commitMaxBackoffMs: number = options.commitMaxBackoffMs
@@ -270,8 +271,8 @@ const readParallelism: number = options.readParallelism
 const readParallelMinFiles: number = options.readParallelMinFiles
 const readParallelMinFileSize: number = options.readParallelMinFileSize
 const compactAfterCommits: number | null = options.compactAfterCommits
-const dataFormat: string = options.dataFormat
-const puffinFormat: string = puffinOptions.dataFormat
+const dataMimeType: MimeType = options.dataMimeType
+const puffinMimeType: MimeType = puffinOptions.dataMimeType
 
 created.setOptions(options)
 const resolvedOptions: IcebergOptions = created.options()

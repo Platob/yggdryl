@@ -251,8 +251,8 @@ export declare class DataFile {
   get content(): number
   /** The file's location, as a URI. */
   get filePath(): string
-  /** The encoding the file uses. */
-  get fileFormat(): string
+  /** The file's generic MIME type. */
+  get mimeType(): JsMimeType
   /** The partition tuple the manifest records, in spec order. */
   get partition(): Array<Scalar>
   /** The partition field names, in the same order as the tuple. */
@@ -858,21 +858,21 @@ export declare class IcebergOptions {
   /** Set after how many data commits an automatic compaction runs. */
   set compactAfterCommits(commits: number)
   /**
-   * The format new data files are written in. Default: `PARQUET`.
+   * The MIME type for new data files. Default: `MimeType.PARQUET`.
    *
    * Only what a write produces is decided here: a scan decodes each data
    * file as the format its manifest entry records, so one table can mix
    * formats and still read as one shape.
    */
-  get dataFormat(): string
+  get dataMimeType(): JsMimeType
   /**
-   * Set the format new data files are written in, named in any case.
+   * Set the MIME type for new data files from a native value or parser input.
    *
    * # Errors
    *
    * Throws the core message naming the accepted formats and the input.
    */
-  set dataFormat(format: string)
+  set dataMimeType(mimeType: MimeTypeInput)
   /** Return whether every explicitly configured option is equal. */
   equals(other: IcebergOptions): boolean
   /** Compare the complete explicit configurations in the core's order. */
@@ -2298,7 +2298,7 @@ export declare class Table {
    * Append `batches` as a new snapshot, keeping everything already stored.
    *
    * `options` configures this one write - `targetFileSize`,
-   * `commitRetries`, `dataFormat`, and the rest - and the handle's own
+   * `commitRetries`, `dataMimeType`, and the rest - and the handle's own
    * configuration is untouched.
    */
   append(batches: BatchReader, options?: IcebergOptions | undefined | null): void
@@ -3064,8 +3064,8 @@ export interface IcebergOptionsInput {
   readParallelMinFileSize?: number
   /** After how many data commits an automatic compaction runs. */
   compactAfterCommits?: number
-  /** An Iceberg file-format name. Table writes currently encode Parquet and Avro. */
-  dataFormat?: string
+  /** The MIME type for new data files. Table writes encode Parquet and Avro. */
+  dataMimeType?: MimeTypeInput
 }
 
 /** One field-metadata key/value pair. */

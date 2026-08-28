@@ -274,6 +274,7 @@ const iceOptions = new iceberg.IcebergOptions({
   commitRetries: 4,
   targetFileSize: 512 * 1024 * 1024,
   readParallelism: 4,
+  dataMimeType: MimeType.AVRO,
 })
 
 benchmark('iceberg/scan_into_ipc', () => iceTable.scan().intoIpc())

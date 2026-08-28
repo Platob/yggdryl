@@ -62,6 +62,7 @@ class MimeType:
     ARROW_STREAM: ClassVar[MimeType]
     AVRO: ClassVar[MimeType]
     ORC: ClassVar[MimeType]
+    PUFFIN: ClassVar[MimeType]
     PLAIN_TEXT: ClassVar[MimeType]
     MARKDOWN: ClassVar[MimeType]
     HTML: ClassVar[MimeType]
@@ -2076,7 +2077,7 @@ class IcebergOptions:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     @staticmethod
     def _from_pickle(state: dict[str, Any]) -> IcebergOptions: ...
@@ -2117,9 +2118,9 @@ class IcebergOptions:
     @compact_after_commits.setter
     def compact_after_commits(self, commits: int) -> None: ...
     @property
-    def data_format(self) -> str: ...
-    @data_format.setter
-    def data_format(self, format: str) -> None: ...
+    def data_mime_type(self) -> MimeType: ...
+    @data_mime_type.setter
+    def data_mime_type(self, value: MimeType | str) -> None: ...
     def stable_hash(self) -> int: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object, /) -> bool: ...
@@ -2222,7 +2223,7 @@ class Tables:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> Table: ...
     def overwrite(
         self,
@@ -2239,7 +2240,7 @@ class Tables:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> Table: ...
     def __repr__(self) -> str: ...
 
@@ -2279,7 +2280,7 @@ class Catalog:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> Table: ...
     def overwrite(
         self,
@@ -2296,7 +2297,7 @@ class Catalog:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> Table: ...
     def __repr__(self) -> str: ...
 
@@ -2368,7 +2369,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def scan_where(
         self,
@@ -2385,7 +2386,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def scan_ref(
         self,
@@ -2403,7 +2404,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def scan_matching(
         self,
@@ -2427,7 +2428,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> pyarrow.RecordBatchReader: ...
     def plan(
         self, filters: Mapping[str, str] | Iterable[tuple[str, str]] | None = None
@@ -2464,7 +2465,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def overwrite(
         self,
@@ -2480,7 +2481,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def overwrite_where(
         self,
@@ -2497,7 +2498,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def merge(
         self,
@@ -2515,7 +2516,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def merge_where(
         self,
@@ -2534,7 +2535,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def set_options(
         self,
@@ -2549,7 +2550,7 @@ class Table:
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
         compact_after_commits: int | None = None,
-        data_format: str | None = None,
+        data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     def options(self) -> IcebergOptions: ...
     def evolve_schema(self, schema: FieldLike) -> int: ...
@@ -2810,7 +2811,7 @@ class DataFile:
     @property
     def path(self) -> str: ...
     @property
-    def file_format(self) -> str: ...
+    def mime_type(self) -> MimeType: ...
     @property
     def partition(self) -> tuple[Any, ...]: ...
     @property

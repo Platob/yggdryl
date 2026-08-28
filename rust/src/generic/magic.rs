@@ -57,6 +57,11 @@ static SIGNATURES: &[Signature] = &[
     },
     Signature {
         offset: 0,
+        pattern: b"PFA1",
+        mime: || MimeType::PUFFIN,
+    },
+    Signature {
+        offset: 0,
         pattern: b"SQLite format 3\0",
         mime: || MimeType::SQLITE3,
     },
@@ -325,6 +330,11 @@ mod tests {
         assert_eq!(
             MimeType::from_magic_bytes(b"Obj\x01rest"),
             Some(MimeType::AVRO)
+        );
+        assert_eq!(MimeType::from_magic_bytes(b"ORCrest"), Some(MimeType::ORC));
+        assert_eq!(
+            MimeType::from_magic_bytes(b"PFA1rest"),
+            Some(MimeType::PUFFIN)
         );
         assert_eq!(
             MimeType::from_magic_bytes(b"SQLite format 3\0rest"),

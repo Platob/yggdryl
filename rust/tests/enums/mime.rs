@@ -13,6 +13,11 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
             MimeType::PARQUET,
             "application/vnd.apache.parquet",
         ),
+        (
+            "Application/Vnd.Apache.Puffin",
+            MimeType::PUFFIN,
+            "application/vnd.apache.puffin",
+        ),
         ("IMAGE/JPEG", MimeType::JPEG, "image/jpeg"),
         (
             "Acme/X.Custom+JSON",
@@ -83,6 +88,7 @@ fn extension_inference_covers_data_documents_and_media() {
         ("yml", MimeType::YAML),
         ("csv", MimeType::CSV),
         ("parquet", MimeType::PARQUET),
+        ("puffin", MimeType::PUFFIN),
         ("arrow", MimeType::ARROW_FILE),
         ("md", MimeType::MARKDOWN),
         ("css", MimeType::CSS),
@@ -155,6 +161,9 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
     assert!(MimeType::CSV.is_tabular());
     assert!(MimeType::XLSX.is_tabular());
     assert!(MimeType::PARQUET.is_binary());
+    assert!(MimeType::PUFFIN.is_binary());
+    assert!(MimeType::PUFFIN.is_structured());
+    assert!(!MimeType::PUFFIN.is_tabular());
     assert!(MimeType::JSON.is_textual());
     assert!(MimeType::JSON.is_structured());
     assert!(!MimeType::JSON.is_binary());

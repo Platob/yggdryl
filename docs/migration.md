@@ -385,8 +385,18 @@ Breaking Rust changes:
   official `<version>-<uuid>[.gz].metadata.json` names; lookalikes are ignored.
 - Equivalent schemas, partition specs, and sort orders reuse the official
   builder's identifier. A conflicting requested identifier is reassigned.
-- `FileFormat::Puffin` now crosses Python and JavaScript as `PUFFIN`.
-  Puffin metadata is retained; table data writes still reject it explicitly.
+- `iceberg::FileFormat` was removed. `DataFile.file_format` is now the typed
+  `DataFile.mime_type: MimeType`; Python uses `mime_type`, JavaScript
+  `mimeType`. Iceberg's on-wire and inspection column remains `file_format`.
+- Python `IcebergOptions.data_format` and JavaScript `dataFormat` became
+  `data_mime_type` and `dataMimeType`. Rust renamed `data_format` to
+  `data_mime_type`, `data_format_option` to `data_mime_type_option`,
+  `set_data_format` to `set_data_mime_type`, and `with_data_format` to the
+  fallible `try_with_data_mime_type`. `DATA_FORMAT_KEY` and
+  `DEFAULT_DATA_FORMAT` became `DATA_MIME_TYPE_KEY` and
+  `DEFAULT_DATA_MIME_TYPE`.
+- `MimeType::PUFFIN` is `application/vnd.apache.puffin` with extension
+  `puffin`. Puffin metadata is retained; table data writes still reject it.
 - `Table::open` preserves exact UUID metadata filenames and detects gzip by
   magic bytes. Commits honor `write.metadata.compression-codec`; direct
   `Table::create` now returns a conflict instead of replacing an existing

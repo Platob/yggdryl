@@ -78,7 +78,7 @@ use arrow_schema::SortOptions;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{
-    DataFile, FieldSummary, FileFormat, ManifestContent, ManifestEntry, ManifestFile,
+    DataFile, FieldSummary, ManifestContent, ManifestEntry, ManifestFile, is_iceberg_mime_type,
     read_legacy_manifest_file, read_manifest_list, write_manifest, write_manifest_list,
 };
 use super::metadata::{FormatVersion, TableMetadata, now_ms, uuid};
@@ -91,7 +91,7 @@ use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::{IOBase, IOMedia};
-use crate::{DataType, Error, Field, IOKind, Result, Scalar};
+use crate::{DataType, Error, Field, IOKind, MimeType, Result, Scalar};
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";
@@ -944,9 +944,9 @@ impl<H: IOBase> Table<H> {
             // The manifest is the authority on a file's format, not its name:
             // a table whose files mix formats - or name them without an
             // extension - still decodes each file as the entry records it.
-            if let Some(base) = mime_of(task.entry.data_file.file_format) {
-                handle.set_media_type(crate::MediaType::new(base));
-            }
+            handle.set_media_type(crate::MediaType::new(
+                task.entry.data_file.mime_type.clone(),
+            ));
             parts.push(ScanPart {
                 handle,
                 size: task.entry.data_file.file_size_in_bytes,
@@ -1473,8 +1473,8 @@ impl<H: IOBase> Table<H> {
         // The format is resolved and checked against the build before the
         // incoming reader is consumed, so a format this build cannot encode
         // fails up front rather than after data files were written.
-        let format = IcebergOptions::write_format(self.options.as_ref(), &self.metadata)?;
-        require_encodable(format)?;
+        let mime_type = IcebergOptions::write_mime_type(self.options.as_ref(), &self.metadata)?;
+        require_encodable(&mime_type)?;
         let initial_sequence = next_sequence_number(&self.metadata)?;
 
         let snapshot_id = snapshot_id();
@@ -1484,7 +1484,7 @@ impl<H: IOBase> Table<H> {
             snapshot_id,
             schema: &schema,
             spec: &spec,
-            format,
+            mime_type,
         };
         let mut written = Vec::new();
         for (values, group) in grouped_batches(batches, &schema, &spec, &partition)? {
@@ -1717,9 +1717,9 @@ impl<H: IOBase> Table<H> {
         Ok(())
     }
 
-    /// Write one partition's rows as a data file in `format` and describe it.
+    /// Write one partition's rows with the configured MIME type and describe it.
     ///
-    /// The file's name carries the format's own extension, so the handle's
+    /// The file's name carries the MIME type's own extension, so the handle's
     /// media type - which is what selects the encoder - agrees with the
     /// `file_format` the manifest will record. A Parquet file's statistics
     /// are read back from the footer that was just written; any other format
@@ -1732,19 +1732,14 @@ impl<H: IOBase> Table<H> {
         values: &[Scalar],
         batches: Vec<RecordBatch>,
     ) -> Result<DataFile> {
-        let FileWrite {
-            snapshot_id,
-            schema,
-            spec,
-            format,
-        } = *write;
+        let snapshot_id = write.snapshot_id;
+        let schema = write.schema;
+        let spec = write.spec;
+        let mime_type = &write.mime_type;
         let directory = spec.partition_path(values)?;
-        let extension = match format {
-            FileFormat::Parquet => "parquet",
-            FileFormat::Avro => "avro",
-            // `require_encodable` refused everything else before any write.
-            other => return Err(not_encodable(other)),
-        };
+        let extension = mime_type
+            .extension()
+            .ok_or_else(|| not_encodable(mime_type))?;
         let name = format!("{index:05}-{snapshot_id}-{}.{extension}", uuid());
         let relative = if directory.is_empty() {
             format!("{DATA_DIR}/{name}")
@@ -1753,11 +1748,12 @@ impl<H: IOBase> Table<H> {
         };
 
         let mut handle = self.root.child_by_path(&relative)?;
+        handle.set_media_type(crate::MediaType::new(mime_type.clone()));
         let options = handle
             .record_options()?
             .with_safe(false)
             .with_field(schema.clone());
-        let mut file = if format == FileFormat::Parquet {
+        let mut file = if mime_type == &MimeType::PARQUET {
             let arrow_schema = crate::arrow::arrow_schema_from_field(schema)?;
             handle.overwrite_arrow_reader(
                 crate::arrow::batch_reader(arrow_schema, batches),
@@ -1785,7 +1781,7 @@ impl<H: IOBase> Table<H> {
                 format!("{directory}/{name}")
             }
         }));
-        file.file_format = format;
+        file.mime_type = mime_type.clone();
         file.file_size_in_bytes = i64::try_from(handle.size()).map_err(|_| {
             invalid(format_smolstr!(
                 "expected a data file size fitting i64, got {}",
@@ -2413,7 +2409,7 @@ fn rolled(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
 }
 
 /// What every data file of one commit is written with.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct FileWrite<'a> {
     /// The snapshot the files belong to, which names them.
     snapshot_id: i64,
@@ -2421,8 +2417,8 @@ struct FileWrite<'a> {
     schema: &'a Field,
     /// The spec the partition tuples are written against.
     spec: &'a PartitionSpec,
-    /// The resolved format the files are encoded in.
-    format: FileFormat,
+    /// The resolved MIME type the files are encoded with.
+    mime_type: MimeType,
 }
 
 /// What a commit keeps of the files the current snapshot already names.
@@ -3078,28 +3074,18 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     )))
 }
 
-/// The MIME type one data file format's bytes decode as, when one does.
-///
-/// `None` leaves the handle's own inference in charge, which is what an
-/// unrecognized format has to fall back to.
-fn mime_of(format: FileFormat) -> Option<crate::MimeType> {
-    match format {
-        FileFormat::Parquet => Some(crate::MimeType::PARQUET),
-        FileFormat::Avro => Some(crate::MimeType::AVRO),
-        _ => None,
-    }
-}
-
-/// Refuse a data file format this build has no encoder for, by name.
+/// Refuse a data-file MIME type this build has no encoder for, by name.
 ///
 /// The error is typed and names both the property key and the format, so a
 /// caller who asked for ORC - or for Parquet in a build without the feature -
 /// learns which setting to change rather than silently getting Parquet.
-fn require_encodable(format: FileFormat) -> Result<()> {
-    match format {
-        FileFormat::Parquet | FileFormat::Avro => Ok(()),
-        other => Err(not_encodable(other)),
+fn require_encodable(mime_type: &MimeType) -> Result<()> {
+    if !is_iceberg_mime_type(mime_type) {
+        return Err(not_encodable(mime_type));
     }
+    RecordOptions::for_mime_type(mime_type)
+        .map(|_| ())
+        .map_err(|_| not_encodable(mime_type))
 }
 
 fn next_sequence_number(metadata: &TableMetadata) -> Result<i64> {
@@ -3177,11 +3163,11 @@ fn checked_manifest_total_i32(
 }
 
 /// The typed refusal [`require_encodable`] reports.
-fn not_encodable(format: FileFormat) -> Error {
+fn not_encodable(mime_type: &MimeType) -> Error {
     Error::InvalidMetadataValue {
-        key: SmolStr::new_static(IcebergOptions::DATA_FORMAT_KEY),
+        key: SmolStr::new_static(IcebergOptions::DATA_MIME_TYPE_KEY),
         reason: format_smolstr!(
-            "expected a data file format this build encodes (PARQUET, AVRO), got {format}"
+            "expected a data MIME type this build encodes (application/vnd.apache.parquet or application/avro), got {mime_type}"
         ),
     }
 }

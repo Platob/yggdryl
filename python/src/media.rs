@@ -158,6 +158,12 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "PUFFIN")]
+    fn puffin_constant() -> Self {
+        Self::from_core(CoreMimeType::PUFFIN)
+    }
+
+    #[classattr]
     #[pyo3(name = "PLAIN_TEXT")]
     fn plain_text_constant() -> Self {
         Self::from_core(CoreMimeType::PLAIN_TEXT)

@@ -1375,6 +1375,7 @@ declare module './index' {
     const ARROW_STREAM: MimeType
     const AVRO: MimeType
     const ORC: MimeType
+    const PUFFIN: MimeType
     const PLAIN_TEXT: MimeType
     const MARKDOWN: MimeType
     const HTML: MimeType

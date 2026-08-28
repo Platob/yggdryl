@@ -14,7 +14,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::generic::Holder;
 use yggdryl::iceberg::{
-    Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FileFormat, FormatVersion,
+    Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
     Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
     PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan, SchemaUpdate as CoreSchemaUpdate,
@@ -28,6 +28,7 @@ use crate::codec::JsScalar;
 use crate::datatype::{JsDataType, data_type_from_input};
 use crate::field::{JsField, MetadataEntry};
 use crate::io::{JsIOBase, LocationInput, folder_from_input};
+use crate::media::{JsMimeType, MimeTypeInput, mime_type_from_input};
 use crate::napi_error;
 use crate::uri::PartitionEntry;
 
@@ -147,15 +148,6 @@ fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
         .collect()
 }
 
-/// Read the data file format a name spells, in any case.
-///
-/// # Errors
-///
-/// Throws the core message naming the accepted vocabulary and the input.
-fn file_format_from_name(name: &str) -> Result<FileFormat> {
-    name.parse::<FileFormat>().map_err(napi_error)
-}
-
 /// The Iceberg option fields, as one JavaScript options object.
 ///
 /// Every field is optional because an options value records only what was set
@@ -163,7 +155,7 @@ fn file_format_from_name(name: &str) -> Result<FileFormat> {
 /// still answers it from its own properties. The names are the ones the
 /// getters carry, so the object and the setters spell the same ten things.
 #[napi(object)]
-pub struct IcebergOptionsInput {
+pub struct IcebergOptionsInput<'env> {
     /// How many beaten commit attempts are retried.
     pub commit_retries: Option<u32>,
     /// The first commit retry wait, in milliseconds.
@@ -183,8 +175,8 @@ pub struct IcebergOptionsInput {
     pub read_parallel_min_file_size: Option<f64>,
     /// After how many data commits an automatic compaction runs.
     pub compact_after_commits: Option<u32>,
-    /// An Iceberg file-format name. Table writes currently encode Parquet and Avro.
-    pub data_format: Option<String>,
+    /// The MIME type for new data files. Table writes encode Parquet and Avro.
+    pub data_mime_type: Option<MimeTypeInput<'env>>,
 }
 
 /// Apply every field one options object carried, in field order.
@@ -195,8 +187,11 @@ pub struct IcebergOptionsInput {
 /// # Errors
 ///
 /// Throws the core's typed error for a value it refuses - a zero target size,
-/// a zero parallelism, an unknown data format - naming the offending value.
-fn apply_options_input(options: &mut CoreIcebergOptions, input: IcebergOptionsInput) -> Result<()> {
+/// zero parallelism, or unsupported data MIME type - naming the value.
+fn apply_options_input(
+    options: &mut CoreIcebergOptions,
+    input: IcebergOptionsInput<'_>,
+) -> Result<()> {
     if let Some(retries) = input.commit_retries {
         options.set_commit_retries(retries);
     }
@@ -231,8 +226,10 @@ fn apply_options_input(options: &mut CoreIcebergOptions, input: IcebergOptionsIn
     if let Some(commits) = input.compact_after_commits {
         options.set_compact_after_commits(commits);
     }
-    if let Some(format) = input.data_format {
-        options.set_data_format(file_format_from_name(&format)?);
+    if let Some(mime_type) = input.data_mime_type {
+        options
+            .set_data_mime_type(mime_type_from_input(mime_type)?)
+            .map_err(napi_error)?;
     }
     Ok(())
 }
@@ -266,7 +263,7 @@ impl JsIcebergOptions {
     ///
     /// Throws the core's typed error for a value it refuses, naming it.
     #[napi(constructor)]
-    pub fn new(options: Option<IcebergOptionsInput>) -> Result<Self> {
+    pub fn new(options: Option<IcebergOptionsInput<'_>>) -> Result<Self> {
         let mut inner = CoreIcebergOptions::new();
         if let Some(input) = options {
             apply_options_input(&mut inner, input)?;
@@ -433,25 +430,26 @@ impl JsIcebergOptions {
         self.inner.set_compact_after_commits(commits);
     }
 
-    /// The format new data files are written in. Default: `PARQUET`.
+    /// The MIME type for new data files. Default: `MimeType.PARQUET`.
     ///
     /// Only what a write produces is decided here: a scan decodes each data
     /// file as the format its manifest entry records, so one table can mix
     /// formats and still read as one shape.
     #[napi(getter)]
-    pub fn data_format(&self) -> String {
-        self.inner.data_format().to_string()
+    pub fn data_mime_type(&self) -> JsMimeType {
+        JsMimeType::from_core(self.inner.data_mime_type())
     }
 
-    /// Set the format new data files are written in, named in any case.
+    /// Set the MIME type for new data files from a native value or parser input.
     ///
     /// # Errors
     ///
     /// Throws the core message naming the accepted formats and the input.
     #[napi(setter)]
-    pub fn set_data_format(&mut self, format: String) -> Result<()> {
-        self.inner.set_data_format(file_format_from_name(&format)?);
-        Ok(())
+    pub fn set_data_mime_type(&mut self, mime_type: MimeTypeInput<'_>) -> Result<()> {
+        self.inner
+            .set_data_mime_type(mime_type_from_input(mime_type)?)
+            .map_err(napi_error)
     }
 
     /// Return whether every explicitly configured option is equal.
@@ -665,12 +663,10 @@ impl JsSnapshot {
     /// Direct manifest locations carried by a legacy v1 snapshot.
     #[napi(getter)]
     pub fn manifests(&self) -> Option<Vec<String>> {
-        self.inner.manifests.as_ref().map(|paths| {
-            paths
-                .iter()
-                .map(|path| path.to_string())
-                .collect::<Vec<_>>()
-        })
+        self.inner
+            .manifests
+            .as_ref()
+            .map(|paths| paths.iter().map(ToString::to_string).collect::<Vec<_>>())
     }
 
     /// What the commit did, defaulting to `append`.
@@ -1115,10 +1111,10 @@ impl JsDataFile {
         self.file.file_path.to_string()
     }
 
-    /// The encoding the file uses.
+    /// The file's generic MIME type.
     #[napi(getter)]
-    pub fn file_format(&self) -> String {
-        self.file.file_format.to_string()
+    pub fn mime_type(&self) -> JsMimeType {
+        JsMimeType::from_core(self.file.mime_type.clone())
     }
 
     /// The partition tuple the manifest records, in spec order.
@@ -1814,7 +1810,7 @@ impl JsTable {
     /// Append `batches` as a new snapshot, keeping everything already stored.
     ///
     /// `options` configures this one write - `targetFileSize`,
-    /// `commitRetries`, `dataFormat`, and the rest - and the handle's own
+    /// `commitRetries`, `dataMimeType`, and the rest - and the handle's own
     /// configuration is untouched.
     #[napi]
     pub fn append(

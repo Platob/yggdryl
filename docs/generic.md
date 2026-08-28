@@ -98,6 +98,9 @@ Regenerate with `cargo bench --bench datatype --all-features -- "value/enum_"`,
 
 `MAGIC_PROBE_LEN` bounds content inference. `Codec`, `MimeType`, and
 `MediaType` own suffix and coding inference; consumers do not duplicate it.
+`MimeType::PUFFIN` / `MimeType.PUFFIN` uses Yggdryl's canonical
+`application/vnd.apache.puffin`, `.puffin`, and the specified `PFA1` magic;
+the Puffin specification assigns no MIME name.
 
 !!! note "Mostly Rust"
     The bindings expose static vocabularies through `yggdryl.enums` in Python

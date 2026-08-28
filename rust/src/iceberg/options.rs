@@ -19,9 +19,9 @@
 use iceberg_official::spec::TableProperties as OfficialTableProperties;
 use smol_str::{SmolStr, format_smolstr};
 
-use super::manifest::FileFormat;
+use super::manifest::is_iceberg_mime_type;
 use super::metadata::TableMetadata;
-use crate::{Error, Result};
+use crate::{Error, MimeType, Result};
 
 /// Configuration for one table's commit retries, file sizing, and reads.
 ///
@@ -64,8 +64,8 @@ pub struct IcebergOptions {
     read_parallel_min_file_size_bytes: Option<u64>,
     /// After how many data commits an automatic compaction runs, when set.
     compact_after_commits: Option<u32>,
-    /// The format new data files are written in, when set.
-    data_format: Option<FileFormat>,
+    /// The MIME type new data files are written with, when set.
+    data_mime_type: Option<MimeType>,
 }
 
 impl IcebergOptions {
@@ -96,7 +96,8 @@ impl IcebergOptions {
     ///
     /// This is the spec's own key, so a table whose property says `avro` writes
     /// Avro data files here exactly as it would under Spark.
-    pub const DATA_FORMAT_KEY: &'static str = OfficialTableProperties::PROPERTY_DEFAULT_FILE_FORMAT;
+    pub const DATA_MIME_TYPE_KEY: &'static str =
+        OfficialTableProperties::PROPERTY_DEFAULT_FILE_FORMAT;
     /// The property naming how many data files a scan decodes at once.
     pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
     /// The property naming how many large-enough files justify parallelism.
@@ -124,7 +125,7 @@ impl IcebergOptions {
     /// The size floor nothing configures: 4 MiB recorded bytes.
     pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 4 * 1024 * 1024;
     /// The data file format nothing configures: Parquet, the spec's default.
-    pub const DEFAULT_DATA_FORMAT: FileFormat = FileFormat::Parquet;
+    pub const DEFAULT_DATA_MIME_TYPE: MimeType = MimeType::PARQUET;
 
     /// Build an options value with nothing set, so every field defaults.
     pub fn new() -> Self {
@@ -253,33 +254,47 @@ impl IcebergOptions {
         self.read_parallel_min_file_size_bytes
     }
 
-    /// Return the format new data files are written in. Default: Parquet.
+    /// Return the MIME type new data files are written with. Default: Parquet.
     ///
     /// Only what a *write* produces is decided here: a scan decodes each data
     /// file as the format its manifest entry records, so one table can mix
     /// formats and still read as one shape.
-    pub fn data_format(&self) -> FileFormat {
-        self.data_format.unwrap_or(Self::DEFAULT_DATA_FORMAT)
+    pub fn data_mime_type(&self) -> MimeType {
+        self.data_mime_type
+            .clone()
+            .unwrap_or(Self::DEFAULT_DATA_MIME_TYPE)
     }
 
-    /// Return the explicitly configured data format.
-    pub const fn data_format_option(&self) -> Option<FileFormat> {
-        self.data_format
+    /// Return the explicitly configured data MIME type.
+    pub const fn data_mime_type_option(&self) -> Option<&MimeType> {
+        self.data_mime_type.as_ref()
     }
 
-    /// Set the format new data files are written in.
+    /// Set the MIME type new data files are written with.
     ///
-    /// The build is checked when a write resolves the format, not here, so an
-    /// options value can carry a format one build encodes and another refuses.
-    pub fn set_data_format(&mut self, format: FileFormat) {
-        self.data_format = Some(format);
+    /// Encoder availability is checked when a write resolves the value, so
+    /// ORC and Puffin remain valid Iceberg metadata in builds that cannot
+    /// encode them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `mime_type` is not Parquet, Avro, ORC, or Puffin.
+    pub fn set_data_mime_type(&mut self, mime_type: MimeType) -> Result<()> {
+        if !is_iceberg_mime_type(&mime_type) {
+            return Err(invalid_data_mime_type(&mime_type));
+        }
+        self.data_mime_type = Some(mime_type);
+        Ok(())
     }
 
-    /// Set the format new data files are written in, persistently.
-    #[must_use]
-    pub fn with_data_format(mut self, format: FileFormat) -> Self {
-        self.set_data_format(format);
-        self
+    /// Set the MIME type new data files are written with, persistently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `mime_type` is not an Iceberg file MIME type.
+    pub fn try_with_data_mime_type(mut self, mime_type: MimeType) -> Result<Self> {
+        self.set_data_mime_type(mime_type)?;
+        Ok(self)
     }
 
     /// Set how many beaten commit attempts are retried; 0 disables retrying.
@@ -478,7 +493,7 @@ impl IcebergOptions {
                 explicit, metadata,
             )?,
             compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
-            data_format: data_format_layer(explicit, metadata)?,
+            data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
     }
 
@@ -521,12 +536,12 @@ impl IcebergOptions {
             .unwrap_or(Self::DEFAULT_TARGET_FILE_SIZE_BYTES))
     }
 
-    /// Resolve only the data file format, the field a write encodes with.
-    pub(super) fn write_format(
+    /// Resolve only the data-file MIME type a write encodes with.
+    pub(super) fn write_mime_type(
         explicit: Option<&Self>,
         metadata: &TableMetadata,
-    ) -> Result<FileFormat> {
-        Ok(data_format_layer(explicit, metadata)?.unwrap_or(Self::DEFAULT_DATA_FORMAT))
+    ) -> Result<MimeType> {
+        Ok(data_mime_type_layer(explicit, metadata)?.unwrap_or(Self::DEFAULT_DATA_MIME_TYPE))
     }
 }
 
@@ -554,17 +569,17 @@ pub(super) struct ReadSettings {
     pub(super) min_file_size_bytes: u64,
 }
 
-/// The one resolver for [`IcebergOptions::DATA_FORMAT_KEY`].
-fn data_format_layer(
+/// The one resolver for [`IcebergOptions::DATA_MIME_TYPE_KEY`].
+fn data_mime_type_layer(
     explicit: Option<&IcebergOptions>,
     metadata: &TableMetadata,
-) -> Result<Option<FileFormat>> {
+) -> Result<Option<MimeType>> {
     layered(
-        explicit.and_then(|options| options.data_format),
+        explicit.and_then(|options| options.data_mime_type.clone()),
         metadata,
-        IcebergOptions::DATA_FORMAT_KEY,
-        "a data file format of parquet, avro, orc, or puffin",
-        |_| true,
+        IcebergOptions::DATA_MIME_TYPE_KEY,
+        "a data MIME type of parquet, avro, orc, or puffin",
+        is_iceberg_mime_type,
     )
 }
 
@@ -699,7 +714,7 @@ fn read_parallel_min_file_size_layer(
 /// An explicit value wins without reading the property at all, which is what
 /// lets a caller shadow a stored value that does not parse. `None` means
 /// neither layer spoke, and the getter's default answers.
-fn layered<T: std::str::FromStr + Copy>(
+fn layered<T: std::str::FromStr>(
     explicit: Option<T>,
     metadata: &TableMetadata,
     key: &'static str,
@@ -712,6 +727,15 @@ fn layered<T: std::str::FromStr + Copy>(
     match stored(metadata, key)? {
         Some((key, text)) => parsed(key, text, expected, accept).map(Some),
         None => Ok(None),
+    }
+}
+
+fn invalid_data_mime_type(mime_type: &MimeType) -> Error {
+    Error::InvalidMetadataValue {
+        key: SmolStr::new_static(IcebergOptions::DATA_MIME_TYPE_KEY),
+        reason: format_smolstr!(
+            "expected a data MIME type of parquet, avro, orc, or puffin, got {mime_type}"
+        ),
     }
 }
 

@@ -12,7 +12,7 @@
   IOBase: append, append_arrow_reader, append_arrow_batch, append_arrow_table, append_lines, append_pandas, append_pandas_frame, append_polars, append_polars_frame, append_records, buffered, children_matching, children_where, clear, close, closed, codec, column_size, compress_into, copy_into, cursor, decompress_into, exists, flush, from_arrow_fs, from_bytes, glob, is_atomic, is_dir, is_file, is_io, is_tabular, iterdir, joinpath, kind, ls, media_type, merge_arrow_reader, merge_arrow_batch, merge_arrow_table, merge_pandas, merge_pandas_frame, merge_polars, merge_polars_frame, merge_records, mkdir, name, open, opened, overwrite_arrow_reader, overwrite_arrow_batch, overwrite_arrow_table, overwrite_pandas, overwrite_pandas_frame, overwrite_polars, overwrite_polars_frame, overwrite_records, parent, partitions, pread, pstream_bytes, pwrite, read_arrow_field, read_arrow_lines, read_arrow_reader, read_bytes, read_lines, read_pandas, read_pandas_frame, read_parquet_geospatial_statistics, read_parquet_statistics, read_polars, read_polars_frame, read_records, read_scalar, read_text, record_options, remove, rglob, row_size, scan_arrow, scan_polars, size, touch, truncate, unlink, url, write_arrow_reader, write_arrow_batch, write_arrow_table, write_bytes, write_lines, write_pandas, write_pandas_frame, write_polars, write_polars_frame, write_records, write_scalar, write_text
   MediaType: base, clear_encodings, encoding, encodings, extension, extensions, from_content_headers, from_extension, from_extensions, from_file_name, from_json, from_parts, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoded, is_encoding, is_font, is_haptics, is_image, is_io, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, push_encoding, set_base, set_encodings, stable_hash
   ProtocolMetadata: __bool__, __contains__, __delitem__, __eq__, __getitem__, __iter__, __len__, __repr__, __setitem__, __str__, clear, get, items, key, keys, prefix, scheme, update, values
-  MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, content_coding, CSS, CSV, DOC, DOCX, extension, FLAC, format, from_content_coding, from_content_type, from_extension, from_json, from_path, from_str, from_value, GIF, GZIP, HTML, into_json, is_application, is_archive, is_audio, is_binary, is_encoding, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, stable_hash, structured_suffix, subtype, SVG, TAR, TOML, top_level, TSV, TTF, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD
+  MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, content_coding, CSS, CSV, DOC, DOCX, extension, FLAC, format, from_content_coding, from_content_type, from_extension, from_json, from_path, from_str, from_value, GIF, GZIP, HTML, into_json, is_application, is_archive, is_audio, is_binary, is_encoding, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, PUFFIN, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, stable_hash, structured_suffix, subtype, SVG, TAR, TOML, top_level, TSV, TTF, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD
   RecordOptions: batch_size, block_codec, commit_row_size, compression, field, filter_partitions, for_media_type, key_value_metadata, level, max_byte_size, max_row_group_size, max_row_size, merge_by_names, mime_type, root_name, safe, select_by_names, stable_hash, sync_marker
   Statement: bind, from_json, into_json, is_all, limit, ordering, predicate, projections, stable_hash
   Timezone: UTC, abbreviation_at, aliases, from_offset, from_value, is_fixed, is_known, is_saving_at, is_utc, key, observes_saving, offset_at, registered, stable_hash, standard_offset, into_local, into_utc, utcoffset
@@ -43,7 +43,7 @@
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
   iceberg.IcebergOptions
-    instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_format, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size
+    instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
   iceberg.Compaction
     instance: bytes_rewritten, files_after, files_before, stable_hash
@@ -59,7 +59,7 @@
   iceberg.ManifestFile
     instance: added_files_count, added_rows_count, added_snapshot_id, deleted_files_count, existing_files_count, existing_rows_count, is_data, length, partition_spec_id, path, sequence_number, stable_hash
   iceberg.DataFile
-    instance: column_sizes, content, file_format, file_size_in_bytes, lower_bounds, null_value_counts, partition, path, record_count, sort_order_id, split_offsets, stable_hash, upper_bounds, value_counts
+    instance: column_sizes, content, file_size_in_bytes, lower_bounds, mime_type, null_value_counts, partition, path, record_count, sort_order_id, split_offsets, stable_hash, upper_bounds, value_counts
   iceberg.ScanPlan
     instance: files_planned, files_skipped, manifests_read, manifests_skipped, record_count, stable_hash
   codec
@@ -108,7 +108,7 @@
   ProtocolMetadata
     instance: clear, delete, entries, get, has, key, keys, prefix, scheme, set, size, toJSON, toString, update, values
   MimeType
-    statics: from, fromContentCoding, fromContentType, fromExtension, fromPath, fromString, fromJSON, OCTET_STREAM, JSON, JSON_LINES, YAML, TOML, CSV, TSV, PARQUET, ARROW_FILE, ARROW_STREAM, AVRO, ORC, PLAIN_TEXT, MARKDOWN, HTML, CSS, JAVASCRIPT, XML, PDF, CBOR, MESSAGE_PACK, PROTOBUF, SQLITE3, PNG, JPEG, GIF, WEBP, SVG, MP3, WAV, OGG, FLAC, MP4, WEBM, WOFF, WOFF2, TTF, OTF, XLS, XLSX, ODS, DOC, DOCX, GZIP, ZSTD, BROTLI, ZLIB, COMPRESS, BZIP2, XZ, LZ4, SNAPPY, ZIP, SEVEN_ZIP, RAR, TAR
+    statics: from, fromContentCoding, fromContentType, fromExtension, fromPath, fromString, fromJSON, OCTET_STREAM, JSON, JSON_LINES, YAML, TOML, CSV, TSV, PARQUET, ARROW_FILE, ARROW_STREAM, AVRO, ORC, PUFFIN, PLAIN_TEXT, MARKDOWN, HTML, CSS, JAVASCRIPT, XML, PDF, CBOR, MESSAGE_PACK, PROTOBUF, SQLITE3, PNG, JPEG, GIF, WEBP, SVG, MP3, WAV, OGG, FLAC, MP4, WEBM, WOFF, WOFF2, TTF, OTF, XLS, XLSX, ODS, DOC, DOCX, GZIP, ZSTD, BROTLI, ZLIB, COMPRESS, BZIP2, XZ, LZ4, SNAPPY, ZIP, SEVEN_ZIP, RAR, TAR
     instance: clone, compare, contentCoding, equals, extension, format, isApplication, isArchive, isAudio, isBinary, isEncoding, isFont, isHaptics, isImage, isIo, isKnown, isMessage, isModel, isMultipart, isStructured, isTabular, isText, isTextual, isVideo, stableHash, structuredSuffix, subtype, toJSON, toString, topLevel
   IOBase
     statics: from, fromArrowFs, fromBytes
@@ -153,7 +153,7 @@
   iceberg
     statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaToJson
   iceberg.IcebergOptions
-    instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataFormat, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize
+    instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataMimeType, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize
   iceberg.Catalog
     instance: append, namespace, namespaces, overwrite, properties, table, tables, updateProperties
   iceberg.Namespace
@@ -179,7 +179,7 @@
   iceberg.ManifestFile
     instance: addedFilesCount, addedRowsCount, addedSnapshotId, clone, compare, content, deletedFilesCount, deletedRowsCount, equals, existingFilesCount, existingRowsCount, firstRowId, manifestLength, manifestPath, minSequenceNumber, partitionSpecId, partitions, sequenceNumber, stableHash
   iceberg.DataFile
-    instance: clone, columnSizes, compare, content, equals, fileFormat, filePath, fileSizeInBytes, lowerBounds, nullValueCounts, partition, partitionNames, recordCount, sortOrderId, stableHash, toString, upperBounds, valueCounts
+    instance: clone, columnSizes, compare, content, equals, filePath, fileSizeInBytes, lowerBounds, mimeType, nullValueCounts, partition, partitionNames, recordCount, sortOrderId, stableHash, toString, upperBounds, valueCounts
   iceberg.ScanPlan
     instance: clone, compare, equals, filesPlanned, filesSkipped, manifestsRead, manifestsSkipped, recordCount, stableHash
   iceberg.Compaction

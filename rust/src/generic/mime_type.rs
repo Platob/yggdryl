@@ -25,6 +25,7 @@ enum MimeTypeValue {
     ArrowStream,
     Avro,
     Orc,
+    Puffin,
     PlainText,
     Markdown,
     Html,
@@ -107,6 +108,8 @@ impl MimeType {
     pub const AVRO: Self = Self(MimeTypeValue::Avro);
     /// Apache ORC tabular data.
     pub const ORC: Self = Self(MimeTypeValue::Orc);
+    /// Apache Puffin statistics and index data.
+    pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
     /// Unformatted plain text.
     pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
     /// Markdown text.
@@ -358,6 +361,7 @@ impl MimeType {
             MimeTypeValue::ArrowStream => "application/vnd.apache.arrow.stream",
             MimeTypeValue::Avro => "application/avro",
             MimeTypeValue::Orc => "application/vnd.apache.orc",
+            MimeTypeValue::Puffin => "application/vnd.apache.puffin",
             MimeTypeValue::PlainText => "text/plain",
             MimeTypeValue::Markdown => "text/markdown",
             MimeTypeValue::Html => "text/html",
@@ -451,6 +455,7 @@ impl MimeType {
             MimeTypeValue::ArrowStream => Some("arrows"),
             MimeTypeValue::Avro => Some("avro"),
             MimeTypeValue::Orc => Some("orc"),
+            MimeTypeValue::Puffin => Some("puffin"),
             MimeTypeValue::PlainText => Some("txt"),
             MimeTypeValue::Markdown => Some("md"),
             MimeTypeValue::Html => Some("html"),
@@ -621,6 +626,7 @@ impl MimeType {
                     | MimeTypeValue::MessagePack
                     | MimeTypeValue::Protobuf
                     | MimeTypeValue::Sqlite3
+                    | MimeTypeValue::Puffin
             )
             || matches!(
                 self.structured_suffix(),
@@ -688,6 +694,7 @@ impl MimeType {
                     | MimeTypeValue::ArrowStream
                     | MimeTypeValue::Avro
                     | MimeTypeValue::Orc
+                    | MimeTypeValue::Puffin
                     | MimeTypeValue::Pdf
                     | MimeTypeValue::Cbor
                     | MimeTypeValue::MessagePack
@@ -1124,6 +1131,7 @@ fn known_from_mime(value: &str) -> Option<MimeType> {
         ("application/avro", AVRO),
         ("application/vnd.apache.avro", AVRO),
         ("application/vnd.apache.orc", ORC),
+        ("application/vnd.apache.puffin", PUFFIN),
         ("text/plain", PLAIN_TEXT),
         ("text/markdown", MARKDOWN),
         ("text/html", HTML),
@@ -1214,6 +1222,7 @@ fn known_from_extension(value: &str) -> Option<MimeType> {
         ("arrows", ARROW_STREAM),
         ("avro", AVRO),
         ("orc", ORC),
+        ("puffin", PUFFIN),
         ("txt", PLAIN_TEXT),
         ("text", PLAIN_TEXT),
         ("log", PLAIN_TEXT),

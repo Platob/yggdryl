@@ -579,6 +579,7 @@ if iceberg_snapshot is not None:
     snapshot_added_rows: int | None = iceberg_snapshot.added_rows
 if iceberg_files:
     iceberg_file = iceberg_files[0][0]
+    iceberg_file_mime_type: MimeType = iceberg_file.mime_type
     file_key: bytes | None = iceberg_file.key_metadata
     nan_counts: dict[int, int] = iceberg_file.nan_value_counts
     equality_ids: list[int] | None = iceberg_file.equality_ids
@@ -622,17 +623,17 @@ iceberg_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
     commit_retries=2,
     commit_total_timeout_ms=30_000,
     target_file_size=1024,
-    data_format="avro",
+    data_mime_type="avro",
 )
 iceberg_puffin_options: iceberg.IcebergOptions = iceberg.IcebergOptions(
-    data_format="puffin"
+    data_mime_type=MimeType.PUFFIN
 )
 iceberg_retries: int = iceberg_options.commit_retries
 iceberg_timeout: int = iceberg_options.commit_total_timeout_ms
-iceberg_format: str = iceberg_options.data_format
-iceberg_options.data_format = "parquet"
+iceberg_mime_type: MimeType = iceberg_options.data_mime_type
+iceberg_options.data_mime_type = MimeType.PARQUET
 iceberg_table.append(pa.table({"id": [1]}), options=iceberg_options, commit_retries=1)
-iceberg_table.overwrite(pa.table({"id": [1]}), data_format="avro")
+iceberg_table.overwrite(pa.table({"id": [1]}), data_mime_type="avro")
 iceberg_table.set_options(target_file_size=2048)
 iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
 iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
@@ -641,7 +642,7 @@ iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
 
 assert iceberg_retries >= 0
 assert iceberg_timeout >= 0
-assert iceberg_format
+assert iceberg_mime_type
 assert iceberg_puffin_options
 assert iceberg_resolved
 assert iceberg_options_scan
@@ -663,7 +664,7 @@ opened_table: iceberg.Table = namespace_tables.open_or_create(
     "fills", iceberg_schema
 )
 appended_table: iceberg.Table = namespace_tables.append(
-    "orders", pa.table({"id": [1]}), data_format="avro"
+    "orders", pa.table({"id": [1]}), data_mime_type="avro"
 )
 overwritten_table: iceberg.Table = namespace_tables.overwrite(
     "orders", pa.table({"id": [1]}), options=iceberg_options
@@ -688,7 +689,7 @@ paired_scan: pa.RecordBatchReader = iceberg_table.scan_where(
 unfiltered_scan: pa.RecordBatchReader = iceberg_table.scan_where()
 branch_scan: pa.RecordBatchReader = iceberg_table.scan_ref("nightly")
 branch_projection: pa.RecordBatchReader = iceberg_table.scan_ref(
-    "nightly", {"venue": "XNAS"}, iceberg_schema, data_format="avro"
+    "nightly", {"venue": "XNAS"}, iceberg_schema, data_mime_type="avro"
 )
 
 # A plan answers in counts, so every getter is an `int` rather than a view.
@@ -711,7 +712,7 @@ assert skipped_manifests >= 0
 
 # The scoped writes take the filters first and the same flattened keywords.
 iceberg_table.overwrite_where(
-    {"venue": "XNAS"}, pa.table({"id": [1]}), data_format="avro"
+    {"venue": "XNAS"}, pa.table({"id": [1]}), data_mime_type="avro"
 )
 iceberg_table.overwrite_where(None, pa.table({"id": [1]}))
 iceberg_table.merge(pa.table({"id": [1]}), ["id"])
