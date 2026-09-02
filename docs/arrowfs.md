@@ -508,7 +508,7 @@ needs nothing from the table format:
         schema,
         PartitionSpec::unpartitioned(),
     )?;
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     let options = table.record_options()?;
     let rows: usize = table

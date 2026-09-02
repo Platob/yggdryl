@@ -3366,7 +3366,7 @@ for the next reader to prune with.
     // partitions and committed as one snapshot.
     let table = catalog
         .tables()
-        .append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
+        .append_arrow_reader("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
 
     let snapshot = table.current_snapshot().expect("one commit");
     assert_eq!(snapshot.operation(), "append");
@@ -3379,7 +3379,7 @@ for the next reader to prune with.
     day_two.write_all_bytes(b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n")?;
     let table = catalog
         .tables()
-        .append("logs.app", day_two.into_arrow_lines(&options)?)?;
+        .append_arrow_reader("logs.app", day_two.into_arrow_lines(&options)?)?;
     assert_eq!(table.metadata().snapshots().len(), 2);
     assert_eq!(table.current_snapshot().unwrap().summary_value("total-records"), Some("4"));
     assert_eq!(table.manifests()?.len(), 2, "one manifest per append");
@@ -3602,7 +3602,7 @@ makes the line surface worth having.
     )?;
 
     // 5. One commit, handed the reader itself - never a Vec of batches.
-    table.append(stream)?;
+    table.commit_append(stream)?;
 
     // The read-back asserts on the table, not on anything held in memory.
     let mut rows = 0_usize;

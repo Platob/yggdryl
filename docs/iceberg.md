@@ -44,7 +44,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
             Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
         ],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     let snapshot = table.current_snapshot().expect("a snapshot");
     assert_eq!(snapshot.operation(), "append");
@@ -200,7 +200,7 @@ contracts.
         schema.into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1_i64]))],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     let names: Vec<String> = Folder::new(&path)?
         .ls(true, false)
@@ -451,7 +451,7 @@ zero rows.
             Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNAS")])),
         ],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     // A snapshot names one manifest list; each of its rows is a manifest.
     let manifests = table.manifests()?;
@@ -680,7 +680,7 @@ assert_eq!(partition.iceberg().get("spec-id"), Some("1"));
 let venue = partition.get_field_by_name("venue").expect("the partition column");
 assert!(venue.is_partition());
 assert_eq!(venue.iceberg().get("transform"), Some("identity"));
-assert_eq!(PartitionSpec::from_field(&partition)?, spec);
+assert_eq!(PartitionSpec::from_partition_field(&partition)?, spec);
 
 // And a schema that marks its own partition columns needs no column list.
 let marked = spec.mark_partitions(&schema)?;
@@ -726,7 +726,7 @@ value:
             Arc::new(StringArray::from(vec![Some("XNAS"), None])),
         ],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     let files = table.data_files()?;
     assert_eq!(files.len(), 2);
@@ -829,7 +829,7 @@ value:
             Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
         ],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     // The target names the columns to keep; each file's Parquet reader gets it as
     // its own projection mask, so the dropped column chunk is never decoded.
@@ -966,7 +966,7 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
                 Arc::new(StringArray::from(vec![Some(venue)])),
             ],
         )?;
-        table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+        table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
     }
 
     // Nothing is listed: the snapshot names the manifest list, whose per-partition
@@ -1075,14 +1075,14 @@ Reading one is an ordinary scan with the snapshot named:
         std::sync::Arc::clone(&arrow_schema),
         vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![1]))],
     )?;
-    table.append(yggdryl::arrow::batch_reader(std::sync::Arc::clone(&arrow_schema), [one]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(std::sync::Arc::clone(&arrow_schema), [one]))?;
     let past = table.current_snapshot().expect("one commit").snapshot_id;
 
     let nine = arrow_array::RecordBatch::try_new(
         std::sync::Arc::clone(&arrow_schema),
         vec![std::sync::Arc::new(arrow_array::Int64Array::from(vec![9]))],
     )?;
-    table.overwrite(yggdryl::arrow::batch_reader(arrow_schema, [nine]))?;
+    table.commit_overwrite(yggdryl::arrow::batch_reader(arrow_schema, [nine]))?;
 
     // The present shows the overwrite; the retained snapshot shows what was.
     assert_eq!(table.scan(None)?.count(), 1);
@@ -1172,7 +1172,7 @@ Reading one is an ordinary scan with the snapshot named:
 A snapshot is read as the schema that was current when it was written, so a column added later does
 not appear and a column dropped later still does. A branch or tag resolves with `snapshot_by_ref`,
 and a metadata-only change - a property, a new ref, an evolved schema - commits through
-`commit_changes`, which writes one new metadata document and leaves the table untouched when the
+`commit_metadata_changes`, which writes one new metadata document and leaves the table untouched when the
 change or the write fails.
 
 The table also renders its own record as record batches, under the column names PyIceberg's
@@ -1190,6 +1190,13 @@ drains a scan drains them.
     spells the same six `plan`, `planAt`, `scanWhere`, `overwriteWhere`,
     `merge`, and `mergeWhere`; and `ScanPlan` reports the same five numbers in
     each language's casing.
+
+    Rust says `commit_overwrite_where` and `commit_merge_where` for the two
+    writes, because [`Table` is also an `IOMedia`](io.md#arrow-batches) and a
+    bare `overwrite` would sit beside the trait's own `overwrite_arrow_reader`
+    with no way to tell which configuration a call resolves. The bindings keep
+    the short verb and pass the table's own `IcebergOptions`; a filter of
+    `None` selects every row in each language.
 
 A filter is a column name and a value as text - the vocabulary
 [`IOBase::children_where`](io.md) filters a lake with - and it crosses as a mapping or as a
@@ -1241,7 +1248,7 @@ over the snapshot a branch or tag names.
 
     // One commit per venue, so the manifest list has three rows to prune.
     for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
-        table.append(rows(vec![id], vec![venue], vec![10]))?;
+        table.commit_append(rows(vec![id], vec![venue], vec![10]))?;
     }
     let inserted = table.current_snapshot().expect("three commits").snapshot_id;
 
@@ -1264,13 +1271,13 @@ over the snapshot a branch or tag names.
         files.into_iter().map(|(file, _)| file.file_path.to_string()).collect()
     };
     let before = paths(table.data_files()?);
-    table.overwrite_where(&[("venue", "XNYS")], rows(vec![2], vec!["XNYS"], vec![99]))?;
+    table.commit_overwrite_where(&[("venue", "XNYS")], rows(vec![2], vec!["XNYS"], vec![99]))?;
     let after = paths(table.data_files()?);
     assert_eq!(before.difference(&after).count(), 1, "one partition was rewritten");
     assert_eq!(before.intersection(&after).count(), 2, "the others were carried");
 
     // A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
-    table.merge(rows(vec![3, 4], vec!["XLON", "XLON"], vec![7, 8]), &["id".to_owned()], true)?;
+    table.commit_merge(rows(vec![3, 4], vec!["XLON", "XLON"], vec![7, 8]), &["id".to_owned()], true)?;
     let total: usize = table
         .scan(None)?
         .map(|batch| batch.map(|batch| batch.num_rows()))
@@ -1278,7 +1285,7 @@ over the snapshot a branch or tag names.
     assert_eq!(total, 4);
 
     // Narrowed first: a merge into one partition can read no other partition.
-    table.merge_where(
+    table.commit_merge_where(
         &[("venue", "XNAS")],
         rows(vec![1], vec!["XNAS"], vec![42]),
         &["id".to_owned()],
@@ -1748,7 +1755,7 @@ let batch = RecordBatch::try_new(
         Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
     ],
 )?;
-table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
 let partition = Folder::new(path.join("data").join("venue=XNYS"))?;
 let options = partition.record_options()?;
@@ -1811,14 +1818,14 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     let first = rows(&[1, 2], &["XNAS", "XNYS"])?;
     let table = catalog
         .tables()
-        .append("nyc.trades", yggdryl::arrow::batch_reader(first.schema(), [first]))?;
+        .append_arrow_reader("nyc.trades", yggdryl::arrow::batch_reader(first.schema(), [first]))?;
     let rows_read: usize = table.scan(None)?.map(|batch| batch.map(|b| b.num_rows())).sum::<Result<usize, _>>()?;
     assert_eq!(rows_read, 2);
 
     let second = rows(&[3], &["XNAS"])?;
     catalog
         .tables()
-        .append("nyc.trades", yggdryl::arrow::batch_reader(second.schema(), [second]))?;
+        .append_arrow_reader("nyc.trades", yggdryl::arrow::batch_reader(second.schema(), [second]))?;
 
     // The partition marks the schema carried became the table's spec.
     let reopened = catalog.table("nyc.trades")?;
@@ -1924,7 +1931,17 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
 `tables().create` is the explicit spelling - it numbers an unnumbered schema, derives the identity
 spec from the schema's own [partition marks](field.md#a-field-can-be-a-partition-column), and
 refuses a name that already has a table with a typed conflict. `append` and `overwrite` are
-create-or-write. In every language the collections are the one spelling and the catalog keeps
+create-or-write; Rust spells the two `append_arrow_reader` and `overwrite_arrow_reader`, and takes
+the per-call settings through `append_arrow_reader_with_options` and its overwrite twin.
+
+Every write here - on a table, on the tables view, on the catalog - reads its rows through the same
+inference point [the record surface uses](io.md#arrow-batches), with the table's stored schema as
+the declared field. Python therefore takes what `append_records` takes: a `RecordBatchReader`,
+`Table`, `RecordBatch`, `Dataset` or `Scanner`, a `pandas` or `polars` frame including a
+`LazyFrame`, an iterable of any of those, or an iterable of mappings and dataclass rows.
+JavaScript takes what `BatchReader.from` takes plus the plain objects and field-class instances
+`appendRecords` accepts. A create-on-write table has no schema to declare yet, and the rows are
+then what name one. In every language the collections are the one spelling and the catalog keeps
 exactly two dotted entry points - `table` and `namespace` - because a dotted identifier is a real
 Iceberg spelling and deserves one call; there is no flat `create_table`/`has_table` surface beside
 the views, because two spellings of one operation is the disease and a one-line delegate is still
@@ -2137,7 +2154,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
     let mut table = catalog.tables().create("tiny.rows", schema)?;
     for id in 0..5 {
         let batch = one(id)?;
-        table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+        table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
     }
     assert_eq!(table.inspect_files()?.next().expect("one batch")?.num_rows(), 5);
 
@@ -2279,7 +2296,7 @@ too:
     assert_eq!(table.options()?.target_file_size_bytes(), 512 * 1024 * 1024);
 
     // The property layer is the table's own metadata, one commit away.
-    table.commit_changes(|metadata| {
+    table.commit_metadata_changes(|metadata| {
         metadata.set_property(IcebergOptions::COMMIT_RETRIES_KEY, "9")?;
         Ok(())
     })?;
@@ -2430,11 +2447,11 @@ authoritative, so mixed Parquet/Avro snapshots scan as one table.
     )?;
 
     // One Parquet append, then one Avro append via the explicit option.
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]))?;
     table.set_options(
         IcebergOptions::new().try_with_data_mime_type(MimeType::AVRO)?,
     );
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     // The manifest records what was written, and the mixed table scans whole.
     let mut formats: Vec<MimeType> = table
@@ -2539,7 +2556,7 @@ one commit gate every write goes through re-checks the current version before wr
 newer version it finds as being *beaten* once, and retries with jittered exponential backoff up to
 `commit.retry.num-retries` times and within the cumulative backoff budget named by
 `commit.retry.total-timeout-ms`. What a retry does depends on the operation. An `append` and every
-metadata-only `commit_changes` **rebase**: they
+metadata-only `commit_metadata_changes` **rebase**: they
 reload the winner's document and re-apply their
 intent on it - the data files and the manifest of added entries are written once and reused, only
 the manifest list and the document are rebuilt - so both writers' rows survive in one line of
@@ -2580,12 +2597,12 @@ history:
     };
 
     let batch = one(1)?;
-    left.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    left.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     // The right handle is now stale; its commit observes the winner,
     // rebases onto it, and lands as the next version.
     let batch = one(2)?;
-    right.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    right.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     // Both rows survive, on one line of history, and the rebased handle
     // is current: no re-open needed to see the winner's row.
@@ -2655,13 +2672,13 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     };
 
     let batch = one(1)?;
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
     let audited = table.current_snapshot().expect("one commit").snapshot_id;
 
     // The tag pins the audited state; the table keeps moving.
     table.create_tag("audit-2026", audited)?;
     let batch = one(2)?;
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
     table.create_branch("review", audited)?;
 
     // Every ref reads as the complete table it names.
@@ -2672,11 +2689,11 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     // A branch fast-forwards only along its own ancestry: the target must
     // reach the branch's head by parent ids, so no history can be lost.
     let head = table.current_snapshot().expect("two commits").snapshot_id;
-    table.fast_forward("review", head)?;
+    table.fast_forward_branch("review", head)?;
     assert_eq!(table.snapshot_by_ref("review")?.snapshot_id, head);
 
     // Removing a ref removes the name; the snapshots stay retained.
-    let removed = table.remove_ref("review")?;
+    let removed = table.remove_snapshot_ref("review")?;
     assert_eq!(removed.snapshot_id, head);
 
     // Expiry honors every ref's retention: the tagged snapshot survives
@@ -2843,7 +2860,7 @@ is the host's own parallelism, clamped to 1..=8. The order is the plan's order e
             Arc::clone(&arrow_schema),
             vec![Arc::new(Int64Array::from(vec![id]))],
         )?;
-        table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+        table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
     }
 
     // Three tiny files sit below both thresholds, so this table reads
@@ -2928,7 +2945,7 @@ let rows = taxis(
     &[15.32, 22.15, 9.01, 42.13],
     &["N", "N", "N", "Y"],
 )?;
-table.append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))?;
+table.commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))?;
 
 // SELECT * FROM nyc.taxis
 let fares = |table: &Table<Holder>| -> Result<Vec<(i64, f64)>, Box<dyn std::error::Error>> {
@@ -2953,7 +2970,7 @@ let before_changes = table.current_snapshot().expect("the insert").snapshot_id;
 // UPDATE nyc.taxis SET fare_amount = 16.32 WHERE trip_id = 1000371
 // An update is a merge: the incoming row matches on the key and replaces.
 let update = taxis(&[1], &[1_000_371], &[1.8], &[16.32], &["N"])?;
-table.merge(
+table.commit_merge(
     yggdryl::arrow::batch_reader(update.schema(), [update]),
     &["trip_id".to_owned()],
     true,
@@ -2964,7 +2981,7 @@ assert_eq!(fares(&table)?.len(), 4);
 // DELETE FROM nyc.taxis WHERE vendor_id = 1
 // A delete is a filtered overwrite with nothing incoming: the selected
 // partition is replaced by no rows, and every other file is carried over.
-table.overwrite_where(
+table.commit_overwrite_where(
     &[("vendor_id", "1")],
     yggdryl::arrow::batch_reader(Arc::clone(&arrow_schema), []),
 )?;
@@ -2974,10 +2991,10 @@ assert_eq!(
 );
 
 // ALTER TABLE nyc.taxis ADD COLUMN fare_per_distance float
-let mut update = yggdryl::iceberg::SchemaUpdate::for_metadata(table.metadata())?;
+let mut update = yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata())?;
 update.add_column("", DataType::Float32.nullable_field("fare_per_distance"));
-let evolved = update.apply()?;
-table.commit_changes(|metadata| {
+let evolved = update.into_field()?;
+table.commit_metadata_changes(|metadata| {
     // The new column got the next unused id; a retired id is never reused.
     let schema_id = metadata.add_schema(evolved.clone())?;
     metadata.set_current_schema(schema_id)
@@ -3033,13 +3050,13 @@ commit writes is ever mutated in place.
         schema.into_arrow_schema()?,
         vec![Arc::new(Int64Array::from(vec![1_i64]))],
     )?;
-    table.append(arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
     // can never be confused with a dropped one.
-    let mut update = SchemaUpdate::for_metadata(table.metadata())?;
+    let mut update = SchemaUpdate::from_metadata(table.metadata())?;
     update.add_column("", DataType::Int64.nullable_field("quantity"));
-    let evolved = update.apply()?;
+    let evolved = update.into_field()?;
     assert_eq!(table.evolve_schema(evolved)?, 1, "the new schema's id");
 
     // The old schema is retained, so the snapshot written under it still reads.
@@ -3126,7 +3143,7 @@ by id survives a rename, and a new column can never reuse a retired id.
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{assign_field_ids, last_field_id};
+    use yggdryl::iceberg::{assign_field_ids, last_column_id};
     use yggdryl::DataType;
 
     let leg = DataType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?;
@@ -3141,7 +3158,7 @@ by id survives a rename, and a new column can never reuse a retired id.
     assert_eq!(schema.fields()[0].parquet_field_id()?, Some(1));
     assert_eq!(schema.fields()[1].parquet_field_id()?, Some(2));
     assert_eq!(schema.fields()[1].fields()[0].parquet_field_id()?, Some(3));
-    assert_eq!(last_field_id(&schema)?, 3, "what a table records as last-column-id");
+    assert_eq!(last_column_id(&schema)?, 3, "what a table records as last-column-id");
 
     // The root is not a column, so it is not numbered.
     assert_eq!(schema.parquet_field_id()?, None);
@@ -3216,13 +3233,13 @@ chance; creating a table numbers first, which is why the same schema is fine the
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::schema_to_json;
+    use yggdryl::iceberg::schema_into_json;
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
 
-    let message = schema_to_json(&schema).unwrap_err().to_string();
+    let message = schema_into_json(&schema).unwrap_err().to_string();
     assert!(message.contains("assign_field_ids"));
     ```
 
@@ -3302,13 +3319,13 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     assert!(message.contains("int64") && message.contains("int32"));
 
     // Widen id, rename symbol, add venue - one evolved schema, one commit.
-    let mut update = SchemaUpdate::for_metadata(table.metadata())?;
+    let mut update = SchemaUpdate::from_metadata(table.metadata())?;
     update.update_type("id", DataType::Int64);
     update.rename_column("symbol", "ticker");
     update.add_column("", DataType::Utf8.nullable_field("venue"));
-    let evolved = update.apply()?;
+    let evolved = update.into_field()?;
 
-    table.commit_changes(|metadata| {
+    table.commit_metadata_changes(|metadata| {
         let schema_id = metadata.add_schema(evolved.clone())?;
         metadata.set_current_schema(schema_id)
     })?;
@@ -3403,7 +3420,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
 `TableMetadata` carries the rest of the update vocabulary - `set_property`/`remove_property`,
 `set_location`, `assign_uuid`, `upgrade_format_version`, `set_snapshot_ref`/`remove_snapshot_ref`,
 `remove_snapshots`, `add_spec`/`set_default_spec`, `add_sort_order`/`set_default_sort_order`.
-Each operation goes through the official metadata builder before `commit_changes`
+Each operation goes through the official metadata builder before `commit_metadata_changes`
 publishes it. Equivalent schemas, specs, and orders reuse the builder's canonical
 identifier; conflicting requested identifiers are reassigned. Dropping a column
 never frees its identifier.
@@ -3417,7 +3434,7 @@ never frees its identifier.
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{schema_from_json, schema_to_json};
+    use yggdryl::iceberg::{schema_from_json, schema_into_json};
     use yggdryl::{json, DataType};
 
     let document = json::from_utf8(
@@ -3441,7 +3458,7 @@ never frees its identifier.
     assert_eq!(schema.fields()[0].get_metadata("PARQUET:field_id"), Some("1"));
 
     // The same document comes back out.
-    assert_eq!(schema_to_json(&schema)?, document);
+    assert_eq!(schema_into_json(&schema)?, document);
     ```
 
 === "Python"
@@ -3449,7 +3466,7 @@ never frees its identifier.
     ```python
     import json
 
-    from yggdryl.iceberg import schema_from_json, schema_to_json
+    from yggdryl.iceberg import schema_from_json, schema_into_json
 
     document = json.loads("""{"type":"struct","schema-id":0,"fields":[
         {"id":1,"name":"id","required":true,"type":"long"},
@@ -3470,7 +3487,7 @@ never frees its identifier.
     assert schema.data_type[0].metadata["PARQUET:field_id"] == "1"
 
     # The same document comes back out.
-    assert schema_to_json(schema) == document
+    assert schema_into_json(schema) == document
     ```
 
 === "JavaScript"
@@ -3500,7 +3517,7 @@ never frees its identifier.
     assert.equal(schema.dataType.at(0).get('PARQUET:field_id'), '1')
 
     // The same document comes back out.
-    assert.deepEqual(iceberg.schemaToJson(schema).asJs(), document)
+    assert.deepEqual(iceberg.schemaIntoJson(schema).asJs(), document)
     ```
 
 There is no Iceberg schema type in this module. An Iceberg schema *is* a non-null struct
@@ -3638,7 +3655,7 @@ assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).into_scheme_compat(&Sch
     schema a table reports.
 
 ```rust
-use yggdryl::iceberg::{schema_from_json, schema_to_json};
+use yggdryl::iceberg::{schema_from_json, schema_into_json};
 use yggdryl::{json, DataType};
 
 let document = json::from_utf8(
@@ -3676,7 +3693,7 @@ assert!(!map.entries().fields()[0].is_nullable());
 assert!(map.entries().fields()[1].is_nullable());
 assert_eq!(map.entries().fields()[0].parquet_field_id()?, Some(5));
 
-assert_eq!(schema_to_json(&schema)?, document);
+assert_eq!(schema_into_json(&schema)?, document);
 ```
 
 `struct`, `list`, and `map` nest to any depth. The names `element`, `key`, `value`, and `entries`

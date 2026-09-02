@@ -706,7 +706,7 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 `iceberg.SnapshotRef`, `iceberg.ManifestFile`, `iceberg.DataFile`,
 `iceberg.ScanPlan`, and `iceberg.Compaction` are the
 classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
-`iceberg.schemaFromJson`, and `iceberg.schemaToJson` are the functions.
+`iceberg.schemaFromJson`, and `iceberg.schemaIntoJson` are the functions.
 These immutable result values expose `equals`, `compare`, `stableHash`, and
 `clone` over their complete Rust-core identity. Snapshot v1 `manifests`, v3 lineage and
 encryption key, manifest encryption and partition summaries, and complete

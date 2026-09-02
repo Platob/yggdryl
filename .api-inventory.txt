@@ -1148,7 +1148,7 @@
   pub const fn unpartitioned() -> Self
   pub fn identity(spec_id: i32, schema: &Field, columns: &[&str]) -> Result<Self>
   pub fn from_schema(spec_id: i32, schema: &Field) -> Result<Self>
-  pub fn from_field(partition: &Field) -> Result<Self>
+  pub fn from_partition_field(partition: &Field) -> Result<Self>
   pub fn mark_partitions(&self, schema: &Field) -> Result<Field>
   pub fn is_unpartitioned(&self) -> bool
   pub fn last_field_id(&self) -> i32
@@ -1174,7 +1174,7 @@
   pub fn snapshot_by_ref(&self, name: &str) -> Result<&Snapshot>
   pub fn plan_at(&self, snapshot_id: i64, filters: &[(&str, &str)]) -> Result<ScanPlan>
   pub fn scan_at(&self, snapshot_id: i64, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
-  pub fn commit_changes(&mut self, change: impl FnMut(&mut TableMetadata) -> Result<()>) -> Result<()>
+  pub fn commit_metadata_changes(&mut self, change: impl FnMut(&mut TableMetadata) -> Result<()>) -> Result<()>
   pub fn inspect_history(&self) -> Result<BatchReader>
   pub fn inspect_snapshots(&self) -> Result<BatchReader>
   pub fn inspect_files(&self) -> Result<BatchReader>
@@ -1182,14 +1182,14 @@
 ### yggdryl::iceberg::evolve  [rust\src\iceberg\evolve.rs]
   pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
   pub struct SchemaUpdate
-  pub fn for_metadata(metadata: &TableMetadata) -> Result<Self>
+  pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
   pub fn add_column(&mut self, parent: &str, field: Field)
   pub fn drop_column(&mut self, path: &str)
   pub fn rename_column(&mut self, path: &str, name: &str)
   pub fn update_doc(&mut self, path: &str, doc: &str)
   pub fn make_nullable(&mut self, path: &str)
   pub fn update_type(&mut self, path: &str, data_type: DataType)
-  pub fn apply(self) -> Result<Field>
+  pub fn into_field(self) -> Result<Field>
 
 ### yggdryl::iceberg::metadata (additions)
   pub fn set_property(&mut self, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Result<Option<SmolStr>>
@@ -1215,21 +1215,21 @@
   pub fn table(&self, name: &str) -> Result<Table<Holder>>
   pub fn has_table(&self, name: &str) -> Result<bool>
   pub fn open_or_create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>>
-  pub fn append(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
-  pub fn overwrite(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
+  pub fn append_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
+  pub fn overwrite_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
   pub fn list_namespaces(&self, parent: Option<&str>) -> Result<Vec<String>>
   pub fn list_tables(&self, namespace: &str) -> Result<Vec<String>>
 
 ### yggdryl::iceberg::table (size and compaction)
-  pub fn target_file_size(&self) -> Result<u64>
+  pub fn target_file_size_bytes(&self) -> Result<u64>
   pub fn compact(&mut self) -> Result<Compaction>
   pub struct Compaction { pub files_before: usize, pub files_after: usize, pub bytes_rewritten: i64 }
 
 ### yggdryl::iceberg::schema  [rust\src\iceberg\schema.rs]
   pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field>
-  pub fn schema_to_json(root: &Field) -> Result<Scalar>
+  pub fn schema_into_json(root: &Field) -> Result<Scalar>
   pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32>
-  pub fn last_field_id(root: &Field) -> Result<i32>
+  pub fn last_column_id(root: &Field) -> Result<i32>
 
 ### yggdryl::iceberg::snapshot  [rust\src\iceberg\snapshot.rs]
   pub const MAIN_BRANCH: &str = "main";
@@ -1258,8 +1258,8 @@
   pub fn manifests(&self) -> Result<Vec<ManifestFile>>
   pub fn data_files(&self) -> Result<Vec<(DataFile, PartitionSpec)>>
   pub fn scan(&self, field: Option<&Field>) -> Result<BatchReader>
-  pub fn append(&mut self, batches: BatchReader) -> Result<()>
-  pub fn overwrite(&mut self, batches: BatchReader) -> Result<()>
+  pub fn commit_append(&mut self, batches: BatchReader) -> Result<()>
+  pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
 
 ### yggdryl::iceberg::snapshot (refs and retention)
@@ -1322,15 +1322,15 @@
   pub fn with_read_parallel_min_files(mut self, files: usize) -> Self
   pub fn set_read_parallel_min_file_size_bytes(&mut self, bytes: u64)
   pub fn with_read_parallel_min_file_size_bytes(mut self, bytes: u64) -> Self
-  pub fn for_metadata(metadata: &TableMetadata) -> Result<Self>
+  pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
 
 ### yggdryl::iceberg::table (options, refs, concurrency)
   pub fn set_options(&mut self, options: IcebergOptions)
   pub fn options(&self) -> Result<IcebergOptions>
   pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
   pub fn create_tag(&mut self, name: &str, snapshot_id: i64) -> Result<()>
-  pub fn remove_ref(&mut self, name: &str) -> Result<SnapshotRef>
-  pub fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> Result<()>
+  pub fn remove_snapshot_ref(&mut self, name: &str) -> Result<SnapshotRef>
+  pub fn fast_forward_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
   pub fn expire_snapshots(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
   pub fn scan_ref(&self, name: &str, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
   pub struct CommitConflict { pub expected_version: u32, pub beaten: u32, pub last_seen_version: u32 }
