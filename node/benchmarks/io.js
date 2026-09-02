@@ -67,6 +67,11 @@ const structuredValue = {
 }
 structured.writeScalar(structuredValue)
 
+// UTF-8 content, because the text answer decodes what it reads.
+const text = IOBase.fromBytes(Buffer.from('symbol,price\n'.repeat(1_024)))
+const appended = IOBase.fromBytes()
+const line = Buffer.from('AAPL,1\n')
+
 benchmark('io/handle_from_path', () => new IOBase(root))
 benchmark('io/handle_from_url', () => IOBase.from(url))
 benchmark('io/join_child', () => lake.joinpath('year=2024', 'month=01'))
@@ -77,6 +82,12 @@ benchmark('io/partitions', () => leaf.partitions)
 benchmark('io/read_leaf_bytes', () => leaf.readBytes())
 benchmark('io/memory_read_range_4k', () => memory.readRangeBytes(0, 4_096))
 benchmark('io/buffered_read_range_4k_hit', () => cachedMemory.readRangeBytes(0, 4_096))
+// The inferring entry points over those same natives: the delta is what the
+// boundary's type dispatch costs, nothing else.
+benchmark('io/memory_read_range_inferred_4k', () => memory.readRange(0, 4_096))
+benchmark('io/memory_read_range_text_4k', () => text.readRange(0, 4_096, { text: true }))
+benchmark('io/memory_append_bytes', () => appended.appendBytes(line))
+benchmark('io/memory_append_inferred', () => appended.append('AAPL,1\n'))
 benchmark('io/buffered_idempotent_redirect', () => cachedMemory.buffered({
   pageSize: 4_096,
   maxBytes: 64 * 1_024,
