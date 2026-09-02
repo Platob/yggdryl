@@ -2264,7 +2264,7 @@ export declare class Table {
    * way the result is the same rows; what differs is how many files were
    * opened to find them.
    */
-  scanWhere(filters: ScanFilters, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Read the rows a branch or tag names, as of the snapshot it points at.
    *
@@ -2324,7 +2324,7 @@ export declare class Table {
    * `options` configures this one write, exactly as on
    * [`append`](Self::append).
    */
-  overwriteWhere(filters: ScanFilters, batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  overwriteWhere(filters: ScanFilters | undefined | null, batches: BatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the stored rows, matching on `mergeByNames`.
    *
@@ -2348,7 +2348,7 @@ export declare class Table {
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**

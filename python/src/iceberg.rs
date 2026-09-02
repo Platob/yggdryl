@@ -17,10 +17,11 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::generic::Holder;
+use yggdryl::generic::IORecordOptions as _;
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
-    assign_field_ids, can_promote, last_field_id, schema_from_json, schema_to_json,
+    assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
@@ -29,7 +30,7 @@ use crate::datatype::core_data_type_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::io::PyIOBase;
 use crate::media::{PyMimeType, core_mime_type_from_value};
-use crate::record::{batch_reader_from_value, batch_reader_to_pyarrow, core_root_field_from_value};
+use crate::record::{batch_reader_from_any, batch_reader_to_pyarrow, core_root_field_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
@@ -90,13 +91,13 @@ pub(crate) fn iceberg_schema_from_json(
 ///
 /// Raises `ValueError` when the root is not a non-null struct whose columns
 /// carry field identifiers.
-#[pyfunction(name = "schema_to_json")]
-pub(crate) fn iceberg_schema_to_json(
+#[pyfunction(name = "schema_into_json")]
+pub(crate) fn iceberg_schema_into_json(
     py: Python<'_>,
     schema: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let root = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
-    let document = schema_to_json(&root).map_err(value_error)?;
+    let document = schema_into_json(&root).map_err(value_error)?;
     crate::scalar::as_py(py, &document)
 }
 
@@ -205,7 +206,7 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
 /// metadata alone.
 fn numbered_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
     let mut schema = core_root_field_from_value(value, SCHEMA_ROOT_NAME)?;
-    let start = last_field_id(&schema)
+    let start = last_column_id(&schema)
         .map_err(value_error)?
         .saturating_add(1);
     assign_field_ids(&mut schema, start).map_err(value_error)?;
@@ -371,6 +372,27 @@ fn iceberg_call_options(options: Option<&Bound<'_, PyAny>>) -> PyResult<Option<I
 ///
 /// The override is shadowed for exactly the length of the call, so per-call
 /// options never leak into the handle's own configuration.
+/// Read a batch reader out of anything Python holds Iceberg rows in.
+///
+/// The same inference point the record surface uses, given the table's stored
+/// schema as the declared field so plain mappings and dataclass rows type
+/// against the table rather than guessing a shape from their first value. A
+/// table that has never been written names no schema yet, and the incoming
+/// value is then what declares one.
+fn iceberg_batch_reader(
+    table: Option<&Table<Holder>>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<yggdryl::arrow::BatchReader> {
+    let mut options = yggdryl::generic::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
+        .map_err(value_error)?;
+    // A table that does not exist yet names no schema, and the incoming value
+    // is then what declares one.
+    if let Some(schema) = table.and_then(|table| table.schema().ok()) {
+        options.set_field(schema.clone());
+    }
+    batch_reader_from_any(value, &options)
+}
+
 fn with_call_options<R>(
     table: &mut Table<Holder>,
     options: Option<IcebergOptions>,
@@ -758,10 +780,10 @@ impl PyCatalog {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = batch_reader_from_value(data)?;
+        let data = iceberg_batch_reader(None, data)?;
         self.inner
             .tables()
-            .append_with(name, data, resolved)
+            .append_arrow_reader_with_options(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
     }
@@ -779,10 +801,10 @@ impl PyCatalog {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = batch_reader_from_value(data)?;
+        let data = iceberg_batch_reader(None, data)?;
         self.inner
             .tables()
-            .overwrite_with(name, data, resolved)
+            .overwrite_arrow_reader_with_options(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
     }
@@ -993,7 +1015,7 @@ impl PyTable {
     /// The version number of the current metadata document.
     #[getter]
     fn version(&self) -> u32 {
-        self.inner.version()
+        self.inner.metadata_version()
     }
 
     /// The name of the current metadata document.
@@ -1274,9 +1296,9 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
-        let batches = batch_reader_from_value(batches)?;
+        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
-            table.append(batches).map_err(value_error)
+            table.commit_append(batches).map_err(value_error)
         })
     }
 
@@ -1291,9 +1313,9 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
-        let batches = batch_reader_from_value(batches)?;
+        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
-            table.overwrite(batches).map_err(value_error)
+            table.commit_overwrite(batches).map_err(value_error)
         })
     }
 
@@ -1317,10 +1339,10 @@ impl PyTable {
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let batches = batch_reader_from_value(batches)?;
+        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
-                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
                 .map_err(value_error)
         })
     }
@@ -1348,9 +1370,11 @@ impl PyTable {
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
         let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
-        let batches = batch_reader_from_value(batches)?;
+        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
-            table.merge(batches, &names, safe).map_err(value_error)
+            table
+                .commit_merge(batches, &names, safe)
+                .map_err(value_error)
         })
     }
 
@@ -1374,10 +1398,10 @@ impl PyTable {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
-        let batches = batch_reader_from_value(batches)?;
+        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
-                .merge_where(&borrowed_pairs(&pairs), batches, &names, safe)
+                .commit_merge_where(&borrowed_pairs(&pairs), batches, &names, safe)
                 .map_err(value_error)
         })
     }
@@ -1501,7 +1525,10 @@ impl PyTable {
     /// A name the table does not have is an error rather than an empty
     /// commit.
     fn remove_ref(&mut self, name: &str) -> PyResult<()> {
-        self.inner.remove_ref(name).map(|_| ()).map_err(value_error)
+        self.inner
+            .remove_snapshot_ref(name)
+            .map(|_| ())
+            .map_err(value_error)
     }
 
     /// Move a branch forward to a descendant snapshot, as one metadata commit.
@@ -1512,7 +1539,7 @@ impl PyTable {
     /// always the current snapshot.
     fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
         self.inner
-            .fast_forward(name, snapshot_id)
+            .fast_forward_branch(name, snapshot_id)
             .map_err(value_error)
     }
 
@@ -1553,7 +1580,7 @@ impl PyTable {
     /// then to Iceberg's own 512 MiB default.
     #[getter]
     fn target_file_size(&self) -> PyResult<u64> {
-        self.inner.target_file_size().map_err(value_error)
+        self.inner.target_file_size_bytes().map_err(value_error)
     }
 
     /// Merge the current snapshot's undersized data files, partition by
@@ -1618,7 +1645,7 @@ impl PyTable {
             return Ok(());
         }
         self.inner
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 for (key, value) in &updates {
                     metadata.set_property(key.as_str(), value.as_str())?;
                 }
@@ -1649,7 +1676,7 @@ impl PyTable {
             "Table({:?}, format_version={}, version={})",
             self.inner.metadata().location(),
             self.inner.metadata().format_version().number(),
-            self.inner.version(),
+            self.inner.metadata_version(),
         )
     }
 }
@@ -1846,11 +1873,11 @@ impl PySchemaUpdate {
         let mut table = self.table.bind(py).borrow_mut();
         table
             .inner
-            .commit_changes(move |metadata| {
+            .commit_metadata_changes(move |metadata| {
                 // Replayed by reference: a beaten commit rebases and runs this
                 // closure again on the winner's metadata, so the recording
                 // must survive every attempt.
-                let mut update = SchemaUpdate::for_metadata(metadata)?;
+                let mut update = SchemaUpdate::from_metadata(metadata)?;
                 for op in &ops {
                     match op {
                         RecordedOp::AddColumn { parent, field } => {
@@ -1869,7 +1896,7 @@ impl PySchemaUpdate {
                         }
                     }
                 }
-                let evolved = update.apply()?;
+                let evolved = update.into_field()?;
                 let schema_id = metadata.add_schema(evolved)?;
                 metadata.set_current_schema(schema_id)
             })
@@ -3671,11 +3698,13 @@ impl PyTables {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = batch_reader_from_value(data)?;
+        let data = iceberg_batch_reader(None, data)?;
         let dotted = self.dotted(name);
-        self.with_core(py, |view| view.append_with(&dotted, data, resolved))
-            .map(PyTable::from_core)
-            .map_err(value_error)
+        self.with_core(py, |view| {
+            view.append_arrow_reader_with_options(&dotted, data, resolved)
+        })
+        .map(PyTable::from_core)
+        .map_err(value_error)
     }
 
     /// Replace the named table's rows with `data`, creating it on first write.
@@ -3691,11 +3720,13 @@ impl PyTables {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = batch_reader_from_value(data)?;
+        let data = iceberg_batch_reader(None, data)?;
         let dotted = self.dotted(name);
-        self.with_core(py, |view| view.overwrite_with(&dotted, data, resolved))
-            .map(PyTable::from_core)
-            .map_err(value_error)
+        self.with_core(py, |view| {
+            view.overwrite_arrow_reader_with_options(&dotted, data, resolved)
+        })
+        .map(PyTable::from_core)
+        .map_err(value_error)
     }
 
     fn __repr__(&self) -> String {

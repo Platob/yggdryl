@@ -610,7 +610,7 @@ assert iceberg_files == [] or iceberg_files
 assert iceberg_manifests == [] or iceberg_manifests
 assert iceberg_evolved >= 0
 
-iceberg_document: dict[str, object] = iceberg.schema_to_json(iceberg_schema)
+iceberg_document: dict[str, object] = iceberg.schema_into_json(iceberg_schema)
 iceberg_reread: Field = iceberg.schema_from_json("row", iceberg_document)
 
 assert iceberg_document

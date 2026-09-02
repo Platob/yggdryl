@@ -64,7 +64,7 @@ pub use iceberg::{
     JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
     JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
     iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
-    iceberg_schema_to_json,
+    iceberg_schema_into_json,
 };
 pub use io::JsIOBase;
 pub use media::{JsMediaType, JsMimeType};

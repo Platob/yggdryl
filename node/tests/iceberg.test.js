@@ -70,6 +70,34 @@ test('creating a table numbers a plain schema itself, partitioning included', (t
   assert.equal(table.scan().intoTable().numRows, 2)
 })
 
+test('a commit takes the rows the record surface takes', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const table = iceberg.Table.create(
+    path.join(root, 'trades'),
+    schema(),
+    iceberg.PartitionSpec.unpartitioned(),
+  )
+
+  // Plain JavaScript rows are typed against the table's stored schema, so they
+  // need no Arrow holder and no schema of their own.
+  table.append([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: null }])
+  assert.equal(table.scan().intoTable().numRows, 2)
+
+  // `filters` selects every row when it is omitted, as it does on every sibling.
+  table.overwriteWhere(null, [{ id: 3n, venue: 'XLON' }])
+  assert.deepEqual(
+    table.scan().intoTable().getChild('id').toJSON(),
+    [3n],
+  )
+
+  // Arrow holders still name their own reader.
+  table.append(rows([4n], ['XPAR']))
+  assert.equal(table.scan().intoTable().numRows, 2)
+
+  assert.throws(() => table.append(12), /records must be a JavaScript struct/)
+})
+
 test('a table is a folder, and a new one has no current snapshot', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -627,7 +655,7 @@ test('a ref names a snapshot, and a missing one names the refs the table has', (
 
 test('a schema is a document in both directions', () => {
   const declared = schema()
-  const document = iceberg.schemaToJson(declared)
+  const document = iceberg.schemaIntoJson(declared)
   assert.deepEqual(document.asJs(), {
     type: 'struct',
     fields: [
@@ -639,7 +667,7 @@ test('a schema is a document in both directions', () => {
   const read = iceberg.schemaFromJson('row', document)
   assert.ok(read.equals(declared, false))
   assert.equal(read.iceberg.get('schema-id'), '0')
-  assert.deepEqual(iceberg.schemaToJson(read).asJs(), {
+  assert.deepEqual(iceberg.schemaIntoJson(read).asJs(), {
     type: 'struct',
     'schema-id': 0,
     fields: [

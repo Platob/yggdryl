@@ -24,7 +24,7 @@ from yggdryl.iceberg import (
     assign_field_ids,
     can_promote,
     schema_from_json,
-    schema_to_json,
+    schema_into_json,
 )
 
 SCHEMA = pa.schema(
@@ -110,7 +110,7 @@ class TestSchemasCarryIdentifiers:
         assert schema.data_type[1].nullable
         assert [child.parquet_field_id for child in schema.data_type] == [1, 2]
 
-        assert schema_to_json(schema) == document
+        assert schema_into_json(schema) == document
 
     def test_a_document_that_is_not_a_schema_is_refused(self) -> None:
         with pytest.raises(ValueError):
@@ -364,6 +364,28 @@ class TestCommits:
         assert table.current_snapshot.operation == "overwrite"
         # The previous snapshot is retained, which is what makes this reversible.
         assert len(table.snapshots) == 2
+
+    def test_a_commit_takes_the_rows_the_record_surface_takes(
+        self, table: Table
+    ) -> None:
+        # The same inference point `append_records` uses, with the table's
+        # stored schema as the declared field - so plain rows need no Arrow
+        # holder and no schema of their own.
+        table.append([{"id": 1, "venue": "XNAS"}, {"id": 2, "venue": None}])
+        table.overwrite_where(None, [{"id": 3, "venue": "XLON"}])
+
+        rows = table.scan().read_all()
+        assert rows.column("id").to_pylist() == [3]
+
+        import pandas
+        import polars
+
+        table.append(pandas.DataFrame({"id": [4], "venue": ["XPAR"]}))
+        table.append(polars.DataFrame({"id": [5], "venue": ["XAMS"]}).lazy())
+        assert table.scan().read_all().column("id").to_pylist() == [3, 4, 5]
+
+        with pytest.raises(TypeError, match="expected rows"):
+            table.append(12)
 
     def test_a_commit_takes_anything_pyarrow_streams(self, table: Table) -> None:
         table.append(pa.Table.from_batches([_rows()]))

@@ -27,7 +27,7 @@ from ._native import (
     assign_field_ids,
     can_promote,
     schema_from_json,
-    schema_to_json,
+    schema_into_json,
 )
 
 __all__ = [
@@ -48,5 +48,5 @@ __all__ = [
     "assign_field_ids",
     "can_promote",
     "schema_from_json",
-    "schema_to_json",
+    "schema_into_json",
 ]

@@ -2615,7 +2615,7 @@ delete binding.ArrowWriteSession
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
 const { installRecords } = require('./records.js')
-const { intoField } = installRecords({
+const { icebergBatchReader, intoField } = installRecords({
   BatchReader,
   Field,
   IOBase,
@@ -2823,14 +2823,16 @@ Object.defineProperty(binding.Table.prototype, 'updateSchema', {
   },
 })
 
-// A catalog write takes exactly what a table write takes: `BatchReader.from`
-// is the one inference point for anything that names a stream of batches.
+// A catalog write takes exactly what a table write takes, through the one
+// Iceberg inference point: Arrow shapes and IPC bytes name their own reader,
+// and rows are typed by the table the write lands in - which a create-on-write
+// does not have yet, so the rows declare it.
 for (const name of ['append', 'overwrite']) {
   const native = binding.Catalog.prototype[name]
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
     value(tableName, data, options) {
-      return native.call(this, tableName, BatchReader.from(data), options)
+      return native.call(this, tableName, icebergBatchReader(null, data), options)
     },
   })
 }
@@ -2863,7 +2865,7 @@ const iceberg = Object.freeze({
       document instanceof Scalar ? document : Scalar.fromJs(document),
     )
   },
-  schemaToJson: binding.icebergSchemaToJsonNative,
+  schemaIntoJson: binding.icebergSchemaIntoJsonNative,
 })
 
 // The Iceberg values are reached through the namespace and nowhere else, so a
@@ -2904,7 +2906,7 @@ for (const name of [
   'icebergAssignFieldIdsNative',
   'icebergCanPromoteNative',
   'icebergSchemaFromJsonNative',
-  'icebergSchemaToJsonNative',
+  'icebergSchemaIntoJsonNative',
 ]) {
   delete binding[name]
 }

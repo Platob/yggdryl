@@ -331,7 +331,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(iceberg::iceberg_assign_field_ids, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_can_promote, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_from_json, module)?)?;
-    module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_to_json, module)?)?;
+    module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_into_json, module)?)?;
     module.add_function(wrap_pyfunction!(codec_encode, module)?)?;
     module.add_function(wrap_pyfunction!(codec_decode, module)?)?;
     module.add_function(wrap_pyfunction!(codec_decode_inferred, module)?)?;

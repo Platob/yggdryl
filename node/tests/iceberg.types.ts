@@ -35,7 +35,7 @@ declare const arrowTable: ArrowTable
 
 const numbered: Field = iceberg.assignFieldIds(schema)
 const renumbered: Field = iceberg.assignFieldIds(schema, 10)
-const document: Scalar = iceberg.schemaToJson(numbered)
+const document: Scalar = iceberg.schemaIntoJson(numbered)
 const parsed: Field = iceberg.schemaFromJson('row', document)
 
 const unpartitioned: PartitionSpec = iceberg.PartitionSpec.unpartitioned()

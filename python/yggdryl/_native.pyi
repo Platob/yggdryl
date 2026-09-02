@@ -10,6 +10,18 @@ __version__: str
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
 
+# Anything an Iceberg write takes: every Arrow holder the record surface reads,
+# a foreign frame, and the plain rows `append_records` accepts.
+IcebergRows = (
+    pyarrow.RecordBatchReader
+    | pyarrow.Table
+    | pyarrow.RecordBatch
+    | Iterable[pyarrow.RecordBatch]
+    | Iterable[Any]
+    | Any
+)
+
+
 class ParquetKeyValue(TypedDict):
     key: str
     value: str
@@ -2049,7 +2061,7 @@ def can_promote(
     from_type: DataType | str | Any, to_type: DataType | str | Any
 ) -> None: ...
 def schema_from_json(name: str, document: Mapping[str, Any]) -> Field: ...
-def schema_to_json(schema: FieldLike) -> dict[str, Any]: ...
+def schema_into_json(schema: FieldLike) -> dict[str, Any]: ...
 
 class IcebergOptions:
     """Configuration for one table's commits, writes, and reads.
@@ -2205,14 +2217,14 @@ class Tables:
     def append(
         self,
         name: str,
-        data: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> Table: ...
     def overwrite(
         self,
         name: str,
-        data: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> Table: ...
@@ -2242,14 +2254,14 @@ class Catalog:
     def append(
         self,
         name: str,
-        data: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> Table: ...
     def overwrite(
         self,
         name: str,
-        data: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        data: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> Table: ...
@@ -2367,26 +2379,26 @@ class Table:
     def target_file_size(self) -> int: ...
     def append(
         self,
-        batches: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> None: ...
     def overwrite(
         self,
-        batches: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> None: ...
     def overwrite_where(
         self,
         filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
-        batches: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        batches: IcebergRows,
         *,
         options: IcebergOptions | None = None,
     ) -> None: ...
     def merge(
         self,
-        batches: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        batches: IcebergRows,
         merge_by_names: Iterable[str],
         *,
         safe: bool = True,
@@ -2395,7 +2407,7 @@ class Table:
     def merge_where(
         self,
         filters: Mapping[str, str] | Iterable[tuple[str, str]] | None,
-        batches: pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | Iterable[pyarrow.RecordBatch],
+        batches: IcebergRows,
         merge_by_names: Iterable[str],
         *,
         safe: bool = True,

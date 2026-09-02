@@ -899,6 +899,30 @@ function installRecords({
     },
   })
 
+
+  // An Iceberg write takes what every other write here takes. Anything
+  // Arrow-shaped is the reader it already names; everything else is rows, and
+  // those are typed against the table's stored schema so a plain object does
+  // not have to guess one. A table that does not exist yet names no schema,
+  // and the rows are then what declare it.
+  const ICEBERG_DATA_MIME_TYPE = 'application/vnd.apache.parquet'
+
+  function isArrowShaped(source) {
+    if (source instanceof BatchReader || isBytes(source)) return true
+    if (arrowKind(source) !== null) return true
+    return Array.isArray(source) && source.length > 0 && arrowKind(source[0]) !== null
+  }
+
+  function icebergBatchReader(table, source) {
+    if (source === undefined || source === null || isArrowShaped(source)) {
+      return batchReader(source)
+    }
+    let settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE)
+    const stored = table === null ? null : table.schema
+    if (stored != null) settings = settings.withField(stored)
+    return recordsReader(source, settings, preflightWriteIntent(settings, 'append')).reader
+  }
+
   // The writes that take rows widen them the way every other write here does,
   // and pass the trailing per-call options through untouched. Forwarding it
   // is not optional bookkeeping: a wrapper that drops the argument leaves a
@@ -909,7 +933,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, name, {
       configurable: true,
       value(batches, options) {
-        return native.call(this, batchReader(batches), options)
+        return native.call(this, icebergBatchReader(this, batches), options)
       },
     })
   }
@@ -922,7 +946,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, 'overwriteWhere', {
       configurable: true,
       value(filters, batches, options) {
-        return overwriteWhere.call(this, filters, batchReader(batches), options)
+        return overwriteWhere.call(this, filters, icebergBatchReader(this, batches), options)
       },
     })
   }
@@ -932,7 +956,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, 'merge', {
       configurable: true,
       value(batches, mergeByNames, safe, options) {
-        return merge.call(this, batchReader(batches), mergeByNames, safe, options)
+        return merge.call(this, icebergBatchReader(this, batches), mergeByNames, safe, options)
       },
     })
   }
@@ -945,7 +969,7 @@ function installRecords({
         return mergeWhere.call(
           this,
           filters,
-          batchReader(batches),
+          icebergBatchReader(this, batches),
           mergeByNames,
           safe,
           options,
@@ -995,7 +1019,7 @@ function installRecords({
       Object.defineProperty(Tables.prototype, name, {
         configurable: true,
         value(table, batches, options) {
-          return native.call(this, table, batchReader(batches), options)
+          return native.call(this, table, icebergBatchReader(null, batches), options)
         },
       })
     }
@@ -1017,7 +1041,7 @@ function installRecords({
     }
   }
 
-  return Object.freeze({ intoField })
+  return Object.freeze({ icebergBatchReader, intoField })
 }
 
 module.exports = { installRecords }

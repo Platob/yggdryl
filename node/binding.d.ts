@@ -1769,23 +1769,57 @@ declare module './index' {
   }
 
   interface Table {
-    /** Append batches as a new snapshot, keeping everything already stored. */
-    append(batches: BatchSource): void
-    /** Replace every row with `batches` as a new snapshot. */
-    overwrite(batches: BatchSource): void
+    /** Append rows as a new snapshot, keeping everything already stored. */
+    append(rows: IcebergSource, options?: IcebergOptions | null): void
+    /** Replace every row with `rows` as a new snapshot. */
+    overwrite(rows: IcebergSource, options?: IcebergOptions | null): void
+    /** Replace only the rows `filters` selects, keeping every other file. */
+    overwriteWhere(
+      filters: PartitionFilters | null | undefined,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): void
+    /** Merge `rows` into the stored rows, matching on `mergeByNames`. */
+    merge(
+      rows: IcebergSource,
+      mergeByNames: readonly string[],
+      safe?: boolean | null,
+      options?: IcebergOptions | null,
+    ): void
+    /** Merge `rows` into the rows `filters` selects, on `mergeByNames`. */
+    mergeWhere(
+      filters: PartitionFilters | null | undefined,
+      rows: IcebergSource,
+      mergeByNames: readonly string[],
+      safe?: boolean | null,
+      options?: IcebergOptions | null,
+    ): void
     /** Read the current snapshot, keeping the columns `field` names. */
-    scan(field?: SchemaInput | null): BatchReader
+    scan(field?: SchemaInput | null, options?: IcebergOptions | null): BatchReader
+    /** Read the rows matching `filters`, keeping the columns `field` names. */
+    scanWhere(
+      filters?: PartitionFilters | null,
+      field?: SchemaInput | null,
+      options?: IcebergOptions | null,
+    ): BatchReader
     /** Add a schema, make it current, and write a new metadata document. */
     evolveSchema(schema: SchemaInput): number
     /** Record a chain of column operations, committed as one new schema. */
     updateSchema(): SchemaUpdateBuilder
   }
 
+  interface Tables {
+    /** Append rows to the named table, creating it on first write. */
+    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    /** Replace the named table's rows, creating it on first write. */
+    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+  }
+
   interface Catalog {
     /** Append rows to the named table, creating it on first write. */
-    append(name: string, data: BatchSource): Table
+    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
     /** Replace the named table's rows, creating it on first write. */
-    overwrite(name: string, data: BatchSource): Table
+    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
   }
 
   namespace Timezone {
@@ -1793,6 +1827,12 @@ declare module './index' {
     const UTC: Timezone
   }
 }
+
+/**
+ * Anything an Iceberg write takes: everything that names a stream of Arrow
+ * record batches, plus the JavaScript rows the record surface accepts.
+ */
+export type IcebergSource = BatchSource | RecordSource
 
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =
@@ -1875,7 +1915,7 @@ export interface Iceberg {
   /** Read an Iceberg schema document as a root `Field`. */
   schemaFromJson(name: string, document: Scalar | unknown): Field
   /** Write a root `Field` as an Iceberg schema document. */
-  schemaToJson(schema: Field): Scalar
+  schemaIntoJson(schema: Field): Scalar
 }
 
 export declare const iceberg: Iceberg
