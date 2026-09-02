@@ -198,6 +198,138 @@ impl JsField {
         JsDataType::from_core(self.inner.dtype().clone())
     }
 
+    /// Number of direct child fields.
+    #[napi(getter)]
+    pub fn field_len(&self) -> u32 {
+        u32::try_from(self.inner.field_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Return the child at an Array-compatible index, or `null`.
+    #[napi]
+    pub fn get_field_at(&self, index: i32) -> Option<JsField> {
+        self.dtype().get_field_at(index)
+    }
+
+    /// Return the child a path names, or `null`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    #[napi]
+    pub fn get_field_by_path(&self, path: String) -> Option<JsField> {
+        self.inner
+            .get_field_by_path(&path)
+            .cloned()
+            .map(Self::from_core)
+    }
+
+    /// Return the child a position or a path names, or `null`.
+    #[napi]
+    pub fn get_field(&self, key: Either<i32, String>) -> Option<JsField> {
+        match key {
+            Either::A(index) => self.get_field_at(index),
+            Either::B(path) => self.get_field_by_path(path),
+        }
+    }
+
+    /// Return the child at an Array-compatible index, or throw.
+    #[napi]
+    pub fn field_at(&self, index: i32) -> Result<JsField> {
+        self.dtype().field_at(index)
+    }
+
+    /// Return the child a path names, or throw.
+    #[napi]
+    pub fn field_by_path(&self, path: String) -> Result<JsField> {
+        self.inner
+            .field_by_path(&path)
+            .cloned()
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return the child a position or a path names, or throw.
+    #[napi]
+    pub fn field(&self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.field_at(index),
+            Either::B(path) => self.field_by_path(path),
+        }
+    }
+
+    /// Replace the child at an Array-compatible index.
+    #[napi]
+    pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
+        let len = i64::from(self.field_len());
+        let at = i64::from(index);
+        let resolved = if at < 0 { len + at } else { at };
+        let position = usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .set_field_at(position, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a path names, appending an unresolved name.
+    #[napi]
+    pub fn set_field_by_path(
+        &mut self,
+        path: String,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        self.inner
+            .set_field_by_path(&path, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a position or a path names.
+    #[napi]
+    pub fn set_field(
+        &mut self,
+        key: Either<i32, String>,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        match key {
+            Either::A(index) => self.set_field_at(index, child),
+            Either::B(path) => self.set_field_by_path(path, child),
+        }
+    }
+
+    /// Remove and return the child at an Array-compatible index.
+    #[napi]
+    pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
+        let len = i64::from(self.field_len());
+        let at = i64::from(index);
+        let resolved = if at < 0 { len + at } else { at };
+        let position = usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .remove_field_at(position)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a path names.
+    #[napi]
+    pub fn remove_field_by_path(&mut self, path: String) -> Result<JsField> {
+        self.inner
+            .remove_field_by_path(&path)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a position or a path names.
+    #[napi]
+    pub fn remove_field(&mut self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.remove_field_at(index),
+            Either::B(path) => self.remove_field_by_path(path),
+        }
+    }
+
     /// Whether values may be null.
     #[napi(getter)]
     pub fn nullable(&self) -> bool {

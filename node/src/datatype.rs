@@ -43,12 +43,23 @@ impl JsDataType {
         Self { inner }
     }
 
-    fn field_at(&self, index: usize) -> Option<JsField> {
-        self.inner.get_field(index).cloned().map(JsField::from_core)
+    fn child_at(&self, index: usize) -> Option<JsField> {
+        self.inner
+            .get_field_at(index)
+            .cloned()
+            .map(JsField::from_core)
+    }
+
+    /// Resolve an Array-compatible index, counting from the end when negative.
+    fn resolve_index(&self, index: i32) -> Option<usize> {
+        let len = i64::from(self.length());
+        let index = i64::from(index);
+        let resolved = if index < 0 { len + index } else { index };
+        usize::try_from(resolved).ok().filter(|at| *at < self.inner.field_len())
     }
 
     fn fields(&self) -> impl Iterator<Item = &CoreField> {
-        (0..self.inner.field_len()).filter_map(|index| self.inner.get_field(index))
+        (0..self.inner.field_len()).filter_map(|index| self.inner.get_field_at(index))
     }
 }
 
@@ -368,39 +379,125 @@ impl JsDataType {
         u32::try_from(self.inner.field_len()).unwrap_or(u32::MAX)
     }
 
-    /// Return the child at an Array-compatible positive or negative index.
+    /// Return the child at an Array-compatible index, or `null`.
     #[napi]
-    pub fn at(&self, index: i32) -> Option<JsField> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.field_at(index))
+    pub fn get_field_at(&self, index: i32) -> Option<JsField> {
+        self.resolve_index(index).and_then(|at| self.child_at(at))
     }
 
-    /// Look up a child by zero-based index or exact field name.
+    /// Return the child a path names, or `null`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
     #[napi]
-    pub fn get(&self, key: Either<u32, String>) -> Option<JsField> {
+    pub fn get_field_by_path(&self, path: String) -> Option<JsField> {
+        self.inner
+            .get_field_by_path(&path)
+            .cloned()
+            .map(JsField::from_core)
+    }
+
+    /// Return the child a position or a path names, or `null`.
+    #[napi]
+    pub fn get_field(&self, key: Either<i32, String>) -> Option<JsField> {
         match key {
-            Either::A(index) => usize::try_from(index)
-                .ok()
-                .and_then(|index| self.field_at(index)),
-            Either::B(name) => self
-                .inner
-                .get_field_by_path(&name)
-                .cloned()
-                .map(JsField::from_core),
+            Either::A(index) => self.get_field_at(index),
+            Either::B(path) => self.get_field_by_path(path),
         }
     }
 
-    /// Look up a child by exact field name without materializing children.
+    /// Return the child at an Array-compatible index, or throw.
     #[napi]
-    pub fn get_by_name(&self, name: String) -> Option<JsField> {
+    pub fn field_at(&self, index: i32) -> Result<JsField> {
+        self.get_field_at(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))
+    }
+
+    /// Return the child a path names, or throw.
+    #[napi]
+    pub fn field_by_path(&self, path: String) -> Result<JsField> {
         self.inner
-            .get_field_by_path(&name)
+            .field_by_path(&path)
             .cloned()
             .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return the child a position or a path names, or throw.
+    #[napi]
+    pub fn field(&self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.field_at(index),
+            Either::B(path) => self.field_by_path(path),
+        }
+    }
+
+    /// Replace the child at an Array-compatible index.
+    #[napi]
+    pub fn set_field_at(
+        &mut self,
+        index: i32,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        let at = self
+            .resolve_index(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner.set_field_at(at, child.inner.clone()).map_err(napi_error)
+    }
+
+    /// Replace the child a path names, appending an unresolved name.
+    #[napi]
+    pub fn set_field_by_path(
+        &mut self,
+        path: String,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        self.inner
+            .set_field_by_path(&path, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a position or a path names.
+    #[napi]
+    pub fn set_field(
+        &mut self,
+        key: Either<i32, String>,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        match key {
+            Either::A(index) => self.set_field_at(index, child),
+            Either::B(path) => self.set_field_by_path(path, child),
+        }
+    }
+
+    /// Remove and return the child at an Array-compatible index.
+    #[napi]
+    pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
+        let at = self
+            .resolve_index(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .remove_field_at(at)
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a path names.
+    #[napi]
+    pub fn remove_field_by_path(&mut self, path: String) -> Result<JsField> {
+        self.inner
+            .remove_field_by_path(&path)
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a position or a path names.
+    #[napi]
+    pub fn remove_field(&mut self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.remove_field_at(index),
+            Either::B(path) => self.remove_field_by_path(path),
+        }
     }
 
     /// Test for a child index, field name, or exact Field value.
@@ -409,7 +506,7 @@ impl JsDataType {
         match value {
             Either3::A(index) => usize::try_from(index)
                 .ok()
-                .and_then(|index| self.inner.get_field(index))
+                .and_then(|index| self.inner.get_field_at(index))
                 .is_some(),
             Either3::B(name) => self.inner.get_field_by_path(&name).is_some(),
             Either3::C(field) => self.fields().any(|candidate| candidate == &field.inner),
