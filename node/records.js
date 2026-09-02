@@ -926,15 +926,17 @@ function installRecords({
       preflightWriteIntent(settings, 'append'),
     )
     if (stored != null) return converted.reader
-    // Nothing declared a schema, so the rows named one - and Arrow JS
-    // dictionary-encodes a JavaScript string, which Iceberg does not express.
-    // The core's own widening is what a create-on-write needs to survive it.
-    // Casting materializes, which these rows already were: the alternative is
-    // a table created with a datatype the format refuses.
-    const inferred = converted.settings.field
-    if (inferred === null || inferred === undefined) return converted.reader
-    const widened = inferred.intoSchemeCompat('iceberg')
-    if (widened.equals(inferred)) return converted.reader
+    // Nothing declared a schema, so the rows named one - and the rows were
+    // encoded by Arrow JS, which dictionary-encodes a string, a datatype
+    // Iceberg does not express. The comparison is against the reader's own
+    // field rather than the declared one: a field class declares `utf8` and
+    // still arrives as `dictionary(int32, utf8)`, so comparing declarations
+    // would skip the cast that is exactly what the create needs. Casting
+    // materializes, which these rows already were.
+    const declared = converted.settings.field
+    if (declared === null || declared === undefined) return converted.reader
+    const widened = declared.intoSchemeCompat('iceberg')
+    if (widened.equals(converted.reader.field)) return converted.reader
     return batchReader(widened.castArrow(converted.reader), widened.name)
   }
 

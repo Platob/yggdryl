@@ -117,6 +117,25 @@ test('a create-on-write commit lets the rows name the schema', (t) => {
   // The second write types against the schema the first one created.
   catalog.tables.append('nyc.trades', [{ id: 2n, venue: 'XNYS' }])
   assert.equal(catalog.table('nyc.trades').scan().intoTable().numRows, 2)
+
+  // A field class names the schema its rows are typed by, and the created
+  // table carries that class's own types rather than Arrow JS's inference.
+  class Trade {
+    static get intoStructField() {
+      return fields.struct(
+        'row',
+        [Field.from('id: int64'), Field.from('venue: utf8')],
+        { nullable: false },
+      )
+    }
+    constructor(id, venue) {
+      this.id = id
+      this.venue = venue
+    }
+  }
+  const classed = catalog.append('nyc.classed', [new Trade(1n, 'XNAS')])
+  assert.equal(classed.scan().intoTable().numRows, 1)
+  assert.equal(String(classed.schema.dataType.at(1).dataType), 'utf8')
 })
 
 test('a table is a folder, and a new one has no current snapshot', (t) => {
