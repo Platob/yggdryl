@@ -1580,7 +1580,7 @@ declare module './index' {
       options?: RangeReadOptions | null,
     ): Buffer
     /** Append bytes or UTF-8 text after the last byte, returning its offset. */
-    append(data: Uint8Array | ArrayBuffer | string): number
+    append(data: ArrayBufferView | ArrayBuffer | string): number
     /** Decode inferred JSON, YAML, or TOML, including its content coding. */
     readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
     readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T

@@ -93,6 +93,15 @@ const patched: number = handle.pwrite(0, new Uint8Array([65]))
 const appended: number = handle.appendBytes(Buffer.from('!'))
 const appendedText: number = handle.append('!')
 const appendedView: number = handle.append(new Uint8Array([33]))
+const appendedTyped: number = handle.append(new Int16Array([33]))
+// @ts-expect-error the explicit native takes bytes alone; `append` infers
+handle.appendBytes('!')
+// @ts-expect-error a number is not a byte source
+handle.append(12)
+// @ts-expect-error text is selected by the option object, not by a class
+handle.readRange(0, 6, String)
+// @ts-expect-error `{ text: true }` answers a string, never a Buffer
+const wrongRange: Buffer = handle.readRange(0, 6, { text: true })
 const copied: number = handle.copyInto(memory)
 const asPath: string = handle.intoPath()
 const printed: string = handle.toString()

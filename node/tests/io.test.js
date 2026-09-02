@@ -384,8 +384,13 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   assert.equal(handle.append('?'), 13)
   assert.equal(handle.append(new Uint8Array([0x23])), 14)
   assert.equal(handle.append(Uint8Array.from([0x24]).buffer), 15)
-  assert.throws(() => handle.append(12), /appended data must be a Uint8Array, ArrayBuffer, or string/)
-  assert.equal(handle.readText(), 'SYMBOL,price!?#$')
+  // Any view reads over its own window, which is what `memoryview` reaches.
+  assert.equal(handle.append(new DataView(Uint8Array.from([0x25]).buffer)), 16)
+  assert.throws(
+    () => handle.append(12),
+    /appended data must be a typed array, DataView, ArrayBuffer, or string/,
+  )
+  assert.equal(handle.readText(), 'SYMBOL,price!?#$%')
 
   // Text refuses a sequence it cannot decode rather than substituting, which
   // is what `readText` does and what Python's `cls=str` does.
@@ -399,6 +404,10 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   assert.equal(handle.readText(), 'SYMBOL')
   assert.throws(() => handle.readRangeBytes(-1, 4), /offset must be a non-negative whole number/)
   assert.throws(() => handle.readRangeBytes(1.5, 4), /offset/)
+  // `length` is checked exactly as `offset` is, rather than being coerced.
+  assert.throws(() => handle.readRangeBytes(0, -1), /length must be a non-negative whole number/)
+  assert.throws(() => handle.readRangeBytes(0, 1.5), /length/)
+  assert.throws(() => handle.readRange(0, 1.5, { text: true }), /length/)
   assert.throws(() => handle.truncate(Number.NaN), /size/)
 })
 

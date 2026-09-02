@@ -2391,13 +2391,18 @@ function rangeReadArguments(options) {
 }
 
 // The one place a JavaScript byte source becomes the `Uint8Array` the native
-// append borrows. A string is UTF-8, matching `writeText`.
+// append borrows. A string is UTF-8, matching `writeText`; any typed array or
+// `DataView` is read over its own window, which is what Python's `memoryview`
+// reaches on that side.
 function appendedBytes(data) {
   if (typeof data === 'string') return Buffer.from(data, 'utf8')
   if (data instanceof Uint8Array) return data
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  }
   if (data instanceof ArrayBuffer) return new Uint8Array(data)
   throw new TypeError(
-    'appended data must be a Uint8Array, ArrayBuffer, or string',
+    'appended data must be a typed array, DataView, ArrayBuffer, or string',
   )
 }
 

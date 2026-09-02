@@ -38,6 +38,19 @@ const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
 const JS_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
+/// One `length` argument as a byte count, refused rather than rounded.
+///
+/// `offset` is already checked this way; a `u32` parameter would have let
+/// napi coerce `1.5` and `-1` into silent lengths the Python twin rejects.
+fn exact_length(value: f64) -> Result<usize> {
+    let length = exact_u64(value, "length")?;
+    usize::try_from(length).map_err(|_| {
+        napi_error(format!(
+            "length {length} exceeds this platform's byte-count range"
+        ))
+    })
+}
+
 /// Saturate a native count at JavaScript's exact-integer boundary.
 fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
@@ -592,9 +605,9 @@ impl JsIOBase {
     /// the pair `readBytes` reads whole. `readRange` is the inferring entry
     /// point over it.
     #[napi]
-    pub fn read_range_bytes(&self, offset: f64, length: u32) -> Result<Buffer> {
+    pub fn read_range_bytes(&self, offset: f64, length: f64) -> Result<Buffer> {
         self.inner
-            .read_range_bytes(exact_u64(offset, "offset")?, length as usize)
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
             .map(Buffer::from)
             .map_err(napi_error)
     }
@@ -605,10 +618,10 @@ impl JsIOBase {
     /// invalid sequence is refused exactly as `readText` refuses it rather
     /// than substituting replacement characters.
     #[napi(js_name = "_readRangeTextNative", skip_typescript)]
-    pub fn read_range_text_native(&self, offset: f64, length: u32) -> Result<String> {
+    pub fn read_range_text_native(&self, offset: f64, length: f64) -> Result<String> {
         let bytes = self
             .inner
-            .read_range_bytes(exact_u64(offset, "offset")?, length as usize)
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
             .map_err(napi_error)?;
         String::from_utf8(bytes).map_err(napi_error)
     }

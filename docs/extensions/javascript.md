@@ -123,11 +123,11 @@ const handle = IOBase.fromBytes(Buffer.from('symbol,price\n'))
 assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
 assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
 
-// `append` takes a string, a plain Uint8Array, and an ArrayBuffer as well as
-// a Buffer.
+// `append` takes a string, any view, and an ArrayBuffer as well as a Buffer.
 assert.equal(handle.append('AAPL,1\n'), 13)
 assert.equal(handle.append(new Uint8Array([77, 83, 70, 84, 10])), 20)
-assert.equal(handle.append(Uint8Array.from([78, 86, 68, 65, 10]).buffer), 25)
+assert.equal(handle.append(new DataView(Uint8Array.from([78, 86, 68, 65, 10]).buffer)), 25)
+assert.equal(handle.append(Uint8Array.from([73, 78, 84, 67, 10]).buffer), 30)
 assert.equal(handle.readRange(13, 7, { text: true }), 'AAPL,1\n')
 
 // A range it cannot decode is refused, not silently substituted.
@@ -135,8 +135,9 @@ assert.throws(() => IOBase.fromBytes(Buffer.from([0xff])).readRange(0, 1, { text
 ```
 
 `readRange` rejects an unknown option and a non-boolean `text`, the way `readScalar` rejects its
-own. `append` reads a `Uint8Array` - a `Buffer` is one - an `ArrayBuffer`, and a string, encoding
-text as UTF-8 exactly as `writeText` does, and returns the byte offset the append landed at.
+own, and checks `length` as strictly as `offset` rather than rounding it. `append` reads any typed
+array or `DataView` over its own window - a `Buffer` is one - an `ArrayBuffer`, and a string,
+encoding text as UTF-8 exactly as `writeText` does, and returns the byte offset it landed at.
 
 ## One native field from a class or value
 
