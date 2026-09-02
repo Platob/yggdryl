@@ -62,7 +62,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     assert_eq!(items["item"]["line"]["price"].dtype(), &DataType::Float64);
 
     // The non-panicking form stays available and is what the docs point at.
-    assert!(order.get_field_by_name("absent").is_none());
+    assert!(order.get_field_by_path("absent").is_none());
     assert!(order.get_field(9).is_none());
 }
 
@@ -76,7 +76,7 @@ fn metadata_is_reached_through_its_own_surface_not_a_subscript() {
 
     // The subscript descends the schema; the metadata key is not a child.
     assert_eq!(field["id"].dtype(), &DataType::Int64);
-    assert!(field.get_field_by_name("owner").is_none());
+    assert!(field.get_field_by_path("owner").is_none());
 
     // The named accessors and the view still answer it.
     assert_eq!(field.get_metadata("owner"), Some("tests"));
@@ -115,13 +115,13 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
         .required_field("row");
 
     // An unknown name appends - dict-like, and how a schema is built up.
-    row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[1].name(), "venue");
 
     // A known name replaces in place, keeping its position.
-    row.set_field_by_name("id", DataType::Utf8.required_field("id"))
+    row.set_field_by_path("id", DataType::Utf8.required_field("id"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
@@ -139,7 +139,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     assert_eq!(row.field_len(), 2, "a refusal leaves the field unchanged");
 
     // Removal returns the prior child and closes the gap.
-    let dropped = row.remove_field_by_name("id").unwrap();
+    let dropped = row.remove_field_by_path("id").unwrap();
     assert_eq!(dropped.name(), "id");
     assert_eq!(row.field_len(), 1);
     assert_eq!(row[0].name(), "venue");
@@ -147,7 +147,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     // A node with no children to replace says so rather than panicking.
     let mut scalar = DataType::Int64.required_field("price");
     let message = scalar
-        .set_field_by_name("child", DataType::Int64.nullable_field("child"))
+        .set_field_by_path("child", DataType::Int64.nullable_field("child"))
         .unwrap_err()
         .to_string();
     assert!(message.contains("a struct field"), "{message}");

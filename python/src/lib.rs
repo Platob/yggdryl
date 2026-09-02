@@ -123,7 +123,7 @@ pub(crate) fn child_of(
 ) -> pyo3::PyResult<yggdryl::Field> {
     match ChildKey::from_py(key)? {
         ChildKey::Name(name) => node
-            .get_field_by_name(&name)
+            .get_field_by_path(&name)
             .cloned()
             .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(name)),
         ChildKey::Position(index) => normalize_index(index, node.field_len())
@@ -142,7 +142,7 @@ pub(crate) fn set_child(
     child: yggdryl::Field,
 ) -> pyo3::PyResult<()> {
     match ChildKey::from_py(key)? {
-        ChildKey::Name(name) => node.set_field_by_name(&name, child).map_err(value_error),
+        ChildKey::Name(name) => node.set_field_by_path(&name, child).map_err(value_error),
         ChildKey::Position(index) => {
             let position = normalize_index(index, node.field_len())
                 .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
@@ -158,7 +158,7 @@ pub(crate) fn remove_child(
 ) -> pyo3::PyResult<()> {
     match ChildKey::from_py(key)? {
         ChildKey::Name(name) => node
-            .remove_field_by_name(&name)
+            .remove_field_by_path(&name)
             .map(|_| ())
             .map_err(|_| pyo3::exceptions::PyKeyError::new_err(name)),
         ChildKey::Position(index) => {

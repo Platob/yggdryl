@@ -104,7 +104,7 @@ pub(super) fn data_file_from_batches(
     };
 
     for (name, id, dtype) in &columns {
-        let field = schema.get_field_by_name(name).ok_or_else(|| {
+        let field = schema.get_field_by_path(name).ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected the measured column {name:?} in the schema, got none"
             ))

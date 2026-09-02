@@ -212,7 +212,7 @@ mod fields {
         let root = rows.inferred_struct_field().unwrap();
         assert_eq!(root.name(), "row");
         assert!(!root.is_nullable());
-        assert!(root.get_field_by_name("venue").unwrap().is_nullable());
+        assert!(root.get_field_by_path("venue").unwrap().is_nullable());
     }
 
     #[test]

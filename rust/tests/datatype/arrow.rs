@@ -36,7 +36,7 @@ fn direct_arrow_values_round_trip_through_core() {
     assert_eq!(core.clone().into_arrow().unwrap(), arrow);
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
-        core.get_field_by_name("name").unwrap().dtype(),
+        core.get_field_by_path("name").unwrap().dtype(),
         &DataType::Utf8
     );
 }

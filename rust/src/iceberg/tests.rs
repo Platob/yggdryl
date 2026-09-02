@@ -911,7 +911,7 @@ mod partition_specs {
         // The tuple carries what produced it, so the spec reads back off it.
         let partition = spec.partition_field(&schema).unwrap();
         assert_eq!(partition.iceberg().get("spec-id"), Some("1"));
-        let venue = partition.get_field_by_name("venue").unwrap();
+        let venue = partition.get_field_by_path("venue").unwrap();
         assert!(venue.is_partition());
         assert_eq!(venue.iceberg().get("transform"), Some("identity"));
         assert_eq!(venue.iceberg().get("partition-source-id"), Some("3"));
@@ -5440,7 +5440,7 @@ mod line_projection {
             .unwrap()
             .into_field();
         schema.assign_parquet_field_ids(1).unwrap();
-        let thread_id = schema.get_field_by_name("thread_id").unwrap();
+        let thread_id = schema.get_field_by_path("thread_id").unwrap();
         assert_eq!(thread_id.dtype(), &crate::DataType::Int64);
         let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
         catalog.tables().create("logs.threads", schema).unwrap();
@@ -5508,13 +5508,13 @@ mod line_projection {
         let options = options();
         let schema = table_schema();
         let unix_id = schema
-            .get_field_by_name("unix")
+            .get_field_by_path("unix")
             .unwrap()
             .parquet_field_id()
             .unwrap()
             .unwrap();
         let logger_id = schema
-            .get_field_by_name("logger")
+            .get_field_by_path("logger")
             .unwrap()
             .parquet_field_id()
             .unwrap()

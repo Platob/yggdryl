@@ -34,7 +34,7 @@ pub use geospatial::GeospatialType;
 pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
 };
-pub use nested::{DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
+pub use nested::{DictionaryType, FieldKey, Fields, MapType, RunEndEncodedType, UnionFields};
 
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///

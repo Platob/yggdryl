@@ -2544,7 +2544,7 @@ impl KeyBounds {
     fn of(batches: &[RecordBatch], schema: &Field, merge_by_names: &[String]) -> Result<Self> {
         let mut columns = Vec::with_capacity(merge_by_names.len());
         for name in merge_by_names {
-            let field = schema.get_field_by_name(name).ok_or_else(|| {
+            let field = schema.get_field_by_path(name).ok_or_else(|| {
                 let stored = schema
                     .fields()
                     .iter()
@@ -3300,7 +3300,7 @@ fn invalid(reason: SmolStr) -> Error {
 /// reports the column rather than silently ignoring it.
 fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Expression {
     crate::Expression::all(pairs.iter().map(|(column, value)| {
-        schema.get_field_by_name(column).map_or_else(
+        schema.get_field_by_path(column).map_or_else(
             || crate::Expression::column(*column).eq(crate::Expression::literal(*value)),
             |field| crate::Expression::partition_equals(column, value, field.dtype()),
         )

@@ -15,6 +15,36 @@ use crate::{Error, Field, Result};
 use super::DataType;
 use super::scalar::{invalid, validate_non_negative};
 
+/// Either of the two ways a caller names one child.
+///
+/// [`From`] carries every spelling a caller reaches for, so `field(0)` and
+/// `field("line.price")` are one call rather than two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FieldKey<'a> {
+    /// A zero-based position among the direct children.
+    Index(usize),
+    /// A child name, or a dotted path through nested children.
+    Path(&'a str),
+}
+
+impl From<usize> for FieldKey<'_> {
+    fn from(index: usize) -> Self {
+        Self::Index(index)
+    }
+}
+
+impl<'a> From<&'a str> for FieldKey<'a> {
+    fn from(path: &'a str) -> Self {
+        Self::Path(path)
+    }
+}
+
+impl<'a> From<&'a String> for FieldKey<'a> {
+    fn from(path: &'a String) -> Self {
+        Self::Path(path.as_str())
+    }
+}
+
 /// An ordered, immutable collection of fields stored in one shared allocation.
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
 pub struct Fields(pub(super) Option<Arc<[Field]>>);
@@ -117,9 +147,9 @@ impl Index<usize> for Fields {
 /// Subscripting a datatype reaches a nested **child**, never metadata.
 ///
 /// The same semantic [`Field`] carries, so a caller walking a schema gets a
-/// child from every node in the graph. See
-/// [`Index<&str> for Field`](Field#impl-Index<%26str>-for-Field) for the rule in
-/// full; [`DataType::get_field_by_name`] is the non-panicking form.
+/// child from every node in the graph. The string is resolved by
+/// [`DataType::get_field_by_path`] - an exact name first, a dotted path after -
+/// and that method is the non-panicking form.
 ///
 /// ```
 /// use yggdryl::DataType;
@@ -138,9 +168,9 @@ impl Index<usize> for Fields {
 impl Index<&str> for DataType {
     type Output = Field;
 
-    fn index(&self, name: &str) -> &Self::Output {
-        self.get_field_by_name(name)
-            .unwrap_or_else(|| panic!("{name:?} is not a child of the datatype {self}"))
+    fn index(&self, path: &str) -> &Self::Output {
+        self.get_field_by_path(path)
+            .unwrap_or_else(|| panic!("{path:?} is not a child of the datatype {self}"))
     }
 }
 
@@ -163,7 +193,7 @@ impl Index<usize> for DataType {
     type Output = Field;
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.get_field(index).unwrap_or_else(|| {
+        self.get_field_at(index).unwrap_or_else(|| {
             panic!(
                 "the datatype {self} has {} children, so position {index} is out of range",
                 self.field_len()
@@ -740,8 +770,8 @@ impl DataType {
         }
     }
 
-    /// Returns a direct child field by positional index without allocating.
-    pub fn get_field(&self, index: usize) -> Option<&Field> {
+    /// Returns a direct child field by position without allocating.
+    pub fn get_field_at(&self, index: usize) -> Option<&Field> {
         match self {
             Self::List(field)
             | Self::ListView(field)
@@ -761,7 +791,10 @@ impl DataType {
     }
 
     /// Returns a direct child field by exact name without allocating.
-    pub fn get_field_by_name(&self, name: &str) -> Option<&Field> {
+    ///
+    /// This is the step [`Self::get_field_by_path`] takes before it decomposes
+    /// anything, and the whole of it for a name carrying no dot.
+    fn get_field_by_name(&self, name: &str) -> Option<&Field> {
         match self {
             Self::List(field)
             | Self::ListView(field)
@@ -782,6 +815,321 @@ impl DataType {
             }
             _ => None,
         }
+    }
+
+    /// Returns a nested child by path, preferring an exact name at every step.
+    ///
+    /// A child carrying the whole string as its own name wins outright, so a
+    /// name containing a dot stays reachable. Only when nothing carries the
+    /// whole string is it decomposed: each `.` is tried as a boundary, left to
+    /// right, and a head that names a child is descended into. A descent that
+    /// finds nothing falls back to the next boundary, so `"a.b.c"` resolves
+    /// even when `a.b` is one child carrying `c`.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([
+    ///     DataType::from_fields([DataType::Float64.required_field("price")])?
+    ///         .required_field("line"),
+    /// ])?;
+    /// assert_eq!(row.get_field_by_path("line.price").unwrap().name(), "price");
+    ///
+    /// // The whole string first: a dotted name is a name, not a path.
+    /// let dotted = DataType::from_fields([DataType::Int64.required_field("a.b")])?;
+    /// assert_eq!(dotted.get_field_by_path("a.b").unwrap().name(), "a.b");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
+        if let Some(field) = self.get_field_by_name(path) {
+            return Some(field);
+        }
+        let mut offset = 0;
+        while let Some(at) = path[offset..].find('.') {
+            let boundary = offset + at;
+            if let Some(child) = self.get_field_by_name(&path[..boundary]) {
+                if let Some(found) = child.get_field_by_path(&path[boundary + 1..]) {
+                    return Some(found);
+                }
+            }
+            offset = boundary + 1;
+        }
+        None
+    }
+
+    /// Returns a nested child by position or by path.
+    ///
+    /// The one lookup a caller reaches for when the key is whichever the data
+    /// gave them: an integer is a position, a string is a path.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+    /// assert_eq!(row.get_field(0).unwrap().name(), "id");
+    /// assert_eq!(row.get_field("id").unwrap().name(), "id");
+    /// assert!(row.get_field("absent").is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field> {
+        match key.into() {
+            FieldKey::Index(index) => self.get_field_at(index),
+            FieldKey::Path(path) => self.get_field_by_path(path),
+        }
+    }
+
+    /// Returns a nested child by position, naming what is there when it is not.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this datatype has no child at that position,
+    /// including when it has no children at all.
+    pub fn field_at(&self, index: usize) -> Result<&Field> {
+        self.get_field_at(index)
+            .ok_or_else(|| Error::InvalidRecord {
+                path: format_smolstr!("$[{index}]"),
+                reason: crate::text::expected_got(
+                    format_smolstr!("a child position below {}", self.field_len()),
+                    format_smolstr!("{index}"),
+                ),
+            })
+    }
+
+    /// Returns a nested child by path, naming what is there when it is not.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no child carries that name and no decomposition
+    /// of it resolves.
+    pub fn field_by_path(&self, path: &str) -> Result<&Field> {
+        self.get_field_by_path(path)
+            .ok_or_else(|| missing_child(self, path))
+    }
+
+    /// Returns a nested child by position or by path, raising when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::field_at`] or [`Self::field_by_path`] raises,
+    /// whichever the key selects.
+    pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field> {
+        match key.into() {
+            FieldKey::Index(index) => self.field_at(index),
+            FieldKey::Path(path) => self.field_by_path(path),
+        }
+    }
+
+    /// Replaces the child at `index`, keeping the layout.
+    ///
+    /// A position replaces only: it never grows the node, which is what
+    /// distinguishes it from [`Self::set_field_by_path`].
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+    /// row.set_field_at(0, DataType::Utf8.required_field("id"))?;
+    ///
+    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `index` is past the end or the rebuilt datatype
+    /// does not validate. Failure leaves `self` unchanged.
+    pub fn set_field_at(&mut self, index: usize, child: Field) -> Result<()> {
+        if index >= self.field_len() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$[{index}]"),
+                reason: crate::text::expected_got(
+                    format_smolstr!("a child position below {}", self.field_len()),
+                    format_smolstr!("{index}"),
+                ),
+            });
+        }
+        let mut children = self.children();
+        children[index] = child;
+        *self = self.with_fields(children)?;
+        Ok(())
+    }
+
+    /// Replaces the child `path` resolves to, appending an unresolved name.
+    ///
+    /// Resolution is [`Self::get_field_by_path`]'s, so a reader and a writer
+    /// never disagree about which child one string names: a child carrying the
+    /// whole string is replaced in place, otherwise a resolving head is
+    /// descended into and the remainder set there. A string that resolves to
+    /// nothing appends one child under that name - which is how a struct gets
+    /// built up - so a path whose parents do not exist appends a single child
+    /// rather than conjuring the chain.
+    ///
+    /// The child is stored under the name the path ends in, whatever it calls
+    /// itself.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut row = DataType::from_fields([
+    ///     DataType::from_fields([DataType::Int32.required_field("price")])?
+    ///         .required_field("line"),
+    /// ])?;
+    ///
+    /// row.set_field_by_path("line.price", DataType::Float64.required_field("price"))?;
+    /// assert_eq!(row["line"]["price"].dtype(), &DataType::Float64);
+    ///
+    /// // An unresolved name appends.
+    /// row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// assert_eq!(row.field_len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a resolved parent cannot hold children, when an
+    /// append lands on a layout with fixed arity, or when the rebuilt datatype
+    /// does not validate. Failure leaves `self` unchanged.
+    pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()> {
+        // Whole string first, exactly as the reader resolves it.
+        if let Some(index) = self.index_of_name(path) {
+            let mut children = self.children();
+            children[index] = child.with_name(path);
+            *self = self.with_fields(children)?;
+            return Ok(());
+        }
+        let mut offset = 0;
+        while let Some(at) = path[offset..].find('.') {
+            let boundary = offset + at;
+            let head = &path[..boundary];
+            let rest = &path[boundary + 1..];
+            if let Some(index) = self.index_of_name(head) {
+                let mut children = self.children();
+                if children[index]
+                    .set_field_by_path(rest, child.clone())
+                    .is_ok()
+                {
+                    *self = self.with_fields(children)?;
+                    return Ok(());
+                }
+            }
+            offset = boundary + 1;
+        }
+        // Nothing resolved, so the whole string names a new child here.
+        let mut children = self.children();
+        children.push(child.with_name(path));
+        *self = Self::from_fields(children)?;
+        Ok(())
+    }
+
+    /// Replaces a child by position or by path.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_field_at`] or [`Self::set_field_by_path`]
+    /// raises, whichever the key selects.
+    pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Field) -> Result<()> {
+        match key.into() {
+            FieldKey::Index(index) => self.set_field_at(index, child),
+            FieldKey::Path(path) => self.set_field_by_path(path, child),
+        }
+    }
+
+    /// Removes the child at `index`, returning it and closing the gap.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `index` is past the end, when the layout has a
+    /// fixed arity that removal would break, or when the rebuilt datatype does
+    /// not validate. Failure leaves `self` unchanged.
+    pub fn remove_field_at(&mut self, index: usize) -> Result<Field> {
+        if index >= self.field_len() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$[{index}]"),
+                reason: crate::text::expected_got(
+                    format_smolstr!("a child position below {}", self.field_len()),
+                    format_smolstr!("{index}"),
+                ),
+            });
+        }
+        let mut children = self.children();
+        let removed = children.remove(index);
+        *self = Self::from_fields(children)?;
+        Ok(removed)
+    }
+
+    /// Removes the child `path` resolves to, returning it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the path resolves to no child, or when the
+    /// rebuilt datatype does not validate. Failure leaves `self` unchanged.
+    pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field> {
+        if let Some(index) = self.index_of_name(path) {
+            return self.remove_field_at(index);
+        }
+        let mut offset = 0;
+        while let Some(at) = path[offset..].find('.') {
+            let boundary = offset + at;
+            if let Some(index) = self.index_of_name(&path[..boundary]) {
+                let mut children = self.children();
+                if let Ok(removed) = children[index].remove_field_by_path(&path[boundary + 1..]) {
+                    *self = self.with_fields(children)?;
+                    return Ok(removed);
+                }
+            }
+            offset = boundary + 1;
+        }
+        Err(missing_child(self, path))
+    }
+
+    /// Removes a child by position or by path, returning it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::remove_field_at`] or
+    /// [`Self::remove_field_by_path`] raises, whichever the key selects.
+    pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field> {
+        match key.into() {
+            FieldKey::Index(index) => self.remove_field_at(index),
+            FieldKey::Path(path) => self.remove_field_by_path(path),
+        }
+    }
+
+    /// Returns the direct children as an owned vector, over every layout.
+    fn children(&self) -> Vec<Field> {
+        (0..self.field_len())
+            .filter_map(|index| self.get_field_at(index))
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the position of the direct child with an exact name.
+    fn index_of_name(&self, name: &str) -> Option<usize> {
+        (0..self.field_len())
+            .find(|index| self.get_field_at(*index).is_some_and(|f| f.name() == name))
+    }
+}
+
+/// Report a path that names no child, and the names that exist beside it.
+fn missing_child(node: &DataType, path: &str) -> Error {
+    let names: Vec<&str> = (0..node.field_len())
+        .filter_map(|index| node.get_field_at(index))
+        .map(Field::name)
+        .collect();
+    Error::InvalidRecord {
+        path: format_smolstr!("$.{path}"),
+        reason: crate::text::expected_got(
+            format_smolstr!("a child among {names:?}"),
+            format_smolstr!("{path:?}"),
+        ),
     }
 }
 

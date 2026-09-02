@@ -98,7 +98,7 @@ fn constant_column(value: &str, rows: usize, target: Option<&ArrowDataType>) -> 
 
 /// Return the Arrow type a schema declares for a partition column, if any.
 fn declared_type(field: Option<&Field>, column: &str) -> Option<ArrowDataType> {
-    let child = field?.get_field_by_name(column)?;
+    let child = field?.get_field_by_path(column)?;
     child
         .clone()
         .into_arrow()
@@ -162,7 +162,7 @@ pub fn with_partitions(
         // perfectly good four-letter value, so the declared column decides which
         // the cast turns it into.
         let nullable = field
-            .and_then(|field| field.get_field_by_name(column))
+            .and_then(|field| field.get_field_by_path(column))
             .is_some_and(Field::is_nullable);
         // The restored column says it came from the path. That is the one fact
         // the batch would otherwise lose, and it is what lets a read of a lake

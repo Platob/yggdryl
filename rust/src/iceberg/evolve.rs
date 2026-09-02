@@ -39,7 +39,7 @@
 //! let evolved = update.into_field()?;
 //!
 //! // The added column is numbered above every id the table has assigned.
-//! assert_eq!(evolved.get_field_by_name("quantity").unwrap().parquet_field_id()?, Some(3));
+//! assert_eq!(evolved.get_field_by_path("quantity").unwrap().parquet_field_id()?, Some(3));
 //!
 //! let schema_id = metadata.add_schema(evolved)?;
 //! metadata.set_current_schema(schema_id)?;

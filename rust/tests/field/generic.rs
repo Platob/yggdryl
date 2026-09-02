@@ -963,7 +963,7 @@ fn the_init_flag_rejects_a_non_boolean_spelling() {
 
 #[test]
 fn datatype_builds_fields_in_schema_reading_order() {
-    let id = DataType::Int64.field("id", false);
+    let id = DataType::Int64.named_field("id", false);
     assert_eq!(id, Field::new("id", DataType::Int64, false));
 
     assert_eq!(
@@ -999,7 +999,7 @@ fn a_struct_field_is_usable_as_a_schema_root() {
     assert_eq!(root.index_of("symbol"), Some(1));
     assert_eq!(root.index_of("absent"), None);
     assert_eq!(root.get_field(0).unwrap().name(), "id");
-    assert_eq!(root.get_field_by_name("symbol").unwrap().name(), "symbol");
+    assert_eq!(root.get_field_by_path("symbol").unwrap().name(), "symbol");
 }
 
 #[test]
@@ -1164,8 +1164,8 @@ fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
             .collect::<Vec<_>>(),
         ["venue", "year"]
     );
-    assert!(schema.get_field_by_name("year").unwrap().is_partition());
-    assert!(!schema.get_field_by_name("price").unwrap().is_partition());
+    assert!(schema.get_field_by_path("year").unwrap().is_partition());
+    assert!(!schema.get_field_by_path("price").unwrap().is_partition());
 
     // The two halves of the layout: what a path spells, and what a leaf stores.
     let stored = schema.without_partition_fields().unwrap();
@@ -1187,7 +1187,7 @@ fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
     assert_eq!(restored.partition_field_len(), 2);
     assert_eq!(
         schema
-            .get_field_by_name("year")
+            .get_field_by_path("year")
             .unwrap()
             .get_metadata("field:partition"),
         Some("true")
@@ -1376,7 +1376,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     // through its own view and the named accessor.
     assert_eq!(order.get_metadata("owner"), Some("trading"));
     assert_eq!(order.as_metadata().get("owner"), Some("trading"));
-    assert!(order.get_field_by_name("owner").is_none());
+    assert!(order.get_field_by_path("owner").is_none());
 }
 
 #[test]
@@ -1413,14 +1413,14 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     .required_field("row");
 
     // A known name replaces in place, keeping its position.
-    row.set_field_by_name("id", DataType::Utf8.required_field("id"))
+    row.set_field_by_path("id", DataType::Utf8.required_field("id"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
     assert_eq!(row["id"].dtype(), &DataType::Utf8);
 
     // An unknown name appends.
-    row.set_field_by_name("price", DataType::Float64.nullable_field("price"))
+    row.set_field_by_path("price", DataType::Float64.nullable_field("price"))
         .unwrap();
     assert_eq!(row.field_len(), 3);
     assert_eq!(row[2].name(), "price");
@@ -1437,7 +1437,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     assert_eq!(row.field_len(), 3, "a refusal leaves the field unchanged");
 
     // Removal closes the gap, by either key form.
-    let dropped = row.remove_field_by_name("id").unwrap();
+    let dropped = row.remove_field_by_path("id").unwrap();
     assert_eq!(dropped.name(), "id");
     assert_eq!(row[0].name(), "venue");
     row.remove_field(0).unwrap();
@@ -1447,7 +1447,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     // A non-struct has no children to replace, and says so.
     let mut scalar = DataType::Int64.required_field("id");
     let refused = scalar
-        .set_field_by_name("child", DataType::Int64.required_field("child"))
+        .set_field_by_path("child", DataType::Int64.required_field("child"))
         .unwrap_err();
     assert!(refused.to_string().contains("struct field"), "{refused}");
 }
@@ -1461,7 +1461,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
     assert!(before.data_type().to_string().contains("id"));
     assert!(!before.data_type().to_string().contains("venue"));
 
-    row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))
         .unwrap();
 
     // The projection is rebuilt from the mutated field, never served stale.

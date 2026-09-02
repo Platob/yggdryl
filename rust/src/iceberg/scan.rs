@@ -1051,7 +1051,7 @@ pub(super) fn read_root(root: &Field, schema: &Field, filter: &Expression) -> Re
         {
             continue;
         }
-        let Some(column) = schema.get_field_by_name(&name) else {
+        let Some(column) = schema.get_field_by_path(&name) else {
             continue;
         };
         children.push(column.clone());

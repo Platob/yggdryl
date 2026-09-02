@@ -388,7 +388,7 @@ impl JsDataType {
                 .and_then(|index| self.field_at(index)),
             Either::B(name) => self
                 .inner
-                .get_field_by_name(&name)
+                .get_field_by_path(&name)
                 .cloned()
                 .map(JsField::from_core),
         }
@@ -398,7 +398,7 @@ impl JsDataType {
     #[napi]
     pub fn get_by_name(&self, name: String) -> Option<JsField> {
         self.inner
-            .get_field_by_name(&name)
+            .get_field_by_path(&name)
             .cloned()
             .map(JsField::from_core)
     }
@@ -411,7 +411,7 @@ impl JsDataType {
                 .ok()
                 .and_then(|index| self.inner.get_field(index))
                 .is_some(),
-            Either3::B(name) => self.inner.get_field_by_name(&name).is_some(),
+            Either3::B(name) => self.inner.get_field_by_path(&name).is_some(),
             Either3::C(field) => self.fields().any(|candidate| candidate == &field.inner),
         }
     }

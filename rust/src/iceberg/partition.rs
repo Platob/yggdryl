@@ -337,7 +337,7 @@ impl PartitionSpec {
     pub fn identity(spec_id: i32, schema: &Field, columns: &[&str]) -> Result<Self> {
         let mut fields = Vec::with_capacity(columns.len());
         for (offset, column) in columns.iter().enumerate() {
-            let source = schema.get_field_by_name(column).ok_or_else(|| {
+            let source = schema.get_field_by_path(column).ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a schema column to partition on, got {column:?}"
                 ))
@@ -447,7 +447,7 @@ impl PartitionSpec {
             let Some(source) = schema.field_by_parquet_field_id(field.source_id) else {
                 continue;
             };
-            if schema.get_field_by_name(source.name()).is_some() {
+            if schema.get_field_by_path(source.name()).is_some() {
                 columns.push(source.name());
             }
         }

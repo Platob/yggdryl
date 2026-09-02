@@ -83,7 +83,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             held.value().is_null(),
         )),
         Expression::Column(name) => schema
-            .get_field_by_name(name)
+            .get_field_by_path(name)
             .cloned()
             .ok_or_else(|| unknown_column(name, schema)),
         Expression::Path(base, steps) => {

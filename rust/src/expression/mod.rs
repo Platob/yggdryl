@@ -1484,7 +1484,7 @@ impl Expression {
     ) -> Self {
         Self::all(pairs.into_iter().filter_map(|(column, value)| {
             schema
-                .get_field_by_name(column.as_ref())
+                .get_field_by_path(column.as_ref())
                 .map(|field| Self::partition_equals(column.as_ref(), value.as_ref(), field.dtype()))
         }))
     }

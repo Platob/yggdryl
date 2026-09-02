@@ -998,7 +998,7 @@ impl PyDataType {
 
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
         if let Ok(name) = value.extract::<&str>() {
-            return self.inner.get_field_by_name(name).is_some();
+            return self.inner.get_field_by_path(name).is_some();
         }
         if let Ok(index) = value.extract::<isize>() {
             return normalize_index(index, self.inner.field_len()).is_some();

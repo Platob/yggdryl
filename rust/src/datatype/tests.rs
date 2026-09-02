@@ -331,7 +331,7 @@ fn native_order_hash_and_child_access_are_value_based() {
     assert_ne!(left.stable_hash(), right.stable_hash());
     assert_eq!(left.field_len(), 2);
     assert_eq!(left.get_field(0).map(Field::name), Some("a"));
-    assert_eq!(left.get_field_by_name("b").map(Field::name), Some("b"));
+    assert_eq!(left.get_field_by_path("b").map(Field::name), Some("b"));
     assert_eq!(left.as_fields().map(<[Field]>::len), Some(2));
 }
 

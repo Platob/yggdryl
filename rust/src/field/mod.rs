@@ -10,7 +10,7 @@ use arrow_schema::Field as ArrowField;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::{
-    DataType, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
+    DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
     ALIAS_KEY, CATALOG_NAME_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
@@ -276,14 +276,67 @@ impl Field {
         self.dtype.field_len()
     }
 
-    /// Returns one struct child by position.
-    pub fn get_field(&self, index: usize) -> Option<&Field> {
-        self.dtype.get_field(index)
+    /// Returns one nested child by position.
+    pub fn get_field_at(&self, index: usize) -> Option<&Field> {
+        self.dtype.get_field_at(index)
     }
 
-    /// Returns the first struct child with an exact name.
-    pub fn get_field_by_name(&self, name: &str) -> Option<&Field> {
-        self.dtype.get_field_by_name(name)
+    /// Returns one nested child by path, an exact name first.
+    ///
+    /// [`DataType::get_field_by_path`] carries the rule; this node's datatype
+    /// is where it starts.
+    pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
+        self.dtype.get_field_by_path(path)
+    }
+
+    /// Returns one nested child by position or by path.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = DataType::from_fields([
+    ///     DataType::from_fields([DataType::Float64.required_field("price")])?
+    ///         .required_field("line"),
+    /// ])?
+    /// .required_field("order");
+    ///
+    /// assert_eq!(order.get_field(0).unwrap().name(), "line");
+    /// assert_eq!(order.get_field("line.price").unwrap().name(), "price");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field> {
+        self.dtype.get_field(key)
+    }
+
+    /// Returns one nested child by position, naming what is there when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this node has no child at that position.
+    pub fn field_at(&self, index: usize) -> Result<&Field> {
+        self.dtype.field_at(index)
+    }
+
+    /// Returns one nested child by path, naming what is there when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no child carries that name and no decomposition
+    /// of it resolves.
+    pub fn field_by_path(&self, path: &str) -> Result<&Field> {
+        self.dtype.field_by_path(path)
+    }
+
+    /// Returns one nested child by position or by path, raising when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::field_at`] or [`Self::field_by_path`] raises,
+    /// whichever the key selects.
+    pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field> {
+        self.dtype.field(key)
     }
 
     /// Returns the position of the first struct child with an exact name.
@@ -465,7 +518,7 @@ impl Field {
     pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self> {
         self.require_struct()?;
         for name in names {
-            if self.get_field_by_name(name).is_none() {
+            if self.get_field_by_path(name).is_none() {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$.{name}"),
                     reason: crate::text::expected_got(
@@ -1033,7 +1086,7 @@ impl Field {
     /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?
     ///     .required_field("row");
     ///
-    /// row.set_field(0, DataType::Utf8.required_field("id"))?;
+    /// row.set_field_at(0, DataType::Utf8.required_field("id"))?;
     /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
     /// # Ok(())
     /// # }
@@ -1044,7 +1097,7 @@ impl Field {
     /// Returns an error when this field is not a struct, when `index` is past
     /// the end, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn set_field(&mut self, index: usize, child: Self) -> Result<()> {
+    pub fn set_field_at(&mut self, index: usize, child: Self) -> Result<()> {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
@@ -1067,7 +1120,7 @@ impl Field {
     /// build a schema up. A position, by contrast, only ever replaces.
     ///
     /// The child is stored under `name` whatever it calls itself, so
-    /// `row.set_field_by_name("price", DataType::Float64.required_field("x"))`
+    /// `row.set_field_by_path("price", DataType::Float64.required_field("x"))`
     /// stores a child named `price`.
     ///
     /// ```
@@ -1078,11 +1131,11 @@ impl Field {
     ///     .required_field("row");
     ///
     /// // An unknown name appends.
-    /// row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     ///
     /// // A known one replaces, keeping its position.
-    /// row.set_field_by_name("id", DataType::Utf8.required_field("id"))?;
+    /// row.set_field_by_path("id", DataType::Utf8.required_field("id"))?;
     /// assert_eq!(row.field_len(), 2);
     /// assert_eq!(row[0].name(), "id");
     /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
@@ -1094,14 +1147,23 @@ impl Field {
     ///
     /// Returns an error when this field is not a struct or the resulting child
     /// set does not validate. Failure leaves `self` unchanged.
-    pub fn set_field_by_name(&mut self, name: &str, child: Self) -> Result<()> {
-        let mut fields = self.struct_children()?;
-        let child = child.with_name(name);
-        match fields.iter().position(|held| held.name() == name) {
-            Some(index) => fields[index] = child,
-            None => fields.push(child),
+    pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()> {
+        let mut dtype = self.dtype.clone();
+        dtype.set_field_by_path(path, child)?;
+        self.set_dtype(dtype)
+    }
+
+    /// Replaces a nested child by position or by path.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_field_at`] or [`Self::set_field_by_path`]
+    /// raises, whichever the key selects.
+    pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Self) -> Result<()> {
+        match key.into() {
+            FieldKey::Index(index) => self.set_field_at(index, child),
+            FieldKey::Path(path) => self.set_field_by_path(path, child),
         }
-        self.set_dtype(DataType::from_fields(fields)?)
     }
 
     /// Removes the struct child at `index`, returning it and closing the gap.
@@ -1111,7 +1173,7 @@ impl Field {
     /// Returns an error when this field is not a struct, when `index` is past
     /// the end, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn remove_field(&mut self, index: usize) -> Result<Self> {
+    pub fn remove_field_at(&mut self, index: usize) -> Result<Self> {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
@@ -1139,7 +1201,7 @@ impl Field {
     /// ])?
     /// .required_field("row");
     ///
-    /// let dropped = row.remove_field_by_name("id")?;
+    /// let dropped = row.remove_field_by_path("id")?;
     /// assert_eq!(dropped.name(), "id");
     /// // Positions close up behind it.
     /// assert_eq!(row[0].name(), "venue");
@@ -1152,15 +1214,24 @@ impl Field {
     /// Returns an error when this field is not a struct, when no child carries
     /// `name`, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn remove_field_by_name(&mut self, name: &str) -> Result<Self> {
-        let index = self.index_of(name).ok_or_else(|| Error::InvalidRecord {
-            path: format_smolstr!("$.{name}"),
-            reason: crate::text::expected_got(
-                format_smolstr!("a child of the field {:?}", self.name),
-                format_smolstr!("{name:?}"),
-            ),
-        })?;
-        self.remove_field(index)
+    pub fn remove_field_by_path(&mut self, path: &str) -> Result<Self> {
+        let mut dtype = self.dtype.clone();
+        let removed = dtype.remove_field_by_path(path)?;
+        self.set_dtype(dtype)?;
+        Ok(removed)
+    }
+
+    /// Removes a nested child by position or by path, returning it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::remove_field_at`] or
+    /// [`Self::remove_field_by_path`] raises, whichever the key selects.
+    pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Self> {
+        match key.into() {
+            FieldKey::Index(index) => self.remove_field_at(index),
+            FieldKey::Path(path) => self.remove_field_by_path(path),
+        }
     }
 
     /// The struct children as an owned vector, or a refusal naming the reason.
@@ -2117,7 +2188,7 @@ impl Hash for Field {
 /// There is no dotted-string or tuple path form.
 ///
 /// Panics when the name is not a child, as [`Index`] idiomatically does;
-/// [`Field::get_field_by_name`] is the non-panicking form.
+/// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
 /// use yggdryl::{DataType, Field};
@@ -2144,7 +2215,7 @@ impl Index<&str> for Field {
     type Output = Self;
 
     fn index(&self, name: &str) -> &Self::Output {
-        self.get_field_by_name(name)
+        self.get_field_by_path(name)
             .unwrap_or_else(|| panic!("{:?} is not a child of the field {:?}", name, self.name()))
     }
 }

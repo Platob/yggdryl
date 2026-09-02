@@ -108,8 +108,9 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let id = DataType::Int64.field("id", false);
-    /// let tags = DataType::list(DataType::Utf8.field("item", true)).field("tags", true);
+    /// let id = DataType::Int64.named_field("id", false);
+    /// let tags = DataType::list(DataType::Utf8.named_field("item", true))
+    ///     .named_field("tags", true);
     ///
     /// assert_eq!(id.name(), "id");
     /// assert!(!id.is_nullable());
@@ -117,18 +118,18 @@ impl DataType {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn field(self, name: impl Into<SmolStr>, nullable: bool) -> Field {
+    pub fn named_field(self, name: impl Into<SmolStr>, nullable: bool) -> Field {
         Field::new(name, self, nullable)
     }
 
     /// Builds a nullable [`Field`] of this datatype.
     pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field {
-        self.field(name, true)
+        self.named_field(name, true)
     }
 
     /// Builds a non-null [`Field`] of this datatype.
     pub fn required_field(self, name: impl Into<SmolStr>) -> Field {
-        self.field(name, false)
+        self.named_field(name, false)
     }
 
     /// Creates a fixed-size binary type after validating its width.
