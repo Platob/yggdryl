@@ -322,7 +322,11 @@ fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
         assert_eq!(handle.handle().sizes(), 0, "{codec} measured its source");
         assert!(!handle.opened(), "{codec} retained the decoded value");
 
-        assert_eq!(handle.read_range_bytes(9, 31).unwrap(), payload[9..40], "{codec}");
+        assert_eq!(
+            handle.read_range_bytes(9, 31).unwrap(),
+            payload[9..40],
+            "{codec}"
+        );
         assert_eq!(handle.read_all_bytes().unwrap(), payload, "{codec}");
         assert_eq!(handle.handle().sizes(), 0, "{codec} measured a helper read");
         assert!(!handle.opened(), "{codec} cached a helper read");

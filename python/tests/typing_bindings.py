@@ -228,7 +228,7 @@ range_bytes: bytes = byte_handle.read_range_bytes(0, 6)
 inferred_range: bytes = byte_handle.read_range(0, 6)
 explicit_range_bytes: bytes = byte_handle.read_range(0, 6, cls=bytes)
 range_text: str = byte_handle.read_range(0, 6, cls=str)
-byte_handle.read_range(0, 6, cls=int)  # type: ignore[call-overload]
+byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_data_type_value: object | Mapping[str, object] = (

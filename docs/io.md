@@ -467,12 +467,9 @@ reports an encoding this build cannot decode, and it names it.
     handle = IOBase.from_bytes()
     handle.write_bytes(b"symbol,price\n")
 
-    # `append_bytes` reports the offset the bytes landed at; `append` also
-    # takes `str`, `bytearray`, and `memoryview`.
+    # `append_bytes` reports the offset the bytes landed at.
     assert handle.append_bytes(b"AAPL,1\n") == 13
     assert handle.read_range_bytes(0, 6) == b"symbol"
-    # `read_range` infers the answer's type; `cls=str` decodes the same range.
-    assert handle.read_range(0, 6, cls=str) == "symbol"
     # A range past the end yields what exists rather than raising.
     assert handle.read_range_bytes(100, 4) == b""
     assert len(handle.read_bytes()) == 20
@@ -487,12 +484,9 @@ reports an encoding this build cannot decode, and it names it.
     const handle = IOBase.fromBytes()
     handle.writeBytes(Buffer.from('symbol,price\n'))
 
-    // `appendBytes` reports the offset the bytes landed at; `append` also
-    // takes a string and an `ArrayBuffer`.
+    // `appendBytes` reports the offset the bytes landed at.
     assert.equal(handle.appendBytes(Buffer.from('AAPL,1\n')), 13)
     assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
-    // `readRange` infers the answer's type; `{ text: true }` decodes it.
-    assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
     // A range past the end yields what exists rather than throwing.
     assert.equal(handle.readRangeBytes(100, 4).length, 0)
     assert.equal(handle.readBytes().length, 20)
@@ -504,13 +498,10 @@ type that is, because the same verbs also address rows: `append_bytes` is the by
 `append_arrow_reader`, and `read_range_bytes` the ranged half of what `read_all_bytes` reads whole.
 [`is_atomic`](#bytes-or-rows) is how a caller asks which surface a handle is for.
 
-The bindings carry those exact names - Python `read_range_bytes`/`append_bytes`, JavaScript
-`readRangeBytes`/`appendBytes` - and add one inferring entry point over each, which coerces at the
-boundary and redirects to the explicit native. Python `read_range(offset, length, cls=None)` answers
-`bytes` by default and `str` for `cls=str`; JavaScript `readRange(offset, length, options)` answers a
-`Buffer` and a string for `{ text: true }`. Python `append` also takes `str`, `bytearray`, and
-`memoryview`; JavaScript `append` also takes a string and an `ArrayBuffer`. Whole-value
-`read_bytes`/`read_text` remain the unranged pair.
+The bindings carry those exact names and add one inferring `read_range`/`append` entry point over
+each, coercing at the boundary and redirecting to the explicit native; the
+[Python](extensions/python.md#bytes-and-ranges) and
+[JavaScript](extensions/javascript.md#bytes-and-ranges) pages spell those out.
 
 `pread_exact` is the strict form of `pread`: it fails, naming the shortfall, when the value ends
 before the buffer is full.

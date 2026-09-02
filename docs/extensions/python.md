@@ -531,6 +531,37 @@ counts, text boundaries, or Iceberg manifests without decoding rows where the
 format carries an exact count. Successful answers are retained only between
 `open()` and `close()` and invalidated by writes through that handle.
 
+### Bytes and ranges
+
+The core's byte methods keep their exact names, so `read_range_bytes` and `append_bytes` are
+[the core calls](../io.md#whole-values) spelled in Python. Over each sits one inferring entry point
+that coerces at the boundary and redirects to that same native: `read_range` chooses the answer's
+type from `cls`, and `append` chooses how to read the buffer it was handed.
+
+```python
+from yggdryl import IOBase
+
+handle = IOBase.from_bytes(b"symbol,price\n")
+
+# The explicit core names.
+assert handle.append_bytes(b"AAPL,1\n") == 13
+assert handle.read_range_bytes(0, 6) == b"symbol"
+
+# `cls` selects the answer's type; omitting it answers `bytes`.
+assert handle.read_range(0, 6) == b"symbol"
+assert handle.read_range(0, 6, cls=str) == "symbol"
+
+# `append` also takes text, a bytearray, and a memoryview.
+assert handle.append("MSFT,2\n") == 20
+assert handle.append(bytearray(b"NVDA,3\n")) == 27
+assert handle.append(memoryview(b"INTC,4\n")) == 34
+assert handle.read_range(20, 7, cls=str) == "MSFT,2\n"
+```
+
+`read_range` accepts `bytes`, `str`, or `None` and raises `TypeError` for anything else, the way
+`read_scalar(cls=...)` does. `append` reads `bytes`, `bytearray`, `memoryview`, and `str`, encoding
+text as UTF-8 exactly as `write_text` does, and returns the byte offset the append landed at.
+
 `Url` answers the `PurePath` half under the same names - `name`, `stem`, `suffix`, `suffixes`,
 `parts`, `parent`, `parents`, `joinpath`, `/`, `with_name`, `with_stem`, `with_suffix`, `match`,
 `relative_to`, `is_relative_to`, `as_posix`, `as_uri` - plus `exists`, `is_dir`, and `is_file` for a

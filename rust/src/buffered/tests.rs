@@ -175,12 +175,17 @@ fn a_read_spanning_pages_caches_each_of_them() {
     let handle = Buffered::new(counted(8 * PAGE), options(16));
 
     // Unaligned on both ends, across four pages.
-    let read = handle.read_range_bytes(PAGE as u64 - 3, 3 * PAGE + 6).unwrap();
+    let read = handle
+        .read_range_bytes(PAGE as u64 - 3, 3 * PAGE + 6)
+        .unwrap();
     assert_eq!(read, expected(PAGE - 3, 3 * PAGE + 6));
     assert_eq!(handle.cached_pages(), 5);
 
     let fetched = handle.handle().reads();
-    assert_eq!(handle.read_range_bytes(0, 5 * PAGE).unwrap().len(), 5 * PAGE);
+    assert_eq!(
+        handle.read_range_bytes(0, 5 * PAGE).unwrap().len(),
+        5 * PAGE
+    );
     assert_eq!(
         handle.handle().reads(),
         fetched,
@@ -231,7 +236,10 @@ fn a_write_is_seen_by_the_next_read() {
     assert_eq!(handle.read_all_bytes().unwrap().len(), 4 * PAGE);
     handle.pwrite(PAGE as u64 - 2, b"ABCD").unwrap();
 
-    assert_eq!(handle.read_range_bytes(PAGE as u64 - 2, 4).unwrap(), b"ABCD");
+    assert_eq!(
+        handle.read_range_bytes(PAGE as u64 - 2, 4).unwrap(),
+        b"ABCD"
+    );
     assert_eq!(handle.handle().writes(), 1);
     // The patch keeps the surrounding bytes exactly as they were.
     assert_eq!(
@@ -251,7 +259,10 @@ fn a_write_extending_the_value_replaces_the_page_that_ended_it() {
     handle.pwrite(PAGE as u64 + 10, b"tail").unwrap();
     assert!(!handle.has_cached_page(1));
     assert_eq!(handle.size(), PAGE as u64 + 14);
-    assert_eq!(handle.read_range_bytes(PAGE as u64 + 10, 4).unwrap(), b"tail");
+    assert_eq!(
+        handle.read_range_bytes(PAGE as u64 + 10, 4).unwrap(),
+        b"tail"
+    );
 }
 
 #[test]
@@ -303,7 +314,10 @@ fn truncation_invalidates_both_ways() {
     handle.truncate(2 * PAGE as u64 + 4).unwrap();
     assert!(handle.has_cached_page(0));
     assert!(!handle.has_cached_page(2));
-    assert_eq!(handle.read_range_bytes(2 * PAGE as u64, 4).unwrap(), b"\0\0\0\0");
+    assert_eq!(
+        handle.read_range_bytes(2 * PAGE as u64, 4).unwrap(),
+        b"\0\0\0\0"
+    );
 }
 
 #[test]
