@@ -1258,7 +1258,7 @@ export type JsIOBase = IOBase
  *
  * Reads and writes advance the position; `seek`/`tell` move and report it;
  * two cursors over one handle advance independently, exactly as two
- * `readRange` callers do.
+ * `readRangeBytes` callers do.
  */
 export declare class IOCursor {
   /** The current position, in bytes from the start. */

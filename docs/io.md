@@ -58,7 +58,9 @@ three languages reach it.
     ```
 
 `IOBase::pread` and `IOBase::pwrite` are the only two methods an implementation must supply for bytes;
-everything else on the trait is derived from them. They take an explicit offset rather than sharing a
+everything else on the trait is derived from them. The bindings expose the derived
+`read_range_bytes`/`readRangeBytes` for the read - a caller-supplied buffer is a Rust shape - and
+`pwrite` under its own name for the write. They take an explicit offset rather than sharing a
 cursor, so a footer-first container such as Parquet reads its index without seeking, and two readers of
 one handle never interfere.
 
@@ -493,15 +495,16 @@ reports an encoding this build cannot decode, and it names it.
     ```
 
 `read_all_bytes`, `read_range_bytes`, `pwrite_all`, `append_bytes`, `write_all_bytes`, and `clear`
-are the whole-value conveniences. Every one of them that answers or takes a core type says which
-type that is, because the same verbs also address rows: `append_bytes` is the byte sibling of
+are the conveniences derived from `pread`/`pwrite`. Each read and append among them names the core
+type it answers, because the same verbs also address rows: `append_bytes` is the byte sibling of
 `append_arrow_reader`, and `read_range_bytes` the ranged half of what `read_all_bytes` reads whole.
 [`is_atomic`](#bytes-or-rows) is how a caller asks which surface a handle is for.
 
-The bindings carry those exact names and add one inferring `read_range`/`append` entry point over
-each, coercing at the boundary and redirecting to the explicit native; the
-[Python](extensions/python.md#bytes-and-ranges) and
-[JavaScript](extensions/javascript.md#bytes-and-ranges) pages spell those out.
+The bindings keep their own runtime spelling for the two whole-value calls - `read_bytes`/`read_text`
+and `write_bytes`/`write_text` - and carry `read_range_bytes` and `append_bytes` under the core name,
+camelCased in JavaScript. Over each of those two sits one inferring `read_range`/`append` entry
+point, which the [Python](extensions/python.md#bytes-and-ranges) and
+[JavaScript](extensions/javascript.md#bytes-and-ranges) pages spell out.
 
 `pread_exact` is the strict form of `pread`: it fails, naming the shortfall, when the value ends
 before the buffer is full.

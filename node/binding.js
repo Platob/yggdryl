@@ -2346,6 +2346,8 @@ const nativeIOWriteValue = IOBase.prototype._writeScalarNative
 const nativeIOBuffered = IOBase.prototype._bufferedNative
 const nativeIOReadRangeBytes = IOBase.prototype.readRangeBytes
 const nativeIOAppendBytes = IOBase.prototype.appendBytes
+const nativeIOReadRangeText = IOBase.prototype._readRangeTextNative
+delete IOBase.prototype._readRangeTextNative
 delete IOBase.prototype._readScalarNative
 delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
@@ -2444,10 +2446,12 @@ Object.defineProperties(IOBase.prototype, {
   readRange: {
     configurable: true,
     value(offset, length, options) {
-      // Settled before the read, so a rejected option costs no fetch.
-      const text = rangeReadArguments(options)
-      const bytes = nativeIOReadRangeBytes.call(this, offset, length)
-      return text ? bytes.toString('utf8') : bytes
+      // Settled before the read, so a rejected option costs no fetch. Text
+      // decodes in the core, which refuses an invalid sequence rather than
+      // substituting replacement characters the way `toString` would.
+      return rangeReadArguments(options)
+        ? nativeIOReadRangeText.call(this, offset, length)
+        : nativeIOReadRangeBytes.call(this, offset, length)
     },
   },
   append: {

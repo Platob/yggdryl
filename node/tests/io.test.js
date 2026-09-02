@@ -386,6 +386,12 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   assert.equal(handle.append(Uint8Array.from([0x24]).buffer), 15)
   assert.throws(() => handle.append(12), /appended data must be a Uint8Array, ArrayBuffer, or string/)
   assert.equal(handle.readText(), 'SYMBOL,price!?#$')
+
+  // Text refuses a sequence it cannot decode rather than substituting, which
+  // is what `readText` does and what Python's `cls=str` does.
+  const binary = IOBase.fromBytes(Buffer.from([0xff, 0xfe]))
+  assert.deepEqual(binary.readRange(0, 2), Buffer.from([0xff, 0xfe]))
+  assert.throws(() => binary.readRange(0, 2, { text: true }), /invalid utf-8/)
   handle.truncate(13)
   assert.equal(handle.size, 13)
 

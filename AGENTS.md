@@ -204,12 +204,13 @@ scheme vocabulary.
 - `IOBase` is positional: `pread`/`pwrite` are primitives. Whole reads,
   streams, compression, records, and media derive from them. No second storage
   trait or hidden cursor in the base object.
-- Every derived method names the core type it answers or takes, because the
+- Every derived read and append names the core type it answers, because the
   same verbs also address rows: `read_all_bytes`, `read_range_bytes`,
   `write_all_bytes`, `append_bytes`, `read_scalar`, `read_arrow_reader`. A bare
-  `read`, `write`, `append`, or `read_range` is never a core name. The bindings
-  carry those exact names and may add one inferring entry point over each,
-  which coerces at the boundary and redirects to the explicit native.
+  `read`, `write`, `append`, or `read_range` is never a core name. A binding
+  that keeps its own runtime spelling - `read_bytes` for `read_all_bytes` -
+  still names the type, and may add one inferring entry point over the explicit
+  method, which coerces at the boundary and redirects to it.
 - Construction is lazy. Missing reads return empty/zero; writes create the
   resource and parents on first mutation. `media_type` is lazy and invalidates
   when bytes change.

@@ -684,17 +684,26 @@ impl PyIOBase {
         length: usize,
         cls: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let bytes = self.read_range_bytes(py, offset, length)?;
-        match cls {
-            None => Ok(bytes.into_any()),
-            Some(cls) if cls.is(py.get_type::<PyBytes>()) => Ok(bytes.into_any()),
-            Some(cls) if cls.is(py.get_type::<PyString>()) => {
-                let text = std::str::from_utf8(bytes.as_bytes())
-                    .map_err(|error| PyValueError::new_err(error.to_string()))?;
-                Ok(PyString::new(py, text).into_any())
-            }
-            Some(_) => Err(PyTypeError::new_err("cls must be bytes, str, or None")),
+        // Settled before the read, so a rejected `cls` costs no fetch and the
+        // caller's real mistake is what gets raised.
+        let text = match cls {
+            None => false,
+            Some(cls) if cls.is(py.get_type::<PyBytes>()) => false,
+            Some(cls) if cls.is(py.get_type::<PyString>()) => true,
+            Some(_) => return Err(PyTypeError::new_err("cls must be bytes, str, or None")),
+        };
+        // The core answer is read once and becomes exactly one Python object:
+        // the text path never materializes the `bytes` it would discard.
+        let bytes = self
+            .inner
+            .read_range_bytes(offset, length)
+            .map_err(value_error)?;
+        if !text {
+            return Ok(PyBytes::new(py, &bytes).into_any());
         }
+        let decoded =
+            String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(PyString::new(py, &decoded).into_any())
     }
 
     /// Stream byte arrays from an explicit position without retaining pages.
@@ -754,7 +763,11 @@ impl PyIOBase {
             let text = text.to_cow()?;
             return self.append_bytes(text.as_bytes());
         }
-        with_python_bytes(data, "appended data", |bytes| self.append_bytes(bytes))
+        with_python_bytes(
+            data,
+            "appended data must be bytes, bytearray, memoryview, or str",
+            |bytes| self.append_bytes(bytes),
+        )
     }
 
     /// Create this resource as a container, as `Path.mkdir`.

@@ -273,6 +273,20 @@ class TestPathlibParity:
         assert handle.append(memoryview(b"$")) == 15
         assert handle.read_bytes() == b"SYMBOL,price!?#$"
 
+        # The rejected type is what gets raised, and the read never happens.
+        with pytest.raises(TypeError, match="cls must be bytes, str, or None"):
+            handle.read_range(0, 6, cls=int)
+        with pytest.raises(
+            TypeError, match="appended data must be bytes, bytearray, memoryview, or str"
+        ):
+            handle.append(12)
+
+        # Text refuses a sequence it cannot decode rather than substituting.
+        binary = IOBase.from_bytes(b"\xff\xfe")
+        assert binary.read_range(0, 2) == b"\xff\xfe"
+        with pytest.raises(ValueError, match="invalid utf-8"):
+            binary.read_range(0, 2, cls=str)
+
     def test_mkdir_and_touch_bring_a_location_into_being(
         self, tmp_path: pathlib.Path
     ) -> None:

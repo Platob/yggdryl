@@ -108,10 +108,10 @@ same core `joinpath` implementation as Rust's and Python's `/` idiom.
 
 ## Bytes and ranges
 
-The core's byte methods keep their exact names, so `readRangeBytes` and `appendBytes` are
-[the core calls](../io.md#whole-values) spelled in JavaScript. Over each sits one inferring entry
-point that coerces at the boundary and redirects to that same native: `readRange` chooses the
-answer's type from its options, and `append` chooses how to read the byte source it was handed.
+`readRangeBytes` and `appendBytes` are the core's `read_range_bytes` and `append_bytes`, camelCased
+at the boundary and nothing more; [io](../io.md#whole-values) states what they do. Over each sits one
+inferring entry point: `readRange` chooses the answer's type from its options, and `append` chooses
+how to read the byte source it was handed.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -119,19 +119,19 @@ const { IOBase } = require('yggdryl')
 
 const handle = IOBase.fromBytes(Buffer.from('symbol,price\n'))
 
-// The explicit core names.
-assert.equal(handle.appendBytes(Buffer.from('AAPL,1\n')), 13)
-assert.deepEqual(handle.readRangeBytes(0, 6), Buffer.from('symbol'))
-
 // `{ text: true }` selects the answer's type; omitting it answers a Buffer.
 assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
 assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
 
-// `append` also takes a string, a plain Uint8Array, and an ArrayBuffer.
-assert.equal(handle.append('MSFT,2\n'), 20)
-assert.equal(handle.append(new Uint8Array([78, 86, 68, 65, 10])), 27)
-assert.equal(handle.append(Uint8Array.from([73, 78, 84, 67, 10]).buffer), 32)
-assert.equal(handle.readRange(20, 7, { text: true }), 'MSFT,2\n')
+// `append` takes a string, a plain Uint8Array, and an ArrayBuffer as well as
+// a Buffer.
+assert.equal(handle.append('AAPL,1\n'), 13)
+assert.equal(handle.append(new Uint8Array([77, 83, 70, 84, 10])), 20)
+assert.equal(handle.append(Uint8Array.from([78, 86, 68, 65, 10]).buffer), 25)
+assert.equal(handle.readRange(13, 7, { text: true }), 'AAPL,1\n')
+
+// A range it cannot decode is refused, not silently substituted.
+assert.throws(() => IOBase.fromBytes(Buffer.from([0xff])).readRange(0, 1, { text: true }))
 ```
 
 `readRange` rejects an unknown option and a non-boolean `text`, the way `readScalar` rejects its

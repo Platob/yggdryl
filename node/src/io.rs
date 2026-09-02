@@ -599,6 +599,20 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
+    /// Read `length` bytes from `offset` as UTF-8 text.
+    ///
+    /// The strict decode `readRange({ text: true })` redirects to, so an
+    /// invalid sequence is refused exactly as `readText` refuses it rather
+    /// than substituting replacement characters.
+    #[napi(js_name = "_readRangeTextNative", skip_typescript)]
+    pub fn read_range_text_native(&self, offset: f64, length: u32) -> Result<String> {
+        let bytes = self
+            .inner
+            .read_range_bytes(exact_u64(offset, "offset")?, length as usize)
+            .map_err(napi_error)?;
+        String::from_utf8(bytes).map_err(napi_error)
+    }
+
     /// Stream bounded byte arrays from an explicit position.
     ///
     /// Construction performs no read. Each `next()` asks the Rust core for
@@ -1347,7 +1361,7 @@ impl JsByteIterator {
 ///
 /// Reads and writes advance the position; `seek`/`tell` move and report it;
 /// two cursors over one handle advance independently, exactly as two
-/// `readRange` callers do.
+/// `readRangeBytes` callers do.
 #[napi(js_name = "IOCursor")]
 pub struct JsIOCursor {
     handle: Reference<JsIOBase>,
