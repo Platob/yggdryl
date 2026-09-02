@@ -152,3 +152,109 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
         .to_string();
     assert!(message.contains("a struct field"), "{message}");
 }
+
+#[test]
+fn a_path_resolves_by_name_before_it_decomposes() {
+    let row = DataType::from_fields([
+        DataType::from_fields([DataType::Float64.required_field("price")])
+            .unwrap()
+            .required_field("line"),
+        DataType::Int64.required_field("a.b"),
+    ])
+    .unwrap()
+    .required_field("row");
+
+    // A route through the graph.
+    assert_eq!(row.field_by_path("line.price").unwrap().name(), "price");
+
+    // A child carrying the whole string wins over that route, so a name with a
+    // dot in it stays reachable.
+    assert_eq!(row.field_by_path("a.b").unwrap().dtype(), &DataType::Int64);
+    assert_eq!(row["a.b"].dtype(), &DataType::Int64);
+
+    // `a.b` names a child but carries no `c`, and no other boundary resolves.
+    assert!(row.get_field_by_path("a.b.c").is_none());
+
+    // The same string does resolve when the route exists.
+    let deep = DataType::from_fields([DataType::from_fields([DataType::Utf8.required_field("c")])
+        .unwrap()
+        .required_field("a.b")])
+    .unwrap()
+    .required_field("deep");
+    assert_eq!(deep.field_by_path("a.b.c").unwrap().name(), "c");
+
+    // A path naming nothing reports the children that do exist.
+    let message = row.field_by_path("missing").unwrap_err().to_string();
+    assert!(message.contains("line"), "{message}");
+}
+
+#[test]
+fn one_key_reaches_a_child_by_position_or_by_path() {
+    let row = DataType::from_fields([DataType::from_fields([
+        DataType::Float64.required_field("price")
+    ])
+    .unwrap()
+    .required_field("line")])
+    .unwrap()
+    .required_field("row");
+
+    // The same call, whichever spelling the caller holds.
+    assert_eq!(row.field(0).unwrap().name(), "line");
+    assert_eq!(row.field("line").unwrap().name(), "line");
+    assert_eq!(row.get_field("line.price").unwrap().name(), "price");
+    assert!(row.get_field(9).is_none());
+    assert!(row.get_field("absent").is_none());
+
+    // `DataType` answers identically, so descending never changes the calls.
+    let dtype = row.dtype();
+    assert_eq!(dtype.field(0).unwrap().name(), "line");
+    assert_eq!(dtype.field_by_path("line.price").unwrap().name(), "price");
+}
+
+#[test]
+fn a_datatype_replaces_removes_and_keeps_its_layout() {
+    // A position replaces through every layout, keeping it.
+    let mut list = DataType::list(DataType::Int32.nullable_field("item"));
+    list.set_field_at(0, DataType::Int64.nullable_field("item"))
+        .unwrap();
+    assert_eq!(list, DataType::list(DataType::Int64.nullable_field("item")));
+
+    // Growing or shrinking is a struct's business: a list holds exactly one
+    // child, so it refuses rather than quietly becoming a struct.
+    let message = list
+        .set_field_by_path("extra", DataType::Utf8.nullable_field("extra"))
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("a struct field"), "{message}");
+    assert!(list.remove_field_at(0).is_err());
+    assert_eq!(list, DataType::list(DataType::Int64.nullable_field("item")));
+
+    // A struct grows by an unresolved name and shrinks by either key.
+    let mut row = DataType::from_fields([DataType::Int64.required_field("id")]).unwrap();
+    row.set_field("venue", DataType::Utf8.nullable_field("venue"))
+        .unwrap();
+    assert_eq!(row.field_len(), 2);
+    assert_eq!(row.remove_field("venue").unwrap().name(), "venue");
+    assert_eq!(row.remove_field(0).unwrap().name(), "id");
+    assert_eq!(row.field_len(), 0);
+}
+
+#[test]
+fn setting_by_path_reaches_a_nested_child() {
+    let mut row = DataType::from_fields([DataType::from_fields([
+        DataType::Int32.required_field("price")
+    ])
+    .unwrap()
+    .required_field("line")])
+    .unwrap()
+    .required_field("row");
+
+    row.set_field_by_path("line.price", DataType::Float64.required_field("price"))
+        .unwrap();
+    assert_eq!(row["line"]["price"].dtype(), &DataType::Float64);
+
+    // Removing reaches the same child, and the parent keeps its own identity.
+    assert_eq!(row.remove_field("line.price").unwrap().name(), "price");
+    assert_eq!(row["line"].field_len(), 0);
+    assert_eq!(row.field_len(), 1);
+}

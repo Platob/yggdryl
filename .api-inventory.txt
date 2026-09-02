@@ -167,8 +167,18 @@
   pub fn run_end_encoded(run_ends: Field, values: Field) -> Result<Self>
   pub fn as_fields(&self) -> Option<&[Field]>
   pub fn field_len(&self) -> usize
-  pub fn get_field(&self, index: usize) -> Option<&Field>
-  pub fn get_field_by_name(&self, name: &str) -> Option<&Field>
+  pub fn get_field_at(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_path(&self, path: &str) -> Option<&Field>
+  pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field>
+  pub fn field_at(&self, index: usize) -> Result<&Field>
+  pub fn field_by_path(&self, path: &str) -> Result<&Field>
+  pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field>
+  pub fn set_field_at(&mut self, index: usize, child: Field) -> Result<()>
+  pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()>
+  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Field) -> Result<()>
+  pub fn remove_field_at(&mut self, index: usize) -> Result<Field>
+  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field>
+  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field>
 
 ### yggdryl::io::partition  [rust\src\io\partition.rs]
   pub const NULL_PARTITION: &str = "null";
@@ -207,7 +217,7 @@
   pub const fn kind(&self) -> DataTypeKind
   pub const fn name(&self) -> &'static str
   pub fn is_nested(&self) -> bool
-  pub fn field(self, name: impl Into<SmolStr>, nullable: bool) -> Field
+  pub fn named_field(self, name: impl Into<SmolStr>, nullable: bool) -> Field
   pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field
   pub fn required_field(self, name: impl Into<SmolStr>) -> Field
   pub fn fixed_size_binary(width: i32) -> Result<Self>
@@ -823,8 +833,18 @@
   pub fn is_struct(&self) -> bool
   pub fn fields(&self) -> &[Field]
   pub fn field_len(&self) -> usize
-  pub fn get_field(&self, index: usize) -> Option<&Field>
-  pub fn get_field_by_name(&self, name: &str) -> Option<&Field>
+  pub fn get_field_at(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_path(&self, path: &str) -> Option<&Field>
+  pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field>
+  pub fn field_at(&self, index: usize) -> Result<&Field>
+  pub fn field_by_path(&self, path: &str) -> Result<&Field>
+  pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field>
+  pub fn set_field_at(&mut self, index: usize, child: Field) -> Result<()>
+  pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()>
+  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Field) -> Result<()>
+  pub fn remove_field_at(&mut self, index: usize) -> Result<Field>
+  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field>
+  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field>
   pub fn index_of(&self, name: &str) -> Option<usize>
   pub fn validate_value(&self, value: &Scalar) -> Result<()>
   pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar>
@@ -1566,7 +1586,7 @@
   pub fn glue(&self) -> ProtocolMetadata<'_>
   pub fn iceberg(&self) -> ProtocolMetadata<'_>
   pub fn fix(&self) -> ProtocolMetadata<'_>
-  pub fn field(&self) -> ProtocolMetadata<'_>
+  pub fn field_properties(&self) -> ProtocolMetadata<'_>
   pub fn s3(&self) -> ProtocolMetadata<'_>
   pub fn gs(&self) -> ProtocolMetadata<'_>
   pub fn az(&self) -> ProtocolMetadata<'_>

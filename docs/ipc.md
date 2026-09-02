@@ -644,7 +644,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     let options = named.record_options()?;
     let named_field = named.read_arrow_field(&options)?;
     assert_eq!(named_field.name(), "trade");
-    assert_eq!(named_field.get_field_by_name("id"), schema.get_field_by_name("id"));
+    assert_eq!(named_field.get_field_by_path("id"), schema.get_field_by_path("id"));
     ```
 
 === "Python"

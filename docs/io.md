@@ -2946,7 +2946,7 @@ sub-pattern table or by declaration:
     // `thread_id` types itself off its own `\d+` sub-pattern.
     let schema = TextLineOptions::with_pattern(pattern)?.into_field();
     assert_eq!(
-        schema.get_field_by_name("thread_id").unwrap().dtype(),
+        schema.get_field_by_path("thread_id").unwrap().dtype(),
         &DataType::Int64
     );
 
@@ -3630,7 +3630,7 @@ makes the line surface worth having.
 
     let reopened = catalog.table("logs.app")?;
     assert_eq!(reopened.metadata().default_spec()?.fields[0].name, "level");
-    assert!(reopened.schema()?.get_field_by_name("source").is_some());
+    assert!(reopened.schema()?.get_field_by_path("source").is_some());
 
     let _ = std::fs::remove_dir_all(&root);
     ```

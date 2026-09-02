@@ -7,7 +7,7 @@ use std::ops::{Deref, Index};
 use std::sync::Arc;
 
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::generic::UnionMode;
 use crate::{Error, Field, Result};
@@ -1023,7 +1023,7 @@ impl DataType {
             offset = boundary + 1;
         }
         // Nothing resolved, so the whole string names a new child here.
-        let mut children = self.children();
+        let mut children = self.require_struct_children()?;
         children.push(child.with_name(path));
         *self = Self::from_fields(children)?;
         Ok(())
@@ -1059,7 +1059,7 @@ impl DataType {
                 ),
             });
         }
-        let mut children = self.children();
+        let mut children = self.require_struct_children()?;
         let removed = children.remove(index);
         *self = Self::from_fields(children)?;
         Ok(removed)
@@ -1100,6 +1100,26 @@ impl DataType {
         match key.into() {
             FieldKey::Index(index) => self.remove_field_at(index),
             FieldKey::Path(path) => self.remove_field_by_path(path),
+        }
+    }
+
+    /// Returns the struct children as an owned vector, or a refusal.
+    ///
+    /// Appending and removing change the child count, and a struct is the only
+    /// layout whose arity is not fixed by what it is: a list holds exactly one
+    /// child, a run-end node exactly two. Rebuilding one of those through
+    /// [`Self::from_fields`] would silently make it a struct, so this refuses
+    /// instead.
+    fn require_struct_children(&self) -> Result<Vec<Field>> {
+        match self.as_fields() {
+            Some(fields) => Ok(fields.to_vec()),
+            None => Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got(
+                    "a struct field whose children can be added or removed",
+                    format_smolstr!("{self}"),
+                ),
+            }),
         }
     }
 

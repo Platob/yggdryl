@@ -78,7 +78,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
     schema.validate_struct_root()?;
     assert_eq!(schema.field_len(), 2);
     assert_eq!(schema.index_of("symbol"), Some(1));
-    assert_eq!(schema.get_field_by_name("id").map(Field::name), Some("id"));
+    assert_eq!(schema.get_field_by_path("id").map(Field::name), Some("id"));
 
     // A nullable root is not a schema: a whole row cannot be logically absent.
     assert!(schema.with_nullable(true).validate_struct_root().is_err());
@@ -135,10 +135,20 @@ makes: `require_struct` accepts a nullable struct, because a nullable struct is 
 represent that. This root is what [`ipc`](ipc.md), [`parquet`](parquet.md), and
 [`iceberg`](iceberg.md) take and return.
 
-Rust reaches the children through the field - `fields`, `field_len`, `get_field`,
-`get_field_by_name`, `index_of` - because a struct root is the common case. Python and JavaScript
-reach them through `dtype`, where the same children are a sequence: `len`, indexing by position
-or name, `in`, and iteration in Python; `length`, `at`, `getByName`, and `keys` in JavaScript.
+Rust reaches the children through the field, and `DataType` answers the same calls, so a caller
+walking a schema never has to ask which node it is holding. Each lookup comes in three forms - by
+position, by path, and by whichever the key turns out to be - and each of those raises or answers
+`None`:
+
+| | position | path | either |
+|---|---|---|---|
+| raising | `field_at` | `field_by_path` | `field` |
+| optional | `get_field_at` | `get_field_by_path` | `get_field` |
+| replacing | `set_field_at` | `set_field_by_path` | `set_field` |
+| removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
+
+`fields`, `field_len`, and `index_of` round the struct root out. Python and JavaScript carry the
+same family, and Python additionally spells the inferring form `field(x, *, idx=..., path=...)`.
 
 ### Item access reaches a child, never metadata
 
@@ -149,8 +159,12 @@ metadata string from the next. Metadata is reached through [its own view](#metad
 `field.metadata[...]` in Python, `get_metadata` and friends in Rust - because a view whose keys *are*
 keys is where item syntax legitimately means "a key".
 
-Chained subscripts are the nesting story - `order["line"]["price"]` descends two levels, because each
-subscript answers a node that subscripts again. There is no dotted-string or tuple path form.
+Chained subscripts still descend - `order["line"]["price"]` reaches two levels, because each
+subscript answers a node that subscripts again - and a single string may also spell the whole route:
+`order["line.price"]`. A string is resolved **name first**, so a child whose own name contains a dot
+stays reachable: `order["a.b"]` finds a child literally called `a.b` before it considers `a` then
+`b`. Only when nothing carries the whole string is it decomposed, each `.` tried as a boundary from
+the left, so `"a.b.c"` still resolves through a child named `a.b` that carries `c`.
 
 Assignment is dict-like *by name* and list-like *by position*: a known name is replaced in place
 keeping its position, an **unknown name appends** a new child, and a position only ever replaces -
@@ -177,15 +191,15 @@ immutable and hashable - refuses assignment and points at the `Field` that carri
     assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
 
     // An unknown name appends; a position replaces.
-    order.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    order.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
     assert_eq!(order.field_len(), 3);
     order.set_field(0, DataType::Utf8.required_field("id"))?;
     assert_eq!(order["id"].dtype(), &DataType::Utf8);
-    assert_eq!(order.remove_field_by_name("venue")?.name(), "venue");
+    assert_eq!(order.remove_field_by_path("venue")?.name(), "venue");
 
     // Metadata keeps its own named surface.
     assert_eq!(order.get_metadata("owner"), Some("trading"));
-    assert!(order.get_field_by_name("owner").is_none());
+    assert!(order.get_field_by_path("owner").is_none());
     ```
 
 === "Python"
@@ -538,7 +552,7 @@ stored partitioned says so on the columns themselves:
 
     assert!(schema.has_partition_fields());
     assert_eq!(schema.partition_field_names().collect::<Vec<_>>(), ["year", "venue"]);
-    assert!(schema.get_field_by_name("year").expect("the column").is_partition());
+    assert!(schema.get_field_by_path("year").expect("the column").is_partition());
 
     // The two halves of the layout: what a path spells, and what a leaf stores.
     assert_eq!(schema.without_partition_fields()?.field_len(), 1);
@@ -546,7 +560,7 @@ stored partitioned says so on the columns themselves:
 
     // The mark is reserved metadata, so it round-trips like any other.
     assert_eq!(
-        schema.get_field_by_name("year").expect("the column").get_metadata("field:partition"),
+        schema.get_field_by_path("year").expect("the column").get_metadata("field:partition"),
         Some("true")
     );
     ```

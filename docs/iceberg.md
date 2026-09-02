@@ -687,7 +687,7 @@ let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 // The tuple describes itself, so the spec reads back off it.
 let partition = spec.partition_field(&schema)?;
 assert_eq!(partition.iceberg().get("spec-id"), Some("1"));
-let venue = partition.get_field_by_name("venue").expect("the partition column");
+let venue = partition.get_field_by_path("venue").expect("the partition column");
 assert!(venue.is_partition());
 assert_eq!(venue.iceberg().get("transform"), Some("identity"));
 assert_eq!(PartitionSpec::from_partition_field(&partition)?, spec);
@@ -3341,10 +3341,10 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     })?;
 
     let current = table.schema()?;
-    assert_eq!(current.get_field_by_name("id").expect("the column").dtype(), &DataType::Int64);
+    assert_eq!(current.get_field_by_path("id").expect("the column").dtype(), &DataType::Int64);
     // A renamed column keeps its identifier: the name is a label, the id is the column.
-    assert_eq!(current.get_field_by_name("ticker").expect("the column").parquet_field_id()?, Some(2));
-    assert_eq!(current.get_field_by_name("venue").expect("the column").parquet_field_id()?, Some(3));
+    assert_eq!(current.get_field_by_path("ticker").expect("the column").parquet_field_id()?, Some(2));
+    assert_eq!(current.get_field_by_path("venue").expect("the column").parquet_field_id()?, Some(3));
 
     let _ = std::fs::remove_dir_all(&root);
     ```

@@ -75,8 +75,8 @@ cache-aware mutation.
 
     assert_eq!(quote.field_len(), 2);
     assert_eq!(quote.get_field(0).map(Field::name), Some("symbol"));
-    assert_eq!(quote.get_field_by_name("levels").unwrap().dtype().field_len(), 1);
-    assert!(quote.get_field_by_name("missing").is_none());
+    assert_eq!(quote.get_field_by_path("levels").unwrap().dtype().field_len(), 1);
+    assert!(quote.get_field_by_path("missing").is_none());
 
     // Every child-bearing type answers the same two questions.
     let lookup = DataType::map_of(DataType::Utf8, DataType::Int64, true)?;
