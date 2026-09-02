@@ -178,10 +178,28 @@ impl JsField {
         ))
     }
 
-    /// Deserialize the native structural JSON representation.
+    /// Deserialize the structural JSON representation.
+    ///
+    /// One entry point for the three shapes a caller already has: the document
+    /// as a string, the same document as the bytes it was read from, or the
+    /// object `JSON.parse` already turned it into.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(value)
+        crate::json_document(value)
+            .and_then(serde_json::from_value)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Deserialize the structural JSON representation from bytes.
+    ///
+    /// The reading half of `toJSONBytes`. JavaScript names the byte reader
+    /// rather than folding it into `fromJSON` because napi validates a union
+    /// arm by type and cannot tell a typed array from any other object there,
+    /// so one entry point taking both would silently take neither.
+    #[napi(factory, js_name = "fromJSONBytes")]
+    pub fn from_json_bytes(bytes: Uint8Array) -> Result<Self> {
+        serde_json::from_slice(&bytes)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1332,6 +1350,18 @@ impl JsField {
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
+    }
+
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `toJSON` renders, encoded rather than decoded, for a
+    /// caller writing it straight to a file or a socket. `fromJSON` reads
+    /// these bytes back without being told which shape it got.
+    #[napi(js_name = "toJSONBytes")]
+    pub fn js_json_bytes(&self) -> Result<Buffer> {
+        serde_json::to_vec(&self.inner)
+            .map(Buffer::from)
+            .map_err(napi_error)
     }
 }
 

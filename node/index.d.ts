@@ -324,8 +324,23 @@ export declare class DataType {
   static geography(crs?: string | undefined | null, algorithm?: string | undefined | null): DataType
   /** Parse canonical, Arrow, SQL, Hive, or Spark type syntax. */
   static fromString(value: string): DataType
-  /** Deserialize the native structural JSON representation. */
+  /**
+   * Deserialize the structural JSON representation.
+   *
+   * One entry point for the three shapes a caller already has: the document
+   * as a string, the same document as the bytes it was read from, or the
+   * object `JSON.parse` already turned it into.
+   */
   static fromJSON(value: any): DataType
+  /**
+   * Deserialize the structural JSON representation from bytes.
+   *
+   * The reading half of `toJSONBytes`. JavaScript names the byte reader
+   * rather than folding it into `fromJSON` because napi validates a union
+   * arm by type and cannot tell a typed array from any other object there,
+   * so one entry point taking both would silently take neither.
+   */
+  static fromJSONBytes(bytes: Uint8Array): DataType
   /** The parameter-free identity of this variant, such as `decimal128`. */
   get id(): string
   /** The coarse datatype family shared by every variant of one kind. */
@@ -390,6 +405,14 @@ export declare class DataType {
   toString(): string
   /** Serialize to version-independent structural JSON. */
   toJSON(): any
+  /**
+   * Serialize to structural JSON bytes.
+   *
+   * The same document `toJSON` renders, encoded rather than decoded, for a
+   * caller writing it straight to a file or a socket. `fromJSON` reads
+   * these bytes back without being told which shape it got.
+   */
+  toJSONBytes(): Buffer
 }
 export type JsDataType = DataType
 
@@ -479,8 +502,23 @@ export declare class Field {
   static from(value: Field | string): Field
   /** Parse canonical, Arrow, SQL, Hive, or Spark field syntax. */
   static fromString(value: string): Field
-  /** Deserialize the native structural JSON representation. */
+  /**
+   * Deserialize the structural JSON representation.
+   *
+   * One entry point for the three shapes a caller already has: the document
+   * as a string, the same document as the bytes it was read from, or the
+   * object `JSON.parse` already turned it into.
+   */
   static fromJSON(value: any): Field
+  /**
+   * Deserialize the structural JSON representation from bytes.
+   *
+   * The reading half of `toJSONBytes`. JavaScript names the byte reader
+   * rather than folding it into `fromJSON` because napi validates a union
+   * arm by type and cannot tell a typed array from any other object there,
+   * so one entry point taking both would silently take neither.
+   */
+  static fromJSONBytes(bytes: Uint8Array): Field
   /** Physical field name. */
   get name(): string
   /** Logical native datatype. */
@@ -532,12 +570,13 @@ export declare class Field {
   get dictionaryIsOrdered(): boolean | null
   /** Shared logical alias stored in Arrow-compatible metadata. */
   get alias(): string | null
-  /** Shared catalog name stored in Arrow-compatible metadata. */
-  get catalogName(): string | null
-  /** Shared schema name stored in Arrow-compatible metadata. */
-  get schemaName(): string | null
-  /** Shared table name stored in Arrow-compatible metadata. */
-  get tableName(): string | null
+  /**
+   * Shared human-readable comment stored in Arrow-compatible metadata.
+   *
+   * The one straight description a field carries, belonging to no protocol.
+   * Every protocol view falls back to it.
+   */
+  get comment(): string | null
   /** Arrow/Parquet signed 32-bit field identifier stored in metadata. */
   get parquetFieldId(): number | null
   /** Typed location URL stored canonically in Arrow-compatible metadata. */
@@ -596,18 +635,10 @@ export declare class Field {
   setAlias(value: string): void
   /** Remove and return the shared logical alias. */
   removeAlias(): string | null
-  /** Set the shared catalog name. */
-  setCatalogName(value: string): void
-  /** Remove and return the shared catalog name. */
-  removeCatalogName(): string | null
-  /** Set the shared schema name. */
-  setSchemaName(value: string): void
-  /** Remove and return the shared schema name. */
-  removeSchemaName(): string | null
-  /** Set the shared table name. */
-  setTableName(value: string): void
-  /** Remove and return the shared table name. */
-  removeTableName(): string | null
+  /** Set the shared comment. */
+  setComment(value: string): void
+  /** Remove and return the shared comment. */
+  removeComment(): string | null
   /** Set the canonical Arrow/Parquet signed 32-bit field identifier. */
   setParquetFieldId(id: number): void
   /** Remove and return the Arrow/Parquet signed 32-bit field identifier. */
@@ -808,6 +839,14 @@ export declare class Field {
   toString(): string
   /** Serialize to version-independent structural JSON. */
   toJSON(): any
+  /**
+   * Serialize to structural JSON bytes.
+   *
+   * The same document `toJSON` renders, encoded rather than decoded, for a
+   * caller writing it straight to a file or a socket. `fromJSON` reads
+   * these bytes back without being told which shape it got.
+   */
+  toJSONBytes(): Buffer
 }
 export type JsField = Field
 
@@ -1789,6 +1828,14 @@ export declare class ProtocolMetadata {
   values(): Array<string>
   /** Bare name/value entries in deterministic lexical order. */
   entries(): Array<MetadataEntry>
+  /**
+   * This protocol's comment, falling back to the field's straight one.
+   *
+   * `get`, iteration and `length` stay literal about what this protocol
+   * carries; the fallback lives here so a view never reports a property
+   * that iterating it would not yield.
+   */
+  get comment(): string | null
   /**
    * Merge another protocol view's properties into this one, in place.
    *

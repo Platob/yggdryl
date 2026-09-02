@@ -341,9 +341,7 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
   assert.equal(field.hasProperty('iceberg', 'field-id'), true)
 
   assert.equal(field.removeAlias(), 'close')
-  assert.equal(field.removeCatalogName(), 'analytics')
-  assert.equal(field.removeSchemaName(), 'market')
-  assert.equal(field.removeTableName(), 'bars')
+  assert.equal(field.removeComment(), 'closing price')
   assert.equal(field.removeParquetFieldId(), -2147483648)
   assert.ok(
     field
@@ -707,4 +705,46 @@ test('a protocol view merges in place and only adds', () => {
 
   // A scoped merge leaves every other protocol alone.
   assert.equal(target.getProperty('glue', 'comment'), 'glue')
+})
+
+test('JSON reads every shape and writes bytes', () => {
+  const field = new Field('row', DataType.from('struct<id:int64 not null>'), false)
+
+  const raw = field.toJSONBytes()
+  assert.ok(Buffer.isBuffer(raw))
+
+  // `toJSON` and `toJSONBytes` are the same document; only the key order
+  // differs, because one goes through a sorted map and the other keeps the
+  // struct's declaration order.
+  assert.deepEqual(JSON.parse(raw.toString()), JSON.parse(JSON.stringify(field)))
+
+  // Text and objects share one reader; bytes have their own, because napi
+  // cannot discriminate a typed array inside a union.
+  assert.ok(Field.fromJSON(raw.toString()).equals(field))
+  assert.ok(Field.fromJSON(JSON.parse(raw.toString())).equals(field))
+  assert.ok(Field.fromJSONBytes(raw).equals(field))
+  assert.ok(Field.fromJSONBytes(new Uint8Array(raw)).equals(field))
+
+  // A datatype answers the same.
+  const dtype = field.dtype
+  assert.ok(DataType.fromJSONBytes(dtype.toJSONBytes()).equals(dtype))
+  assert.ok(DataType.fromJSON(JSON.parse(JSON.stringify(dtype))).equals(dtype))
+})
+
+test('every format carries the same nested shape', () => {
+  const deep = new Field(
+    'row',
+    DataType.from('struct<levels:list<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>'),
+    false,
+  )
+
+  assert.ok(Field.fromJSONBytes(deep.toJSONBytes()).equals(deep))
+  assert.ok(Field.fromJSON(JSON.parse(JSON.stringify(deep))).equals(deep))
+
+  // Nesting is carried, not flattened into a string.
+  const document = JSON.parse(deep.toJSONBytes().toString())
+  const levels = document.dtype.fields[0].dtype
+  assert.equal(levels.type, 'list')
+  assert.equal(levels.field.dtype.fields[0].name, 'sym')
+  assert.equal(document.dtype.fields[1].dtype.type, 'map')
 })

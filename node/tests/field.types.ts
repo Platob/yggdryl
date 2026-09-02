@@ -47,9 +47,7 @@ const entries: Array<readonly [string, string]> = [...field]
 const dictionaryId: bigint | null = field.dictionaryId
 const dictionaryOrdered: boolean | null = field.dictionaryIsOrdered
 field.setAlias('identifier')
-field.setCatalogName('analytics')
-field.setSchemaName('public')
-field.setTableName('events')
+field.setComment('closing price')
 field.setParquetFieldId(17)
 field.setLocation('s3://warehouse/events/data.parquet')
 field.setAccept('application/json')
