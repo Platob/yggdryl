@@ -152,8 +152,8 @@ pub(crate) fn field_of(
 /// The positional form and the two keyword forms are three spellings of one
 /// argument, so naming more than one of them is a `TypeError` rather than a
 /// silent precedence rule.
-pub(crate) fn one_field_key<'py>(
-    key: Option<&pyo3::Bound<'py, pyo3::types::PyAny>>,
+pub(crate) fn one_field_key(
+    key: Option<&pyo3::Bound<'_, pyo3::types::PyAny>>,
     idx: Option<isize>,
     path: Option<&str>,
 ) -> pyo3::PyResult<FieldKey> {

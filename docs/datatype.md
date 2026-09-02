@@ -120,14 +120,14 @@ cache-aware mutation.
 
     assert.equal(quote.length, 2)
     assert.deepEqual(quote.keys(), ['symbol', 'levels'])
-    assert.equal(quote.at(-1).name, 'levels')
-    assert.equal(quote.get('levels').dtype.length, 1)
+    assert.equal(quote.getFieldAt(-1).name, 'levels')
+    assert.equal(quote.getField('levels').dtype.length, 1)
     assert.equal(quote.contains('missing'), false)
     assert.deepEqual([...quote].map((field) => field.name), ['symbol', 'levels'])
 
     const lookup = fields.mapOf('lookup', 'utf8', 'int64', true).dtype
     assert.equal(lookup.length, 1)
-    assert.equal(lookup.at(0).name, 'entries')
+    assert.equal(lookup.getFieldAt(0).name, 'entries')
     ```
 
 Children are positional and read-only. A list has one child, a map has one - its `entries` struct -
@@ -929,8 +929,8 @@ The output is stable across runs; nothing in it iterates a hash map.
     ])
 
     const spark = source.intoSchemeCompat('spark')
-    assert.equal(spark.get('small').dtype.toString(), 'int16')
-    assert.equal(spark.get('wide').dtype.toString(), 'decimal128(20,0)')
+    assert.equal(spark.getField('small').dtype.toString(), 'int16')
+    assert.equal(spark.getField('wide').dtype.toString(), 'decimal128(20,0)')
 
     assert.ok(source.intoSchemeCompat('arrow').equals(source))
     assert.ok(DataType.from('uint32').intoSchemeCompat('polars').equals(DataType.from('uint32')))

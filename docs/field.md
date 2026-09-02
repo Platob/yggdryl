@@ -123,7 +123,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
 
     const children = schema.dtype
     assert.equal(children.length, 2)
-    assert.equal(children.at(0).nullable, false)
+    assert.equal(children.getFieldAt(0).nullable, false)
     assert.equal(children.getFieldByPath('symbol').name, 'symbol')
     assert.deepEqual(children.keys(), ['id', 'symbol'])
     ```

@@ -55,7 +55,9 @@ impl JsDataType {
         let len = i64::from(self.length());
         let index = i64::from(index);
         let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved).ok().filter(|at| *at < self.inner.field_len())
+        usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
     }
 
     fn fields(&self) -> impl Iterator<Item = &CoreField> {
@@ -434,15 +436,13 @@ impl JsDataType {
 
     /// Replace the child at an Array-compatible index.
     #[napi]
-    pub fn set_field_at(
-        &mut self,
-        index: i32,
-        child: ClassInstance<'_, JsField>,
-    ) -> Result<()> {
+    pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
         let at = self
             .resolve_index(index)
             .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
-        self.inner.set_field_at(at, child.inner.clone()).map_err(napi_error)
+        self.inner
+            .set_field_at(at, child.inner.clone())
+            .map_err(napi_error)
     }
 
     /// Replace the child a path names, appending an unresolved name.

@@ -1513,7 +1513,14 @@ impl PyField {
         idx: Option<isize>,
         path: Option<&str>,
     ) -> PyResult<Option<Self>> {
-        Ok(self.field(key, idx, path).ok())
+        let found = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.inner.get_field_by_path(&path).cloned(),
+            crate::FieldKey::Position(index) => {
+                crate::normalize_index(index, self.inner.field_len())
+                    .and_then(|at| self.inner.get_field_at(at).cloned())
+            }
+        };
+        Ok(found.map(|field| Self::from_inner_with_read_only(field, self.read_only)))
     }
 
     /// Returns the nested child at `index`.
