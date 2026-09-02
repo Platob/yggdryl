@@ -144,11 +144,7 @@ impl Field {
 }
 
 /// Recursively normalizes one datatype, returning the value and whether it changed.
-fn normalize_dtype(
-    target: Target,
-    dtype: &DataType,
-    path: &Path<'_>,
-) -> Result<(DataType, bool)> {
+fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
     match dtype {
         D::List(field) => {
@@ -223,8 +219,7 @@ fn normalize_struct(
 ) -> Result<(DataType, bool)> {
     for (index, field) in fields.iter().enumerate() {
         let child_path = path.field(field.name());
-        let (child_dtype, child_changed) =
-            normalize_dtype(target, field.dtype(), &child_path)?;
+        let (child_dtype, child_changed) = normalize_dtype(target, field.dtype(), &child_path)?;
         if !child_changed {
             continue;
         }
@@ -242,12 +237,7 @@ fn normalize_struct(
                 )
             })?;
         transformed.extend(fields.iter().take(index).cloned());
-        transformed.push(field_with_dtype(
-            target,
-            field,
-            child_dtype,
-            &child_path,
-        )?);
+        transformed.push(field_with_dtype(target, field, child_dtype, &child_path)?);
         for remaining in fields.iter().skip(index + 1) {
             let remaining_path = path.field(remaining.name());
             transformed.push(normalize_field(target, remaining, &remaining_path)?.0);
@@ -287,11 +277,7 @@ fn normalize_run_end_encoded(
 }
 
 /// Applies the target's scalar matrix to one leaf datatype.
-fn normalize_scalar(
-    target: Target,
-    dtype: &DataType,
-    path: &Path<'_>,
-) -> Result<(DataType, bool)> {
+fn normalize_scalar(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     match target {
         Target::Arrow => Ok((dtype.clone(), false)),
         Target::Spark => spark_scalar(dtype, path),
@@ -437,13 +423,9 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Duration64(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
             Ok((dtype.clone(), false))
         }
-        D::Duration32(unit) | D::Duration64(unit) => unit_mismatch(
-            Target::Polars,
-            path,
-            dtype.name(),
-            *unit,
-            "ms, us, or ns",
-        ),
+        D::Duration32(unit) | D::Duration64(unit) => {
+            unit_mismatch(Target::Polars, path, dtype.name(), *unit, "ms, us, or ns")
+        }
         D::Interval(unit) => incompatible(
             Target::Polars,
             path,
@@ -466,11 +448,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         D::Variant | D::Geometry(_) | D::Geography(_) => incompatible(
             Target::Polars,
             path,
-            format_smolstr!(
-                "Polars has no {} type; got {}",
-                dtype.kind(),
-                dtype.name()
-            ),
+            format_smolstr!("Polars has no {} type; got {}", dtype.kind(), dtype.name()),
         ),
         other => unreachable_container(Target::Polars, other, path),
     }

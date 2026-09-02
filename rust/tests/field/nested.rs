@@ -59,10 +59,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     // Through a List item and a Map entry, the same way.
     let items = DataType::list(order.clone().with_name("item"));
     assert_eq!(items[0]["id"].dtype(), &DataType::Int64);
-    assert_eq!(
-        items["item"]["line"]["price"].dtype(),
-        &DataType::Float64
-    );
+    assert_eq!(items["item"]["line"]["price"].dtype(), &DataType::Float64);
 
     // The non-panicking form stays available and is what the docs point at.
     assert!(order.get_field_by_name("absent").is_none());

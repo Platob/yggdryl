@@ -1041,11 +1041,10 @@ fn collision(name: &str, taken_by: &str) -> Error {
 /// column they cannot legally declare must fail before the metadata is
 /// committed.
 fn iceberg_safe(name: &str, dtype: &DataType) -> Result<()> {
-    let primitive =
-        PrimitiveType::from_dtype(dtype).map_err(|error| Error::InvalidRecord {
-            path: format_smolstr!("$.{name}"),
-            reason: error.to_smolstr(),
-        })?;
+    let primitive = PrimitiveType::from_dtype(dtype).map_err(|error| Error::InvalidRecord {
+        path: format_smolstr!("$.{name}"),
+        reason: error.to_smolstr(),
+    })?;
     if matches!(
         primitive,
         PrimitiveType::Unknown | PrimitiveType::TimestampNs | PrimitiveType::TimestamptzNs
@@ -1225,9 +1224,9 @@ impl TextLineOptions {
             entries.push((
                 key("capture_types"),
                 Scalar::from_mapping(
-                    self.capture_types.iter().map(|(name, dtype)| {
-                        (key(name), Scalar::String(dtype.to_smolstr()))
-                    }),
+                    self.capture_types
+                        .iter()
+                        .map(|(name, dtype)| (key(name), Scalar::String(dtype.to_smolstr()))),
                 )
                 .unwrap_or(Scalar::Null),
             ));

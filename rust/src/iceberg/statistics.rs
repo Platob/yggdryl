@@ -140,12 +140,7 @@ pub(super) fn data_file_from_batches(
 }
 
 /// Keep the smaller or larger of a running bound and one encoded candidate.
-fn fold_encoded(
-    current: &mut Option<Vec<u8>>,
-    candidate: &[u8],
-    dtype: &DataType,
-    minimum: bool,
-) {
+fn fold_encoded(current: &mut Option<Vec<u8>>, candidate: &[u8], dtype: &DataType, minimum: bool) {
     if compare_single(candidate, candidate, dtype).is_none() {
         return;
     }

@@ -129,7 +129,7 @@ fn declared_type(field: Option<&Field>, column: &str) -> Option<ArrowDataType> {
 /// let restored = with_partitions(&batch, &[("year".into(), "2024".into())], Some(&schema))?;
 ///
 /// assert_eq!(restored.num_columns(), 2);
-/// assert_eq!(restored.schema().field(1).dtype(), &arrow_schema::DataType::Int32);
+/// assert_eq!(restored.schema().field(1).data_type(), &arrow_schema::DataType::Int32);
 /// # Ok(())
 /// # }
 /// ```

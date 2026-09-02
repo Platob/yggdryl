@@ -38,10 +38,7 @@ mod scalars {
 
     #[test]
     fn each_float_keeps_its_real_width() {
-        assert_eq!(
-            Scalar::from(1.5_f64).dtype().unwrap(),
-            DataType::Float64
-        );
+        assert_eq!(Scalar::from(1.5_f64).dtype().unwrap(), DataType::Float64);
 
         for value in [0.1_f32, f32::MIN_POSITIVE, f32::MAX, -0.0_f32] {
             let recorded = Scalar::from(value);
@@ -69,9 +66,7 @@ mod scalars {
         );
         // Thirty-nine digits are past Decimal128 and land on Decimal256.
         assert_eq!(
-            Scalar::d256(I256::from_i128(i128::MIN), 0)
-                .dtype()
-                .unwrap(),
+            Scalar::d256(I256::from_i128(i128::MIN), 0).dtype().unwrap(),
             DataType::decimal256(39, 0).unwrap()
         );
         assert_eq!(

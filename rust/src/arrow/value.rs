@@ -264,9 +264,7 @@ pub(crate) fn value_from_array(
             array.len()
         )));
     }
-    if array.is_null(index)
-        && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_))
-    {
+    if array.is_null(index) && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_)) {
         return Ok(Scalar::Null);
     }
     macro_rules! primitive {

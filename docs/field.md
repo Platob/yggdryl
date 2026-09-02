@@ -994,7 +994,7 @@ two calls exist on [`DataType`](datatype.md) with the same output.
     // Any field answers with an ArrayRef, because any field could be any datatype.
     let field = Field::new("id", DataType::Int64, false);
     let cast = field.cast_arrow_array(Arc::clone(&text), false)?;
-    assert_eq!(cast.dtype(), &arrow_schema::DataType::Int64);
+    assert_eq!(cast.data_type(), &arrow_schema::DataType::Int64);
 
     // A typed field already knows its variant, so it answers with the array itself.
     let typed = Int64Field::new("id", false);
@@ -1076,7 +1076,7 @@ The same trait reconciles a whole record batch to a struct root.
     let batch = schema.cast_arrow_batch(source, false)?;
     assert_eq!(batch.num_columns(), 2);
     assert_eq!(batch.schema().field(0).name(), "id");
-    assert_eq!(batch.column(0).dtype(), &ArrowDataType::Int64);
+    assert_eq!(batch.column(0).data_type(), &ArrowDataType::Int64);
     ```
 
 === "Python"

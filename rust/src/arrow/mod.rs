@@ -1207,11 +1207,8 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     let dtype = DataType::from_fields(fields)?;
     let mut field = Field::from_parts(name, dtype, false, metadata)?;
     if !dictionary_ids.is_empty() {
-        let dtype = restore_dictionary_ids_in_dtype(
-            field.dtype(),
-            &mut Vec::new(),
-            &mut dictionary_ids,
-        )?;
+        let dtype =
+            restore_dictionary_ids_in_dtype(field.dtype(), &mut Vec::new(), &mut dictionary_ids)?;
         field.set_dtype(dtype)?;
         if let Some((path, _)) = dictionary_ids.first_key_value() {
             return Err(dictionary_ids_error(format_smolstr!(

@@ -153,8 +153,7 @@ impl Node {
                 let mut unknown = false;
                 for item in list {
                     let item_value = item.eval(row)?;
-                    match compare(value.field.dtype(), &held, Comparison::Eq, &item_value)
-                        .as_bool()
+                    match compare(value.field.dtype(), &held, Comparison::Eq, &item_value).as_bool()
                     {
                         Some(true) => return Ok(Scalar::Bool(true)),
                         Some(false) => {}
@@ -299,8 +298,7 @@ fn apply_step(field: &Field, value: &Scalar, segment: &Segment) -> Scalar {
                 return entries
                     .iter()
                     .find(|(held, _)| {
-                        compare(dtype, held, Comparison::IsNotDistinctFrom, key.value())
-                            .as_bool()
+                        compare(dtype, held, Comparison::IsNotDistinctFrom, key.value()).as_bool()
                             == Some(true)
                     })
                     .map_or(Scalar::Null, |(_, held)| held.clone());
@@ -822,8 +820,7 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
         // A date already counts in days, so it truncates to itself.
         let step = if family == 0 { 1 } else { seconds * per_second };
         let floored = count.div_euclid(step) * step;
-        return temporal_value(unwrap_dictionary(dtype), floored, held_unit)
-            .or(Ok(Scalar::Null));
+        return temporal_value(unwrap_dictionary(dtype), floored, held_unit).or(Ok(Scalar::Null));
     }
     let Some(width) = unit.as_i64() else {
         return Err(missing("a whole multiple to truncate a number to"));

@@ -214,15 +214,13 @@ fn checked_arithmetic_target(
             decimal_arithmetic(left, operation, right, *wide, *scale)
         }
         ArithmeticTarget::Temporal(dtype) => {
-            if matches!(
-                temporal_target(dtype),
-                Some((TemporalFamily::Duration, _))
-            ) && ((temporal_value_parts(left)
-                .is_some_and(|parts| parts.family == TemporalFamily::Duration)
-                && right.as_integer().is_some())
-                || (left.as_integer().is_some()
-                    && temporal_value_parts(right)
-                        .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
+            if matches!(temporal_target(dtype), Some((TemporalFamily::Duration, _)))
+                && ((temporal_value_parts(left)
+                    .is_some_and(|parts| parts.family == TemporalFamily::Duration)
+                    && right.as_integer().is_some())
+                    || (left.as_integer().is_some()
+                        && temporal_value_parts(right)
+                            .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
             {
                 duration_integer_arithmetic(left, operation, right, dtype)
             } else {

@@ -281,9 +281,8 @@ impl JsDataType {
         key: Either<ClassInstance<'_, JsDataType>, String>,
         value: Either<ClassInstance<'_, JsDataType>, String>,
     ) -> Result<Self> {
-        let inner =
-            CoreDataType::dictionary(dtype_from_input(key)?, dtype_from_input(value)?)
-                .map_err(napi_error)?;
+        let inner = CoreDataType::dictionary(dtype_from_input(key)?, dtype_from_input(value)?)
+            .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
 

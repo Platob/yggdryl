@@ -229,10 +229,7 @@ fn natural_text_objects_feed_record_aware_structural_readers() {
         assert!(document.as_record().is_some(), "{document:?}");
         let dtype = document.get_key_str("dtype").unwrap().clone();
         assert!(dtype.as_record().is_some(), "{dtype:?}");
-        assert_eq!(
-            DataType::from_value(dtype).unwrap(),
-            field.dtype().clone()
-        );
+        assert_eq!(DataType::from_value(dtype).unwrap(), field.dtype().clone());
         assert_eq!(Field::from_value(document).unwrap(), field);
     }
 }

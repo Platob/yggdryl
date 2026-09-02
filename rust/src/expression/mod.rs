@@ -1483,9 +1483,9 @@ impl Expression {
         pairs: impl IntoIterator<Item = (C, V)>,
     ) -> Self {
         Self::all(pairs.into_iter().filter_map(|(column, value)| {
-            schema.get_field_by_name(column.as_ref()).map(|field| {
-                Self::partition_equals(column.as_ref(), value.as_ref(), field.dtype())
-            })
+            schema
+                .get_field_by_name(column.as_ref())
+                .map(|field| Self::partition_equals(column.as_ref(), value.as_ref(), field.dtype()))
         }))
     }
 

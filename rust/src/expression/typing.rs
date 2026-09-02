@@ -190,8 +190,8 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
         Expression::Arithmetic(left, operator, right) => {
             let left = resolve(left, schema)?;
             let right = resolve(right, schema)?;
-            let dtype = arithmetic_type(left.dtype(), *operator, right.dtype())
-                .ok_or_else(|| {
+            let dtype =
+                arithmetic_type(left.dtype(), *operator, right.dtype()).ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected arithmetic operands that share a type, got {} {} {}",
                         left.dtype(),

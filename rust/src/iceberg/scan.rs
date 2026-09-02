@@ -273,8 +273,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
             continue;
         };
         let dtype = column.dtype();
-        let decode =
-            |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
+        let decode = |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
         let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
         let minimum = decode(bound(&file.lower_bounds, id));
         let maximum = decode(bound(&file.upper_bounds, id));

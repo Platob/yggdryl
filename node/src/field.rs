@@ -93,11 +93,8 @@ impl JsField {
             }
             (Either::B(value), None) => CoreField::from_str(&value).map_err(napi_error)?,
             (Either::B(name), Some(dtype)) => {
-                let field = CoreField::new(
-                    name,
-                    dtype_from_input(dtype)?,
-                    nullable.unwrap_or(true),
-                );
+                let field =
+                    CoreField::new(name, dtype_from_input(dtype)?, nullable.unwrap_or(true));
                 field.validate().map_err(napi_error)?;
                 field
             }

@@ -2171,10 +2171,7 @@ custom_fields:
             ["stamp", "level"]
         );
         // The schema follows, with no resource in sight.
-        assert_eq!(
-            options.field()["source"].dtype(),
-            &crate::DataType::Utf8
-        );
+        assert_eq!(options.field()["source"].dtype(), &crate::DataType::Utf8);
     }
 
     #[test]

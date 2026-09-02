@@ -250,8 +250,8 @@ fn sql_hive_spark_and_arrow_spellings_parse_recursively() {
         "ROW(id INTEGER NOT NULL, payload VARBINARY, score DOUBLE PRECISION)",
         "struct<`quoted,name`:string,nested:map<string,array<decimal(38,18)>>>",
         "string[][]",
-        "Dictionary(UInt16, List(Field { name: 'item', dtype: Utf8, nullable: true, metadata: {} }))",
-        "Union([(0, Field { name: 'id', dtype: Int64, nullable: false, metadata: {} }), (7, Field { name: 'name', dtype: Utf8, nullable: true, metadata: {} })], Dense)",
+        "Dictionary(UInt16, List(Field { name: 'item', data_type: Utf8, nullable: true, metadata: {} }))",
+        "Union([(0, Field { name: 'id', data_type: Int64, nullable: false, metadata: {} }), (7, Field { name: 'name', data_type: Utf8, nullable: true, metadata: {} })], Dense)",
         "run_end_encoded(int32,array<string>)",
         "fixed_size_list(string,16)",
     ];

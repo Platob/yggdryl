@@ -549,11 +549,9 @@ impl PyDataType {
     /// Internal Dictionary constructor preserving exact native datatypes.
     #[staticmethod]
     fn _dictionary(key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let inner = CoreDataType::dictionary(
-            core_dtype_from_value(key)?,
-            core_dtype_from_value(value)?,
-        )
-        .map_err(value_error)?;
+        let inner =
+            CoreDataType::dictionary(core_dtype_from_value(key)?, core_dtype_from_value(value)?)
+                .map_err(value_error)?;
         Self::from_validated(inner)
     }
 
@@ -932,12 +930,7 @@ impl PyDataType {
         with_metadata: bool,
         return_equal: bool,
     ) -> PyDifferenceIterator {
-        PyDifferenceIterator::from_dtypes(
-            &self.inner,
-            &other.inner,
-            with_metadata,
-            return_equal,
-        )
+        PyDifferenceIterator::from_dtypes(&self.inner, &other.inner, with_metadata, return_equal)
     }
 
     /// Join every recursive difference line.

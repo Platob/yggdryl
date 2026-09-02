@@ -1074,6 +1074,10 @@ impl<'a> Parser<'a> {
                     }
                     name = Some(self.parse_text("field name")?);
                 }
+                // arrow-rs spells this property `data_type` in the Debug
+                // output this form parses, and key normalization drops the
+                // underscore. That spelling is Arrow's, not this crate's, so
+                // it does not follow `Field`'s own `dtype`.
                 "datatype" | "type" => {
                     if dtype.is_some() {
                         return Err(self.error_here("duplicate field datatype"));
@@ -1118,8 +1122,7 @@ impl<'a> Parser<'a> {
             .ok_or_else(|| {
                 self.error_here("Arrow field is missing a name outside a named child context")
             })?;
-        let dtype =
-            dtype.ok_or_else(|| self.error_here("Arrow field is missing dtype"))?;
+        let dtype = dtype.ok_or_else(|| self.error_here("Arrow field is missing dtype"))?;
         // Arrow's Debug formatter omits `nullable` when it is false.
         let mut field = Field::from_parts(name, dtype, nullable.unwrap_or(false), metadata)?;
         if dictionary_id.is_some() || dictionary_is_ordered.is_some() {

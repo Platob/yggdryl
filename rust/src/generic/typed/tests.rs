@@ -117,8 +117,7 @@ fn serde_reads_a_pairing_back_through_the_validating_constructor() {
     );
 
     // A pairing that never agreed is refused on the way in, not stored.
-    let contradiction =
-        br#"{"dtype":{"type":"int64"},"value":{"type":"string","value":"seven"}}"#;
+    let contradiction = br#"{"dtype":{"type":"int64"},"value":{"type":"string","value":"seven"}}"#;
     assert!(serde_json::from_slice::<TypedScalar>(contradiction).is_err());
 }
 

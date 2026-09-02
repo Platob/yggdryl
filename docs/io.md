@@ -4093,7 +4093,7 @@ each row of a write to the leaf its values name.
         .next()
         .expect("one batch")?;
     assert_eq!(restored.num_columns(), 3);
-    assert_eq!(restored.schema().field(1).dtype(), &arrow_schema::DataType::Int32);
+    assert_eq!(restored.schema().field(1).data_type(), &arrow_schema::DataType::Int32);
 
     let _ = std::fs::remove_dir_all(&root);
     ```

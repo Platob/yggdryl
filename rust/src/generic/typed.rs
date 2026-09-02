@@ -221,7 +221,7 @@ impl<K: FieldType> TypedScalar<K> {
     /// let typed = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
     /// let array = typed.into_arrow_array()?;
     /// assert_eq!(array.len(), 1);
-    /// assert_eq!(array.dtype(), &arrow_schema::DataType::Int64);
+    /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
     /// # Ok(())
     /// # }
     /// ```

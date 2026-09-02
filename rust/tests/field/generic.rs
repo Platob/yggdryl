@@ -1369,10 +1369,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     // Chained descent, two levels and through a List and a Map.
     assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
     assert_eq!(order["tags"][0].name(), "tag");
-    assert_eq!(
-        order["counts"]["entries"]["key"].dtype(),
-        &DataType::Utf8
-    );
+    assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::Utf8);
     assert_eq!(order["counts"][0]["value"].dtype(), &DataType::Int64);
 
     // Metadata is not reachable by subscript any more, and is still reachable

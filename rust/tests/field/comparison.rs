@@ -75,15 +75,11 @@ fn show_diff_reports_deep_physical_and_metadata_changes() {
             .iter()
             .any(|line| line.starts_with("− $.metadata[\"removed\"]"))
     );
+    assert!(lines.iter().any(|line| line == "≠ $.dtype.length: 2 → 3"));
     assert!(
         lines
             .iter()
-            .any(|line| line == "≠ $.dtype.length: 2 → 3")
-    );
-    assert!(
-        lines.iter().any(|line| {
-            line == "≠ $.dtype.item.metadata[\"side\"]: \"left\" → \"right\""
-        })
+            .any(|line| { line == "≠ $.dtype.item.metadata[\"side\"]: \"left\" → \"right\"" })
     );
     assert_eq!(left.show_diff(&right, true, true), lines.join("\n"));
 }

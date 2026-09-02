@@ -128,11 +128,7 @@ fn value_to_js<'env>(env: &'env Env, field: &CoreField, value: &Scalar) -> Resul
     dtype_to_js(env, field.dtype(), value)
 }
 
-fn dtype_to_js<'env>(
-    env: &'env Env,
-    dtype: &DataType,
-    value: &Scalar,
-) -> Result<Unknown<'env>> {
+fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result<Unknown<'env>> {
     use DataType as D;
 
     if matches!(value, Scalar::Null) {
@@ -166,9 +162,7 @@ fn dtype_to_js<'env>(
             "unsupported native datatype variant: \
              the variant binary encoding lands with the Iceberg v3 layer",
         )),
-        _ => Err(napi_error(format!(
-            "unsupported native datatype {dtype}"
-        ))),
+        _ => Err(napi_error(format!("unsupported native datatype {dtype}"))),
     }
 }
 

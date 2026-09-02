@@ -580,9 +580,9 @@ fn compare_range(
             // A column whose minimum equals its maximum holds one value, so an
             // equality against it is settled either way.
             match single {
-                Some(held) => Certainty::of(
-                    compare_values(dtype, held, Comparison::Eq, literal).as_bool(),
-                ),
+                Some(held) => {
+                    Certainty::of(compare_values(dtype, held, Comparison::Eq, literal).as_bool())
+                }
                 None => Certainty::Unknown,
             }
         }

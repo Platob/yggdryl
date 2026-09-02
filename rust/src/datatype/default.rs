@@ -272,10 +272,7 @@ fn reserve_pending(
 }
 
 #[allow(clippy::too_many_lines)]
-fn plan_dtype<'a>(
-    dtype: &'a DataType,
-    path: &mut Vec<PathSegment<'a>>,
-) -> PlanningResult<Planned> {
+fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> PlanningResult<Planned> {
     use DataType as D;
     match dtype {
         D::Null => scalar(DefaultPlan::Null, true),

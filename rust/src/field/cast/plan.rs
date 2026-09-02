@@ -236,11 +236,7 @@ enum ListPlanKind {
 }
 
 impl ArrayCastPlan {
-    fn new_dtype(
-        dtype: &DataType,
-        source_type: &ArrowDataType,
-        safe: bool,
-    ) -> Result<Self> {
+    fn new_dtype(dtype: &DataType, source_type: &ArrowDataType, safe: bool) -> Result<Self> {
         dtype.validate_bounded()?;
         Self::new_nested_validated(
             &Field::new("value", dtype.clone(), false),
@@ -747,8 +743,7 @@ impl ArrayCastPlan {
                 budget,
             )?;
         }
-        let null_count =
-            exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?;
+        let null_count = exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?;
         match self.null_policy {
             NullPolicy::Reject if null_count != 0 => {
                 return Err(Error::IncompatibleSchema(format!(
@@ -3333,12 +3328,7 @@ fn fill_nulls(
         budget,
     )?;
     if contains_dictionary(field.dtype()) {
-        reserve_new_dictionary_vocabularies(
-            &output,
-            &source_for_retention,
-            field.dtype(),
-            budget,
-        )?;
+        reserve_new_dictionary_vocabularies(&output, &source_for_retention, field.dtype(), budget)?;
     }
     Ok(output)
 }
@@ -4015,12 +4005,7 @@ fn reserve_new_dictionary_vocabularies(
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());
             let source: ArrayRef =
                 Arc::new(downcast::<MapArray>(source.as_ref())?.entries().clone());
-            reserve_new_dictionary_vocabularies(
-                &output,
-                &source,
-                map.entries().dtype(),
-                budget,
-            )?;
+            reserve_new_dictionary_vocabularies(&output, &source, map.entries().dtype(), budget)?;
         }
         DataType::Union(fields, _) => {
             let output = downcast::<UnionArray>(output.as_ref())?;
@@ -5157,8 +5142,7 @@ fn ensure_list_child_physical(
     array: ArrayRef,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    if field.is_nullable()
-        || exposed_logical_null_count(array.as_ref(), field.dtype(), None)? == 0
+    if field.is_nullable() || exposed_logical_null_count(array.as_ref(), field.dtype(), None)? == 0
     {
         Ok(array)
     } else {

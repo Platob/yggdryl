@@ -223,10 +223,7 @@ mod restating {
     fn duration32_checks_its_logical_width_on_both_arrow_directions() {
         let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
         let maximum = Scalar::duration32(i32::MAX, TimeUnit::Second).unwrap();
-        assert_eq!(
-            round_trip(field.dtype().clone(), maximum.clone()),
-            maximum
-        );
+        assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 
         let too_wide = i64::from(i32::MAX) + 1;
         assert!(scalar_array(&field, &Scalar::I64(too_wide)).is_err());

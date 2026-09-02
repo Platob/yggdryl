@@ -14,8 +14,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{Field, FieldRef};
 use crate::datatype::{
-    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_dtype_to_ffi,
-    arrow_extension_parts, is_variant_storage,
+    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts,
+    is_variant_storage,
 };
 use crate::{DataType, Error, GeospatialType, Metadata, Result};
 
@@ -297,10 +297,7 @@ fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadat
             })
             .map(|(key, held)| (key.clone(), held.clone()))
             .collect();
-        return Ok((
-            recognized.into_dtype(),
-            Metadata::from_arrow(&stripped)?,
-        ));
+        return Ok((recognized.into_dtype(), Metadata::from_arrow(&stripped)?));
     }
     let metadata = Metadata::from_arrow(value.metadata())?;
     let dtype = DataType::from_arrow_at_depth(value.data_type(), depth)?;
@@ -376,14 +373,8 @@ fn arrow_field_from_parts(
     dictionary_is_ordered: bool,
     metadata: HashMap<String, String>,
 ) -> ArrowField {
-    ArrowField::new_dict(
-        name,
-        dtype,
-        nullable,
-        dictionary_id,
-        dictionary_is_ordered,
-    )
-    .with_metadata(metadata)
+    ArrowField::new_dict(name, dtype, nullable, dictionary_id, dictionary_is_ordered)
+        .with_metadata(metadata)
 }
 
 impl TryFrom<&Field> for ArrowField {

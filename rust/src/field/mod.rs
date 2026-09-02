@@ -2003,11 +2003,7 @@ impl fmt::Display for FieldLayoutDisplay<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("field(")?;
         write_quoted(formatter, &self.0.name)?;
-        write!(
-            formatter,
-            ",{},nullable={})",
-            self.0.dtype, self.0.nullable
-        )
+        write!(formatter, ",{},nullable={})", self.0.dtype, self.0.nullable)
     }
 }
 
@@ -2227,8 +2223,7 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
                     })
         }
         (D::Dictionary(left), D::Dictionary(right)) => {
-            dtype_layout_eq(left.key(), right.key())
-                && dtype_layout_eq(left.value(), right.value())
+            dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
         }
         (D::Map(left), D::Map(right)) => map_layout_eq(left, right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),

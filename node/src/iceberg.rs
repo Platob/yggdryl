@@ -2283,10 +2283,7 @@ enum SchemaOp {
     /// Relax a required column to optional.
     MakeNullable { path: String },
     /// Promote a column's type, checked when the update is applied.
-    UpdateType {
-        path: String,
-        dtype: CoreDataType,
-    },
+    UpdateType { path: String, dtype: CoreDataType },
 }
 
 /// A recording of column operations against a table's current schema.
@@ -2982,9 +2979,5 @@ pub fn iceberg_schema_into_json(schema: &JsField) -> Result<JsScalar> {
 /// both sides for every other change.
 #[napi(js_name = "icebergCanPromoteNative", skip_typescript)]
 pub fn iceberg_can_promote(from_type: DataTypeInput<'_>, to_type: DataTypeInput<'_>) -> Result<()> {
-    can_promote(
-        &dtype_from_input(from_type)?,
-        &dtype_from_input(to_type)?,
-    )
-    .map_err(napi_error)
+    can_promote(&dtype_from_input(from_type)?, &dtype_from_input(to_type)?).map_err(napi_error)
 }

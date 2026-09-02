@@ -254,10 +254,7 @@ impl Bound {
     /// Return whether this expression answers a boolean.
     #[must_use]
     pub fn is_predicate(&self) -> bool {
-        matches!(
-            self.node.field.dtype(),
-            DataType::Boolean | DataType::Null
-        )
+        matches!(self.node.field.dtype(), DataType::Boolean | DataType::Null)
     }
 
     /// The schema column indices this expression reads, ascending.
@@ -620,11 +617,9 @@ fn map_children(
         Expression::Function(function, arguments) => {
             Expression::Function(*function, map_slice(arguments, replace)?)
         }
-        Expression::Cast(inner, dtype, safety) => Expression::Cast(
-            Box::new(mapped(inner, replace)?),
-            dtype.clone(),
-            *safety,
-        ),
+        Expression::Cast(inner, dtype, safety) => {
+            Expression::Cast(Box::new(mapped(inner, replace)?), dtype.clone(), *safety)
+        }
         Expression::Case {
             branches,
             otherwise,
@@ -1206,12 +1201,8 @@ fn list_item_type(field: &Field) -> Option<DataType> {
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
     match field.dtype() {
         DataType::Map(map) => (
-            map.entries()
-                .get_field(0)
-                .map(|held| held.dtype().clone()),
-            map.entries()
-                .get_field(1)
-                .map(|held| held.dtype().clone()),
+            map.entries().get_field(0).map(|held| held.dtype().clone()),
+            map.entries().get_field(1).map(|held| held.dtype().clone()),
         ),
         _ => (None, None),
     }
@@ -1269,10 +1260,8 @@ fn incompatible(expected: &str) -> Error {
 /// decided without a second representation to keep in step.
 pub(crate) fn rebuild(node: &Node) -> Expression {
     match &node.kind {
-        Kind::Literal(value) => {
-            TypedScalar::from_parts(node.field.dtype().clone(), value.clone())
-                .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal)
-        }
+        Kind::Literal(value) => TypedScalar::from_parts(node.field.dtype().clone(), value.clone())
+            .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal),
         Kind::Column(_) => Expression::column(node.field.name()),
         Kind::Path(base, steps) => Expression::Path(Box::new(rebuild(base)), steps.clone()),
         Kind::Attribute(selector) => Expression::attribute(selector.clone()),

@@ -74,10 +74,7 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
         assert!(
             dtype
                 .is_default_value(&value)
-                .unwrap_or_else(|error| panic!(
-                    "{} default match failed: {error}",
-                    dtype.kind()
-                )),
+                .unwrap_or_else(|error| panic!("{} default match failed: {error}", dtype.kind())),
             "{} did not recognize its canonical default",
             dtype.kind()
         );
@@ -91,9 +88,8 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
         );
         let root = Field::new("Root", DataType::from_fields([field]).unwrap(), false);
         let row = Scalar::from_sequence([value]);
-        root.validate_value(&row).unwrap_or_else(|error| {
-            panic!("{} default did not validate: {error}", dtype.kind())
-        });
+        root.validate_value(&row)
+            .unwrap_or_else(|error| panic!("{} default did not validate: {error}", dtype.kind()));
     }
 }
 

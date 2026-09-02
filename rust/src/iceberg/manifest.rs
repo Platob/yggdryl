@@ -2526,11 +2526,7 @@ mod official_read_tests {
                 return field.clone();
             }
             let dtype = field.get_key_str("type").unwrap();
-            let data_fields = dtype
-                .get_key_str("fields")
-                .unwrap()
-                .as_sequence()
-                .unwrap();
+            let data_fields = dtype.get_key_str("fields").unwrap().as_sequence().unwrap();
             let data_fields = data_fields.iter().filter_map(|child| {
                 if child.get_key_str("name").and_then(Scalar::as_str) != Some(name) {
                     return Some(child.clone());

@@ -839,10 +839,7 @@ mod types {
             DataType::time(TimeUnit::Microsecond).unwrap()
         );
         // A v3 unknown column has no width at all, which Arrow spells as null.
-        assert_eq!(
-            PrimitiveType::Unknown.into_dtype().unwrap(),
-            DataType::Null
-        );
+        assert_eq!(PrimitiveType::Unknown.into_dtype().unwrap(), DataType::Null);
     }
 
     #[test]

@@ -290,9 +290,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Struct(_) => {
             *counter += 1;
             let record_name = unique_name(name, counter);
-            let fields = dtype
-                .as_fields()
-                .ok_or_else(|| unspellable(dtype))?;
+            let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;
             record_json(&record_name, fields, counter)
         }
         DataType::List(item) | DataType::LargeList(item) => {
