@@ -773,3 +773,295 @@ mod semi_structured_and_geospatial {
         }
     }
 }
+
+/// The ASCII widths and the currency registration.
+mod ascii {
+    use std::cmp::Ordering;
+
+    use arrow_array::{Array, FixedSizeBinaryArray};
+    use arrow_schema::DataType as ArrowDataType;
+
+    use super::super::DataType;
+    use crate::generic::{DataTypeId, DataTypeKind};
+    use crate::{Error, Field, Scalar, Scheme};
+
+    fn hash_of(value: &DataType) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn stored(array: &dyn Array) -> &FixedSizeBinaryArray {
+        array
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .expect("fixed-width ASCII storage")
+    }
+
+    #[test]
+    fn every_spelling_parses_and_displays_as_its_width() {
+        for (spelling, dtype) in [
+            ("ascii32", DataType::Ascii32),
+            ("ascii64", DataType::Ascii64),
+            ("ascii128", DataType::Ascii128),
+            ("ASCII64", DataType::Ascii64),
+            ("ascii(1)", DataType::Ascii32),
+            ("ascii(3)", DataType::Ascii32),
+            ("ascii(4)", DataType::Ascii32),
+            ("ascii(5)", DataType::Ascii64),
+            ("ascii(8)", DataType::Ascii64),
+            ("ascii(9)", DataType::Ascii128),
+            ("ascii(16)", DataType::Ascii128),
+            ("currency", DataType::Ascii32),
+            ("Currency", DataType::Ascii32),
+        ] {
+            let parsed: DataType = spelling
+                .parse()
+                .unwrap_or_else(|error| panic!("{spelling} must parse: {error}"));
+            assert_eq!(parsed, dtype, "{spelling}");
+            // One canonical spelling: a registration displays as its width.
+            assert_eq!(parsed.to_string(), dtype.name(), "{spelling}");
+            assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
+        }
+        let row: DataType = "struct<ccy: currency, code: ascii(12)>".parse().unwrap();
+        assert_eq!(
+            row.get_field_by_path("ccy").map(Field::dtype),
+            Some(&DataType::Ascii32)
+        );
+        assert_eq!(
+            row.get_field_by_path("code").map(Field::dtype),
+            Some(&DataType::Ascii128)
+        );
+    }
+
+    #[test]
+    fn widths_outside_the_family_and_a_bare_ascii_are_refused_by_name() {
+        let error = "ascii(17)".parse::<DataType>().unwrap_err().to_string();
+        assert!(
+            error.contains("expected an ASCII width from 1 to 16 bytes, got 17"),
+            "{error}"
+        );
+        let error = "ascii(0)".parse::<DataType>().unwrap_err().to_string();
+        assert!(error.contains("got 0"), "{error}");
+        let error = "ascii".parse::<DataType>().unwrap_err().to_string();
+        assert!(
+            error.contains("expected an ASCII width from 1 to 16 bytes"),
+            "{error}"
+        );
+        assert!(matches!(
+            "ascii()".parse::<DataType>(),
+            Err(Error::Parse { .. })
+        ));
+
+        let error = DataType::ascii(17).unwrap_err().to_string();
+        assert!(error.contains("got 17"), "{error}");
+        assert!(DataType::ascii(-1).is_err());
+    }
+
+    #[test]
+    fn a_registered_logical_name_resolves_case_insensitively_and_names_its_vocabulary() {
+        assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
+        assert_eq!(
+            DataType::from_logical_name("currency").unwrap(),
+            DataType::Ascii32
+        );
+        assert_eq!(
+            DataType::from_logical_name(" CURRENCY ").unwrap(),
+            DataType::Ascii32
+        );
+
+        let error = DataType::from_logical_name("isin").unwrap_err().to_string();
+        assert!(error.contains("currency"), "{error}");
+        assert!(error.contains("\"isin\""), "{error}");
+        // The grammar reports an unregistered word as unknown.
+        let error = "isin".parse::<DataType>().unwrap_err().to_string();
+        assert!(error.contains("unknown datatype \"isin\""), "{error}");
+    }
+
+    #[test]
+    fn serde_and_the_structural_value_round_trip() {
+        for (dtype, tag) in [
+            (DataType::Ascii32, "ascii32"),
+            (DataType::Ascii64, "ascii64"),
+            (DataType::Ascii128, "ascii128"),
+        ] {
+            let json = dtype.clone().into_json().unwrap();
+            assert_eq!(json, format!(r#"{{"type":"{tag}"}}"#));
+            assert_eq!(DataType::from_json(&json).unwrap(), dtype);
+
+            let value = dtype.clone().into_value();
+            assert_eq!(
+                value.get_key_str("type").and_then(Scalar::as_str),
+                Some(tag)
+            );
+            assert_eq!(DataType::from_value(value).unwrap(), dtype);
+        }
+    }
+
+    #[test]
+    fn identity_kind_and_widths_answer_for_the_three() {
+        for (dtype, id, width) in [
+            (DataType::Ascii32, DataTypeId::Ascii32, 4),
+            (DataType::Ascii64, DataTypeId::Ascii64, 8),
+            (DataType::Ascii128, DataTypeId::Ascii128, 16),
+        ] {
+            assert_eq!(dtype.id(), id);
+            assert_eq!(dtype.kind(), DataTypeKind::String);
+            assert_eq!(dtype.name(), id.as_str());
+            assert_eq!(dtype.ascii_width(), Some(width));
+            assert_eq!(id.fixed_byte_width(), usize::try_from(width).ok());
+            assert!(!dtype.is_nested());
+            dtype.validate().unwrap();
+        }
+        assert_eq!(DataType::Utf8.ascii_width(), None);
+        assert_eq!(DataType::FixedSizeBinary(4).ascii_width(), None);
+    }
+
+    #[test]
+    fn ordering_and_hashing_are_consistent_for_the_three() {
+        // The widths sit after the variable text layouts, in width order.
+        assert!(DataType::Utf8View < DataType::Ascii32);
+        assert!(DataType::Ascii32 < DataType::Ascii64);
+        assert!(DataType::Ascii64 < DataType::Ascii128);
+        assert!(DataType::Ascii128 < DataType::list(DataType::Utf8.nullable_field("item")));
+        assert_eq!(DataType::Ascii64.cmp(&DataType::Ascii64), Ordering::Equal);
+        assert_eq!(hash_of(&DataType::Ascii64), hash_of(&DataType::Ascii64));
+        assert_ne!(
+            DataType::Ascii32.stable_hash(),
+            DataType::Ascii64.stable_hash()
+        );
+    }
+
+    #[test]
+    fn the_default_is_the_empty_string_stored_as_all_nul() {
+        for dtype in [DataType::Ascii32, DataType::Ascii64, DataType::Ascii128] {
+            assert_eq!(dtype.default_value().unwrap(), Scalar::from(""));
+            assert!(dtype.is_default_value(&Scalar::from("")).unwrap());
+            assert!(!dtype.is_default_value(&Scalar::from("USD")).unwrap());
+
+            let width = dtype.ascii_width().unwrap();
+            let field = dtype.required_field("ccy");
+            assert_eq!(field.default_value().unwrap(), Scalar::from(""));
+            let array = field.default_arrow_array().unwrap();
+            assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(width));
+            let stored = stored(array.as_ref());
+            assert_eq!(stored.len(), 1);
+            assert!(stored.value(0).iter().all(|byte| *byte == 0));
+        }
+    }
+
+    #[test]
+    fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
+        let root = DataType::from_fields([DataType::Ascii32.required_field("ccy")])
+            .unwrap()
+            .required_field("row");
+        let row = |value: Scalar| Scalar::from_sequence([value]);
+        let canonical = |value: Scalar| root.canonicalize_value(row(value)).unwrap();
+
+        // The trimmed string is the canonical spelling and passes untouched.
+        assert_eq!(canonical(Scalar::from("USD")), row(Scalar::from("USD")));
+        assert_eq!(canonical(Scalar::from("ABCD")), row(Scalar::from("ABCD")));
+        assert_eq!(canonical(Scalar::from("")), row(Scalar::from("")));
+        // Trailing NULs are trimmed, and bytes are rewritten to the string.
+        assert_eq!(canonical(Scalar::from("USD\0")), row(Scalar::from("USD")));
+        assert_eq!(
+            canonical(Scalar::from(b"USD\0".to_vec())),
+            row(Scalar::from("USD"))
+        );
+        assert_eq!(
+            canonical(Scalar::from(b"EUR".to_vec())),
+            row(Scalar::from("EUR"))
+        );
+
+        // Every refusal names the width and the offending fact.
+        for (value, fact) in [
+            (Scalar::from("EURO!"), "5 bytes"),
+            (Scalar::from(b"ABCDE".to_vec()), "5 bytes"),
+            (Scalar::from("\u{20AC}"), "non-ASCII byte 0xE2 at 0"),
+            (Scalar::from("U\0D"), "NUL byte at 1"),
+        ] {
+            let refused = root
+                .validate_value(&row(value.clone()))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                refused.contains("ASCII text of at most 4 bytes"),
+                "{refused}"
+            );
+            assert!(refused.contains(fact), "{refused}");
+            assert!(refused.contains("ccy"), "{refused}");
+            assert!(root.canonicalize_value(row(value)).is_err());
+        }
+        // Anything that is neither text nor bytes is refused by kind.
+        let refused = root
+            .validate_value(&row(Scalar::I64(7)))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("expected ascii32"), "{refused}");
+    }
+
+    #[test]
+    fn arrow_storage_is_padded_and_reads_back_trimmed() {
+        let field = DataType::Ascii64.nullable_field("code");
+        let array = crate::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
+        assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(8));
+        assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
+        assert_eq!(
+            crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
+            Scalar::from("ABC")
+        );
+
+        // Padded bytes, a null, and the empty string, through the array boundary.
+        let values = Scalar::from_sequence([
+            Scalar::from(b"XY\0\0\0\0\0\0".to_vec()),
+            Scalar::Null,
+            Scalar::from(""),
+        ]);
+        let array = crate::arrow::array_from_value(&field, &values).unwrap();
+        let fixed = stored(array.as_ref());
+        assert_eq!(fixed.len(), 3);
+        assert_eq!(fixed.value(0), b"XY\0\0\0\0\0\0");
+        assert!(fixed.is_null(1));
+        assert_eq!(fixed.value(2), &[0; 8]);
+        let read = |index: usize| {
+            crate::arrow::value::value_from_array(field.dtype(), array.as_ref(), index).unwrap()
+        };
+        assert_eq!(read(0), Scalar::from("XY"));
+        assert_eq!(read(2), Scalar::from(""));
+
+        // What does not fit is refused at this boundary too.
+        assert!(crate::arrow::scalar_array(&field, &Scalar::from("ABCDEFGHI")).is_err());
+    }
+
+    #[test]
+    fn compatibility_reads_every_width_as_utf8() {
+        let schema = DataType::from_fields([
+            DataType::Ascii32.nullable_field("ccy"),
+            DataType::Ascii128.required_field("code"),
+        ])
+        .unwrap()
+        .required_field("row");
+        for scheme in [
+            Scheme::SPARK,
+            Scheme::POLARS,
+            Scheme::PANDAS,
+            Scheme::ICEBERG,
+        ] {
+            let compat = schema.clone().into_scheme_compat(&scheme).unwrap();
+            assert_eq!(compat["ccy"].dtype(), &DataType::Utf8);
+            assert_eq!(compat["code"].dtype(), &DataType::Utf8);
+            assert!(!compat["code"].is_nullable());
+        }
+        assert_eq!(
+            schema.clone().into_scheme_compat(&Scheme::ARROW).unwrap(),
+            schema
+        );
+        assert_eq!(
+            DataType::Ascii64
+                .into_scheme_compat(&Scheme::ICEBERG)
+                .unwrap(),
+            DataType::Utf8
+        );
+    }
+}

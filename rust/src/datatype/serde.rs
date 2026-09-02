@@ -101,6 +101,9 @@ enum DataTypeRef<'a> {
     Utf8 {},
     LargeUtf8 {},
     Utf8View {},
+    Ascii32 {},
+    Ascii64 {},
+    Ascii128 {},
     List {
         field: &'a Field,
     },
@@ -220,6 +223,9 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Utf8 => Self::Utf8 {},
             D::LargeUtf8 => Self::LargeUtf8 {},
             D::Utf8View => Self::Utf8View {},
+            D::Ascii32 => Self::Ascii32 {},
+            D::Ascii64 => Self::Ascii64 {},
+            D::Ascii128 => Self::Ascii128 {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -324,6 +330,9 @@ enum DataTypeValue {
     Utf8 {},
     LargeUtf8 {},
     Utf8View {},
+    Ascii32 {},
+    Ascii64 {},
+    Ascii128 {},
     List {
         field: Field,
     },
@@ -427,6 +436,9 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Utf8 {} => Self::Utf8,
             DataTypeValue::LargeUtf8 {} => Self::LargeUtf8,
             DataTypeValue::Utf8View {} => Self::Utf8View,
+            DataTypeValue::Ascii32 {} => Self::Ascii32,
+            DataTypeValue::Ascii64 {} => Self::Ascii64,
+            DataTypeValue::Ascii128 {} => Self::Ascii128,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -548,6 +560,9 @@ impl DataType {
             D::Utf8 => tag("utf8"),
             D::LargeUtf8 => tag("large_utf8"),
             D::Utf8View => tag("utf8_view"),
+            D::Ascii32 => tag("ascii32"),
+            D::Ascii64 => tag("ascii64"),
+            D::Ascii128 => tag("ascii128"),
             D::Timestamp(unit, timezone) => {
                 tag("timestamp");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -772,6 +787,9 @@ impl DataType {
             "utf8" => Self::Utf8,
             "large_utf8" => Self::LargeUtf8,
             "utf8_view" => Self::Utf8View,
+            "ascii32" => Self::Ascii32,
+            "ascii64" => Self::Ascii64,
+            "ascii128" => Self::Ascii128,
             "timestamp" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

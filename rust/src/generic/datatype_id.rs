@@ -75,6 +75,12 @@ pub enum DataTypeId {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
+    /// ASCII text padded with trailing NUL to 4 bytes.
+    Ascii32,
+    /// ASCII text padded with trailing NUL to 8 bytes.
+    Ascii64,
+    /// ASCII text padded with trailing NUL to 16 bytes.
+    Ascii128,
     /// Variable list with 32-bit offsets.
     List,
     /// Variable list-view with 32-bit offsets.
@@ -113,7 +119,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 45] = [
+    pub const ALL: [Self; 48] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -142,6 +148,9 @@ impl DataTypeId {
         Self::Utf8,
         Self::LargeUtf8,
         Self::Utf8View,
+        Self::Ascii32,
+        Self::Ascii64,
+        Self::Ascii128,
         Self::List,
         Self::ListView,
         Self::FixedSizeList,
@@ -206,6 +215,9 @@ impl DataTypeId {
             Self::Utf8 => "utf8",
             Self::LargeUtf8 => "large_utf8",
             Self::Utf8View => "utf8_view",
+            Self::Ascii32 => "ascii32",
+            Self::Ascii64 => "ascii64",
+            Self::Ascii128 => "ascii128",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -254,7 +266,12 @@ impl DataTypeId {
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Binary
             }
-            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View => DataTypeKind::String,
+            Self::Utf8
+            | Self::LargeUtf8
+            | Self::Utf8View
+            | Self::Ascii32
+            | Self::Ascii64
+            | Self::Ascii128 => DataTypeKind::String,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
@@ -367,16 +384,22 @@ impl DataTypeId {
             Self::Boolean => Some(1),
             Self::Int8 | Self::UInt8 => Some(1),
             Self::Int16 | Self::UInt16 | Self::Float16 => Some(2),
-            Self::Int32 | Self::UInt32 | Self::Float32 | Self::Date32 | Self::Decimal32 => Some(4),
+            Self::Int32
+            | Self::UInt32
+            | Self::Float32
+            | Self::Date32
+            | Self::Decimal32
+            | Self::Ascii32 => Some(4),
             Self::Int64
             | Self::UInt64
             | Self::Float64
             | Self::Date64
             | Self::Duration64
             | Self::Timestamp
-            | Self::Decimal64 => Some(8),
+            | Self::Decimal64
+            | Self::Ascii64 => Some(8),
             Self::Duration32 => Some(4),
-            Self::Decimal128 => Some(16),
+            Self::Decimal128 | Self::Ascii128 => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }
@@ -460,6 +483,24 @@ mod tests {
     }
 
     #[test]
+    fn ascii_widths_are_parameter_free_text() {
+        assert_eq!(DataTypeId::ALL.len(), 48);
+        for id in [
+            DataTypeId::Ascii32,
+            DataTypeId::Ascii64,
+            DataTypeId::Ascii128,
+        ] {
+            assert_eq!(id.kind(), DataTypeKind::String);
+            assert!(id.is_string());
+            assert!(!id.is_parameterized());
+        }
+        assert_eq!(
+            DataTypeId::from_str("ASCII128").unwrap(),
+            DataTypeId::Ascii128
+        );
+    }
+
+    #[test]
     fn unknown_name_reports_the_input() {
         let error = DataTypeId::from_str("int33").unwrap_err();
         assert!(error.to_string().contains("\"int33\""), "{error}");
@@ -476,6 +517,9 @@ mod tests {
     fn fixed_widths_match_their_layout() {
         assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
         assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
+        assert_eq!(DataTypeId::Ascii32.fixed_byte_width(), Some(4));
+        assert_eq!(DataTypeId::Ascii64.fixed_byte_width(), Some(8));
+        assert_eq!(DataTypeId::Ascii128.fixed_byte_width(), Some(16));
         assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);
         assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
     }

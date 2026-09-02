@@ -52,7 +52,9 @@ use serde::de::Error as _;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::field::{binary, decimal, floating, geospatial, integer, nested, scalar, temporal};
+use crate::field::{
+    ascii, binary, decimal, floating, geospatial, integer, nested, scalar, temporal,
+};
 use crate::{AnyType, DataType, Error, FieldType, Result, Scalar};
 
 /// A datatype and one value it accepts.
@@ -486,6 +488,9 @@ typed_value_alias!(BinaryViewScalar, binary::BinaryView, "binary_view");
 typed_value_alias!(Utf8Scalar, binary::Utf8, "utf8");
 typed_value_alias!(LargeUtf8Scalar, binary::LargeUtf8, "large_utf8");
 typed_value_alias!(Utf8ViewScalar, binary::Utf8View, "utf8_view");
+typed_value_alias!(Ascii32Scalar, ascii::Ascii32, "ascii32");
+typed_value_alias!(Ascii64Scalar, ascii::Ascii64, "ascii64");
+typed_value_alias!(Ascii128Scalar, ascii::Ascii128, "ascii128");
 typed_value_alias!(ListScalar, nested::List, "list");
 typed_value_alias!(ListViewScalar, nested::ListView, "list_view");
 typed_value_alias!(
@@ -537,6 +542,9 @@ static_value_constructor!(binary::BinaryView, DataType::BinaryView);
 static_value_constructor!(binary::Utf8, DataType::Utf8);
 static_value_constructor!(binary::LargeUtf8, DataType::LargeUtf8);
 static_value_constructor!(binary::Utf8View, DataType::Utf8View);
+static_value_constructor!(ascii::Ascii32, DataType::Ascii32);
+static_value_constructor!(ascii::Ascii64, DataType::Ascii64);
+static_value_constructor!(ascii::Ascii128, DataType::Ascii128);
 static_value_constructor!(nested::Variant, DataType::Variant);
 
 #[cfg(test)]

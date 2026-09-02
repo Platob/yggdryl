@@ -163,7 +163,13 @@ impl PrimitiveType {
                 None => Self::TimestampNs,
             },
             DataType::Null => Self::Unknown,
-            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Self::String,
+            // An ASCII width is text; the padding is storage, never a value.
+            DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Utf8View
+            | DataType::Ascii32
+            | DataType::Ascii64
+            | DataType::Ascii128 => Self::String,
             DataType::FixedSizeBinary(16) => Self::Fixed(16),
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),
             DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,

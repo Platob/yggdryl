@@ -76,6 +76,9 @@ impl fmt::Display for DataType {
             D::Utf8 => formatter.write_str("utf8"),
             D::LargeUtf8 => formatter.write_str("large_utf8"),
             D::Utf8View => formatter.write_str("utf8_view"),
+            D::Ascii32 => formatter.write_str("ascii32"),
+            D::Ascii64 => formatter.write_str("ascii64"),
+            D::Ascii128 => formatter.write_str("ascii128"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -344,6 +347,21 @@ impl<'a> Parser<'a> {
             }
             "largeutf8" | "largestring" => DataType::LargeUtf8,
             "utf8view" | "stringview" => DataType::Utf8View,
+            "ascii32" => DataType::Ascii32,
+            "ascii64" => DataType::Ascii64,
+            "ascii128" => DataType::Ascii128,
+            // Bare `ascii` names no width; `ascii(N)` lets the family
+            // constructor select the physical width.
+            "ascii" => {
+                let close = self
+                    .consume_opening()
+                    .ok_or_else(|| self.error_here("expected an ASCII width from 1 to 16 bytes"))?;
+                let position = self.current_position();
+                let width = self.parse_i32("ASCII width")?;
+                self.expect_symbol(close)?;
+                DataType::ascii(width)
+                    .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
+            }
             "list" | "array" => self.parse_list(ListKind::List, depth + 1)?,
             "listview" | "arrayview" => self.parse_list(ListKind::ListView, depth + 1)?,
             "fixedsizelist" | "fixedarray" => self.parse_fixed_size_list(depth + 1)?,
@@ -388,11 +406,16 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            _ => {
-                return Err(
-                    self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
-                );
-            }
+            // A registered logical name is one more spelling of an ASCII
+            // width, resolved through the registry and never a copied list.
+            _ => match DataType::from_logical_name(&word) {
+                Ok(dtype) => dtype,
+                Err(_) => {
+                    return Err(
+                        self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
+                    );
+                }
+            },
         };
 
         self.parse_postfix_lists(value, depth)

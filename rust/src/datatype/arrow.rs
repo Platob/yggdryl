@@ -12,7 +12,9 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::field::arrow_field_to_ffi;
 use crate::{Error, Field, Result};
 
+use super::ascii::ASCII_EXTENSION_NAME;
 use super::floating::validate_decimal;
+use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::scalar::{invalid, validate_non_negative};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
@@ -373,6 +375,9 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::Ascii32 => Self::FixedSizeBinary(4),
+            R::Ascii64 => Self::FixedSizeBinary(8),
+            R::Ascii128 => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
             R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
             R::FixedSizeList(field, length) => {
@@ -430,12 +435,13 @@ impl TryFrom<&DataType> for ArrowDataType {
                     encoded.values.clone().into_arrow_ref()?,
                 )
             }
-            // The Arrow storage of the three extension-typed variants. The
+            // The Arrow storage of the extension-typed variants. The
             // extension name and metadata are *field* metadata
             // (`ARROW:extension:name`), so they ride `Field`'s projection;
             // this level answers the storage type Arrow actually lays out:
             // the canonical `arrow.parquet.variant` struct of two required
-            // binaries, and WKB bytes for the geospatial pair.
+            // binaries, and WKB bytes for the geospatial pair. The ASCII
+            // widths lay out as the fixed binary their arms above name.
             R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
                 arrow_schema::Field::new("metadata", Self::Binary, false),
                 arrow_schema::Field::new("value", Self::Binary, false),
@@ -498,6 +504,9 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::Ascii32 => Self::FixedSizeBinary(4),
+            R::Ascii64 => Self::FixedSizeBinary(8),
+            R::Ascii128 => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(into_arrow_field(field)?),
             R::ListView(field) => Self::ListView(into_arrow_field(field)?),
             R::FixedSizeList(field, length) => {
@@ -578,12 +587,13 @@ impl TryFrom<DataType> for ArrowDataType {
                     encoded.values.clone().into_arrow_ref()?,
                 ),
             },
-            // The Arrow storage of the three extension-typed variants. The
+            // The Arrow storage of the extension-typed variants. The
             // extension name and metadata are *field* metadata
             // (`ARROW:extension:name`), so they ride `Field`'s projection;
             // this level answers the storage type Arrow actually lays out:
             // the canonical `arrow.parquet.variant` struct of two required
-            // binaries, and WKB bytes for the geospatial pair.
+            // binaries, and WKB bytes for the geospatial pair. The ASCII
+            // widths lay out as the fixed binary their arms above name.
             R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
                 arrow_schema::Field::new("metadata", Self::Binary, false),
                 arrow_schema::Field::new("value", Self::Binary, false),
@@ -645,6 +655,24 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
         ))
     } else {
         Ok(())
+    }
+}
+
+/// The Arrow extension name and metadata an extension-typed datatype
+/// projects, `None` for every other datatype.
+///
+/// An ASCII width projects an empty document: the storage width says the
+/// width, so there is nothing else to carry.
+pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, String)> {
+    match dtype {
+        DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
+        DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
+            Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
+        }
+        DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => {
+            Some((ASCII_EXTENSION_NAME, String::new()))
+        }
+        _ => None,
     }
 }
 
@@ -797,14 +825,19 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
                 Flags::empty(),
             )
         }
-        // The extension identity of the three extension-typed variants is
-        // metadata, and a C schema is a field, so the storage projection
-        // carries the two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
+        // The extension identity of an extension-typed variant is metadata,
+        // and a C schema is a field, so the storage projection carries the
+        // two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
         // merges the same entries with the field's own metadata.
-        DataType::Variant | DataType::Geometry(_) | DataType::Geography(_) => {
+        DataType::Variant
+        | DataType::Geometry(_)
+        | DataType::Geography(_)
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
-            let Some((name, metadata)) = super::arrow_extension_parts(dtype) else {
+            let Some((name, metadata)) = arrow_extension_parts(dtype) else {
                 return Err(invalid(
                     "ArrowExtension",
                     format_smolstr!("expected an extension projection for {dtype}, got none"),

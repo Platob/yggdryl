@@ -345,7 +345,9 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
             format_smolstr!("expected an interval layout, got {unit}"),
         ),
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        D::LargeUtf8 | D::Utf8View => Ok((D::Utf8, true)),
+        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
+        // and the cast trims the padding.
+        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -432,7 +434,9 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
             format_smolstr!("Polars has no calendar interval type, got interval({unit})"),
         ),
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        D::LargeUtf8 | D::Utf8View => Ok((D::Utf8, true)),
+        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
+        // and the cast trims the padding.
+        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -509,7 +513,9 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
             ),
         ),
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        D::LargeUtf8 | D::Utf8View => Ok((D::Utf8, true)),
+        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
+        // and the cast trims the padding.
+        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -591,7 +597,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
             format_smolstr!("Iceberg has no calendar interval type, got interval({unit})"),
         ),
         D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        D::LargeUtf8 | D::Utf8View => Ok((D::Utf8, true)),
+        // Iceberg has `string` and `fixed[n]`; an ASCII column is text, so
+        // every Iceberg reader must see `USD`, never the padded bytes.
+        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -667,10 +675,11 @@ fn field_with_dtype(
 
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
-/// The extensions this workspace owns never reach here: `arrow.parquet.variant`
-/// and `geoarrow.wkb` import as the first-class `variant`, `geometry`, and
-/// `geography` datatypes with their `ARROW:extension:*` keys stripped, so a
-/// field carrying these keys names an extension the workspace does not model.
+/// The extensions this workspace owns never reach here: `arrow.parquet.variant`,
+/// `geoarrow.wkb`, and `yggdryl.ascii` import as the first-class `variant`,
+/// `geometry`, `geography`, and ASCII-width datatypes with their
+/// `ARROW:extension:*` keys stripped, so a field carrying these keys names an
+/// extension the workspace does not model.
 /// Rewriting its storage would silently relabel that foreign type, so the
 /// walker rejects the rewrite instead.
 fn has_extension_storage(field: &Field) -> bool {

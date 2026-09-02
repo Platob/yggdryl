@@ -43,7 +43,7 @@ use super::parser::{Direction, NullsOrder};
 use super::selector::Attributes;
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result};
-use crate::field::cast::ArrowCast;
+use crate::field::cast::cast_field_array;
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
@@ -544,9 +544,15 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
         Kind::Cast(inner, safety) => {
             let rows = context.batch.num_rows();
             let array = evaluate(inner, context)?.into_column(rows)?;
-            Ok(Vector::Column(
-                node.field.cast_arrow_array(array, safety.is_safe())?,
-            ))
+            // The operand's Field keeps its extension identity in the cast:
+            // an ASCII column meets a text literal as its trimmed text.
+            let source = inner.field.clone().into_arrow_ref()?;
+            Ok(Vector::Column(cast_field_array(
+                &node.field,
+                Some(source.metadata()),
+                array,
+                safety.is_safe(),
+            )?))
         }
         // Arithmetic, the string functions, path steps, and the constructors
         // have no kernel available here, so they take the row evaluator. It is

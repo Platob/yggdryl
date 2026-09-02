@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::Field;
 
 mod arrow;
+mod ascii;
 mod comparison;
 mod compatibility;
 mod default;
@@ -23,7 +24,10 @@ mod scalar;
 pub(crate) mod serde;
 mod temporal;
 
-pub(crate) use arrow::{arrow_dtype_to_ffi, is_variant_storage};
+pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
+#[cfg(feature = "arrow")]
+pub(crate) use ascii::ascii_padded;
+pub(crate) use ascii::{ASCII_EXTENSION_NAME, ascii_bytes, ascii_text};
 
 pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{
@@ -32,9 +36,7 @@ pub(crate) use default::{
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::GeospatialType;
-pub(crate) use geospatial::{
-    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
-};
+pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 pub(crate) use merge::Recode;
 pub use merge::Widening;
 pub use nested::{DictionaryType, FieldKey, Fields, MapType, RunEndEncodedType, UnionFields};
@@ -109,6 +111,12 @@ pub enum DataType {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
+    /// ASCII text padded with trailing NUL to 4 bytes.
+    Ascii32,
+    /// ASCII text padded with trailing NUL to 8 bytes.
+    Ascii64,
+    /// ASCII text padded with trailing NUL to 16 bytes.
+    Ascii128,
     /// Variable list with 32-bit offsets.
     List(Arc<Field>),
     /// Variable list-view with 32-bit offsets.

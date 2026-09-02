@@ -944,6 +944,19 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 narrowed => Ok(narrowed),
             }
         }
+        DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => {
+            // The row tier enforces the width rule the cast plan enforces on
+            // columns, so the two tiers refuse the same values.
+            let Some(bytes) = crate::datatype::ascii_bytes(value) else {
+                return refuse("ASCII text");
+            };
+            let width = target.ascii_width().unwrap_or(0);
+            match crate::datatype::ascii_text(width, bytes) {
+                Ok(text) => Ok(Scalar::from(text)),
+                Err(_) if safety.is_safe() => Ok(Scalar::Null),
+                Err(error) => Err(error),
+            }
+        }
         other if is_text(other) => {
             if let Some(text) = value.as_str() {
                 return Ok(Scalar::String(SmolStr::new(text)));

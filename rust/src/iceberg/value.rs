@@ -71,6 +71,9 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii32
+            | DataType::Ascii64
+            | DataType::Ascii128
             | DataType::Binary
             | DataType::LargeBinary
             | DataType::BinaryView
@@ -108,9 +111,14 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) => {
             OfficialDatum::timestamptz_nanos(count(value)?)
         }
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            OfficialDatum::string(value.as_str()?)
-        }
+        // A bound over an ASCII column is a string bound: the value is the
+        // trimmed text.
+        DataType::Utf8
+        | DataType::LargeUtf8
+        | DataType::Utf8View
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => OfficialDatum::string(value.as_str()?),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialDatum::binary(value.as_bytes()?.iter().copied())
         }
@@ -163,7 +171,12 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             Some(Scalar::F64(crate::Float64::from_f64((*value).into_inner())))
         }
         (
-            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+            DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Utf8View
+            | DataType::Ascii32
+            | DataType::Ascii64
+            | DataType::Ascii128,
             OfficialPrimitiveLiteral::String(value),
         ) => Some(Scalar::from(value.as_str())),
         (
@@ -204,7 +217,12 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) if bytes.len() == 8 => {
             OfficialPrimitiveType::TimestamptzNs
         }
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => OfficialPrimitiveType::String,
+        DataType::Utf8
+        | DataType::LargeUtf8
+        | DataType::Utf8View
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => OfficialPrimitiveType::String,
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialPrimitiveType::Binary
         }

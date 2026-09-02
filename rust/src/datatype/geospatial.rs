@@ -174,18 +174,6 @@ fn geoarrow_metadata_error(reason: String) -> Error {
     }
 }
 
-/// The Arrow extension name and metadata one of the three extension-typed
-/// variants projects, `None` for every other datatype.
-pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, String)> {
-    match dtype {
-        DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
-        DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
-            Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
-        }
-        _ => None,
-    }
-}
-
 /// Fill or validate the CRS: `None` is the shared default, empty is refused.
 fn validated_crs(crs: Option<&str>) -> Result<SmolStr> {
     match crs {

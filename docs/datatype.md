@@ -595,7 +595,7 @@ and bounds by the one WKB reader documented there.
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-`id` names the variant and `kind` names the family it belongs to - 44 ids across 16 kinds. Both are
+`id` names the variant and `kind` names the family it belongs to - 48 ids across 16 kinds. Both are
 parameter-free, so they compare and hash without touching nested state, which is what makes them the
 cheap way to branch. Dispatch on the kind when the behavior is uniform across a family, on the id
 when it is not; `name()` is the Rust spelling of `id().as_str()`. The two vocabularies and the

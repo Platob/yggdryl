@@ -25,9 +25,10 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
+use crate::field::cast::cast_field_array;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::{IOBase, IOMedia, Listing};
-use crate::{Error, Field, Result, Url};
+use crate::{ArrowCast, DataType, Error, Field, Result, Url};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
@@ -85,25 +86,19 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
 }
 
 /// Build a constant column holding `value` for every row of a batch.
-fn constant_column(value: &str, rows: usize, target: Option<&ArrowDataType>) -> Result<ArrayRef> {
+///
+/// The directory name is text, and a declared column turns it into its own
+/// type through the field cast: an ASCII width pads it, a date parses it.
+/// `null` is both the spelling for absence and a perfectly good four-letter
+/// value, which a path cannot settle by itself, so the declared nullability
+/// decides: a nullable column reads what it cannot convert as absent, a
+/// required one refuses it.
+fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<ArrayRef> {
     let text: ArrayRef = Arc::new(StringArray::from(vec![value; rows]));
-    match target {
-        // The directory name is text, so anything else is one cast away.
-        Some(datatype) if datatype != &ArrowDataType::Utf8 => {
-            arrow_cast::cast(&text, datatype).map_err(Error::Arrow)
-        }
-        _ => Ok(text),
+    match child {
+        Some(child) => Ok(child.cast_arrow_array(text, child.is_nullable())?),
+        None => Ok(text),
     }
-}
-
-/// Return the Arrow type a schema declares for a partition column, if any.
-fn declared_type(field: Option<&Field>, column: &str) -> Option<ArrowDataType> {
-    let child = field?.get_field_by_path(column)?;
-    child
-        .clone()
-        .into_arrow()
-        .ok()
-        .map(|arrow| arrow.data_type().clone())
 }
 
 /// Append the partition columns a path spells out to one batch.
@@ -154,27 +149,23 @@ pub fn with_partitions(
         if batch.schema().index_of(column).is_ok() {
             continue;
         }
-        let target = declared_type(field, column);
-        let array = constant_column(value, rows, target.as_ref())?;
-        // A partition value is spelled in the path, so it is present unless the
-        // schema says the column may be absent. That is the one case a path
-        // cannot settle by itself: `null` is both the spelling for absence and a
-        // perfectly good four-letter value, so the declared column decides which
-        // the cast turns it into.
-        let nullable = field
-            .and_then(|field| field.get_field_by_path(column))
-            .is_some_and(Field::is_nullable);
-        // The restored column says it came from the path. That is the one fact
-        // the batch would otherwise lose, and it is what lets a read of a lake
-        // be written back out with the same layout.
-        fields.push(Arc::new(
-            ArrowField::new(column, array.data_type().clone(), nullable).with_metadata(
-                HashMap::from([(
-                    crate::metadata::FIELD_PARTITION_KEY.to_owned(),
-                    "true".to_owned(),
-                )]),
-            ),
-        ));
+        let child = field.and_then(|field| field.get_field_by_path(column));
+        let array = constant_column(value, rows, child)?;
+        // The restored column keeps its declaration - nullability and any
+        // extension identity - and says it came from the path. That is the one
+        // fact the batch would otherwise lose, and it is what lets a read of a
+        // lake be written back out with the same layout.
+        let restored = match child {
+            Some(child) => child.clone().into_arrow()?,
+            // A path value is spelled out, so it is never null.
+            None => ArrowField::new(column, ArrowDataType::Utf8, false),
+        };
+        let mut metadata = restored.metadata().clone();
+        metadata.insert(
+            crate::metadata::FIELD_PARTITION_KEY.to_owned(),
+            "true".to_owned(),
+        );
+        fields.push(Arc::new(restored.with_metadata(metadata)));
         columns.push(array);
     }
 
@@ -467,8 +458,24 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 ),
             });
         };
-        let formatter =
-            ArrayFormatter::try_new(batch.column(index).as_ref(), &format).map_err(Error::Arrow)?;
+        // An ASCII width is stored as fixed bytes, which the formatter would
+        // spell as hex; the directory carries the trimmed text the value is.
+        let schema = batch.schema();
+        let column = if Field::from_arrow(schema.field(index))?
+            .dtype()
+            .ascii_width()
+            .is_some()
+        {
+            cast_field_array(
+                &DataType::Utf8.nullable_field(column.as_str()),
+                Some(schema.field(index).metadata()),
+                Arc::clone(batch.column(index)),
+                false,
+            )?
+        } else {
+            Arc::clone(batch.column(index))
+        };
+        let formatter = ArrayFormatter::try_new(column.as_ref(), &format).map_err(Error::Arrow)?;
         for (row, values) in rendered.iter_mut().enumerate() {
             values.push(formatter.value(row).to_string());
         }

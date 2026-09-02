@@ -1,5 +1,7 @@
 #[path = "field/arrow.rs"]
 mod arrow;
+#[path = "field/ascii.rs"]
+mod ascii;
 #[path = "field/binary.rs"]
 mod binary;
 #[path = "field/comparison.rs"]

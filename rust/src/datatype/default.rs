@@ -221,6 +221,9 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii32
+            | DataType::Ascii64
+            | DataType::Ascii128
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -300,7 +303,11 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
                 .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
             plan_bytes(width, path)
         }
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => scalar(DefaultPlan::String, false),
+        // An ASCII width defaults to the empty string; storage pads it to
+        // all-NUL.
+        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => {
+            scalar(DefaultPlan::String, false)
+        }
         D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }

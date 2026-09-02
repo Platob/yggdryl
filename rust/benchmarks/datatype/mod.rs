@@ -1,4 +1,5 @@
 pub(crate) mod arrow;
+pub(crate) mod ascii;
 pub(crate) mod default;
 pub(crate) mod floating;
 pub(crate) mod geospatial;

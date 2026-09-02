@@ -47,6 +47,7 @@ macro_rules! field_protocol_accessors {
 }
 
 mod arrow;
+pub mod ascii;
 pub mod binary;
 #[cfg(feature = "arrow")]
 pub mod cast;
@@ -132,6 +133,12 @@ pub type Utf8Field = TypedField<binary::Utf8>;
 pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
 /// A UTF-8-view-typed field.
 pub type Utf8ViewField = TypedField<binary::Utf8View>;
+/// An Ascii32-typed field.
+pub type Ascii32Field = TypedField<ascii::Ascii32>;
+/// An Ascii64-typed field.
+pub type Ascii64Field = TypedField<ascii::Ascii64>;
+/// An Ascii128-typed field.
+pub type Ascii128Field = TypedField<ascii::Ascii128>;
 /// A list-typed field.
 pub type ListField = TypedField<nested::List>;
 /// A list-view-typed field.

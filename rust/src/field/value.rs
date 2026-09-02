@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::datatype::value_is_logically_null;
+use crate::datatype::{ascii_bytes, ascii_text, value_is_logically_null};
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
@@ -316,6 +316,19 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Utf8
         | D::LargeUtf8
         | D::Utf8View => Ok((value.clone(), false)),
+        // The canonical ASCII spelling is the trimmed string; bytes and a
+        // string carrying trailing NULs are rewritten here.
+        D::Ascii32 | D::Ascii64 | D::Ascii128 => match (dtype.ascii_width(), ascii_bytes(value)) {
+            (Some(width), Some(bytes)) => {
+                let text = ascii_text(width, bytes)?;
+                if matches!(value, Scalar::String(current) if current == text) {
+                    Ok((value.clone(), false))
+                } else {
+                    Ok((Scalar::from(text), true))
+                }
+            }
+            _ => canonicalization_failure(dtype),
+        },
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -808,6 +821,13 @@ fn validate_dtype_value(
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
             require(matches!(value, Scalar::String(_)), dtype.name(), value)
         }
+        // Text or bytes, both under the one ASCII rule naming the width.
+        D::Ascii32 | D::Ascii64 | D::Ascii128 => match (dtype.ascii_width(), ascii_bytes(value)) {
+            (Some(width), Some(bytes)) => {
+                ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure)
+            }
+            _ => Err(expected(dtype.name(), value)),
+        },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
@@ -1094,6 +1114,14 @@ fn validate_decimal256(
         )));
     }
     Ok(())
+}
+
+/// The reason an ASCII refusal carries; the walk re-roots its path.
+fn ascii_failure(error: Error) -> ValidationFailure {
+    ValidationFailure::new(match error {
+        Error::InvalidRecord { reason, .. } => reason,
+        other => format_smolstr!("{other}"),
+    })
 }
 
 /// Report a value whose kind does not match what the schema declared.

@@ -15,7 +15,8 @@ criterion_group!(
     benchmarks::nested::value_benchmarks,
     benchmarks::default::default_and_compatibility_benchmarks,
     benchmarks::arrow::arrow_benchmarks,
-    benchmarks::geospatial::geospatial_benchmarks
+    benchmarks::geospatial::geospatial_benchmarks,
+    benchmarks::ascii::ascii_benchmarks
 );
 #[cfg(not(windows))]
 criterion_main!(datatype);

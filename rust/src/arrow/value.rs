@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use crate::datatype::{ascii_bytes, ascii_padded, ascii_text};
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
@@ -22,7 +23,7 @@ use arrow_array::{
     make_array, new_empty_array,
 };
 use arrow_buffer::{
-    IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
+    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
 };
 use arrow_schema::DataType as ArrowDataType;
 use half::f16;
@@ -164,6 +165,9 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 *width,
             )?)
         }
+        DataType::Ascii32 => ascii_array(4, values)?,
+        DataType::Ascii64 => ascii_array(8, values)?,
+        DataType::Ascii128 => ascii_array(16, values)?,
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
                 .iter()
@@ -381,6 +385,11 @@ pub(crate) fn value_from_array(
                 .value(index)
                 .to_vec(),
         ),
+        // Storage reads back trimmed: the padding is the layout, not the text.
+        DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::from(ascii_text(fixed.value_length(), fixed.value(index))?)
+        }
         DataType::LargeBinary => {
             Scalar::from(downcast::<LargeBinaryArray>(array)?.value(index).to_vec())
         }
@@ -763,7 +772,8 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            | DataType::Decimal32 { .. }
+            | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -774,11 +784,13 @@ impl MaterializationBudget {
             | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
+            | DataType::Ascii64
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
+            | DataType::Ascii128
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
             }
@@ -859,7 +871,8 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            | DataType::Decimal32 { .. }
+            | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -870,11 +883,13 @@ impl MaterializationBudget {
             | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
+            | DataType::Ascii64
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
+            | DataType::Ascii128
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
@@ -1791,6 +1806,34 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
         Scalar::Bytes(bytes) => Ok(Some(bytes)),
         _ => Err(invalid_value_kind("bytes", value)),
     }
+}
+
+/// Build the padded fixed-width storage of an ASCII column.
+///
+/// Every present value passes the one ASCII rule for `width` and is padded
+/// with trailing NUL into its slot, so the array is exactly what the field
+/// reads back trimmed.
+fn ascii_array(width: i32, values: &[&Scalar]) -> Result<ArrayRef> {
+    let slot =
+        usize::try_from(width).map_err(|_| invalid_value("an ASCII width within usize", width))?;
+    let mut bytes = vec![0_u8; values.len() * slot];
+    let mut validity = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        match ascii_bytes(value) {
+            Some(raw) => {
+                let text = ascii_text(width, raw)?;
+                ascii_padded(&mut bytes[index * slot..][..slot], text);
+                validity.push(true);
+            }
+            None if matches!(value, Scalar::Null) => validity.push(false),
+            None => return Err(invalid_value_kind("ASCII text", value)),
+        }
+    }
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        width,
+        Buffer::from(bytes),
+        nulls(validity),
+    )?))
 }
 
 /// Read the WKB a geospatial column stores, in either value spelling.

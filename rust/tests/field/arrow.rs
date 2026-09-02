@@ -171,6 +171,38 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
 }
 
 #[test]
+fn ascii_ffi_schemas_carry_the_extension_identity() {
+    let currency = Field::from_parts("ccy", DataType::Ascii32, false, [("owner", "core")]).unwrap();
+
+    let schema = currency.clone().into_arrow_ffi().unwrap();
+    assert_eq!(schema.format(), "w:4");
+    let metadata = schema.metadata().unwrap();
+    assert_eq!(
+        metadata.get("ARROW:extension:name"),
+        Some(&"yggdryl.ascii".to_owned())
+    );
+    assert_eq!(
+        metadata.get("ARROW:extension:metadata"),
+        Some(&String::new())
+    );
+    assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
+
+    // A round trip through the C schema restores the exact field.
+    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    assert_eq!(imported, currency);
+
+    // A bare datatype carries the identity too.
+    let schema = DataType::Ascii128.into_arrow_ffi().unwrap();
+    assert_eq!(schema.format(), "w:16");
+    assert_eq!(
+        schema.metadata().unwrap().get("ARROW:extension:name"),
+        Some(&"yggdryl.ascii".to_owned())
+    );
+    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    assert_eq!(imported.dtype(), &DataType::Ascii128);
+}
+
+#[test]
 fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() {
     let mut region = Field::new(
         "region",

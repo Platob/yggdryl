@@ -61,6 +61,36 @@ fn restored_columns_take_the_type_the_schema_declares() {
 }
 
 #[test]
+fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
+    let declared = DataType::from_fields([
+        DataType::Int64.required_field("price"),
+        DataType::Ascii32.required_field("ccy"),
+    ])
+    .unwrap()
+    .required_field("row");
+
+    let restored = with_partitions(
+        &prices(),
+        &[("ccy".to_owned(), "USD".to_owned())],
+        Some(&declared),
+    )
+    .unwrap();
+
+    // The path spells the trimmed text; the column holds the padded storage
+    // and keeps the extension identity the declaration carries.
+    let ccy = restored
+        .column_by_name("ccy")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+        .expect("the ASCII storage, as the schema declares");
+    assert_eq!(ccy.value(0), b"USD\0");
+    let field = Field::from_arrow(restored.schema().field(1)).unwrap();
+    assert_eq!(field.dtype(), &DataType::Ascii32);
+    assert!(field.is_partition());
+}
+
+#[test]
 fn a_restored_column_is_text_when_no_schema_says_otherwise() {
     let restored = with_partitions(&prices(), &partitions(), None).unwrap();
 
@@ -579,6 +609,64 @@ mod lake {
                 (2025, "02".to_owned(), 10),
                 (2025, "02".to_owned(), 20),
             ]
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
+        let (root, mut handle) = lake("ascii");
+        let field = DataType::from_fields([
+            DataType::Ascii32.required_field("ccy"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap()
+        .required_field("row")
+        .with_partition_fields(&["ccy"])
+        .unwrap();
+        let incoming = RecordBatch::try_from_iter([
+            (
+                "ccy",
+                std::sync::Arc::new(StringArray::from(vec!["USD", "EUR", "USD"]))
+                    as arrow_array::ArrayRef,
+            ),
+            (
+                "qty",
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3])),
+            ),
+        ])
+        .unwrap();
+
+        handle
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                &options(Some(field.clone())),
+            )
+            .unwrap();
+
+        // The directory carries the trimmed text, never the padded storage's
+        // hex, and the read restores the padded storage from it.
+        assert!(root.join("ccy=USD").is_dir());
+        assert!(root.join("ccy=EUR").is_dir());
+        let mut found = Vec::new();
+        for batch in handle.read_arrow_reader(&options(Some(field))).unwrap() {
+            let batch = batch.unwrap();
+            let ccy = batch
+                .column_by_name("ccy")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                found.push(ccy.value(row).to_vec());
+            }
+        }
+        found.sort_unstable();
+        assert_eq!(
+            found,
+            vec![b"EUR\0".to_vec(), b"USD\0".to_vec(), b"USD\0".to_vec()]
         );
 
         let _ = std::fs::remove_dir_all(&root);

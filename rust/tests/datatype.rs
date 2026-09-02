@@ -1,5 +1,7 @@
 #[path = "datatype/arrow.rs"]
 mod arrow;
+#[path = "datatype/ascii.rs"]
+mod ascii;
 #[path = "datatype/compatibility.rs"]
 mod compatibility;
 #[path = "datatype/default.rs"]

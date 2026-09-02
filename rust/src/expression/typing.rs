@@ -29,7 +29,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -434,11 +434,12 @@ pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
 }
 
 /// Return whether a datatype holds text.
+///
+/// The kind is the one source of truth, so an ASCII width is text here as
+/// everywhere else: its row values are the trimmed string.
 pub(crate) fn is_text(dtype: &DataType) -> bool {
-    matches!(
-        unwrap_dictionary(dtype),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Null
-    )
+    let dtype = unwrap_dictionary(dtype);
+    matches!(dtype, DataType::Null) || dtype.kind() == DataTypeKind::String
 }
 
 /// Return whether a datatype holds bytes.

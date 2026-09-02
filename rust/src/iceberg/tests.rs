@@ -852,6 +852,17 @@ mod types {
     }
 
     #[test]
+    fn an_ascii_width_is_an_iceberg_string() {
+        // The padding is storage; every Iceberg reader sees the text.
+        for dtype in [DataType::Ascii32, DataType::Ascii64, DataType::Ascii128] {
+            assert_eq!(
+                PrimitiveType::from_dtype(&dtype).unwrap(),
+                PrimitiveType::String
+            );
+        }
+    }
+
+    #[test]
     fn a_malformed_type_name_reports_what_was_expected() {
         let message = PrimitiveType::from_str("decimal(18)")
             .unwrap_err()

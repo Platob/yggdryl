@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::datatype::{ascii_padded, ascii_text};
 use crate::field::{RecognizedExtension, recognized_arrow_extension};
 use crate::generic::wkb;
 use crate::{DataType, Field, Scalar, UnionMode};
@@ -96,8 +97,7 @@ impl ArrowCast for DataType {
 
 impl ArrowCast for Field {
     fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<ArrayRef> {
-        self.validate_bounded()?;
-        cast_field_array(self, array, safe)
+        cast_field_array(self, None, array, safe)
     }
 
     fn cast_arrow_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch> {
@@ -131,7 +131,7 @@ pub(crate) fn cast_record_batch(
 
     let row_count = batch.num_rows();
     let source = struct_array_from_batch(batch);
-    let cast = cast_field_array(target, source, safe)?;
+    let cast = cast_field_array(target, None, source, safe)?;
     let columns = cast
         .as_any()
         .downcast_ref::<StructArray>()
@@ -189,6 +189,13 @@ enum ArrayCastKind {
     GeospatialIngest,
     /// A recognized geospatial source rendering as WKT text.
     GeospatialWkt,
+    /// Values entering an ASCII width: every exposed value is validated
+    /// under the width's rule and padded into the fixed storage. A fixed
+    /// binary of the target width is the same array once validated; any
+    /// other source first renders as Utf8 through Arrow's kernel.
+    AsciiIngest,
+    /// A recognized ASCII source rendering as trimmed text.
+    AsciiText,
     DeferredUnsupported {
         reason: String,
     },
@@ -246,11 +253,6 @@ impl ArrayCastPlan {
         )
     }
 
-    fn new(field: &Field, source_type: &ArrowDataType, safe: bool) -> Result<Self> {
-        field.validate_bounded()?;
-        Self::new_nested_validated(field, source_type, safe, NullPolicy::Field)
-    }
-
     fn new_nested_validated(
         field: &Field,
         source_type: &ArrowDataType,
@@ -304,12 +306,18 @@ impl ArrayCastPlan {
         };
         check_extension_source(field, source_extension.as_ref())?;
         let expected = field.clone().into_arrow_ref()?.data_type().clone();
-        // A geospatial target validates WKB on the way in, so an exact Binary
-        // source must still take the planned path rather than the shortcut.
-        let ingest_validated = matches!(
-            field.dtype(),
-            DataType::Geometry(_) | DataType::Geography(_)
-        );
+        // A geospatial target validates WKB on the way in and an ASCII
+        // target validates text, so an exact storage source must still take
+        // the planned path - unless it is a recognized ASCII source of the
+        // same width, already validated when it was written.
+        let ingest_validated = match field.dtype() {
+            DataType::Geometry(_) | DataType::Geography(_) => true,
+            DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Ascii(source)) if source == field.dtype()
+            ),
+            _ => false,
+        };
         let kind = if source_type == &expected
             && !is_reconcilable_nested(field.dtype())
             && !ingest_validated
@@ -348,11 +356,12 @@ impl ArrayCastPlan {
     ) -> Result<ArrayCastKind> {
         let dtype = field.dtype();
         let kind = match (dtype, source_type) {
-            // The three extension-typed variants follow declared rules, never
-            // the positional kernel: WKB is validated entering a geospatial
-            // column, WKT needs a parser this workspace deliberately lacks,
-            // and a variant's binary encoding lands with the Iceberg v3
-            // layer, so only the identity works until then.
+            // The extension-typed variants follow declared rules, never the
+            // positional kernel: WKB is validated entering a geospatial
+            // column, text is validated entering an ASCII width, WKT needs a
+            // parser this workspace deliberately lacks, and a variant's
+            // binary encoding lands with the Iceberg v3 layer, so only the
+            // identity works until then.
             (DataType::Geometry(_) | DataType::Geography(_), source) => match source {
                 ArrowDataType::Binary
                 | ArrowDataType::LargeBinary
@@ -393,10 +402,35 @@ impl ArrayCastPlan {
                     });
                 }
             }
+            // An ASCII width takes fixed binary directly and everything the
+            // kernel renders as text through one Utf8 temporary; the width
+            // rule is checked per value either way.
+            (DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128, source) => {
+                if matches!(source, ArrowDataType::FixedSizeBinary(_))
+                    || can_cast_types(source, &ArrowDataType::Utf8)
+                {
+                    ArrayCastKind::AsciiIngest
+                } else {
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "expected a fixed binary or a column Arrow renders as utf8 to cast \
+                             into {}, got {source:?}",
+                            dtype.name()
+                        ),
+                    });
+                }
+            }
             (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, ArrowDataType::Binary)
                 if matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
                 ArrayCastKind::GeospatialWkt
+            }
+            (
+                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+                ArrowDataType::FixedSizeBinary(_),
+            ) if matches!(source_extension, Some(RecognizedExtension::Ascii(_))) => {
+                ArrayCastKind::AsciiText
             }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
@@ -688,6 +722,17 @@ impl ArrayCastPlan {
             }
             ArrayCastKind::GeospatialWkt => {
                 render_wkt_array(&array, &self.expected, &self.field, exposure, budget)?
+            }
+            ArrayCastKind::AsciiIngest => ingest_ascii_array(
+                &array,
+                &self.expected,
+                self.safe,
+                &self.field,
+                exposure,
+                budget,
+            )?,
+            ArrayCastKind::AsciiText => {
+                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             ArrayCastKind::DeferredUnsupported { reason } => {
                 let source_type = DataType::from_arrow(array.data_type())?;
@@ -1045,8 +1090,28 @@ impl ArrayCastPlan {
     }
 }
 
-fn cast_field_array(field: &Field, array: ArrayRef, safe: bool) -> Result<ArrayRef> {
-    let plan = ArrayCastPlan::new(field, array.data_type(), safe)?;
+/// Casts an array into the shape a field declares.
+///
+/// `source_metadata` is the Arrow metadata of the field the array came from,
+/// when the caller has one: it carries the extension identity, so a
+/// recognized ASCII width or geospatial column follows the declared rules
+/// exactly as a batch column does. A bare array casts as its storage.
+pub(crate) fn cast_field_array(
+    field: &Field,
+    source_metadata: Option<&HashMap<String, String>>,
+    array: ArrayRef,
+    safe: bool,
+) -> Result<ArrayRef> {
+    field.validate_bounded()?;
+    let plan = ArrayCastPlan::new_validated_with(
+        field,
+        array.data_type(),
+        source_metadata,
+        safe,
+        NullPolicy::Field,
+        StructPolicy::Normal,
+        true,
+    )?;
     let mut budget = MaterializationBudget::default();
     plan.cast(array, &mut budget)
 }
@@ -1058,13 +1123,15 @@ fn cast_field_array(field: &Field, array: ArrayRef, safe: bool) -> Result<ArrayR
 /// edge-interpretation change by name: both are value transformations, not
 /// schema casts. A matching geospatial pair, and every plain-storage target
 /// (bytes stay bytes, text renders as WKT), passes through to the planned
-/// arms.
+/// arms. An ASCII source is validated text and crosses to every target:
+/// another width re-validates, text trims, bytes keep the padding.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {
         return Ok(());
     };
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
+        (_, RecognizedExtension::Ascii(_)) => Ok(()),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(
@@ -1217,6 +1284,150 @@ fn wkt_for_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<String> {
             "field {:?} row {index}: expected WKB bytes to render as WKT, got {error}",
             field.name(),
         ))
+    })
+}
+
+/// Validates every exposed, non-null value entering an ASCII width and pads
+/// it into the target's fixed storage.
+///
+/// A fixed binary of the target width is the same array once validated,
+/// like WKB entering a geospatial column; another fixed width re-pads each
+/// trimmed value; anything else first renders as Utf8 through Arrow's
+/// kernel, so a dictionary or a view layout costs one temporary text array
+/// on top of the fixed-width target.
+fn ingest_ascii_array(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let ArrowDataType::FixedSizeBinary(width) = *expected else {
+        return Err(internal_target_error("ascii"));
+    };
+    if let ArrowDataType::FixedSizeBinary(source_width) = array.data_type() {
+        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        if *source_width == width {
+            for index in 0..source.len() {
+                if is_exposed(exposure, index) && source.is_valid(index) {
+                    ascii_cell(field, index, width, source.value(index))?;
+                }
+            }
+            return Ok(Arc::clone(array));
+        }
+        return padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
+            source.is_valid(index).then(|| source.value(index))
+        });
+    }
+    let text = if array.data_type() == &ArrowDataType::Utf8 {
+        Arc::clone(array)
+    } else {
+        // The temporary is nullable text: the kernel's masked path fills
+        // nothing, and the ASCII target's own null policy runs after padding.
+        arrow_cast_exposed(
+            array,
+            &ArrowDataType::Utf8,
+            safe,
+            exposure,
+            &Field::new(field.name(), DataType::Utf8, true),
+            budget,
+        )?
+    };
+    let source = downcast::<StringArray>(text.as_ref())?;
+    padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
+        source
+            .is_valid(index)
+            .then(|| source.value(index).as_bytes())
+    })
+}
+
+/// Builds the fixed storage of an ASCII width from one cell per row.
+///
+/// Unexposed rows are null: an ancestor hides them, so their bytes are
+/// neither validated nor copied.
+fn padded_ascii_array<'a>(
+    field: &Field,
+    width: i32,
+    rows: usize,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+    cell: impl Fn(usize) -> Option<&'a [u8]>,
+) -> Result<ArrayRef> {
+    let slot = usize::try_from(width).map_err(|_| internal_target_error("ascii"))?;
+    // The reservation bounds `rows * slot`, so the product cannot overflow.
+    budget.add_array(field.dtype(), rows)?;
+    let mut bytes = vec![0_u8; rows * slot];
+    let mut validity = BooleanBufferBuilder::new(rows);
+    for index in 0..rows {
+        let value = cell(index).filter(|_| is_exposed(exposure, index));
+        if let Some(raw) = value {
+            let text = ascii_cell(field, index, width, raw)?;
+            ascii_padded(&mut bytes[index * slot..][..slot], text);
+        }
+        validity.append(value.is_some());
+    }
+    let nulls = arrow_buffer::NullBuffer::new(validity.finish());
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        width,
+        arrow_buffer::Buffer::from(bytes),
+        (nulls.null_count() != 0).then_some(nulls),
+    )?))
+}
+
+/// Renders a recognized ASCII column as trimmed text.
+///
+/// Storage pads with NUL and every string rendering trims, so the text
+/// payload is bounded by the fixed payload: the reservation charges the
+/// target rows plus that bound, and a view target its one largest value.
+fn render_ascii_text(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+    let width = source.value_length();
+    let slot = usize::try_from(width).map_err(|_| internal_target_error("ascii text"))?;
+    budget.add_array(field.dtype(), source.len())?;
+    budget.add_bytes(source.len().saturating_mul(slot))?;
+    if matches!(expected, ArrowDataType::Utf8View) {
+        budget.add_bytes(slot)?;
+    }
+    reserve_vec_bytes::<Option<&str>>(budget, source.len())?;
+    let mut rendered = Vec::new();
+    rendered.try_reserve_exact(source.len()).map_err(|error| {
+        Error::IncompatibleSchema(format!("ASCII text output allocation failed: {error}"))
+    })?;
+    for index in 0..source.len() {
+        rendered.push(if is_exposed(exposure, index) && source.is_valid(index) {
+            Some(ascii_cell(field, index, width, source.value(index))?)
+        } else {
+            None
+        });
+    }
+    Ok(match expected {
+        ArrowDataType::Utf8 => Arc::new(rendered.into_iter().collect::<StringArray>()) as ArrayRef,
+        ArrowDataType::LargeUtf8 => {
+            Arc::new(rendered.into_iter().collect::<LargeStringArray>()) as ArrayRef
+        }
+        ArrowDataType::Utf8View => {
+            Arc::new(rendered.into_iter().collect::<StringViewArray>()) as ArrayRef
+        }
+        _ => return Err(internal_target_error("ascii text")),
+    })
+}
+
+/// Validates one cell under an ASCII width, naming the field and the row
+/// beside the width the rule itself names.
+fn ascii_cell<'a>(field: &Field, index: usize, width: i32, bytes: &'a [u8]) -> Result<&'a str> {
+    ascii_text(width, bytes).map_err(|error| {
+        let reason = match error {
+            crate::Error::InvalidRecord { reason, .. } => reason.to_string(),
+            other => other.to_string(),
+        };
+        Error::IncompatibleSchema(format!("field {:?} row {index}: {reason}", field.name()))
     })
 }
 
@@ -2873,7 +3084,10 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
         DataType::Binary => downcast::<BinaryArray>(array)?.value(index).len(),
         DataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
         DataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
-        DataType::FixedSizeBinary(_) => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
+        DataType::FixedSizeBinary(_)
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
         DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
         DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
@@ -4198,7 +4412,10 @@ fn byte_array_storage_ptr_eq(
         DataType::LargeBinary => shared!(LargeBinaryArray),
         DataType::Utf8 => shared!(StringArray),
         DataType::LargeUtf8 => shared!(LargeStringArray),
-        DataType::FixedSizeBinary(_) => {
+        DataType::FixedSizeBinary(_)
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;
             byte_slices_ptr_eq(left.value_data(), right.value_data())

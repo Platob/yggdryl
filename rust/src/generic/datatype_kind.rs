@@ -30,7 +30,7 @@ pub enum DataTypeKind {
     Temporal,
     /// Byte strings in variable, fixed, large, and view layouts.
     Binary,
-    /// UTF-8 text in variable, large, and view layouts.
+    /// UTF-8 text in variable, large, and view layouts, and fixed-width ASCII.
     String,
     /// Ordered sequences of one element field.
     List,

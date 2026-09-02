@@ -1869,6 +1869,37 @@ mod records {
     }
 
     #[test]
+    fn an_ascii_column_is_an_avro_string() {
+        let root = DataType::from_fields([
+            DataType::Ascii32.required_field("ccy"),
+            DataType::Ascii128.nullable_field("code"),
+        ])
+        .unwrap()
+        .required_field("row");
+        let schema = crate::avro::arrow::schema_json_from_field(&root).unwrap();
+        let fields = schema
+            .get_key_str("fields")
+            .and_then(crate::Scalar::as_sequence)
+            .unwrap();
+        assert_eq!(
+            fields[0]
+                .get_key_str("type")
+                .and_then(crate::Scalar::as_str),
+            Some("string")
+        );
+        let optional = fields[1]
+            .get_key_str("type")
+            .and_then(crate::Scalar::as_sequence)
+            .unwrap();
+        assert!(
+            optional
+                .iter()
+                .any(|branch| branch.as_str() == Some("string")),
+            "{optional:?}"
+        );
+    }
+
+    #[test]
     fn an_open_cache_tracks_the_final_avro_field_after_casting() {
         let stored = DataType::from_fields([
             DataType::Int64.required_field("id"),

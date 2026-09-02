@@ -15,8 +15,14 @@
 //!    struct takes the *union* of its fields; a list, map, or run-end node
 //!    merges the children it has.
 //! 4. Bytes win. A binary type paired with anything else answers binary,
-//!    because bytes are the container every other encoding fits inside.
-//! 5. Text wins next, over numbers and temporals.
+//!    because bytes are the container every other encoding fits inside. An
+//!    ASCII width beside a fixed binary of the same byte width answers that
+//!    fixed binary, identical storage; any other pairing is variable bytes.
+//! 5. Text wins next, over numbers and temporals. Two ASCII widths meet at
+//!    the wider or the narrower; ASCII beside variable text meets at the
+//!    variable text when widening and at the ASCII width when narrowing;
+//!    text absorbing a non-text side is at least `utf8`, because a number's
+//!    rendering does not fit four bytes.
 //! 6. Numbers meet by width, and temporals by unit.
 //!
 //! Anything left is an honest refusal rather than a lossy guess: a boolean and
@@ -84,9 +90,10 @@ impl DataType {
     /// yields to whatever is defined beside it; two nested layouts of the same
     /// family recurse, a struct taking the *union* of its fields; bytes win
     /// over everything, because every other encoding fits inside them; text
-    /// wins next; and numbers meet by width, temporals by unit. Anything left
-    /// is refused rather than guessed - a boolean and a timestamp have no
-    /// meeting point that is not a re-encoding.
+    /// wins next, ASCII widths meeting by width and absorbing a non-text
+    /// side at no less than `utf8`; and numbers meet by width, temporals by
+    /// unit. Anything left is refused rather than guessed - a boolean and a
+    /// timestamp have no meeting point that is not a re-encoding.
     ///
     /// `upscale` chooses the direction width is resolved in: `true` meets at
     /// the type that holds both, `false` at the tightest type that names both.
@@ -107,6 +114,10 @@ impl DataType {
     /// // Bytes win over text, and text over numbers.
     /// assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
     /// assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    ///
+    /// // ASCII widths are text, so they meet variable text there when widening.
+    /// assert_eq!(DataType::Ascii32.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(DataType::Ascii32.merge_with(&DataType::Ascii64, false)?, DataType::Ascii32);
     /// # Ok(())
     /// # }
     /// ```
@@ -387,7 +398,7 @@ fn merge_scalar(
         return Ok(match text_rank(right) {
             Some(other) => Some(rebuild_text(how.pick((rank, rank), (other, other)))),
             None if recode == Recode::Allowed && is_mergeable_into_text(right) => {
-                Some(rebuild_text(rank))
+                Some(rebuild_text(rank.max(UTF8_RANK)))
             }
             None => None,
         });
@@ -395,7 +406,7 @@ fn merge_scalar(
     if let Some(rank) = text_rank(right) {
         return Ok(
             if recode == Recode::Allowed && is_mergeable_into_text(left) {
-                Some(rebuild_text(rank))
+                Some(rebuild_text(rank.max(UTF8_RANK)))
             } else {
                 None
             },
@@ -431,13 +442,20 @@ const fn binary_rank(dtype: &DataType) -> Option<u8> {
     }
 }
 
+/// The byte width of a fixed-width byte layout: a fixed binary or an ASCII
+/// width, whose storage is the fixed binary of the same width.
+fn fixed_width(dtype: &DataType) -> Option<i32> {
+    match dtype {
+        DataType::FixedSizeBinary(width) => Some(*width),
+        other => other.ascii_width(),
+    }
+}
+
 /// Rebuild a binary layout from a width rank, keeping a shared fixed width.
 fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
-    if let (DataType::FixedSizeBinary(left_width), DataType::FixedSizeBinary(right_width)) =
-        (left, right)
-    {
+    if let (Some(left_width), Some(right_width)) = (fixed_width(left), fixed_width(right)) {
         if left_width == right_width {
-            return DataType::FixedSizeBinary(*left_width);
+            return DataType::FixedSizeBinary(left_width);
         }
     }
     match rank {
@@ -448,12 +466,21 @@ fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
     }
 }
 
+/// The rank of `utf8`: the narrowest text a non-text side re-encodes into.
+const UTF8_RANK: u8 = 3;
+
 /// How wide a text layout is, if it is one.
+///
+/// The ASCII widths rank below every variable layout, so widening beside
+/// variable text answers the variable text and narrowing the ASCII width.
 const fn text_rank(dtype: &DataType) -> Option<u8> {
     match dtype {
-        DataType::Utf8 => Some(0),
-        DataType::Utf8View => Some(1),
-        DataType::LargeUtf8 => Some(2),
+        DataType::Ascii32 => Some(0),
+        DataType::Ascii64 => Some(1),
+        DataType::Ascii128 => Some(2),
+        DataType::Utf8 => Some(UTF8_RANK),
+        DataType::Utf8View => Some(4),
+        DataType::LargeUtf8 => Some(5),
         _ => None,
     }
 }
@@ -461,8 +488,11 @@ const fn text_rank(dtype: &DataType) -> Option<u8> {
 /// Rebuild a text layout from a width rank.
 const fn rebuild_text(rank: u8) -> DataType {
     match rank {
-        1 => DataType::Utf8View,
-        2 => DataType::LargeUtf8,
+        0 => DataType::Ascii32,
+        1 => DataType::Ascii64,
+        2 => DataType::Ascii128,
+        4 => DataType::Utf8View,
+        5 => DataType::LargeUtf8,
         _ => DataType::Utf8,
     }
 }
@@ -668,5 +698,86 @@ fn unmergeable(left: &DataType, right: &DataType) -> Error {
             format_smolstr!("a datatype that merges with {left}"),
             format_smolstr!("{right}"),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Widening;
+    use crate::DataType;
+
+    #[test]
+    fn ascii_widths_meet_text_by_width_in_the_direction_asked_for() {
+        let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
+        let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
+
+        assert_eq!(up(&DataType::Ascii32, &DataType::Utf8), DataType::Utf8);
+        assert_eq!(down(&DataType::Ascii32, &DataType::Utf8), DataType::Ascii32);
+        assert_eq!(
+            up(&DataType::Ascii32, &DataType::Ascii64),
+            DataType::Ascii64
+        );
+        assert_eq!(
+            down(&DataType::Ascii32, &DataType::Ascii64),
+            DataType::Ascii32
+        );
+        assert_eq!(
+            up(&DataType::LargeUtf8, &DataType::Ascii128),
+            DataType::LargeUtf8
+        );
+        assert_eq!(
+            down(&DataType::LargeUtf8, &DataType::Ascii128),
+            DataType::Ascii128
+        );
+        assert_eq!(
+            DataType::Ascii32
+                .merge_exact(&DataType::Utf8, Widening::Up)
+                .unwrap(),
+            DataType::Utf8
+        );
+    }
+
+    #[test]
+    fn ascii_absorbs_a_number_at_no_less_than_utf8_and_only_when_allowed() {
+        assert_eq!(
+            DataType::Ascii32
+                .merge_with(&DataType::Int32, true)
+                .unwrap(),
+            DataType::Utf8
+        );
+        assert_eq!(
+            DataType::Int32
+                .merge_with(&DataType::Ascii32, false)
+                .unwrap(),
+            DataType::Utf8
+        );
+        let refused = DataType::Ascii32
+            .merge_exact(&DataType::Int32, Widening::Up)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("ascii32"), "{refused}");
+        assert!(refused.contains("int32"), "{refused}");
+    }
+
+    #[test]
+    fn bytes_win_over_ascii_and_keep_only_an_identical_fixed_width() {
+        assert_eq!(
+            DataType::Ascii32
+                .merge_with(&DataType::FixedSizeBinary(4), true)
+                .unwrap(),
+            DataType::FixedSizeBinary(4)
+        );
+        assert_eq!(
+            DataType::FixedSizeBinary(8)
+                .merge_with(&DataType::Ascii32, true)
+                .unwrap(),
+            DataType::Binary
+        );
+        assert_eq!(
+            DataType::Ascii32
+                .merge_with(&DataType::Binary, true)
+                .unwrap(),
+            DataType::Binary
+        );
     }
 }

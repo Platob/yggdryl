@@ -126,6 +126,12 @@
 ### yggdryl::datatype  [rust\src\datatype\mod.rs]
   pub enum DataType
 
+### yggdryl::datatype::ascii  [rust\src\datatype\ascii.rs]
+  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("currency", DataType::Ascii32)];
+  pub fn ascii(width: i32) -> Result<Self>
+  pub const fn ascii_width(&self) -> Option<i32>
+  pub fn from_logical_name(name: &str) -> Result<Self>
+
 ### yggdryl::datatype::nested  [rust\src\datatype\nested.rs]
   pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
@@ -205,7 +211,7 @@
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (Ascii32Scalar, Ascii64Scalar, Ascii128Scalar included)
 
 ### yggdryl::datatype::parser  [rust\src\datatype\parser.rs]
   pub const PARSE_RECURSION_LIMIT: usize = 64;
@@ -267,7 +273,7 @@
 
 ### yggdryl::generic::datatype_id  [rust\src\generic\datatype_id.rs]
   pub enum DataTypeId
-  pub const ALL: [Self; 45] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 48] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn kind(self) -> DataTypeKind
@@ -806,6 +812,9 @@
   pub type Utf8Field = TypedField<binary::Utf8>;
   pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
   pub type Utf8ViewField = TypedField<binary::Utf8View>;
+  pub type Ascii32Field = TypedField<ascii::Ascii32>;
+  pub type Ascii64Field = TypedField<ascii::Ascii64>;
+  pub type Ascii128Field = TypedField<ascii::Ascii128>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;
   pub type FixedSizeListField = TypedField<nested::FixedSizeList>;

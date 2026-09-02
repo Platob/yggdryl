@@ -190,3 +190,27 @@ fn codec_errors_keep_the_format_and_byte_position() {
         error => panic!("unexpected error: {error}"),
     }
 }
+
+#[test]
+fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
+    let row = DataType::from_fields([DataType::Ascii32.required_field("ccy")])
+        .unwrap()
+        .required_field("row");
+    let expected = Scalar::from_sequence([Scalar::from("USD")]);
+    assert_eq!(
+        json::from_utf8_with_field(r#"{"ccy":"USD"}"#, &row).unwrap(),
+        expected
+    );
+    // Trailing NUL is the storage padding, trimmed on the way in.
+    assert_eq!(
+        json::from_utf8_with_field(r#"{"ccy":"USD\u0000"}"#, &row).unwrap(),
+        expected
+    );
+    let refused = json::from_utf8_with_field(r#"{"ccy":"EURO!"}"#, &row)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("ASCII text of at most 4 bytes"),
+        "{refused}"
+    );
+}

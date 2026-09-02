@@ -1074,11 +1074,13 @@ mod geospatial {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, BinaryArray, Int64Array, RecordBatch};
+    use arrow_array::cast::AsArray;
+    use arrow_array::{Array, ArrayRef, BinaryArray, Int64Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
     use super::{Parquet, handle};
+    use crate::ArrowCast;
     use crate::io::{Buffer, IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.
@@ -1383,6 +1385,46 @@ mod geospatial {
             field.metadata().get("ARROW:extension:metadata"),
             Some(&r#"{"crs": "OGC:CRS84"}"#.to_owned())
         );
+    }
+
+    #[test]
+    fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
+        let declared = crate::Field::new("ccy", crate::DataType::Ascii32, true);
+        let media = written(
+            "ascii.parquet",
+            vec![declared.clone().into_arrow().unwrap()],
+            vec![Arc::new(
+                arrow_array::FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+                    [Some(b"USD\0".as_slice()), None].into_iter(),
+                    4,
+                )
+                .unwrap(),
+            )],
+        );
+
+        // Our writer embeds the Arrow schema, so the width comes back as
+        // the first-class datatype rather than its fixed-binary storage.
+        let schema = media.read_arrow_schema().unwrap();
+        let field = crate::Field::from_arrow(schema.field_with_name("ccy").unwrap()).unwrap();
+        assert_eq!(field, declared);
+
+        // The stored padding reads back as the trimmed text under a text
+        // target: the identity survived the file, so the cast plan trims.
+        let options = media.record_options().unwrap();
+        let stored = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let text = crate::DataType::from_fields([crate::DataType::Utf8.nullable_field("ccy")])
+            .unwrap()
+            .required_field("row")
+            .cast_arrow_batch(stored, false)
+            .unwrap();
+        let ccy = text.column(0).as_string::<i32>();
+        assert_eq!(ccy.value(0), "USD");
+        assert!(ccy.is_null(1));
     }
 
     #[test]

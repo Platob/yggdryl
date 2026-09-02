@@ -242,7 +242,14 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Int64 | DataType::UInt32 => plain("long"),
         DataType::Float16 | DataType::Float32 => plain("float"),
         DataType::Float64 => plain("double"),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => plain("string"),
+        // An ASCII width is text on the wire; the cast plan trims the
+        // padding before the encoder sees a value.
+        DataType::Utf8
+        | DataType::LargeUtf8
+        | DataType::Utf8View
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii128 => plain("string"),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
@@ -306,7 +313,12 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;
             if !matches!(
                 key.dtype(),
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+                DataType::Utf8
+                    | DataType::LargeUtf8
+                    | DataType::Utf8View
+                    | DataType::Ascii32
+                    | DataType::Ascii64
+                    | DataType::Ascii128
             ) {
                 return Err(unspellable(dtype));
             }

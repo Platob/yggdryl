@@ -700,8 +700,9 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
 
 #[test]
 fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_extensions() {
-    // The three extension-typed variants are first class: Iceberg v3 spells
-    // them itself, so they pass unchanged.
+    // Variant and the geospatial pair are first class in Iceberg v3, so they
+    // pass unchanged; an ASCII width is Iceberg text (see
+    // compatibility_reads_every_width_as_utf8).
     let geometry = Field::new("shape", DataType::geometry(None).unwrap(), true);
     assert_eq!(
         geometry
