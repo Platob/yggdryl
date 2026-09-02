@@ -30,7 +30,10 @@ use crate::datatype::core_data_type_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::io::PyIOBase;
 use crate::media::{PyMimeType, core_mime_type_from_value};
-use crate::record::{batch_reader_from_any, batch_reader_to_pyarrow, core_root_field_from_value};
+use crate::record::{
+    batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
+    core_root_field_from_value,
+};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
@@ -382,8 +385,18 @@ fn iceberg_batch_reader(
 ) -> PyResult<yggdryl::arrow::BatchReader> {
     let mut options = yggdryl::generic::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
         .map_err(value_error)?;
-    if let Some(schema) = table.and_then(|table| table.schema().ok()) {
+    let declared = table.and_then(|table| table.schema().ok());
+    if let Some(schema) = declared {
         options.set_field(schema.clone());
+    }
+    // An empty sequence names no shape, which is why the widest reader refuses
+    // one - but a table that already declared its schema has the shape, and an
+    // empty overwrite is how a caller deletes every row.
+    if declared.is_some()
+        && let Ok(length) = value.len()
+        && length == 0
+    {
+        return batch_reader_from_records(value, &mut options);
     }
     batch_reader_from_any(value, &options)
 }

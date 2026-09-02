@@ -96,6 +96,10 @@ test('a commit takes the rows the record surface takes', (t) => {
   assert.equal(table.scan().intoTable().numRows, 2)
 
   assert.throws(() => table.append(12), /records must be a JavaScript struct/)
+
+  // A table that declared its schema can be emptied by writing no rows.
+  table.overwrite([])
+  assert.equal(table.scan().intoTable().numRows, 0)
 })
 
 test('a create-on-write commit lets the rows name the schema', (t) => {

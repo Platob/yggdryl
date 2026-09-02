@@ -1844,7 +1844,9 @@ export type BatchSource =
   | Uint8Array
   | ArrayBuffer
 /** One row accepted by the record-specific write entry points. */
-export type StructRecord = Record<string, unknown> | StructFieldInstance
+// `& object` is what keeps a primitive out: every JavaScript value carries a
+// `constructor`, so a bare number structurally satisfies StructFieldInstance.
+export type StructRecord = Record<string, unknown> | (StructFieldInstance & object)
 /** One record or a synchronous sequence of records. */
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */

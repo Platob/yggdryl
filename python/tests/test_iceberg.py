@@ -387,6 +387,11 @@ class TestCommits:
         with pytest.raises(TypeError, match="expected rows"):
             table.append(12)
 
+        # A table that declared its schema can be emptied by writing no rows,
+        # which is how JavaScript already spelled the same delete.
+        table.overwrite([])
+        assert table.scan().read_all().num_rows == 0
+
     def test_a_named_write_types_rows_against_the_table_it_lands_in(
         self, tmp_path: pathlib.Path
     ) -> None:
