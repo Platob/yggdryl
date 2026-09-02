@@ -303,8 +303,7 @@ class TestCreatingAndOpening:
     def test_the_metadata_document_is_where_a_reader_looks(
         self, table: Table, tmp_path: pathlib.Path
     ) -> None:
-        assert table.metadata_file_name.startswith("00001-")
-        assert table.metadata_file_name.endswith(".metadata.json")
+        assert table.metadata_file_name == "v1.metadata.json"
         assert table.metadata_location.endswith(f"metadata/{table.metadata_file_name}")
 
         metadata = IOBase(tmp_path / "trades" / "metadata")

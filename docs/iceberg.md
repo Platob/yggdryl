@@ -215,8 +215,8 @@ contracts.
     assert!(names.iter().any(|name| name.ends_with(".parquet")));
     assert!(names.iter().any(|name| name.starts_with("snap-") && name.ends_with(".avro")));
     assert!(names.iter().any(|name| name.ends_with("-m0.avro")));
-    assert!(names.iter().any(|name| name.starts_with("00001-") && name.ends_with(".metadata.json")));
-    assert!(names.iter().any(|name| name.starts_with("00002-") && name.ends_with(".metadata.json")));
+    assert!(names.contains(&"v1.metadata.json".to_owned()));
+    assert!(names.contains(&"v2.metadata.json".to_owned()));
     assert!(names.contains(&"version-hint.text".to_owned()));
     ```
 
@@ -253,8 +253,8 @@ contracts.
     assert any(name.endswith(".parquet") for name in names)
     assert any(name.startswith("snap-") and name.endswith(".avro") for name in names)
     assert any(name.endswith("-m0.avro") for name in names)
-    assert any(name.startswith("00001-") and name.endswith(".metadata.json") for name in names)
-    assert any(name.startswith("00002-") and name.endswith(".metadata.json") for name in names)
+    assert "v1.metadata.json" in names
+    assert "v2.metadata.json" in names
     assert "version-hint.text" in names
     ```
 
@@ -284,8 +284,8 @@ contracts.
     assert.ok(names.some((name) => name.endsWith('.parquet')))
     assert.ok(names.some((name) => name.startsWith('snap-') && name.endsWith('.avro')))
     assert.ok(names.some((name) => name.endsWith('-m0.avro')))
-    assert.ok(names.some((name) => name.startsWith('00001-') && name.endsWith('.metadata.json')))
-    assert.ok(names.some((name) => name.startsWith('00002-') && name.endsWith('.metadata.json')))
+    assert.ok(names.includes('v1.metadata.json'))
+    assert.ok(names.includes('v2.metadata.json'))
     assert.ok(names.includes('version-hint.text'))
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
@@ -294,11 +294,21 @@ contracts.
 Committing means writing a new metadata document; nothing is mutated in place, which is what makes
 the previous snapshot still readable afterwards. `Table::open` finds the current document the way
 `HadoopTables` does - `metadata/version-hint.text`, falling back to the highest-numbered
-`*.metadata.json` - because that is the only way to find a table without a catalog.
-It retains the discovered filename, including official `00003-<uuid>` names, so the next
-`metadata-log` entry is exact. Metadata is gzip-decoded by magic bytes; setting
-`write.metadata.compression-codec` to `gzip` makes later commits write `.gz.metadata.json`.
+`*.metadata.json` - because that is the only way to find a table without a catalog. A commit
+publishes under the one name that hint resolves, `v{version}.metadata.json`, so every other
+catalog-free reader finds it too; the unique `00003-<uuid>` name a commit writes first is how it
+claims the version against a concurrent writer, and it is removed once the commit is published.
+A table opened from somebody else's writer keeps whatever filename was discovered, official
+`00003-<uuid>` names included, so the next `metadata-log` entry is exact. Metadata is gzip-decoded
+by magic bytes; setting `write.metadata.compression-codec` to `gzip` makes later commits write
+`.gz.metadata.json`.
 Apache Iceberg's property parser rejects unsupported codecs before publication.
+
+Every location a document records is read back relative to the table's own, so a table moves
+between storage systems by rewriting its locations rather than its code. Two spellings of one
+place resolve to it: `file:/warehouse` and `file:///warehouse` name the same folder, because a
+Java writer's URI normalizer drops the empty authority these URLs keep, and a table written here
+and committed into by Spark carries both at once.
 
 ## Table metadata, v1 through v3
 

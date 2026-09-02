@@ -149,7 +149,7 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   assert.ok(table.spec.isUnpartitioned())
   assert.equal(table.formatVersion, 2)
   assert.equal(table.version, 1)
-  assert.match(table.metadataFileName, /^00001-[0-9a-f-]+\.metadata\.json$/)
+  assert.equal(table.metadataFileName, 'v1.metadata.json')
   assert.ok(table.metadataLocation.endsWith(`/metadata/${table.metadataFileName}`))
   assert.ok(table.toString().startsWith('file:///'))
 

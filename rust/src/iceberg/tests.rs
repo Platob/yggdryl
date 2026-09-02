@@ -1670,6 +1670,44 @@ mod tables {
     }
 
     #[test]
+    fn a_commit_publishes_the_name_a_version_hint_resolves() {
+        let path = root("hint-resolvable-metadata-name");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        assert_eq!(table.metadata_file_name(), "v1.metadata.json");
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("owner", "interop")?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(table.metadata_file_name(), "v2.metadata.json");
+
+        // `v{version}` is the only spelling a numeric hint resolves, so it is
+        // the only one a catalog-free reader - Spark's Hadoop tables among
+        // them - can follow. The unique attempt each commit writes is the
+        // attempt and not the table, so nothing of it survives the commit.
+        let mut names = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(
+            names,
+            ["v1.metadata.json", "v2.metadata.json", "version-hint.text"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(path.join("metadata").join("version-hint.text")).unwrap(),
+            "2"
+        );
+    }
+
+    #[test]
     fn metadata_compression_uses_the_official_property_and_gzip_magic() {
         let path = root("gzip-metadata");
         let mut table = Table::create(
@@ -1686,8 +1724,7 @@ mod tables {
             })
             .unwrap();
 
-        assert!(table.metadata_file_name().starts_with("00002-"));
-        assert!(table.metadata_file_name().ends_with(".gz.metadata.json"));
+        assert_eq!(table.metadata_file_name(), "v2.gz.metadata.json");
         assert!(
             std::fs::read(path.join("metadata").join(table.metadata_file_name()))
                 .unwrap()

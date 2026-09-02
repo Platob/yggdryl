@@ -1419,9 +1419,11 @@ impl<H: IOBase> Table<H> {
                 )));
             }
         };
-        let name = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
+        let attempt = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
         let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
-        let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
+        let mut handle = self
+            .root
+            .child_by_path(&format!("{METADATA_DIR}/{attempt}"))?;
         handle.write_all_bytes(&encoded)?;
 
         // UUID filenames make the write itself the create/commit attempt.
@@ -1429,7 +1431,7 @@ impl<H: IOBase> Table<H> {
         // already won; remove only our unpublished candidate and report it.
         let competitors = metadata_names_at_version(&metadata_dir, next_version)?
             .into_iter()
-            .filter(|candidate| candidate != &name)
+            .filter(|candidate| candidate != &attempt)
             .collect::<Vec<_>>();
         if !competitors.is_empty() {
             handle.remove(false)?;
@@ -1440,11 +1442,28 @@ impl<H: IOBase> Table<H> {
             ));
         }
 
+        // Winning the attempt publishes the document under the name a hint
+        // names: `v{version}`. A catalog stores the exact UUID filename and can
+        // afford any spelling, but this surface has only the hint, and every
+        // reader of a catalog-free table - this module's own included - resolves
+        // it that way. The attempt stays in place across the publish so that a
+        // racing writer never sees the version free: `metadata_names_at_version`
+        // counts both spellings, and one of them is always there.
+        let name = format_smolstr!("v{next_version}{suffix}.metadata.json");
+        let mut document = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
+        document.write_all_bytes(&encoded)?;
+
         // The hint is how a catalog-free reader finds the current document.
         let mut hint = self
             .root
             .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
         hint.write_all_bytes(next_version.to_string().as_bytes())?;
+
+        // The attempt has served its whole purpose. Its removal is the commit's
+        // last act rather than a step of it: the published document and the hint
+        // are already durable, so a backend that refuses leaves an unreferenced
+        // duplicate rather than an unfinished commit.
+        drop(handle.remove(false));
         self.metadata = metadata;
         self.version = next_version;
         self.metadata_file_name = name;
@@ -3062,13 +3081,38 @@ fn missing_metadata(metadata_dir: &Holder) -> Error {
     ))
 }
 
+/// Spell one location the single way, so that two spellings of one place match.
+///
+/// Separators are normalized because an implementation that wrote the table on
+/// Windows may have spelled its own location with backslashes. An empty URI
+/// authority is spelled out because `file:/warehouse` and `file:///warehouse`
+/// name the same place: Java's URI normalizer - so every Hadoop and Spark
+/// writer - drops it, while this crate's URLs keep it, and a table written by
+/// one and committed into by the other carries both spellings at once.
+fn normalized_location(location: &str) -> String {
+    let normalized = location.replace('\\', "/");
+    let Some((scheme, rest)) = normalized.split_once(':') else {
+        return normalized;
+    };
+    // A one-letter scheme is a Windows drive letter, and `//` already spells an
+    // authority - empty or not. Everything else is `scheme:/path`, the form that
+    // is missing the empty authority.
+    let scheme_shaped = scheme.len() > 1
+        && scheme.starts_with(|first: char| first.is_ascii_alphabetic())
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'));
+    if !scheme_shaped || !rest.starts_with('/') || rest.starts_with("//") {
+        return normalized;
+    }
+    format!("{scheme}://{rest}")
+}
+
 /// Turn one absolute location into a name relative to the table's folder.
 fn relative_location(base: &str, location: &str) -> Result<String> {
-    // Separators are normalized because an implementation that wrote the table
-    // on Windows may have spelled its own location with backslashes.
-    let normalized_base = base.replace('\\', "/");
+    let normalized_base = normalized_location(base);
     let normalized_base = normalized_base.trim_end_matches('/');
-    let normalized = location.replace('\\', "/");
+    let normalized = normalized_location(location);
     if normalized == normalized_base {
         return Ok(String::new());
     }
@@ -3081,6 +3125,52 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     Err(invalid(format_smolstr!(
         "expected a location inside the table at {normalized_base:?}, got {location:?}"
     )))
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::relative_location;
+
+    #[test]
+    fn an_empty_uri_authority_is_the_same_place_spelled_shorter() {
+        // Whichever writer spelled which: the crate writes the table location
+        // with the authority, Spark commits its manifest lists without it.
+        for (base, location) in [
+            (
+                "file:///warehouse/db/t",
+                "file:/warehouse/db/t/metadata/snap-1.avro",
+            ),
+            (
+                "file:/warehouse/db/t",
+                "file:///warehouse/db/t/metadata/snap-1.avro",
+            ),
+            (
+                "file:/warehouse/db/t",
+                "file:/warehouse/db/t/metadata/snap-1.avro",
+            ),
+        ] {
+            assert_eq!(
+                relative_location(base, location).unwrap(),
+                "metadata/snap-1.avro",
+                "{base} -> {location}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_real_authority_and_a_windows_drive_are_left_alone() {
+        assert_eq!(
+            relative_location("s3://bucket/db/t", "s3://bucket/db/t/data/0.parquet").unwrap(),
+            "data/0.parquet"
+        );
+        assert_eq!(
+            relative_location("C:\\warehouse\\t", "C:\\warehouse\\t\\data\\0.parquet").unwrap(),
+            "data/0.parquet"
+        );
+        // A neighbour is not a child, however either side is spelled.
+        relative_location("file:///warehouse/db/t", "file:/warehouse/db/other/x").unwrap_err();
+        relative_location("s3://bucket/db/t", "s3://other/db/t/x").unwrap_err();
+    }
 }
 
 /// Refuse a data-file MIME type this build has no encoder for, by name.
