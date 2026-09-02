@@ -293,14 +293,21 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     let location = Url::from_str("HTTPS://example.com/warehouse/table").unwrap();
     let mut field = Field::new("trade", DataType::Utf8, false);
     field.set_alias("latest_trade").unwrap();
-    field.set_catalog_name("analytics").unwrap();
-    field.set_schema_name("public").unwrap();
-    field.set_table_name("trades").unwrap();
+    field.set_comment("the latest trade").unwrap();
+    // Catalog coordinates belong to whichever protocol names them, not to
+    // straight metadata.
+    field
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("table_name", "trades")
+        .unwrap();
     field.set_location(location.clone());
     assert_eq!(field.alias(), Some("latest_trade"));
-    assert_eq!(field.catalog_name(), Some("analytics"));
-    assert_eq!(field.schema_name(), Some("public"));
-    assert_eq!(field.table_name(), Some("trades"));
+    assert_eq!(field.comment(), Some("the latest trade"));
+    assert_eq!(
+        field.get_property(&Scheme::ICEBERG, "table_name"),
+        Some("trades")
+    );
+    assert_eq!(field.get_metadata("table_name"), None);
     assert_eq!(field.location().unwrap(), Some(location.clone()));
     assert_eq!(
         field.get_metadata("location"),
@@ -358,9 +365,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     ));
 
     assert_eq!(field.remove_alias().as_deref(), Some("latest_trade"));
-    assert_eq!(field.remove_catalog_name().as_deref(), Some("analytics"));
-    assert_eq!(field.remove_schema_name().as_deref(), Some("public"));
-    assert_eq!(field.remove_table_name().as_deref(), Some("trades"));
+    assert_eq!(field.remove_comment().as_deref(), Some("the latest trade"));
     assert!(field.remove_location().unwrap().is_some());
 }
 
@@ -783,7 +788,7 @@ fn reserved_metadata_is_transactional_and_arbitrary_arrow_keys_are_preserved() {
     .unwrap();
     let snapshot = field.clone();
     assert!(field.set_alias("").is_err());
-    assert!(field.set_table_name("bad\nname").is_err());
+    assert!(field.set_comment("bad\nname").is_err());
     assert!(field.set_property(&Scheme::POSTGRES, "", "value").is_err());
     assert!(
         field

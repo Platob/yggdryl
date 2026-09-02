@@ -860,9 +860,6 @@
   pub fn get_metadata(&self, key: &str) -> Option<&str>
   pub fn has_metadata(&self, key: &str) -> bool
   pub fn alias(&self) -> Option<&str>
-  pub fn catalog_name(&self) -> Option<&str>
-  pub fn schema_name(&self) -> Option<&str>
-  pub fn table_name(&self) -> Option<&str>
   pub fn parquet_field_id(&self) -> Result<Option<i32>>
   pub fn field_by_parquet_field_id(&self, id: i32) -> Option<&Self>
   pub fn max_parquet_field_id(&self) -> Result<Option<i32>>
@@ -926,15 +923,6 @@
   pub fn set_alias(&mut self, value: impl Into<String>) -> Result<()>
   pub fn try_with_alias(mut self, value: impl Into<String>) -> Result<Self>
   pub fn remove_alias(&mut self) -> Option<String>
-  pub fn set_catalog_name(&mut self, value: impl Into<String>) -> Result<()>
-  pub fn try_with_catalog_name(mut self, value: impl Into<String>) -> Result<Self>
-  pub fn remove_catalog_name(&mut self) -> Option<String>
-  pub fn set_schema_name(&mut self, value: impl Into<String>) -> Result<()>
-  pub fn try_with_schema_name(mut self, value: impl Into<String>) -> Result<Self>
-  pub fn remove_schema_name(&mut self) -> Option<String>
-  pub fn set_table_name(&mut self, value: impl Into<String>) -> Result<()>
-  pub fn try_with_table_name(mut self, value: impl Into<String>) -> Result<Self>
-  pub fn remove_table_name(&mut self) -> Option<String>
   pub fn set_parquet_field_id(&mut self, id: i32)
   pub fn with_parquet_field_id(mut self, id: i32) -> Self
   pub fn set_init(&mut self, init: bool)

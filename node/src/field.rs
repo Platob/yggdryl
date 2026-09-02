@@ -198,6 +198,23 @@ impl JsField {
         JsDataType::from_core(self.inner.dtype().clone())
     }
 
+    /// Return the field that describes both this one and `other`.
+    ///
+    /// The datatype is `DataType.mergeWith`'s answer; this adds the name
+    /// (kept from the receiver), nullability (either side being nullable
+    /// carries over), and metadata (the union, this field winning a clash).
+    #[napi]
+    pub fn merge_with(
+        &self,
+        other: ClassInstance<'_, JsField>,
+        upscale: Option<bool>,
+    ) -> Result<JsField> {
+        self.inner
+            .merge_with(&other.inner, upscale.unwrap_or(true))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// Number of direct child fields.
     #[napi(getter)]
     pub fn field_len(&self) -> u32 {
@@ -354,22 +371,13 @@ impl JsField {
         self.inner.alias().map(ToOwned::to_owned)
     }
 
-    /// Shared catalog name stored in Arrow-compatible metadata.
+    /// Shared human-readable comment stored in Arrow-compatible metadata.
+    ///
+    /// The one straight description a field carries, belonging to no protocol.
+    /// Every protocol view falls back to it.
     #[napi(getter)]
-    pub fn catalog_name(&self) -> Option<String> {
-        self.inner.catalog_name().map(ToOwned::to_owned)
-    }
-
-    /// Shared schema name stored in Arrow-compatible metadata.
-    #[napi(getter)]
-    pub fn schema_name(&self) -> Option<String> {
-        self.inner.schema_name().map(ToOwned::to_owned)
-    }
-
-    /// Shared table name stored in Arrow-compatible metadata.
-    #[napi(getter)]
-    pub fn table_name(&self) -> Option<String> {
-        self.inner.table_name().map(ToOwned::to_owned)
+    pub fn comment(&self) -> Option<String> {
+        self.inner.comment().map(ToOwned::to_owned)
     }
 
     /// Arrow/Parquet signed 32-bit field identifier stored in metadata.
@@ -574,40 +582,16 @@ impl JsField {
         self.inner.remove_alias()
     }
 
-    /// Set the shared catalog name.
+    /// Set the shared comment.
     #[napi]
-    pub fn set_catalog_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_catalog_name(value).map_err(napi_error)
+    pub fn set_comment(&mut self, value: String) -> Result<()> {
+        self.inner.set_comment(value).map_err(napi_error)
     }
 
-    /// Remove and return the shared catalog name.
+    /// Remove and return the shared comment.
     #[napi]
-    pub fn remove_catalog_name(&mut self) -> Option<String> {
-        self.inner.remove_catalog_name()
-    }
-
-    /// Set the shared schema name.
-    #[napi]
-    pub fn set_schema_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_schema_name(value).map_err(napi_error)
-    }
-
-    /// Remove and return the shared schema name.
-    #[napi]
-    pub fn remove_schema_name(&mut self) -> Option<String> {
-        self.inner.remove_schema_name()
-    }
-
-    /// Set the shared table name.
-    #[napi]
-    pub fn set_table_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_table_name(value).map_err(napi_error)
-    }
-
-    /// Remove and return the shared table name.
-    #[napi]
-    pub fn remove_table_name(&mut self) -> Option<String> {
-        self.inner.remove_table_name()
+    pub fn remove_comment(&mut self) -> Option<String> {
+        self.inner.remove_comment()
     }
 
     /// Set the canonical Arrow/Parquet signed 32-bit field identifier.
@@ -1461,6 +1445,39 @@ impl JsProtocolMetadata {
                 value: value.to_owned(),
             })
             .collect()
+    }
+
+    /// This protocol's comment, falling back to the field's straight one.
+    ///
+    /// `get`, iteration and `length` stay literal about what this protocol
+    /// carries; the fallback lives here so a view never reports a property
+    /// that iterating it would not yield.
+    #[napi(getter)]
+    pub fn comment(&self) -> Option<String> {
+        self.view().comment().map(ToOwned::to_owned)
+    }
+
+    /// Merge another protocol view's properties into this one, in place.
+    ///
+    /// A name this view already carries keeps its value, so the merge only
+    /// ever adds. Properties of other protocols are untouched.
+    #[napi]
+    pub fn merge_with(&mut self, other: &JsProtocolMetadata) -> Result<()> {
+        // Read both sides before writing: `other` may view this same field.
+        let additions: Vec<(String, String)> = {
+            let held = self.view();
+            other
+                .view()
+                .iter()
+                .filter(|(name, _)| held.get(name).is_none())
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect()
+        };
+        self.field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(additions)
+            .map_err(napi_error)
     }
 
     /// Overlay several properties atomically, keeping the ones not named.

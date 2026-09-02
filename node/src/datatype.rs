@@ -381,6 +381,23 @@ impl JsDataType {
         u32::try_from(self.inner.field_len()).unwrap_or(u32::MAX)
     }
 
+    /// Return the datatype that holds both this one and `other`.
+    ///
+    /// `upscale` picks the direction width resolves in: the default meets at
+    /// the type holding both, `false` at the tightest type naming both.
+    #[napi]
+    pub fn merge_with(
+        &self,
+        other: Either<ClassInstance<'_, JsDataType>, String>,
+        upscale: Option<bool>,
+    ) -> Result<JsDataType> {
+        let other = dtype_from_input(other)?;
+        self.inner
+            .merge_with(&other, upscale.unwrap_or(true))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// Return the child at an Array-compatible index, or `null`.
     #[napi]
     pub fn get_field_at(&self, index: i32) -> Option<JsField> {

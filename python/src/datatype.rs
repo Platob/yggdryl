@@ -1054,6 +1054,19 @@ impl PyDataType {
         }
     }
 
+    /// Returns the datatype that holds both this one and `other`.
+    ///
+    /// `upscale` picks the direction width resolves in: the default meets at
+    /// the type holding both, `False` at the tightest type naming both.
+    #[pyo3(signature = (other, upscale=true))]
+    fn merge_with(&self, other: &Bound<'_, PyAny>, upscale: bool) -> PyResult<Self> {
+        let other = core_dtype_from_value(other)?;
+        self.inner
+            .merge_with(&other, upscale)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     /// Returns the nested child at `index`, or `None`.
     ///
     /// Negative positions count from the end, as everywhere else.

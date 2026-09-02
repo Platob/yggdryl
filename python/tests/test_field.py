@@ -318,15 +318,15 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
     field = Field("price", "decimal(18, 6)", nullable=False)
 
     field.set_alias("close")
-    field.set_catalog_name("analytics")
-    field.set_schema_name("market")
-    field.set_table_name("bars")
+    field.set_comment("closing price")
+    # Catalog coordinates belong to whichever protocol names them.
+    field.set_property("iceberg", "table_name", "bars")
     field.set_location(Uri("s3://warehouse/bars/day=2026-08-15/data.parquet"))
 
     assert field.alias == "close"
-    assert field.catalog_name == "analytics"
-    assert field.schema_name == "market"
-    assert field.table_name == "bars"
+    assert field.comment == "closing price"
+    assert field.get_property("iceberg", "table_name") == "bars"
+    assert "table_name" not in field.metadata
     assert field.location == Url("s3://warehouse/bars/day=2026-08-15/data.parquet")
     assert field.metadata["location"] == str(field.location)
 
@@ -351,9 +351,7 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
     assert field.has_property("iceberg", "field-id")
 
     assert field.remove_alias() == "close"
-    assert field.remove_catalog_name() == "analytics"
-    assert field.remove_schema_name() == "market"
-    assert field.remove_table_name() == "bars"
+    assert field.remove_comment() == "closing price"
     assert field.remove_location() == Url(
         "s3://warehouse/bars/day=2026-08-15/data.parquet"
     )
@@ -694,13 +692,13 @@ def test_typed_metadata_validation_is_atomic_and_arrow_compatible() -> None:
     assert field.set_property("postgres", "default", "") is None
     assert field.get_property("postgres", "default") == ""
     assert field.remove_property("postgres", "default") == ""
-    field.set_table_name("events")
+    field.set_comment("events")
     field.set_property("arrow", "extension:name", "example.event")
     arrow = field.into_arrow()
-    assert arrow.metadata[b"table_name"] == b"events"
+    assert arrow.metadata[b"comment"] == b"events"
     assert arrow.metadata[b"arrow:extension:name"] == b"example.event"
     imported = Field.from_arrow(arrow)
-    assert imported.table_name == "events"
+    assert imported.comment == "events"
     assert imported.get_property("arrow", "extension:name") == "example.event"
 
 
@@ -1175,3 +1173,74 @@ def test_str_and_repr_are_unchanged_and_pretty_is_the_readable_form() -> None:
     assert field.dtype.pretty().startswith("struct[2]")
     # Stable across runs.
     assert field.pretty() == field.pretty()
+
+
+def test_merging_two_schemas_widens_and_unions() -> None:
+    # Spelled `not null` on both sides, so the merged column staying required
+    # is the merge's doing rather than the parser's default.
+    left = DataType("struct<id:int32 not null,venue:utf8 not null>")
+    right = DataType("struct<id:int64 not null,price:float64 not null>")
+
+    merged = left.merge_with(right)
+
+    # A column both sides carry widens; one only a single side carries arrives
+    # nullable, because the rows the other side described do not have it.
+    assert len(merged) == 3
+    assert merged["id"].dtype == DataType("int64")
+    assert not merged["id"].nullable
+    assert merged["venue"].nullable
+    assert merged["price"].nullable
+
+    # Order is the receiver's, with additions appended.
+    assert [child.name for child in merged] == ["id", "venue", "price"]
+
+    # Narrowing meets at the tightest type naming both.
+    assert DataType("int32").merge_with("int64", upscale=False) == DataType("int32")
+
+    # Null yields, bytes win over text, and text wins over numbers.
+    assert DataType("null").merge_with("utf8") == DataType("utf8")
+    assert DataType("utf8").merge_with("binary") == DataType("binary")
+    assert DataType("int64").merge_with("utf8") == DataType("utf8")
+
+    # A pair with no meeting point that is not a re-encoding is refused.
+    with pytest.raises(ValueError):
+        DataType("boolean").merge_with("int64")
+
+
+def test_merging_fields_carries_nullability_and_metadata() -> None:
+    held = Field("price", "int32", nullable=False)
+    held.set_property("iceberg", "doc", "held")
+    other = Field("price", "int64", nullable=True)
+    other.set_property("iceberg", "doc", "other")
+    other.set_property("iceberg", "id", "7")
+
+    merged = held.merge_with(other)
+
+    assert merged.dtype == DataType("int64")
+    assert merged.nullable, "either side being nullable carries over"
+    assert merged.get_property("iceberg", "doc") == "held", "the receiver wins"
+    assert merged.get_property("iceberg", "id") == "7"
+
+
+def test_a_protocol_view_merges_in_place_and_only_adds() -> None:
+    source = Field("price", "int64")
+    source.set_property("iceberg", "doc", "source")
+    source.set_property("iceberg", "id", "7")
+
+    target = Field("price", "int64")
+    target.set_property("iceberg", "doc", "target")
+    target.set_property("glue", "comment", "glue")
+
+    target.iceberg.merge_with(source.iceberg)
+
+    # A name already held keeps its value; a new one arrives.
+    assert target.get_property("iceberg", "doc") == "target"
+    assert target.get_property("iceberg", "id") == "7"
+
+    # A scoped merge leaves every other protocol alone.
+    assert target.get_property("glue", "comment") == "glue"
+
+    # A view of the same field is read before the write, so this is not a
+    # borrow conflict.
+    target.iceberg.merge_with(target.iceberg)
+    assert target.get_property("iceberg", "doc") == "target"

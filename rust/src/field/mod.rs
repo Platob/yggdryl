@@ -13,15 +13,15 @@ use crate::datatype::{
     DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
-    ALIAS_KEY, CATALOG_NAME_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
+    ALIAS_KEY, COMMENT_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
     HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY, HTTP_CACHE_CONTROL_KEY,
     HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY, HTTP_CONTENT_LANGUAGE_KEY,
     HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY, HTTP_CONTENT_RANGE_KEY,
     HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY, HTTP_LAST_MODIFIED_KEY,
     HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, LOCATION_KEY, MetadataIter,
-    PARQUET_FIELD_ID_KEY, PropertyIter, ProtocolMetadata, ProtocolMetadataMut, SCHEMA_NAME_KEY,
-    TABLE_NAME_KEY, for_each_well_known_protocol, parse_field_id, parse_reserved_bool,
-    property_key, write_json_string as write_quoted,
+    PARQUET_FIELD_ID_KEY, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
+    for_each_well_known_protocol, parse_field_id, parse_reserved_bool, property_key,
+    write_json_string as write_quoted,
 };
 use crate::{
     Error, MediaType, Metadata, MimeType, Result, Scalar, Scheme, Url, stable_hash_display,
@@ -773,19 +773,13 @@ impl Field {
         self.get_metadata(ALIAS_KEY)
     }
 
-    /// Returns the shared catalog name stored in metadata.
-    pub fn catalog_name(&self) -> Option<&str> {
-        self.get_metadata(CATALOG_NAME_KEY)
-    }
-
-    /// Returns the shared schema name stored in metadata.
-    pub fn schema_name(&self) -> Option<&str> {
-        self.get_metadata(SCHEMA_NAME_KEY)
-    }
-
-    /// Returns the shared table name stored in metadata.
-    pub fn table_name(&self) -> Option<&str> {
-        self.get_metadata(TABLE_NAME_KEY)
+    /// Returns the shared human-readable comment stored in metadata.
+    ///
+    /// The one straight description a field carries, belonging to no protocol.
+    /// Every protocol view falls back to it when it has no comment of its own,
+    /// so one sentence written once is what Iceberg, Glue and Spark all read.
+    pub fn comment(&self) -> Option<&str> {
+        self.get_metadata(COMMENT_KEY)
     }
 
     /// Parses the Arrow/Parquet field identifier stored in metadata.
@@ -1463,55 +1457,30 @@ impl Field {
         self.remove_metadata(ALIAS_KEY)
     }
 
-    /// Sets a validated catalog name.
-    pub fn set_catalog_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(CATALOG_NAME_KEY, value)?;
+    /// Sets a validated comment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value fails the validation reserved text
+    /// goes through.
+    pub fn set_comment(&mut self, value: impl Into<String>) -> Result<()> {
+        self.insert_metadata(COMMENT_KEY, value)?;
         Ok(())
     }
 
-    /// Returns a persistent field with a validated catalog name.
-    pub fn try_with_catalog_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_catalog_name(value)?;
+    /// Returns a persistent field with a validated comment.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_comment`] raises.
+    pub fn try_with_comment(mut self, value: impl Into<String>) -> Result<Self> {
+        self.set_comment(value)?;
         Ok(self)
     }
 
-    /// Removes and returns the catalog name.
-    pub fn remove_catalog_name(&mut self) -> Option<String> {
-        self.remove_metadata(CATALOG_NAME_KEY)
-    }
-
-    /// Sets a validated schema name.
-    pub fn set_schema_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(SCHEMA_NAME_KEY, value)?;
-        Ok(())
-    }
-
-    /// Returns a persistent field with a validated schema name.
-    pub fn try_with_schema_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_schema_name(value)?;
-        Ok(self)
-    }
-
-    /// Removes and returns the schema name.
-    pub fn remove_schema_name(&mut self) -> Option<String> {
-        self.remove_metadata(SCHEMA_NAME_KEY)
-    }
-
-    /// Sets a validated table name.
-    pub fn set_table_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(TABLE_NAME_KEY, value)?;
-        Ok(())
-    }
-
-    /// Returns a persistent field with a validated table name.
-    pub fn try_with_table_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_table_name(value)?;
-        Ok(self)
-    }
-
-    /// Removes and returns the table name.
-    pub fn remove_table_name(&mut self) -> Option<String> {
-        self.remove_metadata(TABLE_NAME_KEY)
+    /// Removes and returns the comment.
+    pub fn remove_comment(&mut self) -> Option<String> {
+        self.remove_metadata(COMMENT_KEY)
     }
 
     /// Sets the canonical Arrow/Parquet signed 32-bit field identifier.

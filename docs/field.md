@@ -511,7 +511,10 @@ canonicalizes on the way in and out. `PARQUET:field_id` is a signed 32-bit integ
 `"2147483648"` fails.
 `field:init` is a reserved boolean: it is absent for an ordinary field, and setting it to `false`
 marks a field a schema still declares but a constructor must not accept. `location` parses as a
-[`Url`](uri.md), and `alias`, `catalog_name`, `schema_name`, and `table_name` carry validated text.
+[`Url`](uri.md), and `alias` and `comment` carry validated text. Catalog coordinates - a
+catalog, schema or table name - are protocol properties rather than straight keys, because which
+catalog names a column is the protocol's business: write them as `iceberg:table_name` or
+`glue:table_name`.
 
 Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](generic.md). The
 prefix is canonicalized, so `HTTPS:Content-Type`, `HTTP:content-type`, and `http:content-type` are

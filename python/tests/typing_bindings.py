@@ -117,9 +117,7 @@ table_hash: None = iceberg.Table.__hash__
 schema_update_hash: None = iceberg.SchemaUpdate.__hash__
 
 field.set_alias("payload")
-field.set_catalog_name("analytics")
-field.set_schema_name("public")
-field.set_table_name("events")
+field.set_comment("the latest trade")
 field.set_location(file_url)
 field.set_property("postgres", "type", "text")
 field.set_accept("application/json")

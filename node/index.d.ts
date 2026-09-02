@@ -334,6 +334,13 @@ export declare class DataType {
   get nested(): boolean
   /** Number of direct child fields. */
   get length(): number
+  /**
+   * Return the datatype that holds both this one and `other`.
+   *
+   * `upscale` picks the direction width resolves in: the default meets at
+   * the type holding both, `false` at the tightest type naming both.
+   */
+  mergeWith(other: DataType | string, upscale?: boolean | undefined | null): DataType
   /** Return the child at an Array-compatible index, or `null`. */
   getFieldAt(index: number): JsField | null
   /**
@@ -478,6 +485,14 @@ export declare class Field {
   get name(): string
   /** Logical native datatype. */
   get dtype(): DataType
+  /**
+   * Return the field that describes both this one and `other`.
+   *
+   * The datatype is `DataType.mergeWith`'s answer; this adds the name
+   * (kept from the receiver), nullability (either side being nullable
+   * carries over), and metadata (the union, this field winning a clash).
+   */
+  mergeWith(other: Field, upscale?: boolean | undefined | null): Field
   /** Number of direct child fields. */
   get fieldLen(): number
   /** Return the child at an Array-compatible index, or `null`. */
@@ -1774,6 +1789,13 @@ export declare class ProtocolMetadata {
   values(): Array<string>
   /** Bare name/value entries in deterministic lexical order. */
   entries(): Array<MetadataEntry>
+  /**
+   * Merge another protocol view's properties into this one, in place.
+   *
+   * A name this view already carries keeps its value, so the merge only
+   * ever adds. Properties of other protocols are untouched.
+   */
+  mergeWith(other: ProtocolMetadata): void
   /** Overlay several properties atomically, keeping the ones not named. */
   update(values: Array<MetadataEntry> | Record<string, string>): void
   /** Remove every property of this protocol, leaving shared keys alone. */

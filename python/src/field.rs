@@ -776,18 +776,8 @@ impl PyField {
     }
 
     #[getter]
-    fn catalog_name(&self) -> Option<&str> {
-        self.inner.catalog_name()
-    }
-
-    #[getter]
-    fn schema_name(&self) -> Option<&str> {
-        self.inner.schema_name()
-    }
-
-    #[getter]
-    fn table_name(&self) -> Option<&str> {
-        self.inner.table_name()
+    fn comment(&self) -> Option<&str> {
+        self.inner.comment()
     }
 
     #[getter]
@@ -935,34 +925,14 @@ impl PyField {
         Ok(self.inner.remove_alias())
     }
 
-    fn set_catalog_name(&mut self, value: String) -> PyResult<()> {
+    fn set_comment(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_catalog_name(value).map_err(value_error)
+        self.inner.set_comment(value).map_err(value_error)
     }
 
-    fn remove_catalog_name(&mut self) -> PyResult<Option<String>> {
+    fn remove_comment(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_catalog_name())
-    }
-
-    fn set_schema_name(&mut self, value: String) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_schema_name(value).map_err(value_error)
-    }
-
-    fn remove_schema_name(&mut self) -> PyResult<Option<String>> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_schema_name())
-    }
-
-    fn set_table_name(&mut self, value: String) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_table_name(value).map_err(value_error)
-    }
-
-    fn remove_table_name(&mut self) -> PyResult<Option<String>> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_table_name())
+        Ok(self.inner.remove_comment())
     }
 
     fn set_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -1485,6 +1455,20 @@ impl PyField {
     ///
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
+    /// Returns the field that describes both this one and `other`.
+    ///
+    /// The datatype is `DataType.merge_with`'s answer; this adds the name
+    /// (kept from the receiver), nullability (either side being nullable
+    /// carries over), and metadata (the union, this field winning a clash).
+    #[pyo3(signature = (other, upscale=true))]
+    fn merge_with(&self, other: &Bound<'_, PyAny>, upscale: bool) -> PyResult<Self> {
+        let other = core_field_from_value(other)?;
+        self.inner
+            .merge_with(&other, upscale)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     /// Returns the nested child at `index`, or `None`.
     ///
     /// Negative positions count from the end, as everywhere else.
@@ -1889,6 +1873,48 @@ impl PyProtocolMetadata {
             self.scheme.clone(),
             PropertyIteratorKind::Items,
         ))
+    }
+
+    /// This protocol's comment, falling back to the field's straight one.
+    ///
+    /// `get`, iteration and `len` stay literal about what this protocol
+    /// carries; the fallback lives here so a view never reports a property
+    /// that iterating it would not yield.
+    #[getter]
+    fn comment(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .protocol(&self.scheme)
+            .comment()
+            .map(str::to_owned))
+    }
+
+    /// Merges another protocol view's properties into this one, in place.
+    ///
+    /// A name this view already carries keeps its value, so the merge only
+    /// ever adds. Properties of other protocols are untouched.
+    fn merge_with(&self, py: Python<'_>, other: &Self) -> PyResult<()> {
+        // Collect before borrowing mutably: `other` may be a view of this same
+        // field, and a live borrow of it would collide with the write below.
+        let additions: Vec<(String, String)> = {
+            let source = other.borrow_field(py)?;
+            let held = self.borrow_field(py)?;
+            let view = held.inner.protocol(&self.scheme);
+            source
+                .inner
+                .protocol(&other.scheme)
+                .iter()
+                .filter(|(name, _)| view.get(name).is_none())
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect()
+        };
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(additions)
+            .map_err(value_error)
     }
 
     #[pyo3(signature = (values=None, /, **kwargs))]

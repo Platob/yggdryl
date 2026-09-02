@@ -73,9 +73,8 @@ field.setHttpLocation('https://example.test/event')
 field.setRange('bytes=0-9')
 field.setVary('accept-encoding')
 const alias: string | null = field.alias
-const catalogName: string | null = field.catalogName
-const schemaName: string | null = field.schemaName
-const tableName: string | null = field.tableName
+const comment: string | null = field.comment
+const protocolComment: string | null = field.iceberg.comment
 const id: number | null = field.parquetFieldId
 const location: Url | null = field.location
 const accept: string | null = field.accept
@@ -151,9 +150,8 @@ void entries
 void dictionaryId
 void dictionaryOrdered
 void alias
-void catalogName
-void schemaName
-void tableName
+void comment
+void protocolComment
 void id
 void location
 void accept
