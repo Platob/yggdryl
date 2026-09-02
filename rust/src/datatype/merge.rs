@@ -80,9 +80,18 @@ impl Widening {
 impl DataType {
     /// Returns the datatype that holds both this one and `other`.
     ///
-    /// The rule table is documented on [the module](self). `upscale` chooses
-    /// the direction width is resolved in: `true` meets at the type that holds
-    /// both, `false` at the tightest type that names both.
+    /// The rules are tried in order: two equal types are that type; [`Null`]
+    /// yields to whatever is defined beside it; two nested layouts of the same
+    /// family recurse, a struct taking the *union* of its fields; bytes win
+    /// over everything, because every other encoding fits inside them; text
+    /// wins next; and numbers meet by width, temporals by unit. Anything left
+    /// is refused rather than guessed - a boolean and a timestamp have no
+    /// meeting point that is not a re-encoding.
+    ///
+    /// `upscale` chooses the direction width is resolved in: `true` meets at
+    /// the type that holds both, `false` at the tightest type that names both.
+    ///
+    /// [`Null`]: Self::Null
     ///
     /// ```
     /// use yggdryl::DataType;

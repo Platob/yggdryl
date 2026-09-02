@@ -192,7 +192,6 @@ does; `DataType::from_fields` builds a node from either when you want one.
     ```rust
     use yggdryl::DataType;
 
-    # fn main() -> yggdryl::Result<()> {
     let row = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::from_fields([DataType::Float64.required_field("px")])?
@@ -213,8 +212,6 @@ does; `DataType::from_fields` builds a node from either when you want one.
     let exploded = row.explode_fields();
     assert_eq!(exploded[2].name(), "levels");
     assert_eq!(exploded[2].dtype(), &DataType::Float64);
-    # Ok(())
-    # }
     ```
 
 ### Merging two schemas
@@ -258,7 +255,6 @@ the receiver winning any key they disagree on.
     ```rust
     use yggdryl::{DataType, Field};
 
-    # fn main() -> yggdryl::Result<()> {
     let left = DataType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::Utf8.required_field("venue"),
@@ -291,8 +287,6 @@ the receiver winning any key they disagree on.
     let field = a.merge_with(&b, true)?;
     assert_eq!(field.dtype(), &DataType::Int64);
     assert!(field.is_nullable());
-    # Ok(())
-    # }
     ```
 
 ### Item access reaches a child, never metadata
