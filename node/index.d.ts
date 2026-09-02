@@ -334,12 +334,35 @@ export declare class DataType {
   get nested(): boolean
   /** Number of direct child fields. */
   get length(): number
-  /** Return the child at an Array-compatible positive or negative index. */
-  at(index: number): JsField | null
-  /** Look up a child by zero-based index or exact field name. */
-  get(key: number | string): JsField | null
-  /** Look up a child by exact field name without materializing children. */
-  getByName(name: string): JsField | null
+  /** Return the child at an Array-compatible index, or `null`. */
+  getFieldAt(index: number): JsField | null
+  /**
+   * Return the child a path names, or `null`.
+   *
+   * A child carrying the whole string wins before the string is decomposed
+   * on `.`, so a name containing a dot stays reachable.
+   */
+  getFieldByPath(path: string): JsField | null
+  /** Return the child a position or a path names, or `null`. */
+  getField(key: number | string): JsField | null
+  /** Return the child at an Array-compatible index, or throw. */
+  fieldAt(index: number): JsField
+  /** Return the child a path names, or throw. */
+  fieldByPath(path: string): JsField
+  /** Return the child a position or a path names, or throw. */
+  field(key: number | string): JsField
+  /** Replace the child at an Array-compatible index. */
+  setFieldAt(index: number, child: JsField): void
+  /** Replace the child a path names, appending an unresolved name. */
+  setFieldByPath(path: string, child: JsField): void
+  /** Replace the child a position or a path names. */
+  setField(key: number | string, child: JsField): void
+  /** Remove and return the child at an Array-compatible index. */
+  removeFieldAt(index: number): JsField
+  /** Remove and return the child a path names. */
+  removeFieldByPath(path: string): JsField
+  /** Remove and return the child a position or a path names. */
+  removeField(key: number | string): JsField
   /** Test for a child index, field name, or exact Field value. */
   contains(value: number | string | JsField): boolean
   /** Child names in physical order. */
@@ -455,6 +478,37 @@ export declare class Field {
   get name(): string
   /** Logical native datatype. */
   get dtype(): DataType
+  /** Number of direct child fields. */
+  get fieldLen(): number
+  /** Return the child at an Array-compatible index, or `null`. */
+  getFieldAt(index: number): Field | null
+  /**
+   * Return the child a path names, or `null`.
+   *
+   * A child carrying the whole string wins before the string is decomposed
+   * on `.`, so a name containing a dot stays reachable.
+   */
+  getFieldByPath(path: string): Field | null
+  /** Return the child a position or a path names, or `null`. */
+  getField(key: number | string): Field | null
+  /** Return the child at an Array-compatible index, or throw. */
+  fieldAt(index: number): Field
+  /** Return the child a path names, or throw. */
+  fieldByPath(path: string): Field
+  /** Return the child a position or a path names, or throw. */
+  field(key: number | string): Field
+  /** Replace the child at an Array-compatible index. */
+  setFieldAt(index: number, child: Field): void
+  /** Replace the child a path names, appending an unresolved name. */
+  setFieldByPath(path: string, child: Field): void
+  /** Replace the child a position or a path names. */
+  setField(key: number | string, child: Field): void
+  /** Remove and return the child at an Array-compatible index. */
+  removeFieldAt(index: number): Field
+  /** Remove and return the child a path names. */
+  removeFieldByPath(path: string): Field
+  /** Remove and return the child a position or a path names. */
+  removeField(key: number | string): Field
   /** Whether values may be null. */
   get nullable(): boolean
   /** Arrow IPC dictionary identifier, or `null` for non-dictionary fields. */
@@ -668,8 +722,13 @@ export declare class Field {
   get iceberg(): JsProtocolMetadata
   /** The live Financial Information eXchange property view. */
   get fix(): JsProtocolMetadata
-  /** The live Yggdryl field property view. */
-  get field(): JsProtocolMetadata
+  /**
+   * The live Yggdryl field property view.
+   *
+   * Named for the namespace it exposes rather than plain `field`, which on
+   * a schema node reaches a nested child.
+   */
+  get fieldProperties(): JsProtocolMetadata
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolMetadata
   /** The live Google Cloud Storage property view. */

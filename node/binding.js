@@ -2275,7 +2275,7 @@ Object.defineProperty(DataType.prototype, Symbol.iterator, {
   configurable: true,
   value: function* fields() {
     for (let index = 0; index < this.length; index += 1) {
-      const field = this.at(index)
+      const field = this.getFieldAt(index)
       if (field !== null) yield field
     }
   },

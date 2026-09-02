@@ -559,8 +559,12 @@ test('every well-known protocol has its own live field accessor', () => {
   ]
   const field = new Field('price', 'decimal(18, 6)', false)
 
+  // `field` names a child on a schema node, so its property view is the one
+  // accessor that is not simply its scheme name.
+  const accessors = { field: 'fieldProperties' }
+
   for (const protocol of protocols) {
-    const view = field[protocol]
+    const view = field[accessors[protocol] ?? protocol]
     assert.equal(view.scheme, protocol, protocol)
     assert.equal(view.prefix, protocol, protocol)
     assert.equal(view.key('doc'), `${protocol}:doc`, protocol)

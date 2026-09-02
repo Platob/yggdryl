@@ -2916,7 +2916,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
 
     // The schema answers from the document alone, with no resource in sight.
     const schema = fieldFromPattern(options)
-    assert.equal(String(schema.dtype.get('source').dtype), 'utf8')
+    assert.equal(String(schema.dtype.getField('source').dtype), 'utf8')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const target = path.join(root, 'app.log')
@@ -3024,7 +3024,7 @@ sub-pattern table or by declaration:
 
     // The standalone builder answers the emitted root without a reader.
     const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-    assert.equal(String(schema.dtype.get('thread_id').dtype), 'int64')
+    assert.equal(String(schema.dtype.getField('thread_id').dtype), 'int64')
 
     const table = new IOBase(target)
       .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })

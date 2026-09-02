@@ -124,7 +124,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
     const children = schema.dtype
     assert.equal(children.length, 2)
     assert.equal(children.at(0).nullable, false)
-    assert.equal(children.getByName('symbol').name, 'symbol')
+    assert.equal(children.getFieldByPath('symbol').name, 'symbol')
     assert.deepEqual(children.keys(), ['id', 'symbol'])
     ```
 
@@ -147,8 +147,19 @@ position, by path, and by whichever the key turns out to be - and each of those 
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
 
-`fields`, `field_len`, and `index_of` round the struct root out. Python and JavaScript carry the
-same family, and Python additionally spells the inferring form `field(x, *, idx=..., path=...)`.
+`fields`, `field_len`, and `index_of` round the struct root out.
+
+Python and JavaScript carry the same family under their own casing - `get_field_by_path` and
+`getFieldByPath` - and each adds what its language expects. Python spells the inferring form
+`field(x, *, idx=..., path=...)`, refusing a call that names more than one of the three. JavaScript
+keeps positions Array-compatible, so a negative index counts from the end, and the optional forms
+answer `null` where Python answers `None` and Rust answers `Option`.
+
+Two names moved so that `field` could mean this on every class: the datatype constructor that was
+`DataType::field(name, nullable)` is `named_field`, beside the `nullable_field` and `required_field`
+it already builds; and the `field:` property view is `field_properties` in Rust and Python and
+`fieldProperties` in JavaScript. The namespace itself is unchanged, so `field:init` and
+`field:partition` are what they were.
 
 ### Item access reaches a child, never metadata
 
@@ -166,10 +177,12 @@ stays reachable: `order["a.b"]` finds a child literally called `a.b` before it c
 `b`. Only when nothing carries the whole string is it decomposed, each `.` tried as a boundary from
 the left, so `"a.b.c"` still resolves through a child named `a.b` that carries `c`.
 
-Assignment is dict-like *by name* and list-like *by position*: a known name is replaced in place
-keeping its position, an **unknown name appends** a new child, and a position only ever replaces -
-past the end is an error, never a silent grow. `del` removes and closes the gap by either form. In
-Python this routes through the core's cache-aware child mutation, which is also why a `DataType` -
+Assignment is dict-like *by path* and list-like *by position*: a path that resolves is replaced in
+place keeping its position, a string that resolves to nothing **appends** a new child, and a
+position only ever replaces - past the end is an error, never a silent grow. `del` removes and
+closes the gap by either form. Only a struct may grow or shrink: a list holds exactly one child and
+a run-end node exactly two, so those refuse rather than quietly becoming a struct. In Python this
+routes through the core's cache-aware child mutation, which is also why a `DataType` -
 immutable and hashable - refuses assignment and points at the `Field` that carries it.
 
 === "Rust"
@@ -607,8 +620,8 @@ stored partitioned says so on the columns themselves:
 
     assert.equal(schema.hasPartitionFields, true)
     assert.deepEqual(schema.partitionFieldNames(), ['year', 'venue'])
-    assert.equal(schema.dtype.getByName('year').isPartition, true)
-    assert.equal(schema.dtype.getByName('price').isPartition, false)
+    assert.equal(schema.dtype.getFieldByPath('year').isPartition, true)
+    assert.equal(schema.dtype.getFieldByPath('price').isPartition, false)
 
     assert.equal(schema.withoutPartitionFields().dtype.length, 1)
     assert.equal(schema.onlyPartitionFields().dtype.length, 2)

@@ -932,7 +932,7 @@ handle untouched.
     // than by position.
     const recovered = handle.readArrowField()
     assert.deepEqual([...recovered.dtype].map((child) => child.parquetFieldId), [1, 2])
-    assert.equal(recovered.dtype.at(0).get('PARQUET:field_id'), '1')
+    assert.equal(recovered.dtype.getFieldAt(0).get('PARQUET:field_id'), '1')
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

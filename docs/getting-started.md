@@ -93,7 +93,7 @@ A non-null struct field is the schema, and its children are the columns.
     )
 
     assert.equal(schema.dtype.length, 3)
-    assert.equal(String(schema.dtype.at(2).dtype), 'decimal128(18,4)')
+    assert.equal(String(schema.dtype.getFieldAt(2).dtype), 'decimal128(18,4)')
     ```
 
 ## Attach metadata

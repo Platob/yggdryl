@@ -43,8 +43,8 @@ test('DataType.fromFields is the iterable-aware native Struct builder', () => {
   const type = DataType.fromFields((function* children() { yield id })())
 
   assert.equal(type.kind, 'struct')
-  assert.ok(type.at(0).equals(id))
-  assert.equal(type.at(0).get('physical'), 'int32')
+  assert.ok(type.getFieldAt(0).equals(id))
+  assert.equal(type.getFieldAt(0).get('physical'), 'int32')
   assert.equal(DataType.fromFields([]).length, 0)
   assert.throws(() => DataType.fromFields('not fields'), /iterable of native Field/)
   assert.throws(() => DataType.fromFields(null), /iterable of native Field/)
@@ -210,7 +210,7 @@ test('nested factories preserve exact child metadata and dictionary state', () =
   const values = fields.list('values', item, {
     metadata: new Map([['owner', 'events']]),
   })
-  const child = values.dtype.at(0)
+  const child = values.dtype.getFieldAt(0)
 
   assert.ok(child.equals(item))
   assert.equal(child.dictionaryId, 42n)

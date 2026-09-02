@@ -438,7 +438,7 @@ const schema = new Field(
 ).withPartitionFields(['year'])
 
 assert.deepEqual(schema.partitionFieldNames(), ['year'])
-assert.equal(schema.dtype.getByName('year').isPartition, true)
+assert.equal(schema.dtype.getFieldByPath('year').isPartition, true)
 assert.equal(schema.withoutPartitionFields().dtype.length, 1)
 ```
 

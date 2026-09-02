@@ -294,7 +294,7 @@ benchmark('iceberg/append_rows', () => freshIceTable().append(iceRows))
 
 benchmark('iceberg/scan_into_ipc', () => iceTable.scan().intoIpc())
 benchmark('iceberg/scan_pushdown', () =>
-  iceTable.scan(fields.struct('row', [iced.dtype.at(0)], { nullable: false })).intoIpc(),
+  iceTable.scan(fields.struct('row', [iced.dtype.getFieldAt(0)], { nullable: false })).intoIpc(),
 )
 benchmark('iceberg/data_files', () => iceTable.dataFiles())
 benchmark('iceberg/data_file_equals', () => iceFile.equals(iceFile))

@@ -913,7 +913,7 @@ value:
 
     // The target names the columns to keep; each file's Parquet reader gets it as
     // its own projection mask, so the dropped column chunk is never decoded.
-    const wanted = fields.struct('row', [schema.dtype.at(0)], { nullable: false })
+    const wanted = fields.struct('row', [schema.dtype.getFieldAt(0)], { nullable: false })
     const projected = table.scan(wanted).intoTable()
     assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id'])
     assert.equal(projected.numRows, 2)
@@ -3218,16 +3218,16 @@ by id survives a rename, and a new column can never reuse a retired id.
     // Depth first from `start`; the numbered schema is what comes back, so the
     // schema handed in is left as it was.
     const schema = iceberg.assignFieldIds(plain)
-    assert.equal(plain.dtype.at(0).parquetFieldId, null)
-    assert.equal(schema.dtype.at(0).parquetFieldId, 1)
-    assert.equal(schema.dtype.at(1).parquetFieldId, 2)
-    assert.equal(schema.dtype.at(1).dtype.at(0).parquetFieldId, 3)
+    assert.equal(plain.dtype.getFieldAt(0).parquetFieldId, null)
+    assert.equal(schema.dtype.getFieldAt(0).parquetFieldId, 1)
+    assert.equal(schema.dtype.getFieldAt(1).parquetFieldId, 2)
+    assert.equal(schema.dtype.getFieldAt(1).dtype.getFieldAt(0).parquetFieldId, 3)
 
     // The root is not a column, so it is not numbered.
     assert.equal(schema.parquetFieldId, null)
 
     // A field that already carries an id keeps it, so a second pass changes nothing.
-    assert.equal(iceberg.assignFieldIds(schema, 100).dtype.at(0).parquetFieldId, 1)
+    assert.equal(iceberg.assignFieldIds(schema, 100).dtype.getFieldAt(0).parquetFieldId, 1)
     ```
 
 Creating and evolving a table numbers whatever arrives unnumbered, continuing above the highest id
@@ -3285,7 +3285,7 @@ chance; creating a table numbers first, which is why the same schema is fine the
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, unnumbered)
-    assert.equal(table.schema.dtype.at(0).parquetFieldId, 1)
+    assert.equal(table.schema.dtype.getFieldAt(0).parquetFieldId, 1)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -3420,7 +3420,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
 
     const evolved = table.schema
     assert.deepEqual(Array.from(evolved.dtype, (child) => child.name), ['id', 'ticker', 'venue'])
-    assert.equal(String(evolved.dtype.at(0).dtype), 'int64')
+    assert.equal(String(evolved.dtype.getFieldAt(0).dtype), 'int64')
     // A renamed column keeps its identifier: the name is a label, the id is the column.
     assert.deepEqual(Array.from(evolved.dtype, (child) => child.parquetFieldId), [1, 2, 3])
 
@@ -3518,13 +3518,13 @@ never frees its identifier.
     assert.equal(schema.dtype.kind, 'struct')
     assert.equal(schema.nullable, false)
     assert.equal(schema.dtype.length, 2)
-    assert.equal(String(schema.dtype.at(0).dtype), 'int64')
+    assert.equal(String(schema.dtype.getFieldAt(0).dtype), 'int64')
 
     // `required` inverts into nullability, and `id` becomes PARQUET:field_id.
-    assert.equal(schema.dtype.at(0).nullable, false)
-    assert.equal(schema.dtype.at(1).nullable, true)
-    assert.equal(schema.dtype.at(0).parquetFieldId, 1)
-    assert.equal(schema.dtype.at(0).get('PARQUET:field_id'), '1')
+    assert.equal(schema.dtype.getFieldAt(0).nullable, false)
+    assert.equal(schema.dtype.getFieldAt(1).nullable, true)
+    assert.equal(schema.dtype.getFieldAt(0).parquetFieldId, 1)
+    assert.equal(schema.dtype.getFieldAt(0).get('PARQUET:field_id'), '1')
 
     // The same document comes back out.
     assert.deepEqual(iceberg.schemaIntoJson(schema).asJs(), document)

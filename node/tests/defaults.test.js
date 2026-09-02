@@ -303,7 +303,7 @@ test('Field nullability governs every schema-directed default slot', () => {
   assert.deepEqual(payload.defaultJSValue(), [0, null])
   // Metadata stays owned by the Field; a projected value never carries it.
   assert.equal(payload.get('root'), 'kept')
-  assert.equal(payload.dtype.at(1).get('child'), 'kept')
+  assert.equal(payload.dtype.getFieldAt(1).get('child'), 'kept')
   // The bare datatype projects the same ordered sequence.
   assert.deepEqual(payload.dtype.defaultJSValue(), [0, null])
 })
@@ -363,7 +363,7 @@ test('deep collection defaults project every nested Struct slot', () => {
   assert.deepEqual(second, first)
   assert.notEqual(first, second)
   assert.notEqual(first[0], second[0])
-  assert.equal(fixed.dtype.at(0).get('logical'), 'item')
+  assert.equal(fixed.dtype.getFieldAt(0).get('logical'), 'item')
 })
 
 test('mutable default containers are fresh on every projection', () => {
@@ -460,7 +460,7 @@ test('nested Field metadata never changes a cached Struct default hint', () => {
     ]),
   )
   assert.equal(field.defaultJSHint(), hint)
-  assert.equal(field.dtype.at(0).get('source'), 'two')
+  assert.equal(field.dtype.getFieldAt(0).get('source'), 'two')
   assert.deepEqual(field.defaultJSValue(), [0])
 
   // A wrapper reports the category of the value it encodes.
@@ -609,10 +609,10 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
     'string',
   ])
   assert.deepEqual(
-    [0, 1, 3].map((index) => String(spark.dtype.at(index).dtype)),
+    [0, 1, 3].map((index) => String(spark.dtype.getFieldAt(index).dtype)),
     ['int16', 'utf8', 'utf8'],
   )
-  assert.equal(String(spark.dtype.at(2).dtype.at(0).dtype), 'float32')
+  assert.equal(String(spark.dtype.getFieldAt(2).dtype.getFieldAt(0).dtype), 'float32')
 
   assert.ok(
     fields.uint64('wide').dtype.intoSchemeCompat('spark').equals(

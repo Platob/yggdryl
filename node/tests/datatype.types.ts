@@ -2,8 +2,14 @@ import { DataType, Field } from '..'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
-const child: Field | null = type.get('id')
-const indexedChild: Field | null = type.get(0)
+const child: Field | null = type.getField('id')
+const indexedChild: Field | null = type.getField(0)
+const pathChild: Field | null = type.getFieldByPath('id')
+const positionalChild: Field = type.fieldAt(0)
+const raisingChild: Field = type.field('id')
+void pathChild
+void positionalChild
+void raisingChild
 const children: Field[] = [...type]
 const typeHash: bigint = clonedType.stableHash()
 const typeJson: unknown = type.toJSON()

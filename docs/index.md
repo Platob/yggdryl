@@ -57,8 +57,8 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
     )
 
     assert.equal(schema.dtype.length, 2)
-    assert.equal(schema.dtype.at(1).name, 'symbol')
-    assert.equal(schema.dtype.at(0).nullable, false)
+    assert.equal(schema.dtype.getFieldAt(1).name, 'symbol')
+    assert.equal(schema.dtype.getFieldAt(0).nullable, false)
     ```
 
 ## What is here
