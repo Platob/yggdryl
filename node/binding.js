@@ -2832,7 +2832,9 @@ for (const name of ['append', 'overwrite']) {
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
     value(tableName, data, options) {
-      return native.call(this, tableName, icebergBatchReader(null, data), options)
+      const tables = this.tables
+      const stored = tables.has(tableName) ? tables.get(tableName) : null
+      return native.call(this, tableName, icebergBatchReader(stored, data), options)
     },
   })
 }

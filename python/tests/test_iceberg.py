@@ -387,6 +387,23 @@ class TestCommits:
         with pytest.raises(TypeError, match="expected rows"):
             table.append(12)
 
+    def test_a_named_write_types_rows_against_the_table_it_lands_in(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = Catalog(tmp_path / "warehouse")
+
+        # Nothing declares a schema on the first write, so the rows do.
+        created = catalog.append("nyc.trades", [{"id": 1, "venue": "XNAS"}])
+        assert created.scan().read_all().num_rows == 1
+
+        # The second write types against the schema the first one created,
+        # through either spelling of the same view.
+        catalog.append("nyc.trades", [{"id": 2, "venue": "XNYS"}])
+        catalog.tables.append("nyc.trades", [{"id": 3, "venue": None}])
+        assert catalog.table("nyc.trades").scan().read_all().column(
+            "id"
+        ).to_pylist() == [1, 2, 3]
+
     def test_a_commit_takes_anything_pyarrow_streams(self, table: Table) -> None:
         table.append(pa.Table.from_batches([_rows()]))
         table.append(pa.RecordBatchReader.from_batches(SCHEMA, [_rows(4)]))

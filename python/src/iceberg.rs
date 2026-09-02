@@ -368,31 +368,44 @@ fn iceberg_call_options(options: Option<&Bound<'_, PyAny>>) -> PyResult<Option<I
     options.map(core_iceberg_options_from_value).transpose()
 }
 
-/// Run one table operation under per-call options, restoring the handle after.
-///
-/// The override is shadowed for exactly the length of the call, so per-call
-/// options never leak into the handle's own configuration.
 /// Read a batch reader out of anything Python holds Iceberg rows in.
 ///
 /// The same inference point the record surface uses, given the table's stored
 /// schema as the declared field so plain mappings and dataclass rows type
 /// against the table rather than guessing a shape from their first value. A
-/// table that has never been written names no schema yet, and the incoming
-/// value is then what declares one.
+/// table that does not exist yet names no schema, and the incoming value is
+/// then what declares one. The options value carries only that field; the
+/// data-file format stays the table's own `data_mime_type`.
 fn iceberg_batch_reader(
     table: Option<&Table<Holder>>,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<yggdryl::arrow::BatchReader> {
     let mut options = yggdryl::generic::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
         .map_err(value_error)?;
-    // A table that does not exist yet names no schema, and the incoming value
-    // is then what declares one.
     if let Some(schema) = table.and_then(|table| table.schema().ok()) {
         options.set_field(schema.clone());
     }
     batch_reader_from_any(value, &options)
 }
 
+/// Read a batch reader for a write that names its table, not a handle.
+///
+/// A table that already exists declares the schema its rows are typed
+/// against; a create-on-write names none yet, and the rows declare it. The
+/// lookup costs one metadata read on a call that is about to write several.
+fn iceberg_named_batch_reader(
+    tables: &yggdryl::iceberg::Tables<'_, Holder>,
+    name: &str,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<yggdryl::arrow::BatchReader> {
+    let stored = tables.get(name).ok();
+    iceberg_batch_reader(stored.as_ref(), value)
+}
+
+/// Run one table operation under per-call options, restoring the handle after.
+///
+/// The override is shadowed for exactly the length of the call, so per-call
+/// options never leak into the handle's own configuration.
 fn with_call_options<R>(
     table: &mut Table<Holder>,
     options: Option<IcebergOptions>,
@@ -780,9 +793,9 @@ impl PyCatalog {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = iceberg_batch_reader(None, data)?;
-        self.inner
-            .tables()
+        let tables = self.inner.tables();
+        let data = iceberg_named_batch_reader(&tables, name, data)?;
+        tables
             .append_arrow_reader_with_options(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
@@ -801,9 +814,9 @@ impl PyCatalog {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = iceberg_batch_reader(None, data)?;
-        self.inner
-            .tables()
+        let tables = self.inner.tables();
+        let data = iceberg_named_batch_reader(&tables, name, data)?;
+        tables
             .overwrite_arrow_reader_with_options(name, data, resolved)
             .map(PyTable::from_core)
             .map_err(value_error)
@@ -3698,8 +3711,8 @@ impl PyTables {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = iceberg_batch_reader(None, data)?;
         let dotted = self.dotted(name);
+        let data = self.with_core(py, |view| iceberg_named_batch_reader(&view, &dotted, data))?;
         self.with_core(py, |view| {
             view.append_arrow_reader_with_options(&dotted, data, resolved)
         })
@@ -3720,8 +3733,8 @@ impl PyTables {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyTable> {
         let resolved = iceberg_call_options(options)?;
-        let data = iceberg_batch_reader(None, data)?;
         let dotted = self.dotted(name);
+        let data = self.with_core(py, |view| iceberg_named_batch_reader(&view, &dotted, data))?;
         self.with_core(py, |view| {
             view.overwrite_arrow_reader_with_options(&dotted, data, resolved)
         })

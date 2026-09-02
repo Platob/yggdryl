@@ -98,6 +98,23 @@ test('a commit takes the rows the record surface takes', (t) => {
   assert.throws(() => table.append(12), /records must be a JavaScript struct/)
 })
 
+test('a create-on-write commit lets the rows name the schema', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+
+  // Nothing declares a schema here, so the rows do - and Arrow JS
+  // dictionary-encodes a JavaScript string, which Iceberg cannot express, so
+  // the inferred schema is widened before the table is created.
+  const created = catalog.append('nyc.trades', [{ id: 1n, venue: 'XNAS' }])
+  assert.equal(created.scan().intoTable().numRows, 1)
+  assert.equal(created.schema.dataType.at(1).dataType.toString(), 'utf8')
+
+  // The second write types against the schema the first one created.
+  catalog.tables.append('nyc.trades', [{ id: 2n, venue: 'XNYS' }])
+  assert.equal(catalog.table('nyc.trades').scan().intoTable().numRows, 2)
+})
+
 test('a table is a folder, and a new one has no current snapshot', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

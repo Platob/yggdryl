@@ -35,7 +35,7 @@
 //!
 //! Committing means writing a new metadata document, so an append writes at
 //! least one Parquet file per partition - more when a partition's rows exceed
-//! [`Table::target_file_size`] - one manifest, one manifest list, and one
+//! [`Table::target_file_size_bytes`] - one manifest, one manifest list, and one
 //! metadata JSON. Nothing is mutated in place, which is what makes the previous
 //! snapshot still readable afterwards.
 //!
@@ -49,7 +49,7 @@
 //! [`IcebergOptions::commit_retries`] and
 //! [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
 //! [`CommitConflict`] naming both versions. An append and a metadata-only
-//! change rebase; [`Table::overwrite_where`], [`Table::merge_where`], and
+//! change rebase; [`Table::commit_overwrite_where`], [`Table::commit_merge_where`], and
 //! [`Table::compact`] cannot, because they planned against files a concurrent
 //! commit may have replaced and their input readers are already consumed, so
 //! they conflict instead. Readers are never blocked, and a failed commit
@@ -64,10 +64,10 @@
 //!
 //! # Branches and tags
 //!
-//! [`Table::create_branch`], [`Table::create_tag`], [`Table::remove_ref`],
-//! [`Table::fast_forward`], and [`Table::expire_snapshots`] are thin wrappers
+//! [`Table::create_branch`], [`Table::create_tag`], [`Table::remove_snapshot_ref`],
+//! [`Table::fast_forward_branch`], and [`Table::expire_snapshots`] are thin wrappers
 //! over [`TableMetadata`]'s ref vocabulary, each committed through the same
-//! retrying [`Table::commit_changes`]. Writing *to* a branch other than
+//! retrying [`Table::commit_metadata_changes`]. Writing *to* a branch other than
 //! `main` remains future work, because a commit's parent is currently always
 //! the table's current snapshot.
 

@@ -918,9 +918,24 @@ function installRecords({
       return batchReader(source)
     }
     let settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE)
-    const stored = table === null ? null : table.schema
+    const stored = table == null ? null : table.schema
     if (stored != null) settings = settings.withField(stored)
-    return recordsReader(source, settings, preflightWriteIntent(settings, 'append')).reader
+    const converted = recordsReader(
+      source,
+      settings,
+      preflightWriteIntent(settings, 'append'),
+    )
+    if (stored != null) return converted.reader
+    // Nothing declared a schema, so the rows named one - and Arrow JS
+    // dictionary-encodes a JavaScript string, which Iceberg does not express.
+    // The core's own widening is what a create-on-write needs to survive it.
+    // Casting materializes, which these rows already were: the alternative is
+    // a table created with a datatype the format refuses.
+    const inferred = converted.settings.field
+    if (inferred === null || inferred === undefined) return converted.reader
+    const widened = inferred.intoSchemeCompat('iceberg')
+    if (widened.equals(inferred)) return converted.reader
+    return batchReader(widened.castArrow(converted.reader), widened.name)
   }
 
   // The writes that take rows widen them the way every other write here does,
@@ -1019,7 +1034,10 @@ function installRecords({
       Object.defineProperty(Tables.prototype, name, {
         configurable: true,
         value(table, batches, options) {
-          return native.call(this, table, icebergBatchReader(null, batches), options)
+          // An existing table declares the schema its rows are typed against;
+          // a create-on-write names none yet, and the rows declare it.
+          const stored = this.has(table) ? this.get(table) : null
+          return native.call(this, table, icebergBatchReader(stored, batches), options)
         },
       })
     }

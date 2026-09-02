@@ -1207,18 +1207,27 @@
   pub fn remove_snapshots(&mut self, ids: &[i64]) -> Result<()>
   pub fn validate(&self) -> Result<()>
 
-### yggdryl::iceberg::catalog  [rust\src\iceberg\catalog.rs]
+### yggdryl::iceberg::catalog  [rust\src\iceberg\catalog\catalogs.rs]
   pub struct Catalog<H: IOBase>
   pub const fn new(warehouse: H) -> Self
   pub const fn warehouse(&self) -> &H
-  pub fn create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn name(&self) -> Option<&str>
+  pub const fn kind(&self) -> IOKind
+  pub const fn namespaces(&self) -> Namespaces<'_, H>
+  pub const fn tables(&self) -> Tables<'_, H>
   pub fn table(&self, name: &str) -> Result<Table<Holder>>
-  pub fn has_table(&self, name: &str) -> Result<bool>
-  pub fn open_or_create_table(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn namespace(&self, name: &str) -> Result<Namespace<'_, H>>
+
+### yggdryl::iceberg::catalog::tables  [rust\src\iceberg\catalog\tables.rs]
+  pub fn get(&self, name: &str) -> Result<Table<Holder>>
+  pub fn create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn open_or_create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
+  pub fn open_or_create_from_arrow_reader(&self, name: &str, batches: &BatchReader) -> Result<Table<Holder>>
+  pub fn contains(&self, name: &str) -> Result<bool>
   pub fn append_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
+  pub fn append_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: Option<IcebergOptions>) -> Result<Table<Holder>>
   pub fn overwrite_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
-  pub fn list_namespaces(&self, parent: Option<&str>) -> Result<Vec<String>>
-  pub fn list_tables(&self, namespace: &str) -> Result<Vec<String>>
+  pub fn overwrite_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: Option<IcebergOptions>) -> Result<Table<Holder>>
 
 ### yggdryl::iceberg::table (size and compaction)
   pub fn target_file_size_bytes(&self) -> Result<u64>
@@ -1250,7 +1259,7 @@
   pub fn open_or_create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub const fn root(&self) -> &H
   pub const fn metadata(&self) -> &TableMetadata
-  pub const fn version(&self) -> u32
+  pub const fn metadata_version(&self) -> u32
   pub fn metadata_file_name(&self) -> String
   pub fn metadata_location(&self) -> Result<String>
   pub fn schema(&self) -> Result<&Field>

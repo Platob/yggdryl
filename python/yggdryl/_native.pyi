@@ -16,9 +16,8 @@ IcebergRows = (
     pyarrow.RecordBatchReader
     | pyarrow.Table
     | pyarrow.RecordBatch
-    | Iterable[pyarrow.RecordBatch]
+    | ArrowStreamReader
     | Iterable[Any]
-    | Any
 )
 
 

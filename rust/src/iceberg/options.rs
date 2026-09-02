@@ -7,7 +7,7 @@
 //!    with [`Table::set_options`](super::Table::set_options);
 //! 2. the **table property** of the same name, falling back to the schema
 //!    root's `iceberg:`-prefixed protocol property, exactly as
-//!    [`Table::target_file_size`](super::Table::target_file_size) has always
+//!    [`Table::target_file_size_bytes`](super::Table::target_file_size_bytes) has always
 //!    resolved its one key;
 //! 3. the documented **default**.
 //!
