@@ -1244,3 +1244,49 @@ def test_a_protocol_view_merges_in_place_and_only_adds() -> None:
     # borrow conflict.
     target.iceberg.merge_with(target.iceberg)
     assert target.get_property("iceberg", "doc") == "target"
+
+
+def test_json_reads_every_shape_and_writes_bytes() -> None:
+    field = Field("row", DataType("struct<id:int64 not null>"), nullable=False)
+
+    text = field.into_json()
+    raw = field.into_json_bytes()
+    assert isinstance(raw, bytes)
+    assert raw == text.encode()
+
+    # One entry point for every shape a caller already holds.
+    assert Field.from_json(text) == field
+    assert Field.from_json(raw) == field
+    assert Field.from_json(bytearray(raw)) == field
+    assert Field.from_json(json.loads(text)) == field
+
+    # `indent` reaches the bytes form, and it reads back.
+    indented = field.into_json_bytes(indent=2)
+    assert b"\n" in indented
+    assert Field.from_json(indented) == field
+
+    # A datatype answers the same.
+    dtype = field.dtype
+    assert DataType.from_json(dtype.into_json_bytes()) == dtype
+    assert DataType.from_json(json.loads(dtype.into_json())) == dtype
+
+
+def test_every_format_carries_the_same_nested_shape() -> None:
+    deep = Field(
+        "row",
+        DataType("struct<levels:list<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>"),
+        nullable=False,
+    )
+
+    # One structural model, four writers over it.
+    assert Field.from_json(deep.into_json()) == deep
+    assert Field.from_yaml(deep.into_yaml()) == deep
+    assert Field.from_toml(deep.into_toml()) == deep
+    assert Field.from_dict(deep.into_dict()) == deep
+
+    # Nesting is carried, not flattened into a string.
+    document = json.loads(deep.into_json())
+    levels = document["dtype"]["fields"][0]["dtype"]
+    assert levels["type"] == "list"
+    assert levels["field"]["dtype"]["fields"][0]["name"] == "sym"
+    assert document["dtype"]["fields"][1]["dtype"]["type"] == "map"

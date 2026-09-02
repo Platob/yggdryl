@@ -759,6 +759,17 @@ TOML, which has no null, loses nothing on the way out.
 Each format takes the shared [`Formatting`](text.md#formatting) option; Python spells it as an
 `indent` keyword.
 
+Nesting is carried, not flattened: a struct of a list of a struct of a map comes back exactly as it
+went in, in every format, because all three write the one structural model rather than a shape of
+their own.
+
+JSON is also readable and writable as bytes. `into_json_bytes` renders the document `into_json`
+renders, encoded rather than decoded, for a caller writing straight to a file or a socket -
+`toJSONBytes` in JavaScript, and `Scalar` has spelled the same pair `as_json_bytes` and
+`as_json_utf8` all along. Reading needs no such choice: `from_json` takes whichever shape the
+caller already holds - the bytes it was read from, the text it was read as, or the object
+`json.loads` and `JSON.parse` already made - and dispatches on what it gets.
+
 === "Rust"
 
     ```rust

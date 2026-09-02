@@ -20,9 +20,37 @@ impl DataType {
         serde_json::from_str(input).map_err(Error::from)
     }
 
+    /// Deserializes and validates a datatype from structural JSON bytes.
+    ///
+    /// The reading half of [`Self::into_json_bytes`], so a document never has
+    /// to become a `String` on its way in either.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the bytes are not the UTF-8 JSON document a
+    /// datatype serializes to, or when the datatype does not validate.
+    pub fn from_json_bytes(value: &[u8]) -> Result<Self> {
+        serde_json::from_slice(value).map_err(Error::from)
+    }
+
     /// Consumes this value and serializes it to deterministic structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
+    }
+
+    /// Consumes this value and serializes it to deterministic structural JSON
+    /// bytes.
+    ///
+    /// The same document [`Self::into_json`] renders, encoded rather than
+    /// decoded, for a caller writing it straight to a file or a socket without
+    /// a round trip through `String`. [`crate::Scalar`] spells the same pair
+    /// `as_json_bytes` and `as_json_utf8`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::into_json`] raises.
+    pub fn into_json_bytes(self) -> Result<Vec<u8>> {
+        serde_json::to_vec(&self).map_err(Error::from)
     }
 }
 

@@ -19,9 +19,37 @@ impl Field {
         serde_json::from_str(value).map_err(Error::from)
     }
 
+    /// Deserializes and validates a field from structural JSON bytes.
+    ///
+    /// The reading half of [`Self::into_json_bytes`], so a document never has
+    /// to become a `String` on its way in either.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the bytes are not the UTF-8 JSON document a field
+    /// serializes to, or when the field does not validate.
+    pub fn from_json_bytes(value: &[u8]) -> Result<Self> {
+        serde_json::from_slice(value).map_err(Error::from)
+    }
+
     /// Consumes and serializes this value as deterministic structural JSON.
     pub fn into_json(self) -> Result<String> {
         Ok(serde_json::to_string(&self)?)
+    }
+
+    /// Consumes and serializes this value as deterministic structural JSON
+    /// bytes.
+    ///
+    /// The same document [`Self::into_json`] renders, encoded rather than
+    /// decoded, for a caller writing it straight to a file or a socket without
+    /// a round trip through `String`. [`crate::Scalar`] spells the same pair
+    /// `as_json_bytes` and `as_json_utf8`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::into_json`] raises.
+    pub fn into_json_bytes(self) -> Result<Vec<u8>> {
+        Ok(serde_json::to_vec(&self)?)
     }
 }
 

@@ -541,3 +541,78 @@ fn the_readable_form_is_stable_across_runs() {
     // Metadata renders as indented lines in key order, not one braced blob.
     assert!(format!("{first:#}").contains("\n  @a = first\n  @m = middle\n  @z = last\n"));
 }
+
+#[test]
+fn json_bytes_and_text_carry_the_same_nested_document() {
+    // struct > list > struct > map, so the assertion is about nesting rather
+    // than about a flat field.
+    let inner = DataType::from_fields([
+        DataType::Utf8.required_field("sym"),
+        DataType::decimal128(18, 4).unwrap().nullable_field("px"),
+    ])
+    .unwrap();
+    let row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::list(inner.nullable_field("item")).nullable_field("levels"),
+        DataType::map_of(DataType::Utf8, DataType::Int64, true)
+            .unwrap()
+            .nullable_field("tags"),
+    ])
+    .unwrap();
+    let mut field = row.required_field("row");
+    field.set_comment("a deeply nested row").unwrap();
+
+    // The two encodings are the same document, and each reads its own back.
+    let text = field.clone().into_json().unwrap();
+    let bytes = field.clone().into_json_bytes().unwrap();
+    assert_eq!(bytes, text.as_bytes());
+    assert_eq!(Field::from_json(&text).unwrap(), field);
+    assert_eq!(Field::from_json_bytes(&bytes).unwrap(), field);
+
+    // Nesting survives, rather than being flattened or stringified.
+    let document: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(document["dtype"]["fields"][1]["dtype"]["type"], "list");
+    assert_eq!(
+        document["dtype"]["fields"][1]["dtype"]["field"]["dtype"]["fields"][0]["name"],
+        "sym"
+    );
+    assert_eq!(document["dtype"]["fields"][2]["dtype"]["type"], "map");
+    assert_eq!(document["metadata"]["comment"], "a deeply nested row");
+
+    // A datatype answers the same pair.
+    let dtype = field.dtype().clone();
+    let dtype_bytes = dtype.clone().into_json_bytes().unwrap();
+    assert_eq!(dtype_bytes, dtype.clone().into_json().unwrap().as_bytes());
+    assert_eq!(DataType::from_json_bytes(&dtype_bytes).unwrap(), dtype);
+}
+
+#[test]
+fn every_format_round_trips_the_same_nested_field() {
+    let field = DataType::from_fields([
+        DataType::list(DataType::Int64.nullable_field("item")).nullable_field("levels"),
+        DataType::from_fields([DataType::Boolean.required_field("ok")])
+            .unwrap()
+            .required_field("flags"),
+    ])
+    .unwrap()
+    .required_field("row");
+
+    // One structural model, three writers over it, so the three agree by
+    // construction rather than by three sets of assertions.
+    assert_eq!(
+        Field::from_json(&field.clone().into_json().unwrap()).unwrap(),
+        field
+    );
+    assert_eq!(
+        Field::from_yaml(&field.clone().into_yaml().unwrap()).unwrap(),
+        field
+    );
+    assert_eq!(
+        Field::from_toml(&field.clone().into_toml().unwrap()).unwrap(),
+        field
+    );
+    assert_eq!(
+        Field::from_value(field.clone().into_value()).unwrap(),
+        field
+    );
+}

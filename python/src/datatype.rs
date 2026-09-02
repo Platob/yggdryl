@@ -689,8 +689,32 @@ impl PyDataType {
     }
 
     #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        CoreDataType::from_json(value)
+    fn from_json(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // One entry point for the three shapes a caller already has: the
+        // document as text, the same document as the bytes it was read from,
+        // or the structure `json.loads` already turned it into. Dispatching
+        // here rather than making the caller pick keeps `dict` and `str`
+        // equally first-class, which is what `into_dict` and `into_json`
+        // already imply.
+        if let Ok(text) = value.extract::<&str>() {
+            return CoreDataType::from_json(text)
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        // Bytes-like by downcast rather than by extracting `Vec<u8>`, which a
+        // list of small integers would also satisfy - and a JSON document that
+        // really is a sequence must still reach the native path below.
+        if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
+            return CoreDataType::from_json_bytes(bytes.as_bytes())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        if let Ok(bytes) = value.cast::<pyo3::types::PyByteArray>() {
+            return CoreDataType::from_json_bytes(&bytes.to_vec())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        CoreDataType::from_value(crate::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -805,6 +829,26 @@ impl PyDataType {
             .clone()
             .into_json_with_formatting(crate::formatting_of(indent))
             .map_err(value_error)
+    }
+
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `into_json` renders, encoded rather than decoded, for
+    /// a caller writing it straight to a file or a socket. `from_json` reads
+    /// these bytes back without being told which of the three shapes it got.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        indent: Option<u8>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let text = self
+            .inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)?;
+        Ok(pyo3::types::PyBytes::new(py, text.as_bytes()))
     }
 
     /// Deserialize and validate from structural YAML.
