@@ -1020,6 +1020,12 @@ export interface CodecOptions {
   scalar?: boolean | null
 }
 
+/** Options for one type-inferred `IOBase.readRange` call. */
+export interface RangeReadOptions {
+  /** Decode the range as UTF-8 text instead of returning its bytes. */
+  text?: boolean | null
+}
+
 /** Options for one format-inferred `IOBase.readScalar` call. */
 export interface ScalarReadOptions {
   /** Native schema used by the core parser to type natural values. */
@@ -1562,6 +1568,19 @@ declare module './index' {
     pstreamBytes(position?: number | null, batchSize?: number | null): ByteIterator
     /** Add or reconfigure one native page cache and return this handle. */
     buffered(options?: BufferedOptions | null): IOBase
+    /** Read `length` bytes from `offset` as bytes or as UTF-8 text. */
+    readRange(
+      offset: number,
+      length: number,
+      options: RangeReadOptions & { text: true },
+    ): string
+    readRange(
+      offset: number,
+      length: number,
+      options?: RangeReadOptions | null,
+    ): Buffer
+    /** Append bytes or UTF-8 text after the last byte, returning its offset. */
+    append(data: ArrayBufferView | ArrayBuffer | string): number
     /** Decode inferred JSON, YAML, or TOML, including its content coding. */
     readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
     readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T
@@ -1750,23 +1769,57 @@ declare module './index' {
   }
 
   interface Table {
-    /** Append batches as a new snapshot, keeping everything already stored. */
-    append(batches: BatchSource): void
-    /** Replace every row with `batches` as a new snapshot. */
-    overwrite(batches: BatchSource): void
+    /** Append rows as a new snapshot, keeping everything already stored. */
+    append(rows: IcebergSource, options?: IcebergOptions | null): void
+    /** Replace every row with `rows` as a new snapshot. */
+    overwrite(rows: IcebergSource, options?: IcebergOptions | null): void
+    /** Replace only the rows `filters` selects, keeping every other file. */
+    overwriteWhere(
+      filters: PartitionFilters | null | undefined,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): void
+    /** Merge `rows` into the stored rows, matching on `mergeByNames`. */
+    merge(
+      rows: IcebergSource,
+      mergeByNames: readonly string[],
+      safe?: boolean | null,
+      options?: IcebergOptions | null,
+    ): void
+    /** Merge `rows` into the rows `filters` selects, on `mergeByNames`. */
+    mergeWhere(
+      filters: PartitionFilters | null | undefined,
+      rows: IcebergSource,
+      mergeByNames: readonly string[],
+      safe?: boolean | null,
+      options?: IcebergOptions | null,
+    ): void
     /** Read the current snapshot, keeping the columns `field` names. */
-    scan(field?: SchemaInput | null): BatchReader
+    scan(field?: SchemaInput | null, options?: IcebergOptions | null): BatchReader
+    /** Read the rows matching `filters`, keeping the columns `field` names. */
+    scanWhere(
+      filters?: PartitionFilters | null,
+      field?: SchemaInput | null,
+      options?: IcebergOptions | null,
+    ): BatchReader
     /** Add a schema, make it current, and write a new metadata document. */
     evolveSchema(schema: SchemaInput): number
     /** Record a chain of column operations, committed as one new schema. */
     updateSchema(): SchemaUpdateBuilder
   }
 
+  interface Tables {
+    /** Append rows to the named table, creating it on first write. */
+    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    /** Replace the named table's rows, creating it on first write. */
+    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+  }
+
   interface Catalog {
     /** Append rows to the named table, creating it on first write. */
-    append(name: string, data: BatchSource): Table
+    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
     /** Replace the named table's rows, creating it on first write. */
-    overwrite(name: string, data: BatchSource): Table
+    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
   }
 
   namespace Timezone {
@@ -1774,6 +1827,12 @@ declare module './index' {
     const UTC: Timezone
   }
 }
+
+/**
+ * Anything an Iceberg write takes: everything that names a stream of Arrow
+ * record batches, plus the JavaScript rows the record surface accepts.
+ */
+export type IcebergSource = BatchSource | RecordSource
 
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =
@@ -1785,7 +1844,9 @@ export type BatchSource =
   | Uint8Array
   | ArrayBuffer
 /** One row accepted by the record-specific write entry points. */
-export type StructRecord = Record<string, unknown> | StructFieldInstance
+// `& object` is what keeps a primitive out: every JavaScript value carries a
+// `constructor`, so a bare number structurally satisfies StructFieldInstance.
+export type StructRecord = Record<string, unknown> | (StructFieldInstance & object)
 /** One record or a synchronous sequence of records. */
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
@@ -1856,7 +1917,7 @@ export interface Iceberg {
   /** Read an Iceberg schema document as a root `Field`. */
   schemaFromJson(name: string, document: Scalar | unknown): Field
   /** Write a root `Field` as an Iceberg schema document. */
-  schemaToJson(schema: Field): Scalar
+  schemaIntoJson(schema: Field): Scalar
 }
 
 export declare const iceberg: Iceberg

@@ -24,6 +24,7 @@ import shutil
 import statistics
 import tempfile
 import timeit
+from collections.abc import Callable
 
 import pyarrow as pa
 
@@ -57,20 +58,32 @@ CATALOG = Catalog(ROOT / "warehouse")
 _NAMES = (f"bench.t{index}" for index in itertools.count())
 
 
+# The rows an Arrow holder carries, as the plain mappings the widened write
+# also takes: the delta between the two measurements is the row conversion.
+ROWS = TABLE.to_pylist()
+
+
 def _append_fresh_table() -> object:
     """Create one table from the rows' own schema and commit one append."""
     return CATALOG.append(next(_NAMES), TABLE).version
 
 
-def _measure(*, minimum_seconds: float, repeat: int) -> tuple[float, float, int]:
-    _append_fresh_table()
+def _append_fresh_table_rows() -> object:
+    """The same commit from plain mappings rather than an Arrow holder."""
+    return CATALOG.append(next(_NAMES), ROWS).version
+
+
+def _measure(
+    operation: Callable[[], object], *, minimum_seconds: float, repeat: int
+) -> tuple[float, float, int]:
+    operation()
     number = 1
     while number < 4_096:
-        if timeit.timeit(_append_fresh_table, number=number) >= minimum_seconds:
+        if timeit.timeit(operation, number=number) >= minimum_seconds:
             break
         number *= 2
     gc.collect()
-    samples = timeit.repeat(_append_fresh_table, number=number, repeat=repeat)
+    samples = timeit.repeat(operation, number=number, repeat=repeat)
     per_operation = [sample / number for sample in samples]
     return statistics.median(per_operation), min(per_operation), number
 
@@ -96,19 +109,26 @@ def main() -> None:
         print("-" * 80)
         gc.disable()
         try:
-            median, best, iterations = _measure(
-                minimum_seconds=arguments.min_time, repeat=arguments.repeat
-            )
+            measured = [
+                ("catalog append arrow table", _append_fresh_table),
+                ("catalog append plain rows", _append_fresh_table_rows),
+            ]
+            for name, operation in measured:
+                median, best, iterations = _measure(
+                    operation,
+                    minimum_seconds=arguments.min_time,
+                    repeat=arguments.repeat,
+                )
+                rate = f"{ROW_COUNT / median:,.0f} rows/s"
+                print(
+                    f"{name:32} "
+                    f"{median * 1_000:10.3f} ms "
+                    f"{best * 1_000:10.3f} ms "
+                    f"{rate:>20} "
+                    f"({iterations} iterations)"
+                )
         finally:
             gc.enable()
-        rate = f"{ROW_COUNT / median:,.0f} rows/s"
-        print(
-            f"{'catalog append fresh table':32} "
-            f"{median * 1_000:10.3f} ms "
-            f"{best * 1_000:10.3f} ms "
-            f"{rate:>20} "
-            f"({iterations} iterations)"
-        )
     finally:
         shutil.rmtree(ROOT, ignore_errors=True)
 

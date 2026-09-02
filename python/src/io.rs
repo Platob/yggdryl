@@ -10,7 +10,7 @@
 
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _, RecordOptions};
@@ -18,7 +18,7 @@ use yggdryl::io::{IOBase as _, IOMedia as _};
 use yggdryl::text::TextLineOptions;
 use yggdryl::{Codec, IOMode, Level};
 
-use crate::codec::{decoded_as_py, decoded_into_py};
+use crate::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
 use crate::field::{PyField, core_field_from_value};
 use crate::record::{
     Frames, PyRecordOptions, batch_reader_from_arrow_reader, batch_reader_from_arrow_table,
@@ -276,12 +276,12 @@ impl PyIOBase {
             buffer.set_media_type(handle.inner.media_type().clone());
             return Ok(Self::from_core(buffer));
         }
-        if value.hasattr("read")? && !value.is_instance_of::<pyo3::types::PyString>() {
+        if value.hasattr("read")? && !value.is_instance_of::<PyString>() {
             // An open file knows where it lives; `name` is an `int` for a
             // descriptor-opened one and absent on a plain stream, and neither
             // of those names a place.
             if let Ok(name) = value.getattr("name")
-                && name.is_instance_of::<pyo3::types::PyString>()
+                && name.is_instance_of::<PyString>()
             {
                 return Self::located(&name.extract::<std::path::PathBuf>()?);
             }
@@ -655,14 +655,55 @@ impl PyIOBase {
     }
 
     /// Read `length` bytes from `offset`, which `pathlib` cannot do.
-    fn pread<'py>(
+    ///
+    /// The core's `read_range_bytes` under its own name: the ranged half of
+    /// the pair `read_bytes` reads whole.
+    fn read_range_bytes<'py>(
         &self,
         py: Python<'py>,
         offset: u64,
         length: usize,
     ) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.inner.read_range(offset, length).map_err(value_error)?;
+        let bytes = self
+            .inner
+            .read_range_bytes(offset, length)
+            .map_err(value_error)?;
         Ok(PyBytes::new(py, &bytes))
+    }
+
+    /// Read `length` bytes from `offset` as `cls`.
+    ///
+    /// The inferring entry point over the one core range read: `bytes` - the
+    /// default - is `read_range_bytes` itself, and `str` decodes that same
+    /// range as UTF-8, exactly as `read_text` decodes what `read_bytes` reads.
+    #[pyo3(signature = (offset, length, *, cls = None))]
+    fn read_range<'py>(
+        &self,
+        py: Python<'py>,
+        offset: u64,
+        length: usize,
+        cls: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        // Settled before the read, so a rejected `cls` costs no fetch and the
+        // caller's real mistake is what gets raised.
+        let text = match cls {
+            None => false,
+            Some(cls) if cls.is(py.get_type::<PyBytes>()) => false,
+            Some(cls) if cls.is(py.get_type::<PyString>()) => true,
+            Some(_) => return Err(PyTypeError::new_err("cls must be bytes, str, or None")),
+        };
+        // The core answer is read once and becomes exactly one Python object:
+        // the text path never materializes the `bytes` it would discard.
+        let bytes = self
+            .inner
+            .read_range_bytes(offset, length)
+            .map_err(value_error)?;
+        if !text {
+            return Ok(PyBytes::new(py, &bytes).into_any());
+        }
+        let decoded =
+            String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(PyString::new(py, &decoded).into_any())
     }
 
     /// Stream byte arrays from an explicit position without retaining pages.
@@ -706,8 +747,27 @@ impl PyIOBase {
     }
 
     /// Append `data` after the last byte, returning the offset it landed at.
-    fn append(&mut self, data: &[u8]) -> PyResult<u64> {
-        self.inner.append(data).map_err(value_error)
+    ///
+    /// The core's `append_bytes` under its own name; `append` is the inferring
+    /// entry point that also takes text and the other buffer types.
+    fn append_bytes(&mut self, data: &[u8]) -> PyResult<u64> {
+        self.inner.append_bytes(data).map_err(value_error)
+    }
+
+    /// Append bytes or UTF-8 text after the last byte, returning its offset.
+    ///
+    /// `bytes`, `bytearray`, `memoryview`, and `str` all name the same core
+    /// append: the buffer is read once here and redirected to `append_bytes`.
+    fn append(&mut self, data: &Bound<'_, PyAny>) -> PyResult<u64> {
+        if let Ok(text) = data.cast::<PyString>() {
+            let text = text.to_cow()?;
+            return self.append_bytes(text.as_bytes());
+        }
+        with_python_bytes(
+            data,
+            "appended data must be bytes, bytearray, memoryview, or str",
+            |bytes| self.append_bytes(bytes),
+        )
     }
 
     /// Create this resource as a container, as `Path.mkdir`.

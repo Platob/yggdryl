@@ -104,7 +104,7 @@ pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
 ///
 /// Returns an error when the field is not a non-null struct root, when a
 /// column has no field id, or when a datatype has no Iceberg spelling.
-pub fn schema_to_json(root: &Field) -> Result<Scalar> {
+pub fn schema_into_json(root: &Field) -> Result<Scalar> {
     root.validate_struct_root()?;
 
     let mut entries = vec![(Scalar::from("type"), Scalar::from("struct"))];
@@ -171,7 +171,7 @@ pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32> {
 /// # Errors
 ///
 /// Returns an error when a stored identifier is not a canonical integer.
-pub fn last_field_id(root: &Field) -> Result<i32> {
+pub fn last_column_id(root: &Field) -> Result<i32> {
     Ok(root.max_parquet_field_id()?.unwrap_or_default())
 }
 

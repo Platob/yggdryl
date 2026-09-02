@@ -113,18 +113,18 @@ test('buffered adds one reconfigurable native cache without changing identity', 
     handle.buffered({ pageSize: 1_000, maxBytes: 1, ttlMs: 10_000 }),
     handle,
   )
-  assert.deepEqual(handle.pread(63_900, 300), bytes.subarray(63_900, 64_200))
-  assert.deepEqual(handle.pread(63_900, 300), bytes.subarray(63_900, 64_200))
+  assert.deepEqual(handle.readRangeBytes(63_900, 300), bytes.subarray(63_900, 64_200))
+  assert.deepEqual(handle.readRangeBytes(63_900, 300), bytes.subarray(63_900, 64_200))
 
   // A second call replaces the options on the same cache layer, and writes
   // still invalidate the touched pages before the next read.
   assert.strictEqual(handle.buffered({ pageSize: 128, ttlMs: 0 }), handle)
   handle.pwrite(64_000, Buffer.from('native-cache'))
-  assert.equal(handle.pread(64_000, 12).toString(), 'native-cache')
+  assert.equal(handle.readRangeBytes(64_000, 12).toString(), 'native-cache')
   assert.equal(handle.size, bytes.length)
 
   assert.throws(() => handle.buffered({ pageSize: -1 }), /pageSize/)
-  assert.equal(handle.pread(64_000, 12).toString(), 'native-cache')
+  assert.equal(handle.readRangeBytes(64_000, 12).toString(), 'native-cache')
 })
 
 test('open promotes record handles and retains media metadata until close', () => {
@@ -370,16 +370,44 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   handle.writeBytes(Buffer.from('symbol,price'))
 
   // Random access is the contract, so there is nothing to open or seek.
-  assert.equal(handle.pread(0, 6).toString(), 'symbol')
+  assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
+  // The inferring entry point answers the same range as bytes or as text.
+  assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
+  assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
+  assert.deepEqual(handle.readRange(0, 6, { text: false }), Buffer.from('symbol'))
+  assert.throws(() => handle.readRange(0, 6, { utf8: true }), /unknown readRange option utf8/)
+  assert.throws(() => handle.readRange(0, 6, { text: 'yes' }), /text must be a boolean/)
   assert.equal(handle.pwrite(0, Buffer.from('SYMBOL')), 6)
   assert.equal(handle.readText(), 'SYMBOL,price')
-  assert.equal(handle.append(Buffer.from('!')), 12)
+  assert.equal(handle.appendBytes(Buffer.from('!')), 12)
+  // `append` infers its byte source and redirects to `appendBytes`.
+  assert.equal(handle.append('?'), 13)
+  assert.equal(handle.append(new Uint8Array([0x23])), 14)
+  assert.equal(handle.append(Uint8Array.from([0x24]).buffer), 15)
+  // Any view reads over its own window, which is what `memoryview` reaches.
+  assert.equal(handle.append(new DataView(Uint8Array.from([0x25]).buffer)), 16)
+  assert.throws(
+    () => handle.append(12),
+    /appended data must be a typed array, DataView, ArrayBuffer, or string/,
+  )
+  assert.equal(handle.readText(), 'SYMBOL,price!?#$%')
+
+  // Text refuses a sequence it cannot decode rather than substituting, which
+  // is what `readText` does and what Python's `cls=str` does.
+  const binary = IOBase.fromBytes(Buffer.from([0xff, 0xfe]))
+  assert.deepEqual(binary.readRange(0, 2), Buffer.from([0xff, 0xfe]))
+  assert.throws(() => binary.readRange(0, 2, { text: true }), /invalid utf-8/)
+  handle.truncate(13)
   assert.equal(handle.size, 13)
 
   handle.truncate(6)
   assert.equal(handle.readText(), 'SYMBOL')
-  assert.throws(() => handle.pread(-1, 4), /offset must be a non-negative whole number/)
-  assert.throws(() => handle.pread(1.5, 4), /offset/)
+  assert.throws(() => handle.readRangeBytes(-1, 4), /offset must be a non-negative whole number/)
+  assert.throws(() => handle.readRangeBytes(1.5, 4), /offset/)
+  // `length` is checked exactly as `offset` is, rather than being coerced.
+  assert.throws(() => handle.readRangeBytes(0, -1), /length must be a non-negative whole number/)
+  assert.throws(() => handle.readRangeBytes(0, 1.5), /length/)
+  assert.throws(() => handle.readRange(0, 1.5, { text: true }), /length/)
   assert.throws(() => handle.truncate(Number.NaN), /size/)
 })
 

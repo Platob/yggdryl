@@ -383,7 +383,7 @@ mod staging {
         assert_eq!(handle.pread(8, &mut target).unwrap(), 2);
         assert_eq!(handle.pread(10, &mut target).unwrap(), 0);
         assert_eq!(handle.pread(1_000, &mut target).unwrap(), 0);
-        assert_eq!(handle.read_range(8, 100).unwrap(), b"89");
+        assert_eq!(handle.read_range_bytes(8, 100).unwrap(), b"89");
     }
 
     #[test]
@@ -1149,13 +1149,13 @@ mod tables {
         )
         .unwrap();
         table
-            .append(crate::arrow::batch_reader(
+            .commit_append(crate::arrow::batch_reader(
                 batch(1, "AAPL").schema(),
                 [batch(1, "AAPL")],
             ))
             .unwrap();
         table
-            .append(crate::arrow::batch_reader(
+            .commit_append(crate::arrow::batch_reader(
                 batch(2, "MSFT").schema(),
                 [batch(2, "MSFT")],
             ))

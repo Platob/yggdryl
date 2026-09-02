@@ -19,7 +19,7 @@ use yggdryl::iceberg::{
     Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
     PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan, SchemaUpdate as CoreSchemaUpdate,
     Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, assign_field_ids, can_promote,
-    last_field_id, schema_from_json, schema_to_json,
+    last_column_id, schema_from_json, schema_into_json,
 };
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
@@ -99,7 +99,7 @@ fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
 /// none and leaves with all of them. It happens at this boundary because the
 /// spec builder resolves `partitionBy` names to identifiers.
 fn numbered_schema(mut schema: CoreField) -> Result<CoreField> {
-    let start = last_field_id(&schema)
+    let start = last_column_id(&schema)
         .map_err(napi_error)?
         .saturating_add(1);
     assign_field_ids(&mut schema, start).map_err(napi_error)?;
@@ -1522,7 +1522,7 @@ impl JsTable {
     /// The version number of the current metadata document.
     #[napi(getter)]
     pub const fn version(&self) -> u32 {
-        self.inner.version()
+        self.inner.metadata_version()
     }
 
     /// Free-form table properties.
@@ -1729,12 +1729,12 @@ impl JsTable {
     #[napi]
     pub fn scan_where(
         &mut self,
-        filters: ScanFilters,
+        filters: Option<ScanFilters>,
         field: Option<FieldInput<'_>>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let pairs = filter_pairs(Some(filters));
+        let pairs = filter_pairs(filters);
         let field = field.map(field_from_input).transpose()?;
         let reader = with_call_options(&mut self.inner, call_options(options), |table| {
             table
@@ -1820,7 +1820,7 @@ impl JsTable {
     ) -> Result<()> {
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
-            table.append(batches).map_err(napi_error)
+            table.commit_append(batches).map_err(napi_error)
         })
     }
 
@@ -1837,7 +1837,7 @@ impl JsTable {
     ) -> Result<()> {
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
-            table.overwrite(batches).map_err(napi_error)
+            table.commit_overwrite(batches).map_err(napi_error)
         })
     }
 
@@ -1857,15 +1857,15 @@ impl JsTable {
     #[napi]
     pub fn overwrite_where(
         &mut self,
-        filters: ScanFilters,
+        filters: Option<ScanFilters>,
         batches: &mut JsBatchReader,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
-        let pairs = filter_pairs(Some(filters));
+        let pairs = filter_pairs(filters);
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
-                .overwrite_where(&borrowed_pairs(&pairs), batches)
+                .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
                 .map_err(napi_error)
         })
     }
@@ -1893,7 +1893,7 @@ impl JsTable {
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
-                .merge(batches, &merge_by_names, safe.unwrap_or(true))
+                .commit_merge(batches, &merge_by_names, safe.unwrap_or(true))
                 .map_err(napi_error)
         })
     }
@@ -1907,17 +1907,17 @@ impl JsTable {
     #[napi]
     pub fn merge_where(
         &mut self,
-        filters: ScanFilters,
+        filters: Option<ScanFilters>,
         batches: &mut JsBatchReader,
         merge_by_names: Vec<String>,
         safe: Option<bool>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
-        let pairs = filter_pairs(Some(filters));
+        let pairs = filter_pairs(filters);
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
-                .merge_where(
+                .commit_merge_where(
                     &borrowed_pairs(&pairs),
                     batches,
                     &merge_by_names,
@@ -2005,7 +2005,7 @@ impl JsTable {
     #[napi]
     pub fn remove_ref(&mut self, name: String) -> Result<JsSnapshotRef> {
         self.inner
-            .remove_ref(&name)
+            .remove_snapshot_ref(&name)
             .map(snapshot_ref_view)
             .map_err(napi_error)
     }
@@ -2018,7 +2018,7 @@ impl JsTable {
     pub fn fast_forward(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
         let snapshot_id = snapshot_id_from_input(snapshot_id)?;
         self.inner
-            .fast_forward(&name, snapshot_id)
+            .fast_forward_branch(&name, snapshot_id)
             .map_err(napi_error)
     }
 
@@ -2095,7 +2095,7 @@ impl JsTable {
     /// naming the key and the value rather than silently using the default.
     #[napi(getter)]
     pub fn target_file_size(&self) -> Result<i64> {
-        let target = self.inner.target_file_size().map_err(napi_error)?;
+        let target = self.inner.target_file_size_bytes().map_err(napi_error)?;
         Ok(i64::try_from(target).unwrap_or(i64::MAX))
     }
 
@@ -2158,7 +2158,7 @@ impl JsTable {
             return Ok(());
         }
         self.inner
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 // Applied by reference: a beaten commit rebases and runs this
                 // closure again on the winner's metadata.
                 for (key, value) in &updates {
@@ -2181,7 +2181,7 @@ impl JsTable {
     #[napi(js_name = "_commitSchemaUpdateNative", skip_typescript)]
     pub fn commit_schema_update(&mut self, update: &JsSchemaUpdate) -> Result<i32> {
         let mut evolution =
-            CoreSchemaUpdate::for_metadata(self.inner.metadata()).map_err(napi_error)?;
+            CoreSchemaUpdate::from_metadata(self.inner.metadata()).map_err(napi_error)?;
         for op in &update.ops {
             match op {
                 SchemaOp::AddColumn { parent, field } => {
@@ -2198,7 +2198,7 @@ impl JsTable {
                 }
             }
         }
-        let evolved = evolution.apply().map_err(napi_error)?;
+        let evolved = evolution.into_field().map_err(napi_error)?;
         self.inner.evolve_schema(evolved).map_err(napi_error)
     }
 
@@ -2416,7 +2416,7 @@ impl JsCatalog {
     ) -> Result<JsTable> {
         self.inner
             .tables()
-            .append_with(&name, data.take()?, call_options(options))
+            .append_arrow_reader_with_options(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2435,7 +2435,7 @@ impl JsCatalog {
     ) -> Result<JsTable> {
         self.inner
             .tables()
-            .overwrite_with(&name, data.take()?, call_options(options))
+            .overwrite_arrow_reader_with_options(&name, data.take()?, call_options(options))
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2916,7 +2916,11 @@ impl JsTables {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.view()
-            .append_with(&self.dotted(&name), batches.take()?, call_options(options))
+            .append_arrow_reader_with_options(
+                &self.dotted(&name),
+                batches.take()?,
+                call_options(options),
+            )
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2935,7 +2939,11 @@ impl JsTables {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsTable> {
         self.view()
-            .overwrite_with(&self.dotted(&name), batches.take()?, call_options(options))
+            .overwrite_arrow_reader_with_options(
+                &self.dotted(&name),
+                batches.take()?,
+                call_options(options),
+            )
             .map(JsTable::from_core)
             .map_err(napi_error)
     }
@@ -2961,9 +2969,9 @@ pub fn iceberg_schema_from_json(name: String, document: &JsScalar) -> Result<JsF
 }
 
 /// Write a root Field as an Iceberg schema document.
-#[napi(js_name = "icebergSchemaToJsonNative", skip_typescript)]
-pub fn iceberg_schema_to_json(schema: &JsField) -> Result<JsScalar> {
-    schema_to_json(&schema.inner)
+#[napi(js_name = "icebergSchemaIntoJsonNative", skip_typescript)]
+pub fn iceberg_schema_into_json(schema: &JsField) -> Result<JsScalar> {
+    schema_into_json(&schema.inner)
         .map(JsScalar::from_core)
         .map_err(napi_error)
 }

@@ -106,6 +106,39 @@ constructor. JavaScript has no object `/` operator protocol, so generic URI path
 composition uses variadic `Uri.joinPath`; every component is normalized by the
 same core `joinpath` implementation as Rust's and Python's `/` idiom.
 
+## Bytes and ranges
+
+`readRangeBytes` and `appendBytes` are the core's `read_range_bytes` and `append_bytes`, camelCased
+at the boundary and nothing more; [io](../io.md#whole-values) states what they do. Over each sits one
+inferring entry point: `readRange` chooses the answer's type from its options, and `append` chooses
+how to read the byte source it was handed.
+
+```javascript
+const assert = require('node:assert/strict')
+const { IOBase } = require('yggdryl')
+
+const handle = IOBase.fromBytes(Buffer.from('symbol,price\n'))
+
+// `{ text: true }` selects the answer's type; omitting it answers a Buffer.
+assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
+assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
+
+// `append` takes a string, any view, and an ArrayBuffer as well as a Buffer.
+assert.equal(handle.append('AAPL,1\n'), 13)
+assert.equal(handle.append(new Uint8Array([77, 83, 70, 84, 10])), 20)
+assert.equal(handle.append(new DataView(Uint8Array.from([78, 86, 68, 65, 10]).buffer)), 25)
+assert.equal(handle.append(Uint8Array.from([73, 78, 84, 67, 10]).buffer), 30)
+assert.equal(handle.readRange(13, 7, { text: true }), 'AAPL,1\n')
+
+// A range it cannot decode is refused, not silently substituted.
+assert.throws(() => IOBase.fromBytes(Buffer.from([0xff])).readRange(0, 1, { text: true }))
+```
+
+`readRange` rejects an unknown option and a non-boolean `text`, the way `readScalar` rejects its
+own, and checks `length` as strictly as `offset` rather than rounding it. `append` reads any typed
+array or `DataView` over its own window - a `Buffer` is one - an `ArrayBuffer`, and a string,
+encoding text as UTF-8 exactly as `writeText` does, and returns the byte offset it landed at.
+
 ## One native field from a class or value
 
 JavaScript follows the [canonical field-conversion contract](../field.md#converting-to-one-native-field)
@@ -673,7 +706,7 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 `iceberg.SnapshotRef`, `iceberg.ManifestFile`, `iceberg.DataFile`,
 `iceberg.ScanPlan`, and `iceberg.Compaction` are the
 classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
-`iceberg.schemaFromJson`, and `iceberg.schemaToJson` are the functions.
+`iceberg.schemaFromJson`, and `iceberg.schemaIntoJson` are the functions.
 These immutable result values expose `equals`, `compare`, `stableHash`, and
 `clone` over their complete Rust-core identity. Snapshot v1 `manifests`, v3 lineage and
 encryption key, manifest encryption and partition summaries, and complete

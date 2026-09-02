@@ -167,7 +167,7 @@ fn a_table_written_here_is_left_for_an_external_reader() {
 
     let batch = rows();
     table
-        .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+        .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
         .expect("an appended snapshot");
     assert_eq!(collect(table.scan(None).expect("a scan")), appended());
 
@@ -303,7 +303,7 @@ fn tables_of_the_other_format_versions_are_left_for_an_external_reader() {
             .expect("a created table");
         let batch = rows();
         table
-            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .expect("an appended snapshot");
         assert_eq!(collect(table.scan(None).expect("a scan")), appended());
         println!("iceberg-interop: wrote {name}");

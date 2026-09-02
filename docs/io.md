@@ -37,8 +37,8 @@ three languages reach it.
     assert handle.size == 20
 
     # Two reads at different offsets, in any order: there is no shared cursor.
-    assert handle.pread(13, 4) == b"AAPL"
-    assert handle.pread(0, 6) == b"symbol"
+    assert handle.read_range_bytes(13, 4) == b"AAPL"
+    assert handle.read_range_bytes(0, 6) == b"symbol"
     ```
 
 === "JavaScript"
@@ -53,12 +53,14 @@ three languages reach it.
     assert.equal(handle.size, 20)
 
     // Two reads at different offsets, in any order: there is no shared cursor.
-    assert.equal(handle.pread(13, 4).toString(), 'AAPL')
-    assert.equal(handle.pread(0, 6).toString(), 'symbol')
+    assert.equal(handle.readRangeBytes(13, 4).toString(), 'AAPL')
+    assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
     ```
 
 `IOBase::pread` and `IOBase::pwrite` are the only two methods an implementation must supply for bytes;
-everything else on the trait is derived from them. They take an explicit offset rather than sharing a
+everything else on the trait is derived from them. The bindings expose the derived
+`read_range_bytes`/`readRangeBytes` for the read - a caller-supplied buffer is a Rust shape - and
+`pwrite` under its own name for the write. They take an explicit offset rather than sharing a
 cursor, so a footer-first container such as Parquet reads its index without seeking, and two readers of
 one handle never interfere.
 
@@ -451,11 +453,11 @@ reports an encoding this build cannot decode, and it names it.
     let mut handle = Buffer::new();
     handle.write_all_bytes(b"symbol,price\n")?;
 
-    // `append` reports the offset the bytes landed at.
-    assert_eq!(handle.append(b"AAPL,1\n")?, 13);
-    assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    // `append_bytes` reports the offset the bytes landed at.
+    assert_eq!(handle.append_bytes(b"AAPL,1\n")?, 13);
+    assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
     // A range past the end yields what exists rather than failing.
-    assert!(handle.read_range(100, 4)?.is_empty());
+    assert!(handle.read_range_bytes(100, 4)?.is_empty());
     assert_eq!(handle.read_all_bytes()?.len(), 20);
     ```
 
@@ -467,11 +469,11 @@ reports an encoding this build cannot decode, and it names it.
     handle = IOBase.from_bytes()
     handle.write_bytes(b"symbol,price\n")
 
-    # `append` reports the offset the bytes landed at.
-    assert handle.append(b"AAPL,1\n") == 13
-    assert handle.pread(0, 6) == b"symbol"
+    # `append_bytes` reports the offset the bytes landed at.
+    assert handle.append_bytes(b"AAPL,1\n") == 13
+    assert handle.read_range_bytes(0, 6) == b"symbol"
     # A range past the end yields what exists rather than raising.
-    assert handle.pread(100, 4) == b""
+    assert handle.read_range_bytes(100, 4) == b""
     assert len(handle.read_bytes()) == 20
     ```
 
@@ -484,20 +486,28 @@ reports an encoding this build cannot decode, and it names it.
     const handle = IOBase.fromBytes()
     handle.writeBytes(Buffer.from('symbol,price\n'))
 
-    // `append` reports the offset the bytes landed at.
-    assert.equal(handle.append(Buffer.from('AAPL,1\n')), 13)
-    assert.equal(handle.pread(0, 6).toString(), 'symbol')
+    // `appendBytes` reports the offset the bytes landed at.
+    assert.equal(handle.appendBytes(Buffer.from('AAPL,1\n')), 13)
+    assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
     // A range past the end yields what exists rather than throwing.
-    assert.equal(handle.pread(100, 4).length, 0)
+    assert.equal(handle.readRangeBytes(100, 4).length, 0)
     assert.equal(handle.readBytes().length, 20)
     ```
 
-`read_all_bytes`, `read_range`, `pwrite_all`, `append`, `write_all_bytes`, and `clear` are the
-whole-value conveniences; the bindings spell the first two `read_bytes`/`read_text` and `pread`.
+`read_all_bytes`, `read_range_bytes`, `pwrite_all`, `append_bytes`, `write_all_bytes`, and `clear`
+are the conveniences derived from `pread`/`pwrite`. Each read and append among them names the core
+type it answers, because the same verbs also address rows: `append_bytes` is the byte sibling of
+`append_arrow_reader`, and `read_range_bytes` the ranged half of what `read_all_bytes` reads whole.
+[`is_atomic`](#bytes-or-rows) is how a caller asks which surface a handle is for.
+
+The bindings keep their own runtime spelling for the two whole-value calls - `read_bytes`/`read_text`
+and `write_bytes`/`write_text` - and carry `read_range_bytes` and `append_bytes` under the core name,
+camelCased in JavaScript. Over each of those two sits one inferring `read_range`/`append` entry
+point, which the [Python](extensions/python.md#bytes-and-ranges) and
+[JavaScript](extensions/javascript.md#bytes-and-ranges) pages spell out.
+
 `pread_exact` is the strict form of `pread`: it fails, naming the shortfall, when the value ends
-before the buffer is full. The pair that reads and replaces the whole value both say `bytes`
-because both are about the bytes rather than the rows; [`is_atomic`](#bytes-or-rows) is how a
-caller asks which surface a handle is for.
+before the buffer is full.
 
 `copy_into` moves bytes between two handles in chunks, so neither side is buffered whole, and it
 carries the media type across. It is `copy_into` in Python and `copyInto` in JavaScript.
@@ -603,7 +613,7 @@ use yggdryl::io::{Buffer, IOBase};
 
 let mut handle = Buffer::new();
 handle.writer_at(0).write_all(b"symbol,price\n")?;
-handle.append(b"AAPL,1\n")?;
+handle.append_bytes(b"AAPL,1\n")?;
 
 let mut text = String::new();
 handle.reader_at(13).read_to_string(&mut text)?;
@@ -1230,8 +1240,8 @@ use yggdryl::io::{Buffer, IOBase};
 let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
 
 // The first read fetches the page holding the range; the second is memory.
-assert_eq!(handle.read_range(0, 8)?, [4_u8; 8]);
-assert_eq!(handle.read_range(2_000, 8)?, [4_u8; 8]);
+assert_eq!(handle.read_range_bytes(0, 8)?, [4_u8; 8]);
+assert_eq!(handle.read_range_bytes(2_000, 8)?, [4_u8; 8]);
 assert_eq!(handle.cached_pages(), 1);
 ```
 
@@ -3356,7 +3366,7 @@ for the next reader to prune with.
     // partitions and committed as one snapshot.
     let table = catalog
         .tables()
-        .append("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
+        .append_arrow_reader("logs.app", Folder::new(&logs)?.into_arrow_lines(&options)?)?;
 
     let snapshot = table.current_snapshot().expect("one commit");
     assert_eq!(snapshot.operation(), "append");
@@ -3369,7 +3379,7 @@ for the next reader to prune with.
     day_two.write_all_bytes(b"2024-02-02 09:30:00.000_000 [ee] [delta] second day\n")?;
     let table = catalog
         .tables()
-        .append("logs.app", day_two.into_arrow_lines(&options)?)?;
+        .append_arrow_reader("logs.app", day_two.into_arrow_lines(&options)?)?;
     assert_eq!(table.metadata().snapshots().len(), 2);
     assert_eq!(table.current_snapshot().unwrap().summary_value("total-records"), Some("4"));
     assert_eq!(table.manifests()?.len(), 2, "one manifest per append");
@@ -3592,7 +3602,7 @@ makes the line surface worth having.
     )?;
 
     // 5. One commit, handed the reader itself - never a Vec of batches.
-    table.append(stream)?;
+    table.commit_append(stream)?;
 
     // The read-back asserts on the table, not on anything held in memory.
     let mut rows = 0_usize;

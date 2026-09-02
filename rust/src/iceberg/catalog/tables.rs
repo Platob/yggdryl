@@ -3,7 +3,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::super::{
-    FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids, last_field_id,
+    FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids, last_column_id,
 };
 use super::catalogs::{Catalog, level_names};
 use super::{Names, Occupant, classify, invalid, resolve};
@@ -21,8 +21,8 @@ const ROOT_NAME: &str = "row";
 /// constructing the view performs no I/O, every question consults storage
 /// when asked, and [`Self::get`] indexes to a [`Table`]. Names may be dotted
 /// (`tables.get("sales.eu.orders")` descends), so the resolution rule lives
-/// here. The write conveniences that take a name, [`Self::append`] and
-/// [`Self::overwrite`], create the table on first write, from the incoming
+/// here. The write conveniences that take a name, [`Self::append_arrow_reader`] and
+/// [`Self::overwrite_arrow_reader`], create the table on first write, from the incoming
 /// rows' own schema.
 #[derive(Debug)]
 pub struct Tables<'catalog, H: IOBase> {
@@ -137,7 +137,7 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
 
     /// Open the named table, creating it from the reader's schema when absent.
     ///
-    /// This is the first half of [`Self::append`] and [`Self::overwrite`],
+    /// This is the first half of [`Self::append_arrow_reader`] and [`Self::overwrite_arrow_reader`],
     /// public so a caller can settle per-call [`IcebergOptions`] on the table
     /// before handing it the rows.
     ///
@@ -145,7 +145,11 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
     ///
     /// Returns an error when the name is refused, when the reader's schema
     /// cannot describe a table, or when the create fails.
-    pub fn open_or_create_from(&self, name: &str, batches: &BatchReader) -> Result<Table<Holder>> {
+    pub fn open_or_create_from_arrow_reader(
+        &self,
+        name: &str,
+        batches: &BatchReader,
+    ) -> Result<Table<Holder>> {
         let dotted = self.dotted(name);
         match classify(resolve(self.catalog.warehouse(), &dotted)?)? {
             Occupant::Table(table) => Ok(*table),
@@ -234,33 +238,33 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
     ///
     /// Returns an error when the name is refused, when the reader's schema
     /// cannot describe a table, or when the create or the append fails.
-    pub fn append(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>> {
-        self.append_with(name, batches, None)
+    pub fn append_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>> {
+        self.append_arrow_reader_with_options(name, batches, None)
     }
 
-    /// [`Self::append`] with per-call [`IcebergOptions`] settled first.
+    /// [`Self::append_arrow_reader`] with per-call [`IcebergOptions`] settled first.
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::append`] returns.
-    pub fn append_with(
+    /// Returns what [`Self::append_arrow_reader`] returns.
+    pub fn append_arrow_reader_with_options(
         &self,
         name: &str,
         batches: BatchReader,
         options: Option<IcebergOptions>,
     ) -> Result<Table<Holder>> {
-        let mut table = self.open_or_create_from(name, &batches)?;
+        let mut table = self.open_or_create_from_arrow_reader(name, &batches)?;
         if let Some(options) = options {
             table.set_options(options);
         }
-        table.append(batches)?;
+        table.commit_append(batches)?;
         Ok(table)
     }
 
     /// Replace the named table's rows with `batches`, creating it on first
     /// write.
     ///
-    /// The same shape as [`Self::append`] with [`Table::overwrite`] as the
+    /// The same shape as [`Self::append_arrow_reader`] with [`Table::commit_overwrite`] as the
     /// write: an absent table is created from the reader's schema, an
     /// existing one keeps its previous snapshot readable. Returns the table
     /// so the caller can keep going.
@@ -269,26 +273,30 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
     ///
     /// Returns an error when the name is refused, when the reader's schema
     /// cannot describe a table, or when the create or the overwrite fails.
-    pub fn overwrite(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>> {
-        self.overwrite_with(name, batches, None)
+    pub fn overwrite_arrow_reader(
+        &self,
+        name: &str,
+        batches: BatchReader,
+    ) -> Result<Table<Holder>> {
+        self.overwrite_arrow_reader_with_options(name, batches, None)
     }
 
-    /// [`Self::overwrite`] with per-call [`IcebergOptions`] settled first.
+    /// [`Self::overwrite_arrow_reader`] with per-call [`IcebergOptions`] settled first.
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::overwrite`] returns.
-    pub fn overwrite_with(
+    /// Returns what [`Self::overwrite_arrow_reader`] returns.
+    pub fn overwrite_arrow_reader_with_options(
         &self,
         name: &str,
         batches: BatchReader,
         options: Option<IcebergOptions>,
     ) -> Result<Table<Holder>> {
-        let mut table = self.open_or_create_from(name, &batches)?;
+        let mut table = self.open_or_create_from_arrow_reader(name, &batches)?;
         if let Some(options) = options {
             table.set_options(options);
         }
-        table.overwrite(batches)?;
+        table.commit_overwrite(batches)?;
         Ok(table)
     }
 
@@ -306,7 +314,7 @@ impl<'catalog, H: IOBase> Tables<'catalog, H> {
     fn create_at(folder: Holder, mut schema: Field) -> Result<Table<Holder>> {
         // Numbering continues above the highest identifier already assigned,
         // so a partially numbered schema keeps every id it came with.
-        let start = last_field_id(&schema)?.saturating_add(1);
+        let start = last_column_id(&schema)?.saturating_add(1);
         assign_field_ids(&mut schema, start)?;
         let spec = PartitionSpec::from_schema(0, &schema)?;
         Table::create(folder, FormatVersion::V2, schema, spec)

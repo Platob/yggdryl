@@ -256,8 +256,8 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.as_io().read_all_bytes()
     }
 
-    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.as_io().read_range(offset, length)
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_io().read_range_bytes(offset, length)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

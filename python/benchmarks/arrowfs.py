@@ -124,7 +124,7 @@ def _pyarrow_read_bytes() -> object:
 
 def _wrapper_read_range() -> object:
     handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_BYTES)
-    return len(handle.pread(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES))
+    return len(handle.read_range_bytes(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES))
 
 
 def _pyarrow_read_range() -> object:
@@ -231,7 +231,7 @@ def main() -> None:
         # would still look fast enough, so the range read is asserted to be a
         # range read before it is timed.
         handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_BYTES)
-        assert len(handle.pread(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES)) == RANGE_BYTES
+        assert len(handle.read_range_bytes(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES)) == RANGE_BYTES
         assert handle.read_bytes() == PAYLOAD
         assert _wrapper_read_parquet() == _pyarrow_read_parquet()
 

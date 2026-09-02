@@ -508,7 +508,7 @@ needs nothing from the table format:
         schema,
         PartitionSpec::unpartitioned(),
     )?;
-    table.append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
 
     let options = table.record_options()?;
     let rows: usize = table
@@ -635,7 +635,7 @@ directory lists empty, a read past the end is short, and a write replaces the wh
 
     let handle = File::from_location(Arc::new(OneObject), "bucket/only.bin")?;
     assert_eq!(handle.read_all_bytes()?, b"AAPL!");
-    assert_eq!(handle.read_range(1, 3)?, b"APL");
+    assert_eq!(handle.read_range_bytes(1, 3)?, b"APL");
     ```
 
 In Python, write a `pyarrow.fs.FileSystemHandler` and wrap it in `pyarrow.fs.PyFileSystem`. That is
@@ -725,7 +725,7 @@ already reach answers them:
     handle.close()
 
     assert.equal(fs.readFileSync(path.join(root, 'lake', 'trades.bin'), 'utf8'), 'AAPL')
-    assert.equal(handle.pread(1, 3).toString(), 'APL')
+    assert.equal(handle.readRangeBytes(1, 3).toString(), 'APL')
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

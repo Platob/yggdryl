@@ -2344,6 +2344,10 @@ const { IOBase, Timezone } = binding
 const nativeIOReadValue = IOBase.prototype._readScalarNative
 const nativeIOWriteValue = IOBase.prototype._writeScalarNative
 const nativeIOBuffered = IOBase.prototype._bufferedNative
+const nativeIOReadRangeBytes = IOBase.prototype.readRangeBytes
+const nativeIOAppendBytes = IOBase.prototype.appendBytes
+const nativeIOReadRangeText = IOBase.prototype._readRangeTextNative
+delete IOBase.prototype._readRangeTextNative
 delete IOBase.prototype._readScalarNative
 delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
@@ -2364,6 +2368,42 @@ function checkedBufferedOptions(options) {
     }
   }
   return options
+}
+
+function rangeReadArguments(options) {
+  if (options === undefined || options === null) return false
+  if (!isPlainObject(options)) {
+    throw new TypeError('readRange options must be an object')
+  }
+  for (const name of Object.keys(options)) {
+    if (name !== 'text') {
+      throw new TypeError(`unknown readRange option ${name}`)
+    }
+  }
+  if (
+    options.text !== undefined &&
+    options.text !== null &&
+    typeof options.text !== 'boolean'
+  ) {
+    throw new TypeError('text must be a boolean')
+  }
+  return options.text === true
+}
+
+// The one place a JavaScript byte source becomes the `Uint8Array` the native
+// append borrows. A string is UTF-8, matching `writeText`; any typed array or
+// `DataView` is read over its own window, which is what Python's `memoryview`
+// reaches on that side.
+function appendedBytes(data) {
+  if (typeof data === 'string') return Buffer.from(data, 'utf8')
+  if (data instanceof Uint8Array) return data
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  }
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  throw new TypeError(
+    'appended data must be a typed array, DataView, ArrayBuffer, or string',
+  )
 }
 
 function readScalarArguments(input) {
@@ -2406,6 +2446,23 @@ Object.defineProperties(IOBase.prototype, {
         options.ttlMs,
       )
       return this
+    },
+  },
+  readRange: {
+    configurable: true,
+    value(offset, length, options) {
+      // Settled before the read, so a rejected option costs no fetch. Text
+      // decodes in the core, which refuses an invalid sequence rather than
+      // substituting replacement characters the way `toString` would.
+      return rangeReadArguments(options)
+        ? nativeIOReadRangeText.call(this, offset, length)
+        : nativeIOReadRangeBytes.call(this, offset, length)
+    },
+  },
+  append: {
+    configurable: true,
+    value(data) {
+      return nativeIOAppendBytes.call(this, appendedBytes(data))
     },
   },
   readScalar: {
@@ -2558,7 +2615,7 @@ delete binding.ArrowWriteSession
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
 const { installRecords } = require('./records.js')
-const { intoField } = installRecords({
+const { icebergBatchReader, intoField } = installRecords({
   BatchReader,
   Field,
   IOBase,
@@ -2766,14 +2823,18 @@ Object.defineProperty(binding.Table.prototype, 'updateSchema', {
   },
 })
 
-// A catalog write takes exactly what a table write takes: `BatchReader.from`
-// is the one inference point for anything that names a stream of batches.
+// A catalog write takes exactly what a table write takes, through the one
+// Iceberg inference point: Arrow shapes and IPC bytes name their own reader,
+// and rows are typed by the table the write lands in - which a create-on-write
+// does not have yet, so the rows declare it.
 for (const name of ['append', 'overwrite']) {
   const native = binding.Catalog.prototype[name]
   Object.defineProperty(binding.Catalog.prototype, name, {
     configurable: true,
     value(tableName, data, options) {
-      return native.call(this, tableName, BatchReader.from(data), options)
+      const tables = this.tables
+      const stored = tables.has(tableName) ? tables.get(tableName) : null
+      return native.call(this, tableName, icebergBatchReader(stored, data), options)
     },
   })
 }
@@ -2806,7 +2867,7 @@ const iceberg = Object.freeze({
       document instanceof Scalar ? document : Scalar.fromJs(document),
     )
   },
-  schemaToJson: binding.icebergSchemaToJsonNative,
+  schemaIntoJson: binding.icebergSchemaIntoJsonNative,
 })
 
 // The Iceberg values are reached through the namespace and nowhere else, so a
@@ -2847,7 +2908,7 @@ for (const name of [
   'icebergAssignFieldIdsNative',
   'icebergCanPromoteNative',
   'icebergSchemaFromJsonNative',
-  'icebergSchemaToJsonNative',
+  'icebergSchemaIntoJsonNative',
 ]) {
   delete binding[name]
 }

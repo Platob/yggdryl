@@ -272,7 +272,7 @@ assert_eq!(media.read_arrow_field(&options)?, schema);
 
 // A Media is also the bytes it encodes: an Arrow IPC stream opens with its
 // continuation marker.
-assert_eq!(media.read_range(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
+assert_eq!(media.read_range_bytes(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
 ```
 
 ### Measured generic media redirection
@@ -321,7 +321,7 @@ media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &option
 assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
 
 // Still an Arrow IPC stream, now behind gzip framing.
-assert_eq!(media.read_range(0, 2)?, [0x1F, 0x8B]);
+assert_eq!(media.read_range_bytes(0, 2)?, [0x1F, 0x8B]);
 ```
 
 An encoding with no implementation in this build is reported, never guessed at. The error names the media type that was found and the ones that would have worked.

@@ -144,7 +144,7 @@ benchmark('arrowfs/read_bytes', () => IOBase.fromArrowFs(handler, source).readBy
 benchmark('node:fs/read_bytes', () => fs.readFileSync(source))
 
 // The row that says whether a range stayed a range.
-benchmark('arrowfs/read_range_4k', () => handle.pread(0, RANGE_BYTES))
+benchmark('arrowfs/read_range_4k', () => handle.readRangeBytes(0, RANGE_BYTES))
 benchmark('node:fs/read_range_4k', () => handler.readRange(source, 0n, RANGE_BYTES))
 
 benchmark('arrowfs/size', () => IOBase.fromArrowFs(handler, source).size)

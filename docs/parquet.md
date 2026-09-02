@@ -1280,7 +1280,7 @@ assert_eq!(parquet::read_statistics(&handle)?.num_rows, 2);
 
 // A Parquet is also the bytes it encodes, magic bytes included.
 let mut media = Parquet::new(handle);
-assert_eq!(media.read_range(0, 4)?, *b"PAR1");
+assert_eq!(media.read_range_bytes(0, 4)?, *b"PAR1");
 
 // open caches the footer, close releases it.
 assert!(!media.opened());

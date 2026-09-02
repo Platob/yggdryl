@@ -899,6 +899,47 @@ function installRecords({
     },
   })
 
+
+  // An Iceberg write takes what every other write here takes. Anything
+  // Arrow-shaped is the reader it already names; everything else is rows, and
+  // those are typed against the table's stored schema so a plain object does
+  // not have to guess one. A table that does not exist yet names no schema,
+  // and the rows are then what declare it.
+  const ICEBERG_DATA_MIME_TYPE = 'application/vnd.apache.parquet'
+
+  function isArrowShaped(source) {
+    if (source instanceof BatchReader || isBytes(source)) return true
+    if (arrowKind(source) !== null) return true
+    return Array.isArray(source) && source.length > 0 && arrowKind(source[0]) !== null
+  }
+
+  function icebergBatchReader(table, source) {
+    if (source === undefined || source === null || isArrowShaped(source)) {
+      return batchReader(source)
+    }
+    let settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE)
+    const stored = table == null ? null : table.schema
+    if (stored != null) settings = settings.withField(stored)
+    const converted = recordsReader(
+      source,
+      settings,
+      preflightWriteIntent(settings, 'append'),
+    )
+    if (stored != null) return converted.reader
+    // Nothing declared a schema, so the rows named one - and the rows were
+    // encoded by Arrow JS, which dictionary-encodes a string, a datatype
+    // Iceberg does not express. The comparison is against the reader's own
+    // field rather than the declared one: a field class declares `utf8` and
+    // still arrives as `dictionary(int32, utf8)`, so comparing declarations
+    // would skip the cast that is exactly what the create needs. Casting
+    // materializes, which these rows already were.
+    const declared = converted.settings.field
+    if (declared === null || declared === undefined) return converted.reader
+    const widened = declared.intoSchemeCompat('iceberg')
+    if (widened.equals(converted.reader.field)) return converted.reader
+    return batchReader(widened.castArrow(converted.reader), widened.name)
+  }
+
   // The writes that take rows widen them the way every other write here does,
   // and pass the trailing per-call options through untouched. Forwarding it
   // is not optional bookkeeping: a wrapper that drops the argument leaves a
@@ -909,7 +950,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, name, {
       configurable: true,
       value(batches, options) {
-        return native.call(this, batchReader(batches), options)
+        return native.call(this, icebergBatchReader(this, batches), options)
       },
     })
   }
@@ -922,7 +963,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, 'overwriteWhere', {
       configurable: true,
       value(filters, batches, options) {
-        return overwriteWhere.call(this, filters, batchReader(batches), options)
+        return overwriteWhere.call(this, filters, icebergBatchReader(this, batches), options)
       },
     })
   }
@@ -932,7 +973,7 @@ function installRecords({
     Object.defineProperty(Table.prototype, 'merge', {
       configurable: true,
       value(batches, mergeByNames, safe, options) {
-        return merge.call(this, batchReader(batches), mergeByNames, safe, options)
+        return merge.call(this, icebergBatchReader(this, batches), mergeByNames, safe, options)
       },
     })
   }
@@ -945,7 +986,7 @@ function installRecords({
         return mergeWhere.call(
           this,
           filters,
-          batchReader(batches),
+          icebergBatchReader(this, batches),
           mergeByNames,
           safe,
           options,
@@ -995,7 +1036,10 @@ function installRecords({
       Object.defineProperty(Tables.prototype, name, {
         configurable: true,
         value(table, batches, options) {
-          return native.call(this, table, batchReader(batches), options)
+          // An existing table declares the schema its rows are typed against;
+          // a create-on-write names none yet, and the rows declare it.
+          const stored = this.has(table) ? this.get(table) : null
+          return native.call(this, table, icebergBatchReader(stored, batches), options)
         },
       })
     }
@@ -1017,7 +1061,7 @@ function installRecords({
     }
   }
 
-  return Object.freeze({ intoField })
+  return Object.freeze({ icebergBatchReader, intoField })
 }
 
 module.exports = { installRecords }

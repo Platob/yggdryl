@@ -140,9 +140,9 @@ mod schema_updates {
     #[test]
     fn an_added_top_level_column_is_numbered_above_the_last_column_id() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("quantity"));
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         let added = evolved.get_field_by_name("quantity").unwrap();
         assert_eq!(added.parquet_field_id().unwrap(), Some(6));
         assert_eq!(evolved.field_len(), 4);
@@ -151,7 +151,7 @@ mod schema_updates {
     #[test]
     fn an_added_nested_struct_numbers_its_children_depth_first() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column(
             "quote",
             DataType::from_fields([
@@ -161,7 +161,7 @@ mod schema_updates {
             .unwrap()
             .nullable_field("depth"),
         );
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         let depth = evolved
             .get_field_by_name("quote")
             .unwrap()
@@ -175,7 +175,7 @@ mod schema_updates {
     #[test]
     fn a_dropped_columns_identifier_is_never_reused_by_a_later_add() {
         let mut metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.drop_column("id");
         // The added column even carries a stale identifier, which is discarded
         // rather than resurrected.
@@ -185,7 +185,7 @@ mod schema_updates {
                 .nullable_field("trade_id")
                 .with_parquet_field_id(1),
         );
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         assert!(evolved.get_field_by_name("id").is_none());
         assert_eq!(
             evolved
@@ -203,10 +203,10 @@ mod schema_updates {
     #[test]
     fn renaming_a_column_keeps_its_identifier_at_any_depth() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.rename_column("symbol", "ticker");
         update.rename_column("quote.price", "last_price");
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
                 .get_field_by_name("ticker")
@@ -227,10 +227,10 @@ mod schema_updates {
     #[test]
     fn update_doc_writes_the_iceberg_doc_property() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.update_doc("id", "trade identifier");
         update.update_doc("quote.price", "closing price");
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
                 .get_field_by_name("id")
@@ -253,10 +253,10 @@ mod schema_updates {
     #[test]
     fn make_nullable_relaxes_a_required_column() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.make_nullable("id");
         update.make_nullable("quote.price");
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         assert!(evolved.get_field_by_name("id").unwrap().is_nullable());
         assert!(
             evolved
@@ -271,10 +271,10 @@ mod schema_updates {
     #[test]
     fn update_type_applies_a_legal_promotion_at_any_depth() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.update_type("id", DataType::Int64);
         update.update_type("quote.price", DataType::Float64);
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         let id = evolved.get_field_by_name("id").unwrap();
         assert_eq!(id.data_type(), &DataType::Int64);
         assert_eq!(
@@ -296,9 +296,9 @@ mod schema_updates {
     #[test]
     fn update_type_refuses_an_illegal_promotion_naming_both_sides() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.update_type("symbol", DataType::Int32);
-        let message = update.apply().unwrap_err().to_string();
+        let message = update.into_field().unwrap_err().to_string();
         assert!(message.contains("utf8"), "{message}");
         assert!(message.contains("int32"), "{message}");
         assert!(message.contains("symbol"), "{message}");
@@ -307,16 +307,16 @@ mod schema_updates {
     #[test]
     fn a_missing_path_names_the_segment_and_the_available_columns() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.drop_column("quote.mid");
-        let message = update.apply().unwrap_err().to_string();
+        let message = update.into_field().unwrap_err().to_string();
         assert!(message.contains("\"mid\""), "{message}");
         assert!(message.contains("price"), "{message}");
         assert!(message.contains("size"), "{message}");
 
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.rename_column("book.price", "px");
-        let message = update.apply().unwrap_err().to_string();
+        let message = update.into_field().unwrap_err().to_string();
         assert!(message.contains("\"book\""), "{message}");
         assert!(message.contains("symbol"), "{message}");
     }
@@ -324,9 +324,9 @@ mod schema_updates {
     #[test]
     fn descending_through_a_non_struct_column_is_refused_by_name() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.drop_column("symbol.inner");
-        let message = update.apply().unwrap_err().to_string();
+        let message = update.into_field().unwrap_err().to_string();
         assert!(message.contains("struct"), "{message}");
         assert!(message.contains("utf8"), "{message}");
     }
@@ -334,11 +334,11 @@ mod schema_updates {
     #[test]
     fn operations_apply_in_call_order() {
         let metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.rename_column("symbol", "ticker");
         // The second operation sees the first one's result.
         update.update_doc("ticker", "renamed first");
-        let evolved = update.apply().unwrap();
+        let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
                 .get_field_by_name("ticker")
@@ -351,15 +351,15 @@ mod schema_updates {
     #[test]
     fn evolving_twice_keeps_last_column_id_monotone_and_schema_ids_distinct() {
         let mut metadata = metadata();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("first"));
-        let first = metadata.add_schema(update.apply().unwrap()).unwrap();
+        let first = metadata.add_schema(update.into_field().unwrap()).unwrap();
         metadata.set_current_schema(first).unwrap();
         assert_eq!(metadata.last_column_id, 6);
 
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("second"));
-        let second = metadata.add_schema(update.apply().unwrap()).unwrap();
+        let second = metadata.add_schema(update.into_field().unwrap()).unwrap();
         metadata.set_current_schema(second).unwrap();
         assert_eq!(metadata.last_column_id, 7);
         assert_ne!(first, second);
@@ -380,9 +380,9 @@ mod schema_updates {
         assert_eq!(metadata.add_schema(reusable).unwrap(), i32::MAX);
         assert_eq!(metadata.schemas.len(), 1);
 
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("overflow"));
-        let added = update.apply().unwrap();
+        let added = update.into_field().unwrap();
         let before = metadata.clone();
         let message = metadata.add_schema(added).unwrap_err().to_string();
         assert!(message.contains("schema id") && message.contains("i32::MAX"));
@@ -405,9 +405,9 @@ mod schema_updates {
             "{message}"
         );
 
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.drop_column("symbol");
-        let schema_id = metadata.add_schema(update.apply().unwrap()).unwrap();
+        let schema_id = metadata.add_schema(update.into_field().unwrap()).unwrap();
         metadata.set_current_schema(schema_id).unwrap();
 
         let mut reused = metadata.current_schema().unwrap().clone();
@@ -946,9 +946,9 @@ mod metadata_updates {
         metadata.set_default_spec(1).unwrap();
         metadata.add_sort_order(identity_order(1)).unwrap();
         metadata.set_default_sort_order(1).unwrap();
-        let mut update = SchemaUpdate::for_metadata(&metadata).unwrap();
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("quantity"));
-        let schema_id = metadata.add_schema(update.apply().unwrap()).unwrap();
+        let schema_id = metadata.add_schema(update.into_field().unwrap()).unwrap();
         metadata.set_current_schema(schema_id).unwrap();
 
         let document = metadata.into_json().unwrap();

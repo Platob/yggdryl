@@ -106,13 +106,13 @@ fn expected(offset: usize, length: usize) -> Vec<u8> {
 fn a_second_read_of_the_same_range_reaches_nothing() {
     let handle = Buffered::new(counted(4 * PAGE), options(8));
 
-    assert_eq!(handle.read_range(0, 16).unwrap(), expected(0, 16));
+    assert_eq!(handle.read_range_bytes(0, 16).unwrap(), expected(0, 16));
     let after_first = handle.handle().reads();
     assert!(after_first > 0, "the first read has to fetch the page");
 
     // Same range, and every range inside the same page, is memory only.
-    assert_eq!(handle.read_range(0, 16).unwrap(), expected(0, 16));
-    assert_eq!(handle.read_range(8, 40).unwrap(), expected(8, 40));
+    assert_eq!(handle.read_range_bytes(0, 16).unwrap(), expected(0, 16));
+    assert_eq!(handle.read_range_bytes(8, 40).unwrap(), expected(8, 40));
     assert_eq!(handle.handle().reads(), after_first);
     assert_eq!(handle.cached_pages(), 1);
 }
@@ -122,7 +122,7 @@ fn a_hit_asks_the_handle_for_nothing_at_all() {
     let handle = Buffered::new(counted(4 * PAGE), options(8));
 
     // The first read learns the size and fetches its page.
-    assert_eq!(handle.read_range(0, 16).unwrap(), expected(0, 16));
+    assert_eq!(handle.read_range_bytes(0, 16).unwrap(), expected(0, 16));
     let reads = handle.handle().reads();
     let sizes = handle.handle().sizes();
     assert!(
@@ -136,7 +136,7 @@ fn a_hit_asks_the_handle_for_nothing_at_all() {
     // cache and a cache that still pays per read.
     //
     // The claim is about `pread`, the primitive: the derived helpers over it
-    // - `read_range`, `read_all_bytes` - call `size` themselves, once per call,
+    // - `read_range_bytes`, `read_all_bytes` - call `size` themselves, once per call,
     // exactly as they do over any other handle.
     let mut target = [0_u8; 40];
     for _ in 0..8 {
@@ -164,7 +164,7 @@ fn a_value_that_grew_is_seen_when_a_read_reaches_the_end() {
     handle.pwrite(PAGE as u64, b"tail").unwrap();
     assert_eq!(handle.read_all_bytes().unwrap().len(), PAGE + 4);
     assert_eq!(
-        handle.read_range(PAGE as u64, 4).unwrap(),
+        handle.read_range_bytes(PAGE as u64, 4).unwrap(),
         b"tail",
         "the write is visible through the cache"
     );
@@ -175,12 +175,17 @@ fn a_read_spanning_pages_caches_each_of_them() {
     let handle = Buffered::new(counted(8 * PAGE), options(16));
 
     // Unaligned on both ends, across four pages.
-    let read = handle.read_range(PAGE as u64 - 3, 3 * PAGE + 6).unwrap();
+    let read = handle
+        .read_range_bytes(PAGE as u64 - 3, 3 * PAGE + 6)
+        .unwrap();
     assert_eq!(read, expected(PAGE - 3, 3 * PAGE + 6));
     assert_eq!(handle.cached_pages(), 5);
 
     let fetched = handle.handle().reads();
-    assert_eq!(handle.read_range(0, 5 * PAGE).unwrap().len(), 5 * PAGE);
+    assert_eq!(
+        handle.read_range_bytes(0, 5 * PAGE).unwrap().len(),
+        5 * PAGE
+    );
     assert_eq!(
         handle.handle().reads(),
         fetched,
@@ -231,11 +236,14 @@ fn a_write_is_seen_by_the_next_read() {
     assert_eq!(handle.read_all_bytes().unwrap().len(), 4 * PAGE);
     handle.pwrite(PAGE as u64 - 2, b"ABCD").unwrap();
 
-    assert_eq!(handle.read_range(PAGE as u64 - 2, 4).unwrap(), b"ABCD");
+    assert_eq!(
+        handle.read_range_bytes(PAGE as u64 - 2, 4).unwrap(),
+        b"ABCD"
+    );
     assert_eq!(handle.handle().writes(), 1);
     // The patch keeps the surrounding bytes exactly as they were.
     assert_eq!(
-        handle.read_range(PAGE as u64 - 4, 2).unwrap(),
+        handle.read_range_bytes(PAGE as u64 - 4, 2).unwrap(),
         expected(PAGE - 4, 2)
     );
 }
@@ -251,7 +259,10 @@ fn a_write_extending_the_value_replaces_the_page_that_ended_it() {
     handle.pwrite(PAGE as u64 + 10, b"tail").unwrap();
     assert!(!handle.has_cached_page(1));
     assert_eq!(handle.size(), PAGE as u64 + 14);
-    assert_eq!(handle.read_range(PAGE as u64 + 10, 4).unwrap(), b"tail");
+    assert_eq!(
+        handle.read_range_bytes(PAGE as u64 + 10, 4).unwrap(),
+        b"tail"
+    );
 }
 
 #[test]
@@ -303,7 +314,10 @@ fn truncation_invalidates_both_ways() {
     handle.truncate(2 * PAGE as u64 + 4).unwrap();
     assert!(handle.has_cached_page(0));
     assert!(!handle.has_cached_page(2));
-    assert_eq!(handle.read_range(2 * PAGE as u64, 4).unwrap(), b"\0\0\0\0");
+    assert_eq!(
+        handle.read_range_bytes(2 * PAGE as u64, 4).unwrap(),
+        b"\0\0\0\0"
+    );
 }
 
 #[test]
@@ -314,19 +328,19 @@ fn eviction_takes_the_least_recently_read_page_first() {
 
     // Pages 1 through 4, then page 1 again so page 2 is the oldest access.
     for page in 1..=4 {
-        handle.read_range(page * page_size, 4).unwrap();
+        handle.read_range_bytes(page * page_size, 4).unwrap();
     }
-    handle.read_range(page_size, 4).unwrap();
+    handle.read_range_bytes(page_size, 4).unwrap();
 
     // Page 5 needs room, and page 2 is what has gone longest untouched.
-    handle.read_range(5 * page_size, 4).unwrap();
+    handle.read_range_bytes(5 * page_size, 4).unwrap();
     assert!(handle.has_cached_page(1));
     assert!(!handle.has_cached_page(2));
     assert!(handle.cached_bytes() <= handle.options().max_bytes());
 
     // The budget holds however far the scan runs.
     for page in 6..16 {
-        handle.read_range(page * page_size, 4).unwrap();
+        handle.read_range_bytes(page * page_size, 4).unwrap();
         assert!(handle.cached_bytes() <= handle.options().max_bytes());
     }
 }
@@ -464,8 +478,8 @@ fn a_value_smaller_than_one_page_has_one_end() {
 
     // Head and tail are the same page; it is pinned once, not twice.
     let reads = handle.handle().reads();
-    assert_eq!(handle.read_range(0, 10).unwrap(), expected(0, 10));
-    assert_eq!(handle.read_range(6, 4).unwrap(), expected(6, 4));
+    assert_eq!(handle.read_range_bytes(0, 10).unwrap(), expected(0, 10));
+    assert_eq!(handle.read_range_bytes(6, 4).unwrap(), expected(6, 4));
     assert_eq!(handle.handle().reads(), reads);
     assert!(handle.cached_bytes() <= handle.options().max_bytes());
 }
@@ -516,7 +530,7 @@ fn a_budget_below_two_pages_is_clamped() {
 #[test]
 fn buffering_a_buffered_handle_re_wraps_it() {
     let once = counted(PAGE).buffered(options(4));
-    once.read_range(0, 4).unwrap();
+    once.read_range_bytes(0, 4).unwrap();
 
     // The inherent method wins, so this is `Buffered<Counting>` again.
     let twice: Buffered<Counting> = once.buffered(options(8).with_page_size(2 * PAGE));
@@ -526,7 +540,7 @@ fn buffering_a_buffered_handle_re_wraps_it() {
         0,
         "a re-wrap starts with a fresh cache"
     );
-    assert_eq!(twice.read_range(0, 4).unwrap(), expected(0, 4));
+    assert_eq!(twice.read_range_bytes(0, 4).unwrap(), expected(0, 4));
 
     // And a holder never nests either.
     let holder = Holder::buffer(Buffer::from_bytes(vec![1_u8; 32])).buffered(options(4));
@@ -583,7 +597,7 @@ fn closing_drops_every_page_and_the_handle_keeps_working() {
     assert!(!handle.has_cached_page(0), "the pinned pages go too");
 
     // Still a working handle: the next read simply fetches again.
-    assert_eq!(handle.read_range(0, 4).unwrap(), expected(0, 4));
+    assert_eq!(handle.read_range_bytes(0, 4).unwrap(), expected(0, 4));
     assert!(handle.handle().reads() > reads);
 }
 
@@ -597,7 +611,7 @@ fn reaching_the_inner_handle_mutably_drops_the_cache() {
     // borrow drops the cache rather than leaving it to go stale.
     handle.handle_mut().pwrite(0, b"XYZ").unwrap();
     assert_eq!(handle.cached_pages(), 0);
-    assert_eq!(handle.read_range(0, 3).unwrap(), b"XYZ");
+    assert_eq!(handle.read_range_bytes(0, 3).unwrap(), b"XYZ");
 
     // And the explicit spelling of the same thing.
     handle.read_all_bytes().unwrap();

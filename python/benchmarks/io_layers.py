@@ -24,6 +24,9 @@ PAYLOAD = bytes(range(256)) * 4096
 BUFFERED = IOBase.from_bytes(PAYLOAD).buffered(
     page_size=64 * 1024, max_bytes=8 * 1024 * 1024, ttl=30.0
 )
+APPEND = IOBase.from_bytes()
+# UTF-8 content, because the text answer decodes what it reads.
+TEXT = IOBase.from_bytes(b"symbol,price\n" * 1024)
 ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-io-layers-"))
 MEDIA = IOBase(ROOT / "rows.arrows")
 MEDIA.overwrite_arrow_table(pa.table({"id": range(4096)}))
@@ -45,7 +48,33 @@ def main() -> None:
 
     gc.disable()
     try:
-        _measure("buffered page hit", lambda: BUFFERED.pread(65_000, 128), arguments.iterations)
+        _measure(
+            "buffered page hit",
+            lambda: BUFFERED.read_range_bytes(65_000, 128),
+            arguments.iterations,
+        )
+        # The inferring entry point over that same native call: the delta is
+        # what the boundary's type dispatch costs, nothing else.
+        _measure(
+            "range read inferred",
+            lambda: BUFFERED.read_range(65_000, 128),
+            arguments.iterations,
+        )
+        _measure(
+            "range read as text",
+            lambda: TEXT.read_range(0, 128, cls=str),
+            arguments.iterations,
+        )
+        _measure(
+            "append bytes",
+            lambda: APPEND.append_bytes(b"AAPL,1\n"),
+            arguments.iterations,
+        )
+        _measure(
+            "append inferred",
+            lambda: APPEND.append("AAPL,1\n"),
+            arguments.iterations,
+        )
         _measure(
             "buffered idempotent redirect",
             lambda: BUFFERED.buffered(

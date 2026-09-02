@@ -277,6 +277,21 @@ const iceOptions = new iceberg.IcebergOptions({
   dataMimeType: MimeType.AVRO,
 })
 
+// What the widened write costs at the boundary. Each sample commits into its
+// own fresh table, because a growing manifest list would otherwise time the
+// table's history rather than the write - the same rule the Python Iceberg
+// benchmark follows.
+const iceRows = Array.from({ length: 64 }, (_, index) => ({
+  id: BigInt(index),
+  venue: 'XNAS',
+  price: index / 4,
+}))
+let iceBenchIndex = 0
+const freshIceTable = () =>
+  iceberg.Table.create(path.join(root, 'bench', `t${iceBenchIndex++}`), iced)
+benchmark('iceberg/append_arrow_ipc', () => freshIceTable().append(ipc))
+benchmark('iceberg/append_rows', () => freshIceTable().append(iceRows))
+
 benchmark('iceberg/scan_into_ipc', () => iceTable.scan().intoIpc())
 benchmark('iceberg/scan_pushdown', () =>
   iceTable.scan(fields.struct('row', [iced.dataType.at(0)], { nullable: false })).intoIpc(),

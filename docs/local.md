@@ -217,7 +217,7 @@ name with separators in it is a nested child rather than an error.
 
     // Writing past the mapping remaps at a larger capacity instead of failing.
     let bulk = vec![7_u8; 256 * 1024];
-    file.append(&bulk)?;
+    file.append_bytes(&bulk)?;
     assert_eq!(file.size(), 5 + bulk.len() as u64);
     assert!(file.capacity() >= file.size());
 
@@ -300,7 +300,7 @@ written against [`IOBase`](io.md) does not learn which one it got:
     use yggdryl::local::File;
 
     fn head(handle: &dyn IOBase) -> yggdryl::Result<Vec<u8>> {
-        handle.read_range(0, 4)
+        handle.read_range_bytes(0, 4)
     }
 
     let path = std::env::temp_dir().join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));

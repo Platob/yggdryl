@@ -101,7 +101,7 @@ fn positional_reads_and_writes_address_the_decoded_value() {
 
     // Overwriting in place changes only those bytes.
     handle.pwrite(0, b"ticker").unwrap();
-    assert_eq!(&handle.read_range(0, 6).unwrap(), b"ticker");
+    assert_eq!(&handle.read_range_bytes(0, 6).unwrap(), b"ticker");
     assert_eq!(handle.size(), PAYLOAD.len() as u64);
 
     // A read past the end is empty rather than an error.
@@ -322,7 +322,11 @@ fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
         assert_eq!(handle.handle().sizes(), 0, "{codec} measured its source");
         assert!(!handle.opened(), "{codec} retained the decoded value");
 
-        assert_eq!(handle.read_range(9, 31).unwrap(), payload[9..40], "{codec}");
+        assert_eq!(
+            handle.read_range_bytes(9, 31).unwrap(),
+            payload[9..40],
+            "{codec}"
+        );
         assert_eq!(handle.read_all_bytes().unwrap(), payload, "{codec}");
         assert_eq!(handle.handle().sizes(), 0, "{codec} measured a helper read");
         assert!(!handle.opened(), "{codec} cached a helper read");

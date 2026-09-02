@@ -715,8 +715,8 @@ impl<H: IOBase> IOBase for Text<H> {
         self.handle.read_all_bytes()
     }
 
-    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.handle.read_range(offset, length)
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.handle.read_range_bytes(offset, length)
     }
 
     /// Write bytes through and invalidate every opened-session dimension.

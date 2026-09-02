@@ -22,11 +22,11 @@
 //!
 //! // The first read fetches the page holding the range; the second is served
 //! // from it, and a read spanning two pages caches both.
-//! assert_eq!(handle.read_range(0, 16)?.len(), 16);
+//! assert_eq!(handle.read_range_bytes(0, 16)?.len(), 16);
 //! assert_eq!(handle.cached_pages(), 1);
-//! assert_eq!(handle.read_range(0, 16)?.len(), 16);
+//! assert_eq!(handle.read_range_bytes(0, 16)?.len(), 16);
 //! assert_eq!(handle.cached_pages(), 1);
-//! assert_eq!(handle.read_range(250, 12)?.len(), 12);
+//! assert_eq!(handle.read_range_bytes(250, 12)?.len(), 12);
 //! assert_eq!(handle.cached_pages(), 2);
 //! # Ok(())
 //! # }
@@ -70,12 +70,12 @@
 //! let mut handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 16 * 64]), options);
 //!
 //! // Footer first, then the header - the shape a container is opened with.
-//! handle.read_range(16 * 64 - 8, 8)?;
-//! handle.read_range(0, 8)?;
+//! handle.read_range_bytes(16 * 64 - 8, 8)?;
+//! handle.read_range_bytes(0, 8)?;
 //!
 //! // Then a scan of the middle, far past what the budget can hold.
 //! for page in 1..15 {
-//!     handle.read_range(page * 64, 8)?;
+//!     handle.read_range_bytes(page * 64, 8)?;
 //! }
 //!
 //! assert!(handle.cached_bytes() <= handle.options().max_bytes());
@@ -105,8 +105,8 @@
 //!
 //! // The cache wraps the *coding*, so what it holds is decoded bytes.
 //! let handle = Gzip::new(encoded).buffered(BufferedOptions::default());
-//! assert_eq!(handle.read_range(0, 6)?, b"symbol");
-//! assert_eq!(handle.read_range(13, 4)?, b"AAPL");
+//! assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
+//! assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
 //! assert_eq!(handle.cached_pages(), 1);
 //! # Ok(())
 //! # }

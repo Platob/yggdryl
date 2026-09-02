@@ -208,8 +208,8 @@ test('bytes round trip, and a write publishes when the handle is flushed', () =>
   // straight onto one `readRange`.
   assert.equal(handle.pwrite(0, Buffer.from('PENDING')), 7)
   handle.flush()
-  assert.equal(handle.pread(0, 3).toString(), 'PEN')
-  assert.equal(handle.append(Buffer.from('!')), 7)
+  assert.equal(handle.readRangeBytes(0, 3).toString(), 'PEN')
+  assert.equal(handle.appendBytes(Buffer.from('!')), 7)
   handle.flush()
   assert.equal(handler.files.get('bucket/staged.bin').toString(), 'PENDING!')
 

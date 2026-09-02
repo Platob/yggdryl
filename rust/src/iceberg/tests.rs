@@ -14,7 +14,7 @@ use super::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestEntry, ManifestFile, PartitionField, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
-    schema_from_json, schema_to_json,
+    schema_from_json, schema_into_json,
 };
 
 #[test]
@@ -530,7 +530,7 @@ fn collect(reader: crate::arrow::BatchReader) -> Vec<(i64, Option<String>, Optio
 }
 
 mod schema_documents {
-    use super::{Scalar, assign_field_ids, schema_from_json, schema_to_json};
+    use super::{Scalar, assign_field_ids, schema_from_json, schema_into_json};
     use crate::DataType;
 
     #[test]
@@ -572,7 +572,7 @@ mod schema_documents {
         assert!(!schema.fields()[0].is_nullable());
         assert!(schema.fields()[1].is_nullable());
 
-        assert_eq!(schema_to_json(&schema).unwrap(), document);
+        assert_eq!(schema_into_json(&schema).unwrap(), document);
     }
 
     #[test]
@@ -592,7 +592,7 @@ mod schema_documents {
             schema.fields()[1].fields()[0].parquet_field_id().unwrap(),
             Some(3)
         );
-        assert_eq!(super::super::last_field_id(&schema).unwrap(), 3);
+        assert_eq!(super::super::last_column_id(&schema).unwrap(), 3);
 
         // A second pass changes nothing, because every field already has an id.
         assert_eq!(assign_field_ids(&mut schema, 100).unwrap(), 100);
@@ -605,7 +605,7 @@ mod schema_documents {
             .unwrap()
             .required_field("row");
 
-        let message = schema_to_json(&schema).unwrap_err().to_string();
+        let message = schema_into_json(&schema).unwrap_err().to_string();
         assert!(message.contains("assign_field_ids"), "{message}");
     }
 
@@ -674,7 +674,7 @@ mod schema_documents {
         let schema = schema_from_json("row", &document).unwrap();
         assert_eq!(schema.get_metadata("iceberg:schema-id"), Some("0"));
         assert_eq!(
-            schema_to_json(&schema)
+            schema_into_json(&schema)
                 .unwrap()
                 .get_key_str("schema-id")
                 .and_then(Scalar::as_i64),
@@ -697,7 +697,7 @@ mod schema_documents {
             schema.get_metadata("iceberg:identifier-field-ids"),
             Some("1,2")
         );
-        let emitted = schema_to_json(&schema).unwrap();
+        let emitted = schema_into_json(&schema).unwrap();
         let identifiers: Vec<i64> = emitted
             .get_key_str("identifier-field-ids")
             .into_iter()
@@ -717,7 +717,7 @@ mod schema_documents {
             .insert_metadata("iceberg:identifier-field-ids", "1")
             .unwrap();
 
-        let message = schema_to_json(&schema).unwrap_err().to_string();
+        let message = schema_into_json(&schema).unwrap_err().to_string();
         assert!(message.contains("optional field"), "{message}");
     }
 
@@ -755,7 +755,7 @@ mod schema_documents {
             schema.fields()[0].get_metadata("iceberg:initial-default"),
             Some("\"XNAS\"")
         );
-        let emitted = schema_to_json(&schema).unwrap();
+        let emitted = schema_into_json(&schema).unwrap();
         assert_eq!(
             emitted.get_key_str("schema-id").and_then(Scalar::as_i64),
             Some(0)
@@ -918,7 +918,10 @@ mod partition_specs {
         assert!(venue.is_partition());
         assert_eq!(venue.iceberg().get("transform"), Some("identity"));
         assert_eq!(venue.iceberg().get("partition-source-id"), Some("3"));
-        assert_eq!(PartitionSpec::from_field(&partition).unwrap(), spec);
+        assert_eq!(
+            PartitionSpec::from_partition_field(&partition).unwrap(),
+            spec
+        );
 
         // A schema that marks its own partition columns needs no column list.
         let marked = spec.mark_partitions(&schema).unwrap();
@@ -1570,7 +1573,7 @@ mod tables {
         // The numbered table is a working table, not merely a written one.
         let batch = trades(&[7], &[None], &[Some("X")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 1);
@@ -1625,7 +1628,7 @@ mod tables {
 
         // The document is on disk and reopening finds it.
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.version(), 1);
+        assert_eq!(reopened.metadata_version(), 1);
         assert!(reopened.current_snapshot().is_none());
     }
 
@@ -1652,7 +1655,7 @@ mod tables {
         let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_file_name(), official_name);
         reopened
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 metadata.set_property("owner", "interop")?;
                 Ok(())
             })
@@ -1667,6 +1670,44 @@ mod tables {
     }
 
     #[test]
+    fn a_commit_publishes_the_name_a_version_hint_resolves() {
+        let path = root("hint-resolvable-metadata-name");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        assert_eq!(table.metadata_file_name(), "v1.metadata.json");
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("owner", "interop")?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(table.metadata_file_name(), "v2.metadata.json");
+
+        // `v{version}` is the only spelling a numeric hint resolves, so it is
+        // the only one a catalog-free reader - Spark's Hadoop tables among
+        // them - can follow. The unique attempt each commit writes is the
+        // attempt and not the table, so nothing of it survives the commit.
+        let mut names = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(
+            names,
+            ["v1.metadata.json", "v2.metadata.json", "version-hint.text"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(path.join("metadata").join("version-hint.text")).unwrap(),
+            "2"
+        );
+    }
+
+    #[test]
     fn metadata_compression_uses_the_official_property_and_gzip_magic() {
         let path = root("gzip-metadata");
         let mut table = Table::create(
@@ -1677,14 +1718,13 @@ mod tables {
         )
         .unwrap();
         table
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 metadata.set_property("write.metadata.compression-codec", "GZIP")?;
                 Ok(())
             })
             .unwrap();
 
-        assert!(table.metadata_file_name().starts_with("00002-"));
-        assert!(table.metadata_file_name().ends_with(".gz.metadata.json"));
+        assert_eq!(table.metadata_file_name(), "v2.gz.metadata.json");
         assert!(
             std::fs::read(path.join("metadata").join(table.metadata_file_name()))
                 .unwrap()
@@ -1714,7 +1754,9 @@ mod tables {
         .unwrap_err();
         assert!(error.is_conflict(), "{error}");
         assert_eq!(
-            Table::open(Folder::new(&path).unwrap()).unwrap().version(),
+            Table::open(Folder::new(&path).unwrap())
+                .unwrap()
+                .metadata_version(),
             1
         );
     }
@@ -1751,7 +1793,7 @@ mod tables {
             &[Some("XNAS"), Some("XNYS"), Some("XNAS")],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let snapshot = table.current_snapshot().expect("a snapshot");
@@ -1783,7 +1825,7 @@ mod tables {
         .unwrap();
         let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
         let snapshot_id = table.current_snapshot().unwrap().snapshot_id;
         let manifest_paths: Vec<Scalar> = table
@@ -1826,7 +1868,7 @@ mod tables {
 
         let second = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
         reopened
-            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
         assert_eq!(
@@ -1860,7 +1902,7 @@ mod tables {
             &[Some("XNAS"), Some("XNYS"), Some("XNAS")],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let files = table.data_files().unwrap();
@@ -1967,7 +2009,7 @@ mod tables {
         )
         .unwrap();
         table
-            .append(crate::arrow::batch_reader(arrow, [batch]))
+            .commit_append(crate::arrow::batch_reader(arrow, [batch]))
             .unwrap();
 
         let files = table.data_files().unwrap();
@@ -2039,7 +2081,7 @@ mod tables {
         )]);
         let batch = RecordBatch::try_new(arrow.clone(), vec![Arc::new(payload)]).unwrap();
         table
-            .append(crate::arrow::batch_reader(arrow, [batch]))
+            .commit_append(crate::arrow::batch_reader(arrow, [batch]))
             .unwrap();
 
         let files = table.data_files().unwrap();
@@ -2062,7 +2104,7 @@ mod tables {
             &[Some("XNAS"), None],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let files = table.data_files().unwrap();
@@ -2097,18 +2139,18 @@ mod tables {
 
         let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
         let second = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
         table
-            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
         assert_eq!(collect(table.scan(None).unwrap()).len(), 2);
         assert_eq!(table.manifests().unwrap().len(), 2);
 
         let replacement = trades(&[9], &[Some("NVDA")], &[Some("XNAS")]);
         table
-            .overwrite(crate::arrow::batch_reader(
+            .commit_overwrite(crate::arrow::batch_reader(
                 replacement.schema(),
                 [replacement],
             ))
@@ -2141,7 +2183,7 @@ mod tables {
         .unwrap();
         let batch = trades(&[1, 2], &[Some("AAPL"), Some("MSFT")], &[Some("XNAS"); 2]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let mut wanted = schema.without_fields(&["symbol", "venue"]).unwrap();
@@ -2189,7 +2231,7 @@ mod tables {
         .unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let mut evolved = schema.clone();
@@ -2227,7 +2269,7 @@ mod tables {
         )
         .unwrap();
         table
-            .append(crate::arrow::batch_reader(arrow, [widened]))
+            .commit_append(crate::arrow::batch_reader(arrow, [widened]))
             .unwrap();
         assert_eq!(collect(table.scan(None).unwrap()).len(), 2);
     }
@@ -2245,7 +2287,7 @@ mod tables {
         .unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let file = table.data_files().unwrap()[0].0.file_path.clone();
@@ -2275,7 +2317,7 @@ mod tables {
         .unwrap();
         let batch = trades(&[1, 2], &[Some("AAPL"), None], &[Some("XNAS"), None]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         assert_eq!(
@@ -2303,7 +2345,7 @@ mod tables {
 
         let first = trades(&[1, 2], &[Some("AAPL"), Some("MSFT")], &[Some("XNAS"); 2]);
         table
-            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
         assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(0));
         assert_eq!(table.current_snapshot().unwrap().added_rows, Some(2));
@@ -2313,7 +2355,7 @@ mod tables {
 
         let second = trades(&[3], &[Some("NVDA")], &[Some("XNYS")]);
         table
-            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
         assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(2));
         assert_eq!(table.current_snapshot().unwrap().added_rows, Some(1));
@@ -2350,7 +2392,7 @@ mod tables {
         for id in [1_i64, 2] {
             let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
         assert_eq!(table.data_files().unwrap().len(), 2);
@@ -2371,7 +2413,7 @@ mod tables {
             paths.sort();
             paths
         };
-        let version = table.version();
+        let version = table.metadata_version();
         let metadata_hash = table.metadata().stable_hash();
         let data_files = children("data");
         let metadata_files = children("metadata");
@@ -2389,7 +2431,7 @@ mod tables {
             }),
         );
         let merge_error = table
-            .merge_where(&[], reader, &["id".to_owned()], true)
+            .commit_merge_where(&[], reader, &["id".to_owned()], true)
             .expect_err("v3 keyed merge must preserve existing row IDs");
         assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(
@@ -2415,7 +2457,7 @@ mod tables {
             "{compact_error}"
         );
 
-        assert_eq!(table.version(), version);
+        assert_eq!(table.metadata_version(), version);
         assert_eq!(table.metadata().stable_hash(), metadata_hash);
         assert_eq!(children("data"), data_files);
         assert_eq!(children("metadata"), metadata_files);
@@ -2434,13 +2476,13 @@ mod tables {
         for id in [1_i64, 2] {
             let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
 
         let incoming = trades(&[1], &[Some("AAPL.L")], &[Some("XLON")]);
         table
-            .merge(
+            .commit_merge(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
                 &["id".to_owned()],
                 true,
@@ -2475,16 +2517,16 @@ mod tables {
         .unwrap();
         let old = trades(&[1, 2], &[Some("AAPL"), Some("MSFT")], &[Some("XNAS"); 2]);
         table
-            .append(crate::arrow::batch_reader(old.schema(), [old]))
+            .commit_append(crate::arrow::batch_reader(old.schema(), [old]))
             .unwrap();
         table
-            .commit_changes(|metadata| metadata.upgrade_format_version(FormatVersion::V3))
+            .commit_metadata_changes(|metadata| metadata.upgrade_format_version(FormatVersion::V3))
             .unwrap();
         assert_eq!(table.metadata().next_row_id, Some(0));
 
         let added = trades(&[3], &[Some("NVDA")], &[Some("XNYS")]);
         table
-            .append(crate::arrow::batch_reader(added.schema(), [added]))
+            .commit_append(crate::arrow::batch_reader(added.schema(), [added]))
             .unwrap();
         let snapshot = table.current_snapshot().unwrap();
         assert_eq!(snapshot.first_row_id, Some(0));
@@ -2540,7 +2582,7 @@ mod tables {
         .unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let manifest = table.manifests().unwrap().remove(0);
@@ -2597,7 +2639,7 @@ mod planning {
         ] {
             let batch = trades(&[id], &[Some(symbol)], &[Some(venue)]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
         (path, table)
@@ -2660,7 +2702,7 @@ mod planning {
         // pass even if the rows were never consulted.
         let batch = trades(&[4], &[Some("BP")], &[Some("XLON")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let rows = collect(
@@ -2748,7 +2790,7 @@ mod planning {
         for ids in [[1_i64, 2], [10, 11]] {
             let batch = trades(&ids, &[Some("AAPL"), Some("MSFT")], &[None, None]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
 
@@ -2798,7 +2840,7 @@ mod planning {
             &[Some("XNAS"), None],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let plan = table.plan(&[("venue", "null")]).unwrap();
@@ -3061,7 +3103,7 @@ mod handles {
         for ids in [[1_i64, 2], [10, 11], [20, 21]] {
             let batch = trades(&ids, &[Some("AAPL"), Some("MSFT")], &[None, None]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
         let before: Vec<String> = table
@@ -3074,7 +3116,7 @@ mod handles {
 
         let batch = trades(&[11], &[Some("MSFT.L")], &[None]);
         table
-            .merge(
+            .commit_merge(
                 crate::arrow::batch_reader(batch.schema(), [batch]),
                 &["id".to_owned()],
                 true,
@@ -3283,7 +3325,7 @@ mod handles {
             )
             .unwrap();
         let past = table.current_snapshot().unwrap().snapshot_id;
-        let version = table.version();
+        let version = table.metadata_version();
 
         // No match key replaces every row; the snapshot it replaced is
         // retained and still reads exactly as it was written.
@@ -3295,7 +3337,7 @@ mod handles {
             )
             .unwrap();
         assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
-        assert_eq!(table.version(), version + 1);
+        assert_eq!(table.metadata_version(), version + 1);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
@@ -3325,7 +3367,7 @@ mod handles {
 
         // Reopening reads the same history this value already reports.
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.version(), table.version());
+        assert_eq!(reopened.metadata_version(), table.metadata_version());
         assert_eq!(reopened.metadata().snapshots.len(), 3);
     }
 
@@ -3633,7 +3675,7 @@ mod handles {
             .unwrap()
             .with_field(schema.clone());
         let arrow = crate::arrow::arrow_schema_from_field(&schema).unwrap();
-        let version = table.version();
+        let version = table.metadata_version();
         let snapshots = table.metadata().snapshots.len();
 
         table
@@ -3647,7 +3689,7 @@ mod handles {
             )
             .unwrap();
 
-        assert_eq!(table.version(), version);
+        assert_eq!(table.metadata_version(), version);
         assert_eq!(table.metadata().snapshots.len(), snapshots);
     }
 }
@@ -3665,12 +3707,12 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
 
     let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     table
-        .append(crate::arrow::batch_reader(first.schema(), [first]))
+        .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
         .unwrap();
     let past = table.current_snapshot().unwrap().snapshot_id;
     let second = trades(&[9], &[Some("NVDA")], &[Some("XNAS")]);
     table
-        .overwrite(crate::arrow::batch_reader(second.schema(), [second]))
+        .commit_overwrite(crate::arrow::batch_reader(second.schema(), [second]))
         .unwrap();
 
     // The present shows the overwrite; the retained snapshot shows history.
@@ -3686,7 +3728,7 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
 
     // A tag names the snapshot, and an unknown ref says which refs exist.
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_snapshot_ref("audit", crate::iceberg::SnapshotRef::tag(past))
         })
         .unwrap();
@@ -3714,19 +3756,19 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.version();
+    let version = table.metadata_version();
 
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("owner", "desk")?;
             Ok(())
         })
         .unwrap();
-    assert_eq!(table.version(), version + 1);
+    assert_eq!(table.metadata_version(), version + 1);
     assert_eq!(table.metadata().property("owner"), Some("desk"));
 
     // A rejected change is a commit that never happened.
-    let failed: crate::Result<()> = table.commit_changes(|_| {
+    let failed: crate::Result<()> = table.commit_metadata_changes(|_| {
         Err(crate::Error::Codec {
             format: "iceberg",
             position: 0,
@@ -3734,12 +3776,12 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
         })
     });
     assert!(failed.is_err());
-    assert_eq!(table.version(), version + 1);
+    assert_eq!(table.metadata_version(), version + 1);
 
     // The written document reads back with the change applied.
     let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata().property("owner"), Some("desk"));
-    assert_eq!(reopened.version(), version + 1);
+    assert_eq!(reopened.metadata_version(), version + 1);
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -3755,11 +3797,11 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.version();
+    let version = table.metadata_version();
 
     filesystem.arm();
     let error = table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("owner", "desk")?;
             Ok(())
         })
@@ -3772,10 +3814,10 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     // The error remains the backend's own answer, but in-memory state follows
     // the same discovery result any fresh handle observes. Keeping the prior
     // version here would make one object contradict the published table.
-    assert_eq!(table.version(), version + 1);
+    assert_eq!(table.metadata_version(), version + 1);
     assert_eq!(table.metadata().property("owner"), Some("desk"));
     let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.version(), table.version());
+    assert_eq!(reopened.metadata_version(), table.metadata_version());
     assert_eq!(reopened.metadata().property("owner"), Some("desk"));
 }
 
@@ -3800,7 +3842,7 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     filesystem.arm();
     let applications = AtomicUsize::new(0);
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             applications.fetch_add(1, Ordering::Relaxed);
             metadata.set_property("loser", "visible")?;
             Ok(())
@@ -3813,12 +3855,12 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
         2,
         "the change must be reapplied to the competing winner"
     );
-    assert_eq!(table.version(), 3);
+    assert_eq!(table.metadata_version(), 3);
     assert_eq!(table.metadata().property("winner"), Some("visible"));
     assert_eq!(table.metadata().property("loser"), Some("visible"));
 
     let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.version(), 3);
+    assert_eq!(reopened.metadata_version(), 3);
     assert_eq!(reopened.metadata().property("winner"), Some("visible"));
     assert_eq!(reopened.metadata().property("loser"), Some("visible"));
 }
@@ -3839,11 +3881,11 @@ fn the_inspection_tables_report_history_snapshots_and_files() {
         &[Some("XNAS"), Some("XNYS")],
     );
     table
-        .append(crate::arrow::batch_reader(first.schema(), [first]))
+        .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
         .unwrap();
     let second = trades(&[3], &[Some("NVDA")], &[Some("XNAS")]);
     table
-        .append(crate::arrow::batch_reader(second.schema(), [second]))
+        .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
         .unwrap();
 
     // History: two snapshots, both on the current ancestry chain.
@@ -3909,16 +3951,16 @@ fn a_commit_refuses_metadata_that_does_not_hold_together() {
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.version();
+    let version = table.metadata_version();
 
     // A change that leaves the metadata inconsistent never becomes a document.
-    let failed = table.commit_changes(|metadata| {
+    let failed = table.commit_metadata_changes(|metadata| {
         metadata.current_schema_id = 999;
         Ok(())
     });
     let message = failed.unwrap_err().to_string();
     assert!(message.contains("999"), "{message}");
-    assert_eq!(table.version(), version);
+    assert_eq!(table.metadata_version(), version);
     assert!(table.schema().is_ok());
 
     let _ = std::fs::remove_dir_all(&path);
@@ -3937,7 +3979,7 @@ fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
 
     let empty = trades(&[], &[], &[]);
     table
-        .append(crate::arrow::batch_reader(empty.schema(), [empty]))
+        .commit_append(crate::arrow::batch_reader(empty.schema(), [empty]))
         .unwrap();
 
     // The commit is real - it has a snapshot - and the table stays empty.
@@ -3980,7 +4022,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
     )
     .unwrap();
     table
-        .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
         .unwrap();
 
     // Every row reads back, and a filter on the finite value still finds it:
@@ -4017,7 +4059,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
     .unwrap();
     let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     table
-        .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
         .unwrap();
 
     // Truncate every Avro manifest under metadata/ to a torn prefix.
@@ -4057,26 +4099,26 @@ fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
 
     // Under the 512 MiB default, three tiny batches land in one file.
     assert_eq!(
-        table.target_file_size().unwrap(),
+        table.target_file_size_bytes().unwrap(),
         512 * 1024 * 1024,
         "the default is Iceberg's own"
     );
     table
-        .append(crate::arrow::batch_reader(arrow.clone(), batches.clone()))
+        .commit_append(crate::arrow::batch_reader(arrow.clone(), batches.clone()))
         .unwrap();
     assert_eq!(table.data_files().unwrap().len(), 1);
 
     // A one-byte target reaches the limit at every batch boundary, so the
     // same three batches become three files in the one partition.
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("write.target-file-size-bytes", "1")?;
             Ok(())
         })
         .unwrap();
-    assert_eq!(table.target_file_size().unwrap(), 1);
+    assert_eq!(table.target_file_size_bytes().unwrap(), 1);
     table
-        .append(crate::arrow::batch_reader(arrow, batches))
+        .commit_append(crate::arrow::batch_reader(arrow, batches))
         .unwrap();
     let files = table.data_files().unwrap();
     assert_eq!(files.len(), 4, "one whole file plus three rolled ones");
@@ -4118,26 +4160,26 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
     .unwrap();
 
     // No table property, so the schema root's `iceberg:` property decides.
-    assert_eq!(table.target_file_size().unwrap(), 1);
+    assert_eq!(table.target_file_size_bytes().unwrap(), 1);
     let batches: Vec<RecordBatch> = (0..2)
         .map(|id| trades(&[id], &[Some("AAPL")], &[Some("XNAS")]))
         .collect();
     let arrow = batches[0].schema();
     table
-        .append(crate::arrow::batch_reader(arrow.clone(), batches.clone()))
+        .commit_append(crate::arrow::batch_reader(arrow.clone(), batches.clone()))
         .unwrap();
     assert_eq!(table.data_files().unwrap().len(), 2);
 
     // The moment the table property exists, it wins over the schema root.
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("write.target-file-size-bytes", "1073741824")?;
             Ok(())
         })
         .unwrap();
-    assert_eq!(table.target_file_size().unwrap(), 1 << 30);
+    assert_eq!(table.target_file_size_bytes().unwrap(), 1 << 30);
     table
-        .append(crate::arrow::batch_reader(arrow, batches))
+        .commit_append(crate::arrow::batch_reader(arrow, batches))
         .unwrap();
     assert_eq!(table.data_files().unwrap().len(), 3);
 
@@ -4155,13 +4197,13 @@ fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
     )
     .unwrap();
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("write.target-file-size-bytes", "512 MB")?;
             Ok(())
         })
         .unwrap();
 
-    let error = table.target_file_size().unwrap_err();
+    let error = table.target_file_size_bytes().unwrap_err();
     assert!(
         matches!(
             error,
@@ -4183,7 +4225,7 @@ fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
     let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     assert!(
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .is_err()
     );
 
@@ -4203,7 +4245,7 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     for id in 0..5_i64 {
         let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
     }
     let before_rows = collect(table.scan(None).unwrap());
@@ -4248,12 +4290,12 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     assert_eq!(table.plan_at(past, &[]).unwrap().tasks.len(), 5);
 
     // A second compaction has nothing to do: zeros, and no new snapshot.
-    let version = table.version();
+    let version = table.metadata_version();
     assert_eq!(
         table.compact().unwrap(),
         super::table::Compaction::default()
     );
-    assert_eq!(table.version(), version);
+    assert_eq!(table.metadata_version(), version);
     assert_eq!(table.metadata().snapshots.len(), snapshots_before + 1);
 
     let _ = std::fs::remove_dir_all(&path);
@@ -4275,13 +4317,13 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
             &[Some("XNAS"), Some("XNYS")],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
     }
     // And one venue holding a single file, which no compaction may touch.
     let lone = trades(&[9], &[Some("VOD")], &[Some("XLON")]);
     table
-        .append(crate::arrow::batch_reader(lone.schema(), [lone]))
+        .commit_append(crate::arrow::batch_reader(lone.schema(), [lone]))
         .unwrap();
     assert_eq!(table.data_files().unwrap().len(), 5);
     let lone_path = table
@@ -4361,7 +4403,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
         .collect();
     let batch = RecordBatch::try_new(arrow_schema, columns).unwrap();
     table
-        .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
         .unwrap();
 
     // Reopening parses the wide schema back and reads every column.
@@ -4442,7 +4484,7 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
 
     // A table property overrides the default.
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property(IcebergOptions::COMMIT_RETRIES_KEY, "7")?;
             metadata.set_property(IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY, "7000")?;
             metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, "3")?;
@@ -4490,18 +4532,18 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
     );
 
     winner
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("winner", "visible")?;
             Ok(())
         })
         .unwrap();
     stale
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("loser", "hidden")?;
             Ok(())
         })
         .unwrap();
-    assert_eq!(stale.version(), 3);
+    assert_eq!(stale.metadata_version(), 3);
 
     let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata().property("winner"), Some("visible"));
@@ -4523,7 +4565,7 @@ fn an_unparseable_option_property_is_typed_and_an_explicit_option_shadows_it() {
     )
     .unwrap();
     table
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property(IcebergOptions::READ_PARALLELISM_KEY, "many")?;
             Ok(())
         })
@@ -4573,27 +4615,27 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
             .with_commit_min_backoff_ms(1)
             .with_commit_max_backoff_ms(2),
     );
-    assert_eq!(second.version(), 1);
+    assert_eq!(second.metadata_version(), 1);
 
     let winner = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     first
-        .append(crate::arrow::batch_reader(winner.schema(), [winner]))
+        .commit_append(crate::arrow::batch_reader(winner.schema(), [winner]))
         .unwrap();
     // The second handle still describes version 1, so its append is beaten
     // and must rebase onto the winner's commit rather than clobber it.
     let beaten = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
     second
-        .append(crate::arrow::batch_reader(beaten.schema(), [beaten]))
+        .commit_append(crate::arrow::batch_reader(beaten.schema(), [beaten]))
         .unwrap();
     assert_eq!(
-        second.version(),
+        second.metadata_version(),
         3,
         "the rebase adopted the winner's version"
     );
 
     // Both rows, two snapshots, and the loser's snapshot parents the winner's.
     let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.version(), 3);
+    assert_eq!(reopened.metadata_version(), 3);
     let rows = collect(reopened.scan(None).unwrap());
     assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), [1, 2]);
     assert_eq!(reopened.metadata().snapshots.len(), 2);
@@ -4629,7 +4671,7 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
     );
 
     first
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("owner", "alpha")?;
             Ok(())
         })
@@ -4637,14 +4679,14 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
     // The second commit is beaten, so its closure re-runs on the winner's
     // document - which is why both properties survive.
     second
-        .commit_changes(|metadata| {
+        .commit_metadata_changes(|metadata| {
             metadata.set_property("team", "beta")?;
             Ok(())
         })
         .unwrap();
 
     let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.version(), 3);
+    assert_eq!(reopened.metadata_version(), 3);
     assert_eq!(reopened.metadata().property("owner"), Some("alpha"));
     assert_eq!(reopened.metadata().property("team"), Some("beta"));
 
@@ -4665,7 +4707,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     .unwrap();
     let stored = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     first
-        .append(crate::arrow::batch_reader(stored.schema(), [stored]))
+        .commit_append(crate::arrow::batch_reader(stored.schema(), [stored]))
         .unwrap();
 
     // The second handle plans against version 2; the first then commits twice
@@ -4680,13 +4722,13 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     for id in [2_i64, 3] {
         let batch = trades(&[id], &[Some("NVDA")], &[Some("XNAS")]);
         first
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
     }
 
     let incoming = trades(&[9], &[Some("VOD")], &[Some("XLON")]);
     let error = second
-        .overwrite(crate::arrow::batch_reader(incoming.schema(), [incoming]))
+        .commit_overwrite(crate::arrow::batch_reader(incoming.schema(), [incoming]))
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
     let message = error.to_string();
@@ -4698,9 +4740,9 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     assert!(message.contains("last saw version 4"), "{message}");
 
     // The failed overwrite restored its handle and left no visible change.
-    assert_eq!(second.version(), 2);
+    assert_eq!(second.metadata_version(), 2);
     let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.version(), 4);
+    assert_eq!(reopened.metadata_version(), 4);
     assert_eq!(
         collect(reopened.scan(None).unwrap())
             .iter()
@@ -4735,7 +4777,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
             &[Some("XNAS"); 3],
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
     }
 
@@ -4807,21 +4849,21 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     .unwrap();
     let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     table
-        .append(crate::arrow::batch_reader(first.schema(), [first]))
+        .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
         .unwrap();
     let past = table.current_snapshot().unwrap().snapshot_id;
 
     table.create_branch("audit", past).unwrap();
     table.create_tag("v1", past).unwrap();
-    let version = table.version();
+    let version = table.metadata_version();
 
     // A taken name is refused and the refusal commits nothing.
     assert!(table.create_branch("audit", past).is_err());
-    assert_eq!(table.version(), version);
+    assert_eq!(table.metadata_version(), version);
 
     let second = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
     table
-        .append(crate::arrow::batch_reader(second.schema(), [second]))
+        .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
         .unwrap();
     let head = table.current_snapshot().unwrap().snapshot_id;
 
@@ -4834,7 +4876,7 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     assert_eq!(collect(table.scan_ref("main", &[], None).unwrap()).len(), 2);
 
     // Fast-forwarding moves the branch to a descendant; the tag never moves.
-    table.fast_forward("audit", head).unwrap();
+    table.fast_forward_branch("audit", head).unwrap();
     assert_eq!(
         collect(table.scan_ref("audit", &[], None).unwrap()).len(),
         2
@@ -4842,10 +4884,10 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     assert_eq!(table.snapshot_by_ref("v1").unwrap().snapshot_id, past);
 
     // Removing the tag returns it; a second removal names what exists.
-    let removed = table.remove_ref("v1").unwrap();
+    let removed = table.remove_snapshot_ref("v1").unwrap();
     assert!(removed.is_tag());
     assert_eq!(removed.snapshot_id, past);
-    let message = table.remove_ref("v1").unwrap_err().to_string();
+    let message = table.remove_snapshot_ref("v1").unwrap_err().to_string();
     assert!(message.contains("audit"), "{message}");
 
     // With nothing anchoring the first snapshot, expiring everything older
@@ -4858,12 +4900,12 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     assert!(table.scan_at(past, &[], None).is_err());
 
     // Nothing left to expire commits nothing: no new version is written.
-    let version = table.version();
+    let version = table.metadata_version();
     assert_eq!(
         table.expire_snapshots(Some(i64::MAX), None, &[]).unwrap(),
         Vec::<i64>::new()
     );
-    assert_eq!(table.version(), version);
+    assert_eq!(table.metadata_version(), version);
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -4902,7 +4944,7 @@ mod datatype_coverage {
         let batch = arrow_array::RecordBatch::try_new(schema.into_arrow_schema().unwrap(), columns)
             .unwrap();
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
@@ -5095,12 +5137,12 @@ mod datatype_coverage {
 
         let first = batch_of(&[(1, "XNAS", 10_000), (2, "XNYS", 20_000)]);
         table
-            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
         // The same (id, venue) updates; a new pair appends.
         let second = batch_of(&[(1, "XNAS", 99_000), (3, "XPAR", 30_000)]);
         table
-            .merge(
+            .commit_merge(
                 crate::arrow::batch_reader(second.schema(), [second]),
                 &["id".to_owned(), "venue".to_owned()],
                 false,
@@ -5162,7 +5204,7 @@ mod concurrency_and_compaction {
                     );
                     let _held = gate.lock().unwrap();
                     table
-                        .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                         .unwrap();
                 })
             })
@@ -5179,7 +5221,7 @@ mod concurrency_and_compaction {
         ids.sort_unstable();
         assert_eq!(ids, [0, 1, 10, 11, 20, 21, 30, 31]);
         // Four commits landed on top of the created table.
-        assert_eq!(reopened.version(), 5);
+        assert_eq!(reopened.metadata_version(), 5);
     }
 
     #[test]
@@ -5195,7 +5237,7 @@ mod concurrency_and_compaction {
         .unwrap();
         let seed = trades(&[1, 2], &[Some("A"), Some("B")], &[Some("V"), Some("V")]);
         writer
-            .append(crate::arrow::batch_reader(seed.schema(), [seed]))
+            .commit_append(crate::arrow::batch_reader(seed.schema(), [seed]))
             .unwrap();
 
         // A second handle grows stale the moment the first commits again.
@@ -5203,12 +5245,12 @@ mod concurrency_and_compaction {
         stale.set_options(crate::iceberg::IcebergOptions::default().with_commit_retries(1));
         let win = trades(&[3], &[Some("C")], &[Some("V")]);
         writer
-            .append(crate::arrow::batch_reader(win.schema(), [win]))
+            .commit_append(crate::arrow::batch_reader(win.schema(), [win]))
             .unwrap();
 
         let incoming = trades(&[2], &[Some("B2")], &[Some("V")]);
         let error = stale
-            .merge(
+            .commit_merge(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
                 &["id".to_owned()],
                 false,
@@ -5236,7 +5278,7 @@ mod concurrency_and_compaction {
         for id in 0..4_i64 {
             let batch = trades(&[id], &[Some("S")], &[Some("V")]);
             table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap();
         }
 
@@ -5413,7 +5455,7 @@ mod line_projection {
         );
         let table = catalog
             .tables()
-            .append("logs.threads", day.into_arrow_lines(&options).unwrap())
+            .append_arrow_reader("logs.threads", day.into_arrow_lines(&options).unwrap())
             .unwrap();
 
         // The typed capture column carries real long bounds in the manifest,
@@ -5494,7 +5536,7 @@ mod line_projection {
         let folder = crate::local::Folder::new(&logs).unwrap();
         let table = catalog
             .tables()
-            .append("logs.app", folder.into_arrow_lines(&options).unwrap())
+            .append_arrow_reader("logs.app", folder.into_arrow_lines(&options).unwrap())
             .unwrap();
 
         // One snapshot, its summary counting exactly the parsed rows.
@@ -5587,7 +5629,7 @@ mod line_projection {
         );
         let table = catalog
             .tables()
-            .append("logs.app", day_two.into_arrow_lines(&options).unwrap())
+            .append_arrow_reader("logs.app", day_two.into_arrow_lines(&options).unwrap())
             .unwrap();
         assert_eq!(table.metadata().snapshots.len(), 2);
         let snapshot = table.current_snapshot().expect("a snapshot");
@@ -5600,7 +5642,11 @@ mod line_projection {
             2,
             "one manifest per append"
         );
-        assert_eq!(table.version(), 3, "create, then one version per commit");
+        assert_eq!(
+            table.metadata_version(),
+            3,
+            "create, then one version per commit"
+        );
 
         // The rows read back identical to what the logs spelled, from the
         // live handle and from a table reopened off the published metadata.
@@ -5838,7 +5884,7 @@ mod data_mime_type {
         // The table property layer, under the spec's own key, in the spec's
         // own lowercase spelling.
         table
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 metadata
                     .set_property("write.format.default", "avro")
                     .map(|_| ())
@@ -5866,7 +5912,7 @@ mod data_mime_type {
         )
         .unwrap();
         table
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 metadata
                     .set_property("write.format.default", "csv")
                     .map(|_| ())
@@ -5882,7 +5928,7 @@ mod data_mime_type {
         // lets a caller repair it.
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         let message = table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch.clone()]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch.clone()]))
             .unwrap_err()
             .to_string();
         assert!(message.contains("write.format.default"), "{message}");
@@ -5892,7 +5938,7 @@ mod data_mime_type {
                 .unwrap(),
         );
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
     }
 
@@ -5916,7 +5962,7 @@ mod data_mime_type {
 
             let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
             let message = table
-                .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
                 .unwrap_err()
                 .to_string();
             assert!(message.contains(mime_type.as_str()), "{message}");
@@ -5940,7 +5986,7 @@ mod data_mime_type {
         // One Parquet append, then one Avro append via the explicit option.
         let first = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(first.schema(), [first]))
+            .commit_append(crate::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
         table.set_options(
             IcebergOptions::new()
@@ -5949,7 +5995,7 @@ mod data_mime_type {
         );
         let second = trades(&[2], &[None], &[None]);
         table
-            .append(crate::arrow::batch_reader(second.schema(), [second]))
+            .commit_append(crate::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
 
         // The manifests record what was actually written, and each file's
@@ -6003,7 +6049,7 @@ mod data_mime_type {
         )
         .unwrap();
         table
-            .commit_changes(|metadata| {
+            .commit_metadata_changes(|metadata| {
                 metadata
                     .set_property("write.format.default", "avro")
                     .map(|_| ())
@@ -6012,7 +6058,7 @@ mod data_mime_type {
 
         let batch = trades(&[1, 2], &[Some("AAPL"), None], &[Some("XNAS"), None]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         let recorded = formats(&table);
@@ -6048,14 +6094,14 @@ mod interop_regressions {
         .unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         table
-            .append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
         table
-            .commit_changes(|metadata| {
-                let mut update = SchemaUpdate::for_metadata(metadata)?;
+            .commit_metadata_changes(|metadata| {
+                let mut update = SchemaUpdate::from_metadata(metadata)?;
                 update.rename_column("symbol", "ticker");
-                let evolved = update.apply()?;
+                let evolved = update.into_field()?;
                 let schema_id = metadata.add_schema(evolved)?;
                 metadata.set_current_schema(schema_id)
             })
@@ -6170,7 +6216,7 @@ fn a_uuid_column_keeps_its_declared_type_through_a_round_trip() {
     )
     .unwrap();
     let root = schema_from_json("row", &document).unwrap();
-    let emitted = schema_to_json(&root).unwrap();
+    let emitted = schema_into_json(&root).unwrap();
     let rendered = String::from_utf8(crate::json::into_bytes(&emitted).unwrap()).unwrap();
     assert!(rendered.contains(r#""type":"uuid""#), "{rendered}");
     assert!(rendered.contains(r#""type":"fixed[16]""#), "{rendered}");

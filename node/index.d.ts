@@ -1063,8 +1063,14 @@ export declare class IOBase {
   writeBytes(data: Uint8Array): number
   /** Replace what is here with `text`, encoded as UTF-8. */
   writeText(text: string): number
-  /** Read `length` bytes from `offset`, which a path cannot do. */
-  pread(offset: number, length: number): Buffer
+  /**
+   * Read `length` bytes from `offset`, which a path cannot do.
+   *
+   * The core's `read_range_bytes` under its own name: the ranged half of
+   * the pair `readBytes` reads whole. `readRange` is the inferring entry
+   * point over it.
+   */
+  readRangeBytes(offset: number, length: number): Buffer
   /**
    * Stream bounded byte arrays from an explicit position.
    *
@@ -1076,8 +1082,13 @@ export declare class IOBase {
   pstreamBytes(position?: number | undefined | null, batchSize?: number | undefined | null): JsByteIterator
   /** Write `data` at `offset`, growing and zero-filling as needed. */
   pwrite(offset: number, data: Uint8Array): number
-  /** Append `data` after the last byte, returning the offset it landed at. */
-  append(data: Uint8Array): number
+  /**
+   * Append `data` after the last byte, returning the offset it landed at.
+   *
+   * The core's `append_bytes` under its own name; `append` is the inferring
+   * entry point that also takes a string.
+   */
+  appendBytes(data: Uint8Array): number
   /**
    * Create this resource as a container, as `fs.mkdirSync`.
    *
@@ -1246,8 +1257,8 @@ export type JsIOBase = IOBase
  * A positioned view over one handle, sharing the handle's bytes.
  *
  * Reads and writes advance the position; `seek`/`tell` move and report it;
- * two cursors over one handle advance independently, exactly as two `pread`
- * callers do.
+ * two cursors over one handle advance independently, exactly as two
+ * `readRangeBytes` callers do.
  */
 export declare class IOCursor {
   /** The current position, in bytes from the start. */
@@ -2253,7 +2264,7 @@ export declare class Table {
    * way the result is the same rows; what differs is how many files were
    * opened to find them.
    */
-  scanWhere(filters: ScanFilters, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Read the rows a branch or tag names, as of the snapshot it points at.
    *
@@ -2313,7 +2324,7 @@ export declare class Table {
    * `options` configures this one write, exactly as on
    * [`append`](Self::append).
    */
-  overwriteWhere(filters: ScanFilters, batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  overwriteWhere(filters: ScanFilters | undefined | null, batches: BatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the stored rows, matching on `mergeByNames`.
    *
@@ -2337,7 +2348,7 @@ export declare class Table {
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: Field): number
   /**

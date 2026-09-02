@@ -38,6 +38,19 @@ const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
 const JS_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
+/// One `length` argument as a byte count, refused rather than rounded.
+///
+/// `offset` is already checked this way; a `u32` parameter would have let
+/// napi coerce `1.5` and `-1` into silent lengths the Python twin rejects.
+fn exact_length(value: f64) -> Result<usize> {
+    let length = exact_u64(value, "length")?;
+    usize::try_from(length).map_err(|_| {
+        napi_error(format!(
+            "length {length} exceeds this platform's byte-count range"
+        ))
+    })
+}
+
 /// Saturate a native count at JavaScript's exact-integer boundary.
 fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
@@ -587,12 +600,30 @@ impl JsIOBase {
     }
 
     /// Read `length` bytes from `offset`, which a path cannot do.
+    ///
+    /// The core's `read_range_bytes` under its own name: the ranged half of
+    /// the pair `readBytes` reads whole. `readRange` is the inferring entry
+    /// point over it.
     #[napi]
-    pub fn pread(&self, offset: f64, length: u32) -> Result<Buffer> {
+    pub fn read_range_bytes(&self, offset: f64, length: f64) -> Result<Buffer> {
         self.inner
-            .read_range(exact_u64(offset, "offset")?, length as usize)
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
             .map(Buffer::from)
             .map_err(napi_error)
+    }
+
+    /// Read `length` bytes from `offset` as UTF-8 text.
+    ///
+    /// The strict decode `readRange({ text: true })` redirects to, so an
+    /// invalid sequence is refused exactly as `readText` refuses it rather
+    /// than substituting replacement characters.
+    #[napi(js_name = "_readRangeTextNative", skip_typescript)]
+    pub fn read_range_text_native(&self, offset: f64, length: f64) -> Result<String> {
+        let bytes = self
+            .inner
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
+            .map_err(napi_error)?;
+        String::from_utf8(bytes).map_err(napi_error)
     }
 
     /// Stream bounded byte arrays from an explicit position.
@@ -665,9 +696,12 @@ impl JsIOBase {
     }
 
     /// Append `data` after the last byte, returning the offset it landed at.
+    ///
+    /// The core's `append_bytes` under its own name; `append` is the inferring
+    /// entry point that also takes a string.
     #[napi]
-    pub fn append(&mut self, data: Uint8Array) -> Result<i64> {
-        let offset = self.inner.append(&data).map_err(napi_error)?;
+    pub fn append_bytes(&mut self, data: Uint8Array) -> Result<i64> {
+        let offset = self.inner.append_bytes(&data).map_err(napi_error)?;
         Ok(i64::try_from(offset).unwrap_or(i64::MAX))
     }
 
@@ -1339,8 +1373,8 @@ impl JsByteIterator {
 /// A positioned view over one handle, sharing the handle's bytes.
 ///
 /// Reads and writes advance the position; `seek`/`tell` move and report it;
-/// two cursors over one handle advance independently, exactly as two `pread`
-/// callers do.
+/// two cursors over one handle advance independently, exactly as two
+/// `readRangeBytes` callers do.
 #[napi(js_name = "IOCursor")]
 pub struct JsIOCursor {
     handle: Reference<JsIOBase>,

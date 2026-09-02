@@ -512,7 +512,7 @@ assert handle.is_io()
 
 # Random access needs no mode.
 handle.pwrite(0, b"MSFT")
-assert handle.pread(0, 4) == b"MSFT"
+assert handle.read_range_bytes(0, 4) == b"MSFT"
 
 # Children resolve the way they do for a Path.
 lake = IOBase(root / "lake" / "year=2024")
@@ -588,6 +588,39 @@ assert str(IOBase(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix()).u
 A Hive layout is readable from either side: `handle.partitions` and `url.partitions` return the
 `column=value` pairs the path spells out, and `handle.children_where({"year": "2024"})` yields the
 leaves carrying them, ready to rewrite.
+
+### Bytes and ranges
+
+`read_range_bytes` and `append_bytes` are the core's methods under their own names;
+[io](../io.md#whole-values) states what they do. Over each sits one inferring entry point:
+`read_range` chooses the answer's type from `cls`, and `append` chooses how to read the buffer it
+was handed.
+
+```python
+import pytest
+
+from yggdryl import IOBase
+
+handle = IOBase.from_bytes(b"symbol,price\n")
+
+# `cls` selects the answer's type; omitting it answers `bytes`.
+assert handle.read_range(0, 6) == b"symbol"
+assert handle.read_range(0, 6, cls=str) == "symbol"
+
+# `append` takes text, a bytearray, and a memoryview as well as bytes.
+assert handle.append("AAPL,1\n") == 13
+assert handle.append(bytearray(b"MSFT,2\n")) == 20
+assert handle.append(memoryview(b"NVDA,3\n")) == 27
+assert handle.read_range(13, 7, cls=str) == "AAPL,1\n"
+
+# A range it cannot decode is refused, not silently substituted.
+with pytest.raises(ValueError):
+    IOBase.from_bytes(b"\xff").read_range(0, 1, cls=str)
+```
+
+`read_range` accepts `bytes`, `str`, or `None` and raises `TypeError` for anything else, the way
+`read_scalar(cls=...)` does. `append` reads `bytes`, `bytearray`, `memoryview`, and `str`, encoding
+text as UTF-8 exactly as `write_text` does, and returns the byte offset the append landed at.
 
 ## Records use typed adapters
 

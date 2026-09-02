@@ -11,8 +11,8 @@ A page cache that makes any [`IOBase`](io.md) handle buffered, with the value's 
     let handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
         .buffered(BufferedOptions::default());
 
-    assert_eq!(handle.read_range(0, 6)?, b"symbol");
-    assert_eq!(handle.read_range(13, 4)?, b"AAPL");
+    assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
+    assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
     assert_eq!(handle.cached_pages(), 1);
     ```
 
@@ -23,8 +23,8 @@ A page cache that makes any [`IOBase`](io.md) handle buffered, with the value's 
 
     handle = IOBase.from_bytes(b"symbol,price\nAAPL,1\n")
     assert handle.buffered(page_size=64, max_bytes=256, ttl=30.0) is handle
-    assert handle.pread(0, 6) == b"symbol"
-    assert handle.pread(13, 4) == b"AAPL"
+    assert handle.read_range_bytes(0, 6) == b"symbol"
+    assert handle.read_range_bytes(13, 4) == b"AAPL"
     ```
 
 === "JavaScript"
@@ -35,8 +35,8 @@ A page cache that makes any [`IOBase`](io.md) handle buffered, with the value's 
 
     const handle = IOBase.fromBytes(Buffer.from('symbol,price\nAAPL,1\n'))
     assert.equal(handle.buffered({ pageSize: 64, maxBytes: 256, ttlMs: 30_000 }), handle)
-    assert.deepEqual(handle.pread(0, 6), Buffer.from('symbol'))
-    assert.deepEqual(handle.pread(13, 4), Buffer.from('AAPL'))
+    assert.deepEqual(handle.readRangeBytes(0, 6), Buffer.from('symbol'))
+    assert.deepEqual(handle.readRangeBytes(13, 4), Buffer.from('AAPL'))
     ```
 
 `IOBase::buffered` wraps any handle, and what comes back is a handle: `Buffered<H>` mirrors
@@ -60,13 +60,13 @@ let options = BufferedOptions::default().with_page_size(256);
 let handle = Buffered::new(Buffer::from_bytes(vec![7_u8; 1_024]), options);
 
 // A read that misses fetches the whole page holding it, aligned.
-assert_eq!(handle.read_range(300, 4)?.len(), 4);
+assert_eq!(handle.read_range_bytes(300, 4)?.len(), 4);
 assert_eq!(handle.cached_pages(), 1);
 assert_eq!(handle.cached_bytes(), 256);
 assert!(handle.has_cached_page(1));
 
 // A read spanning pages assembles from each of them, caching all it crossed.
-assert_eq!(handle.read_range(100, 600)?.len(), 600);
+assert_eq!(handle.read_range_bytes(100, 600)?.len(), 600);
 assert_eq!(handle.cached_pages(), 3);
 
 // The page a given offset lives in is arithmetic, not a lookup.
@@ -131,12 +131,12 @@ let options = BufferedOptions::default()
 let handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 16 * 64]), options);
 
 // The footer first, then the header: the shape a container is opened with.
-handle.read_range(16 * 64 - 8, 8)?;
-handle.read_range(0, 8)?;
+handle.read_range_bytes(16 * 64 - 8, 8)?;
+handle.read_range_bytes(0, 8)?;
 
 // Then a scan of the middle, four times what the budget can hold.
 for page in 1..15 {
-    handle.read_range(page * 64, 8)?;
+    handle.read_range_bytes(page * 64, 8)?;
 }
 
 // The budget held throughout, the middle was evicted, and both ends stayed.
@@ -172,10 +172,10 @@ assert!(handle.has_cached_page(3));
 // scan under budget pressure now evicts it while page 0 stays.
 handle.pwrite(8 * 64 - 1, b"z")?;
 for page in 4..8 {
-    handle.read_range(page * 64, 8)?;
+    handle.read_range_bytes(page * 64, 8)?;
 }
-handle.read_range(5 * 64, 8)?;
-handle.read_range(6 * 64, 8)?;
+handle.read_range_bytes(5 * 64, 8)?;
+handle.read_range_bytes(6 * 64, 8)?;
 assert!(handle.has_cached_page(0));
 assert!(handle.has_cached_page(7));
 assert!(!handle.has_cached_page(3));
@@ -194,7 +194,7 @@ assert_eq!(handle.read_all_bytes()?.len(), 20);
 // A write goes straight to the wrapped handle and folds into the pages it
 // overlapped, so the read after it can never see the bytes it replaced.
 handle.pwrite(13, b"MSFT")?;
-assert_eq!(handle.read_range(13, 4)?, b"MSFT");
+assert_eq!(handle.read_range_bytes(13, 4)?, b"MSFT");
 assert_eq!(handle.handle().as_slice()[13..17], *b"MSFT");
 
 // Truncating drops every page a resize could have changed, both ways.
@@ -226,7 +226,7 @@ assert_eq!(handle.cached_pages(), 1);
 
 handle.close()?;
 assert_eq!(handle.cached_pages(), 0);
-assert_eq!(handle.read_range(0, 4)?, [3, 3, 3, 3]);
+assert_eq!(handle.read_range_bytes(0, 4)?, [3, 3, 3, 3]);
 ```
 
 The one thing the cache cannot see is a change made *behind* it - bytes written straight to
@@ -253,8 +253,8 @@ let encoded = source.into_handle()?;
 
 // The cache wraps the coding, so the pages it holds are decoded bytes.
 let handle = Gzip::new(encoded).buffered(BufferedOptions::default());
-assert_eq!(handle.read_range(0, 6)?, b"symbol");
-assert_eq!(handle.read_range(13, 4)?, b"AAPL");
+assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
+assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
 
 // Two reads, one page, one decode.
 assert_eq!(handle.cached_pages(), 1);
@@ -284,7 +284,7 @@ let once = Buffer::from_bytes(vec![5_u8; 128]).buffered(BufferedOptions::default
 // this re-wraps the handle it holds instead of stacking a second cache.
 let twice = once.buffered(BufferedOptions::default().with_page_size(512));
 assert_eq!(twice.options().page_size(), 512);
-assert_eq!(twice.read_range(0, 4)?, [5, 5, 5, 5]);
+assert_eq!(twice.read_range_bytes(0, 4)?, [5, 5, 5, 5]);
 
 // A holder does the same, so a listing entry can be buffered without care.
 let held = Holder::buffer(Buffer::from_bytes(vec![5_u8; 128]))
@@ -340,7 +340,7 @@ std::fs::write(&path, vec![9_u8; 4_096])?;
 
 let handle = File::new(&path)?.buffered(BufferedOptions::default().with_page_size(1_024));
 assert_eq!(handle.size(), 4_096);
-assert_eq!(handle.read_range(2_000, 8)?, [9_u8; 8]);
+assert_eq!(handle.read_range_bytes(2_000, 8)?, [9_u8; 8]);
 assert_eq!(handle.cached_pages(), 1);
 
 // The wrapper is the file for every purpose but the reading.

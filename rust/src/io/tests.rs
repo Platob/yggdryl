@@ -80,8 +80,8 @@ fn reserve_grows_capacity_without_changing_size() {
 #[test]
 fn append_reports_where_the_bytes_landed() {
     let mut buffer = Buffer::new();
-    assert_eq!(buffer.append(b"first").unwrap(), 0);
-    assert_eq!(buffer.append(b"second").unwrap(), 5);
+    assert_eq!(buffer.append_bytes(b"first").unwrap(), 0);
+    assert_eq!(buffer.append_bytes(b"second").unwrap(), 5);
     assert_eq!(buffer.as_slice(), b"firstsecond");
 }
 
@@ -257,10 +257,10 @@ fn streaming_adapters_advance_their_own_offset() {
 #[test]
 fn read_range_is_bounded_by_the_value() {
     let buffer = Buffer::from_bytes(b"0123456789".to_vec());
-    assert_eq!(buffer.read_range(2, 3).unwrap(), b"234");
+    assert_eq!(buffer.read_range_bytes(2, 3).unwrap(), b"234");
     // Asking past the end yields what exists rather than failing.
-    assert_eq!(buffer.read_range(8, 100).unwrap(), b"89");
-    assert!(buffer.read_range(50, 4).unwrap().is_empty());
+    assert_eq!(buffer.read_range_bytes(8, 100).unwrap(), b"89");
+    assert!(buffer.read_range_bytes(50, 4).unwrap().is_empty());
 }
 
 #[test]
@@ -2557,13 +2557,13 @@ mod buffered_handle {
         // A write lands in the file and in the pages that held those bytes.
         handle.pwrite(600, b"trade").unwrap();
         handle.flush().unwrap();
-        assert_eq!(handle.read_range(600, 5).unwrap(), b"trade");
+        assert_eq!(handle.read_range_bytes(600, 5).unwrap(), b"trade");
         assert_eq!(std::fs::read(&path).unwrap()[600..605], *b"trade");
 
         // Closing releases the pages and leaves a working handle behind.
         handle.close().unwrap();
         assert_eq!(handle.cached_pages(), 0);
-        assert_eq!(handle.read_range(600, 5).unwrap(), b"trade");
+        assert_eq!(handle.read_range_bytes(600, 5).unwrap(), b"trade");
 
         drop(handle);
         let _ = std::fs::remove_file(&path);
@@ -2791,12 +2791,12 @@ mod conformance {
     fn every_backend_appends_where_it_says_it_did() {
         for (name, mut handle) in backends("append") {
             assert_eq!(
-                handle.append(b"first").expect("a writable handle"),
+                handle.append_bytes(b"first").expect("a writable handle"),
                 0,
                 "{name}"
             );
             assert_eq!(
-                handle.append(b"second").expect("a writable handle"),
+                handle.append_bytes(b"second").expect("a writable handle"),
                 5,
                 "{name}"
             );
@@ -2827,19 +2827,19 @@ mod conformance {
                 .write_all_bytes(b"0123456789")
                 .expect("a writable handle");
             assert_eq!(
-                handle.read_range(2, 3).expect("a readable handle"),
+                handle.read_range_bytes(2, 3).expect("a readable handle"),
                 b"234",
                 "{name}"
             );
             // Asking past the end yields what exists rather than failing.
             assert_eq!(
-                handle.read_range(8, 100).expect("a readable handle"),
+                handle.read_range_bytes(8, 100).expect("a readable handle"),
                 b"89",
                 "{name}"
             );
             assert!(
                 handle
-                    .read_range(50, 4)
+                    .read_range_bytes(50, 4)
                     .expect("a readable handle")
                     .is_empty(),
                 "{name}"

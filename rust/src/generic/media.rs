@@ -39,7 +39,7 @@
 //!
 //! // It is also just bytes: an Arrow IPC stream starts with its continuation
 //! // marker.
-//! assert_eq!(&media.read_range(0, 4)?, &[0xFF, 0xFF, 0xFF, 0xFF]);
+//! assert_eq!(&media.read_range_bytes(0, 4)?, &[0xFF, 0xFF, 0xFF, 0xFF]);
 //! # Ok(())
 //! # }
 //! ```
@@ -320,8 +320,8 @@ impl IOBase for Media {
         self.as_io().read_all_bytes()
     }
 
-    fn read_range(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
-        self.as_io().read_range(offset, length)
+    fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
+        self.as_io().read_range_bytes(offset, length)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {

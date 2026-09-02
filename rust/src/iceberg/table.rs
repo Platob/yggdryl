@@ -35,7 +35,7 @@
 //!
 //! Committing means writing a new metadata document, so an append writes at
 //! least one Parquet file per partition - more when a partition's rows exceed
-//! [`Table::target_file_size`] - one manifest, one manifest list, and one
+//! [`Table::target_file_size_bytes`] - one manifest, one manifest list, and one
 //! metadata JSON. Nothing is mutated in place, which is what makes the previous
 //! snapshot still readable afterwards.
 //!
@@ -49,7 +49,7 @@
 //! [`IcebergOptions::commit_retries`] and
 //! [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
 //! [`CommitConflict`] naming both versions. An append and a metadata-only
-//! change rebase; [`Table::overwrite_where`], [`Table::merge_where`], and
+//! change rebase; [`Table::commit_overwrite_where`], [`Table::commit_merge_where`], and
 //! [`Table::compact`] cannot, because they planned against files a concurrent
 //! commit may have replaced and their input readers are already consumed, so
 //! they conflict instead. Readers are never blocked, and a failed commit
@@ -64,10 +64,10 @@
 //!
 //! # Branches and tags
 //!
-//! [`Table::create_branch`], [`Table::create_tag`], [`Table::remove_ref`],
-//! [`Table::fast_forward`], and [`Table::expire_snapshots`] are thin wrappers
+//! [`Table::create_branch`], [`Table::create_tag`], [`Table::remove_snapshot_ref`],
+//! [`Table::fast_forward_branch`], and [`Table::expire_snapshots`] are thin wrappers
 //! over [`TableMetadata`]'s ref vocabulary, each committed through the same
-//! retrying [`Table::commit_changes`]. Writing *to* a branch other than
+//! retrying [`Table::commit_metadata_changes`]. Writing *to* a branch other than
 //! `main` remains future work, because a commit's parent is currently always
 //! the table's current snapshot.
 
@@ -256,7 +256,7 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Return the version number of the current metadata document.
-    pub const fn version(&self) -> u32 {
+    pub const fn metadata_version(&self) -> u32 {
         self.version
     }
 
@@ -310,7 +310,7 @@ impl<H: IOBase> Table<H> {
     /// Returns a typed error naming the key and the value when either property
     /// is present but does not spell a positive byte count; a configured
     /// target is never silently replaced by the default.
-    pub fn target_file_size(&self) -> Result<u64> {
+    pub fn target_file_size_bytes(&self) -> Result<u64> {
         IcebergOptions::target_size(self.options.as_ref(), &self.metadata)
     }
 
@@ -631,7 +631,7 @@ impl<H: IOBase> Table<H> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # let folder = yggdryl::local::Folder::new(std::env::temp_dir().join("t"))?;
     /// # let mut table = yggdryl::iceberg::Table::open(folder)?;
-    /// table.commit_changes(|metadata| {
+    /// table.commit_metadata_changes(|metadata| {
     ///     metadata.set_property("commit.retry.num-retries", "4")?;
     ///     Ok(())
     /// })?;
@@ -644,7 +644,7 @@ impl<H: IOBase> Table<H> {
     /// Returns the change's own failure, the write failure of the new
     /// document, or a [`CommitConflict`] when concurrent writers exhausted the
     /// retries.
-    pub fn commit_changes(
+    pub fn commit_metadata_changes(
         &mut self,
         mut change: impl FnMut(&mut TableMetadata) -> Result<()>,
     ) -> Result<()> {
@@ -985,7 +985,7 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when the partition spec cannot place a row, when a
     /// batch cannot be cast to the table schema, when any write fails, or a
     /// [`CommitConflict`] when concurrent writers exhausted the retries.
-    pub fn append(&mut self, batches: BatchReader) -> Result<()> {
+    pub fn commit_append(&mut self, batches: BatchReader) -> Result<()> {
         self.commit(batches, "append", Retained::All)?;
         Ok(())
     }
@@ -999,8 +999,8 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error when the partition spec cannot place a row, when a
     /// batch cannot be cast to the table schema, or when any write fails.
-    pub fn overwrite(&mut self, batches: BatchReader) -> Result<()> {
-        self.overwrite_where(&[], batches)
+    pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()> {
+        self.commit_overwrite_where(&[], batches)
     }
 
     /// Replace only the rows `filters` selects, keeping every other file.
@@ -1025,7 +1025,7 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when a filter names a column the schema does not
     /// declare, when the partition spec cannot place a row, when any read or
     /// write fails, or a [`CommitConflict`] when a concurrent commit won.
-    pub fn overwrite_where(
+    pub fn commit_overwrite_where(
         &mut self,
         filters: &[(&str, &str)],
         batches: BatchReader,
@@ -1047,13 +1047,13 @@ impl<H: IOBase> Table<H> {
     /// # Errors
     ///
     /// Returns the failure of the read, the join, or the commit.
-    pub fn merge(
+    pub fn commit_merge(
         &mut self,
         batches: BatchReader,
         merge_by_names: &[String],
         safe: bool,
     ) -> Result<()> {
-        self.merge_where(&[], batches, merge_by_names, safe)
+        self.commit_merge_where(&[], batches, merge_by_names, safe)
     }
 
     /// Merge `batches` into the rows `filters` selects, on the `merge_by_names` columns.
@@ -1066,7 +1066,7 @@ impl<H: IOBase> Table<H> {
     /// rather than the whole table, and it stays correct however coarse the
     /// statistics are, because a file that is not read keeps every row it had.
     ///
-    /// Like [`Self::overwrite_where`], a merge beaten by a concurrent commit
+    /// Like [`Self::commit_overwrite_where`], a merge beaten by a concurrent commit
     /// reports a [`CommitConflict`] rather than rebasing, because the files it
     /// selected and the reader it consumed cannot be re-planned safely.
     ///
@@ -1076,7 +1076,7 @@ impl<H: IOBase> Table<H> {
     /// this writer cannot yet preserve, when `merge_by_names` names a column
     /// the schema does not declare, or for any read, join, or write failure,
     /// including a [`CommitConflict`] when a concurrent commit won.
-    pub fn merge_where(
+    pub fn commit_merge_where(
         &mut self,
         filters: &[(&str, &str)],
         batches: BatchReader,
@@ -1084,7 +1084,7 @@ impl<H: IOBase> Table<H> {
         safe: bool,
     ) -> Result<()> {
         if merge_by_names.is_empty() {
-            return self.overwrite_where(filters, batches);
+            return self.commit_overwrite_where(filters, batches);
         }
         self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
@@ -1141,7 +1141,7 @@ impl<H: IOBase> Table<H> {
     /// belongs to exactly one partition, so files of different partitions are
     /// never merged into one - and a group is rewritten when it holds at least
     /// two files and at least one of them is smaller than
-    /// [`Self::target_file_size`]. The rewritten rows go through the same
+    /// [`Self::target_file_size_bytes`]. The rewritten rows go through the same
     /// rolling writer an append uses, so a compacted partition lands in files
     /// of roughly the target size, and every file of every other group is
     /// carried into the new snapshot untouched: same location, same
@@ -1159,7 +1159,7 @@ impl<H: IOBase> Table<H> {
     /// unparseable, or when any read or write of the rewrite fails.
     pub fn compact(&mut self) -> Result<Compaction> {
         self.require_row_id_preserving_rewrite("compaction")?;
-        let target = i64::try_from(self.target_file_size()?).unwrap_or(i64::MAX);
+        let target = i64::try_from(self.target_file_size_bytes()?).unwrap_or(i64::MAX);
         let plan = self.plan(&[])?;
 
         // Group the live files by (spec, partition tuple), in plan order.
@@ -1238,7 +1238,7 @@ impl<H: IOBase> Table<H> {
         // Committing through the one retrying gate means a beaten evolution
         // renumbers itself against the winner's `last-column-id`.
         let mut schema_id = 0;
-        self.commit_changes(|metadata| {
+        self.commit_metadata_changes(|metadata| {
             schema_id = metadata.add_schema(schema.clone())?;
             metadata.set_current_schema(schema_id)?;
             Ok(())
@@ -1249,46 +1249,50 @@ impl<H: IOBase> Table<H> {
     /// Create a branch at one retained snapshot, as one metadata commit.
     ///
     /// This is [`TableMetadata::create_branch`] committed through the
-    /// retrying [`Self::commit_changes`]. Writing *to* a branch other than
+    /// retrying [`Self::commit_metadata_changes`]. Writing *to* a branch other than
     /// `main` remains future work - a commit's parent is currently always the
     /// current snapshot - so a branch is read with [`Self::scan_ref`] and
-    /// moved with [`Self::fast_forward`].
+    /// moved with [`Self::fast_forward_branch`].
     ///
     /// # Errors
     ///
     /// Returns an error when the name is taken or reserved, when the snapshot
     /// is not retained, or when the commit fails.
     pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()> {
-        self.commit_changes(|metadata| metadata.create_branch(SmolStr::new(name), snapshot_id))
+        self.commit_metadata_changes(|metadata| {
+            metadata.create_branch(SmolStr::new(name), snapshot_id)
+        })
     }
 
     /// Create a tag at one retained snapshot, as one metadata commit.
     ///
     /// This is [`TableMetadata::create_tag`] committed through the retrying
-    /// [`Self::commit_changes`].
+    /// [`Self::commit_metadata_changes`].
     ///
     /// # Errors
     ///
     /// Returns an error when the name is taken or reserved, when the snapshot
     /// is not retained, or when the commit fails.
     pub fn create_tag(&mut self, name: &str, snapshot_id: i64) -> Result<()> {
-        self.commit_changes(|metadata| metadata.create_tag(SmolStr::new(name), snapshot_id))
+        self.commit_metadata_changes(|metadata| {
+            metadata.create_tag(SmolStr::new(name), snapshot_id)
+        })
     }
 
     /// Remove one branch or tag, as one metadata commit.
     ///
     /// Returns the reference that was removed. This is
     /// [`TableMetadata::remove_snapshot_ref`] committed through the retrying
-    /// [`Self::commit_changes`]; a name the table does not have is an error
+    /// [`Self::commit_metadata_changes`]; a name the table does not have is an error
     /// rather than an empty commit.
     ///
     /// # Errors
     ///
     /// Returns an error naming the refs the table does have when `name` is
     /// not one of them, or when the commit fails.
-    pub fn remove_ref(&mut self, name: &str) -> Result<SnapshotRef> {
+    pub fn remove_snapshot_ref(&mut self, name: &str) -> Result<SnapshotRef> {
         let mut removed = None;
-        self.commit_changes(|metadata| match metadata.remove_snapshot_ref(name)? {
+        self.commit_metadata_changes(|metadata| match metadata.remove_snapshot_ref(name)? {
             Some(reference) => {
                 removed = Some(reference);
                 Ok(())
@@ -1315,7 +1319,7 @@ impl<H: IOBase> Table<H> {
     /// Move a branch forward to a descendant snapshot, as one metadata commit.
     ///
     /// This is [`TableMetadata::fast_forward_branch`] committed through the
-    /// retrying [`Self::commit_changes`]: the target must be retained and must
+    /// retrying [`Self::commit_metadata_changes`]: the target must be retained and must
     /// reach the branch's head by walking parent ids, so a fast-forward can
     /// never lose history.
     ///
@@ -1323,8 +1327,8 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error when the name is not a branch, the target is not
     /// retained or not a descendant, or the commit fails.
-    pub fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> Result<()> {
-        self.commit_changes(|metadata| metadata.fast_forward_branch(name, snapshot_id))
+    pub fn fast_forward_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()> {
+        self.commit_metadata_changes(|metadata| metadata.fast_forward_branch(name, snapshot_id))
     }
 
     /// Expire the snapshots retention no longer keeps, as one metadata commit.
@@ -1349,7 +1353,7 @@ impl<H: IOBase> Table<H> {
             return Ok(Vec::new());
         }
         let mut expired = Vec::new();
-        self.commit_changes(|metadata| {
+        self.commit_metadata_changes(|metadata| {
             expired = metadata.expire_snapshots(older_than_ms, retain_last, snapshot_ids)?;
             Ok(())
         })?;
@@ -1415,9 +1419,11 @@ impl<H: IOBase> Table<H> {
                 )));
             }
         };
-        let name = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
+        let attempt = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
         let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
-        let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
+        let mut handle = self
+            .root
+            .child_by_path(&format!("{METADATA_DIR}/{attempt}"))?;
         handle.write_all_bytes(&encoded)?;
 
         // UUID filenames make the write itself the create/commit attempt.
@@ -1425,7 +1431,7 @@ impl<H: IOBase> Table<H> {
         // already won; remove only our unpublished candidate and report it.
         let competitors = metadata_names_at_version(&metadata_dir, next_version)?
             .into_iter()
-            .filter(|candidate| candidate != &name)
+            .filter(|candidate| candidate != &attempt)
             .collect::<Vec<_>>();
         if !competitors.is_empty() {
             handle.remove(false)?;
@@ -1436,11 +1442,28 @@ impl<H: IOBase> Table<H> {
             ));
         }
 
+        // Winning the attempt publishes the document under the name a hint
+        // names: `v{version}`. A catalog stores the exact UUID filename and can
+        // afford any spelling, but this surface has only the hint, and every
+        // reader of a catalog-free table - this module's own included - resolves
+        // it that way. The attempt stays in place across the publish so that a
+        // racing writer never sees the version free: `metadata_names_at_version`
+        // counts both spellings, and one of them is always there.
+        let name = format_smolstr!("v{next_version}{suffix}.metadata.json");
+        let mut document = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
+        document.write_all_bytes(&encoded)?;
+
         // The hint is how a catalog-free reader finds the current document.
         let mut hint = self
             .root
             .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
         hint.write_all_bytes(next_version.to_string().as_bytes())?;
+
+        // The attempt has served its whole purpose. Its removal is the commit's
+        // last act rather than a step of it: the published document and the hint
+        // are already durable, so a backend that refuses leaves an unreferenced
+        // duplicate rather than an unfinished commit.
+        drop(handle.remove(false));
         self.metadata = metadata;
         self.version = next_version;
         self.metadata_file_name = name;
@@ -1450,7 +1473,7 @@ impl<H: IOBase> Table<H> {
     /// Write the data files, the manifest, the manifest list, and the metadata.
     ///
     /// Returns how many data files the commit wrote. Each partition group's
-    /// rows are rolled into files of roughly [`Self::target_file_size`] bytes,
+    /// rows are rolled into files of roughly [`Self::target_file_size_bytes`] bytes,
     /// and one running index numbers every file of the commit.
     ///
     /// The expensive half - decoding the consumed reader into data files and
@@ -1469,7 +1492,7 @@ impl<H: IOBase> Table<H> {
         let schema = self.schema()?.clone();
         let spec = self.metadata.default_spec()?.clone();
         spec.require_writable()?;
-        let target = self.target_file_size()?;
+        let target = self.target_file_size_bytes()?;
         // The format is resolved and checked against the build before the
         // incoming reader is consumed, so a format this build cannot encode
         // fails up front rather than after data files were written.
@@ -1933,7 +1956,7 @@ impl<H: IOBase> Table<H> {
 /// [`filter_partitions`](IORecordOptions::filter_partitions) pair prunes data
 /// files through [`Table::plan`] instead of filtering rows after they were
 /// decoded. The in-memory metadata stays current across commits, so
-/// [`Table::current_snapshot`] and [`Table::version`] reflect a write made
+/// [`Table::current_snapshot`] and [`Table::metadata_version`] reflect a write made
 /// through this surface without reopening anything.
 ///
 /// One deliberate difference from the folder route: a filter naming a column
@@ -2002,7 +2025,7 @@ impl<H: IOBase> IOBase for Table<H> {
             return Ok(());
         }
         let schema = crate::arrow::arrow_schema_from_field(self.schema()?)?;
-        self.overwrite(crate::arrow::batch_reader(schema, []))
+        self.commit_overwrite(crate::arrow::batch_reader(schema, []))
     }
 
     /// Delete the table completely: metadata, manifests, and data files.
@@ -2124,21 +2147,21 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         if commit_row_size.is_none() {
-            return self.merge_where(&pairs, batches, &[], options.safe());
+            return self.commit_merge_where(&pairs, batches, &[], options.safe());
         }
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches)?;
         let Some(first) = commits.next() else {
-            return self.merge_where(
+            return self.commit_merge_where(
                 &pairs,
                 crate::arrow::batch_reader(schema, []),
                 &[],
                 options.safe(),
             );
         };
-        self.merge_where(&pairs, first?, &[], options.safe())?;
+        self.commit_merge_where(&pairs, first?, &[], options.safe())?;
         for commit in commits {
-            self.append(commit?)?;
+            self.commit_append(commit?)?;
         }
         Ok(())
     }
@@ -2163,10 +2186,10 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
             return Ok(());
         };
         if commit_row_size.is_none() {
-            return self.append(batches);
+            return self.commit_append(batches);
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.append(commit?)?;
+            self.commit_append(commit?)?;
         }
         Ok(())
     }
@@ -2190,10 +2213,15 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         if commit_row_size.is_none() {
-            return self.merge_where(&pairs, batches, options.merge_by_names(), options.safe());
+            return self.commit_merge_where(
+                &pairs,
+                batches,
+                options.merge_by_names(),
+                options.safe(),
+            );
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
+            self.commit_merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
         }
         Ok(())
     }
@@ -3053,13 +3081,38 @@ fn missing_metadata(metadata_dir: &Holder) -> Error {
     ))
 }
 
+/// Spell one location the single way, so that two spellings of one place match.
+///
+/// Separators are normalized because an implementation that wrote the table on
+/// Windows may have spelled its own location with backslashes. An empty URI
+/// authority is spelled out because `file:/warehouse` and `file:///warehouse`
+/// name the same place: Java's URI normalizer - so every Hadoop and Spark
+/// writer - drops it, while this crate's URLs keep it, and a table written by
+/// one and committed into by the other carries both spellings at once.
+fn normalized_location(location: &str) -> String {
+    let normalized = location.replace('\\', "/");
+    let Some((scheme, rest)) = normalized.split_once(':') else {
+        return normalized;
+    };
+    // A one-letter scheme is a Windows drive letter, and `//` already spells an
+    // authority - empty or not. Everything else is `scheme:/path`, the form that
+    // is missing the empty authority.
+    let scheme_shaped = scheme.len() > 1
+        && scheme.starts_with(|first: char| first.is_ascii_alphabetic())
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'));
+    if !scheme_shaped || !rest.starts_with('/') || rest.starts_with("//") {
+        return normalized;
+    }
+    format!("{scheme}://{rest}")
+}
+
 /// Turn one absolute location into a name relative to the table's folder.
 fn relative_location(base: &str, location: &str) -> Result<String> {
-    // Separators are normalized because an implementation that wrote the table
-    // on Windows may have spelled its own location with backslashes.
-    let normalized_base = base.replace('\\', "/");
+    let normalized_base = normalized_location(base);
     let normalized_base = normalized_base.trim_end_matches('/');
-    let normalized = location.replace('\\', "/");
+    let normalized = normalized_location(location);
     if normalized == normalized_base {
         return Ok(String::new());
     }
@@ -3072,6 +3125,52 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     Err(invalid(format_smolstr!(
         "expected a location inside the table at {normalized_base:?}, got {location:?}"
     )))
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::relative_location;
+
+    #[test]
+    fn an_empty_uri_authority_is_the_same_place_spelled_shorter() {
+        // Whichever writer spelled which: the crate writes the table location
+        // with the authority, Spark commits its manifest lists without it.
+        for (base, location) in [
+            (
+                "file:///warehouse/db/t",
+                "file:/warehouse/db/t/metadata/snap-1.avro",
+            ),
+            (
+                "file:/warehouse/db/t",
+                "file:///warehouse/db/t/metadata/snap-1.avro",
+            ),
+            (
+                "file:/warehouse/db/t",
+                "file:/warehouse/db/t/metadata/snap-1.avro",
+            ),
+        ] {
+            assert_eq!(
+                relative_location(base, location).unwrap(),
+                "metadata/snap-1.avro",
+                "{base} -> {location}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_real_authority_and_a_windows_drive_are_left_alone() {
+        assert_eq!(
+            relative_location("s3://bucket/db/t", "s3://bucket/db/t/data/0.parquet").unwrap(),
+            "data/0.parquet"
+        );
+        assert_eq!(
+            relative_location("C:\\warehouse\\t", "C:\\warehouse\\t\\data\\0.parquet").unwrap(),
+            "data/0.parquet"
+        );
+        // A neighbour is not a child, however either side is spelled.
+        relative_location("file:///warehouse/db/t", "file:/warehouse/db/other/x").unwrap_err();
+        relative_location("s3://bucket/db/t", "s3://other/db/t/x").unwrap_err();
+    }
 }
 
 /// Refuse a data-file MIME type this build has no encoder for, by name.
