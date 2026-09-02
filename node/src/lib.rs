@@ -71,6 +71,19 @@ pub use media::{JsMediaType, JsMimeType};
 pub use timezone::{JsTimezone, TimezoneAlias};
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
 
+/// Read a structural JSON document from the object or the text a caller holds.
+///
+/// `JSON.parse`'s object arrives as the document itself; a string arrives as a
+/// JSON string value, which is the one shape that still needs parsing. Bytes
+/// have their own reader, because napi cannot discriminate a typed array
+/// inside a union.
+pub(crate) fn json_document(value: serde_json::Value) -> serde_json::Result<serde_json::Value> {
+    match value {
+        serde_json::Value::String(text) => serde_json::from_str(&text),
+        document => Ok(document),
+    }
+}
+
 pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
 }
@@ -175,14 +188,14 @@ impl JsDifferenceIterator {
         }
     }
 
-    pub(crate) fn from_data_types(
+    pub(crate) fn from_dtypes(
         left: &yggdryl::DataType,
         right: &yggdryl::DataType,
         with_metadata: bool,
         return_equal: bool,
     ) -> Self {
         Self {
-            inner: OwnedDifferences::from_data_types(left, right, with_metadata, return_equal),
+            inner: OwnedDifferences::from_dtypes(left, right, with_metadata, return_equal),
         }
     }
 }

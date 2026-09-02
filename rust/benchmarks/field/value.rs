@@ -205,11 +205,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("metadata_into_arrow_unique", |bencher| {
         bencher.iter_batched(
             || {
-                Metadata::from_entries([
-                    ("catalog_name", "analytics"),
-                    ("postgres:table", "trades"),
-                ])
-                .expect("the static metadata is valid")
+                Metadata::from_entries([("comment", "analytics"), ("postgres:table", "trades")])
+                    .expect("the static metadata is valid")
             },
             |metadata| black_box(metadata.into_arrow()),
             BatchSize::SmallInput,

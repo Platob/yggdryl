@@ -777,7 +777,7 @@ impl TextLineOptions {
         self.set_capture_types(
             capture_types
                 .into_iter()
-                .map(|(name, data_type)| (name.into(), data_type))
+                .map(|(name, dtype)| (name.into(), dtype))
                 .collect(),
         )?;
         Ok(self)
@@ -871,8 +871,8 @@ impl TextLineOptions {
 
     /// Assemble the emitted root after re-running every column validation.
     fn rebuild_schema(&self) -> Result<Field> {
-        for (name, data_type) in &self.capture_types {
-            iceberg_safe(name, data_type)?;
+        for (name, dtype) in &self.capture_types {
+            iceberg_safe(name, dtype)?;
         }
         for (index, (name, value)) in self.custom_fields.iter().enumerate() {
             if is_reserved_column(name, self.is_log_mode()) {
@@ -891,11 +891,11 @@ impl TextLineOptions {
             {
                 return Err(collision(name, "another custom field"));
             }
-            let data_type = value.data_type().map_err(|error| Error::InvalidRecord {
+            let dtype = value.dtype().map_err(|error| Error::InvalidRecord {
                 path: format_smolstr!("$.{name}"),
                 reason: error.to_smolstr(),
             })?;
-            iceberg_safe(name, &data_type)?;
+            iceberg_safe(name, &dtype)?;
         }
 
         let mut fields = vec![
@@ -915,17 +915,17 @@ impl TextLineOptions {
                 fields.push(DataType::Utf8.nullable_field(name));
             }
         }
-        for data_type in self.resolved_capture_types() {
+        for dtype in self.resolved_capture_types() {
             let capture = &self.captures[fields.len() - self.leading_column_count()];
-            fields.push(data_type.nullable_field(capture.clone()));
+            fields.push(dtype.nullable_field(capture.clone()));
         }
         for (name, value) in &self.custom_fields {
-            let data_type = value.data_type()?;
+            let dtype = value.dtype()?;
             // Only a null constant needs a nullable column; a typed constant is
             // present in every row.
             fields.push(Field::new(
                 name.clone(),
-                data_type,
+                dtype,
                 matches!(value, Scalar::Null),
             ));
         }
@@ -956,10 +956,10 @@ impl TextLineOptions {
         self.captures
             .iter()
             .map(|capture| {
-                if let Some((_, data_type)) =
+                if let Some((_, dtype)) =
                     self.capture_types.iter().find(|(name, _)| name == capture)
                 {
-                    return data_type.clone();
+                    return dtype.clone();
                 }
                 bodies
                     .iter()
@@ -1040,12 +1040,11 @@ fn collision(name: &str, taken_by: &str) -> Error {
 /// are refused too, because the tables this crate creates are format v2 and a
 /// column they cannot legally declare must fail before the metadata is
 /// committed.
-fn iceberg_safe(name: &str, data_type: &DataType) -> Result<()> {
-    let primitive =
-        PrimitiveType::from_data_type(data_type).map_err(|error| Error::InvalidRecord {
-            path: format_smolstr!("$.{name}"),
-            reason: error.to_smolstr(),
-        })?;
+fn iceberg_safe(name: &str, dtype: &DataType) -> Result<()> {
+    let primitive = PrimitiveType::from_dtype(dtype).map_err(|error| Error::InvalidRecord {
+        path: format_smolstr!("$.{name}"),
+        reason: error.to_smolstr(),
+    })?;
     if matches!(
         primitive,
         PrimitiveType::Unknown | PrimitiveType::TimestampNs | PrimitiveType::TimestamptzNs
@@ -1225,9 +1224,9 @@ impl TextLineOptions {
             entries.push((
                 key("capture_types"),
                 Scalar::from_mapping(
-                    self.capture_types.iter().map(|(name, data_type)| {
-                        (key(name), Scalar::String(data_type.to_smolstr()))
-                    }),
+                    self.capture_types
+                        .iter()
+                        .map(|(name, dtype)| (key(name), Scalar::String(dtype.to_smolstr()))),
                 )
                 .unwrap_or(Scalar::Null),
             ));
@@ -1306,9 +1305,9 @@ impl TextLineOptions {
                         "capture_types",
                     )?;
                     let mut declared = Vec::with_capacity(pairs.len());
-                    for (capture, data_type) in pairs {
-                        let spelled = data_type.as_str().ok_or_else(|| {
-                            unexpected(name, "datatype expressions", data_type.kind())
+                    for (capture, dtype) in pairs {
+                        let spelled = dtype.as_str().ok_or_else(|| {
+                            unexpected(name, "datatype expressions", dtype.kind())
                         })?;
                         declared.push((SmolStr::new(capture), DataType::from_str(spelled)?));
                     }

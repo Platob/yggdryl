@@ -324,8 +324,23 @@ export declare class DataType {
   static geography(crs?: string | undefined | null, algorithm?: string | undefined | null): DataType
   /** Parse canonical, Arrow, SQL, Hive, or Spark type syntax. */
   static fromString(value: string): DataType
-  /** Deserialize the native structural JSON representation. */
+  /**
+   * Deserialize the structural JSON representation.
+   *
+   * One entry point for the three shapes a caller already has: the document
+   * as a string, the same document as the bytes it was read from, or the
+   * object `JSON.parse` already turned it into.
+   */
   static fromJSON(value: any): DataType
+  /**
+   * Deserialize the structural JSON representation from bytes.
+   *
+   * The reading half of `toJSONBytes`. JavaScript names the byte reader
+   * rather than folding it into `fromJSON` because napi validates a union
+   * arm by type and cannot tell a typed array from any other object there,
+   * so one entry point taking both would silently take neither.
+   */
+  static fromJSONBytes(bytes: Uint8Array): DataType
   /** The parameter-free identity of this variant, such as `decimal128`. */
   get id(): string
   /** The coarse datatype family shared by every variant of one kind. */
@@ -334,12 +349,60 @@ export declare class DataType {
   get nested(): boolean
   /** Number of direct child fields. */
   get length(): number
-  /** Return the child at an Array-compatible positive or negative index. */
-  at(index: number): JsField | null
-  /** Look up a child by zero-based index or exact field name. */
-  get(key: number | string): JsField | null
-  /** Look up a child by exact field name without materializing children. */
-  getByName(name: string): JsField | null
+  /**
+   * Return the datatype that holds both this one and `other`.
+   *
+   * `upscale` picks the direction width resolves in: the default meets at
+   * the type holding both, `false` at the tightest type naming both.
+   */
+  mergeWith(other: DataType | string, upscale?: boolean | undefined | null): DataType
+  /**
+   * Every leaf under this node, named by its dotted path.
+   *
+   * Struct nesting flattens all the way down, and a leaf under a nullable
+   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * column, and `explodeFields` is what reaches inside one. Every name this
+   * answers is one `fieldByPath` resolves.
+   */
+  unnestFields(): Array<JsField>
+  /**
+   * This node's children with every collection replaced by what it holds.
+   *
+   * A list answers its item, a map its entries, a dictionary or run-end
+   * node the values it encodes, and anything else itself - so the result
+   * names the same columns in the same order. One level only, so the depth
+   * is the caller's decision.
+   */
+  explodeFields(): Array<JsField>
+  /** Return the child at an Array-compatible index, or `null`. */
+  getFieldAt(index: number): JsField | null
+  /**
+   * Return the child a path names, or `null`.
+   *
+   * A child carrying the whole string wins before the string is decomposed
+   * on `.`, so a name containing a dot stays reachable.
+   */
+  getFieldByPath(path: string): JsField | null
+  /** Return the child a position or a path names, or `null`. */
+  getField(key: number | string): JsField | null
+  /** Return the child at an Array-compatible index, or throw. */
+  fieldAt(index: number): JsField
+  /** Return the child a path names, or throw. */
+  fieldByPath(path: string): JsField
+  /** Return the child a position or a path names, or throw. */
+  field(key: number | string): JsField
+  /** Replace the child at an Array-compatible index. */
+  setFieldAt(index: number, child: JsField): void
+  /** Replace the child a path names, appending an unresolved name. */
+  setFieldByPath(path: string, child: JsField): void
+  /** Replace the child a position or a path names. */
+  setField(key: number | string, child: JsField): void
+  /** Remove and return the child at an Array-compatible index. */
+  removeFieldAt(index: number): JsField
+  /** Remove and return the child a path names. */
+  removeFieldByPath(path: string): JsField
+  /** Remove and return the child a position or a path names. */
+  removeField(key: number | string): JsField
   /** Test for a child index, field name, or exact Field value. */
   contains(value: number | string | JsField): boolean
   /** Child names in physical order. */
@@ -360,6 +423,14 @@ export declare class DataType {
   toString(): string
   /** Serialize to version-independent structural JSON. */
   toJSON(): any
+  /**
+   * Serialize to structural JSON bytes.
+   *
+   * The same document `toJSON` renders, encoded rather than decoded, for a
+   * caller writing it straight to a file or a socket. `fromJSON` reads
+   * these bytes back without being told which shape it got.
+   */
+  toJSONBytes(): Buffer
 }
 export type JsDataType = DataType
 
@@ -444,17 +515,89 @@ export type JsExpression = Expression
 /** An Arrow field whose metadata and cache invariants are owned by Rust. */
 export declare class Field {
   /** Parse/clone a `Field`, or construct one from an inferred `DataType`. */
-  constructor(value: Field | string, dataType?: DataType | string | undefined | null, nullable?: boolean | undefined | null, metadata?: Array<MetadataEntry> | Record<string, string> | undefined | null)
+  constructor(value: Field | string, dtype?: DataType | string | undefined | null, nullable?: boolean | undefined | null, metadata?: Array<MetadataEntry> | Record<string, string> | undefined | null)
   /** Infer a Field from a native wrapper or field-expression string. */
   static from(value: Field | string): Field
   /** Parse canonical, Arrow, SQL, Hive, or Spark field syntax. */
   static fromString(value: string): Field
-  /** Deserialize the native structural JSON representation. */
+  /**
+   * Deserialize the structural JSON representation.
+   *
+   * One entry point for the three shapes a caller already has: the document
+   * as a string, the same document as the bytes it was read from, or the
+   * object `JSON.parse` already turned it into.
+   */
   static fromJSON(value: any): Field
+  /**
+   * Deserialize the structural JSON representation from bytes.
+   *
+   * The reading half of `toJSONBytes`. JavaScript names the byte reader
+   * rather than folding it into `fromJSON` because napi validates a union
+   * arm by type and cannot tell a typed array from any other object there,
+   * so one entry point taking both would silently take neither.
+   */
+  static fromJSONBytes(bytes: Uint8Array): Field
   /** Physical field name. */
   get name(): string
   /** Logical native datatype. */
-  get dataType(): DataType
+  get dtype(): DataType
+  /**
+   * Return the field that describes both this one and `other`.
+   *
+   * The datatype is `DataType.mergeWith`'s answer; this adds the name
+   * (kept from the receiver), nullability (either side being nullable
+   * carries over), and metadata (the union, this field winning a clash).
+   */
+  mergeWith(other: Field, upscale?: boolean | undefined | null): Field
+  /**
+   * Every leaf under this node, named by its dotted path.
+   *
+   * Struct nesting flattens all the way down, and a leaf under a nullable
+   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * column, and `explodeFields` is what reaches inside one. Every name this
+   * answers is one `fieldByPath` resolves.
+   */
+  unnestFields(): Array<Field>
+  /**
+   * This node's children with every collection replaced by what it holds.
+   *
+   * A list answers its item, a map its entries, a dictionary or run-end
+   * node the values it encodes, and anything else itself - so the result
+   * names the same columns in the same order. One level only, so the depth
+   * is the caller's decision.
+   */
+  explodeFields(): Array<Field>
+  /** Number of direct child fields. */
+  get fieldLen(): number
+  /** Return the child at an Array-compatible index, or `null`. */
+  getFieldAt(index: number): Field | null
+  /**
+   * Return the child a path names, or `null`.
+   *
+   * A child carrying the whole string wins before the string is decomposed
+   * on `.`, so a name containing a dot stays reachable.
+   */
+  getFieldByPath(path: string): Field | null
+  /** Return the child a position or a path names, or `null`. */
+  getField(key: number | string): Field | null
+  /** Return the child at an Array-compatible index, or throw. */
+  fieldAt(index: number): Field
+  /** Return the child a path names, or throw. */
+  fieldByPath(path: string): Field
+  /** Return the child a position or a path names, or throw. */
+  field(key: number | string): Field
+  /** Replace the child at an Array-compatible index. */
+  setFieldAt(index: number, child: Field): void
+  /** Replace the child a path names, appending an unresolved name. */
+  setFieldByPath(path: string, child: Field): void
+  /** Replace the child a position or a path names. */
+  setField(key: number | string, child: Field): void
+  /** Remove and return the child at an Array-compatible index. */
+  removeFieldAt(index: number): Field
+  /** Remove and return the child a path names. */
+  removeFieldByPath(path: string): Field
+  /** Remove and return the child a position or a path names. */
+  removeField(key: number | string): Field
   /** Whether values may be null. */
   get nullable(): boolean
   /** Arrow IPC dictionary identifier, or `null` for non-dictionary fields. */
@@ -463,12 +606,13 @@ export declare class Field {
   get dictionaryIsOrdered(): boolean | null
   /** Shared logical alias stored in Arrow-compatible metadata. */
   get alias(): string | null
-  /** Shared catalog name stored in Arrow-compatible metadata. */
-  get catalogName(): string | null
-  /** Shared schema name stored in Arrow-compatible metadata. */
-  get schemaName(): string | null
-  /** Shared table name stored in Arrow-compatible metadata. */
-  get tableName(): string | null
+  /**
+   * Shared human-readable comment stored in Arrow-compatible metadata.
+   *
+   * The one straight description a field carries, belonging to no protocol.
+   * Every protocol view falls back to it.
+   */
+  get comment(): string | null
   /** Arrow/Parquet signed 32-bit field identifier stored in metadata. */
   get parquetFieldId(): number | null
   /** Typed location URL stored canonically in Arrow-compatible metadata. */
@@ -518,7 +662,7 @@ export declare class Field {
   /** Change the physical name through the native cache-aware setter. */
   setName(name: string): void
   /** Change the datatype from a native wrapper or parsed expression. */
-  setDataType(dataType: DataType | string): void
+  setDtype(dtype: DataType | string): void
   /** Change nullability through the native validated setter. */
   setNullable(nullable: boolean): void
   /** Change Arrow IPC dictionary options through the validated core setter. */
@@ -527,18 +671,10 @@ export declare class Field {
   setAlias(value: string): void
   /** Remove and return the shared logical alias. */
   removeAlias(): string | null
-  /** Set the shared catalog name. */
-  setCatalogName(value: string): void
-  /** Remove and return the shared catalog name. */
-  removeCatalogName(): string | null
-  /** Set the shared schema name. */
-  setSchemaName(value: string): void
-  /** Remove and return the shared schema name. */
-  removeSchemaName(): string | null
-  /** Set the shared table name. */
-  setTableName(value: string): void
-  /** Remove and return the shared table name. */
-  removeTableName(): string | null
+  /** Set the shared comment. */
+  setComment(value: string): void
+  /** Remove and return the shared comment. */
+  removeComment(): string | null
   /** Set the canonical Arrow/Parquet signed 32-bit field identifier. */
   setParquetFieldId(id: number): void
   /** Remove and return the Arrow/Parquet signed 32-bit field identifier. */
@@ -668,10 +804,13 @@ export declare class Field {
   get iceberg(): JsProtocolMetadata
   /** The live Financial Information eXchange property view. */
   get fix(): JsProtocolMetadata
-  /** The live Yggdryl field property view. */
-  get field(): JsProtocolMetadata
-  /** The live Yggdryl datatype property view. */
-  get dtype(): JsProtocolMetadata
+  /**
+   * The live Yggdryl field property view.
+   *
+   * Named for the namespace it exposes rather than plain `field`, which on
+   * a schema node reaches a nested child.
+   */
+  get fieldProperties(): JsProtocolMetadata
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolMetadata
   /** The live Google Cloud Storage property view. */
@@ -736,6 +875,14 @@ export declare class Field {
   toString(): string
   /** Serialize to version-independent structural JSON. */
   toJSON(): any
+  /**
+   * Serialize to structural JSON bytes.
+   *
+   * The same document `toJSON` renders, encoded rather than decoded, for a
+   * caller writing it straight to a file or a socket. `fromJSON` reads
+   * these bytes back without being told which shape it got.
+   */
+  toJSONBytes(): Buffer
 }
 export type JsField = Field
 
@@ -1717,6 +1864,21 @@ export declare class ProtocolMetadata {
   values(): Array<string>
   /** Bare name/value entries in deterministic lexical order. */
   entries(): Array<MetadataEntry>
+  /**
+   * This protocol's comment, falling back to the field's straight one.
+   *
+   * `get`, iteration and `length` stay literal about what this protocol
+   * carries; the fallback lives here so a view never reports a property
+   * that iterating it would not yield.
+   */
+  get comment(): string | null
+  /**
+   * Merge another protocol view's properties into this one, in place.
+   *
+   * A name this view already carries keeps its value, so the merge only
+   * ever adds. Properties of other protocols are untouched.
+   */
+  mergeWith(other: ProtocolMetadata): void
   /** Overlay several properties atomically, keeping the ones not named. */
   update(values: Array<MetadataEntry> | Record<string, string>): void
   /** Remove every property of this protocol, leaving shared keys alone. */
@@ -1935,7 +2097,7 @@ export declare class Scalar {
   /** The scale of an exact decimal, or `null`. */
   get scale(): number | null
   /** Infer the exact native datatype this value names. */
-  get dataType(): JsDataType
+  get dtype(): JsDataType
   /** Infer the exact native Field for this scalar value. */
   intoField(): JsField
   /** Infer the exact item Field for this non-empty outer Sequence. */
@@ -2058,7 +2220,7 @@ export declare class SchemaUpdate {
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): void
   /** Record a type promotion on the column at `path`. */
-  updateType(path: string, dataType: DataTypeInput): void
+  updateType(path: string, dtype: DataTypeInput): void
 }
 export type JsSchemaUpdate = SchemaUpdate
 

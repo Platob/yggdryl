@@ -1,6 +1,6 @@
 //! Metadata-aware equality and formatted schema differences.
 
-use crate::field::{Differences, data_types_equal, show_diff};
+use crate::field::{Differences, dtypes_equal, show_diff};
 
 use super::DataType;
 
@@ -12,7 +12,7 @@ impl DataType {
     /// names, nullability, datatype parameters, and dictionary state remain
     /// significant.
     pub fn equals(&self, other: &Self, with_metadata: bool) -> bool {
-        data_types_equal(self, other, with_metadata)
+        dtypes_equal(self, other, with_metadata)
     }
 
     /// Lazily yields stable, UTF-8 lines describing every difference.
@@ -26,7 +26,7 @@ impl DataType {
         with_metadata: bool,
         return_equal: bool,
     ) -> Differences<'schema> {
-        Differences::from_data_types(self, other, with_metadata, return_equal)
+        Differences::from_dtypes(self, other, with_metadata, return_equal)
     }
 
     /// Returns all formatted differences joined with newlines.

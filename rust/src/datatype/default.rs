@@ -65,7 +65,7 @@ impl DataType {
     pub fn default_value(&self) -> Result<Scalar> {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
-        let planned = plan_data_type(self, &mut path).map_err(public_planning_error)?;
+        let planned = plan_dtype(self, &mut path).map_err(public_planning_error)?;
         materialize(planned.plan)
     }
 
@@ -79,7 +79,7 @@ impl DataType {
     pub fn is_default_value(&self, value: &Scalar) -> Result<bool> {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
-        let planned = plan_data_type(self, &mut path).map_err(public_planning_error)?;
+        let planned = plan_dtype(self, &mut path).map_err(public_planning_error)?;
         Ok(plan_matches_value(&planned.plan, value))
     }
 
@@ -102,7 +102,7 @@ impl DataType {
     pub fn default_union_type_id(&self) -> Result<Option<i8>> {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
-        let planned = plan_data_type(self, &mut path).map_err(public_planning_error)?;
+        let planned = plan_dtype(self, &mut path).map_err(public_planning_error)?;
         Ok(match planned.plan {
             DefaultPlan::Union(type_id, _) => Some(type_id),
             _ => None,
@@ -112,7 +112,7 @@ impl DataType {
 
 /// Materializes a Field default while applying its nullability policy.
 pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
-    preflight_schema_shape(field.data_type(), "DefaultValue")?;
+    preflight_schema_shape(field.dtype(), "DefaultValue")?;
     field.validate()?;
     let mut path = Vec::new();
     path.push(PathSegment::Field(field.name()));
@@ -120,17 +120,17 @@ pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
     materialize(planned.plan)
 }
 
-pub(crate) fn preflight_schema(data_type: &DataType, kind: &'static str) -> Result<()> {
-    preflight_schema_shape(data_type, kind)?;
+pub(crate) fn preflight_schema(dtype: &DataType, kind: &'static str) -> Result<()> {
+    preflight_schema_shape(dtype, kind)?;
     // The depth walk runs before this recursive validator so caller-built
     // public enum variants cannot turn validation into stack exhaustion.
-    data_type.validate()
+    dtype.validate()
 }
 
-pub(crate) fn preflight_schema_shape(data_type: &DataType, kind: &'static str) -> Result<()> {
+pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Result<()> {
     let mut pending = Vec::new();
     reserve_pending(&mut pending, 0, 1, kind)?;
-    pending.push((data_type, 0_usize));
+    pending.push((dtype, 0_usize));
     let mut visited = 0_usize;
     while let Some((current, depth)) = pending.pop() {
         if depth >= DataType::PARSE_RECURSION_LIMIT {
@@ -165,18 +165,18 @@ pub(crate) fn preflight_schema_shape(data_type: &DataType, kind: &'static str) -
             | DataType::LargeList(field)
             | DataType::LargeListView(field) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
-                pending.push((field.data_type(), child_depth));
+                pending.push((field.dtype(), child_depth));
             }
             DataType::Struct(fields) => {
                 reserve_pending(&mut pending, visited, fields.len(), kind)?;
-                pending.extend(fields.iter().map(|field| (field.data_type(), child_depth)))
+                pending.extend(fields.iter().map(|field| (field.dtype(), child_depth)))
             }
             DataType::Union(fields, _) => {
                 reserve_pending(&mut pending, visited, fields.len(), kind)?;
                 pending.extend(
                     fields
                         .iter()
-                        .map(|(_, field)| (field.data_type(), child_depth)),
+                        .map(|(_, field)| (field.dtype(), child_depth)),
                 );
             }
             DataType::Dictionary(dictionary) => {
@@ -186,12 +186,12 @@ pub(crate) fn preflight_schema_shape(data_type: &DataType, kind: &'static str) -
             }
             DataType::Map(map) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
-                pending.push((map.entries().data_type(), child_depth));
+                pending.push((map.entries().dtype(), child_depth));
             }
             DataType::RunEndEncoded(encoded) => {
                 reserve_pending(&mut pending, visited, 2, kind)?;
-                pending.push((encoded.run_ends().data_type(), child_depth));
-                pending.push((encoded.values().data_type(), child_depth));
+                pending.push((encoded.run_ends().dtype(), child_depth));
+                pending.push((encoded.values().dtype(), child_depth));
             }
             DataType::Null
             | DataType::Boolean
@@ -272,12 +272,9 @@ fn reserve_pending(
 }
 
 #[allow(clippy::too_many_lines)]
-fn plan_data_type<'a>(
-    data_type: &'a DataType,
-    path: &mut Vec<PathSegment<'a>>,
-) -> PlanningResult<Planned> {
+fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> PlanningResult<Planned> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Null => scalar(DefaultPlan::Null, true),
         D::Boolean => scalar(DefaultPlan::Bool, false),
         D::Int8
@@ -361,7 +358,7 @@ fn plan_data_type<'a>(
         D::Union(fields, _) => plan_union(fields, path),
         D::Dictionary(dictionary) => {
             path.push(PathSegment::DictionaryValue);
-            let value = plan_data_type(dictionary.value(), path);
+            let value = plan_dtype(dictionary.value(), path);
             path.pop();
             value
         }
@@ -402,7 +399,7 @@ fn plan_data_type<'a>(
 
 fn plan_field<'a>(field: &'a Field, path: &mut Vec<PathSegment<'a>>) -> PlanningResult<Planned> {
     if field.is_nullable() {
-        return plan_physical_null(field.data_type(), path)?.ok_or_else(|| {
+        return plan_physical_null(field.dtype(), path)?.ok_or_else(|| {
             uninhabited_error(
                 path,
                 "nullable physical layout cannot represent logical null",
@@ -416,7 +413,7 @@ fn plan_present_field<'a>(
     field: &'a Field,
     path: &mut Vec<PathSegment<'a>>,
 ) -> PlanningResult<Planned> {
-    let value = plan_data_type(field.data_type(), path)?;
+    let value = plan_dtype(field.dtype(), path)?;
     if value.logically_null {
         uninhabited(path, "non-nullable field has only a logical-null default")
     } else {
@@ -456,14 +453,14 @@ fn plan_physical_null_field<'a>(
     if !field.is_nullable() {
         return Ok(None);
     }
-    plan_physical_null(field.data_type(), path)
+    plan_physical_null(field.dtype(), path)
 }
 
 fn plan_physical_null<'a>(
-    data_type: &'a DataType,
+    dtype: &'a DataType,
     path: &mut Vec<PathSegment<'a>>,
 ) -> PlanningResult<Option<Planned>> {
-    match data_type {
+    match dtype {
         DataType::Union(fields, _) => {
             for (type_id, field) in fields {
                 path.push(PathSegment::Union(type_id, field.name()));
@@ -682,18 +679,18 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
     }
 }
 
-pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Scalar) -> bool {
+pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool {
     // A variant can *spell* null: the variant null is a present value the
     // encoding writes, so `Null` in a variant column is a value, never the
     // absence a validity bitmap records - which is exactly why a required
     // variant column can hold it.
-    if matches!(data_type, DataType::Variant) {
+    if matches!(dtype, DataType::Variant) {
         return false;
     }
     if matches!(value, Scalar::Null) {
         return true;
     }
-    match data_type {
+    match dtype {
         DataType::Union(fields, _) => {
             let Some([type_id, payload]) = value.as_sequence() else {
                 return false;
@@ -704,10 +701,10 @@ pub(crate) fn value_is_logically_null(data_type: &DataType, value: &Scalar) -> b
             fields
                 .iter()
                 .find(|(candidate, _)| *candidate == type_id)
-                .is_some_and(|(_, field)| value_is_logically_null(field.data_type(), payload))
+                .is_some_and(|(_, field)| value_is_logically_null(field.dtype(), payload))
         }
         DataType::RunEndEncoded(encoded) => {
-            value_is_logically_null(encoded.values().data_type(), value)
+            value_is_logically_null(encoded.values().dtype(), value)
         }
         DataType::Dictionary(dictionary) => value_is_logically_null(dictionary.value(), value),
         _ => false,

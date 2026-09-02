@@ -63,7 +63,7 @@ def test_field_options_resolve_left_to_right_before_caller_metadata() -> None:
         )
 
 
-def test_data_type_accepts_only_arrow_type_and_only_real_pyarrow_types() -> None:
+def test_dtype_accepts_only_arrow_type_and_only_real_pyarrow_types() -> None:
     precise = DataType.from_pyhint(
         Annotated[Decimal, {"arrow_type": pa.decimal256(45, 8)}]
     )
@@ -100,7 +100,7 @@ def test_ordinary_inference_does_not_touch_pyarrow_override_boundary(
     _hints._pyarrow_module.cache_clear()
     monkeypatch.setattr(_hints, "_pyarrow_module", unavailable)
     assert DataType.from_pyhint(list[dict[str, int]]).id == "list"
-    assert Field.from_pyhint("value", int).data_type.id == "int64"
+    assert Field.from_pyhint("value", int).dtype.id == "int64"
 
 
 def test_dictionary_options_are_complete_exact_and_native_validated() -> None:
@@ -321,19 +321,19 @@ def test_nullable_options_compile_recursively_into_native_fields() -> None:
         choice: Annotated[Child | str, ("nullable", True)]
 
     root = Envelope.field()
-    children = root.data_type["children"].data_type[0]
+    children = root.dtype["children"].dtype[0]
     values = (
-        root.data_type["values"]
-        .data_type[0]
-        .data_type["value"]
+        root.dtype["values"]
+        .dtype[0]
+        .dtype["value"]
     )
-    choice = root.data_type["choice"]
+    choice = root.dtype["choice"]
 
     assert children.nullable
     assert values.nullable
     assert choice.nullable
-    assert not Child.field().data_type["required"].nullable
-    assert Child.field().data_type["relaxed"].nullable
+    assert not Child.field().dtype["required"].nullable
+    assert Child.field().dtype["relaxed"].nullable
 
 
 def test_parent_arrow_type_owns_the_subtree() -> None:
@@ -360,9 +360,9 @@ def test_parent_arrow_type_owns_the_subtree() -> None:
             ),
         ]
 
-    physical = Mismatch.field().data_type["child"].data_type
+    physical = Mismatch.field().dtype["child"].dtype
     assert tuple(child.name for child in physical) == ("different",)
-    assert physical["different"].data_type.id == "int64"
+    assert physical["different"].dtype.id == "int64"
 
 
 def test_non_materialized_dataclass_options_are_rejected() -> None:
@@ -390,7 +390,7 @@ def test_explicit_union_override_is_the_physical_authority() -> None:
     class Misaligned:
         value: Annotated[int | str, ("arrow_type", one_child)]
 
-    physical = Misaligned.field().data_type["value"].data_type
+    physical = Misaligned.field().dtype["value"].dtype
     assert physical.id == "union"
     assert len(physical) == 1
     assert physical[0].name == "integer"
@@ -411,9 +411,9 @@ def test_pep695_aliases_compile_to_optional_and_union_fields() -> None:
         generic: GenericMaybe[int]
 
     root = Aliases.field()
-    assert root.data_type["maybe"].nullable
-    assert root.data_type["either"].data_type.id == "union"
-    assert root.data_type["generic"].nullable
+    assert root.dtype["maybe"].nullable
+    assert root.dtype["either"].dtype.id == "union"
+    assert root.dtype["generic"].nullable
 
 
 def test_a_field_annotation_contributes_its_metadata() -> None:
@@ -423,6 +423,6 @@ def test_a_field_annotation_contributes_its_metadata() -> None:
     class Reading:
         value: Annotated[int, tag]
 
-    column = Reading.field().data_type["value"]
+    column = Reading.field().dtype["value"]
     assert column.metadata["unit"] == "ms"
     assert column.metadata["iceberg:doc"] == "elapsed"

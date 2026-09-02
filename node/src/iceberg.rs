@@ -25,7 +25,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar
 
 use crate::arrow::JsBatchReader;
 use crate::codec::JsScalar;
-use crate::datatype::{JsDataType, data_type_from_input};
+use crate::datatype::{JsDataType, dtype_from_input};
 use crate::field::{JsField, MetadataEntry};
 use crate::io::{JsIOBase, LocationInput, folder_from_input};
 use crate::media::{JsMimeType, MimeTypeInput, mime_type_from_input};
@@ -2193,8 +2193,8 @@ impl JsTable {
                 }
                 SchemaOp::UpdateDoc { path, doc } => evolution.update_doc(path, doc.clone()),
                 SchemaOp::MakeNullable { path } => evolution.make_nullable(path),
-                SchemaOp::UpdateType { path, data_type } => {
-                    evolution.update_type(path, data_type.clone());
+                SchemaOp::UpdateType { path, dtype } => {
+                    evolution.update_type(path, dtype.clone());
                 }
             }
         }
@@ -2283,10 +2283,7 @@ enum SchemaOp {
     /// Relax a required column to optional.
     MakeNullable { path: String },
     /// Promote a column's type, checked when the update is applied.
-    UpdateType {
-        path: String,
-        data_type: CoreDataType,
-    },
+    UpdateType { path: String, dtype: CoreDataType },
 }
 
 /// A recording of column operations against a table's current schema.
@@ -2346,9 +2343,9 @@ impl JsSchemaUpdate {
 
     /// Record a type promotion on the column at `path`.
     #[napi]
-    pub fn update_type(&mut self, path: String, data_type: DataTypeInput<'_>) -> Result<()> {
-        let data_type = data_type_from_input(data_type)?;
-        self.ops.push(SchemaOp::UpdateType { path, data_type });
+    pub fn update_type(&mut self, path: String, dtype: DataTypeInput<'_>) -> Result<()> {
+        let dtype = dtype_from_input(dtype)?;
+        self.ops.push(SchemaOp::UpdateType { path, dtype });
         Ok(())
     }
 }
@@ -2982,9 +2979,5 @@ pub fn iceberg_schema_into_json(schema: &JsField) -> Result<JsScalar> {
 /// both sides for every other change.
 #[napi(js_name = "icebergCanPromoteNative", skip_typescript)]
 pub fn iceberg_can_promote(from_type: DataTypeInput<'_>, to_type: DataTypeInput<'_>) -> Result<()> {
-    can_promote(
-        &data_type_from_input(from_type)?,
-        &data_type_from_input(to_type)?,
-    )
-    .map_err(napi_error)
+    can_promote(&dtype_from_input(from_type)?, &dtype_from_input(to_type)?).map_err(napi_error)
 }

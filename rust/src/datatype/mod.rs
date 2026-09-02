@@ -16,13 +16,14 @@ mod default;
 mod floating;
 mod geospatial;
 mod integer;
+mod merge;
 mod nested;
 mod parser;
 mod scalar;
 pub(crate) mod serde;
 mod temporal;
 
-pub(crate) use arrow::{arrow_data_type_to_ffi, is_variant_storage};
+pub(crate) use arrow::{arrow_dtype_to_ffi, is_variant_storage};
 
 pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{
@@ -34,7 +35,9 @@ pub use geospatial::GeospatialType;
 pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
 };
-pub use nested::{DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields};
+pub(crate) use merge::Recode;
+pub use merge::Widening;
+pub use nested::{DictionaryType, FieldKey, Fields, MapType, RunEndEncodedType, UnionFields};
 
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///

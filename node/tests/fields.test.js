@@ -43,8 +43,8 @@ test('DataType.fromFields is the iterable-aware native Struct builder', () => {
   const type = DataType.fromFields((function* children() { yield id })())
 
   assert.equal(type.kind, 'struct')
-  assert.ok(type.at(0).equals(id))
-  assert.equal(type.at(0).get('physical'), 'int32')
+  assert.ok(type.getFieldAt(0).equals(id))
+  assert.equal(type.getFieldAt(0).get('physical'), 'int32')
   assert.equal(DataType.fromFields([]).length, 0)
   assert.throws(() => DataType.fromFields('not fields'), /iterable of native Field/)
   assert.throws(() => DataType.fromFields(null), /iterable of native Field/)
@@ -61,31 +61,31 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
     yield text
     yield code
   })()
-  const dataType = DataType.variant(members)
+  const dtype = DataType.variant(members)
 
   assert.equal(pulls, 1)
-  assert.equal(dataType.kind, 'union')
+  assert.equal(dtype.kind, 'union')
   assert.equal(
-    dataType.toString(),
+    dtype.toString(),
     'union(dense,0=field("text",utf8,nullable=false,metadata={}),' +
       '1=field("code",int64,nullable=false,metadata={}))',
   )
-  assert.deepEqual(dataType.defaultJSValue(), { typeId: 0, value: '' })
+  assert.deepEqual(dtype.defaultJSValue(), { typeId: 0, value: '' })
   assert.ok(
-    dataType.equals(
-      fields.union('holder', [[0, text], [1, code]], 'dense').dataType,
+    dtype.equals(
+      fields.union('holder', [[0, text], [1, code]], 'dense').dtype,
     ),
   )
   assert.ok(
     fields.denseUnion('payload', [text, code], { nullable: false })
-      .dataType.equals(dataType),
+      .dtype.equals(dtype),
   )
   assert.equal(
     DataType.fromString(
       'variant(field("text",utf8,nullable=false,metadata={}),' +
         'field("code",int64,nullable=false,metadata={}))',
     ).toString(),
-    dataType.toString(),
+    dtype.toString(),
   )
   assert.throws(
     () => DataType.fromString('variant(sparse,text:utf8,code:int64)'),
@@ -175,10 +175,10 @@ test('typed field factories cover every native datatype variant', () => {
   }
   for (const [id, value] of byId) {
     // Canonical display opens with the variant id and appends its parameters.
-    assert.equal(value.dataType.toString().split(/[(<]/, 1)[0], id, id)
+    assert.equal(value.dtype.toString().split(/[(<]/, 1)[0], id, id)
   }
   assert.deepEqual(
-    new Set([...byId.values()].map((value) => value.dataType.kind)),
+    new Set([...byId.values()].map((value) => value.dtype.kind)),
     new Set([
       'null',
       'boolean',
@@ -210,7 +210,7 @@ test('nested factories preserve exact child metadata and dictionary state', () =
   const values = fields.list('values', item, {
     metadata: new Map([['owner', 'events']]),
   })
-  const child = values.dataType.at(0)
+  const child = values.dtype.getFieldAt(0)
 
   assert.ok(child.equals(item))
   assert.equal(child.dictionaryId, 42n)
@@ -245,12 +245,12 @@ test('metadata entry overlays use last-write-wins without coercion', () => {
 test('typed factory parameters delegate native validation', () => {
   // Canonical display names the selected physical variant, which `kind` folds
   // into its family (`decimal`, `temporal`).
-  assert.equal(fields.decimal('small', 38).dataType.toString(), 'decimal128(38,0)')
-  assert.equal(fields.decimal('wide', 39).dataType.toString(), 'decimal256(39,0)')
-  assert.equal(fields.time('coarse', 'ms').dataType.toString(), 'time32(ms)')
-  assert.equal(fields.time('precise', 'ns').dataType.toString(), 'time64(ns)')
+  assert.equal(fields.decimal('small', 38).dtype.toString(), 'decimal128(38,0)')
+  assert.equal(fields.decimal('wide', 39).dtype.toString(), 'decimal256(39,0)')
+  assert.equal(fields.time('coarse', 'ms').dtype.toString(), 'time32(ms)')
+  assert.equal(fields.time('precise', 'ns').dtype.toString(), 'time64(ns)')
   assert.equal(
-    fields.timestamp('event', 'us', 'Custom/Accepted').dataType.toString(),
+    fields.timestamp('event', 'us', 'Custom/Accepted').dtype.toString(),
     'timestamp(us,"Custom/Accepted")',
   )
 
@@ -316,10 +316,10 @@ test('schema equality and difference iterators handle recursive metadata', () =>
 
   assert.equal(left.equals(right), false)
   assert.equal(left.equals(right, false), true)
-  assert.equal(left.dataType.equals(right.dataType), false)
-  assert.equal(left.dataType.equals(right.dataType, false), true)
+  assert.equal(left.dtype.equals(right.dtype), false)
+  assert.equal(left.dtype.equals(right.dtype, false), true)
   assert.equal(left.showDiff(left), '✓ equal')
-  assert.equal(left.dataType.showDiff(left.dataType), '✓ equal')
+  assert.equal(left.dtype.showDiff(left.dtype), '✓ equal')
 
   const differences = left.showDiffs(right)
   assert.equal(typeof differences.next, 'function')
@@ -361,6 +361,6 @@ test('difference output retains physical layout checks without metadata', () => 
 
   assert.equal(left.equals(right, false), false)
   assert.ok(lines.some((line) => line.includes('$.nullable')))
-  assert.ok(lines.some((line) => line.includes('$.data_type')))
+  assert.ok(lines.some((line) => line.includes('$.dtype')))
   assert.equal(left.showDiff(right, false), lines.join('\n'))
 })

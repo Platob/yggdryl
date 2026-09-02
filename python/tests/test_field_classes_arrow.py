@@ -35,15 +35,15 @@ def test_arrow_schema_import_is_one_native_struct_field() -> None:
 
     assert root.name == "event"
     assert not root.nullable
-    assert root.data_type.id == "struct"
+    assert root.dtype.id == "struct"
     assert root.metadata["source"] == "arrow"
-    assert tuple(child.name for child in root.data_type) == (
+    assert tuple(child.name for child in root.dtype) == (
         "identifier",
         "payload",
         "tags",
     )
-    assert root.data_type["identifier"].data_type.id == "int16"
-    assert root.data_type["payload"].data_type["score"].data_type.id == "float32"
+    assert root.dtype["identifier"].dtype.id == "int16"
+    assert root.dtype["payload"].dtype["score"].dtype.id == "float32"
     assert root.into_arrow_schema() == schema
     assert root.into_arrow_schema() == schema
 
@@ -67,7 +67,7 @@ def test_native_field_materializes_plain_nested_dataclasses() -> None:
     )
     Payload = members[1].type
     assert dataclasses.is_dataclass(Payload)
-    assert Payload.field() == root.data_type["payload"]
+    assert Payload.field() == root.dtype["payload"]
     assert Payload.field() is Payload.field()
 
     value = Event(identifier=1, payload=Payload(label="ok"), tags=None)
@@ -96,9 +96,9 @@ def test_generated_class_preserves_narrow_and_nested_native_types() -> None:
     Row = root.into_dataclass(name="Row")
 
     assert Row.field() is root
-    assert Row.field().data_type["small"].data_type.id == "int8"
+    assert Row.field().dtype["small"].dtype.id == "int8"
     Nested = dataclasses.fields(Row)[1].type
-    assert Nested.field() == root.data_type["nested"]
+    assert Nested.field() == root.dtype["nested"]
     assert Nested.field() is Nested.field()
     assert Nested.field().metadata["role"] == "payload"
     assert field(Row) is root
@@ -176,7 +176,7 @@ def test_arrow_schema_round_trip_preserves_sorted_map_layout() -> None:
     )
     root = Field.from_arrow_schema(schema, name="row")
 
-    assert root.data_type["lookup"].data_type.into_arrow().keys_sorted
+    assert root.dtype["lookup"].dtype.into_arrow().keys_sorted
     assert root.into_arrow_schema() == schema
 
 
@@ -197,8 +197,8 @@ def test_arrow_schema_round_trip_preserves_dictionary_identity() -> None:
     )
     restored = Field.from_arrow_schema(root.into_arrow_schema(), name="row")
 
-    assert restored.data_type["symbol"].dictionary_id == 29
-    assert restored.data_type["symbol"].dictionary_is_ordered is True
+    assert restored.dtype["symbol"].dictionary_id == 29
+    assert restored.dtype["symbol"].dictionary_is_ordered is True
 
 
 def test_arrow_schema_round_trip_rehydrates_registered_extension_identity() -> None:
@@ -229,7 +229,7 @@ def test_arrow_schema_round_trip_rehydrates_registered_extension_identity() -> N
         restored = Field.from_arrow_schema(exported, name="row")
 
         assert exported.field("payload").type == extension
-        assert restored.data_type["payload"].into_arrow().type == extension
+        assert restored.dtype["payload"].into_arrow().type == extension
         assert restored.metadata["source"] == "extension"
     finally:
         pa.unregister_extension_type(extension.extension_name)

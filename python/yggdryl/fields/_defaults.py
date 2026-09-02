@@ -25,10 +25,10 @@ from ._classes import _convert
 class _DataTypeLayoutKey:
     """Hashable native layout identity that ignores Field metadata recursively."""
 
-    __slots__ = ("data_type",)
+    __slots__ = ("dtype",)
 
-    def __init__(self, data_type: DataType) -> None:
-        self.data_type = data_type
+    def __init__(self, dtype: DataType) -> None:
+        self.dtype = dtype
 
     def __hash__(self) -> int:
         # Equal native layouts necessarily share their root kind and child
@@ -36,12 +36,12 @@ class _DataTypeLayoutKey:
         # no recursively metadata-free DataType hash; exact structural
         # equality remains delegated to the core below. Same-arity collisions
         # are therefore harmless and are covered by the cache regressions.
-        return hash((self.data_type.id, len(self.data_type)))
+        return hash((self.dtype.id, len(self.dtype)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, _DataTypeLayoutKey):
             return NotImplemented
-        return self.data_type.equals(other.data_type, with_metadata=False)
+        return self.dtype.equals(other.dtype, with_metadata=False)
 
 
 _LAYOUT_IDS = itertools.count()
@@ -62,7 +62,7 @@ def _cache_name(
     return f"{prefix}_{identity:016x}_{suffix}"
 
 
-def _metadata_free_data_type(data_type: DataType) -> DataType:
+def _metadata_free_dtype(dtype: DataType) -> DataType:
     """Clone one exact native layout while removing every child Field's metadata."""
 
     def strip(value: Any) -> Any:
@@ -75,14 +75,14 @@ def _metadata_free_data_type(data_type: DataType) -> DataType:
             return [strip(member) for member in value]
         return value
 
-    return DataType.from_dict(strip(data_type.into_dict()))
+    return DataType.from_dict(strip(dtype.into_dict()))
 
 
 @functools.cache
 def _datatype_hint_cached(layout: _DataTypeLayoutKey) -> Any:
-    data_type = _metadata_free_data_type(layout.data_type)
+    dtype = _metadata_free_dtype(layout.dtype)
     return _hint_from_datatype(
-        data_type,
+        dtype,
         module=__name__,
         owner_name=_cache_name("Default", layout),
         path=("value",),
@@ -90,16 +90,16 @@ def _datatype_hint_cached(layout: _DataTypeLayoutKey) -> Any:
     )
 
 
-def _datatype_hint(data_type: DataType) -> Any:
-    return _datatype_hint_cached(_DataTypeLayoutKey(data_type))
+def _datatype_hint(dtype: DataType) -> Any:
+    return _datatype_hint_cached(_DataTypeLayoutKey(dtype))
 
 
 @functools.cache
 def _field_hint_cached(layout: _DataTypeLayoutKey, nullable: bool) -> Any:
     # Name and metadata intentionally do not participate in Python hint
     # identity. The physical Field remains authoritative for value conversion.
-    data_type = _metadata_free_data_type(layout.data_type)
-    field = NativeField("value", data_type, nullable=nullable)
+    dtype = _metadata_free_dtype(layout.dtype)
+    field = NativeField("value", dtype, nullable=nullable)
     return _hint_from_field(
         field,
         module=__name__,
@@ -109,17 +109,17 @@ def _field_hint_cached(layout: _DataTypeLayoutKey, nullable: bool) -> Any:
     )
 
 
-def _field_hint(data_type: DataType, nullable: bool) -> Any:
-    return _field_hint_cached(_DataTypeLayoutKey(data_type), nullable)
+def _field_hint(dtype: DataType, nullable: bool) -> Any:
+    return _field_hint_cached(_DataTypeLayoutKey(dtype), nullable)
 
 
 @functools.cache
-def _conversion_owner(data_type: DataType, nullable: bool) -> type[Any]:
+def _conversion_owner(dtype: DataType, nullable: bool) -> type[Any]:
     """Own nested hint resolution without compiling a parallel value schema."""
 
-    hint = _field_hint(data_type, nullable)
+    hint = _field_hint(dtype, nullable)
     name = _cache_name(
-        "DefaultOwner", _DataTypeLayoutKey(data_type), nullable
+        "DefaultOwner", _DataTypeLayoutKey(dtype), nullable
     )
     generated = dc.make_dataclass(
         name,
@@ -133,10 +133,10 @@ def _conversion_owner(data_type: DataType, nullable: bool) -> type[Any]:
 
 
 def _struct_fields(field: NativeField) -> typing.Iterator[NativeField]:
-    data_type = field.data_type
-    kind = data_type.id
+    dtype = field.dtype
+    kind = dtype.id
     if kind == "struct":
-        children = tuple(data_type)
+        children = tuple(dtype)
         try:
             _validate_column_names(children)
         except TypeError:
@@ -146,24 +146,24 @@ def _struct_fields(field: NativeField) -> typing.Iterator[NativeField]:
         for child in children:
             yield from _struct_fields(child)
     elif kind in ("list", "list_view", "fixed_size_list", "large_list", "large_list_view"):
-        yield from _struct_fields(data_type[0])
+        yield from _struct_fields(dtype[0])
     elif kind == "union":
-        for child in data_type:
+        for child in dtype:
             yield from _struct_fields(child)
     elif kind == "map":
-        entries = data_type[0].data_type
+        entries = dtype[0].dtype
         for child in entries:
             yield from _struct_fields(child)
     elif kind == "dictionary":
         yield from _struct_fields(
             NativeField(
                 "dictionary",
-                data_type._dictionary_value_type(),
+                dtype._dictionary_value_type(),
                 nullable=False,
             )
         )
     elif kind == "run_end_encoded":
-        yield from _struct_fields(data_type[1])
+        yield from _struct_fields(dtype[1])
 
 
 def _dataclass_classes(hint: Any) -> typing.Iterator[type[Any]]:
@@ -258,29 +258,29 @@ def _value_hint(field: NativeField, hint: Any) -> Any:
         # schema; all other Field state remains intact.
         root = NativeField(
             native_field.name,
-            native_field.data_type,
+            native_field.dtype,
             nullable=False,
             metadata=dict(native_field.metadata.items()),
         )
         _adopt_dataclass_schema(
             value_type,
             root,
-            tuple(native_field.data_type),
+            tuple(native_field.dtype),
             hints,
         )
     return _replace_dataclass_classes(hint, replacements)
 
 
-def _default_pyhint_from_datatype(data_type: DataType) -> Any:
+def _default_pyhint_from_datatype(dtype: DataType) -> Any:
     """Return the cached non-nullable Python hint for a native datatype."""
 
-    return _datatype_hint(data_type)
+    return _datatype_hint(dtype)
 
 
 def _default_pyhint_from_field(field: NativeField) -> Any:
     """Return the cached Python hint while honoring only Field nullability."""
 
-    return _field_hint(field.data_type, field.nullable)
+    return _field_hint(field.dtype, field.nullable)
 
 
 def _convert_default(
@@ -288,7 +288,7 @@ def _convert_default(
     scalar: Any,
     hint: Any,
 ) -> Any:
-    plan = _prepare_type_plan(field.data_type, scalar.type)
+    plan = _prepare_type_plan(field.dtype, scalar.type)
     value = _arrow_scalar_value(
         scalar, plan, path="$", preserve_union_branch=True
     )
@@ -298,7 +298,7 @@ def _convert_default(
     if value is None:
         return None
     hint = _value_hint(field, hint)
-    owner = _conversion_owner(field.data_type, field.nullable)
+    owner = _conversion_owner(field.dtype, field.nullable)
     return _convert(
         value,
         hint,
@@ -309,16 +309,16 @@ def _convert_default(
     )
 
 
-def _default_pyvalue_from_datatype(data_type: DataType, scalar: Any) -> Any:
-    field = NativeField("value", data_type, nullable=False)
-    return _convert_default(field, scalar, _datatype_hint(data_type))
+def _default_pyvalue_from_datatype(dtype: DataType, scalar: Any) -> Any:
+    field = NativeField("value", dtype, nullable=False)
+    return _convert_default(field, scalar, _datatype_hint(dtype))
 
 
 def _default_pyvalue_from_field(field: NativeField, scalar: Any) -> Any:
     return _convert_default(
         field,
         scalar,
-        _field_hint(field.data_type, field.nullable),
+        _field_hint(field.dtype, field.nullable),
     )
 
 

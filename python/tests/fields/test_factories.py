@@ -75,7 +75,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
 
     assert len(values_by_kind) == 45
     assert set(values_by_kind) == {
-        value.data_type.id for value in values_by_kind.values()
+        value.dtype.id for value in values_by_kind.values()
     }
     assert all(type(value) is Field for value in values_by_kind.values())
     assert fields.Int32Field is Field
@@ -94,7 +94,7 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     projected_item = item.into_arrow()
 
     values = fields.list("values", item, metadata={"owner": "events"})
-    child = values.data_type[0]
+    child = values.dtype[0]
 
     assert child.equals(item)
     assert child.dictionary_id == 42
@@ -120,19 +120,19 @@ def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
 
     assert type(value) is Field
     assert fields.DenseUnionField is Field
-    assert value.data_type.id == "union"
-    assert tuple(value.data_type) == members
+    assert value.dtype.id == "union"
+    assert tuple(value.dtype) == members
     assert arrow.type.mode == "dense"
     assert tuple(arrow.type.type_codes) == (0, 1)
     assert arrow.metadata == {b"logical": b"variant"}
 
 
 def test_typed_factory_parameters_use_native_validation() -> None:
-    assert fields.decimal("small", 38).data_type.id == "decimal128"
-    assert fields.decimal("wide", 39).data_type.id == "decimal256"
-    assert fields.time("coarse", "ms").data_type == DataType("time32(ms)")
-    assert fields.time("precise", "us").data_type == DataType("time64(us)")
-    assert fields.timestamp("event", "us", "Custom/Accepted").data_type.id == (
+    assert fields.decimal("small", 38).dtype.id == "decimal128"
+    assert fields.decimal("wide", 39).dtype.id == "decimal256"
+    assert fields.time("coarse", "ms").dtype == DataType("time32(ms)")
+    assert fields.time("precise", "us").dtype == DataType("time64(us)")
+    assert fields.timestamp("event", "us", "Custom/Accepted").dtype.id == (
         "timestamp"
     )
 
@@ -164,10 +164,10 @@ def test_field_and_datatype_equality_can_ignore_recursive_metadata() -> None:
 
     assert not left.equals(right)
     assert left.equals(right, with_metadata=False)
-    assert not left.data_type.equals(right.data_type)
-    assert left.data_type.equals(right.data_type, with_metadata=False)
+    assert not left.dtype.equals(right.dtype)
+    assert left.dtype.equals(right.dtype, with_metadata=False)
     assert left.show_diff(left) == "✓ equal"
-    assert left.data_type.show_diff(left.data_type) == "✓ equal"
+    assert left.dtype.show_diff(left.dtype) == "✓ equal"
 
     differences = left.show_diffs(right)
     assert isinstance(differences, Iterator)
@@ -185,7 +185,7 @@ def test_differences_report_physical_layout_after_metadata_is_ignored() -> None:
     assert not left.equals(right, with_metadata=False)
     output = left.show_diff(right, with_metadata=False)
     assert "$.nullable" in output
-    assert "$.data_type" in output
+    assert "$.dtype" in output
     assert "≠" in output
     assert output == "\n".join(left.show_diffs(right, with_metadata=False))
 
@@ -208,14 +208,14 @@ def test_wide_difference_iterator_is_lazy_and_outlives_field_sources() -> None:
     assert not hasattr(differences, "__length_hint__")
     assert operator.length_hint(differences) == 0
     first = next(differences)
-    assert first.startswith("≠ $.data_type.fields[0].name:")
+    assert first.startswith("≠ $.dtype.fields[0].name:")
 
     del left, right
     gc.collect()
     remaining = list(differences)
 
     assert len(remaining) == 1023
-    assert remaining[-1].startswith("≠ $.data_type.fields[1023].name:")
+    assert remaining[-1].startswith("≠ $.dtype.fields[1023].name:")
 
 
 def test_datatype_difference_iterator_outlives_source_wrappers() -> None:
@@ -249,7 +249,7 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     dictionary = fields.dictionary("status", int, str, nullable=False)
     mapping = fields.map_of("labels", str, pa.int16(), nullable=False)
 
-    assert str(dictionary.data_type) == "dictionary(int64,utf8)"
-    assert mapping.data_type.id == "map"
-    entries = mapping.data_type[0].data_type
-    assert [field.data_type.id for field in entries] == ["utf8", "int16"]
+    assert str(dictionary.dtype) == "dictionary(int64,utf8)"
+    assert mapping.dtype.id == "map"
+    entries = mapping.dtype[0].dtype
+    assert [field.dtype.id for field in entries] == ["utf8", "int16"]

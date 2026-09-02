@@ -176,8 +176,8 @@ fn geoarrow_metadata_error(reason: String) -> Error {
 
 /// The Arrow extension name and metadata one of the three extension-typed
 /// variants projects, `None` for every other datatype.
-pub(crate) fn arrow_extension_parts(data_type: &DataType) -> Option<(&'static str, String)> {
-    match data_type {
+pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, String)> {
+    match dtype {
         DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))

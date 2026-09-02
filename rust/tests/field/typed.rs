@@ -11,16 +11,16 @@ fn stable_hash<T: std::hash::Hash>(value: &T) -> u64 {
     hasher.finish()
 }
 
-pub(crate) fn assert_typed_marker<K: FieldType>(data_type: DataType) {
-    let field = Field::new("value", data_type.clone(), false);
+pub(crate) fn assert_typed_marker<K: FieldType>(dtype: DataType) {
+    let field = Field::new("value", dtype.clone(), false);
     let borrowed = field
         .try_as_typed::<K>()
         .expect("the marker must accept its datatype variant");
-    assert_eq!(borrowed.data_type(), &data_type);
+    assert_eq!(borrowed.dtype(), &dtype);
     let typed = field
         .try_into_typed::<K>()
         .expect("the owned marker must accept its datatype variant");
-    assert_eq!(typed.into_field().data_type(), &data_type);
+    assert_eq!(typed.into_field().dtype(), &dtype);
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
     let generic = typed.into_field();
     assert_eq!(generic.name(), "order_id");
     assert!(generic.is_nullable());
-    assert_eq!(generic.data_type(), &DataType::Int32);
+    assert_eq!(generic.dtype(), &DataType::Int32);
     assert_eq!(generic.get_metadata("version"), Some("1"));
 
     assert!(generic.try_as_typed::<field::integer::Int64>().is_err());
@@ -85,7 +85,7 @@ fn struct_fields_have_the_return_typed_conversion_name() {
     .into_struct_field();
 
     assert_eq!(root.name(), "row");
-    assert!(matches!(root.data_type(), DataType::Struct(_)));
+    assert!(matches!(root.dtype(), DataType::Struct(_)));
 }
 
 mod integer_marker {
@@ -101,16 +101,16 @@ fn typed_datatype_replacement_is_transactional_and_same_variant_only() {
     )
     .unwrap();
     let original = field.clone();
-    assert!(field.set_data_type(DataType::Int64).is_err());
+    assert!(field.set_dtype(DataType::Int64).is_err());
     assert_eq!(field, original);
     field
-        .set_data_type(DataType::Timestamp(
+        .set_dtype(DataType::Timestamp(
             TimeUnit::Nanosecond,
             Some(Timezone::UTC),
         ))
         .unwrap();
     assert_eq!(
-        field.data_type(),
+        field.dtype(),
         &DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC))
     );
 }
@@ -122,7 +122,7 @@ fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
         .unwrap();
     assert!(serde_json::from_str::<Int32Field>(&int64_json).is_err());
 
-    let invalid_decimal = r#"{"name":"amount","data_type":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;
+    let invalid_decimal = r#"{"name":"amount","dtype":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;
     assert!(
         serde_json::from_str::<TypedField<field::decimal::Decimal128>>(invalid_decimal).is_err()
     );
@@ -139,7 +139,7 @@ fn the_extension_typed_markers_narrow_their_exact_variants() {
     // The static variant constructor exists because the datatype carries no
     // parameters; the geospatial pair always goes through validation.
     let variant = yggdryl::field::VariantField::new("payload", true);
-    assert_eq!(variant.data_type(), &DataType::Variant);
+    assert_eq!(variant.dtype(), &DataType::Variant);
 
     // A marker refuses the storage type and its geospatial sibling alike.
     assert!(yggdryl::field::GeometryField::try_new("bad", DataType::Binary, true).is_err());
@@ -153,5 +153,5 @@ fn the_extension_typed_markers_narrow_their_exact_variants() {
         false,
     )
     .unwrap();
-    assert_eq!(geography.data_type().name(), "geography");
+    assert_eq!(geography.dtype().name(), "geography");
 }

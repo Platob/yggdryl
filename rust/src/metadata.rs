@@ -16,7 +16,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, MediaType, MimeType, Result, Scheme, Url, stable_hash_display};
 
 pub(crate) const ALIAS_KEY: &str = "alias";
-pub(crate) const CATALOG_NAME_KEY: &str = "catalog_name";
+pub(crate) const COMMENT_KEY: &str = "comment";
 pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "http:accept-encoding";
 pub(crate) const HTTP_ACCEPT_KEY: &str = "http:accept";
 pub(crate) const HTTP_ACCEPT_LANGUAGE_KEY: &str = "http:accept-language";
@@ -39,8 +39,6 @@ pub(crate) const LOCATION_KEY: &str = "location";
 pub(crate) const FIELD_INIT_KEY: &str = "field:init";
 pub(crate) const FIELD_PARTITION_KEY: &str = "field:partition";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
-pub(crate) const SCHEMA_NAME_KEY: &str = "schema_name";
-pub(crate) const TABLE_NAME_KEY: &str = "table_name";
 
 type MetadataMap = BTreeMap<String, String>;
 
@@ -74,8 +72,12 @@ macro_rules! for_each_well_known_protocol {
         $emit!(glue, glue_mut, GLUE, "AWS Glue");
         $emit!(iceberg, iceberg_mut, ICEBERG, "Apache Iceberg");
         $emit!(fix, fix_mut, FIX, "Financial Information eXchange");
-        $emit!(field, field_mut, FIELD, "Yggdryl field");
-        $emit!(dtype, dtype_mut, DTYPE, "Yggdryl datatype");
+        $emit!(
+            field_properties,
+            field_properties_mut,
+            FIELD,
+            "Yggdryl field"
+        );
         $emit!(s3, s3_mut, S3, "Amazon S3");
         $emit!(gs, gs_mut, GS, "Google Cloud Storage");
         $emit!(az, az_mut, AZ, "Azure Blob Storage");
@@ -267,6 +269,31 @@ impl Metadata {
         None
     }
 
+    /// Returns the metadata carrying both this snapshot's entries and `other`'s.
+    ///
+    /// The union of the two, and this snapshot wins a key they disagree on.
+    /// That asymmetry is the whole rule: a merge that silently took the other
+    /// side would make a receiver's own declarations conditional on what it
+    /// was merged against, and one that refused outright would make combining
+    /// two descriptions of the same column impossible whenever they annotate
+    /// it differently.
+    ///
+    /// Every entry goes through the validation an ordinary write uses, so a
+    /// merge cannot assemble metadata that would have been refused.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged entry fails that validation.
+    pub fn merge_with(&self, other: &Self) -> Result<Self> {
+        // `other` lays the entries down and this snapshot overwrites them, so
+        // a shared key keeps this value while every key only `other` has still
+        // arrives. The map resolves the clash because `from_entries` refuses a
+        // duplicate key rather than picking a winner.
+        let mut entries: BTreeMap<&str, &str> = other.iter().collect();
+        entries.extend(self.iter());
+        Self::from_entries(entries)
+    }
+
     /// Returns a borrowed view of one protocol's properties.
     ///
     /// The view remembers the protocol, so every read spells the bare property
@@ -293,6 +320,15 @@ impl Metadata {
     }
 
     for_each_well_known_protocol!(metadata_protocol_accessor);
+
+    /// Returns the shared human-readable comment.
+    ///
+    /// The one straight description, belonging to no protocol. Every protocol
+    /// view falls back to it, so one sentence written once is what every
+    /// catalog reads.
+    pub fn comment(&self) -> Option<&str> {
+        self.get(COMMENT_KEY)
+    }
 
     /// Returns the raw HTTP `Accept` field value.
     pub fn accept(&self) -> Option<&str> {
@@ -904,6 +940,42 @@ impl<'metadata> ProtocolMetadata<'metadata> {
     pub fn into_metadata(self) -> Result<Metadata> {
         Metadata::from_entries(self.iter().map(|(name, value)| (self.key(name), value)))
     }
+
+    /// Returns this protocol's comment, falling back to the straight one.
+    ///
+    /// A protocol that names its own `comment` answers it; one that does not
+    /// answers the field's straight `comment`, so a description written once
+    /// without a namespace is what every protocol reads.
+    ///
+    /// The fallback lives here rather than in [`Self::get`] on purpose: `get`,
+    /// [`Self::iter`] and [`Self::len`] stay literal about what this protocol
+    /// actually carries, so the view never reports a property that iterating
+    /// it would not yield.
+    pub fn comment(&self) -> Option<&'metadata str> {
+        self.get("comment")
+            .or_else(|| self.metadata.get(COMMENT_KEY))
+    }
+
+    /// Returns this protocol's properties merged with `other`'s.
+    ///
+    /// Both views contribute their own bare names and the result is keyed
+    /// under *this* view's protocol, so merging an `iceberg` view with a
+    /// `glue` one answers Iceberg properties. This view wins a name they
+    /// disagree on, exactly as [`Metadata::merge_with`] does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged property fails the validation every
+    /// write goes through.
+    pub fn merge_with(&self, other: &ProtocolMetadata<'_>) -> Result<Metadata> {
+        let mut names: BTreeMap<&str, &str> = other.iter().collect();
+        names.extend(self.iter());
+        Metadata::from_entries(
+            names
+                .into_iter()
+                .map(|(name, value)| (self.key(name), value)),
+        )
+    }
 }
 
 impl fmt::Debug for ProtocolMetadata<'_> {
@@ -1105,6 +1177,34 @@ impl<'field> ProtocolMetadataMut<'field> {
         self.field.update_metadata(overlay)
     }
 
+    /// Returns this protocol's comment, falling back to the straight one.
+    ///
+    /// [`ProtocolMetadata::comment`] carries the rule.
+    pub fn comment(&self) -> Option<&str> {
+        self.as_protocol().comment()
+    }
+
+    /// Merges another protocol view's properties into this one, in place.
+    ///
+    /// A name this field already carries keeps its value, so the merge only
+    /// ever adds - the same direction [`Metadata::merge_with`] resolves in,
+    /// seen from the receiving side. Properties of other protocols are
+    /// untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged property fails validation, leaving the
+    /// field unchanged.
+    pub fn merge_with(&mut self, other: &ProtocolMetadata<'_>) -> Result<()> {
+        let held: Vec<String> = self.iter().map(|(name, _)| name.to_owned()).collect();
+        let additions: Vec<(String, String)> = other
+            .iter()
+            .filter(|(name, _)| !held.iter().any(|kept| kept == name))
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+            .collect();
+        self.update(additions)
+    }
+
     /// Replaces this protocol's properties with exactly these, atomically.
     ///
     /// Properties of other protocols and every shared key are untouched, which
@@ -1218,7 +1318,7 @@ fn validate_entry(key: String, value: String) -> Result<(String, String)> {
         return Err(Error::EmptyMetadataKey);
     }
     let value = match key.as_str() {
-        ALIAS_KEY | CATALOG_NAME_KEY | SCHEMA_NAME_KEY | TABLE_NAME_KEY => {
+        ALIAS_KEY | COMMENT_KEY => {
             validate_reserved_text(&key, &value)?;
             value
         }

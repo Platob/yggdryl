@@ -446,7 +446,7 @@ def _clone_native_field(field: NativeField, name: str | None = None) -> NativeFi
 
     cloned = NativeField(
         field.name if name is None else name,
-        field.data_type,
+        field.dtype,
         nullable=field.nullable,
         metadata=dict(field.metadata.items()) or None,
     )
@@ -669,7 +669,7 @@ def _build_schema(
     # Assemble the Struct directly from native children. Arrow remains an
     # explicit projection of this Field and is not constructed as part of
     # ordinary annotation inference.
-    data_type = DataType.from_fields(children)
+    dtype = DataType.from_fields(children)
     kind = (
         "field"
         if cls.__dict__.get("__yggdryl_field_class__", False)
@@ -686,7 +686,7 @@ def _build_schema(
         root_metadata["description"] = description
     root = NativeField(
         cls.__name__,
-        data_type,
+        dtype,
         nullable=False,
         metadata=root_metadata,
     )
@@ -938,16 +938,16 @@ _LIST_DATA_TYPE_KINDS = frozenset(
 )
 
 
-def _physical_data_type(field: NativeField) -> DataType:
-    data_type = field.data_type
+def _physical_dtype(field: NativeField) -> DataType:
+    dtype = field.dtype
     while True:
-        if data_type.id == "dictionary":
-            data_type = data_type._dictionary_value_type()
+        if dtype.id == "dictionary":
+            dtype = dtype._dictionary_value_type()
             continue
-        if data_type.id == "run_end_encoded":
-            data_type = data_type[1].data_type
+        if dtype.id == "run_end_encoded":
+            dtype = dtype[1].dtype
             continue
-        return data_type
+        return dtype
 
 
 def _validate_physical_list_length(
@@ -958,8 +958,8 @@ def _validate_physical_list_length(
 ) -> None:
     if field is None:
         return
-    data_type = _physical_data_type(field)
-    expected = data_type._fixed_size_list_length()
+    dtype = _physical_dtype(field)
+    expected = dtype._fixed_size_list_length()
     if expected is not None and len(value) != expected:
         raise TypeError(
             f"{path}: fixed-size-list arrow_type requires exactly {expected} "
@@ -1023,13 +1023,13 @@ def _validate_physical_temporal(
 ) -> None:
     if field is None:
         return
-    data_type = _physical_data_type(field)
-    unit = data_type._time_unit()
+    dtype = _physical_dtype(field)
+    unit = dtype._time_unit()
     if unit is None:
         return
 
-    if data_type.id == "timestamp" and isinstance(value, dt.datetime):
-        timezone = data_type._timezone()
+    if dtype.id == "timestamp" and isinstance(value, dt.datetime):
+        timezone = dtype._timezone()
         offset = _temporal_offset(value, path)
         aware = offset is not None
         if timezone is not None and not aware and timezone != "UTC":
@@ -1047,14 +1047,14 @@ def _validate_physical_temporal(
             # Arrow timestamps represent the UTC instant. A sub-unit offset
             # can make a locally aligned wall clock lossy after normalization.
             nanoseconds -= _timedelta_nanoseconds(offset, path)
-    elif data_type.id in ("time32", "time64") and isinstance(value, dt.time):
+    elif dtype.id in ("time32", "time64") and isinstance(value, dt.time):
         if _temporal_offset(value, path) is not None:
             raise TypeError(
                 f"{path}: timezone-aware time is incompatible with Arrow "
-                f"{data_type.id}[{unit}]"
+                f"{dtype.id}[{unit}]"
             )
         nanoseconds = value.microsecond * 1_000
-    elif data_type.id in ("duration32", "duration64") and isinstance(value, dt.timedelta):
+    elif dtype.id in ("duration32", "duration64") and isinstance(value, dt.timedelta):
         nanoseconds = _timedelta_nanoseconds(value, path)
     else:
         return
@@ -1064,7 +1064,7 @@ def _validate_physical_temporal(
     divisor = _TEMPORAL_NANOSECOND_DIVISORS.get(unit)
     if divisor is not None and nanoseconds % divisor:
         raise TypeError(
-            f"{path}: {data_type.id}[{unit}] would truncate the "
+            f"{path}: {dtype.id}[{unit}] would truncate the "
             f"subsecond component of {value!r}"
         )
 
@@ -1077,13 +1077,13 @@ def _physical_named_child(
 ) -> NativeField | None:
     if field is None:
         return None
-    data_type = _physical_data_type(field)
-    if data_type.id != "struct":
+    dtype = _physical_dtype(field)
+    if dtype.id != "struct":
         raise TypeError(
             f"{path}: logical structured annotation is incompatible with "
-            f"physical arrow_type {data_type}"
+            f"physical arrow_type {dtype}"
         )
-    for child in data_type:
+    for child in dtype:
         if child.name == name:
             return child
     raise TypeError(
@@ -1099,14 +1099,14 @@ def _validate_physical_struct_names(
 ) -> None:
     if field is None:
         return
-    data_type = _physical_data_type(field)
-    if data_type.id != "struct":
+    dtype = _physical_dtype(field)
+    if dtype.id != "struct":
         raise TypeError(
             f"{path}: logical structured annotation is incompatible with "
-            f"physical arrow_type {data_type}"
+            f"physical arrow_type {dtype}"
         )
     logical = frozenset(names)
-    physical = frozenset(child.name for child in data_type)
+    physical = frozenset(child.name for child in dtype)
     if logical != physical:
         raise TypeError(
             f"{path}: logical struct fields {sorted(logical)!r} do not match "
@@ -1122,11 +1122,11 @@ def _validate_physical_tuple_arity(
 ) -> None:
     if field is None:
         return
-    data_type = _physical_data_type(field)
-    if data_type.id != "struct" or len(data_type) != arity:
+    dtype = _physical_dtype(field)
+    if dtype.id != "struct" or len(dtype) != arity:
         raise TypeError(
             f"{path}: logical tuple arity {arity} does not match physical "
-            f"arrow_type {data_type}"
+            f"arrow_type {dtype}"
         )
 
 
@@ -1138,13 +1138,13 @@ def _physical_positional_child(
 ) -> NativeField | None:
     if field is None:
         return None
-    data_type = _physical_data_type(field)
-    if data_type.id != "struct" or index >= len(data_type):
+    dtype = _physical_dtype(field)
+    if dtype.id != "struct" or index >= len(dtype):
         raise TypeError(
             f"{path}: logical tuple annotation is incompatible with physical "
-            f"arrow_type {data_type}"
+            f"arrow_type {dtype}"
         )
-    return data_type[index]
+    return dtype[index]
 
 
 def _physical_list_child(
@@ -1154,17 +1154,17 @@ def _physical_list_child(
 ) -> NativeField | None:
     if field is None:
         return None
-    data_type = _physical_data_type(field)
-    if data_type.id == "map":
+    dtype = _physical_dtype(field)
+    if dtype.id == "map":
         # Nested Arrow map keys are represented at the Python boundary as an
         # association list whose tuple shape is the physical entries Struct.
-        return data_type[0]
-    if data_type.id not in _LIST_DATA_TYPE_KINDS:
+        return dtype[0]
+    if dtype.id not in _LIST_DATA_TYPE_KINDS:
         raise TypeError(
             f"{path}: logical collection annotation is incompatible with "
-            f"physical arrow_type {data_type}"
+            f"physical arrow_type {dtype}"
         )
-    return data_type[0]
+    return dtype[0]
 
 
 def _physical_map_children(
@@ -1174,13 +1174,13 @@ def _physical_map_children(
 ) -> tuple[NativeField | None, NativeField | None]:
     if field is None:
         return None, None
-    data_type = _physical_data_type(field)
-    if data_type.id != "map":
+    dtype = _physical_dtype(field)
+    if dtype.id != "map":
         raise TypeError(
             f"{path}: logical mapping annotation is incompatible with physical "
-            f"arrow_type {data_type}"
+            f"arrow_type {dtype}"
         )
-    entries = data_type[0].data_type
+    entries = dtype[0].dtype
     return entries[0], entries[1]
 
 
@@ -1189,8 +1189,8 @@ def _physical_union_children(
 ) -> tuple[NativeField, ...]:
     if field is None:
         return ()
-    data_type = _physical_data_type(field)
-    return tuple(data_type) if data_type.id == "union" else ()
+    dtype = _physical_dtype(field)
+    return tuple(dtype) if dtype.id == "union" else ()
 
 
 def _physical_union_child_for_hint(
@@ -1277,7 +1277,7 @@ def _convert_physical_union_value(
         )
     selected_field = physical_children[value.field_index]
     if value.value is None:
-        if selected_field.nullable or selected_field.data_type.id == "null":
+        if selected_field.nullable or selected_field.dtype.id == "null":
             return None, _NONE_TYPE
         raise TypeError(f"{path}: selected physical Union child is not nullable")
 
@@ -1488,7 +1488,7 @@ def _convert_union_branch(
 
     physical_children = _physical_union_children(physical_field)
     physical_value_children = tuple(
-        child for child in physical_children if child.data_type.id != "null"
+        child for child in physical_children if child.dtype.id != "null"
     )
     non_none_count = sum(
         not _is_none_branch(alternative, owner) for alternative in alternatives
@@ -1496,11 +1496,11 @@ def _convert_union_branch(
     if (
         physical_field is not None
         and non_none_count > 1
-        and _physical_data_type(physical_field).id != "union"
+        and _physical_dtype(physical_field).id != "union"
     ):
         raise TypeError(
             f"{path}: logical union has {non_none_count} non-None branches but "
-            f"physical arrow_type {_physical_data_type(physical_field)} is not a union"
+            f"physical arrow_type {_physical_dtype(physical_field)} is not a union"
         )
     if physical_children and len(physical_value_children) != non_none_count:
         raise TypeError(
@@ -2575,10 +2575,10 @@ def _export(
                 physical_field, path="into_dict"
             )
         elif not arguments and physical_field is not None:
-            data_type = _physical_data_type(physical_field)
-            if data_type.id in _LIST_DATA_TYPE_KINDS:
+            dtype = _physical_dtype(physical_field)
+            if dtype.id in _LIST_DATA_TYPE_KINDS:
                 item_hints = (Any,) * len(value)
-                repeated_item_field = data_type[0]
+                repeated_item_field = dtype[0]
             else:
                 item_hints = arguments
         else:

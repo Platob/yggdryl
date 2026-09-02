@@ -12,10 +12,10 @@ use crate::{
     field::JsField,
     napi_error, ordering_value,
     record::arrow_scalar_to_ipc,
-    record::{JsValueHint, data_type_js_hint, field_value_to_js},
+    record::{JsValueHint, dtype_js_hint, field_value_to_js},
 };
 
-pub(crate) fn data_type_from_input(
+pub(crate) fn dtype_from_input(
     value: Either<ClassInstance<'_, JsDataType>, String>,
 ) -> Result<CoreDataType> {
     match value {
@@ -43,12 +43,25 @@ impl JsDataType {
         Self { inner }
     }
 
-    fn field_at(&self, index: usize) -> Option<JsField> {
-        self.inner.get_field(index).cloned().map(JsField::from_core)
+    fn child_at(&self, index: usize) -> Option<JsField> {
+        self.inner
+            .get_field_at(index)
+            .cloned()
+            .map(JsField::from_core)
+    }
+
+    /// Resolve an Array-compatible index, counting from the end when negative.
+    fn resolve_index(&self, index: i32) -> Option<usize> {
+        let len = i64::from(self.length());
+        let index = i64::from(index);
+        let resolved = if index < 0 { len + index } else { index };
+        usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
     }
 
     fn fields(&self) -> impl Iterator<Item = &CoreField> {
-        (0..self.inner.field_len()).filter_map(|index| self.inner.get_field(index))
+        (0..self.inner.field_len()).filter_map(|index| self.inner.get_field_at(index))
     }
 }
 
@@ -57,13 +70,13 @@ impl JsDataType {
     /// Parse a type expression or cheaply clone another native `DataType`.
     #[napi(constructor)]
     pub fn new(value: Either<ClassInstance<'_, JsDataType>, String>) -> Result<Self> {
-        data_type_from_input(value).map(Self::from_core)
+        dtype_from_input(value).map(Self::from_core)
     }
 
     /// Infer a type from a native wrapper or type-expression string.
     #[napi(factory, js_name = "from")]
     pub fn from_js(value: Either<ClassInstance<'_, JsDataType>, String>) -> Result<Self> {
-        data_type_from_input(value).map(Self::from_core)
+        dtype_from_input(value).map(Self::from_core)
     }
 
     /// Internal direct constructor for parameter-free typed Field factories.
@@ -281,9 +294,8 @@ impl JsDataType {
         key: Either<ClassInstance<'_, JsDataType>, String>,
         value: Either<ClassInstance<'_, JsDataType>, String>,
     ) -> Result<Self> {
-        let inner =
-            CoreDataType::dictionary(data_type_from_input(key)?, data_type_from_input(value)?)
-                .map_err(napi_error)?;
+        let inner = CoreDataType::dictionary(dtype_from_input(key)?, dtype_from_input(value)?)
+            .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
 
@@ -302,8 +314,8 @@ impl JsDataType {
         keys_sorted: bool,
     ) -> Result<Self> {
         CoreDataType::map_of(
-            data_type_from_input(key)?,
-            data_type_from_input(value)?,
+            dtype_from_input(key)?,
+            dtype_from_input(value)?,
             keys_sorted,
         )
         .map(Self::from_core)
@@ -337,10 +349,28 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Deserialize the native structural JSON representation.
+    /// Deserialize the structural JSON representation.
+    ///
+    /// One entry point for the three shapes a caller already has: the document
+    /// as a string, the same document as the bytes it was read from, or the
+    /// object `JSON.parse` already turned it into.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(value)
+        crate::json_document(value)
+            .and_then(serde_json::from_value)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Deserialize the structural JSON representation from bytes.
+    ///
+    /// The reading half of `toJSONBytes`. JavaScript names the byte reader
+    /// rather than folding it into `fromJSON` because napi validates a union
+    /// arm by type and cannot tell a typed array from any other object there,
+    /// so one entry point taking both would silently take neither.
+    #[napi(factory, js_name = "fromJSONBytes")]
+    pub fn from_json_bytes(bytes: napi::bindgen_prelude::Uint8Array) -> Result<Self> {
+        serde_json::from_slice(&bytes)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -369,39 +399,170 @@ impl JsDataType {
         u32::try_from(self.inner.field_len()).unwrap_or(u32::MAX)
     }
 
-    /// Return the child at an Array-compatible positive or negative index.
+    /// Return the datatype that holds both this one and `other`.
+    ///
+    /// `upscale` picks the direction width resolves in: the default meets at
+    /// the type holding both, `false` at the tightest type naming both.
     #[napi]
-    pub fn at(&self, index: i32) -> Option<JsField> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.field_at(index))
+    pub fn merge_with(
+        &self,
+        other: Either<ClassInstance<'_, JsDataType>, String>,
+        upscale: Option<bool>,
+    ) -> Result<JsDataType> {
+        let other = dtype_from_input(other)?;
+        self.inner
+            .merge_with(&other, upscale.unwrap_or(true))
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
-    /// Look up a child by zero-based index or exact field name.
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explodeFields` is what reaches inside one. Every name this
+    /// answers is one `fieldByPath` resolves.
     #[napi]
-    pub fn get(&self, key: Either<u32, String>) -> Option<JsField> {
+    pub fn unnest_fields(&self) -> Vec<JsField> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    #[napi]
+    pub fn explode_fields(&self) -> Vec<JsField> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
+    /// Return the child at an Array-compatible index, or `null`.
+    #[napi]
+    pub fn get_field_at(&self, index: i32) -> Option<JsField> {
+        self.resolve_index(index).and_then(|at| self.child_at(at))
+    }
+
+    /// Return the child a path names, or `null`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    #[napi]
+    pub fn get_field_by_path(&self, path: String) -> Option<JsField> {
+        self.inner
+            .get_field_by_path(&path)
+            .cloned()
+            .map(JsField::from_core)
+    }
+
+    /// Return the child a position or a path names, or `null`.
+    #[napi]
+    pub fn get_field(&self, key: Either<i32, String>) -> Option<JsField> {
         match key {
-            Either::A(index) => usize::try_from(index)
-                .ok()
-                .and_then(|index| self.field_at(index)),
-            Either::B(name) => self
-                .inner
-                .get_field_by_name(&name)
-                .cloned()
-                .map(JsField::from_core),
+            Either::A(index) => self.get_field_at(index),
+            Either::B(path) => self.get_field_by_path(path),
         }
     }
 
-    /// Look up a child by exact field name without materializing children.
+    /// Return the child at an Array-compatible index, or throw.
     #[napi]
-    pub fn get_by_name(&self, name: String) -> Option<JsField> {
+    pub fn field_at(&self, index: i32) -> Result<JsField> {
+        self.get_field_at(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))
+    }
+
+    /// Return the child a path names, or throw.
+    #[napi]
+    pub fn field_by_path(&self, path: String) -> Result<JsField> {
         self.inner
-            .get_field_by_name(&name)
+            .field_by_path(&path)
             .cloned()
             .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return the child a position or a path names, or throw.
+    #[napi]
+    pub fn field(&self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.field_at(index),
+            Either::B(path) => self.field_by_path(path),
+        }
+    }
+
+    /// Replace the child at an Array-compatible index.
+    #[napi]
+    pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
+        let at = self
+            .resolve_index(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .set_field_at(at, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a path names, appending an unresolved name.
+    #[napi]
+    pub fn set_field_by_path(
+        &mut self,
+        path: String,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        self.inner
+            .set_field_by_path(&path, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a position or a path names.
+    #[napi]
+    pub fn set_field(
+        &mut self,
+        key: Either<i32, String>,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        match key {
+            Either::A(index) => self.set_field_at(index, child),
+            Either::B(path) => self.set_field_by_path(path, child),
+        }
+    }
+
+    /// Remove and return the child at an Array-compatible index.
+    #[napi]
+    pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
+        let at = self
+            .resolve_index(index)
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .remove_field_at(at)
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a path names.
+    #[napi]
+    pub fn remove_field_by_path(&mut self, path: String) -> Result<JsField> {
+        self.inner
+            .remove_field_by_path(&path)
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a position or a path names.
+    #[napi]
+    pub fn remove_field(&mut self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.remove_field_at(index),
+            Either::B(path) => self.remove_field_by_path(path),
+        }
     }
 
     /// Test for a child index, field name, or exact Field value.
@@ -410,9 +571,9 @@ impl JsDataType {
         match value {
             Either3::A(index) => usize::try_from(index)
                 .ok()
-                .and_then(|index| self.inner.get_field(index))
+                .and_then(|index| self.inner.get_field_at(index))
                 .is_some(),
-            Either3::B(name) => self.inner.get_field_by_name(&name).is_some(),
+            Either3::B(name) => self.inner.get_field_by_path(&name).is_some(),
             Either3::C(field) => self.fields().any(|candidate| candidate == &field.inner),
         }
     }
@@ -444,7 +605,7 @@ impl JsDataType {
         with_metadata: Option<bool>,
         return_equal: Option<bool>,
     ) -> JsDifferenceIterator {
-        JsDifferenceIterator::from_data_types(
+        JsDifferenceIterator::from_dtypes(
             &self.inner,
             &other.inner,
             with_metadata.unwrap_or(true),
@@ -491,7 +652,7 @@ impl JsDataType {
     /// Internal allocation-independent JavaScript constructor category.
     #[napi(js_name = "_defaultJSHintNative", skip_typescript)]
     pub fn default_js_hint_native(&self) -> Result<u8> {
-        data_type_js_hint(&self.inner).map(JsValueHint::code)
+        dtype_js_hint(&self.inner).map(JsValueHint::code)
     }
 
     /// Internal one-row copied IPC projection for Apache Arrow JS scalar
@@ -531,5 +692,17 @@ impl JsDataType {
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
+    }
+
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `toJSON` renders, encoded rather than decoded, for a
+    /// caller writing it straight to a file or a socket. `fromJSON` reads
+    /// these bytes back without being told which shape it got.
+    #[napi(js_name = "toJSONBytes")]
+    pub fn js_json_bytes(&self) -> Result<napi::bindgen_prelude::Buffer> {
+        serde_json::to_vec(&self.inner)
+            .map(napi::bindgen_prelude::Buffer::from)
+            .map_err(napi_error)
     }
 }

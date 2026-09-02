@@ -185,7 +185,7 @@ impl Selector {
     /// Fixed per selector and never inferred, so `&holder.size > 100` compares
     /// two integers whatever the handle turns out to be.
     #[must_use]
-    pub fn data_type(&self) -> DataType {
+    pub fn dtype(&self) -> DataType {
         match self {
             Self::Depth | Self::Size => DataType::Int64,
             Self::IsContainer | Self::IsEmpty => DataType::Boolean,
@@ -200,7 +200,7 @@ impl Selector {
     /// broken predicate.
     #[must_use]
     pub fn field(&self) -> Field {
-        Field::new(format_smolstr!("&holder.{self}"), self.data_type(), true)
+        Field::new(format_smolstr!("&holder.{self}"), self.dtype(), true)
     }
 
     /// Answer this selector from an identifier alone.

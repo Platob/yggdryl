@@ -83,7 +83,7 @@ class Venue:
 venue_field = field(Venue)
 
 assert venue_field.name == "Venue"
-assert venue_field["mic"].data_type.id == "utf8"
+assert venue_field["mic"].dtype.id == "utf8"
 ```
 
 Use reserved `Annotated` options when the logical Python type needs an exact

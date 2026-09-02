@@ -115,7 +115,7 @@ impl DataType {
         if target == Target::Arrow {
             return Ok(self);
         }
-        normalize_data_type(target, &self, &Path::root()).map(|(value, _)| value)
+        normalize_dtype(target, &self, &Path::root()).map(|(value, _)| value)
     }
 }
 
@@ -133,7 +133,7 @@ impl Field {
     /// target.
     pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self> {
         let target = Target::from_scheme(scheme)?;
-        preflight_schema_shape(self.data_type(), target.kind())?;
+        preflight_schema_shape(self.dtype(), target.kind())?;
         self.validate()?;
         if target == Target::Arrow {
             return Ok(self);
@@ -144,19 +144,15 @@ impl Field {
 }
 
 /// Recursively normalizes one datatype, returning the value and whether it changed.
-fn normalize_data_type(
-    target: Target,
-    data_type: &DataType,
-    path: &Path<'_>,
-) -> Result<(DataType, bool)> {
+fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::List(field) => {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
                 Ok((D::list(field), true))
             } else {
-                Ok((data_type.clone(), false))
+                Ok((dtype.clone(), false))
             }
         }
         D::FixedSizeList(field, length) if target.supports_fixed_size_list() => {
@@ -164,7 +160,7 @@ fn normalize_data_type(
             if changed {
                 Ok((D::fixed_size_list(field, *length)?, true))
             } else {
-                Ok((data_type.clone(), false))
+                Ok((dtype.clone(), false))
             }
         }
         D::ListView(field)
@@ -174,7 +170,7 @@ fn normalize_data_type(
             let (field, _) = normalize_item(target, field, path)?;
             Ok((D::list(field), true))
         }
-        D::Struct(fields) => normalize_struct(target, data_type, fields, path),
+        D::Struct(fields) => normalize_struct(target, dtype, fields, path),
         D::Union(..) if !target.supports_union() => incompatible(
             target,
             path,
@@ -189,7 +185,7 @@ fn normalize_data_type(
             if changed {
                 Ok((D::map(entries, map.keys_sorted())?, true))
             } else {
-                Ok((data_type.clone(), false))
+                Ok((dtype.clone(), false))
             }
         }
         D::Map(_) => incompatible(
@@ -202,7 +198,7 @@ fn normalize_data_type(
         ),
         D::Dictionary(dictionary) => {
             let value_path = path.child(Segment::DictionaryValue);
-            let (value, _) = normalize_data_type(target, dictionary.value(), &value_path)?;
+            let (value, _) = normalize_dtype(target, dictionary.value(), &value_path)?;
             Ok((value, true))
         }
         D::RunEndEncoded(encoded) => normalize_run_end_encoded(target, encoded, path),
@@ -217,14 +213,13 @@ fn normalize_item(target: Target, field: &Field, path: &Path<'_>) -> Result<(Fie
 
 fn normalize_struct(
     target: Target,
-    data_type: &DataType,
+    dtype: &DataType,
     fields: &super::Fields,
     path: &Path<'_>,
 ) -> Result<(DataType, bool)> {
     for (index, field) in fields.iter().enumerate() {
         let child_path = path.field(field.name());
-        let (child_data_type, child_changed) =
-            normalize_data_type(target, field.data_type(), &child_path)?;
+        let (child_dtype, child_changed) = normalize_dtype(target, field.dtype(), &child_path)?;
         if !child_changed {
             continue;
         }
@@ -242,19 +237,14 @@ fn normalize_struct(
                 )
             })?;
         transformed.extend(fields.iter().take(index).cloned());
-        transformed.push(field_with_data_type(
-            target,
-            field,
-            child_data_type,
-            &child_path,
-        )?);
+        transformed.push(field_with_dtype(target, field, child_dtype, &child_path)?);
         for remaining in fields.iter().skip(index + 1) {
             let remaining_path = path.field(remaining.name());
             transformed.push(normalize_field(target, remaining, &remaining_path)?.0);
         }
         return Ok((DataType::from_fields(transformed)?, true));
     }
-    Ok((data_type.clone(), false))
+    Ok((dtype.clone(), false))
 }
 
 fn normalize_run_end_encoded(
@@ -282,29 +272,25 @@ fn normalize_run_end_encoded(
             ),
         ));
     }
-    let (values, _) = normalize_data_type(target, encoded.values().data_type(), &values_path)?;
+    let (values, _) = normalize_dtype(target, encoded.values().dtype(), &values_path)?;
     Ok((values, true))
 }
 
 /// Applies the target's scalar matrix to one leaf datatype.
-fn normalize_scalar(
-    target: Target,
-    data_type: &DataType,
-    path: &Path<'_>,
-) -> Result<(DataType, bool)> {
+fn normalize_scalar(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     match target {
-        Target::Arrow => Ok((data_type.clone(), false)),
-        Target::Spark => spark_scalar(data_type, path),
-        Target::Polars => polars_scalar(data_type, path),
-        Target::Pandas => pandas_scalar(data_type, path),
-        Target::Iceberg => iceberg_scalar(data_type, path),
+        Target::Arrow => Ok((dtype.clone(), false)),
+        Target::Spark => spark_scalar(dtype, path),
+        Target::Polars => polars_scalar(dtype, path),
+        Target::Pandas => pandas_scalar(dtype, path),
+        Target::Iceberg => iceberg_scalar(dtype, path),
     }
 }
 
 /// The conservative Apache Spark SQL / Arrow interchange subset.
-fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Null
         | D::Boolean
         | D::Int8
@@ -315,13 +301,13 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
         | D::Float64
         | D::Date32
         | D::Binary
-        | D::Utf8 => Ok((data_type.clone(), false)),
+        | D::Utf8 => Ok((dtype.clone(), false)),
         D::UInt8 => Ok((D::Int16, true)),
         D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
         D::Float16 => Ok((D::Float32, true)),
-        D::Timestamp(TimeUnit::Microsecond, _) => Ok((data_type.clone(), false)),
+        D::Timestamp(TimeUnit::Microsecond, _) => Ok((dtype.clone(), false)),
         D::Timestamp(unit, _) => unit_mismatch(Target::Spark, path, "timestamp", *unit, "us"),
         D::Date64 => incompatible(
             Target::Spark,
@@ -333,16 +319,16 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
             path,
             format_smolstr!(
                 "time-of-day compatibility is Spark-version-dependent and has no conservative common encoding, got {} of {unit}",
-                data_type.name()
+                dtype.name()
             ),
         ),
         D::Duration32(TimeUnit::Microsecond) | D::Duration64(TimeUnit::Microsecond) => {
-            Ok((data_type.clone(), false))
+            Ok((dtype.clone(), false))
         }
         D::Duration32(unit) | D::Duration64(unit) => {
-            unit_mismatch(Target::Spark, path, data_type.name(), *unit, "us")
+            unit_mismatch(Target::Spark, path, dtype.name(), *unit, "us")
         }
-        D::Interval(TimeUnit::YearMonth) => Ok((data_type.clone(), false)),
+        D::Interval(TimeUnit::YearMonth) => Ok((dtype.clone(), false)),
         D::Interval(TimeUnit::DayTime) => incompatible(
             Target::Spark,
             path,
@@ -363,7 +349,7 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
-            narrow_decimal(Target::Spark, data_type, *precision, *scale, path)
+            narrow_decimal(Target::Spark, dtype, *precision, *scale, path)
         }
         D::Decimal256 { precision, scale } => incompatible(
             Target::Spark,
@@ -384,7 +370,7 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
             path,
             format_smolstr!(
                 "Spark has no first-class geospatial type; got {}",
-                data_type.name()
+                dtype.name()
             ),
         ),
         other => unreachable_container(Target::Spark, other, path),
@@ -397,9 +383,9 @@ fn spark_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool
 /// fewer widenings are needed than for Spark. It has no tagged union, no map,
 /// and no calendar interval, and its time-of-day and duration resolutions are
 /// fixed.
-fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Null
         | D::Boolean
         | D::Int8
@@ -414,11 +400,11 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         | D::Float64
         | D::Date32
         | D::Binary
-        | D::Utf8 => Ok((data_type.clone(), false)),
+        | D::Utf8 => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // Polars datetimes are millisecond, microsecond, or nanosecond.
         D::Timestamp(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond, _) => {
-            Ok((data_type.clone(), false))
+            Ok((dtype.clone(), false))
         }
         D::Timestamp(unit, _) => {
             unit_mismatch(Target::Polars, path, "timestamp", *unit, "ms, us, or ns")
@@ -429,21 +415,17 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
             "date64 milliseconds require a value cast to Polars date32 days",
         ),
         // Polars `Time` is nanoseconds since midnight.
-        D::Time64(TimeUnit::Nanosecond) => Ok((data_type.clone(), false)),
+        D::Time64(TimeUnit::Nanosecond) => Ok((dtype.clone(), false)),
         D::Time32(unit) | D::Time64(unit) => {
             unit_mismatch(Target::Polars, path, "time-of-day", *unit, "time64 of ns")
         }
         D::Duration32(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond)
         | D::Duration64(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
-            Ok((data_type.clone(), false))
+            Ok((dtype.clone(), false))
         }
-        D::Duration32(unit) | D::Duration64(unit) => unit_mismatch(
-            Target::Polars,
-            path,
-            data_type.name(),
-            *unit,
-            "ms, us, or ns",
-        ),
+        D::Duration32(unit) | D::Duration64(unit) => {
+            unit_mismatch(Target::Polars, path, dtype.name(), *unit, "ms, us, or ns")
+        }
         D::Interval(unit) => incompatible(
             Target::Polars,
             path,
@@ -454,7 +436,7 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
-            narrow_decimal(Target::Polars, data_type, *precision, *scale, path)
+            narrow_decimal(Target::Polars, dtype, *precision, *scale, path)
         }
         D::Decimal256 { precision, scale } => incompatible(
             Target::Polars,
@@ -466,11 +448,7 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         D::Variant | D::Geometry(_) | D::Geography(_) => incompatible(
             Target::Polars,
             path,
-            format_smolstr!(
-                "Polars has no {} type; got {}",
-                data_type.kind(),
-                data_type.name()
-            ),
+            format_smolstr!("Polars has no {} type; got {}", dtype.kind(), dtype.name()),
         ),
         other => unreachable_container(Target::Polars, other, path),
     }
@@ -481,9 +459,9 @@ fn polars_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
 /// pandas materializes through NumPy and its extension dtypes, so temporal
 /// values are nanosecond-resolution and there is no fixed-width binary,
 /// calendar interval, union, or map dtype.
-fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Null
         | D::Boolean
         | D::Int8
@@ -498,10 +476,10 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         | D::Float64
         | D::Date32
         | D::Binary
-        | D::Utf8 => Ok((data_type.clone(), false)),
+        | D::Utf8 => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // `datetime64[ns]` is the pandas timestamp representation.
-        D::Timestamp(TimeUnit::Nanosecond, _) => Ok((data_type.clone(), false)),
+        D::Timestamp(TimeUnit::Nanosecond, _) => Ok((dtype.clone(), false)),
         D::Timestamp(unit, _) => unit_mismatch(Target::Pandas, path, "timestamp", *unit, "ns"),
         D::Date64 => incompatible(
             Target::Pandas,
@@ -513,15 +491,15 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
             path,
             format_smolstr!(
                 "pandas has no time-of-day dtype and materializes it as opaque objects, got {} of {unit}",
-                data_type.name()
+                dtype.name()
             ),
         ),
         // `timedelta64[ns]` is the pandas duration representation.
         D::Duration32(TimeUnit::Nanosecond) | D::Duration64(TimeUnit::Nanosecond) => {
-            Ok((data_type.clone(), false))
+            Ok((dtype.clone(), false))
         }
         D::Duration32(unit) | D::Duration64(unit) => {
-            unit_mismatch(Target::Pandas, path, data_type.name(), *unit, "ns")
+            unit_mismatch(Target::Pandas, path, dtype.name(), *unit, "ns")
         }
         D::Interval(unit) => incompatible(
             Target::Pandas,
@@ -535,7 +513,7 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
-            narrow_decimal(Target::Pandas, data_type, *precision, *scale, path)
+            narrow_decimal(Target::Pandas, dtype, *precision, *scale, path)
         }
         D::Decimal256 { precision, scale } => incompatible(
             Target::Pandas,
@@ -549,8 +527,8 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
             path,
             format_smolstr!(
                 "pandas has no {} column type; got {}",
-                data_type.kind(),
-                data_type.name()
+                dtype.kind(),
+                dtype.name()
             ),
         ),
         other => unreachable_container(Target::Pandas, other, path),
@@ -566,9 +544,9 @@ fn pandas_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, boo
 /// to the signed one that holds it, and there is no elapsed-time or calendar
 /// interval type at all. Time-of-day is microseconds and a timestamp is
 /// microseconds or nanoseconds, so any other resolution is a value cast.
-fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         // `unknown` is Iceberg's always-null primitive.
         D::Null
         | D::Boolean
@@ -580,7 +558,7 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
         | D::Binary
         | D::Utf8
         // `fixed[n]`, which is also how `uuid` is stored.
-        | D::FixedSizeBinary(_) => Ok((data_type.clone(), false)),
+        | D::FixedSizeBinary(_) => Ok((dtype.clone(), false)),
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
@@ -591,13 +569,13 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
             "date64 milliseconds require a value cast to Iceberg date32 days",
         ),
         // Iceberg `time` is microseconds since midnight.
-        D::Time64(TimeUnit::Microsecond) => Ok((data_type.clone(), false)),
+        D::Time64(TimeUnit::Microsecond) => Ok((dtype.clone(), false)),
         D::Time32(unit) | D::Time64(unit) => {
             unit_mismatch(Target::Iceberg, path, "time-of-day", *unit, "us")
         }
         // `timestamp`/`timestamptz` are microseconds; the `_ns` pair is nanoseconds.
         D::Timestamp(TimeUnit::Microsecond | TimeUnit::Nanosecond, _) => {
-            Ok((data_type.clone(), false))
+            Ok((dtype.clone(), false))
         }
         D::Timestamp(unit, _) => {
             unit_mismatch(Target::Iceberg, path, "timestamp", *unit, "us or ns")
@@ -605,7 +583,7 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
         D::Duration32(unit) | D::Duration64(unit) => incompatible(
             Target::Iceberg,
             path,
-            format_smolstr!("Iceberg has no elapsed-time type, got {}({unit})", data_type.name()),
+            format_smolstr!("Iceberg has no elapsed-time type, got {}({unit})", dtype.name()),
         ),
         D::Interval(unit) => incompatible(
             Target::Iceberg,
@@ -617,7 +595,7 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
-            narrow_decimal(Target::Iceberg, data_type, *precision, *scale, path)
+            narrow_decimal(Target::Iceberg, dtype, *precision, *scale, path)
         }
         D::Decimal256 { precision, scale } => incompatible(
             Target::Iceberg,
@@ -629,7 +607,7 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
         // Iceberg v3 owns all three: `variant`, `geometry(C)`, and
         // `geography(C, A)` are the format's own spellings, parameters
         // included, so each passes unchanged.
-        D::Variant | D::Geometry(_) | D::Geography(_) => Ok((data_type.clone(), false)),
+        D::Variant | D::Geometry(_) | D::Geography(_) => Ok((dtype.clone(), false)),
         other => unreachable_container(Target::Iceberg, other, path),
     }
 }
@@ -637,7 +615,7 @@ fn iceberg_scalar(data_type: &DataType, path: &Path<'_>) -> Result<(DataType, bo
 /// Narrows any exact decimal to the 128-bit interchange width.
 fn narrow_decimal(
     target: Target,
-    data_type: &DataType,
+    dtype: &DataType,
     precision: u8,
     scale: i8,
     path: &Path<'_>,
@@ -653,22 +631,22 @@ fn narrow_decimal(
         );
     }
     let transformed = DataType::decimal128(precision, scale)?;
-    let changed = !matches!(data_type, DataType::Decimal128 { .. });
+    let changed = !matches!(dtype, DataType::Decimal128 { .. });
     Ok((transformed, changed))
 }
 
 fn normalize_field(target: Target, field: &Field, path: &Path<'_>) -> Result<(Field, bool)> {
-    let (data_type, changed) = normalize_data_type(target, field.data_type(), path)?;
+    let (dtype, changed) = normalize_dtype(target, field.dtype(), path)?;
     if !changed {
         return Ok((field.clone(), false));
     }
-    field_with_data_type(target, field, data_type, path).map(|field| (field, true))
+    field_with_dtype(target, field, dtype, path).map(|field| (field, true))
 }
 
-fn field_with_data_type(
+fn field_with_dtype(
     target: Target,
     field: &Field,
-    data_type: DataType,
+    dtype: DataType,
     path: &Path<'_>,
 ) -> Result<Field> {
     if has_extension_storage(field) {
@@ -677,13 +655,13 @@ fn field_with_data_type(
             path,
             format_smolstr!(
                 "normalizing {} to {} would relabel Arrow extension storage",
-                elide_display(field.data_type()),
-                elide_display(&data_type)
+                elide_display(field.dtype()),
+                elide_display(&dtype)
             ),
         );
     }
     let mut transformed = field.clone();
-    transformed.set_data_type(data_type)?;
+    transformed.set_dtype(dtype)?;
     Ok(transformed)
 }
 
@@ -717,13 +695,13 @@ fn unit_mismatch<T>(
 }
 
 /// Reports a container variant that the generic walker should already have handled.
-fn unreachable_container<T>(target: Target, data_type: &DataType, path: &Path<'_>) -> Result<T> {
+fn unreachable_container<T>(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<T> {
     incompatible(
         target,
         path,
         format_smolstr!(
             "expected a scalar datatype, got {}; this container is handled by the generic walker",
-            data_type.name()
+            dtype.name()
         ),
     )
 }

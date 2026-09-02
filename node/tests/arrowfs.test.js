@@ -346,7 +346,7 @@ test('records round trip over storage that is only a Map', () => {
 
   // Every byte of that table went through the caller's own handler.
   assert.ok(handler.files.has('bucket/trades.arrows'))
-  assert.equal(handle.readArrowField().dataType.length, 2)
+  assert.equal(handle.readArrowField().dtype.length, 2)
   assert.equal(
     IOBase.fromArrowFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable().numRows,
     2,

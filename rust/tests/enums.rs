@@ -84,7 +84,6 @@ fn every_known_scheme_parses_to_its_static_value() {
         ("ICEBERG", Scheme::ICEBERG),
         ("FIX", Scheme::FIX),
         ("FIELD", Scheme::FIELD),
-        ("DTYPE", Scheme::DTYPE),
         ("S3", Scheme::S3),
         ("GS", Scheme::GS),
     ] {

@@ -663,8 +663,8 @@ test('named captures type themselves and declarations override', (t) => {
   // `threadId` typed off its own `\d+` sub-pattern, `qty` by declaration.
   const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
   assert.equal(schema.name, 'row')
-  assert.equal(String(schema.dataType.get('threadId').dataType), 'int64')
-  assert.equal(String(schema.dataType.get('qty').dataType), 'decimal128(9,2)')
+  assert.equal(String(schema.dtype.getField('threadId').dtype), 'int64')
+  assert.equal(String(schema.dtype.getField('qty').dtype), 'decimal128(9,2)')
 
   const table = new IOBase(target)
     .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
@@ -733,7 +733,7 @@ test('a reader is fully described by a configuration document', (t) => {
   // The schema answers from the document alone, with no resource in sight.
   const schema = fieldFromPattern(options)
   assert.equal(schema.name, 'row')
-  assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
+  assert.equal(String(schema.dtype.getField('source').dtype), 'utf8')
 
   const table = new IOBase(target).readArrowLines(options).intoTable()
   assert.equal(table.numRows, 2)

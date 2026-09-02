@@ -10,7 +10,7 @@
     let field = Field::new("price", DataType::from_str("decimal(18, 6)")?, false);
 
     assert_eq!(field.name(), "price");
-    assert_eq!(field.data_type(), &DataType::decimal(18, 6)?);
+    assert_eq!(field.dtype(), &DataType::decimal(18, 6)?);
     assert!(!field.is_nullable());
     assert!(field.is_metadata_empty());
 
@@ -27,7 +27,7 @@
     field = Field("price", "decimal(18, 6)", nullable=False)
 
     assert field.name == "price"
-    assert field.data_type == DataType("decimal(18, 6)")
+    assert field.dtype == DataType("decimal(18, 6)")
     assert field.nullable is False
     assert len(field) == 0
 
@@ -44,7 +44,7 @@
     const field = new Field('price', 'decimal(18, 6)', false)
 
     assert.equal(field.name, 'price')
-    assert.ok(field.dataType.equals(DataType.from('decimal(18, 6)')))
+    assert.ok(field.dtype.equals(DataType.from('decimal(18, 6)')))
     assert.equal(field.nullable, false)
     assert.equal(field.size, 0)
 
@@ -78,7 +78,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
     schema.validate_struct_root()?;
     assert_eq!(schema.field_len(), 2);
     assert_eq!(schema.index_of("symbol"), Some(1));
-    assert_eq!(schema.get_field_by_name("id").map(Field::name), Some("id"));
+    assert_eq!(schema.get_field_by_path("id").map(Field::name), Some("id"));
 
     // A nullable root is not a schema: a whole row cannot be logically absent.
     assert!(schema.with_nullable(true).validate_struct_root().is_err());
@@ -98,7 +98,7 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
         nullable=False,
     )
 
-    children = schema.data_type
+    children = schema.dtype
     assert len(children) == 2
     assert "symbol" in children
     assert children["id"].nullable is False
@@ -121,10 +121,10 @@ position - a string in any accepted syntax, a native `DataType`, and in Python a
       false,
     )
 
-    const children = schema.dataType
+    const children = schema.dtype
     assert.equal(children.length, 2)
-    assert.equal(children.at(0).nullable, false)
-    assert.equal(children.getByName('symbol').name, 'symbol')
+    assert.equal(children.getFieldAt(0).nullable, false)
+    assert.equal(children.getFieldByPath('symbol').name, 'symbol')
     assert.deepEqual(children.keys(), ['id', 'symbol'])
     ```
 
@@ -135,10 +135,159 @@ makes: `require_struct` accepts a nullable struct, because a nullable struct is 
 represent that. This root is what [`ipc`](ipc.md), [`parquet`](parquet.md), and
 [`iceberg`](iceberg.md) take and return.
 
-Rust reaches the children through the field - `fields`, `field_len`, `get_field`,
-`get_field_by_name`, `index_of` - because a struct root is the common case. Python and JavaScript
-reach them through `data_type`, where the same children are a sequence: `len`, indexing by position
-or name, `in`, and iteration in Python; `length`, `at`, `getByName`, and `keys` in JavaScript.
+Rust reaches the children through the field, and `DataType` answers the same calls, so a caller
+walking a schema never has to ask which node it is holding. Each lookup comes in three forms - by
+position, by path, and by whichever the key turns out to be - and each of those raises or answers
+`None`:
+
+| | position | path | either |
+|---|---|---|---|
+| raising | `field_at` | `field_by_path` | `field` |
+| optional | `get_field_at` | `get_field_by_path` | `get_field` |
+| replacing | `set_field_at` | `set_field_by_path` | `set_field` |
+| removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
+
+`fields`, `field_len`, and `index_of` round the struct root out.
+
+Python and JavaScript carry the same family under their own casing - `get_field_by_path` and
+`getFieldByPath` - and each adds what its language expects. Python spells the inferring form
+`field(x, *, idx=..., path=...)`, refusing a call that names more than one of the three. JavaScript
+keeps positions Array-compatible, so a negative index counts from the end, and the optional forms
+answer `null` where Python answers `None` and Rust answers `Option`.
+
+Two names moved so that `field` could mean this on every class: the datatype constructor that was
+`DataType::field(name, nullable)` is `named_field`, beside the `nullable_field` and `required_field`
+it already builds; and the `field:` property view is `field_properties` in Rust and Python and
+`fieldProperties` in JavaScript. The namespace itself is unchanged, so `field:init` and
+`field:partition` are what they were.
+
+### Flattening and expanding
+
+Two projections answer the two questions a nested schema raises, and they are
+deliberately separate because they treat collections in opposite ways.
+
+`unnest_fields` flattens **struct** nesting to its leaves, each named by the
+dotted path that reaches it: `struct<id, line: struct<px>>` answers `id` and
+`line.px`. A leaf under a nullable ancestor is nullable, because a null parent
+leaves it with no value to carry, and every name it answers is one
+[`field_by_path`](#item-access-reaches-a-child-never-metadata) resolves - so a flattened column list and
+the tree it came from address children the same way. A list or a map is a
+**leaf** here: unnesting says what a flat column list looks like, and a list is
+one column.
+
+`explode_fields` is what reaches inside one. It replaces each **collection**
+child with what it holds - a list answers its item, a map its entries, a
+dictionary or run-end node the values it encodes - and returns anything else
+unchanged, so the result names the same columns in the same order. The column
+keeps its own name, and is nullable when either the collection or its element
+is, because an absent list yields no element. Only one level is unwrapped, so a
+list of lists answers a list; calling it again reaches the next one, which
+makes the depth the caller's decision.
+
+Both answer a list of fields rather than a node, the way `partition_fields`
+does; `DataType::from_fields` builds a node from either when you want one.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+
+    let row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::from_fields([DataType::Float64.required_field("px")])?
+            .nullable_field("line"),
+        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+    ])?;
+
+    // Structs flatten to leaves; the list stays one column.
+    let leaves = row.unnest_fields();
+    let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
+    assert_eq!(names, ["id", "line.px", "levels"]);
+
+    // The nullable parent makes its leaf nullable, and the name resolves.
+    assert!(leaves[1].is_nullable());
+    assert!(row.get_field_by_path("line.px").is_some());
+
+    // Exploding reaches inside the collection, keeping the column's name.
+    let exploded = row.explode_fields();
+    assert_eq!(exploded[2].name(), "levels");
+    assert_eq!(exploded[2].dtype(), &DataType::Float64);
+    ```
+
+### Merging two schemas
+
+`merge_with` answers the type that describes both sides, and it is the only
+promotion table in the crate: expression typing and value inference call the
+same code, so two callers reading one pair of types can never disagree.
+
+The rules are tried in order:
+
+1. two equal types are that type;
+2. `null` yields to whatever is defined beside it, so a column read as all-null
+   takes the shape the other side gives it;
+3. two nested layouts of the same family recurse - a struct takes the **union**
+   of its fields, and lists, maps, unions and run-end nodes merge their
+   children;
+4. **bytes win**, because every other encoding fits inside them;
+5. **text wins next**, over numbers and temporals;
+6. numbers meet by width, and temporals by unit.
+
+Anything left is refused rather than guessed: a boolean and a timestamp have no
+meeting point that is not a re-encoding, and an exact decimal beside an
+approximate float would trade exactness for range without saying so.
+
+`upscale` picks the direction width resolves in. Widening is the default and
+loses nothing - `int32` and `int64` meet at `int64`. Passing `false` meets at
+the tightest type that names both, which is what a caller wants when the
+narrower type is the one the data actually fits.
+
+A struct child only one side declares becomes **nullable**, because the rows
+the other side described do not carry it, and field order is the receiver's
+with additions appended, so merging never reorders columns a caller depends on.
+
+`Field.merge_with` adds only what a field carries beyond a type: the name is
+the receiver's, the result is nullable when either side is, dictionary options
+survive only where both sides encode, and metadata is the union of both with
+the receiver winning any key they disagree on.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+
+    let left = DataType::from_fields([
+        DataType::Int32.required_field("id"),
+        DataType::Utf8.required_field("venue"),
+    ])?;
+    let right = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Float64.required_field("price"),
+    ])?;
+
+    let merged = left.merge_with(&right, true)?;
+
+    // The shared column widens; the two unshared ones arrive nullable.
+    assert_eq!(merged["id"].dtype(), &DataType::Int64);
+    assert!(merged["venue"].is_nullable());
+    assert!(merged["price"].is_nullable());
+
+    // Narrowing meets at the tightest type naming both.
+    assert_eq!(
+        DataType::Int32.merge_with(&DataType::Int64, false)?,
+        DataType::Int32,
+    );
+
+    // Bytes win over text, and text over numbers.
+    assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
+    assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+
+    // A field merge carries nullability and metadata across.
+    let a = Field::new("price", DataType::Int32, false);
+    let b = Field::new("price", DataType::Int64, true);
+    let field = a.merge_with(&b, true)?;
+    assert_eq!(field.dtype(), &DataType::Int64);
+    assert!(field.is_nullable());
+    ```
 
 ### Item access reaches a child, never metadata
 
@@ -149,13 +298,19 @@ metadata string from the next. Metadata is reached through [its own view](#metad
 `field.metadata[...]` in Python, `get_metadata` and friends in Rust - because a view whose keys *are*
 keys is where item syntax legitimately means "a key".
 
-Chained subscripts are the nesting story - `order["line"]["price"]` descends two levels, because each
-subscript answers a node that subscripts again. There is no dotted-string or tuple path form.
+Chained subscripts still descend - `order["line"]["price"]` reaches two levels, because each
+subscript answers a node that subscripts again - and a single string may also spell the whole route:
+`order["line.price"]`. A string is resolved **name first**, so a child whose own name contains a dot
+stays reachable: `order["a.b"]` finds a child literally called `a.b` before it considers `a` then
+`b`. Only when nothing carries the whole string is it decomposed, each `.` tried as a boundary from
+the left, so `"a.b.c"` still resolves through a child named `a.b` that carries `c`.
 
-Assignment is dict-like *by name* and list-like *by position*: a known name is replaced in place
-keeping its position, an **unknown name appends** a new child, and a position only ever replaces -
-past the end is an error, never a silent grow. `del` removes and closes the gap by either form. In
-Python this routes through the core's cache-aware child mutation, which is also why a `DataType` -
+Assignment is dict-like *by path* and list-like *by position*: a path that resolves is replaced in
+place keeping its position, a string that resolves to nothing **appends** a new child, and a
+position only ever replaces - past the end is an error, never a silent grow. `del` removes and
+closes the gap by either form. Only a struct may grow or shrink: a list holds exactly one child and
+a run-end node exactly two, so those refuse rather than quietly becoming a struct. In Python this
+routes through the core's cache-aware child mutation, which is also why a `DataType` -
 immutable and hashable - refuses assignment and points at the `Field` that carries it.
 
 === "Rust"
@@ -172,20 +327,20 @@ immutable and hashable - refuses assignment and points at the `Field` that carri
     order.insert_metadata("owner", "trading")?;
 
     // A child by name, by position, and two levels down.
-    assert_eq!(order["id"].data_type(), &DataType::Int64);
+    assert_eq!(order["id"].dtype(), &DataType::Int64);
     assert_eq!(order[1].name(), "line");
-    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+    assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
 
     // An unknown name appends; a position replaces.
-    order.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    order.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
     assert_eq!(order.field_len(), 3);
     order.set_field(0, DataType::Utf8.required_field("id"))?;
-    assert_eq!(order["id"].data_type(), &DataType::Utf8);
-    assert_eq!(order.remove_field_by_name("venue")?.name(), "venue");
+    assert_eq!(order["id"].dtype(), &DataType::Utf8);
+    assert_eq!(order.remove_field_by_path("venue")?.name(), "venue");
 
     // Metadata keeps its own named surface.
     assert_eq!(order.get_metadata("owner"), Some("trading"));
-    assert!(order.get_field_by_name("owner").is_none());
+    assert!(order.get_field_by_path("owner").is_none());
     ```
 
 === "Python"
@@ -208,12 +363,12 @@ immutable and hashable - refuses assignment and points at the `Field` that carri
     )
 
     # A child by name, by position, negatively, and two levels down.
-    assert order["id"].data_type == DataType("int64")
+    assert order["id"].dtype == DataType("int64")
     assert order[-1].name == "line"
-    assert order["line"]["price"].data_type == DataType("float64")
+    assert order["line"]["price"].dtype == DataType("float64")
 
     # The DataType answers the same way, and children drive len/iter/in.
-    assert order.data_type["id"].name == "id"
+    assert order.dtype["id"].name == "id"
     assert len(order) == 2
     assert [child.name for child in order] == ["id", "line"]
     assert "line" in order
@@ -222,7 +377,7 @@ immutable and hashable - refuses assignment and points at the `Field` that carri
     order["venue"] = Field("venue", "utf8")
     assert len(order) == 3
     order[0] = Field("id", "utf8", nullable=False)
-    assert order["id"].data_type == DataType("utf8")
+    assert order["id"].dtype == DataType("utf8")
     del order["venue"]
     assert len(order) == 2
 
@@ -237,7 +392,7 @@ immutable and hashable - refuses assignment and points at the `Field` that carri
 === "JavaScript"
 
     !!! note "Rust first"
-        The JavaScript binding reaches children through `dataType` with `at`, `getByName`, and
+        The JavaScript binding reaches children through `dtype` with `at`, `getByName`, and
         `keys`; the shared subscript vocabulary lands with the rest of the lifecycle surface.
 
 
@@ -406,7 +561,10 @@ canonicalizes on the way in and out. `PARQUET:field_id` is a signed 32-bit integ
 `"2147483648"` fails.
 `field:init` is a reserved boolean: it is absent for an ordinary field, and setting it to `false`
 marks a field a schema still declares but a constructor must not accept. `location` parses as a
-[`Url`](uri.md), and `alias`, `catalog_name`, `schema_name`, and `table_name` carry validated text.
+[`Url`](uri.md), and `alias` and `comment` carry validated text. Catalog coordinates - a
+catalog, schema or table name - are protocol properties rather than straight keys, because which
+catalog names a column is the protocol's business: write them as `iceberg:table_name` or
+`glue:table_name`.
 
 Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](generic.md). The
 prefix is canonicalized, so `HTTPS:Content-Type`, `HTTP:content-type`, and `http:content-type` are
@@ -538,7 +696,7 @@ stored partitioned says so on the columns themselves:
 
     assert!(schema.has_partition_fields());
     assert_eq!(schema.partition_field_names().collect::<Vec<_>>(), ["year", "venue"]);
-    assert!(schema.get_field_by_name("year").expect("the column").is_partition());
+    assert!(schema.get_field_by_path("year").expect("the column").is_partition());
 
     // The two halves of the layout: what a path spells, and what a leaf stores.
     assert_eq!(schema.without_partition_fields()?.field_len(), 1);
@@ -546,7 +704,7 @@ stored partitioned says so on the columns themselves:
 
     // The mark is reserved metadata, so it round-trips like any other.
     assert_eq!(
-        schema.get_field_by_name("year").expect("the column").get_metadata("field:partition"),
+        schema.get_field_by_path("year").expect("the column").get_metadata("field:partition"),
         Some("true")
     );
     ```
@@ -568,11 +726,11 @@ stored partitioned says so on the columns themselves:
 
     assert schema.has_partition_fields
     assert schema.partition_field_names == ["year", "venue"]
-    assert schema.data_type["year"].is_partition
-    assert not schema.data_type["price"].is_partition
+    assert schema.dtype["year"].is_partition
+    assert not schema.dtype["price"].is_partition
 
-    assert len(schema.without_partition_fields().data_type) == 1
-    assert len(schema.only_partition_fields().data_type) == 2
+    assert len(schema.without_partition_fields().dtype) == 1
+    assert len(schema.only_partition_fields().dtype) == 2
     ```
 
 === "JavaScript"
@@ -593,11 +751,11 @@ stored partitioned says so on the columns themselves:
 
     assert.equal(schema.hasPartitionFields, true)
     assert.deepEqual(schema.partitionFieldNames(), ['year', 'venue'])
-    assert.equal(schema.dataType.getByName('year').isPartition, true)
-    assert.equal(schema.dataType.getByName('price').isPartition, false)
+    assert.equal(schema.dtype.getFieldByPath('year').isPartition, true)
+    assert.equal(schema.dtype.getFieldByPath('price').isPartition, false)
 
-    assert.equal(schema.withoutPartitionFields().dataType.length, 1)
-    assert.equal(schema.onlyPartitionFields().dataType.length, 2)
+    assert.equal(schema.withoutPartitionFields().dtype.length, 1)
+    assert.equal(schema.onlyPartitionFields().dtype.length, 2)
     ```
 
 The mark is the reserved `field:partition` key, so it travels wherever field metadata travels - into
@@ -622,7 +780,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     // A typed field derefs to the field it wraps.
     assert_eq!(id.name(), "id");
     assert_eq!(symbol.get_metadata("source"), Some("feed"));
-    assert_eq!(at.data_type().to_string(), "timestamp(us)");
+    assert_eq!(at.dtype().to_string(), "timestamp(us)");
 
     // The marker is checked, never assumed.
     assert!(
@@ -630,7 +788,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
             .try_into_typed::<integer::Int64>()
             .is_err()
     );
-    assert_eq!(id.into_field().data_type(), &DataType::Int64);
+    assert_eq!(id.into_field().dtype(), &DataType::Int64);
     ```
 
 === "Python"
@@ -643,9 +801,9 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     at = fields.timestamp("at", "us", nullable=False)
 
     assert isinstance(id_field, Field)
-    assert str(id_field.data_type) == "int64"
+    assert str(id_field.dtype) == "int64"
     assert symbol.metadata["source"] == "feed"
-    assert str(at.data_type) == "timestamp(us)"
+    assert str(at.dtype) == "timestamp(us)"
     ```
 
 === "JavaScript"
@@ -659,9 +817,9 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     const at = fields.timestamp('at', 'us')
 
     assert.ok(id instanceof Field)
-    assert.equal(id.dataType.toString(), 'int64')
+    assert.equal(id.dtype.toString(), 'int64')
     assert.equal(symbol.get('source'), 'feed')
-    assert.equal(at.dataType.toString(), 'timestamp(us)')
+    assert.equal(at.dtype.toString(), 'timestamp(us)')
     ```
 
 `Int64Field` and the forty aliases beside it are `TypedField<K>`, one `Field` plus a zero-sized sealed
@@ -669,7 +827,7 @@ marker, `repr(transparent)` and exactly the size of the field it holds. The mark
 variant only: a decimal's precision, a timestamp's unit, a list's child all stay in the wrapped
 field, so the typed view never duplicates schema state. `try_as_typed` borrows a `TypedFieldRef`
 without allocating, `try_into_typed` consumes, and there is no `DerefMut` - replacing the datatype
-through a generic reference could violate `K`, so `set_data_type` on a typed field re-checks the
+through a generic reference could violate `K`, so `set_dtype` on a typed field re-checks the
 marker and leaves the value untouched when it fails.
 
 Aliases with a statically known datatype get a `new(name, nullable)` that cannot fail, plus
@@ -781,7 +939,7 @@ rather than by three sets of tests. That is also what makes a schema *embeddable
 document can carry a declared schema inline beside the rest of its settings, with no
 JSON-string-inside-YAML awkwardness.
 
-The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`, then
+The shape is what the JSON emit has always been: `name`, `dtype`, `nullable`, then
 `dictionary_id` only when it is non-zero and `dictionary_is_ordered` only when it is set, then
 `metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
 TOML, which has no null, loses nothing on the way out.
@@ -974,7 +1132,7 @@ outlive them), so a thousand-key metadata difference streams instead of building
 Both diff calls take `return_equal`, which decides what an equal comparison reports: nothing at all,
 or exactly one `✓ equal` line. `show_diffs` defaults it to false and `show_diff` to true in the
 bindings, which is why an equal `show_diff` prints a marker and an equal `show_diffs` yields
-nothing. Paths are `$`-rooted and name the part that changed - `$.nullable`, `$.data_type.length`,
+nothing. Paths are `$`-rooted and name the part that changed - `$.nullable`, `$.dtype.length`,
 `$.metadata["venue"]`, `$.fields[2]` - so a diff line is a place, not a prose sentence. The same
 two calls exist on [`DataType`](datatype.md) with the same output.
 

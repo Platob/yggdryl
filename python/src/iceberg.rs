@@ -26,7 +26,7 @@ use yggdryl::iceberg::{
 use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 
-use crate::datatype::core_data_type_from_value;
+use crate::datatype::core_dtype_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::io::PyIOBase;
 use crate::media::{PyMimeType, core_mime_type_from_value};
@@ -118,8 +118,8 @@ pub(crate) fn iceberg_can_promote(
     from_type: &Bound<'_, PyAny>,
     to_type: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    let from_type = core_data_type_from_value(from_type)?;
-    let to_type = core_data_type_from_value(to_type)?;
+    let from_type = core_dtype_from_value(from_type)?;
+    let to_type = core_dtype_from_value(to_type)?;
     can_promote(&from_type, &to_type).map_err(value_error)
 }
 
@@ -192,8 +192,8 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
         for item in items {
             fields.push(core_field_from_value(&item?)?);
         }
-        let data_type = CoreDataType::from_fields(fields).map_err(value_error)?;
-        return Ok(data_type.required_field(SCHEMA_ROOT_NAME));
+        let dtype = CoreDataType::from_fields(fields).map_err(value_error)?;
+        return Ok(dtype.required_field(SCHEMA_ROOT_NAME));
     }
     core_root_field_from_value(value, SCHEMA_ROOT_NAME)
 }
@@ -1749,7 +1749,7 @@ enum RecordedOp {
         /// The dotted path of the column.
         path: String,
         /// The promoted type.
-        data_type: CoreDataType,
+        dtype: CoreDataType,
     },
 }
 
@@ -1867,18 +1867,18 @@ impl PySchemaUpdate {
     /// Record a type promotion on the column at `path`, checked against the
     /// legal Iceberg promotions when the update commits.
     ///
-    /// `data_type` accepts anything a datatype crosses the boundary as: the
+    /// `dtype` accepts anything a datatype crosses the boundary as: the
     /// native wrapper, a datatype expression, a `PyArrow` type.
     fn update_type<'py>(
         mut slf: PyRefMut<'py, Self>,
         path: &str,
-        data_type: &Bound<'_, PyAny>,
+        dtype: &Bound<'_, PyAny>,
     ) -> PyResult<PyRefMut<'py, Self>> {
         slf.check_open()?;
-        let data_type = core_data_type_from_value(data_type)?;
+        let dtype = core_dtype_from_value(dtype)?;
         slf.ops.push(RecordedOp::UpdateType {
             path: path.to_owned(),
-            data_type,
+            dtype,
         });
         Ok(slf)
     }
@@ -1917,8 +1917,8 @@ impl PySchemaUpdate {
                             update.update_doc(path, doc.clone());
                         }
                         RecordedOp::MakeNullable { path } => update.make_nullable(path),
-                        RecordedOp::UpdateType { path, data_type } => {
-                            update.update_type(path, data_type.clone());
+                        RecordedOp::UpdateType { path, dtype } => {
+                            update.update_type(path, dtype.clone());
                         }
                     }
                 }

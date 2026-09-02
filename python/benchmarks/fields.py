@@ -289,7 +289,7 @@ def main() -> None:
         _measure("renamed field", _renamed_field, args.iterations)
         _measure(
             "cached class child",
-            lambda: Order.field().data_type["order_id"],
+            lambda: Order.field().dtype["order_id"],
             args.iterations,
         )
         _measure(

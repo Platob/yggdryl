@@ -47,9 +47,7 @@ const entries: Array<readonly [string, string]> = [...field]
 const dictionaryId: bigint | null = field.dictionaryId
 const dictionaryOrdered: boolean | null = field.dictionaryIsOrdered
 field.setAlias('identifier')
-field.setCatalogName('analytics')
-field.setSchemaName('public')
-field.setTableName('events')
+field.setComment('closing price')
 field.setParquetFieldId(17)
 field.setLocation('s3://warehouse/events/data.parquet')
 field.setAccept('application/json')
@@ -73,9 +71,8 @@ field.setHttpLocation('https://example.test/event')
 field.setRange('bytes=0-9')
 field.setVary('accept-encoding')
 const alias: string | null = field.alias
-const catalogName: string | null = field.catalogName
-const schemaName: string | null = field.schemaName
-const tableName: string | null = field.tableName
+const comment: string | null = field.comment
+const protocolComment: string | null = field.iceberg.comment
 const id: number | null = field.parquetFieldId
 const location: Url | null = field.location
 const accept: string | null = field.accept
@@ -103,8 +100,7 @@ const namedProtocols: ProtocolMetadata[] = [
   field.glue,
   field.iceberg,
   field.fix,
-  field.field,
-  field.dtype,
+  field.fieldProperties,
   field.s3,
   field.gs,
   field.az,
@@ -152,9 +148,8 @@ void entries
 void dictionaryId
 void dictionaryOrdered
 void alias
-void catalogName
-void schemaName
-void tableName
+void comment
+void protocolComment
 void id
 void location
 void accept

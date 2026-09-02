@@ -17,16 +17,16 @@ fn a_pairing_holds_only_a_value_its_datatype_accepts() {
 
 #[test]
 fn a_null_is_accepted_by_every_datatype_because_that_is_what_a_column_stores() {
-    for data_type in [
+    for dtype in [
         DataType::Int64,
         DataType::Utf8,
         DataType::Binary,
         DataType::Timestamp(TimeUnit::Nanosecond, None),
     ] {
-        let typed = TypedScalar::from_parts(data_type.clone(), Scalar::Null).unwrap();
+        let typed = TypedScalar::from_parts(dtype.clone(), Scalar::Null).unwrap();
         assert!(typed.is_null());
         assert_eq!(typed.value(), &Scalar::Null);
-        assert_eq!(typed.data_type(), &data_type);
+        assert_eq!(typed.dtype(), &dtype);
     }
 
     // A value that is there is not null, whatever its datatype.
@@ -71,12 +71,12 @@ fn a_nested_value_is_validated_against_the_datatype_it_claims() {
 #[test]
 fn a_value_can_name_its_own_datatype() {
     let typed = TypedScalar::from_value(Scalar::from(1.5_f64)).unwrap();
-    assert_eq!(typed.data_type(), &DataType::Float64);
+    assert_eq!(typed.dtype(), &DataType::Float64);
     assert_eq!(typed.value(), &Scalar::F64(1.5.into()));
 
     let column = TypedScalar::from_value(Scalar::from_sequence([Scalar::from(1_i64)])).unwrap();
     assert_eq!(
-        column.data_type(),
+        column.dtype(),
         &DataType::list(Field::new("item", DataType::Int64, false)),
     );
 
@@ -87,11 +87,11 @@ fn a_value_can_name_its_own_datatype() {
 
 #[test]
 fn both_halves_come_back_out() {
-    let (data_type, value) = TypedScalar::from_parts(DataType::Utf8, Scalar::from("AAPL"))
+    let (dtype, value) = TypedScalar::from_parts(DataType::Utf8, Scalar::from("AAPL"))
         .unwrap()
         .into_parts();
 
-    assert_eq!(data_type, DataType::Utf8);
+    assert_eq!(dtype, DataType::Utf8);
     assert_eq!(value, Scalar::from("AAPL"));
 }
 
@@ -117,8 +117,7 @@ fn serde_reads_a_pairing_back_through_the_validating_constructor() {
     );
 
     // A pairing that never agreed is refused on the way in, not stored.
-    let contradiction =
-        br#"{"data_type":{"type":"int64"},"value":{"type":"string","value":"seven"}}"#;
+    let contradiction = br#"{"dtype":{"type":"int64"},"value":{"type":"string","value":"seven"}}"#;
     assert!(serde_json::from_slice::<TypedScalar>(contradiction).is_err());
 }
 
@@ -127,7 +126,7 @@ fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
     use crate::generic::{Int64Scalar, Utf8Scalar};
 
     let price = Int64Scalar::new(Scalar::from(7_i64)).unwrap();
-    assert_eq!(price.data_type(), &DataType::Int64);
+    assert_eq!(price.dtype(), &DataType::Int64);
     assert_eq!(price.value(), &Scalar::I64(7));
 
     // The marker is checked, and the value is still checked against it.
@@ -145,7 +144,7 @@ fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
     assert_eq!(
         Utf8Scalar::try_from_value(Scalar::from("AAPL"))
             .unwrap()
-            .data_type(),
+            .dtype(),
         &DataType::Utf8
     );
     assert!(Utf8Scalar::try_from_value(Scalar::from(7_i64)).is_err());
@@ -157,7 +156,7 @@ fn the_newest_markers_narrow_their_pairings_like_every_other() {
 
     // A variant accepts any value: the datatype is the self-describing one.
     let anything = VariantScalar::new(Scalar::from("seven")).unwrap();
-    assert_eq!(anything.data_type(), &DataType::Variant);
+    assert_eq!(anything.dtype(), &DataType::Variant);
 
     // A geospatial pairing validates its bytes as WKB on construction.
     let point: &[u8] = &[
@@ -166,7 +165,7 @@ fn the_newest_markers_narrow_their_pairings_like_every_other() {
     let shape =
         GeometryScalar::try_from_parts(DataType::geometry(None).unwrap(), Scalar::from(point))
             .unwrap();
-    assert_eq!(shape.data_type().id(), crate::generic::DataTypeId::Geometry);
+    assert_eq!(shape.dtype().id(), crate::generic::DataTypeId::Geometry);
     assert!(
         GeometryScalar::try_from_parts(DataType::geometry(None).unwrap(), Scalar::from("no wkb"))
             .is_err()
@@ -212,7 +211,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
     )
     .unwrap();
     assert_eq!(
-        stamp.data_type(),
+        stamp.dtype(),
         &DataType::Timestamp(TimeUnit::Microsecond, None)
     );
     assert!(
@@ -237,7 +236,7 @@ fn a_narrowed_pairing_serializes_as_the_two_halves_and_reads_back_checked() {
     );
 
     // The marker is a compile-time fact, so a datatype it refuses never loads.
-    let text = br#"{"data_type":{"type":"utf8"},"value":{"type":"string","value":"seven"}}"#;
+    let text = br#"{"dtype":{"type":"utf8"},"value":{"type":"string","value":"seven"}}"#;
     assert!(serde_json::from_slice::<TypedScalar>(text).is_ok());
     assert!(serde_json::from_slice::<Int64Scalar>(text).is_err());
 }

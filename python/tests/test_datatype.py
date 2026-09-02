@@ -12,7 +12,7 @@ import pytest
 from yggdryl import DataType, Field
 
 
-def test_data_type_infers_native_string_and_arrow_values() -> None:
+def test_dtype_infers_native_string_and_arrow_values() -> None:
     expected = DataType("int64")
 
     assert DataType(expected) == expected
@@ -22,25 +22,25 @@ def test_data_type_infers_native_string_and_arrow_values() -> None:
     assert expected.into_arrow() == pa.int64()
 
 
-def test_data_type_builds_and_casts_exact_arrow_scalars() -> None:
-    data_type = DataType("int8")
+def test_dtype_builds_and_casts_exact_arrow_scalars() -> None:
+    dtype = DataType("int8")
     exact = pa.scalar(7, type=pa.int8())
 
-    assert data_type.arrow_scalar(exact) is exact
-    assert data_type.arrow_scalar(7).equals(exact)
-    assert data_type.arrow_scalar(None).equals(pa.scalar(None, type=pa.int8()))
-    assert data_type.arrow_scalar(pa.scalar(7, type=pa.int64())).equals(exact)
+    assert dtype.arrow_scalar(exact) is exact
+    assert dtype.arrow_scalar(7).equals(exact)
+    assert dtype.arrow_scalar(None).equals(pa.scalar(None, type=pa.int8()))
+    assert dtype.arrow_scalar(pa.scalar(7, type=pa.int64())).equals(exact)
 
     with pytest.raises((pa.ArrowInvalid, OverflowError)):
-        data_type.arrow_scalar(130)
-    assert data_type.arrow_scalar(130, safe=False).as_py() == -126
-    assert data_type.arrow_scalar("7", safe=False).equals(exact)
+        dtype.arrow_scalar(130)
+    assert dtype.arrow_scalar(130, safe=False).as_py() == -126
+    assert dtype.arrow_scalar("7", safe=False).equals(exact)
 
     with pytest.raises(TypeError):
-        data_type.arrow_scalar(7, False)  # type: ignore[misc]
+        dtype.arrow_scalar(7, False)  # type: ignore[misc]
 
 
-def test_data_type_arrow_scalar_handles_nested_dictionary_map_and_run_end() -> None:
+def test_dtype_arrow_scalar_handles_nested_dictionary_map_and_run_end() -> None:
     nested = DataType.from_arrow(
         pa.struct([pa.field("items", pa.list_(pa.int8()), nullable=False)])
     )
@@ -64,7 +64,7 @@ def test_data_type_arrow_scalar_handles_nested_dictionary_map_and_run_end() -> N
     assert run_end_scalar.as_py() == 42
 
 
-def test_data_type_infers_python_types_without_stringifying_objects() -> None:
+def test_dtype_infers_python_types_without_stringifying_objects() -> None:
     assert DataType(str) == DataType("utf8")
     assert DataType(bool) == DataType("bool")
     assert DataType(int) == DataType("int64")
@@ -128,7 +128,7 @@ def test_time_infers_storage_width_from_native_unit_aliases() -> None:
         DataType.time(1)  # type: ignore[arg-type]
 
 
-def test_data_type_string_json_order_hash_and_pickle_protocols() -> None:
+def test_dtype_string_json_order_hash_and_pickle_protocols() -> None:
     value = DataType.from_arrow(pa.decimal128(18, 4))
 
     assert DataType.from_str(str(value)) == value
@@ -141,7 +141,7 @@ def test_data_type_string_json_order_hash_and_pickle_protocols() -> None:
     assert DataType("int32") < DataType("int64") or DataType("int64") < DataType("int32")
 
 
-def test_data_type_is_a_read_only_nested_field_collection() -> None:
+def test_dtype_is_a_read_only_nested_field_collection() -> None:
     arrow_type = pa.struct(
         [
             pa.field("symbol", pa.string(), nullable=False),
@@ -154,7 +154,7 @@ def test_data_type_is_a_read_only_nested_field_collection() -> None:
     assert [field.name for field in value] == ["symbol", "levels"]
     assert value[0].name == "symbol"
     assert value[-1].name == "levels"
-    assert value["levels"].data_type.into_arrow() == pa.list_(pa.float64())
+    assert value["levels"].dtype.into_arrow() == pa.list_(pa.float64())
     assert 0 in value
     assert "symbol" in value
     assert value["symbol"] in value
@@ -164,7 +164,7 @@ def test_data_type_is_a_read_only_nested_field_collection() -> None:
         _ = value["missing"]
 
 
-def test_data_type_from_fields_builds_exact_native_struct() -> None:
+def test_dtype_from_fields_builds_exact_native_struct() -> None:
     fields = (
         Field("small", DataType("uint8"), nullable=False, metadata={"unit": "items"}),
         Field("wide", DataType.decimal(39, 4), nullable=True),
@@ -205,7 +205,7 @@ def test_data_type_from_fields_builds_exact_native_struct() -> None:
         DataType.from_fields([fields[0], fields[0]])
 
 
-def test_data_type_variant_assigns_dense_type_ids_in_member_order() -> None:
+def test_dtype_variant_assigns_dense_type_ids_in_member_order() -> None:
     members = (
         Field(
             "count",
@@ -288,7 +288,7 @@ def test_geometry_and_geography_fill_and_display_their_defaults() -> None:
         DataType.geography("OGC:CRS84", "euclidean")
 
 
-def test_data_type_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> None:
+def test_dtype_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> None:
     sorted_map = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
     arrow_type = pa.struct(
         [

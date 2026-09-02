@@ -23,15 +23,15 @@ fn canonical_field_preserves_unicode_quotes_commas_and_metadata() {
 fn parser_accepts_sql_hive_and_arrow_shapes() {
     let sql = Field::from_str("order_id BIGINT NOT NULL").unwrap();
     assert_eq!(sql.name(), "order_id");
-    assert_eq!(sql.data_type(), &DataType::Int64);
+    assert_eq!(sql.dtype(), &DataType::Int64);
     assert!(!sql.is_nullable());
 
     let hive = Field::from_str("events:array<struct<id:bigint,name:string>>").unwrap();
     assert!(hive.is_nullable());
-    assert_eq!(hive.data_type().field_len(), 1);
+    assert_eq!(hive.dtype().field_len(), 1);
 
     let arrow = Field::from_str(
-        r#"Field { name: "id", data_type: Int64, nullable: false, metadata: {"source":"arrow"} }"#,
+        r#"Field { name: "id", dtype: Int64, nullable: false, metadata: {"source":"arrow"} }"#,
     )
     .unwrap();
     assert_eq!(
@@ -44,16 +44,16 @@ fn parser_accepts_sql_hive_and_arrow_shapes() {
 fn parser_accepts_flexible_sql_whitespace_and_doubled_quotes() {
     let spaced = Field::from_str("trade_id\tBIGINT \n NOT \t NULL").unwrap();
     assert_eq!(spaced.name(), "trade_id");
-    assert_eq!(spaced.data_type(), &DataType::Int64);
+    assert_eq!(spaced.dtype(), &DataType::Int64);
     assert!(!spaced.is_nullable());
 
     let single_quoted = Field::from_str("'owner''s code'   VARCHAR(32)").unwrap();
     assert_eq!(single_quoted.name(), "owner's code");
-    assert_eq!(single_quoted.data_type(), &DataType::Utf8);
+    assert_eq!(single_quoted.dtype(), &DataType::Utf8);
 
     let double_quoted = Field::from_str(r#""desk""label" STRING"#).unwrap();
     assert_eq!(double_quoted.name(), "desk\"label");
-    assert_eq!(double_quoted.data_type(), &DataType::Utf8);
+    assert_eq!(double_quoted.dtype(), &DataType::Utf8);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn native_order_hash_json_and_stable_hash_are_value_based() {
 }
 
 #[test]
-fn structural_json_uses_tagged_data_types_and_rejects_bad_shapes() {
+fn structural_json_uses_tagged_dtypes_and_rejects_bad_shapes() {
     let field = Field::new(
         "payload",
         DataType::from_str("struct<id:bigint,tags:array<string>>").unwrap(),
@@ -125,17 +125,17 @@ fn structural_json_uses_tagged_data_types_and_rejects_bad_shapes() {
     let field_json = field.into_json().unwrap();
     let field_value: serde_json::Value = serde_json::from_str(&field_json).unwrap();
     assert!(field_value.is_object());
-    assert_eq!(field_value["data_type"]["type"], "struct");
+    assert_eq!(field_value["dtype"]["type"], "struct");
 
     assert!(
         Field::from_json(
-            r#"{"name":"id","data_type":{"type":"int64"},"nullable":false,"unknown":true}"#,
+            r#"{"name":"id","dtype":{"type":"int64"},"nullable":false,"unknown":true}"#,
         )
         .is_err()
     );
     assert!(
         Field::from_json(
-            r#"{"name":"id","data_type":{"type":"int64"},"nullable":false,"dictionary_id":7}"#,
+            r#"{"name":"id","dtype":{"type":"int64"},"nullable":false,"dictionary_id":7}"#,
         )
         .is_err()
     );
@@ -252,14 +252,14 @@ fn no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it() {
 }
 
 #[test]
-fn invalid_data_type_replacement_is_transactional() {
+fn invalid_dtype_replacement_is_transactional() {
     let mut field = Field::new("value", DataType::Utf8, true);
     assert!(
         field
-            .set_data_type(DataType::Time32(TimeUnit::Nanosecond))
+            .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
             .is_err()
     );
-    assert_eq!(field.data_type(), &DataType::Utf8);
+    assert_eq!(field.dtype(), &DataType::Utf8);
 }
 
 #[test]
@@ -293,14 +293,21 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     let location = Url::from_str("HTTPS://example.com/warehouse/table").unwrap();
     let mut field = Field::new("trade", DataType::Utf8, false);
     field.set_alias("latest_trade").unwrap();
-    field.set_catalog_name("analytics").unwrap();
-    field.set_schema_name("public").unwrap();
-    field.set_table_name("trades").unwrap();
+    field.set_comment("the latest trade").unwrap();
+    // Catalog coordinates belong to whichever protocol names them, not to
+    // straight metadata.
+    field
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("table_name", "trades")
+        .unwrap();
     field.set_location(location.clone());
     assert_eq!(field.alias(), Some("latest_trade"));
-    assert_eq!(field.catalog_name(), Some("analytics"));
-    assert_eq!(field.schema_name(), Some("public"));
-    assert_eq!(field.table_name(), Some("trades"));
+    assert_eq!(field.comment(), Some("the latest trade"));
+    assert_eq!(
+        field.get_property(&Scheme::ICEBERG, "table_name"),
+        Some("trades")
+    );
+    assert_eq!(field.get_metadata("table_name"), None);
     assert_eq!(field.location().unwrap(), Some(location.clone()));
     assert_eq!(
         field.get_metadata("location"),
@@ -358,9 +365,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     ));
 
     assert_eq!(field.remove_alias().as_deref(), Some("latest_trade"));
-    assert_eq!(field.remove_catalog_name().as_deref(), Some("analytics"));
-    assert_eq!(field.remove_schema_name().as_deref(), Some("public"));
-    assert_eq!(field.remove_table_name().as_deref(), Some("trades"));
+    assert_eq!(field.remove_comment().as_deref(), Some("the latest trade"));
     assert!(field.remove_location().unwrap().is_some());
 }
 
@@ -783,7 +788,7 @@ fn reserved_metadata_is_transactional_and_arbitrary_arrow_keys_are_preserved() {
     .unwrap();
     let snapshot = field.clone();
     assert!(field.set_alias("").is_err());
-    assert!(field.set_table_name("bad\nname").is_err());
+    assert!(field.set_comment("bad\nname").is_err());
     assert!(field.set_property(&Scheme::POSTGRES, "", "value").is_err());
     assert!(
         field
@@ -963,7 +968,7 @@ fn the_init_flag_rejects_a_non_boolean_spelling() {
 
 #[test]
 fn datatype_builds_fields_in_schema_reading_order() {
-    let id = DataType::Int64.field("id", false);
+    let id = DataType::Int64.named_field("id", false);
     assert_eq!(id, Field::new("id", DataType::Int64, false));
 
     assert_eq!(
@@ -977,7 +982,7 @@ fn datatype_builds_fields_in_schema_reading_order() {
 
     // A nested type composes without naming the inner type twice.
     let tags = DataType::list(DataType::Utf8.nullable_field("item")).nullable_field("tags");
-    assert!(tags.data_type().is_nested());
+    assert!(tags.dtype().is_nested());
     assert_eq!(tags.name(), "tags");
 }
 
@@ -999,7 +1004,7 @@ fn a_struct_field_is_usable_as_a_schema_root() {
     assert_eq!(root.index_of("symbol"), Some(1));
     assert_eq!(root.index_of("absent"), None);
     assert_eq!(root.get_field(0).unwrap().name(), "id");
-    assert_eq!(root.get_field_by_name("symbol").unwrap().name(), "symbol");
+    assert_eq!(root.get_field_by_path("symbol").unwrap().name(), "symbol");
 }
 
 #[test]
@@ -1164,8 +1169,8 @@ fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
             .collect::<Vec<_>>(),
         ["venue", "year"]
     );
-    assert!(schema.get_field_by_name("year").unwrap().is_partition());
-    assert!(!schema.get_field_by_name("price").unwrap().is_partition());
+    assert!(schema.get_field_by_path("year").unwrap().is_partition());
+    assert!(!schema.get_field_by_path("price").unwrap().is_partition());
 
     // The two halves of the layout: what a path spells, and what a leaf stores.
     let stored = schema.without_partition_fields().unwrap();
@@ -1187,7 +1192,7 @@ fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
     assert_eq!(restored.partition_field_len(), 2);
     assert_eq!(
         schema
-            .get_field_by_name("year")
+            .get_field_by_path("year")
             .unwrap()
             .get_metadata("field:partition"),
         Some("true")
@@ -1269,7 +1274,7 @@ fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
     // schema never renumbers the columns that were already there.
     let mut evolved = schema
         .clone()
-        .try_with_data_type(
+        .try_with_dtype(
             DataType::from_fields(
                 schema
                     .fields()
@@ -1361,25 +1366,22 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     order.insert_metadata("owner", "trading").unwrap();
 
     // By name and by position, on the Field and on the DataType alike.
-    assert_eq!(order["id"].data_type(), &DataType::Int64);
+    assert_eq!(order["id"].dtype(), &DataType::Int64);
     assert_eq!(order[0].name(), "id");
-    assert_eq!(order.data_type()["id"].data_type(), &DataType::Int64);
-    assert_eq!(order.data_type()[1].name(), "line");
+    assert_eq!(order.dtype()["id"].dtype(), &DataType::Int64);
+    assert_eq!(order.dtype()[1].name(), "line");
 
     // Chained descent, two levels and through a List and a Map.
-    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+    assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
     assert_eq!(order["tags"][0].name(), "tag");
-    assert_eq!(
-        order["counts"]["entries"]["key"].data_type(),
-        &DataType::Utf8
-    );
-    assert_eq!(order["counts"][0]["value"].data_type(), &DataType::Int64);
+    assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::Utf8);
+    assert_eq!(order["counts"][0]["value"].dtype(), &DataType::Int64);
 
     // Metadata is not reachable by subscript any more, and is still reachable
     // through its own view and the named accessor.
     assert_eq!(order.get_metadata("owner"), Some("trading"));
     assert_eq!(order.as_metadata().get("owner"), Some("trading"));
-    assert!(order.get_field_by_name("owner").is_none());
+    assert!(order.get_field_by_path("owner").is_none());
 }
 
 #[test]
@@ -1416,14 +1418,14 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     .required_field("row");
 
     // A known name replaces in place, keeping its position.
-    row.set_field_by_name("id", DataType::Utf8.required_field("id"))
+    row.set_field_by_path("id", DataType::Utf8.required_field("id"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
-    assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    assert_eq!(row["id"].dtype(), &DataType::Utf8);
 
     // An unknown name appends.
-    row.set_field_by_name("price", DataType::Float64.nullable_field("price"))
+    row.set_field_by_path("price", DataType::Float64.nullable_field("price"))
         .unwrap();
     assert_eq!(row.field_len(), 3);
     assert_eq!(row[2].name(), "price");
@@ -1432,7 +1434,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     row.set_field(1, DataType::Int32.required_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 3);
-    assert_eq!(row["venue"].data_type(), &DataType::Int32);
+    assert_eq!(row["venue"].dtype(), &DataType::Int32);
     let refused = row
         .set_field(9, DataType::Int64.required_field("late"))
         .unwrap_err();
@@ -1440,7 +1442,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     assert_eq!(row.field_len(), 3, "a refusal leaves the field unchanged");
 
     // Removal closes the gap, by either key form.
-    let dropped = row.remove_field_by_name("id").unwrap();
+    let dropped = row.remove_field_by_path("id").unwrap();
     assert_eq!(dropped.name(), "id");
     assert_eq!(row[0].name(), "venue");
     row.remove_field(0).unwrap();
@@ -1450,7 +1452,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     // A non-struct has no children to replace, and says so.
     let mut scalar = DataType::Int64.required_field("id");
     let refused = scalar
-        .set_field_by_name("child", DataType::Int64.required_field("child"))
+        .set_field_by_path("child", DataType::Int64.required_field("child"))
         .unwrap_err();
     assert!(refused.to_string().contains("struct field"), "{refused}");
 }
@@ -1464,7 +1466,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
     assert!(before.data_type().to_string().contains("id"));
     assert!(!before.data_type().to_string().contains("venue"));
 
-    row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))
         .unwrap();
 
     // The projection is rebuilt from the mutated field, never served stale.
@@ -1474,4 +1476,91 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
         "{}",
         after.data_type()
     );
+}
+
+#[test]
+fn metadata_merges_as_a_union_the_receiver_wins() {
+    let held = Metadata::from_entries([("owner", "held"), ("only_held", "1")]).unwrap();
+    let other = Metadata::from_entries([("owner", "other"), ("only_other", "2")]).unwrap();
+
+    let merged = held.merge_with(&other).unwrap();
+
+    // Every key arrives, and the receiver wins the one they disagree on.
+    assert_eq!(merged.get("owner"), Some("held"));
+    assert_eq!(merged.get("only_held"), Some("1"));
+    assert_eq!(merged.get("only_other"), Some("2"));
+
+    // The direction is the whole rule, so the other way round differs.
+    assert_eq!(other.merge_with(&held).unwrap().get("owner"), Some("other"));
+
+    // Merging with itself changes nothing.
+    assert_eq!(held.merge_with(&held).unwrap(), held);
+}
+
+#[test]
+fn a_protocol_view_merges_under_its_own_namespace() {
+    let mut held = DataType::Int64.required_field("price");
+    held.protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "held")
+        .unwrap();
+
+    let mut other = DataType::Int64.required_field("price");
+    other
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "other")
+        .unwrap();
+    other
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("id", "7")
+        .unwrap();
+
+    let merged = held.iceberg().merge_with(&other.iceberg()).unwrap();
+    assert_eq!(merged.get("iceberg:doc"), Some("held"));
+    assert_eq!(merged.get("iceberg:id"), Some("7"));
+
+    // Both views contribute bare names, and the result is keyed under the
+    // receiver's protocol, so merging across two namespaces still answers one.
+    let mut glue = DataType::Int64.required_field("price");
+    glue.protocol_mut(&Scheme::GLUE)
+        .insert("comment", "from glue")
+        .unwrap();
+
+    let crossed = held.iceberg().merge_with(&glue.glue()).unwrap();
+    assert_eq!(crossed.get("iceberg:comment"), Some("from glue"));
+    assert!(crossed.get("glue:comment").is_none());
+}
+
+#[test]
+fn a_mutable_protocol_view_merges_in_place_and_only_adds() {
+    let mut source = DataType::Int64.required_field("price");
+    source
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "source")
+        .unwrap();
+    source
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("id", "7")
+        .unwrap();
+
+    let mut target = DataType::Int64.required_field("price");
+    target
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "target")
+        .unwrap();
+    target
+        .protocol_mut(&Scheme::GLUE)
+        .insert("comment", "glue")
+        .unwrap();
+
+    target
+        .protocol_mut(&Scheme::ICEBERG)
+        .merge_with(&source.iceberg())
+        .unwrap();
+
+    // A name already held keeps its value; a new one arrives.
+    assert_eq!(target.get_property(&Scheme::ICEBERG, "doc"), Some("target"));
+    assert_eq!(target.get_property(&Scheme::ICEBERG, "id"), Some("7"));
+
+    // A scoped merge leaves every other protocol alone.
+    assert_eq!(target.get_property(&Scheme::GLUE, "comment"), Some("glue"));
 }

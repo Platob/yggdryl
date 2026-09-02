@@ -2125,7 +2125,7 @@ fn line_record_options(
             .set_capture_types(
                 line_capture_types(types)?
                     .into_iter()
-                    .map(|(name, data_type)| (name.into(), data_type))
+                    .map(|(name, dtype)| (name.into(), dtype))
                     .collect(),
             )
             .map_err(value_error)?;
@@ -2164,7 +2164,7 @@ fn line_capture_types(types: &Bound<'_, PyAny>) -> PyResult<Vec<(String, yggdryl
         .try_iter()?
         .map(|item| {
             let (name, value) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
-            Ok((name, crate::datatype::core_data_type_from_value(&value)?))
+            Ok((name, crate::datatype::core_dtype_from_value(&value)?))
         })
         .collect()
 }

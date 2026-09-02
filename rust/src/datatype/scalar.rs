@@ -93,7 +93,7 @@ impl DataType {
     pub fn is_nested(&self) -> bool {
         match self {
             Self::Dictionary(dictionary) => dictionary.value.is_nested(),
-            Self::RunEndEncoded(run_end) => run_end.values.data_type().is_nested(),
+            Self::RunEndEncoded(run_end) => run_end.values.dtype().is_nested(),
             other => other.id().is_nested(),
         }
     }
@@ -108,27 +108,28 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let id = DataType::Int64.field("id", false);
-    /// let tags = DataType::list(DataType::Utf8.field("item", true)).field("tags", true);
+    /// let id = DataType::Int64.named_field("id", false);
+    /// let tags = DataType::list(DataType::Utf8.named_field("item", true))
+    ///     .named_field("tags", true);
     ///
     /// assert_eq!(id.name(), "id");
     /// assert!(!id.is_nullable());
-    /// assert!(tags.data_type().is_nested());
+    /// assert!(tags.dtype().is_nested());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn field(self, name: impl Into<SmolStr>, nullable: bool) -> Field {
+    pub fn named_field(self, name: impl Into<SmolStr>, nullable: bool) -> Field {
         Field::new(name, self, nullable)
     }
 
     /// Builds a nullable [`Field`] of this datatype.
     pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field {
-        self.field(name, true)
+        self.named_field(name, true)
     }
 
     /// Builds a non-null [`Field`] of this datatype.
     pub fn required_field(self, name: impl Into<SmolStr>) -> Field {
-        self.field(name, false)
+        self.named_field(name, false)
     }
 
     /// Creates a fixed-size binary type after validating its width.
@@ -200,7 +201,7 @@ impl DataType {
 
 impl Ord for DataType {
     fn cmp(&self, other: &Self) -> Ordering {
-        let rank = data_type_rank(self).cmp(&data_type_rank(other));
+        let rank = dtype_rank(self).cmp(&dtype_rank(other));
         if rank != Ordering::Equal {
             return rank;
         }
@@ -285,7 +286,7 @@ impl PartialOrd for DataType {
     }
 }
 
-fn data_type_rank(value: &DataType) -> u8 {
+fn dtype_rank(value: &DataType) -> u8 {
     match value {
         DataType::Null => 0,
         DataType::Boolean => 1,

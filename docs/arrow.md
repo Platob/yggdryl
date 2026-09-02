@@ -590,7 +590,7 @@ is already the declared shape rather than rebuilding arrays it would hand back u
     const right = BatchReader.from(tableFromArrays({ id: BigInt64Array.from([2n]) }))
 
     const joined = left.combined(right)
-    assert.equal(joined.field.dataType.length, 1)
+    assert.equal(joined.field.dtype.length, 1)
     assert.equal(joined.intoTable().numRows, 2)
     ```
 

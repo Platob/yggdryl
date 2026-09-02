@@ -15,12 +15,12 @@ fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &
 
 #[test]
 fn borrowed_and_consuming_arrow_datatype_paths_are_lossless() {
-    let data_type =
+    let dtype =
         DataType::from_str("struct<id:bigint,values:map<string,array<decimal(38,18)>>>").unwrap();
-    let borrowed = data_type.clone().into_arrow().unwrap();
-    assert_eq!(DataType::from_arrow(&borrowed).unwrap(), data_type);
-    let owned = data_type.clone().into_arrow().unwrap();
-    assert_eq!(DataType::try_from(owned).unwrap(), data_type);
+    let borrowed = dtype.clone().into_arrow().unwrap();
+    assert_eq!(DataType::from_arrow(&borrowed).unwrap(), dtype);
+    let owned = dtype.clone().into_arrow().unwrap();
+    assert_eq!(DataType::try_from(owned).unwrap(), dtype);
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn direct_arrow_values_round_trip_through_core() {
     assert_eq!(core.clone().into_arrow().unwrap(), arrow);
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
-        core.get_field_by_name("name").unwrap().data_type(),
+        core.get_field_by_path("name").unwrap().dtype(),
         &DataType::Utf8
     );
 }

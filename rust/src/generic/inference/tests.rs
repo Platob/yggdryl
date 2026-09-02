@@ -7,13 +7,13 @@ mod scalars {
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
-        assert_eq!(Scalar::from(1_i64).data_type().unwrap(), DataType::Int64);
-        assert_eq!(Scalar::from(1_u64).data_type().unwrap(), DataType::UInt64);
+        assert_eq!(Scalar::from(1_i64).dtype().unwrap(), DataType::Int64);
+        assert_eq!(Scalar::from(1_u64).dtype().unwrap(), DataType::UInt64);
 
         // The whole point of keeping unsigned unsigned: the top of the range
         // has no signed column to fall into.
         assert_eq!(
-            Scalar::U64(u64::MAX).data_type().unwrap(),
+            Scalar::U64(u64::MAX).dtype().unwrap(),
             DataType::UInt64,
             "a full-range u64 must not be described as an int64"
         );
@@ -23,109 +23,104 @@ mod scalars {
     fn a_wide_integer_becomes_the_exact_decimal_that_holds_it() {
         // Arrow has no 128-bit integer; an exact decimal at scale zero is one.
         assert_eq!(
-            Scalar::I128(i128::MAX).data_type().unwrap(),
+            Scalar::I128(i128::MAX).dtype().unwrap(),
             DataType::decimal(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::U128(u128::MAX).data_type().unwrap(),
+            Scalar::U128(u128::MAX).dtype().unwrap(),
             DataType::decimal(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::I128(-1_000).data_type().unwrap(),
+            Scalar::I128(-1_000).dtype().unwrap(),
             DataType::decimal(4, 0).unwrap()
         );
     }
 
     #[test]
     fn each_float_keeps_its_real_width() {
-        assert_eq!(
-            Scalar::from(1.5_f64).data_type().unwrap(),
-            DataType::Float64
-        );
+        assert_eq!(Scalar::from(1.5_f64).dtype().unwrap(), DataType::Float64);
 
         for value in [0.1_f32, f32::MIN_POSITIVE, f32::MAX, -0.0_f32] {
             let recorded = Scalar::from(value);
-            assert_eq!(recorded.data_type().unwrap(), DataType::Float32);
+            assert_eq!(recorded.dtype().unwrap(), DataType::Float32);
             assert_eq!(recorded.as_f32().map(f32::to_bits), Some(value.to_bits()));
         }
 
         let half = half::f16::from_f32(1.5);
         let recorded = Scalar::from(half);
-        assert_eq!(recorded.data_type().unwrap(), DataType::Float16);
+        assert_eq!(recorded.dtype().unwrap(), DataType::Float16);
         assert_eq!(recorded.as_f16(), Some(half));
     }
 
     #[test]
     fn a_decimal_names_the_precision_its_digits_need() {
         assert_eq!(
-            Scalar::d128(1_050, 2).data_type().unwrap(),
+            Scalar::d128(1_050, 2).dtype().unwrap(),
             DataType::decimal128(4, 2).unwrap()
         );
         // A coefficient smaller than its scale is still `0.00…`, which needs
         // precision enough to hold the scale.
         assert_eq!(
-            Scalar::d128(5, 3).data_type().unwrap(),
+            Scalar::d128(5, 3).dtype().unwrap(),
             DataType::decimal128(3, 3).unwrap()
         );
         // Thirty-nine digits are past Decimal128 and land on Decimal256.
         assert_eq!(
-            Scalar::d256(I256::from_i128(i128::MIN), 0)
-                .data_type()
-                .unwrap(),
+            Scalar::d256(I256::from_i128(i128::MIN), 0).dtype().unwrap(),
             DataType::decimal256(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::d128(0, 0).data_type().unwrap(),
+            Scalar::d128(0, 0).dtype().unwrap(),
             DataType::decimal128(1, 0).unwrap()
         );
     }
 
     #[test]
     fn text_and_bytes_name_their_own_columns() {
-        assert_eq!(Scalar::from("AAPL").data_type().unwrap(), DataType::Utf8);
+        assert_eq!(Scalar::from("AAPL").dtype().unwrap(), DataType::Utf8);
         assert_eq!(
-            Scalar::from(b"\x00\xff".as_slice()).data_type().unwrap(),
+            Scalar::from(b"\x00\xff".as_slice()).dtype().unwrap(),
             DataType::Binary
         );
-        assert_eq!(Scalar::Null.data_type().unwrap(), DataType::Null);
-        assert_eq!(Scalar::from(true).data_type().unwrap(), DataType::Boolean);
+        assert_eq!(Scalar::Null.dtype().unwrap(), DataType::Null);
+        assert_eq!(Scalar::from(true).dtype().unwrap(), DataType::Boolean);
     }
 
     #[test]
     fn a_temporal_names_its_unit_and_its_zone() {
-        assert_eq!(Scalar::date32(0).data_type().unwrap(), DataType::Date32);
+        assert_eq!(Scalar::date32(0).dtype().unwrap(), DataType::Date32);
         assert_eq!(
             Scalar::time64(0, TimeUnit::Microsecond, Timezone::NAIVE)
                 .unwrap()
-                .data_type()
+                .dtype()
                 .unwrap(),
             DataType::Time64(TimeUnit::Microsecond)
         );
         assert_eq!(
             Scalar::time32(0, TimeUnit::Second, Timezone::NAIVE)
                 .unwrap()
-                .data_type()
+                .dtype()
                 .unwrap(),
             DataType::Time32(TimeUnit::Second)
         );
         assert_eq!(
             Scalar::duration32(0, TimeUnit::Nanosecond)
                 .unwrap()
-                .data_type()
+                .dtype()
                 .unwrap(),
             DataType::Duration32(TimeUnit::Nanosecond)
         );
         assert_eq!(
             Scalar::duration64(0, TimeUnit::Nanosecond)
                 .unwrap()
-                .data_type()
+                .dtype()
                 .unwrap(),
             DataType::Duration64(TimeUnit::Nanosecond)
         );
         assert_eq!(
             Scalar::datetime64_in(0, TimeUnit::Microsecond, "Asia/Calcutta")
                 .unwrap()
-                .data_type()
+                .dtype()
                 .unwrap(),
             DataType::Timestamp(
                 TimeUnit::Microsecond,
@@ -142,20 +137,20 @@ mod containers {
     fn a_sequence_names_the_list_of_what_its_children_agree_on() {
         let prices = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
         assert_eq!(
-            prices.data_type().unwrap(),
+            prices.dtype().unwrap(),
             DataType::list(Field::new("item", DataType::Int64, false))
         );
 
         // A null child agrees with anything and makes the item nullable.
         let sparse = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]);
         assert_eq!(
-            sparse.data_type().unwrap(),
+            sparse.dtype().unwrap(),
             DataType::list(Field::new("item", DataType::Utf8, true))
         );
 
         // Nothing but nulls names the null column, which is a real Arrow type.
         assert_eq!(
-            Scalar::from_sequence([]).data_type().unwrap(),
+            Scalar::from_sequence([]).dtype().unwrap(),
             DataType::list(Field::new("item", DataType::Null, true))
         );
     }
@@ -169,7 +164,7 @@ mod containers {
         .unwrap();
 
         assert_eq!(
-            quote.data_type().unwrap(),
+            quote.dtype().unwrap(),
             DataType::map_of(DataType::Utf8, DataType::Utf8, false).unwrap()
         );
     }
@@ -181,15 +176,15 @@ mod containers {
             Scalar::from_record([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
                 .unwrap(),
         ]);
-        let data_type = rows.data_type().unwrap();
-        let DataType::List(item) = data_type else {
+        let dtype = rows.dtype().unwrap();
+        let DataType::List(item) = dtype else {
             panic!("expected a list")
         };
-        let fields = item.data_type().as_fields().expect("record fields");
+        let fields = item.dtype().as_fields().expect("record fields");
         assert_eq!(fields[0].name(), "id");
         assert!(!fields[0].is_nullable());
         assert_eq!(fields[1].name(), "venue");
-        assert_eq!(fields[1].data_type(), &DataType::Utf8);
+        assert_eq!(fields[1].dtype(), &DataType::Utf8);
         assert!(fields[1].is_nullable());
     }
 }
@@ -201,7 +196,7 @@ mod fields {
     fn shape_specific_fields_have_one_cross_language_name() {
         let scalar = Scalar::from(7_i64).inferred_scalar_field().unwrap();
         assert_eq!(scalar.name(), "value");
-        assert_eq!(scalar.data_type(), &DataType::Int64);
+        assert_eq!(scalar.dtype(), &DataType::Int64);
 
         let array = Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null])
             .inferred_array_field()
@@ -217,7 +212,7 @@ mod fields {
         let root = rows.inferred_struct_field().unwrap();
         assert_eq!(root.name(), "row");
         assert!(!root.is_nullable());
-        assert!(root.get_field_by_name("venue").unwrap().is_nullable());
+        assert!(root.get_field_by_path("venue").unwrap().is_nullable());
     }
 
     #[test]
@@ -250,12 +245,27 @@ mod refusals {
 
     #[test]
     fn children_that_disagree_are_an_error_and_not_a_guess() {
-        let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(1.5)]);
-        let message = mixed.data_type().unwrap_err().to_string();
+        // A number beside a string names no datatype without deciding that
+        // both are text, which is a claim about the data rather than about
+        // the types, so inference refuses it.
+        let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
+        let message = mixed.dtype().unwrap_err().to_string();
 
         assert!(message.contains("one datatype"), "{message}");
         assert!(message.contains("int64"), "{message}");
-        assert!(message.contains("float64"), "{message}");
+        assert!(message.contains("utf8"), "{message}");
+    }
+
+    #[test]
+    fn two_numbers_meet_at_the_one_that_holds_both() {
+        // Widening inside a family loses nothing, so it is a fact about the
+        // types and not a guess: every whole number here is exactly a float.
+        let widened = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(1.5)]);
+
+        assert_eq!(
+            widened.dtype().unwrap(),
+            crate::DataType::list(crate::Field::new("item", crate::DataType::Float64, false)),
+        );
     }
 
     #[test]
@@ -278,7 +288,7 @@ mod refusals {
             Scalar::Time32(1, TimeUnit::Second, Timezone::UTC),
             Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC),
         ] {
-            let message = value.data_type().unwrap_err().to_string();
+            let message = value.dtype().unwrap_err().to_string();
             assert!(message.contains("timezone"), "{message}");
         }
     }
@@ -289,7 +299,7 @@ mod refusals {
         for _ in 0..200 {
             nested = Scalar::from_sequence([nested]);
         }
-        let message = nested.data_type().unwrap_err().to_string();
+        let message = nested.dtype().unwrap_err().to_string();
         assert!(message.contains("hard limit of 64"), "{message}");
     }
 }

@@ -67,33 +67,29 @@ fn all_variants() -> Vec<DataType> {
 
 #[test]
 fn every_datatype_variant_has_a_bounded_valid_default() {
-    for data_type in all_variants() {
-        let value = data_type
+    for dtype in all_variants() {
+        let value = dtype
             .default_value()
-            .unwrap_or_else(|error| panic!("{} default failed: {error}", data_type.kind()));
+            .unwrap_or_else(|error| panic!("{} default failed: {error}", dtype.kind()));
         assert!(
-            data_type
+            dtype
                 .is_default_value(&value)
-                .unwrap_or_else(|error| panic!(
-                    "{} default match failed: {error}",
-                    data_type.kind()
-                )),
+                .unwrap_or_else(|error| panic!("{} default match failed: {error}", dtype.kind())),
             "{} did not recognize its canonical default",
-            data_type.kind()
+            dtype.kind()
         );
-        let nullable = matches!(data_type, DataType::Null);
-        let field = Field::new("value", data_type.clone(), nullable);
+        let nullable = matches!(dtype, DataType::Null);
+        let field = Field::new("value", dtype.clone(), nullable);
         assert_eq!(
             field.default_value().unwrap_or_else(|error| {
-                panic!("{} Field default failed: {error}", data_type.kind())
+                panic!("{} Field default failed: {error}", dtype.kind())
             }),
             value
         );
         let root = Field::new("Root", DataType::from_fields([field]).unwrap(), false);
         let row = Scalar::from_sequence([value]);
-        root.validate_value(&row).unwrap_or_else(|error| {
-            panic!("{} default did not validate: {error}", data_type.kind())
-        });
+        root.validate_value(&row)
+            .unwrap_or_else(|error| panic!("{} default did not validate: {error}", dtype.kind()));
     }
 }
 

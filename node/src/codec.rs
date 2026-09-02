@@ -444,9 +444,9 @@ impl JsScalar {
 
     /// Infer the exact native datatype this value names.
     #[napi(getter)]
-    pub fn data_type(&self) -> Result<JsDataType> {
+    pub fn dtype(&self) -> Result<JsDataType> {
         self.inner
-            .data_type()
+            .dtype()
             .map(JsDataType::from_core)
             .map_err(napi_error)
     }
@@ -2477,7 +2477,7 @@ pub(crate) fn value_to_transport_with_field(
     if value.is_null() {
         return value_to_transport(value, depth, max_depth);
     }
-    match field.data_type() {
+    match field.dtype() {
         CoreDataType::Struct(fields) => {
             struct_transport_with_field(value, fields, depth, max_depth)
         }

@@ -235,7 +235,7 @@ fn create_table_derives_the_spec_and_numbers_an_unnumbered_schema() {
     let schema = table.schema().unwrap();
     assert_eq!(
         schema
-            .get_field_by_name("id")
+            .get_field_by_path("id")
             .unwrap()
             .parquet_field_id()
             .unwrap(),
@@ -243,7 +243,7 @@ fn create_table_derives_the_spec_and_numbers_an_unnumbered_schema() {
     );
     assert_eq!(
         schema
-            .get_field_by_name("venue")
+            .get_field_by_path("venue")
             .unwrap()
             .parquet_field_id()
             .unwrap(),
@@ -274,7 +274,7 @@ fn append_creates_on_first_write_and_appends_on_the_second() {
     assert_eq!(schema.name(), "row");
     assert_eq!(
         schema
-            .get_field_by_name("id")
+            .get_field_by_path("id")
             .unwrap()
             .parquet_field_id()
             .unwrap(),

@@ -50,7 +50,7 @@ impl DataType {
     /// cannot materialize the datatype.
     #[cfg(feature = "arrow")]
     pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-        crate::arrow::default_data_type_scalar_array(self)
+        crate::arrow::default_dtype_scalar_array(self)
     }
 
     /// Imports an Arrow datatype and validates every nested invariant.
@@ -255,7 +255,7 @@ impl DataType {
     /// Arrow 59's generic Field-to-C-schema conversion overwrites those flags
     /// when adding field flags, so Yggdryl owns the corrected recursive path.
     pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
-        native_data_type_to_ffi(&self)
+        native_dtype_to_ffi(&self)
     }
 
     /// Consumes this value and returns its Arrow representation.
@@ -655,8 +655,8 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
 /// Child field metadata does not participate - it is transport, not
 /// identity - but the order is fixed because Arrow's own struct casting is
 /// positional and would silently relabel swapped children.
-pub(crate) fn is_variant_storage(data_type: &ArrowDataType) -> bool {
-    let ArrowDataType::Struct(fields) = data_type else {
+pub(crate) fn is_variant_storage(dtype: &ArrowDataType) -> bool {
+    let ArrowDataType::Struct(fields) = dtype else {
         return false;
     };
     fields.len() == 2
@@ -668,11 +668,11 @@ pub(crate) fn is_variant_storage(data_type: &ArrowDataType) -> bool {
 }
 
 /// Builds a C Data Interface schema without losing nested datatype flags.
-pub(crate) fn arrow_data_type_to_ffi(
-    data_type: &ArrowDataType,
+pub(crate) fn arrow_dtype_to_ffi(
+    dtype: &ArrowDataType,
 ) -> std::result::Result<FFI_ArrowSchema, arrow_schema::ArrowError> {
-    let template = FFI_ArrowSchema::try_from(data_type)?;
-    let children = match data_type {
+    let template = FFI_ArrowSchema::try_from(dtype)?;
+    let children = match dtype {
         ArrowDataType::List(field)
         | ArrowDataType::ListView(field)
         | ArrowDataType::FixedSizeList(field, _)
@@ -692,16 +692,16 @@ pub(crate) fn arrow_data_type_to_ffi(
         }
         _ => Vec::new(),
     };
-    let dictionary = match data_type {
-        ArrowDataType::Dictionary(_, value) => Some(arrow_data_type_to_ffi(value)?),
+    let dictionary = match dtype {
+        ArrowDataType::Dictionary(_, value) => Some(arrow_dtype_to_ffi(value)?),
         _ => None,
     };
     let flags = template.flags().unwrap_or_else(Flags::empty);
     FFI_ArrowSchema::try_new(template.format(), children, dictionary)?.with_flags(flags)
 }
 
-fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
-    let (format, children, dictionary, flags) = match data_type {
+fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
+    let (format, children, dictionary, flags) = match dtype {
         DataType::List(field) => (
             "+l".to_owned(),
             vec![field.as_ref().clone().into_arrow_ffi()?],
@@ -802,12 +802,12 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
         // carries the two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
         // merges the same entries with the field's own metadata.
         DataType::Variant | DataType::Geometry(_) | DataType::Geography(_) => {
-            let arrow = data_type.clone().into_arrow()?;
+            let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
-            let Some((name, metadata)) = super::arrow_extension_parts(data_type) else {
+            let Some((name, metadata)) = super::arrow_extension_parts(dtype) else {
                 return Err(invalid(
                     "ArrowExtension",
-                    format_smolstr!("expected an extension projection for {data_type}, got none"),
+                    format_smolstr!("expected an extension projection for {dtype}, got none"),
                 ));
             };
             return schema
@@ -821,7 +821,7 @@ fn native_data_type_to_ffi(data_type: &DataType) -> Result<FFI_ArrowSchema> {
                 .map_err(Error::from);
         }
         _ => {
-            let arrow = data_type.clone().into_arrow()?;
+            let arrow = dtype.clone().into_arrow()?;
             return FFI_ArrowSchema::try_from(&arrow).map_err(Error::from);
         }
     };

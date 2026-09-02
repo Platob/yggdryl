@@ -16,8 +16,8 @@ import {
 
 const id: Int32Field = fields.int32('id', { nullable: false })
 // `kind` is the coarse family a variant belongs to; `id` is the variant itself.
-const idKind: 'integer' = id.dataType.kind
-const idId: 'int32' = id.dataType.id
+const idKind: 'integer' = id.dtype.kind
+const idId: 'int32' = id.dtype.id
 // The exported aliases describe non-null fields, so a factory call that wants
 // one has to say so now that the factories default to nullable.
 const ids: ListField<number> = fields.list('ids', id, { nullable: false })
@@ -38,9 +38,9 @@ const longDuration: Duration64Field = fields.duration64('long', 'us', {
   nullable: false,
 })
 const payload: VariantField = fields.variant('payload', { nullable: false })
-const payloadId: 'variant' = payload.dataType.id
+const payloadId: 'variant' = payload.dtype.id
 const shape: GeometryField = fields.geometry('shape', { nullable: false })
-const shapeKind: 'geospatial' = shape.dataType.kind
+const shapeKind: 'geospatial' = shape.dtype.kind
 const projectedShape: GeometryField = fields.geometry('shape', 'EPSG:3857', {
   nullable: false,
 })

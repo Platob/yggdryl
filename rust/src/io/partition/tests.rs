@@ -920,7 +920,7 @@ mod lake {
         // The tree is laid out by year and month; the schema says venue. One
         // write cannot mean both, so it says so instead of choosing.
         let field = schema()
-            .try_with_data_type(
+            .try_with_dtype(
                 DataType::from_fields([
                     DataType::Int64.required_field("price"),
                     DataType::Int32.required_field("year"),

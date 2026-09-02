@@ -1340,7 +1340,7 @@ mod records {
             )
             .unwrap();
         let replaced = handle.read_arrow_field(&external).unwrap();
-        assert_eq!(replaced.data_type(), loose.data_type());
+        assert_eq!(replaced.dtype(), loose.dtype());
         assert_ne!(replaced, schema());
 
         session
@@ -3824,7 +3824,7 @@ mod applying {
     fn the_row_target_answers_through_the_same_trait() {
         // The trait is also how the built-in targets are reached: one row
         // applies to the value the expression computes.
-        let schema = DataType::from_fields([DataType::Int64.field("i", true)])
+        let schema = DataType::from_fields([DataType::Int64.named_field("i", true)])
             .unwrap()
             .required_field("row");
         let bound = "i + 1"

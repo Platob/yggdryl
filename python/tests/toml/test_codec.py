@@ -97,7 +97,7 @@ def test_values_lower_to_their_canonical_native_shape() -> None:
         "path": "nested/file.arrow",
         "datatype": {
             "field": {
-                "data_type": {"type": "int64"},
+                "dtype": {"type": "int64"},
                 "metadata": {},
                 "name": "item",
                 "nullable": True,
@@ -105,7 +105,7 @@ def test_values_lower_to_their_canonical_native_shape() -> None:
             "type": "list",
         },
         "field": {
-            "data_type": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "dtype": {"precision": 18, "scale": 4, "type": "decimal128"},
             "metadata": {},
             "name": "price",
             "nullable": False,

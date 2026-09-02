@@ -109,18 +109,18 @@ class TestNativeHandleLayers:
         handle.open()
         assert handle.opened
         first = handle.read_arrow_field()
-        assert [child.name for child in first.data_type] == ["id"]
+        assert [child.name for child in first.dtype] == ["id"]
         assert handle.row_size == 2
 
         # Replace the resource outside this handle. Repeated metadata reads in
         # the opened scope stay on the retained native media cache.
         IOBase.from_arrow_fs(filesystem, location).write_bytes(replacement.read_bytes())
-        assert [child.name for child in handle.read_arrow_field().data_type] == ["id"]
+        assert [child.name for child in handle.read_arrow_field().dtype] == ["id"]
         assert handle.row_size == 2
 
         handle.close()
         assert handle.closed
-        assert [child.name for child in handle.read_arrow_field().data_type] == [
+        assert [child.name for child in handle.read_arrow_field().dtype] == [
             "id",
             "symbol",
         ]
@@ -601,15 +601,15 @@ class TestReadArrowLines:
         pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<thread_id>\d+)\]"
         schema = field_from_pattern(pattern, custom_fields={"venue": "XNAS"})
         assert schema.name == "row"
-        assert str(schema.data_type["thread_id"].data_type) == "int64"
-        assert str(schema.data_type["venue"].data_type) == "utf8"
+        assert str(schema.dtype["thread_id"].dtype) == "int64"
+        assert str(schema.dtype["venue"].dtype) == "utf8"
 
         # The reader emits exactly the built schema, resource or none.
         reader = IOBase(tmp_path / "missing.log").read_arrow_lines(
             pattern, custom_fields={"venue": "XNAS"}
         )
         assert [field.name for field in reader.schema] == [
-            child.name for child in schema.data_type
+            child.name for child in schema.dtype
         ]
 
     def test_an_in_memory_handle_parses_like_a_file(self) -> None:

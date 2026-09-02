@@ -300,7 +300,7 @@ use yggdryl::{Expression, Field};
 let mut schema: Field = "trades:struct<year:int32,price:decimal(9,2)>".parse()?;
 let mut children = schema.fields().to_vec();
 children[0].set_partition(true);
-schema.set_data_type(yggdryl::DataType::from_fields(children)?)?;
+schema.set_dtype(yggdryl::DataType::from_fields(children)?)?;
 
 let bound = "year = 2024 and price > 100".parse::<Expression>()?.bind(&schema)?;
 let residual = bound.partition_split();

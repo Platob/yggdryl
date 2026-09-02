@@ -56,15 +56,15 @@ impl Expression {
     /// Returns the same error [`Self::field`] would.
     pub fn is_predicate(&self, schema: &Field) -> Result<bool> {
         Ok(matches!(
-            self.field(schema)?.data_type(),
+            self.field(schema)?.dtype(),
             DataType::Boolean | DataType::Null
         ))
     }
 }
 
 /// Name one output field after the text that produced it.
-fn named(expression: &Expression, data_type: DataType, nullable: bool) -> Field {
-    Field::new(SmolStr::new(expression.to_string()), data_type, nullable)
+fn named(expression: &Expression, dtype: DataType, nullable: bool) -> Field {
+    Field::new(SmolStr::new(expression.to_string()), dtype, nullable)
 }
 
 fn typing_error(reason: impl Into<SmolStr>) -> Error {
@@ -79,11 +79,11 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
     match expression {
         Expression::Literal(held) => Ok(named(
             expression,
-            held.data_type().clone(),
+            held.dtype().clone(),
             held.value().is_null(),
         )),
         Expression::Column(name) => schema
-            .get_field_by_name(name)
+            .get_field_by_path(name)
             .cloned()
             .ok_or_else(|| unknown_column(name, schema)),
         Expression::Path(base, steps) => {
@@ -117,12 +117,12 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
         Expression::Compare(left, comparison, right) => {
             let left = resolve(left, schema)?;
             let right = resolve(right, schema)?;
-            common_type(left.data_type(), right.data_type()).ok_or_else(|| {
+            common_type(left.dtype(), right.dtype()).ok_or_else(|| {
                 typing_error(format_smolstr!(
                     "expected comparable operands, got {} {} {}",
-                    left.data_type(),
+                    left.dtype(),
                     comparison.as_str(),
-                    right.data_type()
+                    right.dtype()
                 ))
             })?;
             // The two distinctness tests answer about nulls, so they are the
@@ -136,11 +136,11 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             let mut nullable = value.is_nullable();
             for item in list.iter() {
                 let item = resolve(item, schema)?;
-                common_type(value.data_type(), item.data_type()).ok_or_else(|| {
+                common_type(value.dtype(), item.dtype()).ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected every `in` value to be comparable with {}, got {}",
-                        value.data_type(),
-                        item.data_type()
+                        value.dtype(),
+                        item.dtype()
                     ))
                 })?;
                 nullable |= item.is_nullable();
@@ -152,11 +152,11 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             let low = resolve(low, schema)?;
             let high = resolve(high, schema)?;
             for bound in [&low, &high] {
-                common_type(value.data_type(), bound.data_type()).ok_or_else(|| {
+                common_type(value.dtype(), bound.dtype()).ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected `between` bounds comparable with {}, got {}",
-                        value.data_type(),
-                        bound.data_type()
+                        value.dtype(),
+                        bound.dtype()
                     ))
                 })?;
             }
@@ -174,10 +174,10 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             let value = resolve(value, schema)?;
             let pattern = resolve(pattern, schema)?;
             for side in [&value, &pattern] {
-                if !is_text(side.data_type()) {
+                if !is_text(side.dtype()) {
                     return Err(typing_error(format_smolstr!(
                         "expected text on both sides of a pattern match, got {}",
-                        side.data_type()
+                        side.dtype()
                     )));
                 }
             }
@@ -190,42 +190,42 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
         Expression::Arithmetic(left, operator, right) => {
             let left = resolve(left, schema)?;
             let right = resolve(right, schema)?;
-            let data_type = arithmetic_type(left.data_type(), *operator, right.data_type())
-                .ok_or_else(|| {
+            let dtype =
+                arithmetic_type(left.dtype(), *operator, right.dtype()).ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected arithmetic operands that share a type, got {} {} {}",
-                        left.data_type(),
+                        left.dtype(),
                         operator.as_str(),
-                        right.data_type()
+                        right.dtype()
                     ))
                 })?;
             // Arithmetic propagates operand nulls. Overflow, division by zero,
             // and inexact decimal division are errors rather than nulls.
             let nullable = left.is_nullable() || right.is_nullable();
-            Ok(named(expression, data_type, nullable))
+            Ok(named(expression, dtype, nullable))
         }
         Expression::Negate(inner) => {
             let field = resolve(inner, schema)?;
-            if !is_signed_numeric(field.data_type()) {
+            if !is_signed_numeric(field.dtype()) {
                 return Err(typing_error(format_smolstr!(
                     "expected a signed number to negate, got {}",
-                    field.data_type()
+                    field.dtype()
                 )));
             }
             Ok(named(
                 expression,
-                field.data_type().clone(),
+                field.dtype().clone(),
                 field.is_nullable(),
             ))
         }
         Expression::Function(function, arguments) => {
             function_field(expression, *function, arguments, schema)
         }
-        Expression::Cast(inner, data_type, safety) => {
+        Expression::Cast(inner, dtype, safety) => {
             let field = resolve(inner, schema)?;
             Ok(named(
                 expression,
-                data_type.clone(),
+                dtype.clone(),
                 field.is_nullable() || matches!(safety, Safety::Safe),
             ))
         }
@@ -240,12 +240,12 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 require_boolean(&when, expression)?;
                 let then = resolve(then, schema)?;
                 nullable |= then.is_nullable();
-                unified = Some(unify(unified.as_ref(), then.data_type(), expression)?);
+                unified = Some(unify(unified.as_ref(), then.dtype(), expression)?);
             }
             if let Some(otherwise) = otherwise {
                 let otherwise = resolve(otherwise, schema)?;
                 nullable |= otherwise.is_nullable();
-                unified = Some(unify(unified.as_ref(), otherwise.data_type(), expression)?);
+                unified = Some(unify(unified.as_ref(), otherwise.dtype(), expression)?);
             }
             Ok(named(
                 expression,
@@ -266,7 +266,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             for item in items.iter() {
                 let item = resolve(item, schema)?;
                 nullable |= item.is_nullable();
-                unified = Some(unify(unified.as_ref(), item.data_type(), expression)?);
+                unified = Some(unify(unified.as_ref(), item.dtype(), expression)?);
             }
             let item = Field::new("item", unified.unwrap_or(DataType::Null), nullable);
             Ok(named(expression, DataType::list(item), false))
@@ -279,8 +279,8 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 let key = resolve(key, schema)?;
                 let value = resolve(value, schema)?;
                 nullable |= value.is_nullable();
-                keys = Some(unify(keys.as_ref(), key.data_type(), expression)?);
-                values = Some(unify(values.as_ref(), value.data_type(), expression)?);
+                keys = Some(unify(keys.as_ref(), key.dtype(), expression)?);
+                values = Some(unify(values.as_ref(), value.dtype(), expression)?);
             }
             let key = Field::new("key", keys.unwrap_or(DataType::Utf8), false);
             let value = Field::new("value", values.unwrap_or(DataType::Null), nullable);
@@ -312,12 +312,12 @@ pub(crate) fn unknown_column(name: &str, schema: &Field) -> Error {
 }
 
 fn require_boolean(field: &Field, expression: &Expression) -> Result<()> {
-    if matches!(field.data_type(), DataType::Boolean | DataType::Null) {
+    if matches!(field.dtype(), DataType::Boolean | DataType::Null) {
         return Ok(());
     }
     Err(typing_error(format_smolstr!(
         "expected a boolean operand in {expression}, got {}",
-        field.data_type()
+        field.dtype()
     )))
 }
 
@@ -335,9 +335,9 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Expression) -> R
 
 /// Step one path segment through a field's datatype.
 pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
-    let data_type = unwrap_dictionary(field.data_type());
+    let dtype = unwrap_dictionary(field.dtype());
     match segment {
-        Segment::Field(name) => match data_type {
+        Segment::Field(name) => match dtype {
             DataType::Struct(fields) => fields
                 .as_fields()
                 .iter()
@@ -350,7 +350,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 .ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected a child of {}, got {name:?}",
-                        field.data_type()
+                        field.dtype()
                     ))
                 }),
             DataType::Map(map) => Ok(map_value_field(map)?.with_nullable(true)),
@@ -358,7 +358,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 "expected a struct or a map to reach .{name} through, got {other}"
             ))),
         },
-        Segment::Index(_) => match data_type {
+        Segment::Index(_) => match dtype {
             DataType::List(item)
             | DataType::ListView(item)
             | DataType::FixedSizeList(item, _)
@@ -368,14 +368,14 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 "expected a list to index into, got {other}"
             ))),
         },
-        Segment::Key(key) => match data_type {
+        Segment::Key(key) => match dtype {
             DataType::Map(map) => {
                 let keys = map_key_field(map)?;
-                common_type(keys.data_type(), key.data_type()).ok_or_else(|| {
+                common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
                     typing_error(format_smolstr!(
                         "expected a key comparable with {}, got {}",
-                        keys.data_type(),
-                        key.data_type()
+                        keys.dtype(),
+                        key.dtype()
                     ))
                 })?;
                 Ok(map_value_field(map)?.with_nullable(true))
@@ -384,7 +384,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 let Some(name) = key.value().as_str() else {
                     return Err(typing_error(format_smolstr!(
                         "expected a text key to reach a struct child, got {}",
-                        key.data_type()
+                        key.dtype()
                     )));
                 };
                 fields
@@ -396,7 +396,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                     .ok_or_else(|| {
                         typing_error(format_smolstr!(
                             "expected a child of {}, got {name:?}",
-                            field.data_type()
+                            field.dtype()
                         ))
                     })
             }
@@ -425,26 +425,26 @@ fn map_value_field(map: &crate::MapType) -> Result<Field> {
 ///
 /// A dictionary is a physical encoding, not a logical type: `city = 'Oslo'`
 /// means the same thing whether or not the column is dictionary-encoded.
-pub(crate) fn unwrap_dictionary(data_type: &DataType) -> &DataType {
-    match data_type {
+pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
+    match dtype {
         DataType::Dictionary(dictionary) => unwrap_dictionary(dictionary.value()),
-        DataType::RunEndEncoded(encoded) => unwrap_dictionary(encoded.values().data_type()),
+        DataType::RunEndEncoded(encoded) => unwrap_dictionary(encoded.values().dtype()),
         other => other,
     }
 }
 
 /// Return whether a datatype holds text.
-pub(crate) fn is_text(data_type: &DataType) -> bool {
+pub(crate) fn is_text(dtype: &DataType) -> bool {
     matches!(
-        unwrap_dictionary(data_type),
+        unwrap_dictionary(dtype),
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Null
     )
 }
 
 /// Return whether a datatype holds bytes.
-pub(crate) fn is_binary(data_type: &DataType) -> bool {
+pub(crate) fn is_binary(dtype: &DataType) -> bool {
     matches!(
-        unwrap_dictionary(data_type),
+        unwrap_dictionary(dtype),
         DataType::Binary
             | DataType::LargeBinary
             | DataType::BinaryView
@@ -453,9 +453,9 @@ pub(crate) fn is_binary(data_type: &DataType) -> bool {
 }
 
 /// Return whether a datatype holds a whole number.
-pub(crate) fn is_integer(data_type: &DataType) -> bool {
+pub(crate) fn is_integer(dtype: &DataType) -> bool {
     matches!(
-        unwrap_dictionary(data_type),
+        unwrap_dictionary(dtype),
         DataType::Int8
             | DataType::Int16
             | DataType::Int32
@@ -468,16 +468,16 @@ pub(crate) fn is_integer(data_type: &DataType) -> bool {
 }
 
 /// Return whether a datatype holds an approximate number.
-pub(crate) fn is_float(data_type: &DataType) -> bool {
+pub(crate) fn is_float(dtype: &DataType) -> bool {
     matches!(
-        unwrap_dictionary(data_type),
+        unwrap_dictionary(dtype),
         DataType::Float16 | DataType::Float32 | DataType::Float64
     )
 }
 
 /// The precision and scale of an exact decimal, if it is one.
-pub(crate) const fn decimal_parts(data_type: &DataType) -> Option<(u8, i8)> {
-    match data_type {
+pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
+    match dtype {
         DataType::Decimal32 { precision, scale }
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale }
@@ -487,9 +487,9 @@ pub(crate) const fn decimal_parts(data_type: &DataType) -> Option<(u8, i8)> {
 }
 
 /// Return whether a datatype can be negated without changing its type.
-fn is_signed_numeric(data_type: &DataType) -> bool {
+fn is_signed_numeric(dtype: &DataType) -> bool {
     matches!(
-        unwrap_dictionary(data_type),
+        unwrap_dictionary(dtype),
         DataType::Int8
             | DataType::Int16
             | DataType::Int32
@@ -497,16 +497,16 @@ fn is_signed_numeric(data_type: &DataType) -> bool {
             | DataType::Float16
             | DataType::Float32
             | DataType::Float64
-    ) || decimal_parts(unwrap_dictionary(data_type)).is_some()
+    ) || decimal_parts(unwrap_dictionary(dtype)).is_some()
         || matches!(
-            unwrap_dictionary(data_type),
+            unwrap_dictionary(dtype),
             DataType::Duration32(_) | DataType::Duration64(_)
         )
 }
 
 /// The temporal family and unit of a datatype, if it has one.
-pub(crate) const fn temporal_parts(data_type: &DataType) -> Option<(u8, TimeUnit)> {
-    match data_type {
+pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
+    match dtype {
         DataType::Date32 => Some((0, TimeUnit::Day)),
         DataType::Date64 => Some((0, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
@@ -530,107 +530,13 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 
 /// The type two operands share, or `None` when they share none.
 ///
-/// This is the whole promotion table, and it is deliberately short.
-#[allow(clippy::too_many_lines)]
+/// The whole promotion table is [`DataType::merge_with`]; this is the one
+/// caller that wants an `Option` rather than a refusal naming both sides,
+/// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
-    let left = unwrap_dictionary(left);
-    let right = unwrap_dictionary(right);
-    if left == right {
-        return Some(left.clone());
-    }
-    // A null literal is comparable with anything: `x = null` is unknown, not
-    // a type error, and refusing it here would make three-valued logic
-    // unspellable.
-    if matches!(left, DataType::Null) {
-        return Some(right.clone());
-    }
-    if matches!(right, DataType::Null) {
-        return Some(left.clone());
-    }
-    if is_text(left) && is_text(right) {
-        return Some(DataType::Utf8);
-    }
-    if is_binary(left) && is_binary(right) {
-        return Some(DataType::Binary);
-    }
-    if matches!(left, DataType::Boolean) || matches!(right, DataType::Boolean) {
-        return None;
-    }
-    let left_decimal = decimal_parts(left);
-    let right_decimal = decimal_parts(right);
-    if left_decimal.is_some() || right_decimal.is_some() {
-        // An exact number and an approximate one have no honest meeting point.
-        if is_float(left) || is_float(right) {
-            return None;
-        }
-        let (left_precision, left_scale) = left_decimal.unwrap_or((DECIMAL_LIMIT, 0));
-        let (right_precision, right_scale) = right_decimal.unwrap_or((DECIMAL_LIMIT, 0));
-        // Only a decimal and a whole number meet at a decimal; anything else
-        // paired with one has no exact common type.
-        if left_decimal.is_none() && !is_integer(left) {
-            return None;
-        }
-        if right_decimal.is_none() && !is_integer(right) {
-            return None;
-        }
-        let scale = left_scale.max(right_scale);
-        let integral = left_precision
-            .saturating_sub(u8::try_from(left_scale.max(0)).unwrap_or(0))
-            .max(right_precision.saturating_sub(u8::try_from(right_scale.max(0)).unwrap_or(0)));
-        let precision = integral
-            .saturating_add(u8::try_from(scale.max(0)).unwrap_or(0))
-            .min(DECIMAL_LIMIT);
-        return DataType::decimal128(precision.max(1), scale).ok();
-    }
-    if is_float(left) && (is_float(right) || is_integer(right)) {
-        return Some(DataType::Float64);
-    }
-    if is_float(right) && is_integer(left) {
-        return Some(DataType::Float64);
-    }
-    if is_integer(left) && is_integer(right) {
-        return Some(DataType::Int64);
-    }
-    match (temporal_parts(left), temporal_parts(right)) {
-        (Some((left_family, left_unit)), Some((right_family, right_unit)))
-            if left_family == right_family =>
-        {
-            let unit = if unit_rank(left_unit) >= unit_rank(right_unit) {
-                left_unit
-            } else {
-                right_unit
-            };
-            Some(match left_family {
-                // Two dates meet at the wider of the two spellings.
-                0 => {
-                    if matches!(left, DataType::Date64) || matches!(right, DataType::Date64) {
-                        DataType::Date64
-                    } else {
-                        DataType::Date32
-                    }
-                }
-                1 => DataType::time(unit).ok()?,
-                2 => {
-                    let zone = match (left, right) {
-                        (DataType::Timestamp(_, Some(zone)), _)
-                        | (_, DataType::Timestamp(_, Some(zone))) => Some(zone.clone()),
-                        _ => None,
-                    };
-                    DataType::Timestamp(unit, zone)
-                }
-                _ => {
-                    if matches!(left, DataType::Duration64(_))
-                        || matches!(right, DataType::Duration64(_))
-                    {
-                        DataType::duration64(unit).ok()?
-                    } else {
-                        DataType::duration32(unit).ok()?
-                    }
-                }
-            })
-        }
-        _ => None,
-    }
+    unwrap_dictionary(left)
+        .merge_exact(unwrap_dictionary(right), crate::datatype::Widening::Up)
+        .ok()
 }
 
 /// The type an arithmetic node produces, or `None` when it has none.
@@ -735,12 +641,12 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
 /// A whole number is an exact number of scale zero, and its precision is the
 /// digits its width can actually hold - which is what keeps `int32 + decimal`
 /// from claiming the 38 digits a decimal could have had.
-fn exact_parts(data_type: &DataType) -> Option<(u8, i8)> {
-    let data_type = unwrap_dictionary(data_type);
-    if let Some(parts) = decimal_parts(data_type) {
+fn exact_parts(dtype: &DataType) -> Option<(u8, i8)> {
+    let dtype = unwrap_dictionary(dtype);
+    if let Some(parts) = decimal_parts(dtype) {
         return Some(parts);
     }
-    Some(match data_type {
+    Some(match dtype {
         DataType::Int8 | DataType::UInt8 => (3, 0),
         DataType::Int16 | DataType::UInt16 => (5, 0),
         DataType::Int32 | DataType::UInt32 => (10, 0),
@@ -773,10 +679,10 @@ fn function_field(
     let nullable = fields.iter().any(Field::is_nullable);
     let first = fields
         .first()
-        .map(Field::data_type)
+        .map(Field::dtype)
         .cloned()
         .unwrap_or(DataType::Null);
-    let data_type = match function {
+    let dtype = match function {
         Function::Lower | Function::Upper | Function::Trim | Function::Substring => {
             if !is_text(&first) {
                 return Err(typing_error(format_smolstr!(
@@ -788,10 +694,10 @@ fn function_field(
         }
         Function::Concat => {
             for field in &fields {
-                if !is_text(field.data_type()) {
+                if !is_text(field.dtype()) {
                     return Err(typing_error(format_smolstr!(
                         "expected text for concat, got {}",
-                        field.data_type()
+                        field.dtype()
                     )));
                 }
             }
@@ -807,11 +713,11 @@ fn function_field(
         }
         Function::StartsWith | Function::EndsWith | Function::Contains => {
             for field in &fields {
-                if !is_text(field.data_type()) {
+                if !is_text(field.dtype()) {
                     return Err(typing_error(format_smolstr!(
                         "expected text for {}, got {}",
                         function.as_str(),
-                        field.data_type()
+                        field.dtype()
                     )));
                 }
             }
@@ -830,7 +736,7 @@ fn function_field(
         Function::Coalesce | Function::IfNull => {
             let mut unified: Option<DataType> = None;
             for field in &fields {
-                unified = Some(unify(unified.as_ref(), field.data_type(), expression)?);
+                unified = Some(unify(unified.as_ref(), field.dtype(), expression)?);
             }
             unified.unwrap_or(DataType::Null)
         }
@@ -854,10 +760,10 @@ fn function_field(
             let key = fields
                 .get(1)
                 .ok_or_else(|| typing_error("expected a key for get"))?;
-            let segment = match key.data_type() {
-                data_type if is_integer(data_type) => Segment::Index(0),
+            let segment = match key.dtype() {
+                dtype if is_integer(dtype) => Segment::Index(0),
                 _ => Segment::Key(
-                    crate::TypedScalar::from_parts(key.data_type().clone(), Scalar::Null)
+                    crate::TypedScalar::from_parts(key.dtype().clone(), Scalar::Null)
                         .map_err(|error| typing_error(format_smolstr!("{error}")))?,
                 ),
             };
@@ -873,5 +779,5 @@ fn function_field(
         Function::Coalesce | Function::IfNull => fields.last().is_none_or(Field::is_nullable),
         _ => nullable,
     };
-    Ok(named(expression, data_type, nullable))
+    Ok(named(expression, dtype, nullable))
 }

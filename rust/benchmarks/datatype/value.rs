@@ -116,7 +116,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(enum_member).ordinal());
     });
     group.bench_function("infer_record_datatype", |bencher| {
-        bencher.iter(|| black_box(&record).data_type().unwrap());
+        bencher.iter(|| black_box(&record).dtype().unwrap());
     });
     group.bench_function("infer_scalar_field", |bencher| {
         bencher.iter(|| {

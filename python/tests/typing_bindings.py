@@ -117,9 +117,7 @@ table_hash: None = iceberg.Table.__hash__
 schema_update_hash: None = iceberg.SchemaUpdate.__hash__
 
 field.set_alias("payload")
-field.set_catalog_name("analytics")
-field.set_schema_name("public")
-field.set_table_name("events")
+field.set_comment("the latest trade")
 field.set_location(file_url)
 field.set_property("postgres", "type", "text")
 field.set_accept("application/json")
@@ -142,23 +140,23 @@ field.set_last_modified("Sat, 15 Aug 2026 00:00:00 GMT")
 field.set_http_location(file_url)
 field.set_range("bytes=0-9")
 field.set_vary("accept-encoding")
-data_type_scalar: pa.Scalar = DataType("int32").arrow_scalar(1)
+dtype_scalar: pa.Scalar = DataType("int32").arrow_scalar(1)
 field_scalar: pa.Scalar = field.arrow_scalar("payload")
-default_data_type_scalar: pa.Scalar = DataType("int32").default_arrow_scalar()
+default_dtype_scalar: pa.Scalar = DataType("int32").default_arrow_scalar()
 default_field_scalar: pa.Scalar = field.default_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
-cast_data_type_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
+cast_dtype_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
 cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(source_array)
 source_batch = pa.record_batch([source_array], names=["value"])
-cast_data_type_batch: pa.RecordBatch = DataType.from_fields(
+cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
     [Field("value", "int64")]
 ).cast_arrow_batch(source_batch)
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
-default_data_type_value: object = DataType("int32").default_pyvalue()
+default_dtype_value: object = DataType("int32").default_pyvalue()
 default_field_value: object = field.default_pyvalue()
-default_data_type_hint: object = DataType("int32").default_pyhint()
+default_dtype_hint: object = DataType("int32").default_pyhint()
 default_field_hint: object = field.default_pyhint()
 arrow_compatible: DataType = DataType("uint32").into_scheme_compat("arrow")
 spark_compatible: Field = field.into_scheme_compat("spark")
@@ -166,11 +164,11 @@ polars_compatible: Field = field.into_scheme_compat("polars")
 pandas_compatible: Field = field.into_scheme_compat("pandas")
 iceberg_compatible: Field = field.into_scheme_compat("iceberg")
 typed_id: Int32Field = fields.int32("id", nullable=False)
-typed_id_kind: Literal["int32"] = typed_id.data_type.id
+typed_id_kind: Literal["int32"] = typed_id.dtype.id
 typed_id_value: int | None = typed_id.default_pyvalue()
-typed_id_data_type_value: int = typed_id.data_type.default_pyvalue()
+typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
 typed_id_hint: object = typed_id.default_pyhint()
-typed_id_data_type_hint: object = typed_id.data_type.default_pyhint()
+typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
 typed_clock: TimeField = fields.time("clock", "microseconds", nullable=False)
 typed_ids: ListField[int] = fields.list("ids", typed_id)
 nullable_item: Int32Field = fields.int32("item")
@@ -178,8 +176,8 @@ typed_fixed: FixedSizeListField[int] = fields.fixed_size_list(
     "fixed", nullable_item, 2, nullable=False
 )
 typed_fixed_value: list[int | None] | None = typed_fixed.default_pyvalue()
-typed_fixed_data_type_value: list[int | None] = (
-    typed_fixed.data_type.default_pyvalue()
+typed_fixed_dtype_value: list[int | None] = (
+    typed_fixed.dtype.default_pyvalue()
 )
 typed_struct = fields.struct("row", [typed_id], nullable=False)
 typed_struct_value: object | Mapping[str, object] | None = (
@@ -231,8 +229,8 @@ range_text: str = byte_handle.read_range(0, 6, cls=str)
 byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
-typed_struct_data_type_value: object | Mapping[str, object] = (
-    typed_struct.data_type.default_pyvalue()
+typed_struct_dtype_value: object | Mapping[str, object] = (
+    typed_struct.dtype.default_pyvalue()
 )
 native_instant = Scalar.datetime(0, "us", "UTC")
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
@@ -248,7 +246,7 @@ decimal_scale: int | None = native_decimal.scale
 enum_kind: str | None = native_enum.enum_kind
 enum_value: str | None = native_enum.enum_value
 enum_ordinal: int | None = native_enum.enum_ordinal
-dense_union_data_type: DataType = DataType.variant(
+dense_union_dtype: DataType = DataType.variant(
     [
         fields.int64("integer", nullable=False),
         fields.utf8("text", nullable=False),
@@ -256,24 +254,24 @@ dense_union_data_type: DataType = DataType.variant(
 )
 typed_dense_union: DenseUnionField = fields.dense_union(
     "payload",
-    tuple(dense_union_data_type),
+    tuple(dense_union_dtype),
     nullable=False,
 )
-typed_dense_union_kind: Literal["union"] = typed_dense_union.data_type.id
+typed_dense_union_kind: Literal["union"] = typed_dense_union.dtype.id
 typed_dense_union_value: object = typed_dense_union.default_pyvalue()
 
 # The parenthesis disambiguates: a bare DataType.variant() is the Variant
 # datatype, and the three geospatial-era factories carry their own literals.
-bare_variant_data_type: DataType = DataType.variant()
+bare_variant_dtype: DataType = DataType.variant()
 typed_variant: VariantField = fields.variant("payload", nullable=False)
-typed_variant_kind: Literal["variant"] = typed_variant.data_type.id
-geometry_data_type: DataType = DataType.geometry("EPSG:3857")
+typed_variant_kind: Literal["variant"] = typed_variant.dtype.id
+geometry_dtype: DataType = DataType.geometry("EPSG:3857")
 typed_geometry: GeometryField = fields.geometry("shape", nullable=False)
-typed_geometry_kind: Literal["geometry"] = typed_geometry.data_type.id
-typed_geometry_value: bytes = typed_geometry.data_type.default_pyvalue()
-geography_data_type: DataType = DataType.geography("OGC:CRS84", "karney")
+typed_geometry_kind: Literal["geometry"] = typed_geometry.dtype.id
+typed_geometry_value: bytes = typed_geometry.dtype.default_pyvalue()
+geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
 typed_geography: GeographyField = fields.geography("region", "OGC:CRS84", "vincenty")
-typed_geography_kind: Literal["geography"] = typed_geography.data_type.id
+typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 
 byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
@@ -293,10 +291,10 @@ field_default_cannot_be_assumed_present: int = (
     nullable_item.default_pyvalue()  # type: ignore[assignment]
 )
 fixed_children_cannot_be_assumed_present: list[int] = (
-    typed_fixed.data_type.default_pyvalue()  # type: ignore[assignment]
+    typed_fixed.dtype.default_pyvalue()  # type: ignore[assignment]
 )
 struct_default_is_not_always_a_mapping: Mapping[str, object] = (
-    typed_struct.data_type.default_pyvalue()  # type: ignore[assignment]
+    typed_struct.dtype.default_pyvalue()  # type: ignore[assignment]
 )
 dynamic_default_needs_narrowing: int = (
     DataType("int32").default_pyvalue()  # type: ignore[assignment]
@@ -405,13 +403,13 @@ assert partition_present
 assert partition_only
 assert partition_rest
 assert partition_marked
-assert data_type_scalar
+assert dtype_scalar
 assert field_scalar
-assert default_data_type_scalar
+assert default_dtype_scalar
 assert default_field_scalar
-assert default_data_type_value == 0
+assert default_dtype_value == 0
 assert default_field_value == ""
-assert default_data_type_hint
+assert default_dtype_hint
 assert default_field_hint
 assert arrow_compatible
 assert spark_compatible

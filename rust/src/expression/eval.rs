@@ -139,7 +139,7 @@ impl Node {
                 let left_value = left.eval(row)?;
                 let right_value = right.eval(row)?;
                 Ok(compare(
-                    left.field.data_type(),
+                    left.field.dtype(),
                     &left_value,
                     *comparison,
                     &right_value,
@@ -153,8 +153,7 @@ impl Node {
                 let mut unknown = false;
                 for item in list {
                     let item_value = item.eval(row)?;
-                    match compare(value.field.data_type(), &held, Comparison::Eq, &item_value)
-                        .as_bool()
+                    match compare(value.field.dtype(), &held, Comparison::Eq, &item_value).as_bool()
                     {
                         Some(true) => return Ok(Scalar::Bool(true)),
                         Some(false) => {}
@@ -168,10 +167,10 @@ impl Node {
                 })
             }
             Kind::Between(value, low, high) => {
-                let data_type = value.field.data_type();
+                let dtype = value.field.dtype();
                 let held = value.eval(row)?;
-                let above = compare(data_type, &held, Comparison::GtEq, &low.eval(row)?);
-                let below = compare(data_type, &held, Comparison::LtEq, &high.eval(row)?);
+                let above = compare(dtype, &held, Comparison::GtEq, &low.eval(row)?);
+                let below = compare(dtype, &held, Comparison::LtEq, &high.eval(row)?);
                 Ok(kleene_and(&above, &below))
             }
             Kind::IsNull(inner) => Ok(Scalar::Bool(inner.eval(row)?.is_null())),
@@ -203,7 +202,7 @@ impl Node {
                 )))
             }
             Kind::Arithmetic(left, operator, right) => arithmetic(
-                self.field.data_type(),
+                self.field.dtype(),
                 &left.eval(row)?,
                 *operator,
                 &right.eval(row)?,
@@ -217,11 +216,11 @@ impl Node {
                 for argument in arguments {
                     values.push(argument.eval(row)?);
                 }
-                call(*function, arguments, &values, self.field.data_type())
+                call(*function, arguments, &values, self.field.dtype())
             }
             Kind::Cast(inner, safety) => {
                 let held = inner.eval(row)?;
-                match convert(self.field.data_type(), &held, *safety) {
+                match convert(self.field.dtype(), &held, *safety) {
                     Ok(value) => Ok(value),
                     Err(error) if matches!(safety, Safety::Safe) => {
                         let _ = error;
@@ -295,12 +294,11 @@ fn apply_step(field: &Field, value: &Scalar, segment: &Segment) -> Scalar {
         }
         Segment::Key(key) => {
             if let Some(entries) = value.as_mapping() {
-                let data_type = key.data_type();
+                let dtype = key.dtype();
                 return entries
                     .iter()
                     .find(|(held, _)| {
-                        compare(data_type, held, Comparison::IsNotDistinctFrom, key.value())
-                            .as_bool()
+                        compare(dtype, held, Comparison::IsNotDistinctFrom, key.value()).as_bool()
                             == Some(true)
                     })
                     .map_or(Scalar::Null, |(_, held)| held.clone());
@@ -326,7 +324,7 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
     }
     // A struct spelled as a bare sequence takes its order from the schema.
     if let (Some(values), DataType::Struct(fields)) =
-        (value.as_sequence(), unwrap_dictionary(field.data_type()))
+        (value.as_sequence(), unwrap_dictionary(field.dtype()))
     {
         return fields
             .as_fields()
@@ -350,7 +348,7 @@ fn kleene_and(left: &Scalar, right: &Scalar) -> Scalar {
 
 /// Answer one comparison, three-valued except for the two distinctness tests.
 pub(crate) fn compare(
-    data_type: &DataType,
+    dtype: &DataType,
     left: &Scalar,
     comparison: Comparison,
     right: &Scalar,
@@ -359,7 +357,7 @@ pub(crate) fn compare(
         let same = match (left.is_null(), right.is_null()) {
             (true, true) => true,
             (true, false) | (false, true) => false,
-            (false, false) => order(data_type, left, right) == Some(Ordering::Equal),
+            (false, false) => order(dtype, left, right) == Some(Ordering::Equal),
         };
         return Scalar::Bool(match comparison {
             Comparison::IsDistinctFrom => !same,
@@ -369,7 +367,7 @@ pub(crate) fn compare(
     if left.is_null() || right.is_null() {
         return Scalar::Null;
     }
-    match order(data_type, left, right) {
+    match order(dtype, left, right) {
         Some(ordering) => Scalar::Bool(comparison.answers(ordering)),
         // Two values that share a declared type but no ordering - a struct
         // against a struct - answer unknown rather than an arbitrary yes.
@@ -378,15 +376,15 @@ pub(crate) fn compare(
 }
 
 /// Order two non-null values that share one declared datatype.
-pub(crate) fn order(data_type: &DataType, left: &Scalar, right: &Scalar) -> Option<Ordering> {
-    let data_type = unwrap_dictionary(data_type);
-    if let Some((_, scale)) = decimal_parts(data_type) {
+pub(crate) fn order(dtype: &DataType, left: &Scalar, right: &Scalar) -> Option<Ordering> {
+    let dtype = unwrap_dictionary(dtype);
+    if let Some((_, scale)) = decimal_parts(dtype) {
         return Some(unscaled_at(left, scale)?.cmp(&unscaled_at(right, scale)?));
     }
-    if let Some((family, unit)) = temporal_parts(data_type) {
+    if let Some((family, unit)) = temporal_parts(dtype) {
         return Some(temporal_at(left, family, unit)?.cmp(&temporal_at(right, family, unit)?));
     }
-    match data_type {
+    match dtype {
         DataType::Boolean => Some(left.as_bool()?.cmp(&right.as_bool()?)),
         DataType::Float16 | DataType::Float32 | DataType::Float64 => {
             // IEEE 754 totalOrder, the same predicate Arrow's kernels use.
@@ -403,7 +401,7 @@ pub(crate) fn order(data_type: &DataType, left: &Scalar, right: &Scalar) -> Opti
 
 /// Answer one arithmetic node in the type its output was typed as.
 fn arithmetic(
-    data_type: &DataType,
+    dtype: &DataType,
     left: &Scalar,
     operator: Operator,
     right: &Scalar,
@@ -418,7 +416,7 @@ fn arithmetic(
         Operator::Div => crate::generic::Arithmetic::Div,
         Operator::Rem => crate::generic::Arithmetic::Rem,
     };
-    left.checked_arithmetic_as(right, operation, unwrap_dictionary(data_type))
+    left.checked_arithmetic_as(right, operation, unwrap_dictionary(dtype))
 }
 
 /// This value's unscaled coefficient at `scale`, whatever kind of number it is.
@@ -456,8 +454,8 @@ pub(crate) fn temporal_at(value: &Scalar, family: u8, unit: TimeUnit) -> Option<
 }
 
 /// Put a temporal count back into the exact width, unit, and zone its type declares.
-fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match data_type {
+fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
+    match dtype {
         DataType::Date32 => Scalar::date32_in(
             i32::try_from(count).map_err(|_| missing("a date32 count"))?,
             unit,
@@ -535,8 +533,8 @@ fn pow10(scale: i8) -> Option<i128> {
 }
 
 /// Put a whole number back into the width its datatype declares.
-fn narrow(data_type: &DataType, held: i128) -> Scalar {
-    match data_type {
+fn narrow(dtype: &DataType, held: i128) -> Scalar {
+    match dtype {
         DataType::Int8 => i8::try_from(held).map_or(Scalar::Null, Scalar::I8),
         DataType::Int16 => i16::try_from(held).map_or(Scalar::Null, Scalar::I16),
         DataType::Int32 => i32::try_from(held).map_or(Scalar::Null, Scalar::I32),
@@ -624,7 +622,7 @@ fn call(
     function: Function,
     arguments: &[Node],
     values: &[Scalar],
-    data_type: &DataType,
+    dtype: &DataType,
 ) -> Result<Scalar> {
     let first = values.first().unwrap_or(&Scalar::Null);
     // Coalesce and its two-argument spelling are the only functions that mean
@@ -700,7 +698,7 @@ fn call(
         Function::Year | Function::Month | Function::Day | Function::Hour => {
             calendar_part(first, function)
         }
-        Function::Truncate => truncate(first, values.get(1).unwrap_or(&Scalar::Null), data_type)?,
+        Function::Truncate => truncate(first, values.get(1).unwrap_or(&Scalar::Null), dtype)?,
         Function::Coalesce | Function::IfNull => values
             .iter()
             .find(|value| !value.is_null())
@@ -789,8 +787,8 @@ fn calendar_part(value: &Scalar, function: Function) -> Scalar {
 }
 
 /// Floor a value to a unit or to a multiple.
-fn truncate(value: &Scalar, unit: &Scalar, data_type: &DataType) -> Result<Scalar> {
-    if let Some((family, held_unit)) = temporal_parts(unwrap_dictionary(data_type)) {
+fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
+    if let Some((family, held_unit)) = temporal_parts(unwrap_dictionary(dtype)) {
         let Some(name) = unit.as_str() else {
             return Err(missing(
                 "a unit name such as 'hour' for a temporal truncate",
@@ -822,8 +820,7 @@ fn truncate(value: &Scalar, unit: &Scalar, data_type: &DataType) -> Result<Scala
         // A date already counts in days, so it truncates to itself.
         let step = if family == 0 { 1 } else { seconds * per_second };
         let floored = count.div_euclid(step) * step;
-        return temporal_value(unwrap_dictionary(data_type), floored, held_unit)
-            .or(Ok(Scalar::Null));
+        return temporal_value(unwrap_dictionary(dtype), floored, held_unit).or(Ok(Scalar::Null));
     }
     let Some(width) = unit.as_i64() else {
         return Err(missing("a whole multiple to truncate a number to"));
@@ -835,7 +832,7 @@ fn truncate(value: &Scalar, unit: &Scalar, data_type: &DataType) -> Result<Scala
         return Ok(Scalar::Null);
     };
     let width = i128::from(width);
-    Ok(narrow(data_type, held.div_euclid(width) * width))
+    Ok(narrow(dtype, held.div_euclid(width) * width))
 }
 
 /// Convert one value into a datatype, logically rather than physically.
@@ -952,7 +949,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 return Ok(Scalar::String(SmolStr::new(text)));
             }
             let inferred = crate::TypedScalar::from_value(value.clone())
-                .map(|held| held.data_type().clone())
+                .map(|held| held.dtype().clone())
                 .unwrap_or(DataType::Null);
             match super::display::literal_text(&inferred, value) {
                 Some(text) => Ok(Scalar::String(text)),

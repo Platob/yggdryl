@@ -72,9 +72,9 @@ function createFields(DataType, Field, native) {
     return { nullable, metadata: normalizeMetadata(value.metadata) }
   }
 
-  function field(name, dataType, value) {
+  function field(name, dtype, value) {
     const { nullable, metadata } = options(value)
-    return new Field(name, dataType, nullable, metadata)
+    return new Field(name, dtype, nullable, metadata)
   }
 
   function temporalField(kind, fallback, name, unit, value) {

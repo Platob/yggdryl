@@ -3,8 +3,8 @@
 use crate::arrow::{scalar_array, scalar_value};
 use crate::{DataType, Field, Scalar, TimeUnit};
 
-fn round_trip(data_type: DataType, value: Scalar) -> Scalar {
-    let field = Field::new("column", data_type, true);
+fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
+    let field = Field::new("column", dtype, true);
     let array = scalar_array(&field, &value).expect("the value materializes");
     scalar_value(&field, array.as_ref()).expect("the column decodes")
 }
@@ -223,10 +223,7 @@ mod restating {
     fn duration32_checks_its_logical_width_on_both_arrow_directions() {
         let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
         let maximum = Scalar::duration32(i32::MAX, TimeUnit::Second).unwrap();
-        assert_eq!(
-            round_trip(field.data_type().clone(), maximum.clone()),
-            maximum
-        );
+        assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 
         let too_wide = i64::from(i32::MAX) + 1;
         assert!(scalar_array(&field, &Scalar::I64(too_wide)).is_err());

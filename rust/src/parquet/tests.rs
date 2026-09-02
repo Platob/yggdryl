@@ -491,7 +491,7 @@ fn field_identifiers_survive_the_round_trip() {
     );
 
     let recovered = media.read_arrow_field(&options).unwrap();
-    let fields = recovered.data_type().as_fields().unwrap();
+    let fields = recovered.dtype().as_fields().unwrap();
     assert_eq!(fields[0].parquet_field_id().unwrap(), Some(1));
     assert_eq!(fields[1].parquet_field_id().unwrap(), Some(2));
 }

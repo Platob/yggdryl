@@ -865,15 +865,15 @@ mod arrow_lines {
         .unwrap();
         let schema = options.field();
         assert_eq!(
-            schema.get_field_by_name("thread_id").unwrap().data_type(),
+            schema.get_field_by_path("thread_id").unwrap().dtype(),
             &crate::DataType::Int64
         );
         assert_eq!(
-            schema.get_field_by_name("log_level").unwrap().data_type(),
+            schema.get_field_by_path("log_level").unwrap().dtype(),
             &crate::DataType::Utf8
         );
         assert_eq!(
-            schema.get_field_by_name("qty").unwrap().data_type(),
+            schema.get_field_by_path("qty").unwrap().dtype(),
             &crate::DataType::Float64
         );
 
@@ -917,11 +917,11 @@ mod arrow_lines {
         .unwrap();
         let schema = options.field();
         assert_eq!(
-            schema.get_field_by_name("price").unwrap().data_type(),
+            schema.get_field_by_path("price").unwrap().dtype(),
             &crate::DataType::decimal(9, 2).unwrap()
         );
         assert_eq!(
-            schema.get_field_by_name("reference").unwrap().data_type(),
+            schema.get_field_by_path("reference").unwrap().dtype(),
             &crate::DataType::Utf8
         );
 
@@ -991,7 +991,7 @@ mod arrow_lines {
         );
         assert!(kept.capture_types().is_empty());
         assert_eq!(
-            kept.field().get_field_by_name("level").unwrap().data_type(),
+            kept.field().get_field_by_path("level").unwrap().dtype(),
             &crate::DataType::Utf8
         );
     }
@@ -1078,7 +1078,7 @@ mod arrow_lines {
 
         #[cfg(feature = "iceberg")]
         for field in schema.fields() {
-            crate::iceberg::PrimitiveType::from_data_type(field.data_type())
+            crate::iceberg::PrimitiveType::from_dtype(field.dtype())
                 .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
         }
     }
@@ -1723,7 +1723,7 @@ mod log_mode {
         // log mode is a deliberate choice, not something a caller falls into.
         options.set_pattern(None).unwrap();
         assert!(!options.is_log_mode());
-        assert!(options.field().get_field_by_name("level").is_none());
+        assert!(options.field().get_field_by_path("level").is_none());
     }
 }
 
@@ -2171,10 +2171,7 @@ custom_fields:
             ["stamp", "level"]
         );
         // The schema follows, with no resource in sight.
-        assert_eq!(
-            options.field()["source"].data_type(),
-            &crate::DataType::Utf8
-        );
+        assert_eq!(options.field()["source"].dtype(), &crate::DataType::Utf8);
     }
 
     #[test]

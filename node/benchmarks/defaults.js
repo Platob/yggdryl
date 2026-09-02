@@ -30,7 +30,7 @@ function benchmark(name, count, operation) {
   console.log(`${name}: ${rate.toLocaleString('en-US')} operations/second`)
 }
 
-const int64 = fields.int64('id').dataType
+const int64 = fields.int64('id').dtype
 const nullable = fields.utf8('note', { nullable: true })
 const child = fields.struct('child', [
   fields.int32('quantity'),
@@ -54,7 +54,7 @@ benchmark('defaults/nested_struct_js', Math.max(1, Math.floor(iterations / 10)),
 )
 benchmark('defaults/cached_hint', iterations, () => nested.defaultJSHint())
 benchmark('defaults/arrow_compat_clone', iterations, () =>
-  sparkSource.dataType.intoSchemeCompat('arrow'),
+  sparkSource.dtype.intoSchemeCompat('arrow'),
 )
 benchmark('defaults/spark_nested_normalize', Math.max(1, Math.floor(iterations / 10)), () =>
   sparkSource.intoSchemeCompat('spark'),

@@ -24,7 +24,6 @@ enum SchemeValue {
     Iceberg,
     Fix,
     Field,
-    Dtype,
     S3,
     Gs,
     Az,
@@ -68,8 +67,6 @@ impl Scheme {
     pub const FIX: Self = Self(SchemeValue::Fix);
     /// The Yggdryl field metadata namespace.
     pub const FIELD: Self = Self(SchemeValue::Field);
-    /// The Yggdryl datatype metadata namespace.
-    pub const DTYPE: Self = Self(SchemeValue::Dtype);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeValue::S3);
     /// The Google Cloud Storage protocol scheme.
@@ -118,7 +115,6 @@ impl Scheme {
             SchemeValue::Iceberg => "iceberg",
             SchemeValue::Fix => "fix",
             SchemeValue::Field => "field",
-            SchemeValue::Dtype => "dtype",
             SchemeValue::S3 => "s3",
             SchemeValue::Gs => "gs",
             SchemeValue::Az => "az",
@@ -223,7 +219,6 @@ impl FromStr for Scheme {
             5 if value.eq_ignore_ascii_case("mysql") => Some(Self::MYSQL),
             5 if value.eq_ignore_ascii_case("arrow") => Some(Self::ARROW),
             5 if value.eq_ignore_ascii_case("field") => Some(Self::FIELD),
-            5 if value.eq_ignore_ascii_case("dtype") => Some(Self::DTYPE),
             5 if value.eq_ignore_ascii_case("spark") => Some(Self::SPARK),
             6 if value.eq_ignore_ascii_case("polars") => Some(Self::POLARS),
             6 if value.eq_ignore_ascii_case("pandas") => Some(Self::PANDAS),

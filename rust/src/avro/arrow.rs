@@ -33,11 +33,11 @@ pub(crate) fn field_from_schema(schema: &Schema, root_name: &str) -> Result<Fiel
             .name
             .rsplit_once('.')
             .map_or(record.name.as_str(), |(_, bare)| bare);
-        let (data_type, _) = struct_of(record, schema, &mut visiting)?;
-        return Ok(Field::new(name, data_type, false));
+        let (dtype, _) = struct_of(record, schema, &mut visiting)?;
+        return Ok(Field::new(name, dtype, false));
     }
-    let (data_type, nullable) = data_type_from(&schema.node, schema, &mut visiting)?;
-    let value = Field::new("value", data_type, nullable);
+    let (dtype, nullable) = dtype_from(&schema.node, schema, &mut visiting)?;
+    let value = Field::new("value", dtype, nullable);
     Ok(Field::new(
         root_name,
         DataType::from_fields([value])?,
@@ -60,8 +60,8 @@ fn struct_of(
     visiting.push(record.name.clone());
     let mut fields = Vec::with_capacity(record.fields.len());
     for field in &record.fields {
-        let (data_type, nullable) = data_type_from(&field.schema, schema, visiting)?;
-        let mut built = Field::new(field.name.clone(), data_type, nullable);
+        let (dtype, nullable) = dtype_from(&field.schema, schema, visiting)?;
+        let mut built = Field::new(field.name.clone(), dtype, nullable);
         // The Iceberg `field-id` rides into the same metadata slot the
         // Parquet path uses, so id-based column resolution works over both
         // data file formats.
@@ -75,7 +75,7 @@ fn struct_of(
 }
 
 /// Map one Avro node onto a datatype and its nullability.
-fn data_type_from(
+fn dtype_from(
     node: &Node,
     schema: &Schema,
     visiting: &mut Vec<SmolStr>,
@@ -127,14 +127,14 @@ fn data_type_from(
         Node::Enum(_) => (DataType::Utf8, false),
         Node::Record(record) => struct_of(record, schema, visiting)?,
         Node::Array(items) => {
-            let (item_type, nullable) = data_type_from(items, schema, visiting)?;
+            let (item_type, nullable) = dtype_from(items, schema, visiting)?;
             (
                 DataType::list(Field::new("item", item_type, nullable)),
                 false,
             )
         }
         Node::Map(values) => {
-            let (value_type, nullable) = data_type_from(values, schema, visiting)?;
+            let (value_type, nullable) = dtype_from(values, schema, visiting)?;
             let value = Field::new("value", value_type, nullable);
             let key = Field::new("key", DataType::Utf8, false);
             let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
@@ -147,7 +147,7 @@ fn data_type_from(
                     "expected a declared Avro type named {name:?}"
                 ))
             })?;
-            data_type_from(&target, schema, visiting)?
+            dtype_from(&target, schema, visiting)?
         }
     })
 }
@@ -168,10 +168,10 @@ fn union_from(
         .collect();
     match (nulls, others.as_slice()) {
         (_, []) => Ok((DataType::Null, true)),
-        (0, [only]) => data_type_from(only, schema, visiting),
+        (0, [only]) => dtype_from(only, schema, visiting),
         (_, [only]) => {
-            let (data_type, _) = data_type_from(only, schema, visiting)?;
-            Ok((data_type, true))
+            let (dtype, _) = dtype_from(only, schema, visiting)?;
+            Ok((dtype, true))
         }
         _ => Err(invalid(format_smolstr!(
             "expected an Avro union of null and at most one branch for the record surface, got \
@@ -188,10 +188,10 @@ fn union_from(
 /// Returns an error naming any datatype Avro cannot spell.
 pub(crate) fn schema_json_from_field(field: &Field) -> Result<Scalar> {
     let mut counter = 0_usize;
-    let DataType::Struct(_) = field.data_type() else {
+    let DataType::Struct(_) = field.dtype() else {
         return Err(invalid(format_smolstr!(
             "expected a struct root to write Avro records, got {}",
-            field.data_type()
+            field.dtype()
         )));
     };
     record_json(field.name(), field.fields(), &mut counter)
@@ -201,7 +201,7 @@ pub(crate) fn schema_json_from_field(field: &Field) -> Result<Scalar> {
 fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Scalar> {
     let mut entries = Vec::with_capacity(fields.len());
     for field in fields {
-        let mut declared = node_json(field.data_type(), field.name(), counter)
+        let mut declared = node_json(field.dtype(), field.name(), counter)
             .map_err(|error| locate(error, field.name()))?;
         // A null-typed column is already the null it would be wrapped in; a
         // ["null","null"] union is illegal, so the wrap is skipped.
@@ -225,7 +225,7 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Scal
 }
 
 /// Render one non-nullable datatype as its Avro schema.
-fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Scalar> {
+fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar> {
     let plain = |kind: &'static str| Ok(Scalar::from(kind));
     let logical = |kind: &'static str, annotation: &'static str| {
         Scalar::from_record([
@@ -233,7 +233,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Sc
             ("logicalType", Scalar::from(annotation)),
         ])
     };
-    match data_type {
+    match dtype {
         DataType::Null => plain("null"),
         DataType::Boolean => plain("boolean"),
         DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::UInt8 | DataType::UInt16 => {
@@ -255,7 +255,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Sc
                 (TimeUnit::Millisecond, false) => "local-timestamp-millis",
                 (TimeUnit::Microsecond, false) => "local-timestamp-micros",
                 (TimeUnit::Nanosecond, false) => "local-timestamp-nanos",
-                _ => return Err(unspellable(data_type)),
+                _ => return Err(unspellable(dtype)),
             };
             logical("long", annotation)
         }
@@ -278,7 +278,7 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Sc
         }
         DataType::Decimal128 { precision, scale } => {
             if *scale < 0 {
-                return Err(unspellable(data_type));
+                return Err(unspellable(dtype));
             }
             Scalar::from_record([
                 ("type", Scalar::from("bytes")),
@@ -290,13 +290,11 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Sc
         DataType::Struct(_) => {
             *counter += 1;
             let record_name = unique_name(name, counter);
-            let fields = data_type
-                .as_fields()
-                .ok_or_else(|| unspellable(data_type))?;
+            let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;
             record_json(&record_name, fields, counter)
         }
         DataType::List(item) | DataType::LargeList(item) => {
-            let mut items = node_json(item.data_type(), item.name(), counter)?;
+            let mut items = node_json(item.dtype(), item.name(), counter)?;
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);
             }
@@ -304,15 +302,15 @@ fn node_json(data_type: &DataType, name: &str, counter: &mut usize) -> Result<Sc
         }
         DataType::Map(map) => {
             let entries = map.entries().fields();
-            let key = entries.first().ok_or_else(|| unspellable(data_type))?;
-            let value = entries.get(1).ok_or_else(|| unspellable(data_type))?;
+            let key = entries.first().ok_or_else(|| unspellable(dtype))?;
+            let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;
             if !matches!(
-                key.data_type(),
+                key.dtype(),
                 DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
             ) {
-                return Err(unspellable(data_type));
+                return Err(unspellable(dtype));
             }
-            let mut values = node_json(value.data_type(), value.name(), counter)?;
+            let mut values = node_json(value.dtype(), value.name(), counter)?;
             if value.is_nullable() && values.as_str() != Some("null") {
                 values = Scalar::from_sequence([Scalar::from("null"), values]);
             }
@@ -345,9 +343,9 @@ fn unique_name(name: &str, counter: &usize) -> SmolStr {
 }
 
 /// Report a datatype the Avro format cannot spell.
-fn unspellable(data_type: &DataType) -> crate::Error {
+fn unspellable(dtype: &DataType) -> crate::Error {
     invalid(format_smolstr!(
-        "expected a datatype Avro can spell, got {data_type}"
+        "expected a datatype Avro can spell, got {dtype}"
     ))
 }
 

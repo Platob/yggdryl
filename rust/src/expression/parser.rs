@@ -1213,11 +1213,11 @@ impl<'input> Parser<'input> {
         self.expect_symbol("(")?;
         let inner = self.expression()?;
         self.expect_word("as")?;
-        let data_type = self.data_type()?;
+        let dtype = self.dtype()?;
         self.expect_symbol(")")?;
         Ok(Expression::Cast(
             Box::new(inner),
-            data_type,
+            dtype,
             if keyword == "try_cast" {
                 Safety::Safe
             } else {
@@ -1270,7 +1270,7 @@ impl<'input> Parser<'input> {
     /// The datatype text is taken verbatim from the input rather than rebuilt
     /// from tokens, so there is exactly one datatype parser in the crate and
     /// this module never learns what a datatype looks like.
-    fn data_type(&mut self) -> Result<DataType> {
+    fn dtype(&mut self) -> Result<DataType> {
         let position = self.position();
         let Some(Token::Word(_)) = self.peek() else {
             return Err(parse_error(
@@ -1328,23 +1328,23 @@ impl<'input> Parser<'input> {
     /// datatype, so the caller can fall back to reading it as a column.
     fn typed_literal(&mut self, position: usize) -> Result<Option<Expression>> {
         let restore = self.cursor;
-        let Ok(data_type) = self.data_type() else {
+        let Ok(dtype) = self.dtype() else {
             self.cursor = restore;
             return Ok(None);
         };
         match self.peek().cloned() {
             Some(Token::Text(text)) => {
                 self.cursor += 1;
-                let value = value_from_text(&data_type, &text, position)?;
+                let value = value_from_text(&dtype, &text, position)?;
                 Ok(Some(Expression::Literal(
-                    TypedScalar::from_parts(data_type, value)
+                    TypedScalar::from_parts(dtype, value)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }
             Some(Token::Word(word)) if word.eq_ignore_ascii_case("null") => {
                 self.cursor += 1;
                 Ok(Some(Expression::Literal(
-                    TypedScalar::from_parts(data_type, Scalar::Null)
+                    TypedScalar::from_parts(dtype, Scalar::Null)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }
@@ -1392,7 +1392,7 @@ fn number_literal(text: &str, position: usize) -> Result<Expression> {
 /// The text forms are the crate's own: ISO 8601 for every temporal, an exact
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
-pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize) -> Result<Scalar> {
+pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
     use crate::generic::iso;
     use DataType as D;
 
@@ -1407,7 +1407,7 @@ pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize)
             .map(Scalar::I128)
             .map_err(|_| fail("a whole number"))
     };
-    let value = match data_type {
+    let value = match dtype {
         D::Null => Scalar::Null,
         D::Boolean => match text {
             "true" => Scalar::Bool(true),
@@ -1480,7 +1480,7 @@ pub(crate) fn value_from_text(data_type: &DataType, text: &str, position: usize)
     // The one conversion in the module puts the parsed value in exactly the
     // declared type - the same call `cast` makes, so a written literal and a
     // cast value can never end up shaped differently.
-    super::eval::convert(data_type, &value, super::Safety::Strict)
+    super::eval::convert(dtype, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
 }
 

@@ -7,17 +7,17 @@
 const { arrowScalarFromIPC } = require('./values.js')
 
 function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
-  const dataTypeDefault = NativeDataType.prototype._defaultJSValueNative
-  const dataTypeDefaultHint = NativeDataType.prototype._defaultJSHintNative
+  const dtypeDefault = NativeDataType.prototype._defaultJSValueNative
+  const dtypeDefaultHint = NativeDataType.prototype._defaultJSHintNative
   const fieldDefault = NativeField.prototype._defaultJSValueNative
-  const dataTypeArrowDefault = NativeDataType.prototype._defaultArrowScalarIpcNative
+  const dtypeArrowDefault = NativeDataType.prototype._defaultArrowScalarIpcNative
   const fieldArrowDefault = NativeField.prototype._defaultArrowScalarIpcNative
 
   for (const [name, method] of [
-    ['DataType._defaultJSValueNative', dataTypeDefault],
-    ['DataType._defaultJSHintNative', dataTypeDefaultHint],
+    ['DataType._defaultJSValueNative', dtypeDefault],
+    ['DataType._defaultJSHintNative', dtypeDefaultHint],
     ['Field._defaultJSValueNative', fieldDefault],
-    ['DataType._defaultArrowScalarIpcNative', dataTypeArrowDefault],
+    ['DataType._defaultArrowScalarIpcNative', dtypeArrowDefault],
     ['Field._defaultArrowScalarIpcNative', fieldArrowDefault],
   ]) {
     if (typeof method !== 'function') {
@@ -31,16 +31,16 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
   delete NativeDataType.prototype._defaultArrowScalarIpcNative
   delete NativeField.prototype._defaultArrowScalarIpcNative
 
-  const dataTypeEntries = new WeakMap()
+  const dtypeEntries = new WeakMap()
   const fieldEntries = new WeakMap()
 
-  function dataTypeEntry(dataType) {
-    let entry = dataTypeEntries.get(dataType)
+  function dtypeEntry(dtype) {
+    let entry = dtypeEntries.get(dtype)
     if (entry === undefined) {
       entry = {
         hint: undefined,
       }
-      dataTypeEntries.set(dataType, entry)
+      dtypeEntries.set(dtype, entry)
     }
     return entry
   }
@@ -50,7 +50,7 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     if (entry === undefined) {
       entry = {
         hint: undefined,
-        hintDataType: undefined,
+        hintDtype: undefined,
         hintNullable: undefined,
       }
       fieldEntries.set(field, entry)
@@ -74,14 +74,14 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     Map,
   ])
 
-  function frozenHint(dataType, nullable) {
-    const code = Reflect.apply(dataTypeDefaultHint, dataType, [])
+  function frozenHint(dtype, nullable) {
+    const code = Reflect.apply(dtypeDefaultHint, dtype, [])
     const constructor = hintConstructors[code]
     if (constructor === undefined) {
       throw new TypeError(`native binding returned unknown JS hint category ${code}`)
     }
     return Object.freeze({
-      kind: dataType.kind,
+      kind: dtype.kind,
       constructor,
       nullable,
     })
@@ -91,13 +91,13 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     defaultJSValue: {
       configurable: true,
       value() {
-        return Reflect.apply(dataTypeDefault, this, [])
+        return Reflect.apply(dtypeDefault, this, [])
       },
     },
     defaultJSHint: {
       configurable: true,
       value() {
-        const entry = dataTypeEntry(this)
+        const entry = dtypeEntry(this)
         return (entry.hint ??= frozenHint(this, false))
       },
     },
@@ -105,7 +105,7 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
       configurable: true,
       value() {
         return arrowScalarFromIPC(
-          Reflect.apply(dataTypeArrowDefault, this, []),
+          Reflect.apply(dtypeArrowDefault, this, []),
           `DataType(${this}) default Arrow scalar`,
         )
       },
@@ -123,16 +123,16 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
       configurable: true,
       value() {
         const entry = fieldEntry(this)
-        const dataType = this.dataType
+        const dtype = this.dtype
         const nullable = this.nullable
         if (
           entry.hint === undefined ||
           entry.hintNullable !== nullable ||
-          !dataType.equals(entry.hintDataType, false)
+          !dtype.equals(entry.hintDtype, false)
         ) {
-          entry.hintDataType = dataType
+          entry.hintDtype = dtype
           entry.hintNullable = nullable
-          entry.hint = frozenHint(dataType, nullable)
+          entry.hint = frozenHint(dtype, nullable)
         }
         return entry.hint
       },

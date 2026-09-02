@@ -454,7 +454,7 @@ class TestDataclassRecords:
         handle.overwrite_records([Trade(1, "XNAS"), Trade(2, None)])
 
         assert Trade.field() is cached
-        assert [field.name for field in handle.read_arrow_field().data_type] == ["id", "venue"]
+        assert [field.name for field in handle.read_arrow_field().dtype] == ["id", "venue"]
         assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
         assert list(handle.read_records()) == [
             {"id": 1, "venue": "XNAS"},

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from .._native import DataType, Field
-from ._common import MetadataInput, new_field, simple_data_type
+from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
@@ -22,12 +22,12 @@ else:
     BinaryField = FixedSizeBinaryField = LargeBinaryField = BinaryViewField = Field
     Utf8Field = LargeUtf8Field = Utf8ViewField = Field
 
-_BINARY = simple_data_type("binary")
-_LARGE_BINARY = simple_data_type("large_binary")
-_BINARY_VIEW = simple_data_type("binary_view")
-_UTF8 = simple_data_type("utf8")
-_LARGE_UTF8 = simple_data_type("large_utf8")
-_UTF8_VIEW = simple_data_type("utf8_view")
+_BINARY = simple_dtype("binary")
+_LARGE_BINARY = simple_dtype("large_binary")
+_BINARY_VIEW = simple_dtype("binary_view")
+_UTF8 = simple_dtype("utf8")
+_LARGE_UTF8 = simple_dtype("large_utf8")
+_UTF8_VIEW = simple_dtype("utf8_view")
 
 
 def binary(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> BinaryField:

@@ -11,7 +11,7 @@ use yggdryl::{Field as CoreField, ProtocolMetadata as CoreProtocolMetadata, Sche
 
 use crate::{
     JsDifferenceIterator,
-    datatype::{JsDataType, data_type_from_input},
+    datatype::{JsDataType, dtype_from_input},
     exact_i32,
     media::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
@@ -79,12 +79,12 @@ impl JsField {
     #[napi(constructor)]
     pub fn new(
         value: Either<ClassInstance<'_, JsField>, String>,
-        data_type: Option<Either<ClassInstance<'_, JsDataType>, String>>,
+        dtype: Option<Either<ClassInstance<'_, JsDataType>, String>>,
         nullable: Option<bool>,
         metadata: Option<Either<Vec<MetadataEntry>, HashMap<String, String>>>,
     ) -> Result<Self> {
-        let should_override_nullable = data_type.is_none();
-        let mut field = match (value, data_type) {
+        let should_override_nullable = dtype.is_none();
+        let mut field = match (value, dtype) {
             (Either::A(field), None) => field.inner.clone(),
             (Either::A(_), Some(_)) => {
                 return Err(Error::from_reason(
@@ -92,12 +92,9 @@ impl JsField {
                 ));
             }
             (Either::B(value), None) => CoreField::from_str(&value).map_err(napi_error)?,
-            (Either::B(name), Some(data_type)) => {
-                let field = CoreField::new(
-                    name,
-                    data_type_from_input(data_type)?,
-                    nullable.unwrap_or(true),
-                );
+            (Either::B(name), Some(dtype)) => {
+                let field =
+                    CoreField::new(name, dtype_from_input(dtype)?, nullable.unwrap_or(true));
                 field.validate().map_err(napi_error)?;
                 field
             }
@@ -181,10 +178,28 @@ impl JsField {
         ))
     }
 
-    /// Deserialize the native structural JSON representation.
+    /// Deserialize the structural JSON representation.
+    ///
+    /// One entry point for the three shapes a caller already has: the document
+    /// as a string, the same document as the bytes it was read from, or the
+    /// object `JSON.parse` already turned it into.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(value)
+        crate::json_document(value)
+            .and_then(serde_json::from_value)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Deserialize the structural JSON representation from bytes.
+    ///
+    /// The reading half of `toJSONBytes`. JavaScript names the byte reader
+    /// rather than folding it into `fromJSON` because napi validates a union
+    /// arm by type and cannot tell a typed array from any other object there,
+    /// so one entry point taking both would silently take neither.
+    #[napi(factory, js_name = "fromJSONBytes")]
+    pub fn from_json_bytes(bytes: Uint8Array) -> Result<Self> {
+        serde_json::from_slice(&bytes)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -197,8 +212,187 @@ impl JsField {
 
     /// Logical native datatype.
     #[napi(getter)]
-    pub fn data_type(&self) -> JsDataType {
-        JsDataType::from_core(self.inner.data_type().clone())
+    pub fn dtype(&self) -> JsDataType {
+        JsDataType::from_core(self.inner.dtype().clone())
+    }
+
+    /// Return the field that describes both this one and `other`.
+    ///
+    /// The datatype is `DataType.mergeWith`'s answer; this adds the name
+    /// (kept from the receiver), nullability (either side being nullable
+    /// carries over), and metadata (the union, this field winning a clash).
+    #[napi]
+    pub fn merge_with(
+        &self,
+        other: ClassInstance<'_, JsField>,
+        upscale: Option<bool>,
+    ) -> Result<JsField> {
+        self.inner
+            .merge_with(&other.inner, upscale.unwrap_or(true))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explodeFields` is what reaches inside one. Every name this
+    /// answers is one `fieldByPath` resolves.
+    #[napi]
+    pub fn unnest_fields(&self) -> Vec<JsField> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    #[napi]
+    pub fn explode_fields(&self) -> Vec<JsField> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
+    /// Number of direct child fields.
+    #[napi(getter)]
+    pub fn field_len(&self) -> u32 {
+        u32::try_from(self.inner.field_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Return the child at an Array-compatible index, or `null`.
+    #[napi]
+    pub fn get_field_at(&self, index: i32) -> Option<JsField> {
+        self.dtype().get_field_at(index)
+    }
+
+    /// Return the child a path names, or `null`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    #[napi]
+    pub fn get_field_by_path(&self, path: String) -> Option<JsField> {
+        self.inner
+            .get_field_by_path(&path)
+            .cloned()
+            .map(Self::from_core)
+    }
+
+    /// Return the child a position or a path names, or `null`.
+    #[napi]
+    pub fn get_field(&self, key: Either<i32, String>) -> Option<JsField> {
+        match key {
+            Either::A(index) => self.get_field_at(index),
+            Either::B(path) => self.get_field_by_path(path),
+        }
+    }
+
+    /// Return the child at an Array-compatible index, or throw.
+    #[napi]
+    pub fn field_at(&self, index: i32) -> Result<JsField> {
+        self.dtype().field_at(index)
+    }
+
+    /// Return the child a path names, or throw.
+    #[napi]
+    pub fn field_by_path(&self, path: String) -> Result<JsField> {
+        self.inner
+            .field_by_path(&path)
+            .cloned()
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return the child a position or a path names, or throw.
+    #[napi]
+    pub fn field(&self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.field_at(index),
+            Either::B(path) => self.field_by_path(path),
+        }
+    }
+
+    /// Replace the child at an Array-compatible index.
+    #[napi]
+    pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
+        let len = i64::from(self.field_len());
+        let at = i64::from(index);
+        let resolved = if at < 0 { len + at } else { at };
+        let position = usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .set_field_at(position, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a path names, appending an unresolved name.
+    #[napi]
+    pub fn set_field_by_path(
+        &mut self,
+        path: String,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        self.inner
+            .set_field_by_path(&path, child.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace the child a position or a path names.
+    #[napi]
+    pub fn set_field(
+        &mut self,
+        key: Either<i32, String>,
+        child: ClassInstance<'_, JsField>,
+    ) -> Result<()> {
+        match key {
+            Either::A(index) => self.set_field_at(index, child),
+            Either::B(path) => self.set_field_by_path(path, child),
+        }
+    }
+
+    /// Remove and return the child at an Array-compatible index.
+    #[napi]
+    pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
+        let len = i64::from(self.field_len());
+        let at = i64::from(index);
+        let resolved = if at < 0 { len + at } else { at };
+        let position = usize::try_from(resolved)
+            .ok()
+            .filter(|at| *at < self.inner.field_len())
+            .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
+        self.inner
+            .remove_field_at(position)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a path names.
+    #[napi]
+    pub fn remove_field_by_path(&mut self, path: String) -> Result<JsField> {
+        self.inner
+            .remove_field_by_path(&path)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove and return the child a position or a path names.
+    #[napi]
+    pub fn remove_field(&mut self, key: Either<i32, String>) -> Result<JsField> {
+        match key {
+            Either::A(index) => self.remove_field_at(index),
+            Either::B(path) => self.remove_field_by_path(path),
+        }
     }
 
     /// Whether values may be null.
@@ -225,22 +419,13 @@ impl JsField {
         self.inner.alias().map(ToOwned::to_owned)
     }
 
-    /// Shared catalog name stored in Arrow-compatible metadata.
+    /// Shared human-readable comment stored in Arrow-compatible metadata.
+    ///
+    /// The one straight description a field carries, belonging to no protocol.
+    /// Every protocol view falls back to it.
     #[napi(getter)]
-    pub fn catalog_name(&self) -> Option<String> {
-        self.inner.catalog_name().map(ToOwned::to_owned)
-    }
-
-    /// Shared schema name stored in Arrow-compatible metadata.
-    #[napi(getter)]
-    pub fn schema_name(&self) -> Option<String> {
-        self.inner.schema_name().map(ToOwned::to_owned)
-    }
-
-    /// Shared table name stored in Arrow-compatible metadata.
-    #[napi(getter)]
-    pub fn table_name(&self) -> Option<String> {
-        self.inner.table_name().map(ToOwned::to_owned)
+    pub fn comment(&self) -> Option<String> {
+        self.inner.comment().map(ToOwned::to_owned)
     }
 
     /// Arrow/Parquet signed 32-bit field identifier stored in metadata.
@@ -404,12 +589,12 @@ impl JsField {
 
     /// Change the datatype from a native wrapper or parsed expression.
     #[napi]
-    pub fn set_data_type(
+    pub fn set_dtype(
         &mut self,
-        data_type: Either<ClassInstance<'_, JsDataType>, String>,
+        dtype: Either<ClassInstance<'_, JsDataType>, String>,
     ) -> Result<()> {
         self.inner
-            .set_data_type(data_type_from_input(data_type)?)
+            .set_dtype(dtype_from_input(dtype)?)
             .map_err(napi_error)
     }
 
@@ -445,40 +630,16 @@ impl JsField {
         self.inner.remove_alias()
     }
 
-    /// Set the shared catalog name.
+    /// Set the shared comment.
     #[napi]
-    pub fn set_catalog_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_catalog_name(value).map_err(napi_error)
+    pub fn set_comment(&mut self, value: String) -> Result<()> {
+        self.inner.set_comment(value).map_err(napi_error)
     }
 
-    /// Remove and return the shared catalog name.
+    /// Remove and return the shared comment.
     #[napi]
-    pub fn remove_catalog_name(&mut self) -> Option<String> {
-        self.inner.remove_catalog_name()
-    }
-
-    /// Set the shared schema name.
-    #[napi]
-    pub fn set_schema_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_schema_name(value).map_err(napi_error)
-    }
-
-    /// Remove and return the shared schema name.
-    #[napi]
-    pub fn remove_schema_name(&mut self) -> Option<String> {
-        self.inner.remove_schema_name()
-    }
-
-    /// Set the shared table name.
-    #[napi]
-    pub fn set_table_name(&mut self, value: String) -> Result<()> {
-        self.inner.set_table_name(value).map_err(napi_error)
-    }
-
-    /// Remove and return the shared table name.
-    #[napi]
-    pub fn remove_table_name(&mut self) -> Option<String> {
-        self.inner.remove_table_name()
+    pub fn remove_comment(&mut self) -> Option<String> {
+        self.inner.remove_comment()
     }
 
     /// Set the canonical Arrow/Parquet signed 32-bit field identifier.
@@ -932,15 +1093,12 @@ impl JsField {
     }
 
     /// The live Yggdryl field property view.
+    ///
+    /// Named for the namespace it exposes rather than plain `field`, which on
+    /// a schema node reaches a nested child.
     #[napi(getter)]
-    pub fn field(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
+    pub fn field_properties(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
         JsProtocolMetadata::new(reference, CoreScheme::FIELD)
-    }
-
-    /// The live Yggdryl datatype property view.
-    #[napi(getter)]
-    pub fn dtype(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::DTYPE)
     }
 
     /// The live Amazon S3 property view.
@@ -1223,6 +1381,18 @@ impl JsField {
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::to_value(&self.inner).map_err(napi_error)
     }
+
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `toJSON` renders, encoded rather than decoded, for a
+    /// caller writing it straight to a file or a socket. `fromJSON` reads
+    /// these bytes back without being told which shape it got.
+    #[napi(js_name = "toJSONBytes")]
+    pub fn js_json_bytes(&self) -> Result<Buffer> {
+        serde_json::to_vec(&self.inner)
+            .map(Buffer::from)
+            .map_err(napi_error)
+    }
 }
 
 /// One protocol's properties on a field, read and written by bare name.
@@ -1335,6 +1505,39 @@ impl JsProtocolMetadata {
                 value: value.to_owned(),
             })
             .collect()
+    }
+
+    /// This protocol's comment, falling back to the field's straight one.
+    ///
+    /// `get`, iteration and `length` stay literal about what this protocol
+    /// carries; the fallback lives here so a view never reports a property
+    /// that iterating it would not yield.
+    #[napi(getter)]
+    pub fn comment(&self) -> Option<String> {
+        self.view().comment().map(ToOwned::to_owned)
+    }
+
+    /// Merge another protocol view's properties into this one, in place.
+    ///
+    /// A name this view already carries keeps its value, so the merge only
+    /// ever adds. Properties of other protocols are untouched.
+    #[napi]
+    pub fn merge_with(&mut self, other: &JsProtocolMetadata) -> Result<()> {
+        // Read both sides before writing: `other` may view this same field.
+        let additions: Vec<(String, String)> = {
+            let held = self.view();
+            other
+                .view()
+                .iter()
+                .filter(|(name, _)| held.get(name).is_none())
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect()
+        };
+        self.field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(additions)
+            .map_err(napi_error)
     }
 
     /// Overlay several properties atomically, keeping the ones not named.

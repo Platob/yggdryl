@@ -10,18 +10,18 @@ use arrow_schema::Field as ArrowField;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::{
-    DataType, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
+    DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
-    ALIAS_KEY, CATALOG_NAME_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
+    ALIAS_KEY, COMMENT_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
     HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY, HTTP_CACHE_CONTROL_KEY,
     HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY, HTTP_CONTENT_LANGUAGE_KEY,
     HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY, HTTP_CONTENT_RANGE_KEY,
     HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY, HTTP_LAST_MODIFIED_KEY,
     HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, LOCATION_KEY, MetadataIter,
-    PARQUET_FIELD_ID_KEY, PropertyIter, ProtocolMetadata, ProtocolMetadataMut, SCHEMA_NAME_KEY,
-    TABLE_NAME_KEY, for_each_well_known_protocol, parse_field_id, parse_reserved_bool,
-    property_key, write_json_string as write_quoted,
+    PARQUET_FIELD_ID_KEY, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
+    for_each_well_known_protocol, parse_field_id, parse_reserved_bool, property_key,
+    write_json_string as write_quoted,
 };
 use crate::{
     Error, MediaType, Metadata, MimeType, Result, Scalar, Scheme, Url, stable_hash_display,
@@ -71,10 +71,10 @@ pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
 pub use cast::{ArrowCast, ArrowFieldType};
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
-pub(crate) use diff::{data_types_equal, show_diff};
+pub(crate) use diff::{dtypes_equal, show_diff};
 pub use pretty::Pretty;
 pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef};
-pub(crate) use value::validate_data_type_value_for;
+pub(crate) use value::validate_dtype_value_for;
 
 /// A null-typed field.
 pub type NullField = TypedField<scalar::Null>;
@@ -177,7 +177,7 @@ pub type FieldRef = Arc<ArrowField>;
 /// invalidates the cache.
 pub struct Field {
     name: SmolStr,
-    data_type: DataType,
+    dtype: DataType,
     nullable: bool,
     dictionary_id: i64,
     dictionary_is_ordered: bool,
@@ -187,10 +187,10 @@ pub struct Field {
 
 impl Field {
     /// Constructs a field with empty metadata.
-    pub fn new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Self {
+    pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type,
+            dtype,
             nullable,
             dictionary_id: 0,
             dictionary_is_ordered: false,
@@ -220,7 +220,7 @@ impl Field {
     /// Constructs and validates a field with a complete metadata snapshot.
     pub fn from_parts<I, K, V>(
         name: impl Into<SmolStr>,
-        data_type: DataType,
+        dtype: DataType,
         nullable: bool,
         metadata: I,
     ) -> Result<Self>
@@ -231,7 +231,7 @@ impl Field {
     {
         let field = Self {
             name: name.into(),
-            data_type,
+            dtype,
             nullable,
             dictionary_id: 0,
             dictionary_is_ordered: false,
@@ -248,8 +248,8 @@ impl Field {
     }
 
     /// Returns the logical datatype without allocating.
-    pub const fn data_type(&self) -> &DataType {
-        &self.data_type
+    pub const fn dtype(&self) -> &DataType {
+        &self.dtype
     }
 
     /// Returns whether values may be null.
@@ -260,7 +260,7 @@ impl Field {
     /// Returns whether this field is a struct, and therefore usable as a
     /// record schema root.
     pub fn is_struct(&self) -> bool {
-        self.data_type.as_fields().is_some()
+        self.dtype.as_fields().is_some()
     }
 
     /// Returns the struct children of this field, or an empty slice.
@@ -268,27 +268,184 @@ impl Field {
     /// A struct `Field` is the schema of the rows it describes, so this is the
     /// column list every interop layer projects from.
     pub fn fields(&self) -> &[Field] {
-        self.data_type.as_fields().unwrap_or_default()
+        self.dtype.as_fields().unwrap_or_default()
     }
 
     /// Returns the number of struct children.
     pub fn field_len(&self) -> usize {
-        self.data_type.field_len()
+        self.dtype.field_len()
     }
 
-    /// Returns one struct child by position.
-    pub fn get_field(&self, index: usize) -> Option<&Field> {
-        self.data_type.get_field(index)
+    /// Returns one nested child by position.
+    pub fn get_field_at(&self, index: usize) -> Option<&Field> {
+        self.dtype.get_field_at(index)
     }
 
-    /// Returns the first struct child with an exact name.
-    pub fn get_field_by_name(&self, name: &str) -> Option<&Field> {
-        self.data_type.get_field_by_name(name)
+    /// Returns one nested child by path, an exact name first.
+    ///
+    /// [`DataType::get_field_by_path`] carries the rule; this node's datatype
+    /// is where it starts.
+    pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
+        self.dtype.get_field_by_path(path)
+    }
+
+    /// Returns one nested child by position or by path.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let order = DataType::from_fields([
+    ///     DataType::from_fields([DataType::Float64.required_field("price")])?
+    ///         .required_field("line"),
+    /// ])?
+    /// .required_field("order");
+    ///
+    /// assert_eq!(order.get_field(0).unwrap().name(), "line");
+    /// assert_eq!(order.get_field("line.price").unwrap().name(), "price");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field> {
+        self.dtype.get_field(key)
+    }
+
+    /// Returns one nested child by position, naming what is there when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this node has no child at that position.
+    pub fn field_at(&self, index: usize) -> Result<&Field> {
+        self.dtype.field_at(index)
+    }
+
+    /// Returns one nested child by path, naming what is there when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no child carries that name and no decomposition
+    /// of it resolves.
+    pub fn field_by_path(&self, path: &str) -> Result<&Field> {
+        self.dtype.field_by_path(path)
+    }
+
+    /// Returns one nested child by position or by path, raising when absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::field_at`] or [`Self::field_by_path`] raises,
+    /// whichever the key selects.
+    pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field> {
+        self.dtype.field(key)
     }
 
     /// Returns the position of the first struct child with an exact name.
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.fields().iter().position(|field| field.name() == name)
+    }
+
+    /// Returns the field that describes both this one and `other`.
+    ///
+    /// The datatype is [`DataType::merge_with`]'s answer, so every promotion
+    /// rule lives in one place and this adds only what a field carries beyond
+    /// a type:
+    ///
+    /// * the **name** is this field's, because a merge answers in the
+    ///   receiver's vocabulary; struct children are paired by name, so the two
+    ///   already agree wherever it matters;
+    /// * the result is **nullable** when either side is, since a value absent
+    ///   from one of two sources is absent from their union;
+    /// * **metadata** is the union of both, and this field wins a key they
+    ///   disagree on. Reserved keys stay validated by the same path every
+    ///   other write uses, so a merge cannot assemble a field that would have
+    ///   been refused outright;
+    /// * **dictionary options** survive only where both sides encode, for the
+    ///   reason a dictionary does not survive a merge with a plain column.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let narrow = Field::new("price", DataType::Int32, false);
+    /// let wide = Field::new("price", DataType::Int64, true);
+    ///
+    /// let merged = narrow.merge_with(&wide, true)?;
+    /// assert_eq!(merged.dtype(), &DataType::Int64);
+    /// assert!(merged.is_nullable(), "either side being nullable carries over");
+    ///
+    /// // The other direction meets at the tightest type naming both.
+    /// assert_eq!(narrow.merge_with(&wide, false)?.dtype(), &DataType::Int32);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the two datatypes have no meeting point, or when
+    /// the merged metadata does not validate. Failure leaves both fields
+    /// untouched.
+    pub fn merge_with(&self, other: &Self, upscale: bool) -> Result<Self> {
+        self.merge(
+            other,
+            crate::datatype::Widening::upscale(upscale),
+            crate::datatype::Recode::Allowed,
+        )
+    }
+
+    /// The recursive worker behind [`Self::merge_with`], shared with the
+    /// datatype merge so nested children never take a different path.
+    pub(crate) fn merge(
+        &self,
+        other: &Self,
+        how: crate::datatype::Widening,
+        recode: crate::datatype::Recode,
+    ) -> Result<Self> {
+        let dtype = self.dtype.merge(&other.dtype, how, recode)?;
+        let mut merged = Self::new(self.name.clone(), dtype, self.nullable || other.nullable);
+        // One rule, on `Metadata` itself: the union of both, this field
+        // winning any key they disagree on.
+        merged.set_metadata(self.metadata.merge_with(&other.metadata)?.iter())?;
+        if self.dictionary_id != 0 && other.dictionary_id != 0 {
+            merged.set_dictionary_options(
+                self.dictionary_id,
+                self.dictionary_is_ordered && other.dictionary_is_ordered,
+            )?;
+        }
+        Ok(merged)
+    }
+
+    /// Returns every leaf under this field, named by its dotted path.
+    ///
+    /// [`DataType::unnest_fields`] carries the rule; this node's datatype is
+    /// where it starts.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::from_fields([DataType::Float64.required_field("px")])?
+    ///         .nullable_field("line"),
+    /// ])?
+    /// .required_field("row");
+    ///
+    /// let leaves = row.unnest_fields();
+    /// let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
+    /// assert_eq!(names, ["id", "line.px"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn unnest_fields(&self) -> Vec<Self> {
+        self.dtype.unnest_fields()
+    }
+
+    /// Returns this field's children with every collection replaced by what it
+    /// holds.
+    ///
+    /// [`DataType::explode_fields`] carries the rule.
+    pub fn explode_fields(&self) -> Vec<Self> {
+        self.dtype.explode_fields()
     }
 
     /// Returns this struct root without the named children.
@@ -465,7 +622,7 @@ impl Field {
     pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self> {
         self.require_struct()?;
         for name in names {
-            if self.get_field_by_name(name).is_none() {
+            if self.get_field_by_path(name).is_none() {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$.{name}"),
                     reason: crate::text::expected_got(
@@ -553,7 +710,7 @@ impl Field {
                 reason: format_smolstr!(
                     "expected a struct root, got field {:?} of {}",
                     self.name(),
-                    self.data_type()
+                    self.dtype()
                 ),
             });
         }
@@ -585,7 +742,7 @@ impl Field {
                 reason: format_smolstr!(
                     "expected a struct root, got field {:?} of {}",
                     self.name(),
-                    self.data_type()
+                    self.dtype()
                 ),
             });
         }
@@ -594,7 +751,7 @@ impl Field {
 
     /// Returns the Arrow IPC dictionary identifier for dictionary fields.
     pub const fn dictionary_id(&self) -> Option<i64> {
-        if matches!(self.data_type, DataType::Dictionary(_)) {
+        if matches!(self.dtype, DataType::Dictionary(_)) {
             Some(self.dictionary_id)
         } else {
             None
@@ -603,7 +760,7 @@ impl Field {
 
     /// Returns Arrow's dictionary ordering flag for dictionary fields.
     pub const fn dictionary_is_ordered(&self) -> Option<bool> {
-        if matches!(self.data_type, DataType::Dictionary(_)) {
+        if matches!(self.dtype, DataType::Dictionary(_)) {
             Some(self.dictionary_is_ordered)
         } else {
             None
@@ -650,19 +807,13 @@ impl Field {
         self.get_metadata(ALIAS_KEY)
     }
 
-    /// Returns the shared catalog name stored in metadata.
-    pub fn catalog_name(&self) -> Option<&str> {
-        self.get_metadata(CATALOG_NAME_KEY)
-    }
-
-    /// Returns the shared schema name stored in metadata.
-    pub fn schema_name(&self) -> Option<&str> {
-        self.get_metadata(SCHEMA_NAME_KEY)
-    }
-
-    /// Returns the shared table name stored in metadata.
-    pub fn table_name(&self) -> Option<&str> {
-        self.get_metadata(TABLE_NAME_KEY)
+    /// Returns the shared human-readable comment stored in metadata.
+    ///
+    /// The one straight description a field carries, belonging to no protocol.
+    /// Every protocol view falls back to it when it has no comment of its own,
+    /// so one sentence written once is what Iceberg, Glue and Spark all read.
+    pub fn comment(&self) -> Option<&str> {
+        self.get_metadata(COMMENT_KEY)
     }
 
     /// Parses the Arrow/Parquet field identifier stored in metadata.
@@ -707,8 +858,8 @@ impl Field {
         if self.parquet_field_id().ok().flatten() == Some(id) {
             return Some(self);
         }
-        (0..self.data_type.field_len())
-            .filter_map(|index| self.data_type.get_field(index))
+        (0..self.dtype.field_len())
+            .filter_map(|index| self.dtype.get_field(index))
             .find_map(|child| child.field_by_parquet_field_id(id))
     }
 
@@ -724,8 +875,8 @@ impl Field {
     /// which externally corrupted serialized state can produce.
     pub fn max_parquet_field_id(&self) -> Result<Option<i32>> {
         let mut highest = self.parquet_field_id()?;
-        for index in 0..self.data_type.field_len() {
-            let Some(child) = self.data_type.get_field(index) else {
+        for index in 0..self.dtype.field_len() {
+            let Some(child) = self.dtype.get_field(index) else {
                 continue;
             };
             if let Some(id) = child.max_parquet_field_id()? {
@@ -756,13 +907,13 @@ impl Field {
 
     /// Number one level of children, then each of their trees.
     fn assign_child_ids(&mut self, next: &mut i32) -> Result<()> {
-        let count = self.data_type.field_len();
+        let count = self.dtype.field_len();
         if count == 0 {
             return Ok(());
         }
         let mut children = Vec::with_capacity(count);
         for index in 0..count {
-            let Some(child) = self.data_type.get_field(index) else {
+            let Some(child) = self.dtype.get_field(index) else {
                 continue;
             };
             let mut child = child.clone();
@@ -779,7 +930,7 @@ impl Field {
             child.assign_child_ids(next)?;
             children.push(child);
         }
-        self.set_data_type(self.data_type.with_fields(children)?)
+        self.set_dtype(self.dtype.with_fields(children)?)
     }
 
     /// Returns whether this field participates in caller-side initialization.
@@ -997,11 +1148,11 @@ impl Field {
     }
 
     /// Validates and replaces the datatype, leaving `self` unchanged on error.
-    pub fn set_data_type(&mut self, data_type: DataType) -> Result<()> {
-        data_type.validate()?;
-        if self.data_type != data_type {
-            self.data_type = data_type;
-            if !matches!(self.data_type, DataType::Dictionary(_)) {
+    pub fn set_dtype(&mut self, dtype: DataType) -> Result<()> {
+        dtype.validate()?;
+        if self.dtype != dtype {
+            self.dtype = dtype;
+            if !matches!(self.dtype, DataType::Dictionary(_)) {
                 self.dictionary_id = 0;
                 self.dictionary_is_ordered = false;
             }
@@ -1011,8 +1162,8 @@ impl Field {
     }
 
     /// Returns a persistent copy with a validated datatype.
-    pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self> {
-        self.set_data_type(data_type)?;
+    pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self> {
+        self.set_dtype(dtype)?;
         Ok(self)
     }
 
@@ -1021,7 +1172,7 @@ impl Field {
     /// Replacement only: a position past the end is an error rather than a
     /// silent append, because a position is not a name. The whole child set is
     /// revalidated and a populated Arrow cache is invalidated exactly once,
-    /// through [`Self::set_data_type`] - which is why child mutation is a named
+    /// through [`Self::set_dtype`] - which is why child mutation is a named
     /// method here and not an `IndexMut`. Handing out a `&mut Field` would both
     /// bypass that invalidation and force `Arc::make_mut` to clone the shared
     /// child array on every subscript assignment.
@@ -1033,8 +1184,8 @@ impl Field {
     /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?
     ///     .required_field("row");
     ///
-    /// row.set_field(0, DataType::Utf8.required_field("id"))?;
-    /// assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    /// row.set_field_at(0, DataType::Utf8.required_field("id"))?;
+    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
     /// # Ok(())
     /// # }
     /// ```
@@ -1044,7 +1195,7 @@ impl Field {
     /// Returns an error when this field is not a struct, when `index` is past
     /// the end, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn set_field(&mut self, index: usize, child: Self) -> Result<()> {
+    pub fn set_field_at(&mut self, index: usize, child: Self) -> Result<()> {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
@@ -1056,7 +1207,7 @@ impl Field {
             });
         }
         fields[index] = child;
-        self.set_data_type(DataType::from_fields(fields)?)
+        self.set_dtype(DataType::from_fields(fields)?)
     }
 
     /// Replaces the struct child named `name`, appending an unknown one.
@@ -1067,7 +1218,7 @@ impl Field {
     /// build a schema up. A position, by contrast, only ever replaces.
     ///
     /// The child is stored under `name` whatever it calls itself, so
-    /// `row.set_field_by_name("price", DataType::Float64.required_field("x"))`
+    /// `row.set_field_by_path("price", DataType::Float64.required_field("x"))`
     /// stores a child named `price`.
     ///
     /// ```
@@ -1078,14 +1229,14 @@ impl Field {
     ///     .required_field("row");
     ///
     /// // An unknown name appends.
-    /// row.set_field_by_name("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     ///
     /// // A known one replaces, keeping its position.
-    /// row.set_field_by_name("id", DataType::Utf8.required_field("id"))?;
+    /// row.set_field_by_path("id", DataType::Utf8.required_field("id"))?;
     /// assert_eq!(row.field_len(), 2);
     /// assert_eq!(row[0].name(), "id");
-    /// assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
     /// # Ok(())
     /// # }
     /// ```
@@ -1094,14 +1245,23 @@ impl Field {
     ///
     /// Returns an error when this field is not a struct or the resulting child
     /// set does not validate. Failure leaves `self` unchanged.
-    pub fn set_field_by_name(&mut self, name: &str, child: Self) -> Result<()> {
-        let mut fields = self.struct_children()?;
-        let child = child.with_name(name);
-        match fields.iter().position(|held| held.name() == name) {
-            Some(index) => fields[index] = child,
-            None => fields.push(child),
+    pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()> {
+        let mut dtype = self.dtype.clone();
+        dtype.set_field_by_path(path, child)?;
+        self.set_dtype(dtype)
+    }
+
+    /// Replaces a nested child by position or by path.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_field_at`] or [`Self::set_field_by_path`]
+    /// raises, whichever the key selects.
+    pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Self) -> Result<()> {
+        match key.into() {
+            FieldKey::Index(index) => self.set_field_at(index, child),
+            FieldKey::Path(path) => self.set_field_by_path(path, child),
         }
-        self.set_data_type(DataType::from_fields(fields)?)
     }
 
     /// Removes the struct child at `index`, returning it and closing the gap.
@@ -1111,7 +1271,7 @@ impl Field {
     /// Returns an error when this field is not a struct, when `index` is past
     /// the end, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn remove_field(&mut self, index: usize) -> Result<Self> {
+    pub fn remove_field_at(&mut self, index: usize) -> Result<Self> {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
@@ -1123,7 +1283,7 @@ impl Field {
             });
         }
         let removed = fields.remove(index);
-        self.set_data_type(DataType::from_fields(fields)?)?;
+        self.set_dtype(DataType::from_fields(fields)?)?;
         Ok(removed)
     }
 
@@ -1139,7 +1299,7 @@ impl Field {
     /// ])?
     /// .required_field("row");
     ///
-    /// let dropped = row.remove_field_by_name("id")?;
+    /// let dropped = row.remove_field_by_path("id")?;
     /// assert_eq!(dropped.name(), "id");
     /// // Positions close up behind it.
     /// assert_eq!(row[0].name(), "venue");
@@ -1152,31 +1312,40 @@ impl Field {
     /// Returns an error when this field is not a struct, when no child carries
     /// `name`, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
-    pub fn remove_field_by_name(&mut self, name: &str) -> Result<Self> {
-        let index = self.index_of(name).ok_or_else(|| Error::InvalidRecord {
-            path: format_smolstr!("$.{name}"),
-            reason: crate::text::expected_got(
-                format_smolstr!("a child of the field {:?}", self.name),
-                format_smolstr!("{name:?}"),
-            ),
-        })?;
-        self.remove_field(index)
+    pub fn remove_field_by_path(&mut self, path: &str) -> Result<Self> {
+        let mut dtype = self.dtype.clone();
+        let removed = dtype.remove_field_by_path(path)?;
+        self.set_dtype(dtype)?;
+        Ok(removed)
+    }
+
+    /// Removes a nested child by position or by path, returning it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::remove_field_at`] or
+    /// [`Self::remove_field_by_path`] raises, whichever the key selects.
+    pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Self> {
+        match key.into() {
+            FieldKey::Index(index) => self.remove_field_at(index),
+            FieldKey::Path(path) => self.remove_field_by_path(path),
+        }
     }
 
     /// The struct children as an owned vector, or a refusal naming the reason.
     ///
     /// Cloning here is what keeps the shared child array shared everywhere
     /// else: the copy exists only for the duration of one mutation and the
-    /// result is rebuilt through [`Self::set_data_type`], so read, clone, and
+    /// result is rebuilt through [`Self::set_dtype`], so read, clone, and
     /// projection paths never pay for a caller's edit.
     fn struct_children(&self) -> Result<Vec<Self>> {
-        match self.data_type.as_fields() {
+        match self.dtype.as_fields() {
             Some(fields) => Ok(fields.to_vec()),
             None => Err(Error::InvalidRecord {
                 path: format_smolstr!("$.{}", self.name),
                 reason: crate::text::expected_got(
                     "a struct field whose children can be replaced",
-                    format_smolstr!("{}", self.data_type),
+                    format_smolstr!("{}", self.dtype),
                 ),
             }),
         }
@@ -1198,7 +1367,7 @@ impl Field {
 
     /// Replaces Arrow IPC dictionary options on a dictionary-typed field.
     pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()> {
-        if !matches!(self.data_type, DataType::Dictionary(_)) {
+        if !matches!(self.dtype, DataType::Dictionary(_)) {
             return Err(Error::InvalidDataType {
                 kind: "Field",
                 reason: "dictionary options require a dictionary datatype".into(),
@@ -1322,55 +1491,30 @@ impl Field {
         self.remove_metadata(ALIAS_KEY)
     }
 
-    /// Sets a validated catalog name.
-    pub fn set_catalog_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(CATALOG_NAME_KEY, value)?;
+    /// Sets a validated comment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value fails the validation reserved text
+    /// goes through.
+    pub fn set_comment(&mut self, value: impl Into<String>) -> Result<()> {
+        self.insert_metadata(COMMENT_KEY, value)?;
         Ok(())
     }
 
-    /// Returns a persistent field with a validated catalog name.
-    pub fn try_with_catalog_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_catalog_name(value)?;
+    /// Returns a persistent field with a validated comment.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_comment`] raises.
+    pub fn try_with_comment(mut self, value: impl Into<String>) -> Result<Self> {
+        self.set_comment(value)?;
         Ok(self)
     }
 
-    /// Removes and returns the catalog name.
-    pub fn remove_catalog_name(&mut self) -> Option<String> {
-        self.remove_metadata(CATALOG_NAME_KEY)
-    }
-
-    /// Sets a validated schema name.
-    pub fn set_schema_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(SCHEMA_NAME_KEY, value)?;
-        Ok(())
-    }
-
-    /// Returns a persistent field with a validated schema name.
-    pub fn try_with_schema_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_schema_name(value)?;
-        Ok(self)
-    }
-
-    /// Removes and returns the schema name.
-    pub fn remove_schema_name(&mut self) -> Option<String> {
-        self.remove_metadata(SCHEMA_NAME_KEY)
-    }
-
-    /// Sets a validated table name.
-    pub fn set_table_name(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(TABLE_NAME_KEY, value)?;
-        Ok(())
-    }
-
-    /// Returns a persistent field with a validated table name.
-    pub fn try_with_table_name(mut self, value: impl Into<String>) -> Result<Self> {
-        self.set_table_name(value)?;
-        Ok(self)
-    }
-
-    /// Removes and returns the table name.
-    pub fn remove_table_name(&mut self) -> Option<String> {
-        self.remove_metadata(TABLE_NAME_KEY)
+    /// Removes and returns the comment.
+    pub fn remove_comment(&mut self) -> Option<String> {
+        self.remove_metadata(COMMENT_KEY)
     }
 
     /// Sets the canonical Arrow/Parquet signed 32-bit field identifier.
@@ -1819,8 +1963,8 @@ impl Field {
 
     /// Validates the complete recursive datatype.
     pub fn validate(&self) -> Result<()> {
-        self.data_type.validate()?;
-        if !matches!(self.data_type, DataType::Dictionary(_))
+        self.dtype.validate()?;
+        if !matches!(self.dtype, DataType::Dictionary(_))
             && (self.dictionary_id != 0 || self.dictionary_is_ordered)
         {
             return Err(Error::InvalidDataType {
@@ -1843,7 +1987,7 @@ impl Field {
     /// Field contains an invalid datatype/dictionary-option combination.
     #[doc(hidden)]
     pub fn validate_bounded(&self) -> Result<()> {
-        preflight_schema_shape(self.data_type(), "Field")?;
+        preflight_schema_shape(self.dtype(), "Field")?;
         self.validate()
     }
 
@@ -1883,7 +2027,7 @@ impl Field {
         std::ptr::eq(self, other)
             || self.name == other.name
                 && self.nullable == other.nullable
-                && data_type_layout_eq(&self.data_type, &other.data_type)
+                && dtype_layout_eq(&self.dtype, &other.dtype)
     }
 
     /// Returns a deterministic cross-language hash of canonical display output.
@@ -1923,7 +2067,7 @@ impl Clone for Field {
         }
         Self {
             name: self.name.clone(),
-            data_type: self.data_type.clone(),
+            dtype: self.dtype.clone(),
             nullable: self.nullable,
             dictionary_id: self.dictionary_id,
             dictionary_is_ordered: self.dictionary_is_ordered,
@@ -1988,7 +2132,7 @@ impl fmt::Debug for Field {
         formatter
             .debug_struct("Field")
             .field("name", &self.name)
-            .field("data_type", &self.data_type)
+            .field("dtype", &self.dtype)
             .field("nullable", &self.nullable)
             .field("dictionary_id", &self.dictionary_id)
             .field("dictionary_is_ordered", &self.dictionary_is_ordered)
@@ -2003,11 +2147,7 @@ impl fmt::Display for FieldLayoutDisplay<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("field(")?;
         write_quoted(formatter, &self.0.name)?;
-        write!(
-            formatter,
-            ",{},nullable={})",
-            self.0.data_type, self.0.nullable
-        )
+        write!(formatter, ",{},nullable={})", self.0.dtype, self.0.nullable)
     }
 }
 
@@ -2024,7 +2164,7 @@ impl fmt::Display for Field {
         write!(
             formatter,
             ",{},{}",
-            self.data_type,
+            self.dtype,
             if self.nullable {
                 "nullable=true"
             } else {
@@ -2055,7 +2195,7 @@ impl PartialEq for Field {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self, other)
             || self.name == other.name
-                && self.data_type == other.data_type
+                && self.dtype == other.dtype
                 && self.nullable == other.nullable
                 && self.dictionary_id == other.dictionary_id
                 && self.dictionary_is_ordered == other.dictionary_is_ordered
@@ -2078,7 +2218,7 @@ impl Ord for Field {
         }
         (
             &self.name,
-            &self.data_type,
+            &self.dtype,
             self.nullable,
             self.dictionary_id,
             self.dictionary_is_ordered,
@@ -2086,7 +2226,7 @@ impl Ord for Field {
         )
             .cmp(&(
                 &other.name,
-                &other.data_type,
+                &other.dtype,
                 other.nullable,
                 other.dictionary_id,
                 other.dictionary_is_ordered,
@@ -2098,7 +2238,7 @@ impl Ord for Field {
 impl Hash for Field {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
-        self.data_type.hash(state);
+        self.dtype.hash(state);
         self.nullable.hash(state);
         self.dictionary_id.hash(state);
         self.dictionary_is_ordered.hash(state);
@@ -2112,7 +2252,7 @@ impl Hash for Field {
 /// thing: descend the schema. Metadata is reached through its own view -
 /// [`Field::metadata_iter`] and [`Field::get_metadata`] - because a view whose keys
 /// *are* keys is where item syntax legitimately means "a key". Before this,
-/// `field["level"]` was a metadata lookup while `data_type["level"]` was a
+/// `field["level"]` was a metadata lookup while `dtype["level"]` was a
 /// child, so a caller walking one object graph got two unrelated things from
 /// identical syntax.
 ///
@@ -2121,7 +2261,7 @@ impl Hash for Field {
 /// There is no dotted-string or tuple path form.
 ///
 /// Panics when the name is not a child, as [`Index`] idiomatically does;
-/// [`Field::get_field_by_name`] is the non-panicking form.
+/// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
 /// use yggdryl::{DataType, Field};
@@ -2134,9 +2274,9 @@ impl Hash for Field {
 /// ])?
 /// .required_field("order");
 ///
-/// assert_eq!(order["id"].data_type(), &DataType::Int64);
+/// assert_eq!(order["id"].dtype(), &DataType::Int64);
 /// // Each subscript answers a node that subscripts again.
-/// assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+/// assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
 /// # Ok(())
 /// # }
 /// ```
@@ -2148,7 +2288,7 @@ impl Index<&str> for Field {
     type Output = Self;
 
     fn index(&self, name: &str) -> &Self::Output {
-        self.get_field_by_name(name)
+        self.get_field_by_path(name)
             .unwrap_or_else(|| panic!("{:?} is not a child of the field {:?}", name, self.name()))
     }
 }
@@ -2196,7 +2336,7 @@ fn field_layout_eq(left: &Field, right: &Field) -> bool {
 }
 
 #[allow(clippy::too_many_lines)]
-fn data_type_layout_eq(left: &DataType, right: &DataType) -> bool {
+fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
     if std::ptr::eq(left, right) {
         return true;
     }
@@ -2227,8 +2367,7 @@ fn data_type_layout_eq(left: &DataType, right: &DataType) -> bool {
                     })
         }
         (D::Dictionary(left), D::Dictionary(right)) => {
-            data_type_layout_eq(left.key(), right.key())
-                && data_type_layout_eq(left.value(), right.value())
+            dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
         }
         (D::Map(left), D::Map(right)) => map_layout_eq(left, right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),
@@ -2278,7 +2417,7 @@ mod tests {
     #[test]
     fn sql_hive_and_wrapped_forms_parse() {
         assert_eq!(
-            Field::from_str("id bigint not null").unwrap().data_type(),
+            Field::from_str("id bigint not null").unwrap().dtype(),
             &DataType::Int64
         );
         assert!(!Field::from_str("id bigint not null").unwrap().is_nullable());

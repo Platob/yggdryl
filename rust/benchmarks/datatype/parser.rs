@@ -44,8 +44,8 @@ pub(crate) fn parser_benchmarks(criterion: &mut Criterion) {
         let spellings = ["variant", "geometry", "geography('OGC:CRS84','vincenty')"]
             .map(|spelling| DataType::from_str(spelling).expect("static spellings must parse"));
         bencher.iter(|| {
-            for data_type in &spellings {
-                let canonical = black_box(data_type).to_string();
+            for dtype in &spellings {
+                let canonical = black_box(dtype).to_string();
                 DataType::from_str(black_box(&canonical))
                     .expect("canonical display output must round-trip");
             }

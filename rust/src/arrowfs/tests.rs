@@ -1095,7 +1095,7 @@ mod records {
         // And the partition column its directories spell out is restored.
         let field = folder.read_arrow_field(&options).unwrap();
         assert!(
-            field.get_field_by_name("year").is_some(),
+            field.get_field_by_path("year").is_some(),
             "the layout's partition column is restored: {field}"
         );
     }

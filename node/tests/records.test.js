@@ -110,11 +110,11 @@ test('a declared schema selects and then casts', () => {
 
   const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
   const projected = handle.readArrowReader(plain.withField(wanted))
-  assert.equal(projected.field.dataType.length, 1)
+  assert.equal(projected.field.dtype.length, 1)
   assert.equal(projected.intoTable().numCols, 1)
 
   // The resource is unchanged: it still holds all three columns.
-  assert.equal(handle.readArrowField().dataType.length, 3)
+  assert.equal(handle.readArrowField().dtype.length, 3)
 
   // A projection can only drop columns, so a column the stream does not hold
   // is read whole and then supplied by the cast.
@@ -124,7 +124,7 @@ test('a declared schema selects and then casts', () => {
     { nullable: false },
   )
   const widened = handle.readArrowReader(plain.withField(invented))
-  assert.equal(widened.field.dataType.length, 2)
+  assert.equal(widened.field.dtype.length, 2)
 })
 
 test('parquet is chosen by the file name and nothing else', (t) => {
@@ -307,7 +307,7 @@ test('a folder is one table, and a write routes rows to their partition', (t) =>
 
   // The value the directory spells is not stored again in every row.
   const leaf = lake.joinpath('venue=XNAS').joinpath('part-0.arrows')
-  assert.equal(leaf.readArrowField().dataType.length, 2)
+  assert.equal(leaf.readArrowField().dtype.length, 2)
 
   const restored = lake.readArrowReader(options).intoTable()
   assert.equal(restored.numCols, 3)

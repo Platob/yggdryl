@@ -299,18 +299,18 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
   const field = new Field('price', 'decimal(18, 6)', false)
 
   field.setAlias('close')
-  field.setCatalogName('analytics')
-  field.setSchemaName('market')
-  field.setTableName('bars')
+  field.setComment('closing price')
+  // Catalog coordinates belong to whichever protocol names them.
+  field.setProperty('iceberg', 'table_name', 'bars')
   field.setParquetFieldId(-2147483648)
   field.setLocation(
     Uri.fromString('s3://warehouse/bars/day=2026-08-15/data.parquet'),
   )
 
   assert.equal(field.alias, 'close')
-  assert.equal(field.catalogName, 'analytics')
-  assert.equal(field.schemaName, 'market')
-  assert.equal(field.tableName, 'bars')
+  assert.equal(field.comment, 'closing price')
+  assert.equal(field.getProperty('iceberg', 'table_name'), 'bars')
+  assert.equal(field.get('table_name'), null)
   assert.equal(field.parquetFieldId, -2147483648)
   assert.equal(field.get('PARQUET:field_id'), '-2147483648')
   assert.ok(
@@ -325,7 +325,6 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
   assert.equal(field.setProperty('iceberg', 'field-id', '7'), null)
   assert.equal(field.setProperty('fix', 'tag', '44'), null)
   assert.equal(field.setProperty('field', 'role', 'measure'), null)
-  assert.equal(field.setProperty('dtype', 'logical', 'price'), null)
   assert.equal(field.getProperty('postgres', 'type'), 'numeric(18,6)')
   assert.equal(field.hasProperty('postgres', 'column'), true)
   assert.deepEqual(field.propertyIter('postgres'), [
@@ -342,9 +341,7 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
   assert.equal(field.hasProperty('iceberg', 'field-id'), true)
 
   assert.equal(field.removeAlias(), 'close')
-  assert.equal(field.removeCatalogName(), 'analytics')
-  assert.equal(field.removeSchemaName(), 'market')
-  assert.equal(field.removeTableName(), 'bars')
+  assert.equal(field.removeComment(), 'closing price')
   assert.equal(field.removeParquetFieldId(), -2147483648)
   assert.ok(
     field
@@ -551,7 +548,6 @@ test('every well-known protocol has its own live field accessor', () => {
     'iceberg',
     'fix',
     'field',
-    'dtype',
     's3',
     'gs',
     'az',
@@ -561,8 +557,12 @@ test('every well-known protocol has its own live field accessor', () => {
   ]
   const field = new Field('price', 'decimal(18, 6)', false)
 
+  // `field` names a child on a schema node, so its property view is the one
+  // accessor that is not simply its scheme name.
+  const accessors = { field: 'fieldProperties' }
+
   for (const protocol of protocols) {
-    const view = field[protocol]
+    const view = field[accessors[protocol] ?? protocol]
     assert.equal(view.scheme, protocol, protocol)
     assert.equal(view.prefix, protocol, protocol)
     assert.equal(view.key('doc'), `${protocol}:doc`, protocol)
@@ -627,11 +627,11 @@ test('partition markers name the columns a path spells out', () => {
   const path = partitioned.onlyPartitionFields()
   assert.ok(path instanceof Field)
   assert.equal(path.name, 'row')
-  assert.deepEqual([...path.dataType].map((child) => child.name), ['year'])
+  assert.deepEqual([...path.dtype].map((child) => child.name), ['year'])
 
   const leaf = partitioned.withoutPartitionFields()
   assert.ok(leaf instanceof Field)
-  assert.deepEqual([...leaf.dataType].map((child) => child.name), ['price'])
+  assert.deepEqual([...leaf.dtype].map((child) => child.name), ['price'])
 
   // A partition column nobody stores is a layout error, not a silent omission.
   assert.throws(
@@ -640,4 +640,152 @@ test('partition markers name the columns a path spells out', () => {
   )
   assert.throws(() => year.onlyPartitionFields(), /expected a struct root/)
   assert.throws(() => year.withPartitionFields(['year']), /expected a struct root/)
+})
+
+test('two schemas merge by widening and unioning their columns', () => {
+  // Spelled `not null` on both sides, so the merged column staying required is
+  // the merge's doing rather than the parser's default.
+  const left = DataType.from('struct<id:int32 not null,venue:utf8 not null>')
+  const right = DataType.from('struct<id:int64 not null,price:float64 not null>')
+
+  const merged = left.mergeWith(right)
+
+  assert.equal(merged.length, 3)
+  assert.ok(merged.getField('id').dtype.equals(DataType.from('int64')))
+  assert.equal(merged.getField('id').nullable, false)
+
+  // A column only one side carries arrives nullable.
+  assert.equal(merged.getField('venue').nullable, true)
+  assert.equal(merged.getField('price').nullable, true)
+
+  // Order is the receiver's, with additions appended.
+  assert.deepEqual(merged.keys(), ['id', 'venue', 'price'])
+
+  // Narrowing meets at the tightest type naming both.
+  assert.ok(DataType.from('int32').mergeWith('int64', false).equals(DataType.from('int32')))
+
+  // Null yields, bytes win over text, text wins over numbers.
+  assert.ok(DataType.from('null').mergeWith('utf8').equals(DataType.from('utf8')))
+  assert.ok(DataType.from('utf8').mergeWith('binary').equals(DataType.from('binary')))
+  assert.ok(DataType.from('int64').mergeWith('utf8').equals(DataType.from('utf8')))
+
+  // A pair with no meeting point that is not a re-encoding is refused.
+  assert.throws(() => DataType.from('boolean').mergeWith('int64'))
+})
+
+test('merging fields carries nullability and unions metadata', () => {
+  const held = new Field('price', 'int32', false)
+  held.setProperty('iceberg', 'doc', 'held')
+  const other = new Field('price', 'int64', true)
+  other.setProperty('iceberg', 'doc', 'other')
+  other.setProperty('iceberg', 'id', '7')
+
+  const merged = held.mergeWith(other)
+
+  assert.ok(merged.dtype.equals(DataType.from('int64')))
+  assert.equal(merged.nullable, true, 'either side being nullable carries over')
+  assert.equal(merged.getProperty('iceberg', 'doc'), 'held', 'the receiver wins')
+  assert.equal(merged.getProperty('iceberg', 'id'), '7')
+})
+
+test('a protocol view merges in place and only adds', () => {
+  const source = new Field('price', 'int64')
+  source.setProperty('iceberg', 'doc', 'source')
+  source.setProperty('iceberg', 'id', '7')
+
+  const target = new Field('price', 'int64')
+  target.setProperty('iceberg', 'doc', 'target')
+  target.setProperty('glue', 'comment', 'glue')
+
+  target.iceberg.mergeWith(source.iceberg)
+
+  // A name already held keeps its value; a new one arrives.
+  assert.equal(target.getProperty('iceberg', 'doc'), 'target')
+  assert.equal(target.getProperty('iceberg', 'id'), '7')
+
+  // A scoped merge leaves every other protocol alone.
+  assert.equal(target.getProperty('glue', 'comment'), 'glue')
+})
+
+test('JSON reads every shape and writes bytes', () => {
+  const field = new Field('row', DataType.from('struct<id:int64 not null>'), false)
+
+  const raw = field.toJSONBytes()
+  assert.ok(Buffer.isBuffer(raw))
+
+  // `toJSON` and `toJSONBytes` are the same document; only the key order
+  // differs, because one goes through a sorted map and the other keeps the
+  // struct's declaration order.
+  assert.deepEqual(JSON.parse(raw.toString()), JSON.parse(JSON.stringify(field)))
+
+  // Text and objects share one reader; bytes have their own, because napi
+  // cannot discriminate a typed array inside a union.
+  assert.ok(Field.fromJSON(raw.toString()).equals(field))
+  assert.ok(Field.fromJSON(JSON.parse(raw.toString())).equals(field))
+  assert.ok(Field.fromJSONBytes(raw).equals(field))
+  assert.ok(Field.fromJSONBytes(new Uint8Array(raw)).equals(field))
+
+  // A datatype answers the same.
+  const dtype = field.dtype
+  assert.ok(DataType.fromJSONBytes(dtype.toJSONBytes()).equals(dtype))
+  assert.ok(DataType.fromJSON(JSON.parse(JSON.stringify(dtype))).equals(dtype))
+})
+
+test('every format carries the same nested shape', () => {
+  const deep = new Field(
+    'row',
+    DataType.from('struct<levels:list<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>'),
+    false,
+  )
+
+  assert.ok(Field.fromJSONBytes(deep.toJSONBytes()).equals(deep))
+  assert.ok(Field.fromJSON(JSON.parse(JSON.stringify(deep))).equals(deep))
+
+  // Nesting is carried, not flattened into a string.
+  const document = JSON.parse(deep.toJSONBytes().toString())
+  const levels = document.dtype.fields[0].dtype
+  assert.equal(levels.type, 'list')
+  assert.equal(levels.field.dtype.fields[0].name, 'sym')
+  assert.equal(document.dtype.fields[1].dtype.type, 'map')
+})
+
+test('unnesting flattens structs and exploding reaches inside collections', () => {
+  const row = new Field(
+    'row',
+    DataType.from(
+      'struct<id:int64 not null,line:struct<px:float64 not null>,' +
+        'levels:list<float64>,tags:map<utf8,int64>>',
+    ),
+    false,
+  )
+
+  const leaves = row.unnestFields()
+  assert.deepEqual(
+    leaves.map((child) => child.name),
+    ['id', 'line.px', 'levels', 'tags'],
+  )
+
+  // A leaf under a nullable ancestor is nullable, and a list is a leaf here.
+  assert.equal(leaves[0].nullable, false)
+  assert.equal(leaves[1].nullable, true)
+
+  // Every name it answers is one the path accessor resolves.
+  for (const leaf of leaves) {
+    assert.notEqual(row.getFieldByPath(leaf.name), null)
+  }
+
+  const exploded = row.explodeFields()
+  assert.deepEqual(
+    exploded.map((child) => child.name),
+    ['id', 'line', 'levels', 'tags'],
+  )
+  assert.ok(exploded[0].dtype.equals(DataType.from('int64')), 'not a collection')
+  assert.ok(exploded[2].dtype.equals(DataType.from('float64')), 'a list answers its item')
+  assert.equal(exploded[3].dtype.length, 2, 'a map answers its entries struct')
+
+  // A datatype answers the same, so descending never changes the calls.
+  assert.deepEqual(
+    row.dtype.unnestFields().map((child) => child.name),
+    leaves.map((child) => child.name),
+  )
 })

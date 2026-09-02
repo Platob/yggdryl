@@ -31,7 +31,7 @@ use super::{Error, Result};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
-    let data_type = field.data_type();
+    let dtype = field.dtype();
     let arrow_type = field.clone().into_arrow_ref()?.data_type().clone();
     // Arrow owns the canonical empty representation for every validated
     // datatype. Taking this path before schema-directed value materialization
@@ -63,7 +63,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             Arc::new(array) as ArrayRef
         }};
     }
-    let array = match data_type {
+    let array = match dtype {
         DataType::Null => Arc::new(NullArray::new(values.len())) as ArrayRef,
         DataType::Boolean => Arc::new(BooleanArray::from(
             values
@@ -102,19 +102,19 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             TimeUnit::Nanosecond => {
                 physical_primitive!(TimestampNanosecondArray, temporal_i64(*unit))
             }
-            _ => return Err(unsupported(data_type, "invalid timestamp unit")),
+            _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
         DataType::Date32 => primitive!(Date32Array, date_i32),
         DataType::Date64 => primitive!(Date64Array, date_i64),
         DataType::Time32(unit) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, temporal_i32(*unit)),
             TimeUnit::Millisecond => primitive!(Time32MillisecondArray, temporal_i32(*unit)),
-            _ => return Err(unsupported(data_type, "invalid time32 unit")),
+            _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
         DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
-            _ => return Err(unsupported(data_type, "invalid time64 unit")),
+            _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
         DataType::Duration32(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Scalar| {
@@ -129,14 +129,14 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value: &&Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
-            _ => return Err(unsupported(data_type, "invalid duration32 unit")),
+            _ => return Err(unsupported(dtype, "invalid duration32 unit")),
         },
         DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
-            _ => return Err(unsupported(data_type, "invalid duration64 unit")),
+            _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, signed_i32)
@@ -147,7 +147,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Interval(TimeUnit::MonthDayNano) => {
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
-        DataType::Interval(_) => return Err(unsupported(data_type, "invalid interval layout")),
+        DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         DataType::Binary => Arc::new(BinaryArray::from(
             values
                 .iter()
@@ -244,7 +244,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         // encoding here.
         DataType::Variant => {
             return Err(unsupported(
-                data_type,
+                dtype,
                 "the variant binary encoding lands with the Iceberg v3 layer",
             ));
         }
@@ -254,7 +254,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn value_from_array(
-    data_type: &DataType,
+    dtype: &DataType,
     array: &dyn Array,
     index: usize,
 ) -> Result<Scalar> {
@@ -264,9 +264,7 @@ pub(crate) fn value_from_array(
             array.len()
         )));
     }
-    if array.is_null(index)
-        && !matches!(data_type, DataType::Union(..) | DataType::RunEndEncoded(_))
-    {
+    if array.is_null(index) && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_)) {
         return Ok(Scalar::Null);
     }
     macro_rules! primitive {
@@ -275,7 +273,7 @@ pub(crate) fn value_from_array(
             ($conversion)(value)
         }};
     }
-    let value = match data_type {
+    let value = match dtype {
         DataType::Null => Scalar::Null,
         DataType::Boolean => Scalar::from(downcast::<BooleanArray>(array)?.value(index)),
         DataType::Int8 => primitive!(Int8Array, Scalar::from),
@@ -305,7 +303,7 @@ pub(crate) fn value_from_array(
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
                 Scalar::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
             }),
-            _ => return Err(unsupported(data_type, "invalid timestamp unit")),
+            _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
         DataType::Date32 => primitive!(Date32Array, |value| {
             Scalar::Date32(value, TimeUnit::Day, Timezone::NAIVE)
@@ -326,7 +324,7 @@ pub(crate) fn value_from_array(
                 *unit,
                 Timezone::NAIVE
             )),
-            _ => return Err(unsupported(data_type, "invalid time32 unit")),
+            _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
         DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => {
@@ -343,7 +341,7 @@ pub(crate) fn value_from_array(
                     Timezone::NAIVE
                 ))
             }
-            _ => return Err(unsupported(data_type, "invalid time64 unit")),
+            _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
         DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
         DataType::Duration64(unit) => match unit {
@@ -359,7 +357,7 @@ pub(crate) fn value_from_array(
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value| {
                 Scalar::Duration64(value, *unit, Timezone::NAIVE)
             }),
-            _ => return Err(unsupported(data_type, "invalid duration64 unit")),
+            _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, Scalar::from)
@@ -376,7 +374,7 @@ pub(crate) fn value_from_array(
                 Scalar::from(value.nanoseconds),
             ])
         }
-        DataType::Interval(_) => return Err(unsupported(data_type, "invalid interval layout")),
+        DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         DataType::Binary => Scalar::from(downcast::<BinaryArray>(array)?.value(index).to_vec()),
         DataType::FixedSizeBinary(_) => Scalar::from(
             downcast::<FixedSizeBinaryArray>(array)?
@@ -416,7 +414,7 @@ pub(crate) fn value_from_array(
             let values = fields
                 .iter()
                 .zip(array.columns())
-                .map(|(field, child)| value_from_array(field.data_type(), child.as_ref(), index))
+                .map(|(field, child)| value_from_array(field.dtype(), child.as_ref(), index))
                 .collect::<Result<Vec<_>>>()?;
             Scalar::from_sequence(values)
         }
@@ -430,7 +428,7 @@ pub(crate) fn value_from_array(
                     Error::IncompatibleSchema(format!("unknown union type id {type_id}"))
                 })?;
             let payload = value_from_array(
-                field.data_type(),
+                field.dtype(),
                 array.child(type_id).as_ref(),
                 array.value_offset(index),
             )?;
@@ -456,14 +454,14 @@ pub(crate) fn value_from_array(
             let entries = downcast::<MapArray>(array)?.value(index);
             let fields = map
                 .entries()
-                .data_type()
+                .dtype()
                 .as_fields()
-                .ok_or_else(|| unsupported(data_type, "map entries are not a struct"))?;
+                .ok_or_else(|| unsupported(dtype, "map entries are not a struct"))?;
             let pairs = (0..entries.len())
                 .map(|entry| {
                     Ok((
-                        value_from_array(fields[0].data_type(), entries.column(0).as_ref(), entry)?,
-                        value_from_array(fields[1].data_type(), entries.column(1).as_ref(), entry)?,
+                        value_from_array(fields[0].dtype(), entries.column(0).as_ref(), entry)?,
+                        value_from_array(fields[1].dtype(), entries.column(1).as_ref(), entry)?,
                     ))
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -476,7 +474,7 @@ pub(crate) fn value_from_array(
         }
         DataType::Variant => {
             return Err(unsupported(
-                data_type,
+                dtype,
                 "the variant binary encoding lands with the Iceberg v3 layer",
             ));
         }
@@ -526,30 +524,30 @@ impl MaterializationBudget {
         self.add_bytes(bitmap_bytes(rows)?)
     }
 
-    pub(crate) fn add_repeated_default(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_repeated_default_impl(data_type, rows, true)
+    pub(crate) fn add_repeated_default(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_repeated_default_impl(dtype, rows, true)
     }
 
     pub(crate) fn add_repeated_default_without_dictionary_values(
         &mut self,
-        data_type: &DataType,
+        dtype: &DataType,
         rows: usize,
     ) -> Result<()> {
-        self.add_repeated_default_impl(data_type, rows, false)
+        self.add_repeated_default_impl(dtype, rows, false)
     }
 
     fn add_repeated_default_impl(
         &mut self,
-        data_type: &DataType,
+        dtype: &DataType,
         rows: usize,
         include_dictionary_values: bool,
     ) -> Result<()> {
         if rows == 0 {
             return Ok(());
         }
-        match data_type {
+        match dtype {
             DataType::FixedSizeList(child, size) => {
-                self.add_array_layout(data_type, rows)?;
+                self.add_array_layout(dtype, rows)?;
                 let size = usize::try_from(*size)
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                 let child_rows =
@@ -557,15 +555,15 @@ impl MaterializationBudget {
                 self.add_repeated_field_default(child, child_rows, include_dictionary_values)
             }
             DataType::Struct(fields) => {
-                self.add_array_layout(data_type, rows)?;
+                self.add_array_layout(dtype, rows)?;
                 for field in fields {
                     self.add_repeated_field_default(field, rows, include_dictionary_values)?;
                 }
                 Ok(())
             }
             DataType::Union(fields, mode) => {
-                self.add_array_layout(data_type, rows)?;
-                let (selected_id, _) = physical_union_branch(data_type, fields)?;
+                self.add_array_layout(dtype, rows)?;
+                let (selected_id, _) = physical_union_branch(dtype, fields)?;
                 for (type_id, field) in fields {
                     if matches!(mode, UnionMode::Dense) && type_id != selected_id {
                         continue;
@@ -573,13 +571,13 @@ impl MaterializationBudget {
                     if type_id == selected_id {
                         self.add_repeated_field_default(field, rows, include_dictionary_values)?;
                     } else {
-                        self.add_null_array(field.data_type(), rows)?;
+                        self.add_null_array(field.dtype(), rows)?;
                     }
                 }
                 Ok(())
             }
             DataType::Dictionary(dictionary) => {
-                self.add_array_layout(data_type, rows)?;
+                self.add_array_layout(dtype, rows)?;
                 if !include_dictionary_values
                     || dictionary.value().is_default_value(&Scalar::Null)?
                 {
@@ -590,10 +588,10 @@ impl MaterializationBudget {
             }
             DataType::RunEndEncoded(encoded) => {
                 self.add_slots(1)?;
-                self.add_array(encoded.run_ends().data_type(), 1)?;
+                self.add_array(encoded.run_ends().dtype(), 1)?;
                 self.add_repeated_field_default(encoded.values(), 1, include_dictionary_values)
             }
-            _ => self.add_array(data_type, rows),
+            _ => self.add_array(dtype, rows),
         }
     }
 
@@ -604,33 +602,33 @@ impl MaterializationBudget {
         include_dictionary_values: bool,
     ) -> Result<()> {
         if field.is_nullable() {
-            self.add_null_array(field.data_type(), rows)
+            self.add_null_array(field.dtype(), rows)
         } else {
-            self.add_repeated_default_impl(field.data_type(), rows, include_dictionary_values)
+            self.add_repeated_default_impl(field.dtype(), rows, include_dictionary_values)
         }
     }
 
     /// Reserves a live one-row default without charging its reusable logical
     /// root slot twice. Physical descendants and every owned root buffer are
     /// still charged because a deeply nested scalar can itself reach a cap.
-    pub(crate) fn add_default_scalar_scratch(&mut self, data_type: &DataType) -> Result<()> {
-        match data_type {
+    pub(crate) fn add_default_scalar_scratch(&mut self, dtype: &DataType) -> Result<()> {
+        match dtype {
             DataType::FixedSizeList(child, size) => {
-                self.add_array_layout_without_slots(data_type, 1)?;
+                self.add_array_layout_without_slots(dtype, 1)?;
                 let size = usize::try_from(*size)
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                 self.add_repeated_field_default(child, size, true)
             }
             DataType::Struct(fields) => {
-                self.add_array_layout_without_slots(data_type, 1)?;
+                self.add_array_layout_without_slots(dtype, 1)?;
                 for field in fields {
                     self.add_repeated_field_default(field, 1, true)?;
                 }
                 Ok(())
             }
             DataType::Union(fields, mode) => {
-                self.add_array_layout_without_slots(data_type, 1)?;
-                let (selected_id, _) = physical_union_branch(data_type, fields)?;
+                self.add_array_layout_without_slots(dtype, 1)?;
+                let (selected_id, _) = physical_union_branch(dtype, fields)?;
                 for (type_id, field) in fields {
                     if matches!(mode, UnionMode::Dense) && type_id != selected_id {
                         continue;
@@ -638,13 +636,13 @@ impl MaterializationBudget {
                     if type_id == selected_id {
                         self.add_repeated_field_default(field, 1, true)?;
                     } else {
-                        self.add_null_array(field.data_type(), 1)?;
+                        self.add_null_array(field.dtype(), 1)?;
                     }
                 }
                 Ok(())
             }
             DataType::Dictionary(dictionary) => {
-                self.add_array_layout_without_slots(data_type, 1)?;
+                self.add_array_layout_without_slots(dtype, 1)?;
                 if dictionary.value().is_default_value(&Scalar::Null)? {
                     Ok(())
                 } else {
@@ -652,49 +650,49 @@ impl MaterializationBudget {
                 }
             }
             DataType::RunEndEncoded(encoded) => {
-                self.add_array(encoded.run_ends().data_type(), 1)?;
+                self.add_array(encoded.run_ends().dtype(), 1)?;
                 self.add_repeated_field_default(encoded.values(), 1, true)
             }
-            _ => self.add_array_without_root_slots(data_type, 1),
+            _ => self.add_array_without_root_slots(dtype, 1),
         }
     }
 
-    pub(crate) fn add_array(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_array_impl(data_type, rows, true)
+    pub(crate) fn add_array(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_array_impl(dtype, rows, true)
     }
 
-    fn add_array_without_root_slots(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_array_impl(data_type, rows, false)
+    fn add_array_without_root_slots(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_array_impl(dtype, rows, false)
     }
 
     fn add_array_impl(
         &mut self,
-        data_type: &DataType,
+        dtype: &DataType,
         rows: usize,
         count_root_slots: bool,
     ) -> Result<()> {
         if rows == 0 {
             return Ok(());
         }
-        self.add_array_layout_impl(data_type, rows, count_root_slots)?;
-        match data_type {
+        self.add_array_layout_impl(dtype, rows, count_root_slots)?;
+        match dtype {
             DataType::FixedSizeList(child, size) => {
                 let size = usize::try_from(*size)
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                 let child_rows =
                     checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
-                self.add_array(child.data_type(), child_rows)?;
+                self.add_array(child.dtype(), child_rows)?;
             }
             DataType::Struct(fields) => {
                 for field in fields {
-                    self.add_array(field.data_type(), rows)?;
+                    self.add_array(field.dtype(), rows)?;
                 }
             }
             DataType::Union(fields, mode) => {
                 if matches!(mode, UnionMode::Sparse) {
                     // Sparse unions require every child at the parent length.
                     for (_, field) in fields {
-                        self.add_array(field.data_type(), rows)?;
+                        self.add_array(field.dtype(), rows)?;
                     }
                 } else {
                     // Hidden dense-union fillers all use the core canonical
@@ -703,8 +701,8 @@ impl MaterializationBudget {
                     // select its first physically bounded branch without
                     // visiting inactive payloads. Charge exactly that child
                     // into the shared aggregate budget.
-                    let (_, field) = physical_union_branch(data_type, fields)?;
-                    self.add_array(field.data_type(), rows)?;
+                    let (_, field) = physical_union_branch(dtype, fields)?;
+                    self.add_array(field.dtype(), rows)?;
                 }
             }
             DataType::Dictionary(dictionary) => {
@@ -715,8 +713,8 @@ impl MaterializationBudget {
                 // Both physical children contain at most one slot per logical
                 // row. Recurse so wide value storage and nested wrappers join
                 // the same aggregate budget before either child is built.
-                self.add_array(encoded.run_ends().data_type(), rows)?;
-                self.add_array(encoded.values().data_type(), rows)?;
+                self.add_array(encoded.run_ends().dtype(), rows)?;
+                self.add_array(encoded.values().dtype(), rows)?;
             }
             _ => {}
         }
@@ -728,17 +726,17 @@ impl MaterializationBudget {
     /// Selection kernels can share some children and compact others. Keeping
     /// the shallow reservation separate lets those callers charge the actual
     /// selected child rows without pessimistically charging hidden payloads.
-    pub(crate) fn add_array_layout(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_array_layout_impl(data_type, rows, true)
+    pub(crate) fn add_array_layout(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_array_layout_impl(dtype, rows, true)
     }
 
-    fn add_array_layout_without_slots(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_array_layout_impl(data_type, rows, false)
+    fn add_array_layout_without_slots(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_array_layout_impl(dtype, rows, false)
     }
 
     fn add_array_layout_impl(
         &mut self,
-        data_type: &DataType,
+        dtype: &DataType,
         rows: usize,
         count_slots: bool,
     ) -> Result<()> {
@@ -753,7 +751,7 @@ impl MaterializationBudget {
         // as fixed physical overhead.
         self.add_bytes(bitmap_bytes(rows)?)?;
 
-        match data_type {
+        match dtype {
             DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
             DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
             DataType::Int16 | DataType::UInt16 | DataType::Float16 => {
@@ -786,7 +784,7 @@ impl MaterializationBudget {
             }
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
-                return Err(unsupported(data_type, "invalid interval layout"));
+                return Err(unsupported(dtype, "invalid interval layout"));
             }
             DataType::Binary
             | DataType::Utf8
@@ -824,20 +822,20 @@ impl MaterializationBudget {
     }
 
     #[allow(clippy::too_many_lines)] // Mirrors every Arrow null-array physical layout.
-    pub(crate) fn add_null_array(&mut self, data_type: &DataType, rows: usize) -> Result<()> {
-        self.add_null_array_impl(data_type, rows, true)
+    pub(crate) fn add_null_array(&mut self, dtype: &DataType, rows: usize) -> Result<()> {
+        self.add_null_array_impl(dtype, rows, true)
     }
 
     /// Reserves a one-row physical null placeholder while excluding its root
     /// slot, which is already represented by the eventual output row.
-    pub(crate) fn add_null_scalar_scratch(&mut self, data_type: &DataType) -> Result<()> {
-        self.add_null_array_impl(data_type, 1, false)
+    pub(crate) fn add_null_scalar_scratch(&mut self, dtype: &DataType) -> Result<()> {
+        self.add_null_array_impl(dtype, 1, false)
     }
 
     #[allow(clippy::too_many_lines)] // Mirrors every Arrow null-array physical layout.
     fn add_null_array_impl(
         &mut self,
-        data_type: &DataType,
+        dtype: &DataType,
         rows: usize,
         count_root_slots: bool,
     ) -> Result<()> {
@@ -848,7 +846,7 @@ impl MaterializationBudget {
             self.add_slots(rows)?;
         }
         self.add_bytes(bitmap_bytes(rows)?)?;
-        match data_type {
+        match dtype {
             DataType::Null => {}
             DataType::Boolean => self.add_bytes(bitmap_bytes(rows)?)?,
             DataType::Int8 | DataType::UInt8 => self.add_fixed_rows(rows, 1)?,
@@ -880,7 +878,7 @@ impl MaterializationBudget {
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
-                return Err(unsupported(data_type, "invalid interval layout"));
+                return Err(unsupported(dtype, "invalid interval layout"));
             }
             DataType::Binary
             | DataType::Utf8
@@ -910,11 +908,11 @@ impl MaterializationBudget {
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                 let child_rows =
                     checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
-                self.add_null_array(child.data_type(), child_rows)?;
+                self.add_null_array(child.dtype(), child_rows)?;
             }
             DataType::Struct(fields) => {
                 for field in fields {
-                    self.add_null_array(field.data_type(), rows)?;
+                    self.add_null_array(field.dtype(), rows)?;
                 }
             }
             DataType::Union(fields, mode) => {
@@ -922,12 +920,12 @@ impl MaterializationBudget {
                 match mode {
                     UnionMode::Sparse => {
                         for (_, field) in fields {
-                            self.add_null_array(field.data_type(), rows)?;
+                            self.add_null_array(field.dtype(), rows)?;
                         }
                     }
                     UnionMode::Dense => {
-                        let (_, field) = physical_union_branch(data_type, fields)?;
-                        self.add_null_array(field.data_type(), rows)?;
+                        let (_, field) = physical_union_branch(dtype, fields)?;
+                        self.add_null_array(field.dtype(), rows)?;
                     }
                 }
             }
@@ -935,17 +933,17 @@ impl MaterializationBudget {
                 self.add_fixed_rows(rows, integer_width(dictionary.key())?)?;
             }
             DataType::RunEndEncoded(encoded) => {
-                let maximum = match encoded.run_ends().data_type() {
+                let maximum = match encoded.run_ends().dtype() {
                     DataType::Int16 => i16::MAX as usize,
                     DataType::Int32 => i32::MAX as usize,
                     DataType::Int64 => usize::MAX,
-                    data_type => return Err(unsupported(data_type, "invalid run-end type")),
+                    dtype => return Err(unsupported(dtype, "invalid run-end type")),
                 };
                 if rows > maximum {
                     return Err(physical_limit_error("run-end value", rows, maximum));
                 }
-                self.add_array(encoded.run_ends().data_type(), 1)?;
-                self.add_null_array(encoded.values().data_type(), 1)?;
+                self.add_array(encoded.run_ends().dtype(), 1)?;
+                self.add_null_array(encoded.values().dtype(), 1)?;
             }
         }
         Ok(())
@@ -1032,8 +1030,8 @@ fn checked_physical_mul(
         .ok_or_else(|| physical_limit_error(kind, left.saturating_mul(right), limit))
 }
 
-fn integer_width(data_type: &DataType) -> Result<usize> {
-    match data_type {
+fn integer_width(dtype: &DataType) -> Result<usize> {
+    match dtype {
         DataType::Int8 | DataType::UInt8 => Ok(1),
         DataType::Int16 | DataType::UInt16 => Ok(2),
         DataType::Int32 | DataType::UInt32 => Ok(4),
@@ -1052,10 +1050,10 @@ fn physical_limit_error(kind: &'static str, actual: usize, limit: usize) -> Erro
 }
 
 fn physical_union_branch<'a>(
-    data_type: &DataType,
+    dtype: &DataType,
     fields: &'a crate::UnionFields,
 ) -> Result<(i8, &'a Field)> {
-    if let Ok(Some(selected)) = data_type.default_union_type_id() {
+    if let Ok(Some(selected)) = dtype.default_union_type_id() {
         if let Some((type_id, field)) = fields.iter().find(|(type_id, _)| *type_id == selected) {
             return Ok((type_id, field));
         }
@@ -1064,7 +1062,7 @@ fn physical_union_branch<'a>(
     let mut first_error = None;
     for (type_id, field) in fields {
         let mut probe = MaterializationBudget::default();
-        match probe.add_array(field.data_type(), 1) {
+        match probe.add_array(field.dtype(), 1) {
             Ok(()) => return Ok((type_id, field)),
             Err(error) => first_error.get_or_insert(error),
         };
@@ -1214,7 +1212,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     )?;
     if hidden_rows != 0 {
         let mut budget = MaterializationBudget::default();
-        budget.add_array(child.data_type(), hidden_rows)?;
+        budget.add_array(child.dtype(), hidden_rows)?;
     }
 
     let has_parent_null = null_rows != 0;
@@ -1265,7 +1263,7 @@ fn struct_array(fields: &crate::Fields, values: &[&Scalar]) -> Result<ArrayRef> 
     if null_rows != 0 {
         let mut budget = MaterializationBudget::default();
         for field in fields {
-            budget.add_array(field.data_type(), null_rows)?;
+            budget.add_array(field.dtype(), null_rows)?;
         }
     }
     let has_parent_null = null_rows != 0;
@@ -1331,7 +1329,7 @@ fn union_array(
         // parsing vectors or constructing the first inactive placeholder.
         let mut budget = MaterializationBudget::default();
         for (_, field) in fields {
-            budget.add_array(field.data_type(), values.len())?;
+            budget.add_array(field.dtype(), values.len())?;
         }
     }
 
@@ -1440,8 +1438,8 @@ fn union_array(
 }
 
 fn fields_to_arrow_union(fields: &crate::UnionFields, mode: UnionMode) -> Result<ArrowDataType> {
-    let data_type = DataType::union(fields.iter().map(|(id, field)| (id, field.clone())), mode)?;
-    data_type.into_arrow().map_err(Into::into)
+    let dtype = DataType::union(fields.iter().map(|(id, field)| (id, field.clone())), mode)?;
+    dtype.into_arrow().map_err(Into::into)
 }
 
 fn dictionary_array(dictionary: &crate::DictionaryType, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -1520,7 +1518,7 @@ fn map_array(map: &crate::MapType, values: &[&Scalar]) -> Result<ArrayRef> {
     }
     let fields = map
         .entries()
-        .data_type()
+        .dtype()
         .as_fields()
         .ok_or_else(|| Error::internal("map_array::entries_struct"))?;
     let keys = entries.iter().map(|(key, _)| key).collect::<Vec<_>>();
@@ -1581,11 +1579,11 @@ fn run_array(encoded: &crate::RunEndEncodedType, values: &[&Scalar]) -> Result<A
             Ok(make_array(data))
         }};
     }
-    match encoded.run_ends().data_type() {
+    match encoded.run_ends().dtype() {
         DataType::Int16 => run!(i16, Int16RunArray),
         DataType::Int32 => run!(i32, Int32RunArray),
         DataType::Int64 => run!(i64, Int64RunArray),
-        data_type => Err(unsupported(data_type, "invalid run-end type")),
+        dtype => Err(unsupported(dtype, "invalid run-end type")),
     }
 }
 
@@ -1594,19 +1592,19 @@ pub(crate) fn physical_placeholder_for_field(field: &Field) -> Result<Scalar> {
     // bitmap or an inactive sparse-union type ID. They need a valid physical
     // representation, not a logically inhabitable value: a required Null
     // grandchild is legal when an ancestor masks the entire slot.
-    physical_placeholder(field.data_type())
+    physical_placeholder(field.dtype())
 }
 
-fn physical_placeholder(data_type: &DataType) -> Result<Scalar> {
-    match data_type {
+fn physical_placeholder(dtype: &DataType) -> Result<Scalar> {
+    match dtype {
         DataType::Union(fields, _) => {
-            let (type_id, field) = physical_union_branch(data_type, fields)?;
+            let (type_id, field) = physical_union_branch(dtype, fields)?;
             Ok(Scalar::from_sequence([
                 Scalar::I64(i64::from(type_id)),
-                physical_placeholder(field.data_type())?,
+                physical_placeholder(field.dtype())?,
             ]))
         }
-        DataType::RunEndEncoded(encoded) => physical_placeholder(encoded.values().data_type()),
+        DataType::RunEndEncoded(encoded) => physical_placeholder(encoded.values().dtype()),
         // Every other Arrow layout owns a validity bitmap (or is Null
         // itself). Marking the hidden slot null lets that physical container
         // mask its own required descendants before its parent masks it in
@@ -1617,7 +1615,7 @@ fn physical_placeholder(data_type: &DataType) -> Result<Scalar> {
 
 fn list_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     (0..array.len())
-        .map(|index| value_from_array(field.data_type(), array, index))
+        .map(|index| value_from_array(field.dtype(), array, index))
         .collect::<Result<Vec<_>>>()
         .map(Scalar::from_sequence)
 }
@@ -1660,17 +1658,17 @@ fn run_value(
         ($key:ty, $array:ty) => {{
             let array = downcast::<$array>(array)?;
             value_from_array(
-                encoded.values().data_type(),
+                encoded.values().dtype(),
                 array.values().as_ref(),
                 array.get_physical_index(index),
             )
         }};
     }
-    match encoded.run_ends().data_type() {
+    match encoded.run_ends().dtype() {
         DataType::Int16 => run!(Int16Type, Int16RunArray),
         DataType::Int32 => run!(Int32Type, Int32RunArray),
         DataType::Int64 => run!(Int64Type, Int64RunArray),
-        data_type => Err(unsupported(data_type, "invalid run-end type")),
+        dtype => Err(unsupported(dtype, "invalid run-end type")),
     }
 }
 
@@ -1878,9 +1876,9 @@ fn decimal256(value: &Scalar, scale: i8) -> Result<i256> {
         })
 }
 
-fn unsupported(data_type: &DataType, reason: impl Into<String>) -> Error {
+fn unsupported(dtype: &DataType, reason: impl Into<String>) -> Error {
     Error::Unsupported {
-        kind: data_type.name(),
+        kind: dtype.name(),
         reason: reason.into(),
     }
 }

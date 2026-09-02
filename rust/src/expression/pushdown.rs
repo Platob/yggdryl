@@ -158,7 +158,7 @@ impl Bounds {
                 continue;
             };
             let value = super::eval::convert(
-                field.data_type(),
+                field.dtype(),
                 &Scalar::from(written.as_str()),
                 super::Safety::Safe,
             )
@@ -550,19 +550,19 @@ fn compare_range(
     comparison: Comparison,
     literal: &Scalar,
 ) -> Certainty {
-    let data_type = node.field.data_type();
+    let dtype = node.field.dtype();
     let below = |value: &Scalar| -> Option<bool> {
         column
             .minimum
             .as_ref()
-            .and_then(|minimum| order(data_type, value, minimum))
+            .and_then(|minimum| order(dtype, value, minimum))
             .map(std::cmp::Ordering::is_lt)
     };
     let above = |value: &Scalar| -> Option<bool> {
         column
             .maximum
             .as_ref()
-            .and_then(|maximum| order(data_type, value, maximum))
+            .and_then(|maximum| order(dtype, value, maximum))
             .map(std::cmp::Ordering::is_gt)
     };
     let single = column
@@ -570,7 +570,7 @@ fn compare_range(
         .as_ref()
         .zip(column.maximum.as_ref())
         .and_then(|(minimum, maximum)| {
-            (order(data_type, minimum, maximum)? == std::cmp::Ordering::Equal).then_some(minimum)
+            (order(dtype, minimum, maximum)? == std::cmp::Ordering::Equal).then_some(minimum)
         });
     match comparison {
         Comparison::Eq | Comparison::IsNotDistinctFrom => {
@@ -580,15 +580,15 @@ fn compare_range(
             // A column whose minimum equals its maximum holds one value, so an
             // equality against it is settled either way.
             match single {
-                Some(held) => Certainty::of(
-                    compare_values(data_type, held, Comparison::Eq, literal).as_bool(),
-                ),
+                Some(held) => {
+                    Certainty::of(compare_values(dtype, held, Comparison::Eq, literal).as_bool())
+                }
                 None => Certainty::Unknown,
             }
         }
         Comparison::NotEq | Comparison::IsDistinctFrom => match single {
             Some(held) => {
-                Certainty::of(compare_values(data_type, held, Comparison::NotEq, literal).as_bool())
+                Certainty::of(compare_values(dtype, held, Comparison::NotEq, literal).as_bool())
             }
             None => Certainty::Unknown,
         },
@@ -596,14 +596,14 @@ fn compare_range(
             // Nothing is below the minimum, so a bound at or under it is empty.
             let strict = matches!(comparison, Comparison::Lt);
             if let Some(minimum) = &column.minimum {
-                if let Some(ordering) = order(data_type, literal, minimum) {
+                if let Some(ordering) = order(dtype, literal, minimum) {
                     if ordering.is_lt() || (strict && ordering.is_eq()) {
                         return Certainty::Never;
                     }
                 }
             }
             if let Some(maximum) = &column.maximum {
-                if let Some(ordering) = order(data_type, maximum, literal) {
+                if let Some(ordering) = order(dtype, maximum, literal) {
                     if ordering.is_lt() || (!strict && ordering.is_eq()) {
                         return Certainty::Always;
                     }
@@ -614,14 +614,14 @@ fn compare_range(
         Comparison::Gt | Comparison::GtEq => {
             let strict = matches!(comparison, Comparison::Gt);
             if let Some(maximum) = &column.maximum {
-                if let Some(ordering) = order(data_type, literal, maximum) {
+                if let Some(ordering) = order(dtype, literal, maximum) {
                     if ordering.is_gt() || (strict && ordering.is_eq()) {
                         return Certainty::Never;
                     }
                 }
             }
             if let Some(minimum) = &column.minimum {
-                if let Some(ordering) = order(data_type, minimum, literal) {
+                if let Some(ordering) = order(dtype, minimum, literal) {
                     if ordering.is_gt() || (!strict && ordering.is_eq()) {
                         return Certainty::Always;
                     }
@@ -677,10 +677,10 @@ fn prefix_prune(node: &Node, prefix: &str, schema: &Field, bounds: &Bounds) -> C
     // A maximum below the prefix proves no row starts with it. The upper side
     // needs the successor of the prefix, which is not spellable for every
     // encoding, so only the lower side prunes.
-    let data_type = node.field.data_type();
+    let dtype = node.field.dtype();
     let literal = Scalar::from(prefix);
     if let Some(maximum) = &column.maximum {
-        if order(data_type, maximum, &literal).is_some_and(std::cmp::Ordering::is_lt) {
+        if order(dtype, maximum, &literal).is_some_and(std::cmp::Ordering::is_lt) {
             return Certainty::Never;
         }
     }

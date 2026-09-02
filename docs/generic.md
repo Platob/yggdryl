@@ -519,7 +519,7 @@ use yggdryl::generic::{Int64Scalar, TypedScalar};
 use yggdryl::{DataType, Scalar};
 
 let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
-assert_eq!(price.data_type(), &DataType::Int64);
+assert_eq!(price.dtype(), &DataType::Int64);
 
 // The same pairing, with the datatype fixed at compile time.
 let typed: Int64Scalar = price.try_into_typed()?;

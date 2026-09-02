@@ -30,8 +30,8 @@ pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync 
     /// The canonical, parameter-independent datatype name.
     const NAME: &'static str;
 
-    /// Returns whether `data_type` has this marker's variant.
-    fn matches(data_type: &DataType) -> bool;
+    /// Returns whether `dtype` has this marker's variant.
+    fn matches(dtype: &DataType) -> bool;
 }
 
 /// The marker every datatype satisfies.
@@ -48,7 +48,7 @@ impl sealed::Sealed for AnyType {}
 impl FieldType for AnyType {
     const NAME: &'static str = "any";
 
-    fn matches(_data_type: &DataType) -> bool {
+    fn matches(_dtype: &DataType) -> bool {
         true
     }
 }
@@ -73,7 +73,7 @@ impl<K: FieldType> TypedField<K> {
     }
 
     fn from_validated_field(field: Field) -> Result<Self> {
-        ensure_marker::<K>(field.data_type())?;
+        ensure_marker::<K>(field.dtype())?;
         Ok(Self {
             field,
             marker: PhantomData,
@@ -83,14 +83,14 @@ impl<K: FieldType> TypedField<K> {
     /// Builds a typed field from a validated datatype of the marker's variant.
     ///
     /// Static aliases also expose a shorter infallible `new(name, nullable)`.
-    pub fn try_new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Result<Self> {
-        Self::try_from_field(Field::new(name, data_type, nullable))
+    pub fn try_new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Result<Self> {
+        Self::try_from_field(Field::new(name, dtype, nullable))
     }
 
     /// Builds a typed field from a datatype and complete metadata snapshot.
     pub fn try_from_parts<I, M, V>(
         name: impl Into<SmolStr>,
-        data_type: DataType,
+        dtype: DataType,
         nullable: bool,
         metadata: I,
     ) -> Result<Self>
@@ -99,7 +99,7 @@ impl<K: FieldType> TypedField<K> {
         M: Into<String>,
         V: Into<String>,
     {
-        Self::from_validated_field(Field::from_parts(name, data_type, nullable, metadata)?)
+        Self::from_validated_field(Field::from_parts(name, dtype, nullable, metadata)?)
     }
 
     /// Borrows the generic field without allocating.
@@ -145,14 +145,14 @@ impl<K: FieldType> TypedField<K> {
     /// Replaces the datatype after validating both its parameters and marker.
     ///
     /// An error leaves this typed field unchanged.
-    pub fn set_data_type(&mut self, data_type: DataType) -> Result<()> {
-        ensure_marker::<K>(&data_type)?;
-        self.field.set_data_type(data_type)
+    pub fn set_dtype(&mut self, dtype: DataType) -> Result<()> {
+        ensure_marker::<K>(&dtype)?;
+        self.field.set_dtype(dtype)
     }
 
     /// Returns this typed field with another datatype of the same variant.
-    pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self> {
-        self.set_data_type(data_type)?;
+    pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self> {
+        self.set_dtype(dtype)?;
         Ok(self)
     }
 
@@ -219,7 +219,7 @@ impl<'field, K: FieldType> TypedFieldRef<'field, K> {
     /// Checks and borrows a generic field without cloning it.
     pub fn try_from_field(field: &'field Field) -> Result<Self> {
         field.validate()?;
-        ensure_marker::<K>(field.data_type())?;
+        ensure_marker::<K>(field.dtype())?;
         Ok(Self {
             field,
             marker: PhantomData,
@@ -232,8 +232,8 @@ impl<'field, K: FieldType> TypedFieldRef<'field, K> {
     }
 }
 
-fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
-    if K::matches(data_type) {
+fn ensure_marker<K: FieldType>(dtype: &DataType) -> Result<()> {
+    if K::matches(dtype) {
         Ok(())
     } else {
         Err(Error::InvalidDataType {
@@ -242,7 +242,7 @@ fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
                 "marker {} requires datatype {}, got {}",
                 std::any::type_name::<K>(),
                 K::NAME,
-                data_type.name()
+                dtype.name()
             )
             .into(),
         })
@@ -429,8 +429,8 @@ macro_rules! define_field_types {
         impl super::typed::FieldType for $marker {
             const NAME: &'static str = $name;
 
-            fn matches(data_type: &crate::DataType) -> bool {
-                matches!(data_type, $pattern)
+            fn matches(dtype: &crate::DataType) -> bool {
+                matches!(dtype, $pattern)
             }
         }
     };
@@ -439,12 +439,12 @@ macro_rules! define_field_types {
 pub(crate) use define_field_types;
 
 macro_rules! static_field_constructor {
-    ($marker:path, $data_type:expr) => {
+    ($marker:path, $dtype:expr) => {
         impl TypedField<$marker> {
             /// Constructs this statically known datatype without parsing or allocation.
             pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self {
                 Self {
-                    field: Field::new(name, $data_type, nullable),
+                    field: Field::new(name, $dtype, nullable),
                     marker: PhantomData,
                 }
             }
@@ -460,7 +460,7 @@ macro_rules! static_field_constructor {
                 M: Into<String>,
                 V: Into<String>,
             {
-                Self::from_validated_field(Field::from_parts(name, $data_type, nullable, metadata)?)
+                Self::from_validated_field(Field::from_parts(name, $dtype, nullable, metadata)?)
             }
         }
     };

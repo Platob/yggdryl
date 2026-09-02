@@ -190,10 +190,10 @@ pub(super) fn manifest_bounds(
         let Some(column) = identity_column(spec, position, schema) else {
             continue;
         };
-        let data_type = column.data_type();
+        let dtype = column.dtype();
         let decode = |held: &Option<Vec<u8>>| {
             held.as_deref()
-                .and_then(|bytes| single_to_value(bytes, data_type))
+                .and_then(|bytes| single_to_value(bytes, dtype))
         };
         let (minimum, maximum) = (decode(&summary.lower_bound), decode(&summary.upper_bound));
         // A partition column is spelled in the path too, so the summary bounds
@@ -272,9 +272,8 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let Ok(Some(id)) = column.parquet_field_id() else {
             continue;
         };
-        let data_type = column.data_type();
-        let decode =
-            |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, data_type));
+        let dtype = column.dtype();
+        let decode = |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
         let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
         let minimum = decode(bound(&file.lower_bounds, id));
         let maximum = decode(bound(&file.upper_bounds, id));
@@ -924,10 +923,10 @@ fn file_projection(
         return wanted.clone();
     }
     DataType::from_fields(children)
-        .and_then(|data_type| {
+        .and_then(|dtype| {
             Field::from_parts(
                 wanted.name(),
-                data_type,
+                dtype,
                 wanted.is_nullable(),
                 wanted.metadata_iter(),
             )
@@ -1052,7 +1051,7 @@ pub(super) fn read_root(root: &Field, schema: &Field, filter: &Expression) -> Re
         {
             continue;
         }
-        let Some(column) = schema.get_field_by_name(&name) else {
+        let Some(column) = schema.get_field_by_path(&name) else {
             continue;
         };
         children.push(column.clone());
@@ -1295,8 +1294,8 @@ mod delete_tests {
 mod bound_tests {
     use super::*;
 
-    fn schema(data_type: DataType) -> Field {
-        let mut schema = DataType::from_fields([data_type.required_field("value")])
+    fn schema(dtype: DataType) -> Field {
+        let mut schema = DataType::from_fields([dtype.required_field("value")])
             .unwrap()
             .required_field("row");
         crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
@@ -1304,12 +1303,12 @@ mod bound_tests {
     }
 
     fn residual(
-        data_type: DataType,
+        dtype: DataType,
         lower: Vec<u8>,
         upper: Vec<u8>,
         value: Scalar,
     ) -> Option<Vec<usize>> {
-        let schema = schema(data_type);
+        let schema = schema(dtype);
         let file = DataFile {
             record_count: 1,
             lower_bounds: vec![(1, lower)],

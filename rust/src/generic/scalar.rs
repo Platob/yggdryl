@@ -11,7 +11,7 @@
 //!
 //! Every kind that carries a unit or a scale carries it as a typed field rather
 //! than as a free-form name over an untyped payload, because a name nothing
-//! validates is not a type. [`Scalar::data_type`] reads the datatype straight
+//! validates is not a type. [`Scalar::dtype`] reads the datatype straight
 //! off the variant for exactly that reason. There is deliberately no `Variant`
 //! kind: a variant value is a `Scalar` - a self-describing tree - so the binary
 //! form is an encoding of the one value model, not a second value model.
@@ -2471,6 +2471,6 @@ mod tests {
     #[test]
     fn time_datatype_inference_refuses_zones_it_cannot_preserve() {
         let zoned = Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
-        assert!(zoned.data_type().is_err());
+        assert!(zoned.dtype().is_err());
     }
 }

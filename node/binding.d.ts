@@ -424,10 +424,10 @@ export type FieldOf<
   V = unknown,
   N extends string = string,
   I = DefaultFieldInput<K, V>,
-> = Omit<Field, keyof TypedDefaultMethods<K, V> | 'name' | 'dataType'> &
+> = Omit<Field, keyof TypedDefaultMethods<K, V> | 'name' | 'dtype'> &
   TypedDefaultMethods<K, V> & {
   readonly name: N
-  readonly dataType: TypedDataType<
+  readonly dtype: TypedDataType<
     K,
     NonNullableDataTypeValue<K, V>,
     NonNullableDataTypeValue<K, I>
@@ -1878,7 +1878,7 @@ export interface SchemaUpdate {
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): SchemaUpdate
   /** Record a type promotion on the column at `path`. */
-  updateType(path: string, dataType: DataTypeInput): SchemaUpdate
+  updateType(path: string, dtype: DataTypeInput): SchemaUpdate
   /** Replay the chain, make the evolved schema current, and commit once. */
   commit(): number
 }

@@ -143,7 +143,7 @@ mod schema_updates {
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column("", DataType::Int64.nullable_field("quantity"));
         let evolved = update.into_field().unwrap();
-        let added = evolved.get_field_by_name("quantity").unwrap();
+        let added = evolved.get_field_by_path("quantity").unwrap();
         assert_eq!(added.parquet_field_id().unwrap(), Some(6));
         assert_eq!(evolved.field_len(), 4);
     }
@@ -163,9 +163,9 @@ mod schema_updates {
         );
         let evolved = update.into_field().unwrap();
         let depth = evolved
-            .get_field_by_name("quote")
+            .get_field_by_path("quote")
             .unwrap()
-            .get_field_by_name("depth")
+            .get_field_by_path("depth")
             .unwrap();
         assert_eq!(depth.parquet_field_id().unwrap(), Some(6));
         assert_eq!(depth.fields()[0].parquet_field_id().unwrap(), Some(7));
@@ -186,10 +186,10 @@ mod schema_updates {
                 .with_parquet_field_id(1),
         );
         let evolved = update.into_field().unwrap();
-        assert!(evolved.get_field_by_name("id").is_none());
+        assert!(evolved.get_field_by_path("id").is_none());
         assert_eq!(
             evolved
-                .get_field_by_name("trade_id")
+                .get_field_by_path("trade_id")
                 .unwrap()
                 .parquet_field_id()
                 .unwrap(),
@@ -209,19 +209,19 @@ mod schema_updates {
         let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
-                .get_field_by_name("ticker")
+                .get_field_by_path("ticker")
                 .unwrap()
                 .parquet_field_id()
                 .unwrap(),
             Some(2)
         );
         let renamed = evolved
-            .get_field_by_name("quote")
+            .get_field_by_path("quote")
             .unwrap()
-            .get_field_by_name("last_price")
+            .get_field_by_path("last_price")
             .unwrap();
         assert_eq!(renamed.parquet_field_id().unwrap(), Some(4));
-        assert!(evolved.get_field_by_name("symbol").is_none());
+        assert!(evolved.get_field_by_path("symbol").is_none());
     }
 
     #[test]
@@ -233,7 +233,7 @@ mod schema_updates {
         let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
-                .get_field_by_name("id")
+                .get_field_by_path("id")
                 .unwrap()
                 .iceberg()
                 .get("doc"),
@@ -241,9 +241,9 @@ mod schema_updates {
         );
         assert_eq!(
             evolved
-                .get_field_by_name("quote")
+                .get_field_by_path("quote")
                 .unwrap()
-                .get_field_by_name("price")
+                .get_field_by_path("price")
                 .unwrap()
                 .get_metadata("iceberg:doc"),
             Some("closing price")
@@ -257,12 +257,12 @@ mod schema_updates {
         update.make_nullable("id");
         update.make_nullable("quote.price");
         let evolved = update.into_field().unwrap();
-        assert!(evolved.get_field_by_name("id").unwrap().is_nullable());
+        assert!(evolved.get_field_by_path("id").unwrap().is_nullable());
         assert!(
             evolved
-                .get_field_by_name("quote")
+                .get_field_by_path("quote")
                 .unwrap()
-                .get_field_by_name("price")
+                .get_field_by_path("price")
                 .unwrap()
                 .is_nullable()
         );
@@ -275,8 +275,8 @@ mod schema_updates {
         update.update_type("id", DataType::Int64);
         update.update_type("quote.price", DataType::Float64);
         let evolved = update.into_field().unwrap();
-        let id = evolved.get_field_by_name("id").unwrap();
-        assert_eq!(id.data_type(), &DataType::Int64);
+        let id = evolved.get_field_by_path("id").unwrap();
+        assert_eq!(id.dtype(), &DataType::Int64);
         assert_eq!(
             id.parquet_field_id().unwrap(),
             Some(1),
@@ -284,11 +284,11 @@ mod schema_updates {
         );
         assert_eq!(
             evolved
-                .get_field_by_name("quote")
+                .get_field_by_path("quote")
                 .unwrap()
-                .get_field_by_name("price")
+                .get_field_by_path("price")
                 .unwrap()
-                .data_type(),
+                .dtype(),
             &DataType::Float64
         );
     }
@@ -341,7 +341,7 @@ mod schema_updates {
         let evolved = update.into_field().unwrap();
         assert_eq!(
             evolved
-                .get_field_by_name("ticker")
+                .get_field_by_path("ticker")
                 .unwrap()
                 .get_metadata("iceberg:doc"),
             Some("renamed first")
@@ -396,7 +396,7 @@ mod schema_updates {
         let mut replacement = DataType::Int32.nullable_field("symbol");
         replacement.set_parquet_field_id(2);
         incompatible
-            .set_field_by_name("symbol", replacement)
+            .set_field_by_path("symbol", replacement)
             .unwrap();
         let message = metadata.add_schema(incompatible).unwrap_err().to_string();
         assert!(message.contains("field id 2"), "{message}");
@@ -414,7 +414,7 @@ mod schema_updates {
         let mut replacement = DataType::Utf8.nullable_field("replacement");
         replacement.set_parquet_field_id(2);
         reused
-            .set_field_by_name("replacement", replacement)
+            .set_field_by_path("replacement", replacement)
             .unwrap();
         let message = metadata.add_schema(reused).unwrap_err().to_string();
         assert!(message.contains("retired field id 2"), "{message}");
@@ -425,7 +425,7 @@ mod schema_updates {
         let mut metadata = metadata();
         let mut required = metadata.current_schema().unwrap().clone();
         required
-            .set_field_by_name("quantity", DataType::Int64.required_field("quantity"))
+            .set_field_by_path("quantity", DataType::Int64.required_field("quantity"))
             .unwrap();
         let message = metadata.add_schema(required).unwrap_err().to_string();
         assert!(
@@ -440,17 +440,17 @@ mod schema_updates {
             .insert_metadata("iceberg:initial-default", "0")
             .unwrap();
         with_default
-            .set_field_by_name("quantity", quantity)
+            .set_field_by_path("quantity", quantity)
             .unwrap();
         let schema_id = metadata.add_schema(with_default).unwrap();
         metadata.set_current_schema(schema_id).unwrap();
 
         let mut changed = metadata.current_schema().unwrap().clone();
-        let mut quantity = changed.get_field_by_name("quantity").unwrap().clone();
+        let mut quantity = changed.get_field_by_path("quantity").unwrap().clone();
         quantity
             .insert_metadata("iceberg:initial-default", "1")
             .unwrap();
-        changed.set_field_by_name("quantity", quantity).unwrap();
+        changed.set_field_by_path("quantity", quantity).unwrap();
         let message = metadata.add_schema(changed).unwrap_err().to_string();
         assert!(message.contains("immutable initial-default"), "{message}");
     }
@@ -906,7 +906,7 @@ mod metadata_updates {
         let mut fields = schema.fields().to_vec();
         fields[1].set_parquet_field_id(1);
         schema
-            .set_data_type(DataType::from_fields(fields).unwrap())
+            .set_dtype(DataType::from_fields(fields).unwrap())
             .unwrap();
         duplicated.schemas[0] = schema;
         let message = duplicated.validate().unwrap_err().to_string();

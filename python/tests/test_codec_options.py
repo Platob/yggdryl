@@ -109,7 +109,7 @@ def test_inferred_decode_uses_one_core_parse_with_limits_and_field() -> None:
 
 
 @pytest.mark.parametrize(
-    ("data_type", "kind"),
+    ("dtype", "kind"),
     [
         ("int8", "i8"),
         ("int16", "i16"),
@@ -122,11 +122,11 @@ def test_inferred_decode_uses_one_core_parse_with_limits_and_field() -> None:
     ],
 )
 def test_field_directed_decode_preserves_every_integer_width(
-    data_type: str, kind: str
+    dtype: str, kind: str
 ) -> None:
     value = json.loads(
         "7",
         cls=Scalar,
-        field=Field("value", data_type, nullable=False),
+        field=Field("value", dtype, nullable=False),
     )
     assert value.kind == kind

@@ -95,7 +95,7 @@ enum UnionSlicePhase {
     Common,
 }
 
-fn data_type_snapshots_identical(left: &DataType, right: &DataType) -> bool {
+fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
     use DataType as D;
 
     if std::ptr::eq(left, right) {
@@ -127,7 +127,7 @@ fn field_snapshots_identical(left: &Field, right: &Field, with_metadata: bool) -
             && left.nullable == right.nullable
             && left.dictionary_id == right.dictionary_id
             && left.dictionary_is_ordered == right.dictionary_is_ordered
-            && data_type_snapshots_identical(&left.data_type, &right.data_type)
+            && dtype_snapshots_identical(&left.dtype, &right.dtype)
             && (!with_metadata || left.metadata.shares_storage_with(&right.metadata))
 }
 
@@ -148,9 +148,9 @@ impl DiffEngine {
         }
     }
 
-    fn from_data_types(left: &DataType, right: &DataType, with_metadata: bool) -> Self {
+    fn from_dtypes(left: &DataType, right: &DataType, with_metadata: bool) -> Self {
         Self {
-            work: if data_type_snapshots_identical(left, right) {
+            work: if dtype_snapshots_identical(left, right) {
                 Vec::new()
             } else {
                 vec![Work::DataType {
@@ -198,11 +198,11 @@ impl DiffEngine {
         if self.with_metadata && !left.metadata.shares_storage_with(&right.metadata) {
             self.push_metadata(&left, &right, path.clone());
         }
-        if !data_type_snapshots_identical(&left.data_type, &right.data_type) {
+        if !dtype_snapshots_identical(&left.dtype, &right.dtype) {
             self.work.push(Work::DataType {
-                left: left.data_type.clone(),
-                right: right.data_type.clone(),
-                path: property_path(&path, "data_type"),
+                left: left.dtype.clone(),
+                right: right.dtype.clone(),
+                path: property_path(&path, "dtype"),
             });
         }
     }
@@ -279,8 +279,8 @@ impl DiffEngine {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn compare_data_type(&mut self, left: DataType, right: DataType, path: String) {
-        if data_type_snapshots_identical(&left, &right) {
+    fn compare_dtype(&mut self, left: DataType, right: DataType, path: String) {
+        if dtype_snapshots_identical(&left, &right) {
             return;
         }
         use DataType as D;
@@ -368,8 +368,8 @@ impl DiffEngine {
                 });
             }
             (D::Dictionary(left), D::Dictionary(right)) => {
-                self.push_data_type(left.value(), right.value(), property_path(&path, "value"));
-                self.push_data_type(left.key(), right.key(), property_path(&path, "key"));
+                self.push_dtype(left.value(), right.value(), property_path(&path, "value"));
+                self.push_dtype(left.key(), right.key(), property_path(&path, "key"));
             }
             (
                 D::Decimal32 {
@@ -481,8 +481,8 @@ impl DiffEngine {
         self.push_field(left, right, property_path(path, property));
     }
 
-    fn push_data_type(&mut self, left: &DataType, right: &DataType, path: String) {
-        if data_type_snapshots_identical(left, right) {
+    fn push_dtype(&mut self, left: &DataType, right: &DataType, path: String) {
+        if dtype_snapshots_identical(left, right) {
             return;
         }
         self.work.push(Work::DataType {
@@ -717,7 +717,7 @@ impl Iterator for DiffEngine {
             match self.work.pop()? {
                 Work::Field { left, right, path } => self.compare_field(left, right, path),
                 Work::DataType { left, right, path } => {
-                    self.compare_data_type(left, right, path);
+                    self.compare_dtype(left, right, path);
                 }
                 Work::Metadata {
                     left,
@@ -762,14 +762,14 @@ impl<'schema> Differences<'schema> {
         }
     }
 
-    pub(crate) fn from_data_types(
+    pub(crate) fn from_dtypes(
         left: &'schema DataType,
         right: &'schema DataType,
         with_metadata: bool,
         return_equal: bool,
     ) -> Self {
         Self {
-            engine: DiffEngine::from_data_types(left, right, with_metadata),
+            engine: DiffEngine::from_dtypes(left, right, with_metadata),
             return_equal,
             yielded: false,
             marker: PhantomData,
@@ -837,14 +837,14 @@ impl OwnedDifferences {
     }
 
     /// Creates an owning lazy cursor over two DataType snapshots.
-    pub fn from_data_types(
+    pub fn from_dtypes(
         left: &DataType,
         right: &DataType,
         with_metadata: bool,
         return_equal: bool,
     ) -> Self {
         Self {
-            engine: DiffEngine::from_data_types(left, right, with_metadata),
+            engine: DiffEngine::from_dtypes(left, right, with_metadata),
             return_equal,
             yielded: false,
         }
@@ -873,14 +873,14 @@ pub(crate) fn fields_equal(left: &Field, right: &Field, with_metadata: bool) -> 
         return left == right;
     }
     left.name == right.name
-        && data_types_equal(&left.data_type, &right.data_type, false)
+        && dtypes_equal(&left.dtype, &right.dtype, false)
         && left.nullable == right.nullable
         && left.dictionary_id == right.dictionary_id
         && left.dictionary_is_ordered == right.dictionary_is_ordered
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) fn data_types_equal(left: &DataType, right: &DataType, with_metadata: bool) -> bool {
+pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: bool) -> bool {
     if std::ptr::eq(left, right) {
         return true;
     }
@@ -914,8 +914,8 @@ pub(crate) fn data_types_equal(left: &DataType, right: &DataType, with_metadata:
                     })
         }
         (D::Dictionary(left), D::Dictionary(right)) => {
-            data_types_equal(left.key(), right.key(), false)
-                && data_types_equal(left.value(), right.value(), false)
+            dtypes_equal(left.key(), right.key(), false)
+                && dtypes_equal(left.value(), right.value(), false)
         }
         (D::Map(left), D::Map(right)) => {
             left.keys_sorted() == right.keys_sorted()
@@ -988,13 +988,13 @@ fn field_diff_value(field: &Field, with_metadata: bool) -> String {
     if with_metadata {
         return field.to_string();
     }
-    let data_type = if field.data_type().is_nested() {
-        field.data_type().name().to_owned()
+    let dtype = if field.dtype().is_nested() {
+        field.dtype().name().to_owned()
     } else {
-        field.data_type().to_string()
+        field.dtype().to_string()
     };
     let mut value = format!(
-        "field(name={:?},data_type={data_type},nullable={}",
+        "field(name={:?},dtype={dtype},nullable={}",
         field.name(),
         field.is_nullable()
     );
@@ -1031,7 +1031,7 @@ mod tests {
 
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.data_type.fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
         );
         assert!(differences.engine.work.len() <= 2);
         assert!(differences.engine.pending.is_empty());
@@ -1045,7 +1045,7 @@ mod tests {
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.data_type.field_count: 0 → 1024")
+            Some("≠ $.dtype.field_count: 0 → 1024")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1064,7 +1064,7 @@ mod tests {
         assert_eq!(differences.engine.work.len(), 1);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.data_type.kind: int32 → int64")
+            Some("≠ $.dtype.kind: int32 → int64")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1072,11 +1072,11 @@ mod tests {
 
     #[test]
     fn shared_deep_snapshots_complete_without_traversal() {
-        let mut data_type = DataType::Int64;
+        let mut dtype = DataType::Int64;
         for depth in 0..64 {
-            data_type = DataType::list(Field::new(format!("item_{depth}"), data_type, false));
+            dtype = DataType::list(Field::new(format!("item_{depth}"), dtype, false));
         }
-        let left = Field::new("root", data_type, false);
+        let left = Field::new("root", dtype, false);
         let right = left.clone();
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert!(differences.engine.work.is_empty());
@@ -1096,7 +1096,7 @@ mod tests {
         );
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.data_type.fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
         );
     }
 }

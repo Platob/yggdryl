@@ -77,14 +77,14 @@ class TestSchemasCarryIdentifiers:
         numbered = assign_field_ids(SCHEMA)
 
         assert numbered.name == "row"
-        assert [child.parquet_field_id for child in numbered.data_type] == [1, 2]
+        assert [child.parquet_field_id for child in numbered.dtype] == [1, 2]
         # The input is untouched: the numbered schema is a new value.
         assert SCHEMA.field("id").metadata is None
 
     def test_numbering_starts_where_it_is_told_to(self) -> None:
         numbered = assign_field_ids(SCHEMA, 10)
 
-        assert [child.parquet_field_id for child in numbered.data_type] == [10, 11]
+        assert [child.parquet_field_id for child in numbered.dtype] == [10, 11]
 
     def test_a_root_that_is_not_a_non_null_struct_is_refused(
         self, tmp_path: pathlib.Path
@@ -103,12 +103,12 @@ class TestSchemasCarryIdentifiers:
         }
 
         schema = schema_from_json("row", document)
-        assert schema.data_type.kind == "struct"
+        assert schema.dtype.kind == "struct"
         assert not schema.nullable
         # `required` inverts into nullability, and `id` becomes PARQUET:field_id.
-        assert not schema.data_type[0].nullable
-        assert schema.data_type[1].nullable
-        assert [child.parquet_field_id for child in schema.data_type] == [1, 2]
+        assert not schema.dtype[0].nullable
+        assert schema.dtype[1].nullable
+        assert [child.parquet_field_id for child in schema.dtype] == [1, 2]
 
         assert schema_into_json(schema) == document
 
@@ -293,7 +293,7 @@ class TestCreatingAndOpening:
         """A schema without ids is numbered at create, partitioning included."""
         table = Table.create(IOBase(tmp_path / "plain"), SCHEMA, ["venue"])
 
-        ids = [child.parquet_field_id for child in table.schema.data_type]
+        ids = [child.parquet_field_id for child in table.schema.dtype]
         assert ids == [1, 2]
         assert [field.name for field in table.spec.fields] == ["venue"]
 
@@ -653,7 +653,7 @@ class TestCatalog:
             ),
             nullable=False,
         ).with_partition_fields(["venue"])
-        columns = pa.schema([child.into_arrow() for child in marked.data_type])
+        columns = pa.schema([child.into_arrow() for child in marked.dtype])
         rows = pa.table(
             {"id": [1, 2, 3], "venue": ["XNAS", "XNYS", None]}, schema=columns
         )
@@ -665,7 +665,7 @@ class TestCatalog:
 
         # The schema was inferred from the reader and numbered, and the marked
         # column became the identity spec.
-        assert [child.parquet_field_id for child in table.schema.data_type] == [1, 2]
+        assert [child.parquet_field_id for child in table.schema.dtype] == [1, 2]
         assert [field.name for field in table.spec.fields] == ["venue"]
         assert table.spec.fields[0].transform == "identity"
         assert table.scan().read_all().num_rows == 3
@@ -905,12 +905,12 @@ class TestSchemaUpdates:
 
         # One metadata document, however many operations were recorded.
         assert narrow.version == before + 1
-        children = list(narrow.schema.data_type)
+        children = list(narrow.schema.dtype)
         assert [child.name for child in children] == ["id", "market", "price"]
         # The widened type reads back, the renamed column keeps its
         # identifier, and the added column is numbered above every identifier
         # the table has ever assigned.
-        assert children[0].data_type.id == "int64"
+        assert children[0].dtype.id == "int64"
         assert [child.parquet_field_id for child in children] == [1, 2, 3]
         assert children[2].nullable
 
@@ -948,7 +948,7 @@ class TestSchemaUpdates:
                 raise RuntimeError("stop")
 
         assert narrow.version == before
-        assert [child.name for child in narrow.schema.data_type] == ["id", "venue"]
+        assert [child.name for child in narrow.schema.dtype] == ["id", "venue"]
 
     def test_an_update_that_records_nothing_commits_nothing(
         self, narrow: Table
@@ -977,7 +977,7 @@ class TestSchemaUpdates:
         with narrow.update_schema() as update:
             update.update_doc("id", "row identifier").make_nullable("id")
 
-        evolved = narrow.schema.data_type[0]
+        evolved = narrow.schema.dtype[0]
         assert evolved.nullable
         assert evolved.iceberg["doc"] == "row identifier"
 
@@ -985,7 +985,7 @@ class TestSchemaUpdates:
         with narrow.update_schema() as update:
             update.drop_column("venue").add_column("", "note: string")
 
-        children = list(narrow.schema.data_type)
+        children = list(narrow.schema.dtype)
         assert [child.name for child in children] == ["id", "note"]
         # The added column is numbered above the dropped one, never as it.
         assert children[1].parquet_field_id == 3

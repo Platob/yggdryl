@@ -15,7 +15,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
-    arrow_scalar_to_pyarrow_type, core_data_type_from_value, core_field_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
 use crate::media::{
@@ -51,11 +51,11 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         // PyArrow's Field C Schema bridge can omit datatype-only flags such as
         // Map.keys_sorted. Its standalone datatype bridge is lossless, so use
         // that authoritative type when it differs from the field projection.
-        let py_data_type = value.getattr("type")?;
-        let arrow_data_type = ArrowDataType::from_pyarrow_bound(&py_data_type)?;
-        let data_type = CoreDataType::try_from(arrow_data_type).map_err(value_error)?;
-        if field.data_type() != &data_type {
-            field = field.try_with_data_type(data_type).map_err(value_error)?;
+        let py_dtype = value.getattr("type")?;
+        let arrow_dtype = ArrowDataType::from_pyarrow_bound(&py_dtype)?;
+        let dtype = CoreDataType::try_from(arrow_dtype).map_err(value_error)?;
+        if field.dtype() != &dtype {
+            field = field.try_with_dtype(dtype).map_err(value_error)?;
         }
         Ok(field)
     })();
@@ -268,22 +268,22 @@ impl PyField {
 #[pymethods]
 impl PyField {
     #[new]
-    #[pyo3(signature = (name, data_type, nullable=true, metadata=None))]
+    #[pyo3(signature = (name, dtype, nullable=true, metadata=None))]
     fn new(
         name: String,
-        data_type: &Bound<'_, PyAny>,
+        dtype: &Bound<'_, PyAny>,
         nullable: bool,
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let data_type = core_data_type_from_value(data_type)?;
+        let dtype = core_dtype_from_value(dtype)?;
         if let Some(metadata) = metadata {
             let mut pairs = BTreeMap::new();
             extend_metadata_pairs(metadata, &mut pairs)?;
-            return CoreField::from_parts(name, data_type, nullable, pairs)
+            return CoreField::from_parts(name, dtype, nullable, pairs)
                 .map(Self::from_inner)
                 .map_err(value_error);
         }
-        let field = CoreField::new(name, data_type, nullable);
+        let field = CoreField::new(name, dtype, nullable);
         field.validate().map_err(value_error)?;
         Ok(Self::from_inner(field))
     }
@@ -381,8 +381,32 @@ impl PyField {
     }
 
     #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        CoreField::from_json(value)
+    fn from_json(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // One entry point for the three shapes a caller already has: the
+        // document as text, the same document as the bytes it was read from,
+        // or the structure `json.loads` already turned it into. Dispatching
+        // here rather than making the caller pick keeps `dict` and `str`
+        // equally first-class, which is what `into_dict` and `into_json`
+        // already imply.
+        if let Ok(text) = value.extract::<&str>() {
+            return CoreField::from_json(text)
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        // Bytes-like by downcast rather than by extracting `Vec<u8>`, which a
+        // list of small integers would also satisfy - and a JSON document that
+        // really is a sequence must still reach the native path below.
+        if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
+            return CoreField::from_json_bytes(bytes.as_bytes())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        if let Ok(bytes) = value.cast::<pyo3::types::PyByteArray>() {
+            return CoreField::from_json_bytes(&bytes.to_vec())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        CoreField::from_value(crate::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -653,6 +677,26 @@ impl PyField {
             .map_err(value_error)
     }
 
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `into_json` renders, encoded rather than decoded, for
+    /// a caller writing it straight to a file or a socket. `from_json` reads
+    /// these bytes back without being told which of the three shapes it got.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        indent: Option<u8>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let text = self
+            .inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)?;
+        Ok(pyo3::types::PyBytes::new(py, text.as_bytes()))
+    }
+
     /// Deserialize and validate from structural YAML.
     ///
     /// The same structure `from_json` reads, in YAML's syntax - so a config
@@ -741,9 +785,11 @@ impl PyField {
     }
 
     #[getter]
-    fn data_type(&self) -> PyDataType {
+    fn dtype(&self) -> PyDataType {
         PyDataType {
-            inner: self.inner.data_type().clone(),
+            inner: self.inner.dtype().clone(),
+            hash_locked: false,
+            borrowed_from_field: true,
             children_read_only: self.read_only,
         }
     }
@@ -774,18 +820,8 @@ impl PyField {
     }
 
     #[getter]
-    fn catalog_name(&self) -> Option<&str> {
-        self.inner.catalog_name()
-    }
-
-    #[getter]
-    fn schema_name(&self) -> Option<&str> {
-        self.inner.schema_name()
-    }
-
-    #[getter]
-    fn table_name(&self) -> Option<&str> {
-        self.inner.table_name()
+    fn comment(&self) -> Option<&str> {
+        self.inner.comment()
     }
 
     #[getter]
@@ -933,34 +969,14 @@ impl PyField {
         Ok(self.inner.remove_alias())
     }
 
-    fn set_catalog_name(&mut self, value: String) -> PyResult<()> {
+    fn set_comment(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_catalog_name(value).map_err(value_error)
+        self.inner.set_comment(value).map_err(value_error)
     }
 
-    fn remove_catalog_name(&mut self) -> PyResult<Option<String>> {
+    fn remove_comment(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_catalog_name())
-    }
-
-    fn set_schema_name(&mut self, value: String) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_schema_name(value).map_err(value_error)
-    }
-
-    fn remove_schema_name(&mut self) -> PyResult<Option<String>> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_schema_name())
-    }
-
-    fn set_table_name(&mut self, value: String) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_table_name(value).map_err(value_error)
-    }
-
-    fn remove_table_name(&mut self) -> PyResult<Option<String>> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_table_name())
+        Ok(self.inner.remove_comment())
     }
 
     fn set_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -1314,15 +1330,12 @@ impl PyField {
     }
 
     /// Returns the live Yggdryl field property view.
+    ///
+    /// Named for the namespace it exposes rather than plain `field`, which on
+    /// a schema node reaches a nested child.
     #[getter]
-    fn field(slf: Py<Self>) -> PyProtocolMetadata {
+    fn field_properties(slf: Py<Self>) -> PyProtocolMetadata {
         PyProtocolMetadata::new(slf, CoreScheme::FIELD)
-    }
-
-    /// Returns the live Yggdryl datatype property view.
-    #[getter]
-    fn dtype(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::DTYPE)
     }
 
     /// Returns the live Amazon S3 property view.
@@ -1486,8 +1499,194 @@ impl PyField {
     ///
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
+    /// Returns the field that describes both this one and `other`.
+    ///
+    /// The datatype is `DataType.merge_with`'s answer; this adds the name
+    /// (kept from the receiver), nullability (either side being nullable
+    /// carries over), and metadata (the union, this field winning a clash).
+    #[pyo3(signature = (other, upscale=true))]
+    fn merge_with(&self, other: &Bound<'_, PyAny>, upscale: bool) -> PyResult<Self> {
+        let other = core_field_from_value(other)?;
+        self.inner
+            .merge_with(&other, upscale)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explode_fields` is what reaches inside one. Every name
+    /// this answers is one `field_by_path` resolves.
+    fn unnest_fields(&self) -> Vec<Self> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    fn explode_fields(&self) -> Vec<Self> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the nested child at `index`, or `None`.
+    ///
+    /// Negative positions count from the end, as everywhere else.
+    fn get_field_at(&self, index: isize) -> Option<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .ok()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to, or `None`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    fn get_field_by_path(&self, path: &str) -> Option<Self> {
+        self.inner
+            .get_field_by_path(path)
+            .cloned()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names, or `None`.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn get_field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Option<Self>> {
+        let found = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.inner.get_field_by_path(&path).cloned(),
+            crate::FieldKey::Position(index) => {
+                crate::normalize_index(index, self.inner.field_len())
+                    .and_then(|at| self.inner.get_field_at(at).cloned())
+            }
+        };
+        Ok(found.map(|field| Self::from_inner_with_read_only(field, self.read_only)))
+    }
+
+    /// Returns the nested child at `index`.
+    ///
+    /// Raises `IndexError` when there is no child at that position.
+    fn field_at(&self, index: isize) -> PyResult<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to.
+    ///
+    /// Raises `KeyError` when no child carries that name and no decomposition
+    /// of it resolves.
+    fn field_by_path(&self, path: &str) -> PyResult<Self> {
+        crate::field_by_path_of(self.inner.dtype(), path)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names.
+    ///
+    /// The key may be positional, or named `idx=` or `path=`; naming more than
+    /// one is a `TypeError` rather than a silent precedence rule.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        let resolved = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => crate::field_by_path_of(self.inner.dtype(), &path),
+            crate::FieldKey::Position(index) => crate::field_at_of(self.inner.dtype(), index),
+        }?;
+        Ok(Self::from_inner_with_read_only(resolved, self.read_only))
+    }
+
+    /// Replaces the nested child at `index`.
+    fn set_field_at(&mut self, index: isize, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .set_field_at(position, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child `path` resolves to, appending an unresolved
+    /// name under it.
+    fn set_field_by_path(&mut self, path: &str, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        self.inner
+            .set_field_by_path(path, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child a position or a path names.
+    #[pyo3(signature = (key=None, child=None, *, idx=None, path=None))]
+    fn set_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        child: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        let child = child.ok_or_else(|| PyTypeError::new_err("set_field() needs a child"))?;
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.set_field_by_path(&path, child),
+            crate::FieldKey::Position(index) => self.set_field_at(index, child),
+        }
+    }
+
+    /// Removes and returns the nested child at `index`.
+    fn remove_field_at(&mut self, index: isize) -> PyResult<Self> {
+        self.require_mutable()?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .remove_field_at(position)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Removes and returns the nested child `path` resolves to.
+    fn remove_field_by_path(&mut self, path: &str) -> PyResult<Self> {
+        self.require_mutable()?;
+        self.inner
+            .remove_field_by_path(path)
+            .map(Self::from_inner)
+            .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path.to_owned()))
+    }
+
+    /// Removes and returns the nested child a position or a path names.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn remove_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.remove_field_by_path(&path),
+            crate::FieldKey::Position(index) => self.remove_field_at(index),
+        }
+    }
+
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        crate::child_of(self.inner.data_type(), key)
+        crate::field_of(self.inner.dtype(), key)
             .map(|field| Self::from_inner_with_read_only(field, self.read_only))
     }
 
@@ -1504,13 +1703,39 @@ impl PyField {
     fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         let child = core_field_from_value(value)?;
-        crate::set_child(&mut self.inner, key, child)
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .set_field_by_path(&path, child)
+                .map_err(value_error),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .set_field_at(position, child)
+                    .map_err(value_error)
+            }
+        }
     }
 
     /// Remove a nested child by name or by position, closing the gap.
     fn __delitem__(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        crate::remove_child(&mut self.inner, key)
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .remove_field_by_path(&path)
+                .map(|_| ())
+                .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path)),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .remove_field_at(position)
+                    .map(|_| ())
+                    .map_err(value_error)
+            }
+        }
     }
 
     /// The number of nested children, as `DataType` reports it.
@@ -1520,12 +1745,12 @@ impl PyField {
 
     /// Iterate the nested children, as `DataType` does.
     fn __iter__(&self) -> PyDataTypeIterator {
-        PyDataTypeIterator::over(self.inner.data_type().clone(), self.read_only)
+        PyDataTypeIterator::over(self.inner.dtype().clone(), self.read_only)
     }
 
     /// Whether a child name, position, or field is among the children.
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
-        crate::child_of(self.inner.data_type(), value).is_ok()
+        crate::field_of(self.inner.dtype(), value).is_ok()
             || value.extract::<PyRef<'_, Self>>().is_ok_and(|field| {
                 (0..self.inner.field_len())
                     .filter_map(|index| self.inner.get_field(index))
@@ -1720,6 +1945,48 @@ impl PyProtocolMetadata {
             self.scheme.clone(),
             PropertyIteratorKind::Items,
         ))
+    }
+
+    /// This protocol's comment, falling back to the field's straight one.
+    ///
+    /// `get`, iteration and `len` stay literal about what this protocol
+    /// carries; the fallback lives here so a view never reports a property
+    /// that iterating it would not yield.
+    #[getter]
+    fn comment(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .protocol(&self.scheme)
+            .comment()
+            .map(str::to_owned))
+    }
+
+    /// Merges another protocol view's properties into this one, in place.
+    ///
+    /// A name this view already carries keeps its value, so the merge only
+    /// ever adds. Properties of other protocols are untouched.
+    fn merge_with(&self, py: Python<'_>, other: &Self) -> PyResult<()> {
+        // Collect before borrowing mutably: `other` may be a view of this same
+        // field, and a live borrow of it would collide with the write below.
+        let additions: Vec<(String, String)> = {
+            let source = other.borrow_field(py)?;
+            let held = self.borrow_field(py)?;
+            let view = held.inner.protocol(&self.scheme);
+            source
+                .inner
+                .protocol(&other.scheme)
+                .iter()
+                .filter(|(name, _)| view.get(name).is_none())
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect()
+        };
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(additions)
+            .map_err(value_error)
     }
 
     #[pyo3(signature = (values=None, /, **kwargs))]

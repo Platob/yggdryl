@@ -278,7 +278,7 @@ pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
             "tabular root Struct Field must be non-nullable".to_owned(),
         ));
     }
-    let Some(fields) = field.data_type().as_fields() else {
+    let Some(fields) = field.dtype().as_fields() else {
         return Err(Error::IncompatibleSchema(format!(
             "tabular field {:?} must have a Struct datatype",
             field.name()
@@ -565,13 +565,13 @@ fn merged_root(left: &Field, right: &Field) -> Result<Field> {
 
 /// Reconcile one column present on both sides, or refuse naming both.
 fn reconciled(left: &Field, right: &Field) -> Result<Field> {
-    if left.data_type() != right.data_type() {
+    if left.dtype() != right.dtype() {
         return Err(Error::IncompatibleSchema(format!(
             "expected one datatype for the merged column {:?}, got {} on the left and {} on the \
              right",
             left.name(),
-            left.data_type(),
-            right.data_type()
+            left.dtype(),
+            right.dtype()
         )));
     }
     let left_id = left.parquet_field_id()?;
@@ -799,7 +799,7 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     // Bound the shape before Arrow's recursive datatype projection so a
     // malformed foreign scalar reports a normal schema error rather than
     // exhausting the native stack.
-    field.data_type().validate_bounded()?;
+    field.dtype().validate_bounded()?;
     let expected = field.clone().into_arrow_ref()?.data_type().clone();
     if array.data_type() != &expected {
         return Err(Error::IncompatibleSchema(format!(
@@ -807,9 +807,9 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
             array.data_type()
         )));
     }
-    let decoded = value::value_from_array(field.data_type(), array, 0)?;
+    let decoded = value::value_from_array(field.dtype(), array, 0)?;
     if let Err(error) = validate_scalar_value(field, decoded.clone()) {
-        if !field.data_type().is_default_value(&decoded)? {
+        if !field.dtype().is_default_value(&decoded)? {
             return Err(error);
         }
     }
@@ -824,9 +824,9 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 /// non-nullable Field. [`Field::default_value`] remains the sole nullability
 /// authority for a caller-owned Field, reached through
 /// [`default_scalar_array`].
-pub(crate) fn default_data_type_scalar_array(data_type: &DataType) -> Result<ArrayRef> {
-    let field = Field::new("value", data_type.clone(), false);
-    let value = data_type.default_value()?;
+pub(crate) fn default_dtype_scalar_array(dtype: &DataType) -> Result<ArrayRef> {
+    let field = Field::new("value", dtype.clone(), false);
+    let value = dtype.default_value()?;
     value::array_from_values(&field, &[&value])
 }
 
@@ -931,7 +931,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     let mut rows = Vec::with_capacity(array.len());
     for index in 0..array.len() {
         rows.push(super::arrow::value::value_from_array(
-            field.data_type(),
+            field.dtype(),
             array,
             index,
         )?);
@@ -952,7 +952,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar> {
     let root = field_from_arrow_schema("row", batch.schema().as_ref())?;
     let fields: Vec<Field> = root
-        .data_type()
+        .dtype()
         .as_fields()
         .ok_or_else(|| Error::IncompatibleSchema("a batch projects to a struct root".to_owned()))?
         .to_vec();
@@ -961,7 +961,7 @@ pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar> {
         let mut values = Vec::with_capacity(batch.num_columns());
         for (column, field) in batch.columns().iter().zip(fields.iter()) {
             values.push(super::arrow::value::value_from_array(
-                field.data_type(),
+                field.dtype(),
                 column.as_ref(),
                 index,
             )?);
@@ -1028,24 +1028,24 @@ fn dictionary_path_text(path: &[usize]) -> String {
 /// Field of its own, while any Struct/List/Map/Union/RunEndEncoded fields below
 /// that value do.  Thus every path component always means "the child Field at
 /// this position", including the uncommon dictionary-of-struct shape.
-fn collect_dictionary_ids_in_data_type(
-    data_type: &DataType,
+fn collect_dictionary_ids_in_dtype(
+    dtype: &DataType,
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) {
-    if let DataType::Dictionary(dictionary) = data_type {
-        collect_dictionary_ids_in_data_type(dictionary.value(), path, ids);
+    if let DataType::Dictionary(dictionary) = dtype {
+        collect_dictionary_ids_in_dtype(dictionary.value(), path, ids);
         return;
     }
-    for index in 0..data_type.field_len() {
-        let child = data_type
+    for index in 0..dtype.field_len() {
+        let child = dtype
             .get_field(index)
             .expect("an index below a datatype's declared field count");
         path.push(index);
         if let Some(id) = child.dictionary_id().filter(|id| *id != 0) {
             ids.insert(path.clone(), id);
         }
-        collect_dictionary_ids_in_data_type(child.data_type(), path, ids);
+        collect_dictionary_ids_in_dtype(child.dtype(), path, ids);
         path.pop();
     }
 }
@@ -1137,7 +1137,7 @@ fn restore_dictionary_ids_in_field(
             return Err(dictionary_ids_error(format_smolstr!(
                 "positional path {} names a {} field, not a dictionary field",
                 dictionary_path_text(path),
-                field.data_type().name()
+                field.dtype().name()
             )));
         };
         if actual != 0 && actual != id {
@@ -1152,24 +1152,24 @@ fn restore_dictionary_ids_in_field(
         field.set_dictionary_options(id, is_ordered)?;
     }
 
-    let data_type = restore_dictionary_ids_in_data_type(field.data_type(), path, ids)?;
-    field.set_data_type(data_type)?;
+    let dtype = restore_dictionary_ids_in_dtype(field.dtype(), path, ids)?;
+    field.set_dtype(dtype)?;
     Ok(field)
 }
 
-fn restore_dictionary_ids_in_data_type(
-    data_type: &DataType,
+fn restore_dictionary_ids_in_dtype(
+    dtype: &DataType,
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) -> Result<DataType> {
-    if let DataType::Dictionary(dictionary) = data_type {
-        let value = restore_dictionary_ids_in_data_type(dictionary.value(), path, ids)?;
+    if let DataType::Dictionary(dictionary) = dtype {
+        let value = restore_dictionary_ids_in_dtype(dictionary.value(), path, ids)?;
         return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
     }
 
-    let mut children = Vec::with_capacity(data_type.field_len());
-    for index in 0..data_type.field_len() {
-        let child = data_type
+    let mut children = Vec::with_capacity(dtype.field_len());
+    for index in 0..dtype.field_len() {
+        let child = dtype
             .get_field(index)
             .expect("an index below a datatype's declared field count")
             .clone();
@@ -1177,7 +1177,7 @@ fn restore_dictionary_ids_in_data_type(
         children.push(restore_dictionary_ids_in_field(child, path, ids)?);
         path.pop();
     }
-    data_type.with_fields(children).map_err(Error::Core)
+    dtype.with_fields(children).map_err(Error::Core)
 }
 
 /// Imports one Arrow Schema as a non-null Struct root Field.
@@ -1204,15 +1204,12 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
         .iter()
         .map(|field| Field::from_arrow_ref(field.clone()).map_err(Error::Core))
         .collect::<Result<Vec<_>>>()?;
-    let data_type = DataType::from_fields(fields)?;
-    let mut field = Field::from_parts(name, data_type, false, metadata)?;
+    let dtype = DataType::from_fields(fields)?;
+    let mut field = Field::from_parts(name, dtype, false, metadata)?;
     if !dictionary_ids.is_empty() {
-        let data_type = restore_dictionary_ids_in_data_type(
-            field.data_type(),
-            &mut Vec::new(),
-            &mut dictionary_ids,
-        )?;
-        field.set_data_type(data_type)?;
+        let dtype =
+            restore_dictionary_ids_in_dtype(field.dtype(), &mut Vec::new(), &mut dictionary_ids)?;
+        field.set_dtype(dtype)?;
         if let Some((path, _)) = dictionary_ids.first_key_value() {
             return Err(dictionary_ids_error(format_smolstr!(
                 "positional path {} does not name an existing dictionary field",
@@ -1263,7 +1260,7 @@ pub(crate) fn arrow_exchange_schema_from_field(schema: &Field) -> Result<Schema>
     }
 
     let mut ids = DictionaryIds::new();
-    collect_dictionary_ids_in_data_type(schema.data_type(), &mut Vec::new(), &mut ids);
+    collect_dictionary_ids_in_dtype(schema.dtype(), &mut Vec::new(), &mut ids);
     if ids.is_empty() {
         return Ok(projected.as_ref().clone());
     }

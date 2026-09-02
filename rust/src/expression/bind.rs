@@ -254,10 +254,7 @@ impl Bound {
     /// Return whether this expression answers a boolean.
     #[must_use]
     pub fn is_predicate(&self) -> bool {
-        matches!(
-            self.node.field.data_type(),
-            DataType::Boolean | DataType::Null
-        )
+        matches!(self.node.field.dtype(), DataType::Boolean | DataType::Null)
     }
 
     /// The schema column indices this expression reads, ascending.
@@ -500,7 +497,7 @@ impl Statement {
         } else {
             schema
                 .clone()
-                .try_with_data_type(DataType::from_fields(fields)?)?
+                .try_with_dtype(DataType::from_fields(fields)?)?
         };
         let predicate = match self.predicate() {
             Some(predicate) => {
@@ -510,7 +507,7 @@ impl Statement {
                         path: SmolStr::new_static("$"),
                         reason: format_smolstr!(
                             "expected a boolean `where` clause, got {}",
-                            bound.field().data_type()
+                            bound.field().dtype()
                         ),
                     });
                 }
@@ -620,11 +617,9 @@ fn map_children(
         Expression::Function(function, arguments) => {
             Expression::Function(*function, map_slice(arguments, replace)?)
         }
-        Expression::Cast(inner, data_type, safety) => Expression::Cast(
-            Box::new(mapped(inner, replace)?),
-            data_type.clone(),
-            *safety,
-        ),
+        Expression::Cast(inner, dtype, safety) => {
+            Expression::Cast(Box::new(mapped(inner, replace)?), dtype.clone(), *safety)
+        }
         Expression::Case {
             branches,
             otherwise,
@@ -681,7 +676,7 @@ impl Binder<'_> {
     fn lower(&self, expression: &Expression, want: Option<&DataType>) -> Result<Node> {
         let node = match expression {
             Expression::Literal(held) => {
-                let target = want.unwrap_or_else(|| held.data_type());
+                let target = want.unwrap_or_else(|| held.dtype());
                 let value = convert(target, held.value(), Safety::Strict)?;
                 self.leaf(
                     expression,
@@ -898,7 +893,7 @@ impl Binder<'_> {
                 let field = expression.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(arguments.len());
                 let unified = matches!(function, Function::Coalesce | Function::IfNull)
-                    .then(|| field.data_type().clone());
+                    .then(|| field.dtype().clone());
                 for argument in arguments.iter() {
                     lowered.push(self.lower(argument, unified.as_ref())?);
                 }
@@ -909,12 +904,12 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Cast(inner, data_type, safety) => {
+            Expression::Cast(inner, dtype, safety) => {
                 let inner = self.lower(inner, None)?;
                 let nullable = inner.field.is_nullable() || matches!(safety, Safety::Safe);
                 let cost = inner.cost + 1;
                 Node {
-                    field: named(expression, data_type.clone(), nullable),
+                    field: named(expression, dtype.clone(), nullable),
                     kind: Kind::Cast(Box::new(inner), *safety),
                     cost,
                 }
@@ -924,7 +919,7 @@ impl Binder<'_> {
                 otherwise,
             } => {
                 let field = expression.field(self.schema)?;
-                let target = field.data_type().clone();
+                let target = field.dtype().clone();
                 let mut lowered = Vec::with_capacity(branches.len());
                 let mut cost = 0;
                 for (when, then) in branches.iter() {
@@ -954,7 +949,7 @@ impl Binder<'_> {
                 let field = expression.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(children.len());
                 for (index, (_, value)) in children.iter().enumerate() {
-                    let target = field.get_field(index).map(|held| held.data_type().clone());
+                    let target = field.get_field(index).map(|held| held.dtype().clone());
                     lowered.push(self.lower(value, target.as_ref())?);
                 }
                 let cost = lowered.iter().map(|node| node.cost).sum::<u32>();
@@ -1007,14 +1002,14 @@ impl Binder<'_> {
     fn leaf(
         &self,
         expression: &Expression,
-        data_type: DataType,
+        dtype: DataType,
         nullable: bool,
         kind: Kind,
         cost: u32,
     ) -> Node {
         let _ = self;
         Node {
-            field: named(expression, data_type, nullable),
+            field: named(expression, dtype, nullable),
             kind,
             cost,
         }
@@ -1026,7 +1021,7 @@ impl Binder<'_> {
         let Some(want) = want else {
             return Ok(node);
         };
-        if node.field.data_type() == want {
+        if node.field.dtype() == want {
             return Ok(node);
         }
         // A constant is converted now; anything else grows a cast the
@@ -1037,7 +1032,7 @@ impl Binder<'_> {
             return Ok(Node {
                 field: node
                     .field
-                    .try_with_data_type(want.clone())?
+                    .try_with_dtype(want.clone())?
                     .with_nullable(nullable),
                 kind: Kind::Literal(converted),
                 cost: node.cost,
@@ -1048,7 +1043,7 @@ impl Binder<'_> {
         let field = node
             .field
             .clone()
-            .try_with_data_type(want.clone())?
+            .try_with_dtype(want.clone())?
             .with_nullable(nullable);
         Ok(Node {
             field,
@@ -1090,7 +1085,7 @@ impl Binder<'_> {
     }
 
     fn type_of(&self, expression: &Expression) -> Result<DataType> {
-        Ok(expression.field(self.schema)?.data_type().clone())
+        Ok(expression.field(self.schema)?.dtype().clone())
     }
 
     /// The type two compared operands meet in.
@@ -1109,7 +1104,7 @@ impl Binder<'_> {
                 // into a text column and `s > 1` would quietly become a string
                 // comparison, which is the exact silent widening this module
                 // exists to refuse.
-                if held.value().is_null() || common_type(held.data_type(), other).is_none() {
+                if held.value().is_null() || common_type(held.dtype(), other).is_none() {
                     continue;
                 }
                 if fits(other, held) {
@@ -1141,13 +1136,13 @@ impl Binder<'_> {
 }
 
 /// Return whether a literal is representable in a datatype without loss.
-fn fits(data_type: &DataType, held: &TypedScalar) -> bool {
-    let Ok(converted) = convert(data_type, held.value(), Safety::Strict) else {
+fn fits(dtype: &DataType, held: &TypedScalar) -> bool {
+    let Ok(converted) = convert(dtype, held.value(), Safety::Strict) else {
         return false;
     };
     // A conversion that cannot be undone lost something, and a lost digit
     // turns `=` into a quiet lie.
-    convert(held.data_type(), &converted, Safety::Strict).is_ok_and(|back| &back == held.value())
+    convert(held.dtype(), &converted, Safety::Strict).is_ok_and(|back| &back == held.value())
 }
 
 /// Evaluate a node whose operands are all constant, replacing it with its value.
@@ -1187,31 +1182,27 @@ fn arithmetic_operand_type(field: &Field, left: DataType, right: DataType) -> Op
     {
         return None;
     }
-    Some(field.data_type().clone())
+    Some(field.dtype().clone())
 }
 
 /// The declared element type of a list field.
 fn list_item_type(field: &Field) -> Option<DataType> {
-    match field.data_type() {
+    match field.dtype() {
         DataType::List(item)
         | DataType::ListView(item)
         | DataType::FixedSizeList(item, _)
         | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some(item.data_type().clone()),
+        | DataType::LargeListView(item) => Some(item.dtype().clone()),
         _ => None,
     }
 }
 
 /// The declared key and value types of a map field.
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
-    match field.data_type() {
+    match field.dtype() {
         DataType::Map(map) => (
-            map.entries()
-                .get_field(0)
-                .map(|held| held.data_type().clone()),
-            map.entries()
-                .get_field(1)
-                .map(|held| held.data_type().clone()),
+            map.entries().get_field(0).map(|held| held.dtype().clone()),
+            map.entries().get_field(1).map(|held| held.dtype().clone()),
         ),
         _ => (None, None),
     }
@@ -1251,8 +1242,8 @@ fn unescape(pattern: &str, escape: Option<char>) -> SmolStr {
     SmolStr::new(text)
 }
 
-fn named(expression: &Expression, data_type: DataType, nullable: bool) -> Field {
-    Field::new(SmolStr::new(expression.to_string()), data_type, nullable)
+fn named(expression: &Expression, dtype: DataType, nullable: bool) -> Field {
+    Field::new(SmolStr::new(expression.to_string()), dtype, nullable)
 }
 
 fn incompatible(expected: &str) -> Error {
@@ -1269,10 +1260,8 @@ fn incompatible(expected: &str) -> Error {
 /// decided without a second representation to keep in step.
 pub(crate) fn rebuild(node: &Node) -> Expression {
     match &node.kind {
-        Kind::Literal(value) => {
-            TypedScalar::from_parts(node.field.data_type().clone(), value.clone())
-                .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal)
-        }
+        Kind::Literal(value) => TypedScalar::from_parts(node.field.dtype().clone(), value.clone())
+            .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal),
         Kind::Column(_) => Expression::column(node.field.name()),
         Kind::Path(base, steps) => Expression::Path(Box::new(rebuild(base)), steps.clone()),
         Kind::Attribute(selector) => Expression::attribute(selector.clone()),
@@ -1318,7 +1307,7 @@ pub(crate) fn rebuild(node: &Node) -> Expression {
         }
         Kind::Cast(inner, safety) => Expression::Cast(
             Box::new(rebuild(inner)),
-            node.field.data_type().clone(),
+            node.field.dtype().clone(),
             *safety,
         ),
         Kind::Case {

@@ -93,11 +93,11 @@ def _all_datatype_variants() -> tuple[DataType, ...]:
         lambda: pa.map_(pa.string(), pa.int32()),
         lambda: pa.run_end_encoded(pa.int32(), pa.string()),
     )
-    variants = tuple(DataType.from_arrow(data_type) for data_type in arrow_types)
+    variants = tuple(DataType.from_arrow(dtype) for dtype in arrow_types)
     # `id` is the per-variant identity; `kind` is the coarse family, so the
     # variants collapse into far fewer kinds.
-    assert len({data_type.id for data_type in variants}) == len(variants)
-    assert len({data_type.kind for data_type in variants}) < len(variants)
+    assert len({dtype.id for dtype in variants}) == len(variants)
+    assert len({dtype.kind for dtype in variants}) < len(variants)
     return variants
 
 
@@ -113,18 +113,18 @@ def test_the_catalogue_names_every_variant_this_pyarrow_can_spell() -> None:
 
 
 @pytest.mark.parametrize(
-    "data_type",
+    "dtype",
     _all_datatype_variants(),
-    ids=lambda data_type: data_type.id,
+    ids=lambda dtype: dtype.id,
 )
 def test_every_datatype_variant_has_one_python_and_arrow_default(
-    data_type: DataType,
+    dtype: DataType,
 ) -> None:
-    scalar = data_type.default_arrow_scalar()
+    scalar = dtype.default_arrow_scalar()
 
-    assert scalar.type.equals(data_type.into_arrow())
-    data_type.default_pyhint()
-    data_type.default_pyvalue()
+    assert scalar.type.equals(dtype.into_arrow())
+    dtype.default_pyhint()
+    dtype.default_pyvalue()
 
 
 def test_default_pyhint_is_cached_nullable_and_arrow_free() -> None:
@@ -197,7 +197,7 @@ def test_default_pyhint_cache_ignores_nested_metadata_recursively(
     assert payload_hint.field().metadata.get("struct-owner") is None
     assert (
         payload_hint.field()
-        .data_type["count"]
+        .dtype["count"]
         .metadata.get("leaf-owner")
         is None
     )
@@ -209,13 +209,13 @@ def test_typed_factory_defaults_cover_field_and_nested_child_nullability() -> No
 
     assert nullable_item.default_pyvalue() is None
     assert required_item.default_pyvalue() == 0
-    assert required_item.data_type.default_pyvalue() == 0
+    assert required_item.dtype.default_pyvalue() == 0
 
     fixed = fields.fixed_size_list(
         "values", nullable_item, 2, nullable=False
     )
     assert fixed.default_pyvalue() == [None, None]
-    assert fixed.data_type.default_pyvalue() == [None, None]
+    assert fixed.dtype.default_pyvalue() == [None, None]
 
     valid_struct = fields.struct(
         "row", (required_item,), nullable=False
@@ -246,11 +246,11 @@ def test_struct_default_is_cached_exact_record_materialization() -> None:
             ),
         ]
     )
-    data_type = DataType.from_arrow(arrow_type)
-    hint = data_type.default_pyhint()
-    assert hint.field().data_type["child"].metadata.get("role") is None
+    dtype = DataType.from_arrow(arrow_type)
+    hint = dtype.default_pyhint()
+    assert hint.field().dtype["child"].metadata.get("role") is None
 
-    value = data_type.default_pyvalue()
+    value = dtype.default_pyvalue()
 
     assert isinstance(value, hint)
     assert type(value) is not hint
@@ -265,11 +265,11 @@ def test_struct_default_is_cached_exact_record_materialization() -> None:
             "created": dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
         },
     }
-    assert type(value).field().data_type == data_type
-    assert hint.field().data_type["child"].metadata.get("role") is None
+    assert type(value).field().dtype == dtype
+    assert hint.field().dtype["child"].metadata.get("role") is None
     assert (
-        type(value.child).field().data_type
-        == data_type["child"].data_type
+        type(value.child).field().dtype
+        == dtype["child"].dtype
     )
     schema = type(value).field().into_arrow_schema()
     assert schema.field("identifier").type == pa.uint32()
@@ -279,18 +279,18 @@ def test_struct_default_is_cached_exact_record_materialization() -> None:
 
 @pytest.mark.parametrize("first", ["left", "right"])
 def test_struct_value_classes_do_not_poison_metadata_free_hints(first: str) -> None:
-    data_type = DataType.from_fields(
+    dtype = DataType.from_fields(
         (Field(f"count_{first}_first", "int32", nullable=False),)
     )
     left = Field(
         "left",
-        data_type,
+        dtype,
         nullable=False,
         metadata={"owner": "left"},
     )
     right = Field(
         "right",
-        data_type,
+        dtype,
         nullable=False,
         metadata={"owner": "right"},
     )
@@ -320,7 +320,7 @@ def test_struct_value_classes_do_not_poison_metadata_free_hints(first: str) -> N
 @pytest.mark.parametrize("first", ["hint", "value"])
 def test_datatype_nested_metadata_never_mutates_public_hint(first: str) -> None:
     child_name = f"child_{first}_first"
-    data_type = DataType.from_fields(
+    dtype = DataType.from_fields(
         (
             Field(
                 child_name,
@@ -334,18 +334,18 @@ def test_datatype_nested_metadata_never_mutates_public_hint(first: str) -> None:
     )
 
     if first == "hint":
-        hint = data_type.default_pyhint()
-        value = data_type.default_pyvalue()
+        hint = dtype.default_pyhint()
+        value = dtype.default_pyvalue()
     else:
-        value = data_type.default_pyvalue()
-        hint = data_type.default_pyhint()
+        value = dtype.default_pyvalue()
+        hint = dtype.default_pyhint()
 
     assert isinstance(value, hint)
-    assert hint.field().data_type[child_name].metadata.get("role") is None
+    assert hint.field().dtype[child_name].metadata.get("role") is None
     assert (
         type(value)
         .field()
-        .data_type[child_name]
+        .dtype[child_name]
         .metadata.get("role")
         == "nested"
     )
@@ -364,10 +364,10 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
             ),
         ]
     )
-    data_type = DataType.from_arrow(arrow_type)
+    dtype = DataType.from_arrow(arrow_type)
 
-    hint = data_type.default_pyhint()
-    value = data_type.default_pyvalue()
+    hint = dtype.default_pyhint()
+    value = dtype.default_pyvalue()
 
     assert typing.is_typeddict(hint)
     assert tuple(hint.__annotations__) == ("a-b", "class", "1child")
@@ -379,7 +379,7 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
     assert dataclasses.asdict(value["1child"]) == {"label": ""}
     assert type(value["1child"]).field().metadata.get("role") == "nested"
     assert nested_hint.field().metadata.get("role") is None
-    assert data_type.default_arrow_scalar().type.equals(arrow_type)
+    assert dtype.default_arrow_scalar().type.equals(arrow_type)
 
 
 @pytest.mark.parametrize(
@@ -400,12 +400,12 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
 def test_scalar_defaults_share_exact_arrow_and_python_projection(
     arrow_type: pa.DataType, expected: object
 ) -> None:
-    data_type = DataType.from_arrow(arrow_type)
-    scalar = data_type.default_arrow_scalar()
+    dtype = DataType.from_arrow(arrow_type)
+    scalar = dtype.default_arrow_scalar()
 
     assert scalar.type.equals(arrow_type)
     assert scalar.as_py() == expected
-    assert data_type.default_pyvalue() == expected
+    assert dtype.default_pyvalue() == expected
 
 
 def test_field_default_nullability_comes_from_native_core() -> None:
@@ -443,7 +443,7 @@ def test_nullable_struct_default_masks_uninhabited_nested_physical_children() ->
 
     scalar = outer.default_arrow_scalar()
     assert outer.default_pyvalue() is None
-    assert scalar.type.equals(outer.data_type.into_arrow())
+    assert scalar.type.equals(outer.dtype.into_arrow())
     assert not scalar.is_valid
     assert scalar.as_py() is None
 
@@ -685,12 +685,12 @@ def test_scheme_compatibility_is_native_recursive_and_typed() -> None:
     assert spark.name == "root"
     assert spark.nullable is False
     assert dict(spark.metadata.items()) == {"owner": "tests"}
-    assert [field.data_type.id for field in spark.data_type] == [
+    assert [field.dtype.id for field in spark.dtype] == [
         "int16",
         "decimal128",
         "float32",
     ]
-    assert spark.data_type["wide"].data_type == DataType.decimal(20, 0)
+    assert spark.dtype["wide"].dtype == DataType.decimal(20, 0)
 
     with pytest.raises(ValueError, match="Spark|spark|microsecond"):
         DataType.from_arrow(pa.timestamp("ns")).into_scheme_compat("spark")

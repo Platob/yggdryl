@@ -365,7 +365,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     assert projected.nbytes * 2 <= whole.nbytes
 
     # The file is unchanged: it still stores all four.
-    assert len(handle.read_arrow_field().data_type) == 4
+    assert len(handle.read_arrow_field().dtype) == 4
     ```
 
 === "JavaScript"
@@ -402,7 +402,7 @@ JavaScript exchanges Apache Arrow JS values over the copied Arrow IPC boundary, 
     assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id', 'price'])
 
     // The file is unchanged: it still stores all four.
-    assert.equal(handle.readArrowField().dataType.length, 4)
+    assert.equal(handle.readArrowField().dtype.length, 4)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -893,7 +893,7 @@ handle untouched.
     # The ids went into the file, so the recovered Field answers by id rather
     # than by position.
     recovered = handle.read_arrow_field()
-    assert [child.parquet_field_id for child in recovered.data_type] == [1, 2]
+    assert [child.parquet_field_id for child in recovered.dtype] == [1, 2]
     ```
 
 === "JavaScript"
@@ -931,8 +931,8 @@ handle untouched.
     // The ids went into the file, so the recovered Field answers by id rather
     // than by position.
     const recovered = handle.readArrowField()
-    assert.deepEqual([...recovered.dataType].map((child) => child.parquetFieldId), [1, 2])
-    assert.equal(recovered.dataType.at(0).get('PARQUET:field_id'), '1')
+    assert.deepEqual([...recovered.dtype].map((child) => child.parquetFieldId), [1, 2])
+    assert.equal(recovered.dtype.getFieldAt(0).get('PARQUET:field_id'), '1')
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
@@ -1360,7 +1360,7 @@ without a format argument.
     handle.overwrite_arrow_table(pa.Table.from_batches([], schema=schema))
     assert handle.size > 0
     assert handle.read_arrow_reader().read_all().num_rows == 0
-    assert len(handle.read_arrow_field().data_type) == 1
+    assert len(handle.read_arrow_field().dtype) == 1
     ```
 
 === "JavaScript"
@@ -1385,7 +1385,7 @@ without a format argument.
     handle.overwriteArrowTable(new arrow.Table(schema))
     assert.ok(handle.size > 0)
     assert.equal(handle.readArrowReader().intoTable().numRows, 0)
-    assert.equal(handle.readArrowField().dataType.length, 1)
+    assert.equal(handle.readArrowField().dtype.length, 1)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

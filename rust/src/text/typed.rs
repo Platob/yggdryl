@@ -23,7 +23,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);
     }
-    match field.data_type() {
+    match field.dtype() {
         DataType::Decimal32 { scale, .. }
         | DataType::Decimal64 { scale, .. }
         | DataType::Decimal128 { scale, .. } => decimal(value, *scale, false, field),
@@ -54,10 +54,10 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     }
 }
 
-fn prepare_for_type(value: Scalar, data_type: &DataType, context: &Field) -> Result<Scalar> {
+fn prepare_for_type(value: Scalar, dtype: &DataType, context: &Field) -> Result<Scalar> {
     prepare(
         value,
-        &Field::new(context.name(), data_type.clone(), context.is_nullable()),
+        &Field::new(context.name(), dtype.clone(), context.is_nullable()),
     )
 }
 

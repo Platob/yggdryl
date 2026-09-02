@@ -36,9 +36,9 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
         nullable=False,
     )
 
-    assert len(schema.data_type) == 2
-    assert schema.data_type[1].name == "symbol"
-    assert not schema.data_type[0].nullable
+    assert len(schema.dtype) == 2
+    assert schema.dtype[1].name == "symbol"
+    assert not schema.dtype[0].nullable
     ```
 
 === "JavaScript"
@@ -56,9 +56,9 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
       false,
     )
 
-    assert.equal(schema.dataType.length, 2)
-    assert.equal(schema.dataType.at(1).name, 'symbol')
-    assert.equal(schema.dataType.at(0).nullable, false)
+    assert.equal(schema.dtype.length, 2)
+    assert.equal(schema.dtype.getFieldAt(1).name, 'symbol')
+    assert.equal(schema.dtype.getFieldAt(0).nullable, false)
     ```
 
 ## What is here

@@ -160,10 +160,10 @@ fn variant_storage_array(rows: usize) -> ArrayRef {
     Arc::new(StructArray::new(fields, columns, None))
 }
 
-fn geospatial_batch(data_type: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array::RecordBatch {
+fn geospatial_batch(dtype: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array::RecordBatch {
     let root = Field::new(
         "row",
-        DataType::from_fields([Field::new("shape", data_type, true)]).unwrap(),
+        DataType::from_fields([Field::new("shape", dtype, true)]).unwrap(),
         false,
     );
     let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();

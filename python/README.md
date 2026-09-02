@@ -12,7 +12,7 @@ price = DataType.decimal("18", 4)
 clock = DataType.time("microseconds")
 text = DataType(str)
 field = Field("price", price, nullable=False)
-field.set_table_name("bars")
+field.set_comment("closing price")
 field.set_parquet_field_id(17)
 field.set_location("s3://warehouse/bars/data.arrow")
 field.set_property("postgres", "type", "numeric(18,4)")
@@ -112,7 +112,7 @@ trade_id: Int32Field = fields.int32("trade_id", nullable=False)
 tags: ListField[str] = fields.list("tags", fields.utf8("item"))
 
 assert type(trade_id) is Field
-assert tags.data_type.kind == "list"
+assert tags.dtype.kind == "list"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```
 

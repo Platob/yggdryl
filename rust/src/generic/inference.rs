@@ -23,14 +23,14 @@
 //! use yggdryl::{DataType, TimeUnit, Timezone, Scalar};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! assert_eq!(Scalar::from(u64::MAX).data_type()?, DataType::UInt64);
-//! assert_eq!(Scalar::d128(1_050, 2).data_type()?, DataType::decimal128(4, 2)?);
+//! assert_eq!(Scalar::from(u64::MAX).dtype()?, DataType::UInt64);
+//! assert_eq!(Scalar::d128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
-//!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.data_type()?,
+//!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.dtype()?,
 //!     DataType::Timestamp(TimeUnit::Microsecond, None),
 //! );
 //! assert_eq!(
-//!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).data_type()?,
+//!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
 //!     DataType::list(yggdryl::Field::new("item", DataType::Utf8, true)),
 //! );
 //! # Ok(())
@@ -59,20 +59,20 @@ impl Scalar {
     /// digits than Arrow's widest decimal holds, when a temporal carries a
     /// calendar interval layout instead of a resolution, or when the value
     /// nests past the shared recursion limit.
-    pub fn data_type(&self) -> Result<DataType> {
-        self.data_type_at(0)
+    pub fn dtype(&self) -> Result<DataType> {
+        self.dtype_at(0)
     }
 
     /// Infer the exact Field for one scalar value.
     ///
     /// The stable name is `value`; a null value names a nullable Null field.
     pub fn inferred_scalar_field(&self) -> Result<Field> {
-        Ok(Field::new("value", self.data_type()?, self.is_null()))
+        Ok(Field::new("value", self.dtype()?, self.is_null()))
     }
 
     /// Infer the exact item Field for one outer Sequence.
     ///
-    /// The stable name is `item`, matching the child name [`Self::data_type`]
+    /// The stable name is `item`, matching the child name [`Self::dtype`]
     /// gives an inferred List. Empty sequences are ambiguous and require a
     /// declared Field.
     pub fn inferred_array_field(&self) -> Result<Field> {
@@ -87,7 +87,7 @@ impl Scalar {
                 "cannot infer an array item Field from an empty Sequence; pass a Field",
             )));
         }
-        self.data_type()?
+        self.dtype()?
             .get_field(0)
             .cloned()
             .map(|field| field.with_name("item"))
@@ -120,7 +120,7 @@ impl Scalar {
                 "positional Sequence rows cannot infer field names; pass a Struct Field",
             )));
         }
-        let item = self.data_type()?.get_field(0).cloned().ok_or_else(|| {
+        let item = self.dtype()?.get_field(0).cloned().ok_or_else(|| {
             unnameable(SmolStr::new_static(
                 "named Record rows did not infer one List item Field",
             ))
@@ -135,7 +135,7 @@ impl Scalar {
     /// A value can nest as deeply as whoever built it chose, and a datatype is
     /// walked recursively, so the walk is bounded the way every other recursive
     /// descent in the project is rather than by the size of the native stack.
-    fn data_type_at(&self, depth: usize) -> Result<DataType> {
+    fn dtype_at(&self, depth: usize) -> Result<DataType> {
         if depth >= DataType::PARSE_RECURSION_LIMIT {
             return Err(unnameable(format_smolstr!(
                 "value nesting exceeds the hard limit of {}",
@@ -161,9 +161,9 @@ impl Scalar {
             Self::F32(_) => Ok(DataType::Float32),
             Self::F64(_) => Ok(DataType::Float64),
             Self::D128(unscaled, scale) => {
-                decimal_data_type(I256::from_i128(*unscaled), *scale, DecimalWidth::D128)
+                decimal_dtype(I256::from_i128(*unscaled), *scale, DecimalWidth::D128)
             }
-            Self::D256(unscaled, scale) => decimal_data_type(*unscaled, *scale, DecimalWidth::D256),
+            Self::D256(unscaled, scale) => decimal_dtype(*unscaled, *scale, DecimalWidth::D256),
             Self::String(_) => Ok(DataType::Utf8),
             Self::Enum(_) => Ok(DataType::Utf8),
             // The datatype model has no geospatial family yet, so a geometry
@@ -213,8 +213,8 @@ impl Scalar {
                 Ok(DataType::Duration64(*unit))
             }
             Self::Sequence(values) => {
-                let (data_type, nullable) = agreed(values.iter(), "sequence item", depth)?;
-                Ok(DataType::list(Field::new("item", data_type, nullable)))
+                let (dtype, nullable) = agreed(values.iter(), "sequence item", depth)?;
+                Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // A mapping's keys are values, not names, so its datatype is a map
             // and not a struct; a struct in this project is described by a
@@ -234,8 +234,8 @@ impl Scalar {
                     .map(|(name, value)| {
                         let nullable = value.is_null();
                         value
-                            .data_type_at(depth + 1)
-                            .map(|data_type| Field::new(name.as_str(), data_type, nullable))
+                            .dtype_at(depth + 1)
+                            .map(|dtype| Field::new(name.as_str(), dtype, nullable))
                     })
                     .collect::<Result<Vec<_>>>()?,
             ),
@@ -256,62 +256,31 @@ fn agreed<'a>(
             nullable = true;
             continue;
         }
-        let data_type = value.data_type_at(depth + 1)?;
+        let dtype = value.dtype_at(depth + 1)?;
         match agreed.take() {
-            Some(existing) => match merge_inferred(&existing, &data_type) {
+            Some(existing) => match merge_inferred(&existing, &dtype) {
                 Some(merged) => agreed = Some(merged),
                 None => {
                     return Err(unnameable(format_smolstr!(
                         "every {role} must name one datatype, got {} and {}",
                         crate::text::elide_display(&existing),
-                        crate::text::elide_display(&data_type),
+                        crate::text::elide_display(&dtype),
                     )));
                 }
             },
-            None => agreed = Some(data_type),
+            None => agreed = Some(dtype),
         }
     }
     // Nothing but nulls names the null type, which is a real Arrow column.
-    Ok(agreed.map_or((DataType::Null, true), |data_type| (data_type, nullable)))
+    Ok(agreed.map_or((DataType::Null, true), |dtype| (dtype, nullable)))
 }
 
-/// Merge nullability inside inferred records without widening scalar types.
+/// The one datatype two sampled values share, or `None`.
 fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
-    if left == right {
-        return Some(left.clone());
-    }
-    if matches!(left, DataType::Null) {
-        return Some(right.clone());
-    }
-    if matches!(right, DataType::Null) {
-        return Some(left.clone());
-    }
-    let (DataType::Struct(left), DataType::Struct(right)) = (left, right) else {
-        return None;
-    };
-    if left.len() != right.len()
-        || left
-            .iter()
-            .zip(right.iter())
-            .any(|(left, right)| left.name() != right.name())
-    {
-        return None;
-    }
-    let fields = left
-        .iter()
-        .zip(right.iter())
-        .map(|(left, right)| {
-            Some(Field::new(
-                left.name(),
-                merge_inferred(left.data_type(), right.data_type())?,
-                left.is_nullable()
-                    || right.is_nullable()
-                    || matches!(left.data_type(), DataType::Null)
-                    || matches!(right.data_type(), DataType::Null),
-            ))
-        })
-        .collect::<Option<Vec<_>>>()?;
-    DataType::from_fields(fields).ok()
+    // Inference widens: two sampled rows meet at the type that holds both.
+    // The rule table is [`DataType::merge_with`]'s, so an inferred schema and
+    // a declared one are reconciled by exactly the same rules.
+    left.merge_exact(right, crate::datatype::Widening::Up).ok()
 }
 
 /// Return the exact decimal a coefficient and scale name.
@@ -320,7 +289,7 @@ enum DecimalWidth {
     D256,
 }
 
-fn decimal_data_type(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataType> {
+fn decimal_dtype(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataType> {
     // Arrow requires a positive scale to fit inside the precision, so a
     // coefficient of 5 at scale 3 is `0.005` and needs three digits, not one.
     let precision = unscaled

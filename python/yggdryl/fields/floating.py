@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from .._native import Field
-from ._common import MetadataInput, new_field, simple_data_type
+from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 else:
     Float16Field = Float32Field = Float64Field = Field
 
-_FLOAT16 = simple_data_type("float16")
-_FLOAT32 = simple_data_type("float32")
-_FLOAT64 = simple_data_type("float64")
+_FLOAT16 = simple_dtype("float16")
+_FLOAT32 = simple_dtype("float32")
+_FLOAT64 = simple_dtype("float64")
 
 
 def float16(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Float16Field:

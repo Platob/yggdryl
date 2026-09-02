@@ -661,8 +661,8 @@ impl Expression {
     /// # Errors
     ///
     /// Returns an error when the value and the datatype disagree.
-    pub fn typed_literal(data_type: DataType, value: crate::Scalar) -> Result<Self> {
-        Ok(Self::Literal(TypedScalar::from_parts(data_type, value)?))
+    pub fn typed_literal(dtype: DataType, value: crate::Scalar) -> Result<Self> {
+        Ok(Self::Literal(TypedScalar::from_parts(dtype, value)?))
     }
 
     /// Name a top-level column.
@@ -901,7 +901,7 @@ impl Expression {
     pub fn neg(self) -> Self {
         if let Self::Literal(held) = &self {
             if let Some(negated) = negate_value(held.value()) {
-                if let Ok(folded) = TypedScalar::from_parts(held.data_type().clone(), negated) {
+                if let Ok(folded) = TypedScalar::from_parts(held.dtype().clone(), negated) {
                     return Self::Literal(folded);
                 }
             }
@@ -917,14 +917,14 @@ impl Expression {
 
     /// Convert to another datatype, refusing what the target cannot hold.
     #[must_use]
-    pub fn cast(self, data_type: DataType) -> Self {
-        Self::Cast(Box::new(self), data_type, Safety::Strict)
+    pub fn cast(self, dtype: DataType) -> Self {
+        Self::Cast(Box::new(self), dtype, Safety::Strict)
     }
 
     /// Convert to another datatype, nulling what the target cannot hold.
     #[must_use]
-    pub fn try_cast(self, data_type: DataType) -> Self {
-        Self::Cast(Box::new(self), data_type, Safety::Safe)
+    pub fn try_cast(self, dtype: DataType) -> Self {
+        Self::Cast(Box::new(self), dtype, Safety::Safe)
     }
 
     /// Build a searched conditional.
@@ -1453,12 +1453,12 @@ impl Expression {
     /// directory spells it, so the pair `("price", "null")` becomes
     /// `price is null` rather than a comparison against four letters.
     #[must_use]
-    pub fn partition_equals(column: &str, value: &str, data_type: &DataType) -> Self {
+    pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self {
         let reference = Self::column(column);
         if value == crate::io::NULL_PARTITION {
             return reference.is_null();
         }
-        reference.eq(Self::literal(value).try_cast(data_type.clone()))
+        reference.eq(Self::literal(value).try_cast(dtype.clone()))
     }
 
     /// The predicate one column-equals-value pair spells about the *holder*.
@@ -1483,9 +1483,9 @@ impl Expression {
         pairs: impl IntoIterator<Item = (C, V)>,
     ) -> Self {
         Self::all(pairs.into_iter().filter_map(|(column, value)| {
-            schema.get_field_by_name(column.as_ref()).map(|field| {
-                Self::partition_equals(column.as_ref(), value.as_ref(), field.data_type())
-            })
+            schema
+                .get_field_by_path(column.as_ref())
+                .map(|field| Self::partition_equals(column.as_ref(), value.as_ref(), field.dtype()))
         }))
     }
 

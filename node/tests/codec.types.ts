@@ -71,7 +71,7 @@ const valueQuotient: Scalar = price.divide(2)
 const valueRemainder: Scalar = Scalar.fromJs(5).remainder(2)
 const negativeValue: Scalar = price.negate()
 const absoluteValue: Scalar = negativeValue.absolute()
-const dataType = widePrice.dataType
+const dtype = widePrice.dtype
 const rawBytes: Buffer | null = Scalar.fromJs(Buffer.from('x')).asBytes()
 const rawUtf8: string | null = Scalar.fromJs('x').asUtf8()
 const jsonBytes: Buffer = widePrice.asJsonBytes()
@@ -254,7 +254,7 @@ void valueQuotient
 void valueRemainder
 void negativeValue
 void absoluteValue
-void dataType
+void dtype
 void rawBytes
 void rawUtf8
 void jsonBytes
