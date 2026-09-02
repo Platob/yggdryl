@@ -14,7 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{Field, FieldRef};
 use crate::datatype::{
-    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_data_type_to_ffi,
+    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_dtype_to_ffi,
     arrow_extension_parts, is_variant_storage,
 };
 use crate::{DataType, Error, GeospatialType, Metadata, Result};
@@ -40,8 +40,8 @@ impl Field {
     }
 
     pub(crate) fn from_arrow_at_depth(value: &ArrowField, depth: usize) -> Result<Self> {
-        let (data_type, metadata) = imported_parts(value, depth)?;
-        let mut field = imported_field(value, data_type, metadata);
+        let (dtype, metadata) = imported_parts(value, depth)?;
+        let mut field = imported_field(value, dtype, metadata);
         let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
         seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value.clone()));
         Ok(field)
@@ -53,16 +53,16 @@ impl Field {
     }
 
     pub(crate) fn from_arrow_ref_at_depth(value: FieldRef, depth: usize) -> Result<Self> {
-        let (data_type, metadata) = imported_parts(&value, depth)?;
-        let mut field = imported_field(&value, data_type, metadata);
+        let (dtype, metadata) = imported_parts(&value, depth)?;
+        let mut field = imported_field(&value, dtype, metadata);
         let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
         seed_imported_arrow_cache(&mut field, cacheable, || value);
         Ok(field)
     }
 
     pub(crate) fn from_arrow_owned_at_depth(value: ArrowField, depth: usize) -> Result<Self> {
-        let (data_type, metadata) = imported_parts(&value, depth)?;
-        let mut field = imported_field(&value, data_type, metadata);
+        let (dtype, metadata) = imported_parts(&value, depth)?;
+        let mut field = imported_field(&value, dtype, metadata);
         let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
         seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value));
         Ok(field)
@@ -125,7 +125,7 @@ impl Field {
         if let Some(field) = self.arrow.get() {
             return arrow_field_to_ffi(field).map_err(Error::from);
         }
-        let mut schema = self.data_type.clone().into_arrow_ffi()?;
+        let mut schema = self.dtype.clone().into_arrow_ffi()?;
         let mut flags = schema.flags().unwrap_or_else(Flags::empty);
         if self.nullable {
             flags |= Flags::NULLABLE;
@@ -139,7 +139,7 @@ impl Field {
         // one buffer, so the replacement map must carry them again.
         schema
             .with_metadata(&projected_arrow_metadata(
-                &self.data_type,
+                &self.dtype,
                 self.metadata.clone().into_arrow(),
             )?)
             .map_err(Error::from)
@@ -149,7 +149,7 @@ impl Field {
     pub fn into_arrow(self) -> Result<ArrowField> {
         let Self {
             name,
-            data_type,
+            dtype,
             nullable,
             dictionary_id,
             dictionary_is_ordered,
@@ -159,10 +159,10 @@ impl Field {
         if let Some(field) = arrow.into_inner() {
             return Ok(Arc::try_unwrap(field).unwrap_or_else(|field| field.as_ref().clone()));
         }
-        let projected = projected_arrow_metadata(&data_type, metadata.into_arrow())?;
+        let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
         Ok(arrow_field_from_parts(
             name.as_str(),
-            data_type.into_arrow()?,
+            dtype.into_arrow()?,
             nullable,
             dictionary_id,
             dictionary_is_ordered,
@@ -174,7 +174,7 @@ impl Field {
     pub fn into_arrow_ref(self) -> Result<FieldRef> {
         let Self {
             name,
-            data_type,
+            dtype,
             nullable,
             dictionary_id,
             dictionary_is_ordered,
@@ -184,10 +184,10 @@ impl Field {
         if let Some(field) = arrow.into_inner() {
             return Ok(field);
         }
-        let projected = projected_arrow_metadata(&data_type, metadata.into_arrow())?;
+        let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
         Ok(Arc::new(arrow_field_from_parts(
             name.as_str(),
-            data_type.into_arrow()?,
+            dtype.into_arrow()?,
             nullable,
             dictionary_id,
             dictionary_is_ordered,
@@ -208,7 +208,7 @@ fn seed_imported_arrow_cache(
 
 fn imported_arrow_is_cacheable(field: &Field, arrow_metadata: &HashMap<String, String>) -> bool {
     field.metadata.matches_arrow(arrow_metadata)
-        && field.data_type.arrow_import_is_projection_equivalent()
+        && field.dtype.arrow_import_is_projection_equivalent()
 }
 
 /// The core identity an Arrow field's extension metadata declares, when it
@@ -223,7 +223,7 @@ pub(crate) enum RecognizedExtension {
 
 impl RecognizedExtension {
     /// The first-class datatype this recognized extension imports as.
-    pub(crate) fn into_data_type(self) -> DataType {
+    pub(crate) fn into_dtype(self) -> DataType {
         match self {
             Self::Variant => DataType::Variant,
             Self::Geospatial(geospatial) => {
@@ -298,13 +298,13 @@ fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadat
             .map(|(key, held)| (key.clone(), held.clone()))
             .collect();
         return Ok((
-            recognized.into_data_type(),
+            recognized.into_dtype(),
             Metadata::from_arrow(&stripped)?,
         ));
     }
     let metadata = Metadata::from_arrow(value.metadata())?;
-    let data_type = DataType::from_arrow_at_depth(value.data_type(), depth)?;
-    Ok((data_type, metadata))
+    let dtype = DataType::from_arrow_at_depth(value.data_type(), depth)?;
+    Ok((dtype, metadata))
 }
 
 /// Completes a projected Arrow metadata map with the extension identity of a
@@ -314,10 +314,10 @@ fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadat
 /// caller's own value ride along would let one field name two extensions, so
 /// a conflict is refused naming both spellings rather than silently picking.
 fn projected_arrow_metadata(
-    data_type: &DataType,
+    dtype: &DataType,
     mut metadata: HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
-    let Some((name, document)) = arrow_extension_parts(data_type) else {
+    let Some((name, document)) = arrow_extension_parts(dtype) else {
         return Ok(metadata);
     };
     for key in [EXTENSION_TYPE_NAME_KEY, EXTENSION_TYPE_METADATA_KEY] {
@@ -327,7 +327,7 @@ fn projected_arrow_metadata(
                 reason: format_smolstr!(
                     "expected no caller-set Arrow extension entry on a {} field, \
                      got {existing:?}; the datatype itself projects {name:?}",
-                    data_type.name()
+                    dtype.name()
                 ),
             });
         }
@@ -337,12 +337,12 @@ fn projected_arrow_metadata(
     Ok(metadata)
 }
 
-fn imported_field(value: &ArrowField, data_type: DataType, metadata: Metadata) -> Field {
+fn imported_field(value: &ArrowField, dtype: DataType, metadata: Metadata) -> Field {
     #[allow(deprecated)]
     let dictionary_id = value.dict_id().unwrap_or_default();
     Field {
         name: value.name().into(),
-        data_type,
+        dtype,
         nullable: value.is_nullable(),
         dictionary_id,
         dictionary_is_ordered: value.dict_is_ordered().unwrap_or_default(),
@@ -355,7 +355,7 @@ fn imported_field(value: &ArrowField, data_type: DataType, metadata: Metadata) -
 pub(crate) fn arrow_field_to_ffi(
     field: &ArrowField,
 ) -> std::result::Result<FFI_ArrowSchema, arrow_schema::ArrowError> {
-    let mut schema = arrow_data_type_to_ffi(field.data_type())?;
+    let mut schema = arrow_dtype_to_ffi(field.data_type())?;
     let mut flags = schema.flags().unwrap_or_else(Flags::empty);
     if field.is_nullable() {
         flags |= Flags::NULLABLE;
@@ -370,7 +370,7 @@ pub(crate) fn arrow_field_to_ffi(
 #[allow(deprecated)]
 fn arrow_field_from_parts(
     name: &str,
-    data_type: arrow_schema::DataType,
+    dtype: arrow_schema::DataType,
     nullable: bool,
     dictionary_id: i64,
     dictionary_is_ordered: bool,
@@ -378,7 +378,7 @@ fn arrow_field_from_parts(
 ) -> ArrowField {
     ArrowField::new_dict(
         name,
-        data_type,
+        dtype,
         nullable,
         dictionary_id,
         dictionary_is_ordered,
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(arrow.extension_type_metadata(), Some(""));
 
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.data_type(), &DataType::Variant);
+        assert_eq!(imported.dtype(), &DataType::Variant);
         assert!(imported.as_metadata().is_empty());
         assert_eq!(imported, field);
     }
@@ -490,7 +490,7 @@ mod tests {
                 "geoarrow.wkb".to_owned(),
             )]));
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.data_type(), &DataType::geometry(None).unwrap());
+        assert_eq!(imported.dtype(), &DataType::geometry(None).unwrap());
         let shared = Field::from_arrow_ref(Arc::new(arrow.clone())).unwrap();
         assert_eq!(shared, imported);
         let owned = Field::try_from(arrow).unwrap();
@@ -508,7 +508,7 @@ mod tests {
                 (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
             ]));
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.data_type(), &DataType::Binary);
+        assert_eq!(imported.dtype(), &DataType::Binary);
         assert_eq!(
             imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
             Some("someorg.blob")
@@ -525,7 +525,7 @@ mod tests {
             )]),
         );
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.data_type(), &DataType::LargeBinary);
+        assert_eq!(imported.dtype(), &DataType::LargeBinary);
         assert_eq!(
             imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
             Some("geoarrow.wkb")
@@ -589,7 +589,7 @@ mod tests {
                 ),
             ]));
         let imported = Field::from_arrow(&shredded).unwrap();
-        assert!(matches!(imported.data_type(), DataType::Struct(_)));
+        assert!(matches!(imported.dtype(), DataType::Struct(_)));
 
         let swapped = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
             ArrowField::new("value", ArrowDataType::Binary, false),
@@ -600,6 +600,6 @@ mod tests {
             "arrow.parquet.variant".to_owned(),
         )]));
         let imported = Field::from_arrow(&swapped).unwrap();
-        assert!(matches!(imported.data_type(), DataType::Struct(_)));
+        assert!(matches!(imported.dtype(), DataType::Struct(_)));
     }
 }

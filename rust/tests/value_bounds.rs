@@ -178,10 +178,10 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
         .unwrap(),
     ];
 
-    for (index, data_type) in wrappers.into_iter().enumerate() {
+    for (index, dtype) in wrappers.into_iter().enumerate() {
         let root = Field::new(
             "Root",
-            DataType::from_fields([Field::new("value", data_type, false)]).unwrap(),
+            DataType::from_fields([Field::new("value", dtype, false)]).unwrap(),
             false,
         );
         let schema = root

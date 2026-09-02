@@ -325,7 +325,6 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
   assert.equal(field.setProperty('iceberg', 'field-id', '7'), null)
   assert.equal(field.setProperty('fix', 'tag', '44'), null)
   assert.equal(field.setProperty('field', 'role', 'measure'), null)
-  assert.equal(field.setProperty('dtype', 'logical', 'price'), null)
   assert.equal(field.getProperty('postgres', 'type'), 'numeric(18,6)')
   assert.equal(field.hasProperty('postgres', 'column'), true)
   assert.deepEqual(field.propertyIter('postgres'), [
@@ -551,7 +550,6 @@ test('every well-known protocol has its own live field accessor', () => {
     'iceberg',
     'fix',
     'field',
-    'dtype',
     's3',
     'gs',
     'az',
@@ -627,11 +625,11 @@ test('partition markers name the columns a path spells out', () => {
   const path = partitioned.onlyPartitionFields()
   assert.ok(path instanceof Field)
   assert.equal(path.name, 'row')
-  assert.deepEqual([...path.dataType].map((child) => child.name), ['year'])
+  assert.deepEqual([...path.dtype].map((child) => child.name), ['year'])
 
   const leaf = partitioned.withoutPartitionFields()
   assert.ok(leaf instanceof Field)
-  assert.deepEqual([...leaf.dataType].map((child) => child.name), ['price'])
+  assert.deepEqual([...leaf.dtype].map((child) => child.name), ['price'])
 
   // A partition column nobody stores is a layout error, not a silent omission.
   assert.throws(

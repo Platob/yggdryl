@@ -41,14 +41,14 @@ test('numbering a schema is a copy, and the numbers are Arrow field ids', () => 
   })
   const numbered = schema()
 
-  assert.equal(plain.dataType.at(0).parquetFieldId, null)
-  assert.equal(numbered.dataType.at(0).parquetFieldId, 1)
-  assert.equal(numbered.dataType.at(1).parquetFieldId, 2)
-  assert.equal(numbered.dataType.at(0).get('PARQUET:field_id'), '1')
+  assert.equal(plain.dtype.at(0).parquetFieldId, null)
+  assert.equal(numbered.dtype.at(0).parquetFieldId, 1)
+  assert.equal(numbered.dtype.at(1).parquetFieldId, 2)
+  assert.equal(numbered.dtype.at(0).get('PARQUET:field_id'), '1')
 
   // Numbering starts where a caller says, so an evolution never reuses one.
   const later = iceberg.assignFieldIds(plain, 10)
-  assert.equal(later.dataType.at(0).parquetFieldId, 10)
+  assert.equal(later.dtype.at(0).parquetFieldId, 10)
 })
 
 test('creating a table numbers a plain schema itself, partitioning included', (t) => {
@@ -61,8 +61,8 @@ test('creating a table numbers a plain schema itself, partitioning included', (t
   const table = iceberg.Table.create(path.join(root, 'trades'), plain, ['venue'])
 
   // Depth-first from 1, and the spec resolved 'venue' against the numbering.
-  assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
-  assert.equal(table.schema.dataType.at(1).parquetFieldId, 2)
+  assert.equal(table.schema.dtype.at(0).parquetFieldId, 1)
+  assert.equal(table.schema.dtype.at(1).parquetFieldId, 2)
   assert.equal(table.spec.fields[0].sourceId, 2)
 
   // The numbered table is a working table.
@@ -112,7 +112,7 @@ test('a create-on-write commit lets the rows name the schema', (t) => {
   // the inferred schema is widened before the table is created.
   const created = catalog.append('nyc.trades', [{ id: 1n, venue: 'XNAS' }])
   assert.equal(created.scan().intoTable().numRows, 1)
-  assert.equal(created.schema.dataType.at(1).dataType.toString(), 'utf8')
+  assert.equal(created.schema.dtype.at(1).dtype.toString(), 'utf8')
 
   // The second write types against the schema the first one created.
   catalog.tables.append('nyc.trades', [{ id: 2n, venue: 'XNYS' }])
@@ -135,7 +135,7 @@ test('a create-on-write commit lets the rows name the schema', (t) => {
   }
   const classed = catalog.append('nyc.classed', [new Trade(1n, 'XNAS')])
   assert.equal(classed.scan().intoTable().numRows, 1)
-  assert.equal(String(classed.schema.dataType.at(1).dataType), 'utf8')
+  assert.equal(String(classed.schema.dtype.at(1).dtype), 'utf8')
 })
 
 test('a table is a folder, and a new one has no current snapshot', (t) => {
@@ -266,7 +266,7 @@ test('a scan pushes columns down and casts what each file gives back', (t) => {
   const table = iceberg.Table.create(path.join(root, 'trades'), declared)
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
 
-  const wanted = fields.struct('row', [declared.dataType.at(0)], { nullable: false })
+  const wanted = fields.struct('row', [declared.dtype.at(0)], { nullable: false })
   const scanned = table.scan(wanted).intoTable()
   assert.equal(scanned.numCols, 1)
   assert.equal(scanned.numRows, 2)
@@ -306,7 +306,7 @@ test('a schema evolves, and files written before a column read null for it', (t)
     ),
   )
   assert.equal(table.evolveSchema(evolved), 1)
-  assert.equal(table.schema.dataType.length, 3)
+  assert.equal(table.schema.dtype.length, 3)
 
   const scanned = table.scan().intoTable()
   assert.equal(scanned.numRows, 1)
@@ -414,7 +414,7 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   const table = catalog.append('nyc.taxis', rows([1n, 2n], ['XNAS', 'XNYS']))
   assert.ok(catalog.tables.has('nyc.taxis'))
   assert.equal(table.schema.name, 'row')
-  assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
+  assert.equal(table.schema.dtype.at(0).parquetFieldId, 1)
   assert.equal(table.scan().intoTable().numRows, 2)
 
   // The dotted name is the folder nyc/taxis, one level per dot.
@@ -435,7 +435,7 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   ])
   assert.equal(rides.schema.name, 'row')
   assert.deepEqual(
-    Array.from(rides.schema.dataType, (child) => child.name),
+    Array.from(rides.schema.dtype, (child) => child.name),
     ['id', 'city'],
   )
   catalog.tables.create('nyc.zones', 'row: struct<id int64, zone utf8> not null')
@@ -547,13 +547,13 @@ test('a schema evolves through one recorded chain, committed once', (t) => {
 
   const evolved = table.schema
   assert.deepEqual(
-    Array.from(evolved.dataType, (child) => child.name),
+    Array.from(evolved.dtype, (child) => child.name),
     ['id', 'market', 'price'],
   )
-  assert.equal(evolved.dataType.at(0).dataType.id, 'int64')
+  assert.equal(evolved.dtype.at(0).dtype.id, 'int64')
   // The renamed column keeps its identifier; the added one is numbered fresh.
-  assert.equal(evolved.dataType.at(1).parquetFieldId, 2)
-  assert.equal(evolved.dataType.at(2).parquetFieldId, 3)
+  assert.equal(evolved.dtype.at(1).parquetFieldId, 2)
+  assert.equal(evolved.dtype.at(2).parquetFieldId, 3)
 
   // The rows written under the old schema are preserved and read as the new
   // shape: the promoted column widens, the added column reads null.
@@ -730,8 +730,8 @@ test('a schema is a document in both directions', () => {
   )
   const imported = iceberg.schemaFromJson('trade', foreign)
   assert.equal(imported.name, 'trade')
-  assert.equal(imported.dataType.length, 1)
-  assert.equal(imported.dataType.at(0).nullable, false)
+  assert.equal(imported.dtype.length, 1)
+  assert.equal(imported.dtype.at(0).nullable, false)
 })
 
 test('a namespace is a resource whose collections carry the verbs', (t) => {

@@ -1238,18 +1238,18 @@ fn data_file_from_official(
 }
 
 /// Preserve the physical scalar identity of an official partition literal.
-fn scalar_from_official(value: &OfficialLiteral, data_type: &OfficialType) -> Result<Scalar> {
+fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result<Scalar> {
     let OfficialLiteral::Primitive(value) = value else {
         return Err(invalid(SmolStr::new_static(
             "expected a primitive Iceberg partition value",
         )));
     };
-    let Some(data_type) = data_type.as_primitive_type() else {
+    let Some(dtype) = dtype.as_primitive_type() else {
         return Err(invalid(SmolStr::new_static(
             "expected a primitive Iceberg partition type",
         )));
     };
-    match (data_type, value) {
+    match (dtype, value) {
         (OfficialPrimitiveType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => {
             Ok(Scalar::Bool(*value))
         }
@@ -1304,7 +1304,7 @@ fn scalar_from_official(value: &OfficialLiteral, data_type: &OfficialType) -> Re
             OfficialPrimitiveLiteral::Binary(value),
         ) => Ok(Scalar::from(value.clone())),
         _ => Err(invalid(format_smolstr!(
-            "expected a partition value matching {data_type}, got {value:?}"
+            "expected a partition value matching {dtype}, got {value:?}"
         ))),
     }
 }
@@ -1656,7 +1656,7 @@ fn partition_record(partition: &Field, name: &str) -> Result<Scalar> {
 
 /// Render one Iceberg partition primitive as its required Avro wire schema.
 fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
-    let mut primitive = super::PrimitiveType::from_data_type(field.data_type())?;
+    let mut primitive = super::PrimitiveType::from_dtype(field.dtype())?;
     if primitive == super::PrimitiveType::Fixed(16)
         && field.iceberg().get(super::schema::DECLARED_TYPE) == Some("uuid")
     {
@@ -2525,8 +2525,8 @@ mod official_read_tests {
             if field.get_key_str("name").and_then(Scalar::as_str) != Some("data_file") {
                 return field.clone();
             }
-            let data_type = field.get_key_str("type").unwrap();
-            let data_fields = data_type
+            let dtype = field.get_key_str("type").unwrap();
+            let data_fields = dtype
                 .get_key_str("fields")
                 .unwrap()
                 .as_sequence()
@@ -2539,10 +2539,10 @@ mod official_read_tests {
                     .as_ref()
                     .map(|kind| child.with_key("type", kind.clone()).unwrap())
             });
-            let data_type = data_type
+            let dtype = dtype
                 .with_key("fields", Scalar::from_sequence(data_fields))
                 .unwrap();
-            field.with_key("type", data_type).unwrap()
+            field.with_key("type", dtype).unwrap()
         });
         schema
             .with_key("fields", Scalar::from_sequence(fields))

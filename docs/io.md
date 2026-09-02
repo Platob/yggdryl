@@ -1951,7 +1951,7 @@ where the bytes live.
     assert projected.read_all().num_columns == 1
 
     # The resource is unchanged: it still holds all three.
-    assert len(handle.read_arrow_field().data_type) == 3
+    assert len(handle.read_arrow_field().dtype) == 3
 
     # A column it does not hold cannot be projected out of it, so the encoding
     # reads everything and the cast supplies that column as nulls.
@@ -1985,11 +1985,11 @@ where the bytes live.
     const options = handle.recordOptions()
 
     const projected = handle.readArrowReader(options.withField(wanted))
-    assert.equal(projected.field.dataType.length, 1)
+    assert.equal(projected.field.dtype.length, 1)
     assert.equal(projected.intoTable().numCols, 1)
 
     // The resource is unchanged: it still holds all three.
-    assert.equal(handle.readArrowField().dataType.length, 3)
+    assert.equal(handle.readArrowField().dtype.length, 3)
 
     // A column it does not hold cannot be projected out of it, so the encoding
     // reads everything and the cast supplies that column as nulls.
@@ -1999,7 +1999,7 @@ where the bytes live.
       { nullable: false },
     )
     const widened = handle.readArrowReader(options.withField(invented))
-    assert.equal(widened.field.dataType.length, 2)
+    assert.equal(widened.field.dtype.length, 2)
     ```
 
 The field on the options selects *and* casts, in one pass over the data. The columns it names that
@@ -2136,7 +2136,7 @@ never decoded.
 
     // Zero is a valid ask: the shaped schema answers, and no batch flows.
     const empty = handle.readArrowReader(options.withMaxRowSize(0))
-    assert.equal(empty.field.dataType.length, 1)
+    assert.equal(empty.field.dtype.length, 1)
     assert.equal(empty.intoTable().numRows, 0)
 
     // A non-zero byte bound always yields at least one row.
@@ -2916,7 +2916,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
 
     // The schema answers from the document alone, with no resource in sight.
     const schema = fieldFromPattern(options)
-    assert.equal(String(schema.dataType.get('source').dataType), 'utf8')
+    assert.equal(String(schema.dtype.get('source').dtype), 'utf8')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
     const target = path.join(root, 'app.log')
@@ -2946,7 +2946,7 @@ sub-pattern table or by declaration:
     // `thread_id` types itself off its own `\d+` sub-pattern.
     let schema = TextLineOptions::with_pattern(pattern)?.into_field();
     assert_eq!(
-        schema.get_field_by_name("thread_id").unwrap().data_type(),
+        schema.get_field_by_name("thread_id").unwrap().dtype(),
         &DataType::Int64
     );
 
@@ -2992,7 +2992,7 @@ sub-pattern table or by declaration:
 
     # The standalone builder answers the emitted root without a reader.
     schema = field_from_pattern(pattern, capture_types={"qty": "decimal(9, 2)"})
-    assert str(schema.data_type["thread_id"].data_type) == "int64"
+    assert str(schema.dtype["thread_id"].dtype) == "int64"
 
     target = pathlib.Path(tempfile.mkdtemp()) / "app.log"
     target.write_text("2024-02-01 10:00:00 [42] (info) qty=1.50 fill\n")
@@ -3024,7 +3024,7 @@ sub-pattern table or by declaration:
 
     // The standalone builder answers the emitted root without a reader.
     const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-    assert.equal(String(schema.dataType.get('thread_id').dataType), 'int64')
+    assert.equal(String(schema.dtype.get('thread_id').dtype), 'int64')
 
     const table = new IOBase(target)
       .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
@@ -4093,7 +4093,7 @@ each row of a write to the leaf its values name.
         .next()
         .expect("one batch")?;
     assert_eq!(restored.num_columns(), 3);
-    assert_eq!(restored.schema().field(1).data_type(), &arrow_schema::DataType::Int32);
+    assert_eq!(restored.schema().field(1).dtype(), &arrow_schema::DataType::Int32);
 
     let _ = std::fs::remove_dir_all(&root);
     ```
@@ -4130,7 +4130,7 @@ each row of a write to the leaf its values name.
 
     # Only `price` reached the leaf; the other two are the directory names.
     leaf = lake / "year=2024" / "month=01" / "part-0.arrows"
-    assert len(leaf.read_arrow_field().data_type) == 1
+    assert len(leaf.read_arrow_field().dtype) == 1
 
     # Reading the folder restores them with their declared types.
     restored = lake.read_arrow_reader(options=options).read_all()
@@ -4171,7 +4171,7 @@ each row of a write to the leaf its values name.
 
     // Only `price` reached the leaf; the other two are the directory names.
     const leaf = lake.joinpath('year=2024').joinpath('month=01').joinpath('part-0.arrows')
-    assert.equal(leaf.readArrowField().dataType.length, 1)
+    assert.equal(leaf.readArrowField().dtype.length, 1)
 
     // Reading the folder restores them with their declared types.
     const restored = lake.readArrowReader(options).intoTable()

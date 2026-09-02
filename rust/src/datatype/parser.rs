@@ -267,7 +267,7 @@ impl<'a> Parser<'a> {
                     tokens: nested_tokens,
                     index: 0,
                 };
-                let data_type = nested.parse_type(depth + 1).map_err(|error| match error {
+                let dtype = nested.parse_type(depth + 1).map_err(|error| match error {
                     Error::Parse {
                         position, reason, ..
                     } => self.error_at(token.start + 1 + position, reason),
@@ -276,7 +276,7 @@ impl<'a> Parser<'a> {
                 if !nested.is_done() {
                     return Err(self.error_at(token.start, "quoted datatype has trailing tokens"));
                 }
-                return self.parse_postfix_lists(data_type, depth);
+                return self.parse_postfix_lists(dtype, depth);
             }
             _ => return Err(self.error_at(token.start, "expected a datatype name")),
         };
@@ -978,9 +978,9 @@ impl<'a> Parser<'a> {
         if self.looks_like_named_field() {
             return self.parse_named_field(depth);
         }
-        let data_type = self.parse_type(depth)?;
+        let dtype = self.parse_type(depth)?;
         let nullable = self.parse_nullability(default_nullable)?;
-        Ok(Field::new(default_name, data_type, nullable))
+        Ok(Field::new(default_name, dtype, nullable))
     }
 
     fn parse_named_field(&mut self, depth: usize) -> Result<Field> {
@@ -995,9 +995,9 @@ impl<'a> Parser<'a> {
         {
             return Err(self.error_here("expected a datatype after the field name"));
         }
-        let data_type = self.parse_type(depth)?;
+        let dtype = self.parse_type(depth)?;
         let nullable = self.parse_nullability(true)?;
-        Ok(Field::new(name, data_type, nullable))
+        Ok(Field::new(name, dtype, nullable))
     }
 
     fn parse_explicit_field(&mut self, depth: usize, default_name: Option<&str>) -> Result<Field> {
@@ -1010,7 +1010,7 @@ impl<'a> Parser<'a> {
             .ok_or_else(|| self.error_here("expected field(...)"))?;
         let name = self.parse_text("field name")?;
         self.expect_separator("expected datatype after field name")?;
-        let data_type = self.parse_type(depth)?;
+        let dtype = self.parse_type(depth)?;
         self.expect_separator("expected nullable= after datatype")?;
         self.consume_label("nullable");
         let nullable = self.parse_bool("field nullability")?;
@@ -1042,7 +1042,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect_symbol(close)?;
-        let mut field = Field::from_parts(name, data_type, nullable, metadata)?;
+        let mut field = Field::from_parts(name, dtype, nullable, metadata)?;
         if dictionary_id.is_some() || dictionary_is_ordered.is_some() {
             field.set_dictionary_options(
                 dictionary_id.unwrap_or_default(),
@@ -1055,7 +1055,7 @@ impl<'a> Parser<'a> {
     fn parse_arrow_field(&mut self, depth: usize, default_name: Option<&str>) -> Result<Field> {
         self.expect_symbol('{')?;
         let mut name = None;
-        let mut data_type = None;
+        let mut dtype = None;
         let mut nullable = None;
         let mut dictionary_id = None;
         let mut dictionary_is_ordered = None;
@@ -1075,10 +1075,10 @@ impl<'a> Parser<'a> {
                     name = Some(self.parse_text("field name")?);
                 }
                 "datatype" | "type" => {
-                    if data_type.is_some() {
+                    if dtype.is_some() {
                         return Err(self.error_here("duplicate field datatype"));
                     }
-                    data_type = Some(self.parse_type(depth)?);
+                    dtype = Some(self.parse_type(depth)?);
                 }
                 "nullable" => {
                     if nullable.is_some() {
@@ -1118,10 +1118,10 @@ impl<'a> Parser<'a> {
             .ok_or_else(|| {
                 self.error_here("Arrow field is missing a name outside a named child context")
             })?;
-        let data_type =
-            data_type.ok_or_else(|| self.error_here("Arrow field is missing data_type"))?;
+        let dtype =
+            dtype.ok_or_else(|| self.error_here("Arrow field is missing dtype"))?;
         // Arrow's Debug formatter omits `nullable` when it is false.
-        let mut field = Field::from_parts(name, data_type, nullable.unwrap_or(false), metadata)?;
+        let mut field = Field::from_parts(name, dtype, nullable.unwrap_or(false), metadata)?;
         if dictionary_id.is_some() || dictionary_is_ordered.is_some() {
             field.set_dictionary_options(
                 dictionary_id.unwrap_or_default(),

@@ -149,7 +149,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     assert not fixed[0].nullable
     assert fixed[1].nullable
     assert mapping.id == "map"
-    entries = mapping[0].data_type
+    entries = mapping[0].dtype
     assert [field.name for field in entries] == ["key", "value"]
     assert not entries[0].nullable
     assert entries[1].nullable
@@ -158,9 +158,9 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     assert DataType.from_pyhint(cabc.Iterable).id == "list"
     assert DataType.from_pyhint(typing.Tuple).id == "list"
     assert DataType.from_pyhint(tuple[()]).id == "struct"
-    assert DataType.from_pyhint(cabc.Generator[str, None, None])[0].data_type.id == "utf8"
+    assert DataType.from_pyhint(cabc.Generator[str, None, None])[0].dtype.id == "utf8"
     items = DataType.from_pyhint(cabc.ItemsView[str, int])
-    assert [field.name for field in items[0].data_type] == ["_1", "_2"]
+    assert [field.name for field in items[0].dtype] == ["_1", "_2"]
     with pytest.raises(TypeError, match="nullable map key"):
         DataType.from_pyhint(dict[str | None, int])
 
@@ -192,15 +192,15 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
         dimensions: dict[str, int]
 
     inferred = DataType.from_pyhint(NativeNested)
-    labels = inferred["labels"].data_type
-    dimensions = inferred["dimensions"].data_type
+    labels = inferred["labels"].dtype
+    dimensions = inferred["dimensions"].dtype
 
     assert inferred.id == "struct"
     assert labels.id == "list"
     assert labels[0].nullable
     assert labels[0].metadata["unit"] == "ticks"
     assert dimensions.id == "map"
-    assert [field.name for field in dimensions[0].data_type] == ["key", "value"]
+    assert [field.name for field in dimensions[0].dtype] == ["key", "value"]
 
     deep: object = Annotated[int, {"depth": "leaf"}]
     for _ in range(16):
@@ -210,7 +210,7 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     for _ in range(16):
         assert current.id == "list"
         leaf = current[0]
-        current = leaf.data_type
+        current = leaf.dtype
     assert leaf is not None
     assert current.id == "int64"
     assert leaf.metadata["depth"] == "leaf"
@@ -220,7 +220,7 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
     items = DataType.from_pyhint(
         cabc.ItemsView[Annotated[str, {"role": "key"}], int | None]
     )
-    pair = items[0].data_type
+    pair = items[0].dtype
     union = DataType.from_pyhint(Annotated[int, {"source": "integer"}] | str)
 
     assert items.id == "list"
@@ -241,15 +241,15 @@ def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> N
     ]
 
     inferred = DataType.from_pyhint(hint)
-    outer = inferred[0].data_type
-    mapping = outer[0].data_type
-    mapping_value = mapping[0].data_type[1].data_type
+    outer = inferred[0].dtype
+    mapping = outer[0].dtype
+    mapping_value = mapping[0].dtype[1].dtype
 
     assert inferred.id == "list"
     assert outer.id == "union"
     assert outer.into_arrow().mode == "dense"
     assert tuple(outer.into_arrow().type_codes) == (0, 1)
-    assert [member.data_type.id for member in outer] == ["map", "struct"]
+    assert [member.dtype.id for member in outer] == ["map", "struct"]
     assert mapping_value.id == "union"
     assert tuple(mapping_value.into_arrow().type_codes) == (0, 1)
     assert mapping_value[0].metadata["branch"] == "count"
@@ -259,10 +259,10 @@ def test_counter_and_generic_mapping_subclasses_keep_parameters() -> None:
     counter = DataType.from_pyhint(collections.Counter[str])
     chain = DataType.from_pyhint(collections.ChainMap[str, int])
 
-    counter_entries = counter[0].data_type
-    chain_entries = chain[0].data_type
-    assert [field.data_type.id for field in counter_entries] == ["utf8", "int64"]
-    assert [field.data_type.id for field in chain_entries] == ["utf8", "int64"]
+    counter_entries = counter[0].dtype
+    chain_entries = chain[0].dtype
+    assert [field.dtype.id for field in counter_entries] == ["utf8", "int64"]
+    assert [field.dtype.id for field in chain_entries] == ["utf8", "int64"]
 
 
 def test_struct_hints_are_deterministic_and_keep_class_identity() -> None:
@@ -276,8 +276,8 @@ def test_struct_hints_are_deterministic_and_keep_class_identity() -> None:
     assert quote_dict[2].nullable
     assert [field.name for field in point] == ["x", "y"]
     assert [field.name for field in quote] == ["symbol", "sizes", "point"]
-    assert boxed[0].data_type.id == "int64"
-    assert inherited_box[0].data_type.id == "int64"
+    assert boxed[0].dtype.id == "int64"
+    assert inherited_box[0].dtype.id == "int64"
 
     root = Field.from_pyhint("quote", Quote)
     assert root.metadata["python.module"] == __name__
@@ -302,7 +302,7 @@ def test_literal_enum_newtype_typevar_and_union_inference() -> None:
     # bool is deliberately not collapsed into Python's int physical type.
     mixed = DataType.from_pyhint(Mixed)
     assert mixed.id == "union"
-    assert [field.data_type.id for field in mixed] == ["boolean", "int64"]
+    assert [field.dtype.id for field in mixed] == ["boolean", "int64"]
 
 
 def test_typing_extensions_wrappers_match_stdlib_semantics() -> None:
@@ -345,15 +345,15 @@ def test_internal_namespace_resolves_deep_local_struct_annotations() -> None:
         LocalEnvelope,
         localns=locals(),
     )
-    value = root.data_type["pair"].data_type["payload"].data_type["value"]
-    assert value.data_type.id == "int64"
+    value = root.dtype["pair"].dtype["payload"].dtype["value"]
+    assert value.dtype.id == "int64"
     assert value.metadata["unit"] == "local"
     shadow = _field_from_pyhint(
         "shadow",
         LocalShadow,
         localns=locals(),
     )
-    assert shadow.data_type["value"].data_type.id == "int64"
+    assert shadow.dtype["value"].dtype.id == "int64"
 
 
 @pytest.mark.skipif(
@@ -378,8 +378,8 @@ def test_pep695_alias_members_preserve_none_and_annotated_metadata() -> None:
     generic_tagged = Field.from_pyhint("value", tagged[int])  # type: ignore[index]
     fixed_tagged = Field.from_pyhint("value", fixed)
 
-    assert alias_member.nullable and alias_member.data_type.id == "int64"
-    assert generic_optional.nullable and generic_optional.data_type.id == "int64"
+    assert alias_member.nullable and alias_member.dtype.id == "int64"
+    assert generic_optional.nullable and generic_optional.dtype.id == "int64"
     assert generic_tagged.metadata["unit"] == "alias"
     assert fixed_tagged.metadata["source"] == "fixed"
     assert generic_tagged.metadata["python.kind"] == "type_alias"

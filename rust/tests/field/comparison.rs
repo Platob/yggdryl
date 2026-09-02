@@ -78,11 +78,11 @@ fn show_diff_reports_deep_physical_and_metadata_changes() {
     assert!(
         lines
             .iter()
-            .any(|line| line == "≠ $.data_type.length: 2 → 3")
+            .any(|line| line == "≠ $.dtype.length: 2 → 3")
     );
     assert!(
         lines.iter().any(|line| {
-            line == "≠ $.data_type.item.metadata[\"side\"]: \"left\" → \"right\""
+            line == "≠ $.dtype.item.metadata[\"side\"]: \"left\" → \"right\""
         })
     );
     assert_eq!(left.show_diff(&right, true, true), lines.join("\n"));
@@ -110,7 +110,7 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
     .unwrap()])
     .unwrap();
     let added = left.show_diff(&right, false, true);
-    assert!(added.contains("+ $.fields[0]: field(name=\"added\",data_type=list,nullable=true)"));
+    assert!(added.contains("+ $.fields[0]: field(name=\"added\",dtype=list,nullable=true)"));
     assert!(!added.contains("secret"));
 }
 

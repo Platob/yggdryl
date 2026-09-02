@@ -126,7 +126,7 @@ impl Index<usize> for Fields {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
-/// assert_eq!(row["id"].data_type(), &DataType::Int64);
+/// assert_eq!(row["id"].dtype(), &DataType::Int64);
 /// # Ok(())
 /// # }
 /// ```
@@ -811,7 +811,7 @@ pub(super) fn validate_map_entries(entries: &Field) -> Result<()> {
     if entries.is_nullable() {
         return Err(invalid("Map", "entries field must be non-null"));
     }
-    let DataType::Struct(children) = entries.data_type() else {
+    let DataType::Struct(children) = entries.dtype() else {
         return Err(invalid("Map", "entries field must contain a struct"));
     };
     if children.len() != 2 {
@@ -851,12 +851,12 @@ pub(super) fn validate_run_ends(run_ends: &Field) -> Result<()> {
             ),
         ));
     }
-    if !run_ends.data_type().is_run_ends_type() {
+    if !run_ends.dtype().is_run_ends_type() {
         return Err(invalid(
             "RunEndEncoded",
             format_smolstr!(
                 "expected a run_ends datatype of int16, int32, or int64, got {}",
-                run_ends.data_type()
+                run_ends.dtype()
             ),
         ));
     }

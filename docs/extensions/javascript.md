@@ -12,7 +12,7 @@ const schema = new Field(
   false,
 )
 
-assert.equal(schema.dataType.kind, 'struct')
+assert.equal(schema.dtype.kind, 'struct')
 assert.equal(String(Url.fromPath('C:/market data/trades.arrows')),
   'file:///C:/market%20data/trades.arrows')
 ```
@@ -86,7 +86,7 @@ const { DataType, Field, MediaType, MimeType, Uri, Url } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 // A datatype expression is a datatype.
-assert.equal(String(new Field('id', 'int64', false).dataType), 'int64')
+assert.equal(String(new Field('id', 'int64', false).dtype), 'int64')
 assert.equal(DataType.from('list<int32>').kind, 'list')
 
 // A media type is its canonical name.
@@ -438,8 +438,8 @@ const schema = new Field(
 ).withPartitionFields(['year'])
 
 assert.deepEqual(schema.partitionFieldNames(), ['year'])
-assert.equal(schema.dataType.getByName('year').isPartition, true)
-assert.equal(schema.withoutPartitionFields().dataType.length, 1)
+assert.equal(schema.dtype.getByName('year').isPartition, true)
+assert.equal(schema.withoutPartitionFields().dtype.length, 1)
 ```
 
 ## Arrow

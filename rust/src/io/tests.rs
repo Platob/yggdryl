@@ -1340,7 +1340,7 @@ mod records {
             )
             .unwrap();
         let replaced = handle.read_arrow_field(&external).unwrap();
-        assert_eq!(replaced.data_type(), loose.data_type());
+        assert_eq!(replaced.dtype(), loose.dtype());
         assert_ne!(replaced, schema());
 
         session

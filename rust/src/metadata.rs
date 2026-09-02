@@ -75,7 +75,6 @@ macro_rules! for_each_well_known_protocol {
         $emit!(iceberg, iceberg_mut, ICEBERG, "Apache Iceberg");
         $emit!(fix, fix_mut, FIX, "Financial Information eXchange");
         $emit!(field, field_mut, FIELD, "Yggdryl field");
-        $emit!(dtype, dtype_mut, DTYPE, "Yggdryl datatype");
         $emit!(s3, s3_mut, S3, "Amazon S3");
         $emit!(gs, gs_mut, GS, "Google Cloud Storage");
         $emit!(az, az_mut, AZ, "Azure Blob Storage");

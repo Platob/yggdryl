@@ -15,7 +15,7 @@ def test_field_infers_datatype_and_field_representations() -> None:
     field = Field("quantity", "decimal(18, 4)", nullable=False)
     arrow = pa.field("quantity", pa.decimal128(18, 4), nullable=False)
 
-    assert Field("id", DataType("int64")).data_type == DataType("int64")
+    assert Field("id", DataType("int64")).dtype == DataType("int64")
     assert field.into_arrow() == arrow
     assert Field.from_value(field) == field
     assert Field.from_value(arrow) == field
@@ -335,7 +335,6 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
     assert field.set_property("iceberg", "field-id", "7") is None
     assert field.set_property("fix", "tag", "44") is None
     assert field.set_property("field", "role", "measure") is None
-    assert field.set_property("dtype", "logical", "price") is None
     assert field.get_property("postgres", "type") == "numeric(18,6)"
     assert field.has_property("postgres", "column")
     assert list(field.property_iter("postgres")) == [
@@ -374,7 +373,6 @@ WELL_KNOWN_PROTOCOLS = (
     "iceberg",
     "fix",
     "field",
-    "dtype",
     "s3",
     "gs",
     "az",
@@ -529,7 +527,7 @@ def test_protocol_view_refuses_writes_to_a_generated_field_class() -> None:
         pa.schema([pa.field("id", pa.int64(), nullable=False)])
     ).into_dataclass(name="FrozenViewField")
     frozen = row_type.field()
-    child = frozen.data_type[0]
+    child = frozen.dtype[0]
     view = child.iceberg
 
     assert view.get("doc") is None
@@ -582,11 +580,11 @@ def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> No
     assert not root.has_partition_fields
 
     assert marked.only_partition_fields().partition_field_names == ["year", "month"]
-    assert [child.name for child in marked.only_partition_fields().data_type] == [
+    assert [child.name for child in marked.only_partition_fields().dtype] == [
         "year",
         "month",
     ]
-    assert [child.name for child in marked.without_partition_fields().data_type] == [
+    assert [child.name for child in marked.without_partition_fields().dtype] == [
         "price"
     ]
 
@@ -663,7 +661,7 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
     row_type = Field.from_arrow_schema(
         pa.schema([imported.into_arrow()])
     ).into_dataclass(name="IdentifiedField")
-    child = row_type.field().data_type[0]
+    child = row_type.field().dtype[0]
     assert child.parquet_field_id == 17
     assert row_type.field().into_arrow_schema().field(0).metadata[
         b"PARQUET:field_id"
@@ -801,7 +799,7 @@ def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:
     """Subscripting a `Field` or a `DataType` descends the schema.
 
     One semantic across both classes: before, `field["level"]` was a metadata
-    lookup while `data_type["level"]` was a child, so a caller walking one
+    lookup while `dtype["level"]` was a child, so a caller walking one
     object graph got two unrelated things from identical syntax.
     """
     line = Field(
@@ -816,28 +814,28 @@ def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:
     )
 
     # By name, on both classes, with the same answer.
-    assert order["id"].data_type == DataType("int64")
-    assert order.data_type["id"].data_type == DataType("int64")
+    assert order["id"].dtype == DataType("int64")
+    assert order.dtype["id"].dtype == DataType("int64")
 
     # By position, negatives counting from the end.
     assert order[0].name == "id"
     assert order[-1].name == "line"
-    assert order.data_type[-1].name == "line"
+    assert order.dtype[-1].name == "line"
 
     # Chained subscripts are the nesting story - no dotted path form.
-    assert order["line"]["price"].data_type == DataType("float64")
-    assert order["line"]["qty"].data_type == DataType("int64")
+    assert order["line"]["price"].dtype == DataType("float64")
+    assert order["line"]["qty"].dtype == DataType("int64")
 
     # `len`, `in`, and iteration speak children on both classes.
     assert len(order) == 2
-    assert len(order.data_type) == 2
+    assert len(order.dtype) == 2
     assert "line" in order
-    assert "line" in order.data_type
+    assert "line" in order.dtype
     assert [child.name for child in order] == ["id", "line"]
-    assert [child.name for child in order.data_type] == ["id", "line"]
+    assert [child.name for child in order.dtype] == ["id", "line"]
 
     # Absence and the wrong key type report the same way on both.
-    for node in (order, order.data_type):
+    for node in (order, order.dtype):
         with pytest.raises(KeyError):
             node["absent"]
         with pytest.raises(IndexError):
@@ -855,7 +853,7 @@ def test_a_non_nested_datatype_subscripts_to_a_clear_error() -> None:
     with pytest.raises(IndexError):
         scalar[0]
     with pytest.raises(KeyError):
-        scalar.data_type["anything"]
+        scalar.dtype["anything"]
 
 
 def test_child_assignment_replaces_by_position_and_appends_by_unknown_name() -> None:
@@ -872,11 +870,11 @@ def test_child_assignment_replaces_by_position_and_appends_by_unknown_name() -> 
     # A known name replaces in place, keeping its position.
     row["id"] = Field("id", "utf8", nullable=False)
     assert [child.name for child in row] == ["id", "venue"]
-    assert row["id"].data_type == DataType("utf8")
+    assert row["id"].dtype == DataType("utf8")
 
     # A position replaces only, and never grows the node silently.
     row[1] = Field("venue", "large_utf8")
-    assert row["venue"].data_type == DataType("large_utf8")
+    assert row["venue"].dtype == DataType("large_utf8")
     with pytest.raises(IndexError):
         row[7] = Field("late", "int64")
 
@@ -972,21 +970,21 @@ def test_subscripting_a_schema_node_reaches_a_nested_child() -> None:
 
     # By name and by position, on the Field and on the DataType alike - one
     # shared semantic, so a caller walking the graph never gets two answers.
-    assert order["id"].data_type == DataType("int64")
+    assert order["id"].dtype == DataType("int64")
     assert order[0].name == "id"
     assert order[-1].name == "tags"
-    assert order.data_type["id"].data_type == DataType("int64")
-    assert order.data_type[1].name == "line"
+    assert order.dtype["id"].dtype == DataType("int64")
+    assert order.dtype[1].name == "line"
 
     # Chained descent, including through a List item.
-    assert order["line"]["price"].data_type == DataType("float64")
+    assert order["line"]["price"].dtype == DataType("float64")
     assert order["tags"][0].name == "tag"
 
     # Children answer len, iteration, and membership on both classes.
     assert len(order) == 3
-    assert len(order.data_type) == 3
+    assert len(order.dtype) == 3
     assert [child.name for child in order] == ["id", "line", "tags"]
-    assert [child.name for child in order.data_type] == ["id", "line", "tags"]
+    assert [child.name for child in order.dtype] == ["id", "line", "tags"]
     assert "line" in order
     assert "owner" not in order
 
@@ -1005,7 +1003,7 @@ def test_child_access_raises_the_exact_types_on_both_classes() -> None:
         nullable=False,
     )
 
-    for node in (row, row.data_type):
+    for node in (row, row.dtype):
         with pytest.raises(KeyError):
             node["absent"]
         with pytest.raises(IndexError):
@@ -1035,7 +1033,7 @@ def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> No
     row["id"] = Field("id", "utf8", nullable=False)
     assert len(row) == 2
     assert row[0].name == "id"
-    assert row["id"].data_type == DataType("utf8")
+    assert row["id"].dtype == DataType("utf8")
 
     # An unknown name appends - dict-like, and how a schema gets built up.
     row["price"] = Field("price", "float64")
@@ -1045,7 +1043,7 @@ def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> No
     # A position replaces only; past the end is an IndexError, never a grow.
     row[1] = Field("venue", "int32", nullable=False)
     assert len(row) == 3
-    assert row["venue"].data_type == DataType("int32")
+    assert row["venue"].dtype == DataType("int32")
     with pytest.raises(IndexError):
         row[9] = Field("late", "int64")
     assert len(row) == 3
@@ -1061,9 +1059,9 @@ def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> No
     # A DataType is a read-only child collection: reading is shared, writing
     # belongs on the Field that owns the cache-aware mutation.
     with pytest.raises(TypeError):
-        row.data_type["price"] = Field("price", "int64")
+        row.dtype["price"] = Field("price", "int64")
     with pytest.raises(TypeError):
-        del row.data_type["price"]
+        del row.dtype["price"]
 
 
 def test_the_three_formats_share_one_structural_model() -> None:
@@ -1088,15 +1086,15 @@ def test_the_three_formats_share_one_structural_model() -> None:
     assert Field.from_yaml(field.into_yaml()) == field
     assert Field.from_toml(field.into_toml()) == field
 
-    assert DataType.from_dict(field.data_type.into_dict()) == field.data_type
-    assert DataType.from_yaml(field.data_type.into_yaml()) == field.data_type
-    assert DataType.from_toml(field.data_type.into_toml()) == field.data_type
+    assert DataType.from_dict(field.dtype.into_dict()) == field.dtype
+    assert DataType.from_yaml(field.dtype.into_yaml()) == field.dtype
+    assert DataType.from_toml(field.dtype.into_toml()) == field.dtype
 
     # The mapping is a plain dict a caller can build and edit.
     shape = field.into_dict()
     assert isinstance(shape, dict)
     assert shape["name"] == "order"
-    assert shape["data_type"]["type"] == "struct"
+    assert shape["dtype"]["type"] == "struct"
     # Unset optional attributes are absent rather than null.
     assert "dictionary_id" not in shape
 
@@ -1114,8 +1112,8 @@ def test_indent_lays_out_bytes_without_changing_meaning() -> None:
     assert field.into_json(indent=4).startswith('{\n    "name": "row",')
 
     # YAML: block style at two spaces by default, flow style only on request.
-    assert field.into_yaml().startswith("name: row\ndata_type:\n  type: struct")
-    assert field.into_yaml(indent=4).startswith("name: row\ndata_type:\n    type: struct")
+    assert field.into_yaml().startswith("name: row\ndtype:\n  type: struct")
+    assert field.into_yaml(indent=4).startswith("name: row\ndtype:\n    type: struct")
     assert field.into_yaml(indent=None).startswith("{name: row,")
 
     # Round-trip and idempotence, per format per setting.
@@ -1157,6 +1155,6 @@ def test_str_and_repr_are_unchanged_and_pretty_is_the_readable_form() -> None:
         "  line: struct[1], nullable\n"
         "    price: float64, required"
     )
-    assert field.data_type.pretty().startswith("struct[2]")
+    assert field.dtype.pretty().startswith("struct[2]")
     # Stable across runs.
     assert field.pretty() == field.pretty()

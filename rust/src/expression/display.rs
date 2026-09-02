@@ -181,10 +181,10 @@ pub(crate) fn write_at(
             formatter.write_str(function.as_str())?;
             write_arguments(formatter, arguments)
         }
-        Expression::Cast(inner, data_type, safety) => {
+        Expression::Cast(inner, dtype, safety) => {
             write!(formatter, "{}(", safety.as_str())?;
             write_at(formatter, inner, Precedence::Disjunction)?;
-            write!(formatter, " as {data_type})")
+            write!(formatter, " as {dtype})")
         }
         Expression::Case {
             branches,
@@ -365,34 +365,34 @@ pub(crate) fn is_reserved(name: &str) -> bool {
 
 /// Write one literal in the spelling that re-parses to it.
 fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedScalar) -> fmt::Result {
-    let data_type = held.data_type();
+    let dtype = held.dtype();
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
     // quoted literal the grammar reads back as `utf8`.
-    if let (DataType::Utf8, Scalar::String(text)) = (data_type, value) {
+    if let (DataType::Utf8, Scalar::String(text)) = (dtype, value) {
         return write_text_literal(formatter, text);
     }
-    if let Some(bare) = bare_literal(data_type, value) {
+    if let Some(bare) = bare_literal(dtype, value) {
         return formatter.write_str(&bare);
     }
     if matches!(value, Scalar::Null) {
-        return write!(formatter, "{data_type} null");
+        return write!(formatter, "{dtype} null");
     }
-    match literal_text(data_type, value) {
+    match literal_text(dtype, value) {
         Some(text) => {
-            write!(formatter, "{data_type} ")?;
+            write!(formatter, "{dtype} ")?;
             write_text_literal(formatter, &text)
         }
         // A nested literal has no one-line text form, so it prints as the
         // constructor that builds it. This is the only place Display is not
         // literally the inverse of a single token, and it still re-parses.
-        None => write_constructed(formatter, data_type, value),
+        None => write_constructed(formatter, dtype, value),
     }
 }
 
 /// The bare spelling of a literal, when the grammar's defaults recover it.
-fn bare_literal(data_type: &DataType, value: &Scalar) -> Option<SmolStr> {
-    match (data_type, value) {
+fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
+    match (dtype, value) {
         (DataType::Null, Scalar::Null) => Some(SmolStr::new_static("null")),
         (DataType::Boolean, Scalar::Bool(held)) => Some(if *held {
             SmolStr::new_static("true")
@@ -411,7 +411,7 @@ fn bare_literal(data_type: &DataType, value: &Scalar) -> Option<SmolStr> {
 }
 
 /// The inner text of a typed literal, or `None` for a value with no text form.
-pub(crate) fn literal_text(data_type: &DataType, value: &Scalar) -> Option<SmolStr> {
+pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
     use crate::generic::iso;
 
     match value {
@@ -447,7 +447,7 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Scalar) -> Option<SmolS
         Scalar::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
         Scalar::Duration32(count, unit, _) => iso::format_duration(i64::from(*count), *unit),
         Scalar::Duration64(count, unit, _) => iso::format_duration(*count, *unit),
-        Scalar::Null => matches!(data_type, DataType::Null).then(|| SmolStr::new_static("null")),
+        Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
         Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
     }
 }
@@ -455,18 +455,18 @@ pub(crate) fn literal_text(data_type: &DataType, value: &Scalar) -> Option<SmolS
 /// Write a nested constant as the constructor that rebuilds it.
 fn write_constructed(
     formatter: &mut fmt::Formatter<'_>,
-    data_type: &DataType,
+    dtype: &DataType,
     value: &Scalar,
 ) -> fmt::Result {
     // The element type is carried by the cast around the constructor, so a
     // list of nothing still knows what it is a list of.
     write!(formatter, "cast(")?;
-    if let (Some(fields), Some(values)) = (data_type.as_fields(), value.as_sequence()) {
+    if let (Some(fields), Some(values)) = (dtype.as_fields(), value.as_sequence()) {
         write_struct_constructor(formatter, fields, values)?;
     } else {
         write_constructor_body(formatter, value)?;
     }
-    write!(formatter, " as {data_type})")
+    write!(formatter, " as {dtype})")
 }
 
 fn write_struct_constructor(

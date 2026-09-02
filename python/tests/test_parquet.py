@@ -53,7 +53,7 @@ class TestTheSameTwoMethods:
 
         assert file.read_arrow_reader().read_all() == _table()
         assert file.read_arrow_field().name == "row"
-        assert len(file.read_arrow_field().data_type) == 3
+        assert len(file.read_arrow_field().dtype) == 3
 
     def test_an_absent_file_holds_no_batches(self, file: IOBase) -> None:
         assert not file.exists()
@@ -298,7 +298,7 @@ class TestWhatAnotherReaderSees:
 
         handle = IOBase(tmp_path / "external.parquet")
         assert handle.read_arrow_reader().read_all() == _table()
-        assert len(handle.read_arrow_field().data_type) == 3
+        assert len(handle.read_arrow_field().dtype) == 3
 
     def test_a_field_identifier_survives_the_round_trip(
         self, file: IOBase, tmp_path: pathlib.Path
@@ -318,7 +318,7 @@ class TestWhatAnotherReaderSees:
         with file as handle:
             handle.overwrite_arrow_batch(rows)
 
-        stored = file.read_arrow_field().data_type[0]
+        stored = file.read_arrow_field().dtype[0]
         assert stored.parquet_field_id == 17
         assert pq.ParquetFile(tmp_path / "trades.parquet").schema_arrow.field(
             "id"
@@ -384,7 +384,7 @@ class TestWritesAndMerges:
 
         # The column lives in the directory name, not in the file.
         leaf = lake / "venue=XNAS" / "part-0.parquet"
-        assert len(leaf.read_arrow_field().data_type) == 1
+        assert len(leaf.read_arrow_field().dtype) == 1
 
         restored = lake.read_arrow_reader(options=options).read_all()
         assert restored.column("venue").to_pylist() == ["XNAS", "XNAS", "XNYS"]

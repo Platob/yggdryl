@@ -126,7 +126,7 @@ test('all 42 datatypes use canonical schema-directed JavaScript defaults', () =>
   assert.equal(fixtures.size, 42)
 
   const defaults = new Map(
-    [...fixtures].map(([id, field]) => [id, field.dataType.defaultJSValue()]),
+    [...fixtures].map(([id, field]) => [id, field.dtype.defaultJSValue()]),
   )
 
   assert.equal(defaults.get('null'), null)
@@ -183,9 +183,9 @@ test('all 42 datatypes use canonical schema-directed JavaScript defaults', () =>
 
 test('every native hint category matches its schema-directed default projection', () => {
   for (const [id, field] of datatypeFixtures()) {
-    const dataType = field.dataType
-    const value = dataType.defaultJSValue()
-    const hint = dataType.defaultJSHint()
+    const dtype = field.dtype
+    const value = dtype.defaultJSValue()
+    const hint = dtype.defaultJSHint()
     assert.equal(hint.kind, DATATYPE_KINDS.get(id), id)
     assert.equal(hint.nullable, false)
     assert.equal(
@@ -193,7 +193,7 @@ test('every native hint category matches its schema-directed default projection'
       value === null ? null : Object(value).constructor,
       id,
     )
-    assert.equal(hint, dataType.defaultJSHint())
+    assert.equal(hint, dtype.defaultJSHint())
     assert.ok(Object.isFrozen(hint))
   }
 })
@@ -236,7 +236,7 @@ test('hint-only calls skip default value projection', () => {
       500_000,
       { nullable: true },
     )
-    const dictionary = fields.dictionary('dictionary', 'int16', huge.dataType)
+    const dictionary = fields.dictionary('dictionary', 'int16', huge.dtype)
     const encoded = fields.runEndEncoded(
       'encoded',
       fields.int16('run_ends', { nullable: false }),
@@ -303,9 +303,9 @@ test('Field nullability governs every schema-directed default slot', () => {
   assert.deepEqual(payload.defaultJSValue(), [0, null])
   // Metadata stays owned by the Field; a projected value never carries it.
   assert.equal(payload.get('root'), 'kept')
-  assert.equal(payload.dataType.at(1).get('child'), 'kept')
+  assert.equal(payload.dtype.at(1).get('child'), 'kept')
   // The bare datatype projects the same ordered sequence.
-  assert.deepEqual(payload.dataType.defaultJSValue(), [0, null])
+  assert.deepEqual(payload.dtype.defaultJSValue(), [0, null])
 })
 
 test('Union and run-end nullable defaults preserve the core logical-null layout', () => {
@@ -363,16 +363,16 @@ test('deep collection defaults project every nested Struct slot', () => {
   assert.deepEqual(second, first)
   assert.notEqual(first, second)
   assert.notEqual(first[0], second[0])
-  assert.equal(fixed.dataType.at(0).get('logical'), 'item')
+  assert.equal(fixed.dtype.at(0).get('logical'), 'item')
 })
 
 test('mutable default containers are fresh on every projection', () => {
-  const binary = fields.fixedSizeBinary('data', 2).dataType
-  const list = fields.list('items', fields.int32('item')).dataType
-  const map = fields.mapOf('mapping', 'utf8', 'int32').dataType
+  const binary = fields.fixedSizeBinary('data', 2).dtype
+  const list = fields.list('items', fields.int32('item')).dtype
+  const map = fields.mapOf('mapping', 'utf8', 'int32').dtype
   const struct = fields.struct('payload', [
     fields.int32('id', { nullable: false }),
-  ]).dataType
+  ]).dtype
 
   const firstBinary = binary.defaultJSValue()
   const secondBinary = binary.defaultJSValue()
@@ -398,16 +398,16 @@ test('mutable default containers are fresh on every projection', () => {
 })
 
 test('defaultJSHint is frozen, cached, metadata-independent, and mutation-aware', () => {
-  const dataType = fields.int64('id').dataType
-  const dataTypeHint = dataType.defaultJSHint()
-  assert.equal(dataTypeHint, dataType.defaultJSHint())
-  assert.deepEqual(dataTypeHint, {
+  const dtype = fields.int64('id').dtype
+  const dtypeHint = dtype.defaultJSHint()
+  assert.equal(dtypeHint, dtype.defaultJSHint())
+  assert.deepEqual(dtypeHint, {
     kind: 'integer',
     constructor: BigInt,
     nullable: false,
   })
-  assert.deepEqual(Object.keys(dataTypeHint), ['kind', 'constructor', 'nullable'])
-  assert.ok(Object.isFrozen(dataTypeHint))
+  assert.deepEqual(Object.keys(dtypeHint), ['kind', 'constructor', 'nullable'])
+  assert.ok(Object.isFrozen(dtypeHint))
 
   // Declared non-null so the later setNullable(true) is a real transition and
   // the cached hint has to be invalidated.
@@ -426,7 +426,7 @@ test('defaultJSHint is frozen, cached, metadata-independent, and mutation-aware'
   assert.equal(nullable.nullable, true)
   assert.equal(nullable.constructor, Number)
 
-  field.setDataType('utf8')
+  field.setDtype('utf8')
   const changed = field.defaultJSHint()
   assert.notEqual(changed, nullable)
   assert.equal(changed.kind, 'string')
@@ -437,7 +437,7 @@ test('defaultJSHint is frozen, cached, metadata-independent, and mutation-aware'
 
   const struct = fields.struct('payload', [
     fields.int32('id', { nullable: false }),
-  ]).dataType
+  ]).dtype
   const structHint = struct.defaultJSHint()
   assert.equal(structHint.kind, 'struct')
   assert.equal(structHint.constructor, Array)
@@ -454,17 +454,17 @@ test('nested Field metadata never changes a cached Struct default hint', () => {
   assert.equal(hint.kind, 'struct')
   assert.equal(hint.constructor, Array)
 
-  field.setDataType(
+  field.setDtype(
     DataType.fromFields([
       fields.int32('id', { nullable: false, metadata: { source: 'two' } }),
     ]),
   )
   assert.equal(field.defaultJSHint(), hint)
-  assert.equal(field.dataType.at(0).get('source'), 'two')
+  assert.equal(field.dtype.at(0).get('source'), 'two')
   assert.deepEqual(field.defaultJSValue(), [0])
 
   // A wrapper reports the category of the value it encodes.
-  const dictionary = fields.dictionary('logical', 'int8', field.dataType)
+  const dictionary = fields.dictionary('logical', 'int8', field.dtype)
   const run = fields.runEndEncoded(
     'run',
     fields.int16('run_ends', { nullable: false }),
@@ -517,7 +517,7 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
   // Every field below is declared non-null, because a nullable field has the
   // logical null as its Arrow default and would never reach materialization.
   const required = { nullable: false }
-  assert.equal(fields.int32('id').dataType.defaultArrowScalar(), 0)
+  assert.equal(fields.int32('id').dtype.defaultArrowScalar(), 0)
   assert.equal(fields.utf8('note', { nullable: true }).defaultArrowScalar(), null)
   assert.deepEqual(
     fields.binaryView('binary_view', required).defaultArrowScalar(),
@@ -557,7 +557,7 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
     0,
   )
   assert.equal(fields.null('nothing', { nullable: true }).defaultArrowScalar(), null)
-  assert.equal(fields.null('nothing').dataType.defaultArrowScalar(), null)
+  assert.equal(fields.null('nothing').dtype.defaultArrowScalar(), null)
   assert.throws(
     () => fields.null('nothing', required).defaultArrowScalar(),
     /non-nullable field has only a logical-null default/,
@@ -602,21 +602,21 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
   assert.equal(spark.nullable, true)
   assert.equal(spark.get('owner'), 'events')
   // `kind` is the coarse family; the canonical display names the exact variant.
-  assert.deepEqual(spark.dataType.values().map((field) => field.dataType.kind), [
+  assert.deepEqual(spark.dtype.values().map((field) => field.dtype.kind), [
     'integer',
     'string',
     'list',
     'string',
   ])
   assert.deepEqual(
-    [0, 1, 3].map((index) => String(spark.dataType.at(index).dataType)),
+    [0, 1, 3].map((index) => String(spark.dtype.at(index).dtype)),
     ['int16', 'utf8', 'utf8'],
   )
-  assert.equal(String(spark.dataType.at(2).dataType.at(0).dataType), 'float32')
+  assert.equal(String(spark.dtype.at(2).dtype.at(0).dtype), 'float32')
 
   assert.ok(
-    fields.uint64('wide').dataType.intoSchemeCompat('spark').equals(
-      fields.decimal128('expected', 20, 0).dataType,
+    fields.uint64('wide').dtype.intoSchemeCompat('spark').equals(
+      fields.decimal128('expected', 20, 0).dtype,
     ),
   )
   assert.throws(

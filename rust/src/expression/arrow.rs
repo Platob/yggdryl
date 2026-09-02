@@ -249,7 +249,7 @@ impl Bound {
         if !self.is_predicate() {
             return Err(Error::IncompatibleSchema(format!(
                 "expected a boolean expression to filter with, got {}",
-                self.field().data_type()
+                self.field().dtype()
             )));
         }
         let answered = boolean_column(self.evaluate_with(batch, holder)?)?;
@@ -646,12 +646,12 @@ fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
         let field = context.schema.get_field(*index).ok_or_else(|| {
             Error::IncompatibleSchema(format!("expected the schema to carry column {index}"))
         })?;
-        columns.push((*index, field.data_type().clone(), context.column(*index)?));
+        columns.push((*index, field.dtype().clone(), context.column(*index)?));
     }
     let mut answers = Vec::with_capacity(rows);
     for position in 0..rows {
-        for (index, data_type, array) in &columns {
-            row[*index] = value_from_array(data_type, array.as_ref(), position)?;
+        for (index, dtype, array) in &columns {
+            row[*index] = value_from_array(dtype, array.as_ref(), position)?;
         }
         answers.push(node.eval(&Row::new(Some(&row), context.holder))?);
     }

@@ -295,7 +295,7 @@ fn scalar_and_vectorized_agree() {
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
             let held = crate::arrow::value::value_from_array(
-                bound.field().data_type(),
+                bound.field().dtype(),
                 vectorized.as_ref(),
                 position,
             )
@@ -366,7 +366,7 @@ fn projections_agree_between_the_tiers() {
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
             let held = crate::arrow::value::value_from_array(
-                bound.field().data_type(),
+                bound.field().dtype(),
                 vectorized.as_ref(),
                 position,
             )
@@ -659,7 +659,7 @@ fn bounds_of(schema: &Field, rows: &[Scalar]) -> Bounds {
             }
             let ordered = |held: &Option<Scalar>, keep_greater: bool| match held {
                 None => Some(value.clone()),
-                Some(held) => match super::eval::order(field.data_type(), value, held) {
+                Some(held) => match super::eval::order(field.dtype(), value, held) {
                     Some(std::cmp::Ordering::Greater) if keep_greater => Some(value.clone()),
                     Some(std::cmp::Ordering::Less) if !keep_greater => Some(value.clone()),
                     _ => None,
@@ -753,7 +753,7 @@ fn an_exact_quotient_keeps_room_to_be_a_quotient() {
         .bind(&schema)
         .unwrap();
     assert_eq!(
-        bound.field().data_type().to_string(),
+        bound.field().dtype().to_string(),
         "decimal128(15,6)",
         "a quotient at the operands' own scale would be a rounding"
     );

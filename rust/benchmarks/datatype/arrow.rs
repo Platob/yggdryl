@@ -8,18 +8,18 @@ use super::NESTED_SQL;
 pub(crate) fn arrow_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow");
     group.bench_function("datatype_projection", |bencher| {
-        let data_type = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
+        let dtype = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
         bencher.iter(|| {
-            black_box(&data_type)
+            black_box(&dtype)
                 .clone()
                 .into_arrow()
                 .expect("the benchmark datatype is valid")
         });
     });
     group.bench_function("datatype_ffi_projection", |bencher| {
-        let data_type = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
+        let dtype = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
         bencher.iter(|| {
-            black_box(&data_type)
+            black_box(&dtype)
                 .clone()
                 .into_arrow_ffi()
                 .expect("the benchmark datatype is valid")

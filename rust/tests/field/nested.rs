@@ -31,7 +31,7 @@ fn nested_markers_cover_every_child_layout() {
 /// Item access on a schema node reaches a nested child, never metadata.
 ///
 /// Before this, `field["level"]` was a metadata lookup while
-/// `data_type["level"]` was a child, so a caller walking one object graph got
+/// `dtype["level"]` was a child, so a caller walking one object graph got
 /// two unrelated things from identical syntax. Children win: subscripting a
 /// schema node descends the schema.
 #[test]
@@ -47,20 +47,20 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
         .required_field("order");
 
     // By name and by position, on both `Field` and `DataType`, one answer.
-    assert_eq!(order["id"].data_type(), &DataType::Int64);
-    assert_eq!(order.data_type()["id"].data_type(), &DataType::Int64);
+    assert_eq!(order["id"].dtype(), &DataType::Int64);
+    assert_eq!(order.dtype()["id"].dtype(), &DataType::Int64);
     assert_eq!(order[0].name(), "id");
-    assert_eq!(order.data_type()[1].name(), "line");
+    assert_eq!(order.dtype()[1].name(), "line");
 
     // Chained subscripts are the nesting story - no dotted path form.
-    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
-    assert_eq!(order["line"]["qty"].data_type(), &DataType::Int64);
+    assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
+    assert_eq!(order["line"]["qty"].dtype(), &DataType::Int64);
 
     // Through a List item and a Map entry, the same way.
     let items = DataType::list(order.clone().with_name("item"));
-    assert_eq!(items[0]["id"].data_type(), &DataType::Int64);
+    assert_eq!(items[0]["id"].dtype(), &DataType::Int64);
     assert_eq!(
-        items["item"]["line"]["price"].data_type(),
+        items["item"]["line"]["price"].dtype(),
         &DataType::Float64
     );
 
@@ -78,7 +78,7 @@ fn metadata_is_reached_through_its_own_surface_not_a_subscript() {
     field.insert_metadata("owner", "tests").unwrap();
 
     // The subscript descends the schema; the metadata key is not a child.
-    assert_eq!(field["id"].data_type(), &DataType::Int64);
+    assert_eq!(field["id"].dtype(), &DataType::Int64);
     assert!(field.get_field_by_name("owner").is_none());
 
     // The named accessors and the view still answer it.
@@ -128,12 +128,12 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
-    assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    assert_eq!(row["id"].dtype(), &DataType::Utf8);
 
     // A position replaces only, and never grows the node silently.
     row.set_field(1, DataType::LargeUtf8.nullable_field("venue"))
         .unwrap();
-    assert_eq!(row["venue"].data_type(), &DataType::LargeUtf8);
+    assert_eq!(row["venue"].dtype(), &DataType::LargeUtf8);
     let message = row
         .set_field(7, DataType::Int64.nullable_field("late"))
         .unwrap_err()

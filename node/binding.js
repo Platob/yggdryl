@@ -316,7 +316,7 @@ function publicNativeClass(NativeClass, name, hiddenStatics) {
   return PublicClass
 }
 
-const internalDataTypeNames = new Set([
+const internalDtypeNames = new Set([
   'fromJSON',
   '_simple',
   '_temporal',
@@ -335,7 +335,7 @@ const internalDataTypeNames = new Set([
 const DataType = publicNativeClass(
   NativeDataType,
   'DataType',
-  internalDataTypeNames,
+  internalDtypeNames,
 )
 const Field = publicNativeClass(
   NativeField,
@@ -542,7 +542,7 @@ Object.defineProperty(MediaType.prototype, Symbol.iterator, {
   },
 })
 const { createFields, normalizeMetadata } = require('./fields.js')
-const internalDataType = Object.freeze({
+const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),
   fixedSizeBinary: NativeDataType._fixedSizeBinary.bind(NativeDataType),
@@ -570,7 +570,7 @@ function collectFields(values) {
 
 Object.defineProperty(DataType, 'fromFields', {
   value(values) {
-    return internalDataType.fromFields(collectFields(values))
+    return internalDtype.fromFields(collectFields(values))
   },
 })
 
@@ -579,12 +579,12 @@ Object.defineProperty(DataType, 'variant', {
     // The parenthesis disambiguates, exactly as it does in the grammar: a
     // bare call is the self-describing Variant datatype, and a member list
     // keeps building the dense-union sugar.
-    if (values === undefined) return internalDataType.variant()
-    return internalDataType.variant(collectFields(values))
+    if (values === undefined) return internalDtype.variant()
+    return internalDtype.variant(collectFields(values))
   },
 })
 
-const fields = createFields(DataType, Field, internalDataType)
+const fields = createFields(DataType, Field, internalDtype)
 const { installDefaults } = require('./defaults.js')
 installDefaults({ DataType, Field, NativeDataType, NativeField })
 const nativeCodec = Object.freeze({
@@ -2261,13 +2261,13 @@ function arrowString(value, NativeType, name) {
   return text
 }
 
-const dataTypeFromArrowString = NativeDataType.fromArrowString.bind(NativeDataType)
+const dtypeFromArrowString = NativeDataType.fromArrowString.bind(NativeDataType)
 Object.defineProperty(DataType, 'fromArrow', {
   value(value) {
     const inferred = arrowString(value, DataType, 'DataType')
     return inferred instanceof DataType
       ? DataType.from(inferred)
-      : dataTypeFromArrowString(inferred)
+      : dtypeFromArrowString(inferred)
   },
 })
 
@@ -2811,8 +2811,8 @@ Object.defineProperty(binding.Table.prototype, 'updateSchema', {
         recorder.makeNullable(path)
         return builder
       },
-      updateType(path, dataType) {
-        recorder.updateType(path, dataType)
+      updateType(path, dtype) {
+        recorder.updateType(path, dtype)
         return builder
       },
       commit() {

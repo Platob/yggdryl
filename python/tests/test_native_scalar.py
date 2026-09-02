@@ -66,11 +66,11 @@ def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
 
 def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
     field = Field("items", "list<int32>", nullable=False)
-    data_type = Scalar.from_py(field.data_type)
+    dtype = Scalar.from_py(field.dtype)
     field_value = Scalar.from_py(field)
 
-    assert data_type.kind == "mapping"
-    assert data_type.as_py()["type"] == "list"  # type: ignore[index]
+    assert dtype.kind == "mapping"
+    assert dtype.as_py()["type"] == "list"  # type: ignore[index]
     assert field_value.kind == "mapping"
     assert field_value.as_py()["name"] == "items"  # type: ignore[index]
 
@@ -455,18 +455,18 @@ def test_record_rows_infer_struct_field_names() -> None:
 def test_value_field_accessors_redirect_to_core_inference() -> None:
     scalar = Scalar.from_py(42).into_field()
     assert scalar.name == "value"
-    assert str(scalar.data_type) == "int64"
+    assert str(scalar.dtype) == "int64"
     assert not scalar.nullable
 
     item = Scalar.from_py([1, None]).into_array_field()
     assert item.name == "item"
-    assert str(item.data_type) == "int64"
+    assert str(item.dtype) == "int64"
     assert item.nullable
 
     root = Scalar.from_py([Venue(1, None), Venue(2, "XNAS")]).into_struct_field()
     assert root.name == "row"
     assert not root.nullable
-    children = list(root.data_type)
+    children = list(root.dtype)
     assert [child.name for child in children] == ["id", "name"]
     assert children[1].nullable
 

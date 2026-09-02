@@ -149,8 +149,8 @@ fn exact_or_inferred_array_field(
     if let Some(field) = field {
         return core_field_from_value(field);
     }
-    let data_type = CoreDataType::try_from(array.data_type().clone()).map_err(value_error)?;
-    Ok(CoreField::new(name, data_type, array.null_count() != 0))
+    let dtype = CoreDataType::try_from(array.data_type().clone()).map_err(value_error)?;
+    Ok(CoreField::new(name, dtype, array.null_count() != 0))
 }
 
 fn extend_rows(rows: &mut Vec<Scalar>, value: &Scalar) -> PyResult<()> {
@@ -873,9 +873,9 @@ impl PyScalar {
     }
 
     #[getter]
-    fn data_type(&self) -> PyResult<PyDataType> {
+    fn dtype(&self) -> PyResult<PyDataType> {
         self.inner
-            .data_type()
+            .dtype()
             .map(PyDataType::from_inner)
             .map_err(value_error)
     }
@@ -1305,7 +1305,7 @@ pub(crate) fn as_py_with_field(
     if value.is_null() {
         return as_py(py, value);
     }
-    match field.data_type() {
+    match field.dtype() {
         CoreDataType::Struct(fields) => {
             let output = PyDict::new(py);
             match value {

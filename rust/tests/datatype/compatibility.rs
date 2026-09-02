@@ -39,14 +39,14 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
     .unwrap();
     let transformed = source.into_scheme_compat(&Scheme::SPARK).unwrap();
     let fields = transformed.as_fields().unwrap();
-    assert_eq!(fields[0].data_type(), &DataType::Int16);
-    assert_eq!(fields[1].data_type(), &DataType::decimal128(20, 0).unwrap());
-    let DataType::List(item) = fields[2].data_type() else {
+    assert_eq!(fields[0].dtype(), &DataType::Int16);
+    assert_eq!(fields[1].dtype(), &DataType::decimal128(20, 0).unwrap());
+    let DataType::List(item) = fields[2].dtype() else {
         panic!("expected normalized list");
     };
-    assert_eq!(item.data_type(), &DataType::Utf8);
+    assert_eq!(item.dtype(), &DataType::Utf8);
     assert!(item.is_nullable());
-    assert_eq!(fields[3].data_type(), &DataType::Binary);
+    assert_eq!(fields[3].dtype(), &DataType::Binary);
     assert!(fields[1].is_nullable());
 }
 
@@ -395,9 +395,9 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
         panic!("expected map");
     };
     assert!(map.keys_sorted());
-    let fields = map.entries().data_type().as_fields().unwrap();
-    assert_eq!(fields[0].data_type(), &DataType::Utf8);
-    assert_eq!(fields[1].data_type(), &DataType::Int16);
+    let fields = map.entries().dtype().as_fields().unwrap();
+    assert_eq!(fields[0].dtype(), &DataType::Utf8);
+    assert_eq!(fields[1].dtype(), &DataType::Int16);
 
     let dictionary = DataType::dictionary(
         DataType::Int16,
@@ -408,7 +408,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     let DataType::List(item) = transformed else {
         panic!("expected logical dictionary list");
     };
-    assert_eq!(item.data_type(), &DataType::Int32);
+    assert_eq!(item.dtype(), &DataType::Int32);
 
     let encoded = DataType::run_end_encoded(
         Field::new("run_ends", DataType::Int32, false),
@@ -436,7 +436,7 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     assert_eq!(transformed.name(), field.name());
     assert!(transformed.is_nullable());
     assert_eq!(transformed.get_metadata("owner"), Some("yggdryl"));
-    assert_eq!(transformed.data_type(), &DataType::Int16);
+    assert_eq!(transformed.dtype(), &DataType::Int16);
     assert_eq!(transformed.dictionary_id(), None);
     assert_eq!(transformed.dictionary_is_ordered(), None);
     assert!(!Arc::ptr_eq(
@@ -651,23 +651,23 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     let transformed = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
     let fields = transformed.as_fields().unwrap();
 
-    assert_eq!(fields[0].data_type(), &DataType::Int32);
+    assert_eq!(fields[0].dtype(), &DataType::Int32);
     assert!(!fields[0].is_nullable());
-    let DataType::List(item) = fields[1].data_type() else {
+    let DataType::List(item) = fields[1].dtype() else {
         panic!("expected a normalized list");
     };
-    assert_eq!(item.data_type(), &DataType::Utf8);
+    assert_eq!(item.dtype(), &DataType::Utf8);
     assert!(item.is_nullable());
-    let nested = fields[2].data_type().as_fields().unwrap();
+    let nested = fields[2].dtype().as_fields().unwrap();
     assert_eq!(nested[0].name(), "half");
-    assert_eq!(nested[0].data_type(), &DataType::Float32);
-    let DataType::Map(map) = fields[3].data_type() else {
+    assert_eq!(nested[0].dtype(), &DataType::Float32);
+    let DataType::Map(map) = fields[3].dtype() else {
         panic!("expected a retained map");
     };
     assert!(map.keys_sorted());
-    let entries = map.entries().data_type().as_fields().unwrap();
-    assert_eq!(entries[0].data_type(), &DataType::Utf8);
-    assert_eq!(entries[1].data_type(), &DataType::Int32);
+    let entries = map.entries().dtype().as_fields().unwrap();
+    assert_eq!(entries[0].dtype(), &DataType::Utf8);
+    assert_eq!(entries[1].dtype(), &DataType::Int32);
 
     // A fixed-size list has no Iceberg equivalent, so it degrades to a list.
     let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 3).unwrap();

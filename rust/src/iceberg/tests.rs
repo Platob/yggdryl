@@ -812,14 +812,14 @@ mod types {
                 PrimitiveType::from_str(name).unwrap_or_else(|error| panic!("{name}: {error}"));
             assert_eq!(parsed.to_string(), name, "{name}");
             parsed
-                .into_data_type()
+                .into_dtype()
                 .unwrap_or_else(|error| panic!("{name}: {error}"));
         }
 
         let fixed = PrimitiveType::from_str("fixed[16]").unwrap();
         assert_eq!(fixed.to_string(), "fixed[16]");
         assert_eq!(
-            fixed.into_data_type().unwrap(),
+            fixed.into_dtype().unwrap(),
             DataType::fixed_size_binary(16).unwrap()
         );
     }
@@ -827,27 +827,27 @@ mod types {
     #[test]
     fn iceberg_temporal_types_are_microsecond_precision_unless_v3_says_otherwise() {
         assert_eq!(
-            PrimitiveType::Timestamp.into_data_type().unwrap(),
+            PrimitiveType::Timestamp.into_dtype().unwrap(),
             DataType::Timestamp(TimeUnit::Microsecond, None)
         );
         assert_eq!(
-            PrimitiveType::TimestampNs.into_data_type().unwrap(),
+            PrimitiveType::TimestampNs.into_dtype().unwrap(),
             DataType::Timestamp(TimeUnit::Nanosecond, None)
         );
         assert_eq!(
-            PrimitiveType::Time.into_data_type().unwrap(),
+            PrimitiveType::Time.into_dtype().unwrap(),
             DataType::time(TimeUnit::Microsecond).unwrap()
         );
         // A v3 unknown column has no width at all, which Arrow spells as null.
         assert_eq!(
-            PrimitiveType::Unknown.into_data_type().unwrap(),
+            PrimitiveType::Unknown.into_dtype().unwrap(),
             DataType::Null
         );
     }
 
     #[test]
     fn a_datatype_iceberg_cannot_express_is_named_rather_than_widened() {
-        let message = PrimitiveType::from_data_type(&DataType::Int8)
+        let message = PrimitiveType::from_dtype(&DataType::Int8)
             .unwrap_err()
             .to_string();
         assert!(message.contains("int8"), "{message}");
@@ -1499,7 +1499,7 @@ mod table_metadata {
         let mut fields = evolved.fields().to_vec();
         fields.push(crate::DataType::Int64.nullable_field("quantity"));
         evolved
-            .set_data_type(crate::DataType::from_fields(fields).unwrap())
+            .set_dtype(crate::DataType::from_fields(fields).unwrap())
             .unwrap();
         super::assign_field_ids(&mut evolved, metadata.last_column_id + 1).unwrap();
 
@@ -2239,7 +2239,7 @@ mod tables {
         let mut fields = evolved.fields().to_vec();
         fields.push(DataType::Int64.nullable_field("quantity"));
         evolved
-            .set_data_type(DataType::from_fields(fields).unwrap())
+            .set_dtype(DataType::from_fields(fields).unwrap())
             .unwrap();
         super::assign_field_ids(&mut evolved, 4).unwrap();
         assert_eq!(table.evolve_schema(evolved).unwrap(), 1);
@@ -5444,7 +5444,7 @@ mod line_projection {
             .into_field();
         schema.assign_parquet_field_ids(1).unwrap();
         let thread_id = schema.get_field_by_name("thread_id").unwrap();
-        assert_eq!(thread_id.data_type(), &crate::DataType::Int64);
+        assert_eq!(thread_id.dtype(), &crate::DataType::Int64);
         let thread_field_id = thread_id.parquet_field_id().unwrap().unwrap();
         catalog.tables().create("logs.threads", schema).unwrap();
 

@@ -276,7 +276,7 @@ mod schema_updates {
         update.update_type("quote.price", DataType::Float64);
         let evolved = update.into_field().unwrap();
         let id = evolved.get_field_by_name("id").unwrap();
-        assert_eq!(id.data_type(), &DataType::Int64);
+        assert_eq!(id.dtype(), &DataType::Int64);
         assert_eq!(
             id.parquet_field_id().unwrap(),
             Some(1),
@@ -288,7 +288,7 @@ mod schema_updates {
                 .unwrap()
                 .get_field_by_name("price")
                 .unwrap()
-                .data_type(),
+                .dtype(),
             &DataType::Float64
         );
     }
@@ -906,7 +906,7 @@ mod metadata_updates {
         let mut fields = schema.fields().to_vec();
         fields[1].set_parquet_field_id(1);
         schema
-            .set_data_type(DataType::from_fields(fields).unwrap())
+            .set_dtype(DataType::from_fields(fields).unwrap())
             .unwrap();
         duplicated.schemas[0] = schema;
         let message = duplicated.validate().unwrap_err().to_string();

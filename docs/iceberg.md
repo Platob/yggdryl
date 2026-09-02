@@ -913,7 +913,7 @@ value:
 
     // The target names the columns to keep; each file's Parquet reader gets it as
     // its own projection mask, so the dropped column chunk is never decoded.
-    const wanted = fields.struct('row', [schema.dataType.at(0)], { nullable: false })
+    const wanted = fields.struct('row', [schema.dtype.at(0)], { nullable: false })
     const projected = table.scan(wanted).intoTable()
     assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id'])
     assert.equal(projected.numRows, 2)
@@ -1880,7 +1880,7 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
         ]),
         nullable=False,
     ).with_partition_fields(["venue"])
-    columns = pa.schema([child.into_arrow() for child in marked.data_type])
+    columns = pa.schema([child.into_arrow() for child in marked.dtype])
 
     table = catalog.append(
         "nyc.trades", pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=columns)
@@ -3106,7 +3106,7 @@ commit writes is ever mutated in place.
 
     # The old schema is retained, so the snapshot written under it still reads.
     assert len(table.schemas) == 2
-    assert len(table.schemas[0].data_type) == 1
+    assert len(table.schemas[0].dtype) == 1
 
     # And the file written before the column existed reads it as null.
     rows = table.scan().read_all()
@@ -3137,7 +3137,7 @@ commit writes is ever mutated in place.
 
     // The old schema is retained, so the snapshot written under it still reads.
     assert.equal(table.schemas.length, 2)
-    assert.equal(table.schemas[0].dataType.length, 1)
+    assert.equal(table.schemas[0].dtype.length, 1)
 
     // And the file written before the column existed reads it as null.
     const rows = table.scan().intoTable()
@@ -3196,14 +3196,14 @@ by id survives a rename, and a new column can never reuse a retired id.
     # Depth first from `start`; the numbered schema is what comes back, so the
     # schema handed in is left as it was.
     schema = assign_field_ids(columns, 1)
-    assert [child.parquet_field_id for child in schema.data_type] == [1, 2]
-    assert schema.data_type[1].data_type[0].parquet_field_id == 3
+    assert [child.parquet_field_id for child in schema.dtype] == [1, 2]
+    assert schema.dtype[1].dtype[0].parquet_field_id == 3
 
     # The root is not a column, so it is not numbered.
     assert schema.parquet_field_id is None
 
     # A field that already carries an id keeps it, so a second pass changes nothing.
-    assert [child.parquet_field_id for child in assign_field_ids(schema, 100).data_type] == [1, 2]
+    assert [child.parquet_field_id for child in assign_field_ids(schema, 100).dtype] == [1, 2]
     ```
 
 === "JavaScript"
@@ -3218,16 +3218,16 @@ by id survives a rename, and a new column can never reuse a retired id.
     // Depth first from `start`; the numbered schema is what comes back, so the
     // schema handed in is left as it was.
     const schema = iceberg.assignFieldIds(plain)
-    assert.equal(plain.dataType.at(0).parquetFieldId, null)
-    assert.equal(schema.dataType.at(0).parquetFieldId, 1)
-    assert.equal(schema.dataType.at(1).parquetFieldId, 2)
-    assert.equal(schema.dataType.at(1).dataType.at(0).parquetFieldId, 3)
+    assert.equal(plain.dtype.at(0).parquetFieldId, null)
+    assert.equal(schema.dtype.at(0).parquetFieldId, 1)
+    assert.equal(schema.dtype.at(1).parquetFieldId, 2)
+    assert.equal(schema.dtype.at(1).dtype.at(0).parquetFieldId, 3)
 
     // The root is not a column, so it is not numbered.
     assert.equal(schema.parquetFieldId, null)
 
     // A field that already carries an id keeps it, so a second pass changes nothing.
-    assert.equal(iceberg.assignFieldIds(schema, 100).dataType.at(0).parquetFieldId, 1)
+    assert.equal(iceberg.assignFieldIds(schema, 100).dtype.at(0).parquetFieldId, 1)
     ```
 
 Creating and evolving a table numbers whatever arrives unnumbered, continuing above the highest id
@@ -3268,7 +3268,7 @@ chance; creating a table numbers first, which is why the same schema is fine the
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     table = Table.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), columns)
 
-    assert [child.parquet_field_id for child in table.schema.data_type] == [1]
+    assert [child.parquet_field_id for child in table.schema.dtype] == [1]
     ```
 
 === "JavaScript"
@@ -3285,7 +3285,7 @@ chance; creating a table numbers first, which is why the same schema is fine the
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     const table = iceberg.Table.create(root, unnumbered)
-    assert.equal(table.schema.dataType.at(0).parquetFieldId, 1)
+    assert.equal(table.schema.dtype.at(0).parquetFieldId, 1)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -3341,7 +3341,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     })?;
 
     let current = table.schema()?;
-    assert_eq!(current.get_field_by_name("id").expect("the column").data_type(), &DataType::Int64);
+    assert_eq!(current.get_field_by_name("id").expect("the column").dtype(), &DataType::Int64);
     // A renamed column keeps its identifier: the name is a label, the id is the column.
     assert_eq!(current.get_field_by_name("ticker").expect("the column").parquet_field_id()?, Some(2));
     assert_eq!(current.get_field_by_name("venue").expect("the column").parquet_field_id()?, Some(3));
@@ -3380,9 +3380,9 @@ accepted, so a change that would reinterpret stored values is refused naming bot
         update.update_type("id", "int64").rename_column("symbol", "ticker")
         update.add_column("", "venue: string")
 
-    children = list(table.schema.data_type)
+    children = list(table.schema.dtype)
     assert [child.name for child in children] == ["id", "ticker", "venue"]
-    assert str(children[0].data_type) == "int64"
+    assert str(children[0].dtype) == "int64"
     # A renamed column keeps its identifier: the name is a label, the id is the column.
     assert [child.parquet_field_id for child in children] == [1, 2, 3]
 
@@ -3419,10 +3419,10 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     assert.equal(schemaId, 1)
 
     const evolved = table.schema
-    assert.deepEqual(Array.from(evolved.dataType, (child) => child.name), ['id', 'ticker', 'venue'])
-    assert.equal(String(evolved.dataType.at(0).dataType), 'int64')
+    assert.deepEqual(Array.from(evolved.dtype, (child) => child.name), ['id', 'ticker', 'venue'])
+    assert.equal(String(evolved.dtype.at(0).dtype), 'int64')
     // A renamed column keeps its identifier: the name is a label, the id is the column.
-    assert.deepEqual(Array.from(evolved.dataType, (child) => child.parquetFieldId), [1, 2, 3])
+    assert.deepEqual(Array.from(evolved.dtype, (child) => child.parquetFieldId), [1, 2, 3])
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
@@ -3459,7 +3459,7 @@ never frees its identifier.
     assert!(schema.is_struct());
     assert!(!schema.is_nullable());
     assert_eq!(schema.field_len(), 2);
-    assert_eq!(schema.fields()[0].data_type(), &DataType::Int64);
+    assert_eq!(schema.fields()[0].dtype(), &DataType::Int64);
 
     // `required` inverts into nullability, and `id` becomes PARQUET:field_id.
     assert!(!schema.fields()[0].is_nullable());
@@ -3485,16 +3485,16 @@ never frees its identifier.
 
     # An Iceberg schema is a non-null struct field; its columns are the children.
     schema = schema_from_json("row", document)
-    assert schema.data_type.kind == "struct"
+    assert schema.dtype.kind == "struct"
     assert not schema.nullable
-    assert len(schema.data_type) == 2
-    assert str(schema.data_type[0].data_type) == "int64"
+    assert len(schema.dtype) == 2
+    assert str(schema.dtype[0].dtype) == "int64"
 
     # `required` inverts into nullability, and `id` becomes PARQUET:field_id.
-    assert not schema.data_type[0].nullable
-    assert schema.data_type[1].nullable
-    assert schema.data_type[0].parquet_field_id == 1
-    assert schema.data_type[0].metadata["PARQUET:field_id"] == "1"
+    assert not schema.dtype[0].nullable
+    assert schema.dtype[1].nullable
+    assert schema.dtype[0].parquet_field_id == 1
+    assert schema.dtype[0].metadata["PARQUET:field_id"] == "1"
 
     # The same document comes back out.
     assert schema_into_json(schema) == document
@@ -3515,16 +3515,16 @@ never frees its identifier.
 
     // An Iceberg schema is a non-null struct field; its columns are the children.
     const schema = iceberg.schemaFromJson('row', document)
-    assert.equal(schema.dataType.kind, 'struct')
+    assert.equal(schema.dtype.kind, 'struct')
     assert.equal(schema.nullable, false)
-    assert.equal(schema.dataType.length, 2)
-    assert.equal(String(schema.dataType.at(0).dataType), 'int64')
+    assert.equal(schema.dtype.length, 2)
+    assert.equal(String(schema.dtype.at(0).dtype), 'int64')
 
     // `required` inverts into nullability, and `id` becomes PARQUET:field_id.
-    assert.equal(schema.dataType.at(0).nullable, false)
-    assert.equal(schema.dataType.at(1).nullable, true)
-    assert.equal(schema.dataType.at(0).parquetFieldId, 1)
-    assert.equal(schema.dataType.at(0).get('PARQUET:field_id'), '1')
+    assert.equal(schema.dtype.at(0).nullable, false)
+    assert.equal(schema.dtype.at(1).nullable, true)
+    assert.equal(schema.dtype.at(0).parquetFieldId, 1)
+    assert.equal(schema.dtype.at(0).get('PARQUET:field_id'), '1')
 
     // The same document comes back out.
     assert.deepEqual(iceberg.schemaIntoJson(schema).asJs(), document)
@@ -3559,30 +3559,30 @@ use yggdryl::iceberg::PrimitiveType;
 use yggdryl::{DataType, TimeUnit};
 
 // Every Iceberg primitive name has exactly one physical datatype.
-assert_eq!(PrimitiveType::from_str("long")?.into_data_type()?, DataType::Int64);
-assert_eq!(PrimitiveType::from_str("string")?.into_data_type()?, DataType::Utf8);
+assert_eq!(PrimitiveType::from_str("long")?.into_dtype()?, DataType::Int64);
+assert_eq!(PrimitiveType::from_str("string")?.into_dtype()?, DataType::Utf8);
 assert_eq!(
-    PrimitiveType::from_str("decimal(18, 4)")?.into_data_type()?,
+    PrimitiveType::from_str("decimal(18, 4)")?.into_dtype()?,
     DataType::decimal(18, 4)?
 );
 
 // Iceberg fixed every temporal resolution at microseconds until v3 added the
 // nanosecond pair.
 assert_eq!(
-    PrimitiveType::from_str("timestamp")?.into_data_type()?,
+    PrimitiveType::from_str("timestamp")?.into_dtype()?,
     DataType::Timestamp(TimeUnit::Microsecond, None)
 );
 assert_eq!(
-    PrimitiveType::from_str("timestamp_ns")?.into_data_type()?,
+    PrimitiveType::from_str("timestamp_ns")?.into_dtype()?,
     DataType::Timestamp(TimeUnit::Nanosecond, None)
 );
 assert_eq!(
-    PrimitiveType::from_str("time")?.into_data_type()?,
+    PrimitiveType::from_str("time")?.into_dtype()?,
     DataType::time(TimeUnit::Microsecond)?
 );
 
 // A v3 `unknown` column always reads as null, which Arrow spells exactly.
-assert_eq!(PrimitiveType::from_str("unknown")?.into_data_type()?, DataType::Null);
+assert_eq!(PrimitiveType::from_str("unknown")?.into_dtype()?, DataType::Null);
 
 // A name round trips through `Display`.
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
@@ -3611,7 +3611,7 @@ metadata JSON:
 | `binary` | `Binary` | v1 |
 | `unknown` | `Null` | v3 |
 
-`into_data_type` is total: every Iceberg type materializes without loss. `from_data_type` is not, and
+`into_dtype` is total: every Iceberg type materializes without loss. `from_dtype` is not, and
 that is the point - it names the datatype it refuses instead of widening it behind your back:
 
 ```rust
@@ -3619,22 +3619,22 @@ use yggdryl::iceberg::PrimitiveType;
 use yggdryl::DataType;
 
 // The variants that differ only in physical layout collapse onto one name.
-assert_eq!(PrimitiveType::from_data_type(&DataType::Utf8)?, PrimitiveType::String);
-assert_eq!(PrimitiveType::from_data_type(&DataType::LargeUtf8)?, PrimitiveType::String);
-assert_eq!(PrimitiveType::from_data_type(&DataType::BinaryView)?, PrimitiveType::Binary);
+assert_eq!(PrimitiveType::from_dtype(&DataType::Utf8)?, PrimitiveType::String);
+assert_eq!(PrimitiveType::from_dtype(&DataType::LargeUtf8)?, PrimitiveType::String);
+assert_eq!(PrimitiveType::from_dtype(&DataType::BinaryView)?, PrimitiveType::Binary);
 assert_eq!(
-    PrimitiveType::from_data_type(&DataType::decimal64(9, 2)?)?,
+    PrimitiveType::from_dtype(&DataType::decimal64(9, 2)?)?,
     PrimitiveType::Decimal { precision: 9, scale: 2 }
 );
 
 // A datatype Iceberg cannot express is reported, never approximated.
-let message = PrimitiveType::from_data_type(&DataType::Int8).unwrap_err().to_string();
+let message = PrimitiveType::from_dtype(&DataType::Int8).unwrap_err().to_string();
 assert!(message.contains("int8"));
-assert!(PrimitiveType::from_data_type(&DataType::Int16).is_err());
+assert!(PrimitiveType::from_dtype(&DataType::Int16).is_err());
 
 // A UUID is 16 bytes on the wire and nothing more, so it writes back as `fixed[16]`.
 assert_eq!(
-    PrimitiveType::from_data_type(&PrimitiveType::Uuid.into_data_type()?)?.to_string(),
+    PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
     "fixed[16]"
 );
 ```
@@ -3654,7 +3654,7 @@ use yggdryl::{DataType, Scheme};
 // The narrow integers widen; the refusals stay refusals.
 let widened = DataType::Int8.into_scheme_compat(&Scheme::ICEBERG)?;
 assert_eq!(widened, DataType::Int32);
-assert_eq!(PrimitiveType::from_data_type(&widened)?.to_string(), "int");
+assert_eq!(PrimitiveType::from_dtype(&widened)?.to_string(), "int");
 assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
 ```
 
@@ -3688,7 +3688,7 @@ let schema = schema_from_json("row", &document)?;
 
 // A list becomes a `List` whose item field is named `element` and carries `element-id`.
 let legs = &schema.fields()[0];
-let DataType::List(element) = legs.data_type() else { panic!("expected a list") };
+let DataType::List(element) = legs.dtype() else { panic!("expected a list") };
 assert_eq!(element.name(), "element");
 assert_eq!(element.parquet_field_id()?, Some(2));
 assert!(!element.is_nullable());
@@ -3696,7 +3696,7 @@ assert_eq!(element.fields()[0].name(), "price");
 
 // A map becomes a `Map` over a non-null `entries` struct of `key` and `value`.
 let tags = &schema.fields()[1];
-let DataType::Map(map) = tags.data_type() else { panic!("expected a map") };
+let DataType::Map(map) = tags.dtype() else { panic!("expected a map") };
 assert_eq!(map.entries().name(), "entries");
 assert!(!map.entries().is_nullable());
 assert!(!map.entries().fields()[0].is_nullable());

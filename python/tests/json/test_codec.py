@@ -183,7 +183,7 @@ def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> Non
     expected = [
         {
             "field": {
-                "data_type": {"type": "int64"},
+                "dtype": {"type": "int64"},
                 "metadata": {},
                 "name": "item",
                 "nullable": True,
@@ -191,7 +191,7 @@ def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> Non
             "type": "list",
         },
         {
-            "data_type": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "dtype": {"precision": 18, "scale": 4, "type": "decimal128"},
             "metadata": {},
             "name": "price",
             "nullable": False,

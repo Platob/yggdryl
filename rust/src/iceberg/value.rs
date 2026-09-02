@@ -57,9 +57,9 @@ pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
 /// width, Iceberg stores the minimal two's-complement big-endian - so a decimal
 /// column gets counts but no bounds. A missing statistic costs a planner one
 /// file read; a wrong one costs correctness.
-pub(super) const fn is_portable(data_type: &DataType) -> bool {
+pub(super) const fn is_portable(dtype: &DataType) -> bool {
     matches!(
-        data_type,
+        dtype,
         DataType::Boolean
             | DataType::Int32
             | DataType::Int64
@@ -84,8 +84,8 @@ pub(super) const fn is_portable(data_type: &DataType) -> bool {
 /// because a column declared `Int32` still arrives as a 64-bit
 /// [`Scalar::I64`]. A value that does not fit the column, and every type whose
 /// encoding is not [`is_portable`], has no bytes rather than the wrong ones.
-pub(super) fn single_value(value: &Scalar, data_type: &DataType) -> Option<Vec<u8>> {
-    let datum = match data_type {
+pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> {
+    let datum = match dtype {
         DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
         DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
         DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
@@ -140,9 +140,9 @@ pub(super) fn single_value(value: &Scalar, data_type: &DataType) -> Option<Vec<u
 /// not bytes, so a bound has to become a value exactly once. A type whose
 /// encoding [`is_portable`] does not cover has no value rather than a wrong
 /// one, and the pruner then simply declines.
-pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Scalar> {
-    let datum = official_datum(bytes, data_type)?;
-    match (data_type, datum.literal()) {
+pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> {
+    let datum = official_datum(bytes, dtype)?;
+    match (dtype, datum.literal()) {
         (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Some(Scalar::Bool(*value)),
         (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::I32(*value)),
         (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::date32(*value)),
@@ -183,8 +183,8 @@ pub(super) fn single_to_value(bytes: &[u8], data_type: &DataType) -> Option<Scal
 /// boolean and fixed decoders are deliberately permissive, so exact wire
 /// widths are checked here before delegating. A malformed external bound is
 /// unknown rather than a synthetic value a planner could prune against.
-fn official_datum(bytes: &[u8], data_type: &DataType) -> Option<OfficialDatum> {
-    let primitive = match data_type {
+fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
+    let primitive = match dtype {
         DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
         DataType::Int32 if bytes.len() == 4 => OfficialPrimitiveType::Int,
         DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
@@ -250,9 +250,9 @@ fn count(value: &Scalar) -> Option<i64> {
 pub(super) fn compare_single(
     left: &[u8],
     right: &[u8],
-    data_type: &DataType,
+    dtype: &DataType,
 ) -> Option<std::cmp::Ordering> {
-    Some(single_to_value(left, data_type)?.cmp(&single_to_value(right, data_type)?))
+    Some(single_to_value(left, dtype)?.cmp(&single_to_value(right, dtype)?))
 }
 
 #[cfg(test)]
@@ -327,9 +327,9 @@ mod tests {
             (Scalar::from("é"), DataType::Utf8),
             (Scalar::from([0_u8, 1, 2].as_slice()), DataType::Binary),
         ];
-        for (value, data_type) in cases {
-            let bytes = single_value(&value, &data_type).expect("a supported value");
-            assert_eq!(single_to_value(&bytes, &data_type), Some(value));
+        for (value, dtype) in cases {
+            let bytes = single_value(&value, &dtype).expect("a supported value");
+            assert_eq!(single_to_value(&bytes, &dtype), Some(value));
         }
     }
 }

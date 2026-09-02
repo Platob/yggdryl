@@ -19,7 +19,7 @@ DataTypeInput: TypeAlias = object
 _FieldT = TypeVar("_FieldT", bound=Field)
 
 
-def simple_data_type(expression: str) -> DataType:
+def simple_dtype(expression: str) -> DataType:
     """Build one module-level singleton through the native variant bridge."""
 
     return DataType._simple(expression)
@@ -41,5 +41,5 @@ __all__ = [
     "DataTypeInput",
     "MetadataInput",
     "new_field",
-    "simple_data_type",
+    "simple_dtype",
 ]

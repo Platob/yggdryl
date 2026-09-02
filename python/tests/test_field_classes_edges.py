@@ -38,13 +38,13 @@ def test_optional_is_the_only_nullable_signal() -> None:
 
 def test_unions_compile_to_dense_native_tags_at_every_depth() -> None:
     root = VariantEnvelope.field()
-    payload = root.data_type["payload"].data_type
-    history = root.data_type["history"].data_type[0].data_type
+    payload = root.dtype["payload"].dtype
+    history = root.dtype["history"].dtype[0].dtype
 
     assert payload.id == history.id == "union"
     assert tuple(payload.into_arrow().type_codes) == (0, 1)
     assert tuple(history.into_arrow().type_codes) == (0, 1)
-    assert payload[0].data_type["count"].metadata["branch"] == "count"
+    assert payload[0].dtype["count"].metadata["branch"] == "count"
 
     value = json.loads(
         json.dumps({"payload": {"count": "7"}, "history": [1, "two"]}),
@@ -81,14 +81,14 @@ def test_deep_union_keeps_terminal_variant_tags() -> None:
     class DeepVariant:
         payload: deep_hint  # type: ignore[valid-type]
 
-    data_type = DeepVariant.field().data_type["payload"].data_type
+    dtype = DeepVariant.field().dtype["payload"].dtype
     raw: object = "terminal"
     for _ in range(depth):
-        assert data_type.id == "list"
-        data_type = data_type[0].data_type
+        assert dtype.id == "list"
+        dtype = dtype[0].dtype
         raw = [raw]
 
-    assert data_type.id == "union"
+    assert dtype.id == "union"
     value = json.loads(json.dumps({"payload": raw}), cls=DeepVariant)
     assert json.loads(json.dumps(value)) == {"payload": raw}
 

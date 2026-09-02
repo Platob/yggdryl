@@ -22,7 +22,7 @@ mod scalar;
 pub(crate) mod serde;
 mod temporal;
 
-pub(crate) use arrow::{arrow_data_type_to_ffi, is_variant_storage};
+pub(crate) use arrow::{arrow_dtype_to_ffi, is_variant_storage};
 
 pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{

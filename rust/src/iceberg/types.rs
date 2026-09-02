@@ -22,7 +22,7 @@ use crate::{DataType, Error, Result, TimeUnit};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let iceberg = PrimitiveType::from_str("decimal(18, 4)")?;
-/// assert_eq!(iceberg.into_data_type()?, DataType::decimal(18, 4)?);
+/// assert_eq!(iceberg.into_dtype()?, DataType::decimal(18, 4)?);
 /// assert_eq!(iceberg.to_string(), "decimal(18, 4)");
 /// # Ok(())
 /// # }
@@ -88,7 +88,7 @@ impl PrimitiveType {
     ///
     /// Returns an error only when a decimal precision or scale is outside the
     /// range the core accepts.
-    pub fn into_data_type(self) -> Result<DataType> {
+    pub fn into_dtype(self) -> Result<DataType> {
         Ok(match self {
             Self::Boolean => DataType::Boolean,
             Self::Int => DataType::Int32,
@@ -125,8 +125,8 @@ impl PrimitiveType {
     /// Returns an error naming the datatype when Iceberg has no spelling for
     /// it, so a caller can widen the schema deliberately instead of losing
     /// information silently.
-    pub fn from_data_type(data_type: &DataType) -> Result<Self> {
-        Ok(match data_type {
+    pub fn from_dtype(dtype: &DataType) -> Result<Self> {
+        Ok(match dtype {
             DataType::Boolean => Self::Boolean,
             DataType::Int32 => Self::Int,
             DataType::Int64 => Self::Long,

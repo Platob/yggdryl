@@ -515,12 +515,12 @@ impl PartitionSpec {
         let mut transforms = Vec::with_capacity(self.fields.len());
         for (field, result) in self.fields.iter().zip(partition.fields()) {
             let (path, source) = source_path(schema, field.source_id)?;
-            let expected = field.transform.result_type(source.data_type())?;
-            if result.data_type() != &expected {
+            let expected = field.transform.result_type(source.dtype())?;
+            if result.dtype() != &expected {
                 return Err(invalid(format_smolstr!(
                     "expected partition field {:?} to have type {expected}, got {}",
                     field.name,
-                    result.data_type()
+                    result.dtype()
                 )));
             }
             let function = match field.transform {
@@ -558,11 +558,11 @@ impl PartitionSpec {
         let mut children = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
             let source = source_column(schema, field.source_id)?;
-            let data_type = field.transform.result_type(source.data_type())?;
+            let dtype = field.transform.result_type(source.dtype())?;
             // A partition value is nullable even when its source is not: a
             // spec can retire a field, and `void` produces nothing but null.
-            let mut child = Field::new(field.name.as_str(), data_type, true);
-            if child.data_type() == source.data_type() {
+            let mut child = Field::new(field.name.as_str(), dtype, true);
+            if child.dtype() == source.dtype() {
                 if let Some(declared) = source.iceberg().get(super::schema::DECLARED_TYPE) {
                     child
                         .iceberg_mut()
@@ -812,7 +812,7 @@ impl PartitionTransform {
             return Ok(Scalar::from(&bytes[..bytes.len().min(width)]));
         }
 
-        let datum = official_datum(&value, self.source.data_type())?;
+        let datum = official_datum(&value, self.source.dtype())?;
         let transformed = self
             .function
             .as_ref()
@@ -825,7 +825,7 @@ impl PartitionTransform {
                     self.transform
                 ))
             })?;
-        scalar_from_official(&transformed, self.result.data_type())
+        scalar_from_official(&transformed, self.result.dtype())
     }
 }
 
@@ -843,8 +843,8 @@ fn official_transform(transform: Transform) -> OfficialTransform {
     }
 }
 
-fn official_primitive_type(data_type: &DataType) -> Result<OfficialPrimitiveType> {
-    Ok(match super::PrimitiveType::from_data_type(data_type)? {
+fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
+    Ok(match super::PrimitiveType::from_dtype(dtype)? {
         super::PrimitiveType::Boolean => OfficialPrimitiveType::Boolean,
         super::PrimitiveType::Int => OfficialPrimitiveType::Int,
         super::PrimitiveType::Long => OfficialPrimitiveType::Long,
@@ -882,9 +882,9 @@ fn official_primitive_type(data_type: &DataType) -> Result<OfficialPrimitiveType
     })
 }
 
-fn official_datum(value: &Scalar, data_type: &DataType) -> Result<OfficialDatum> {
-    let primitive = official_primitive_type(data_type)?;
-    let bytes = match (value, data_type) {
+fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
+    let primitive = official_primitive_type(dtype)?;
+    let bytes = match (value, dtype) {
         (
             Scalar::D128(unscaled, actual_scale),
             DataType::Decimal32 { scale, .. }
@@ -901,9 +901,9 @@ fn official_datum(value: &Scalar, data_type: &DataType) -> Result<OfficialDatum>
                 "expected a decimal scalar at scale {scale}, got scale {actual_scale}"
             )));
         }
-        _ => super::value::single_value(value, data_type).ok_or_else(|| {
+        _ => super::value::single_value(value, dtype).ok_or_else(|| {
             invalid(format_smolstr!(
-                "expected a scalar compatible with Iceberg type {data_type}, got {}",
+                "expected a scalar compatible with Iceberg type {dtype}, got {}",
                 value.kind()
             ))
         })?,
@@ -911,10 +911,10 @@ fn official_datum(value: &Scalar, data_type: &DataType) -> Result<OfficialDatum>
     OfficialDatum::try_from_bytes(&bytes, primitive).map_err(Error::from_iceberg)
 }
 
-fn scalar_from_official(value: &OfficialDatum, data_type: &DataType) -> Result<Scalar> {
+fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scalar> {
     if let DataType::Decimal32 { scale, .. }
     | DataType::Decimal64 { scale, .. }
-    | DataType::Decimal128 { scale, .. } = data_type
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
             OfficialLiteral::Int128(unscaled) => Ok(Scalar::D128(*unscaled, *scale)),
@@ -925,9 +925,9 @@ fn scalar_from_official(value: &OfficialDatum, data_type: &DataType) -> Result<S
     }
 
     let bytes = value.to_bytes().map_err(Error::from_iceberg)?;
-    super::value::single_to_value(bytes.as_ref(), data_type).ok_or_else(|| {
+    super::value::single_to_value(bytes.as_ref(), dtype).ok_or_else(|| {
         invalid(format_smolstr!(
-            "expected an Iceberg partition value of type {data_type}, got {value}"
+            "expected an Iceberg partition value of type {dtype}, got {value}"
         ))
     })
 }
@@ -949,7 +949,7 @@ fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr>, &Field)>
             if child.parquet_field_id().ok().flatten() == Some(source_id) {
                 return Some(child);
             }
-            if matches!(child.data_type(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Struct(_)) {
                 if let Some(found) = find(child, source_id, path) {
                     return Some(found);
                 }

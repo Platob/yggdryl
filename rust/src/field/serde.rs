@@ -34,7 +34,7 @@ impl Serialize for Field {
             4 + usize::from(self.dictionary_id != 0) + usize::from(self.dictionary_is_ordered);
         let mut field = serializer.serialize_struct("Field", field_count)?;
         field.serialize_field("name", &self.name)?;
-        field.serialize_field("data_type", &self.data_type)?;
+        field.serialize_field("dtype", &self.dtype)?;
         field.serialize_field("nullable", &self.nullable)?;
         if self.dictionary_id != 0 {
             field.serialize_field("dictionary_id", &DictionaryIdJson(self.dictionary_id))?;
@@ -104,7 +104,7 @@ impl<'de> Deserialize<'de> for Field {
         #[serde(deny_unknown_fields)]
         struct FieldValue {
             name: SmolStr,
-            data_type: DataType,
+            dtype: DataType,
             nullable: bool,
             #[serde(default, deserialize_with = "deserialize_dictionary_id")]
             dictionary_id: i64,
@@ -117,7 +117,7 @@ impl<'de> Deserialize<'de> for Field {
         let value = FieldValue::deserialize(deserializer)?;
         let field = Self {
             name: value.name,
-            data_type: value.data_type,
+            dtype: value.dtype,
             nullable: value.nullable,
             dictionary_id: value.dictionary_id,
             dictionary_is_ordered: value.dictionary_is_ordered,
@@ -143,7 +143,7 @@ impl<'de> Deserialize<'de> for Field {
 impl Field {
     /// Project this field onto the shared structural [`Scalar`].
     ///
-    /// The mapping carries `name`, `data_type`, `nullable`, then
+    /// The mapping carries `name`, `dtype`, `nullable`, then
     /// `dictionary_id` only when it is non-zero and `dictionary_is_ordered`
     /// only when it is set - an unset optional attribute is *omitted*, never
     /// emitted as null, so the serialized form and the readable form agree
@@ -170,7 +170,7 @@ impl Field {
     pub fn into_value(self) -> Scalar {
         let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(6);
         entries.push((key("name"), Scalar::String(self.name.clone())));
-        entries.push((key("data_type"), self.data_type.clone().into_value()));
+        entries.push((key("dtype"), self.dtype.clone().into_value()));
         entries.push((key("nullable"), Scalar::Bool(self.nullable)));
         if self.dictionary_id != 0 {
             // Decimal text, as the JSON path emits it: a 64-bit identifier
@@ -229,9 +229,9 @@ impl Field {
         let name = at("name")
             .and_then(Scalar::as_str)
             .ok_or_else(|| invalid("$.name", "a field name", "nothing"))?;
-        let data_type = DataType::from_value(
-            at("data_type")
-                .ok_or_else(|| invalid("$.data_type", "a datatype mapping", "nothing"))?
+        let dtype = DataType::from_value(
+            at("dtype")
+                .ok_or_else(|| invalid("$.dtype", "a datatype mapping", "nothing"))?
                 .clone(),
         )?;
         let nullable = match at("nullable") {
@@ -245,7 +245,7 @@ impl Field {
             }
         };
 
-        let mut field = Self::new(name, data_type, nullable);
+        let mut field = Self::new(name, dtype, nullable);
         // Only a dictionary carries the pair, and both settle together so a
         // half-declared state can never reach the field.
         let dictionary_id = match at("dictionary_id").filter(|held| !matches!(held, Scalar::Null)) {

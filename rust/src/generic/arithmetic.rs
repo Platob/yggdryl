@@ -187,7 +187,7 @@ impl Scalar {
         if self.is_null() || other.is_null() {
             return Ok(Self::Null);
         }
-        let target = target_from_data_type(target).ok_or_else(|| {
+        let target = target_from_dtype(target).ok_or_else(|| {
             invalid_binary(
                 operation,
                 self,
@@ -213,9 +213,9 @@ fn checked_arithmetic_target(
         ArithmeticTarget::Decimal { wide, scale } => {
             decimal_arithmetic(left, operation, right, *wide, *scale)
         }
-        ArithmeticTarget::Temporal(data_type) => {
+        ArithmeticTarget::Temporal(dtype) => {
             if matches!(
-                temporal_target(data_type),
+                temporal_target(dtype),
                 Some((TemporalFamily::Duration, _))
             ) && ((temporal_value_parts(left)
                 .is_some_and(|parts| parts.family == TemporalFamily::Duration)
@@ -224,25 +224,25 @@ fn checked_arithmetic_target(
                     && temporal_value_parts(right)
                         .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
             {
-                duration_integer_arithmetic(left, operation, right, data_type)
+                duration_integer_arithmetic(left, operation, right, dtype)
             } else {
-                temporal_arithmetic(left, operation, right, data_type)
+                temporal_arithmetic(left, operation, right, dtype)
             }
         }
     }
 }
 
-fn target_from_data_type(data_type: &DataType) -> Option<ArithmeticTarget> {
-    if let Some((signed, bits)) = integer_kind(data_type) {
+fn target_from_dtype(dtype: &DataType) -> Option<ArithmeticTarget> {
+    if let Some((signed, bits)) = integer_kind(dtype) {
         return Some(ArithmeticTarget::Integer { signed, bits });
     }
-    if let Some(width) = float_width(data_type) {
+    if let Some(width) = float_width(dtype) {
         return Some(ArithmeticTarget::Float(width));
     }
-    if let Some((wide, scale)) = decimal_target(data_type) {
+    if let Some((wide, scale)) = decimal_target(dtype) {
         return Some(ArithmeticTarget::Decimal { wide, scale });
     }
-    temporal_target(data_type).map(|_| ArithmeticTarget::Temporal(data_type.clone()))
+    temporal_target(dtype).map(|_| ArithmeticTarget::Temporal(dtype.clone()))
 }
 
 fn inferred_target(
@@ -269,7 +269,7 @@ fn inferred_target(
         (Some(parts), Some(_), Arithmetic::Mul | Arithmetic::Div)
             if parts.family == TemporalFamily::Duration =>
         {
-            return Ok(ArithmeticTarget::Temporal(parts.data_type));
+            return Ok(ArithmeticTarget::Temporal(parts.dtype));
         }
         _ => {}
     }
@@ -279,7 +279,7 @@ fn inferred_target(
         operation,
     ) {
         (Some(_), Some(parts), Arithmetic::Mul) if parts.family == TemporalFamily::Duration => {
-            return Ok(ArithmeticTarget::Temporal(parts.data_type));
+            return Ok(ArithmeticTarget::Temporal(parts.dtype));
         }
         _ => {}
     }
@@ -401,8 +401,8 @@ fn common_integer(
     Some(ArithmeticTarget::Integer { signed: true, bits })
 }
 
-fn integer_kind(data_type: &DataType) -> Option<(bool, u16)> {
-    Some(match data_type {
+fn integer_kind(dtype: &DataType) -> Option<(bool, u16)> {
+    Some(match dtype {
         DataType::Int8 => (true, 8),
         DataType::Int16 => (true, 16),
         DataType::Int32 => (true, 32),
@@ -521,8 +521,8 @@ fn float_value_width(value: &Scalar) -> Option<u8> {
     value.as_float().map(|value| value.bit_width())
 }
 
-fn float_width(data_type: &DataType) -> Option<u8> {
-    match data_type {
+fn float_width(dtype: &DataType) -> Option<u8> {
+    match dtype {
         DataType::Float16 => Some(16),
         DataType::Float32 => Some(32),
         DataType::Float64 => Some(64),
@@ -604,8 +604,8 @@ fn exact_value_parts(value: &Scalar) -> Option<(I256, i8)> {
     })
 }
 
-fn decimal_target(data_type: &DataType) -> Option<(bool, i8)> {
-    match data_type {
+fn decimal_target(dtype: &DataType) -> Option<(bool, i8)> {
+    match dtype {
         DataType::Decimal32 { scale, .. }
         | DataType::Decimal64 { scale, .. }
         | DataType::Decimal128 { scale, .. } => Some((false, *scale)),
@@ -895,14 +895,14 @@ struct TemporalParts {
     family: TemporalFamily,
     unit: TimeUnit,
     zone: Timezone,
-    data_type: DataType,
+    dtype: DataType,
 }
 
 fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
     let temporal = value.as_temporal()?;
     let unit = temporal.unit();
     let zone = temporal.timezone().clone();
-    let data_type = match (temporal.family(), temporal.bit_width()) {
+    let dtype = match (temporal.family(), temporal.bit_width()) {
         (TemporalFamily::Date, 32) => DataType::Date32,
         (TemporalFamily::Date, 64) => DataType::Date64,
         (TemporalFamily::Time, 32) => DataType::Time32(unit),
@@ -918,12 +918,12 @@ fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
         family: temporal.family(),
         unit,
         zone,
-        data_type,
+        dtype,
     })
 }
 
-fn temporal_target(data_type: &DataType) -> Option<(TemporalFamily, TimeUnit)> {
-    match data_type {
+fn temporal_target(dtype: &DataType) -> Option<(TemporalFamily, TimeUnit)> {
+    match dtype {
         DataType::Date32 => Some((TemporalFamily::Date, TimeUnit::Day)),
         DataType::Date64 => Some((TemporalFamily::Date, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((TemporalFamily::Time, *unit)),
@@ -946,12 +946,12 @@ fn temporal_result_type(
         (family, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub)
             if family != TemporalFamily::Duration =>
         {
-            Ok(left_parts.data_type)
+            Ok(left_parts.dtype)
         }
         (TemporalFamily::Duration, family, Arithmetic::Add)
             if family != TemporalFamily::Duration =>
         {
-            Ok(right_parts.data_type)
+            Ok(right_parts.dtype)
         }
         (family, other, Arithmetic::Sub)
             if family == other && family != TemporalFamily::Duration =>
@@ -970,8 +970,8 @@ fn temporal_result_type(
         }
         (TemporalFamily::Duration, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub) => {
             let unit = finer_unit(left_parts.unit, right_parts.unit);
-            let wide = matches!(left_parts.data_type, DataType::Duration64(_))
-                || matches!(right_parts.data_type, DataType::Duration64(_));
+            let wide = matches!(left_parts.dtype, DataType::Duration64(_))
+                || matches!(right_parts.dtype, DataType::Duration64(_));
             if wide {
                 DataType::duration64(unit)
             } else {
@@ -1203,8 +1203,8 @@ fn temporal_at(
     })
 }
 
-fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match data_type {
+fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
+    match dtype {
         DataType::Date32 => Scalar::date32_in(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
                 operation: "temporal arithmetic",
@@ -1238,15 +1238,15 @@ fn temporal_value(data_type: &DataType, count: i64, unit: TimeUnit) -> Result<Sc
         DataType::Duration64(expected) if *expected == unit => Scalar::duration64(count, unit),
         _ => Err(Error::InvalidArithmetic {
             operation: "temporal arithmetic",
-            left: temporal_kind_name(data_type),
+            left: temporal_kind_name(dtype),
             right: None,
             reason: "invalid result unit".into(),
         }),
     }
 }
 
-const fn temporal_kind_name(data_type: &DataType) -> &'static str {
-    match data_type {
+const fn temporal_kind_name(dtype: &DataType) -> &'static str {
+    match dtype {
         DataType::Date32 => "date32",
         DataType::Date64 => "date64",
         DataType::Time32(_) => "time32",

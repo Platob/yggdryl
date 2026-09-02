@@ -180,11 +180,11 @@
 
 ### yggdryl::generic::typed  [rust\src\generic\typed.rs]
   pub struct TypedScalar<K: FieldType = AnyType>
-  pub fn try_from_parts(data_type: DataType, value: Scalar) -> Result<Self>
+  pub fn try_from_parts(dtype: DataType, value: Scalar) -> Result<Self>
   pub fn try_from_value(value: Scalar) -> Result<Self>
-  pub fn from_parts(data_type: DataType, value: Scalar) -> Result<Self>
+  pub fn from_parts(dtype: DataType, value: Scalar) -> Result<Self>
   pub fn from_value(value: Scalar) -> Result<Self>
-  pub const fn data_type(&self) -> &DataType
+  pub const fn dtype(&self) -> &DataType
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
   pub fn into_parts(self) -> (DataType, Scalar)
@@ -192,8 +192,8 @@
   pub fn into_any(self) -> TypedScalar
   pub fn try_into_typed<J: FieldType>(self) -> Result<TypedScalar<J>>
   pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef>
-  pub fn try_from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
-  pub fn from_arrow_array( data_type: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
+  pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
+  pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
   pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar
 
@@ -455,7 +455,6 @@
   pub const ICEBERG: Self = Self(SchemeValue::Iceberg);
   pub const FIX: Self = Self(SchemeValue::Fix);
   pub const FIELD: Self = Self(SchemeValue::Field);
-  pub const DTYPE: Self = Self(SchemeValue::Dtype);
   pub const S3: Self = Self(SchemeValue::S3);
   pub const GS: Self = Self(SchemeValue::Gs);
   pub const AZ: Self = Self(SchemeValue::Az);
@@ -563,7 +562,7 @@
   pub fn always_true() -> Self
   pub fn always_false() -> Self
   pub fn literal(value: impl Into<Scalar>) -> Self
-  pub fn typed_literal(data_type: DataType, value: Scalar) -> Result<Self>
+  pub fn typed_literal(dtype: DataType, value: Scalar) -> Result<Self>
   pub fn column(name: impl Into<SmolStr>) -> Self
   pub const fn attribute(selector: Selector) -> Self
   pub fn parameter(name: impl Into<SmolStr>) -> Self
@@ -592,8 +591,8 @@
   pub fn arithmetic(self, operator: Operator, other: Self) -> Self
   pub fn neg(self) -> Self
   pub fn call(function: Function, arguments: impl IntoIterator<Item = Self>) -> Self
-  pub fn cast(self, data_type: DataType) -> Self
-  pub fn try_cast(self, data_type: DataType) -> Self
+  pub fn cast(self, dtype: DataType) -> Self
+  pub fn try_cast(self, dtype: DataType) -> Self
   pub fn case(branches: impl IntoIterator<Item = (Self, Self)>, otherwise: Option<Self>) -> Self
   pub const fn is_literal(&self) -> bool
   pub const fn as_literal(&self) -> Option<&TypedScalar>
@@ -609,7 +608,7 @@
   pub fn has_attributes(&self) -> bool
   pub fn conjuncts(&self) -> Vec<Self>
   pub trait IntoExpression
-  pub fn partition_equals(column: &str, value: &str, data_type: &DataType) -> Self
+  pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self
   pub fn holder_partition_equals(column: &str, value: &str) -> Self
   pub fn all_partitions_equal<C: AsRef<str>, V: AsRef<str>>(schema: &Field, pairs: impl IntoIterator<Item = (C, V)>) -> Self
   pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>(pairs: impl IntoIterator<Item = (C, V)>) -> Self
@@ -666,7 +665,7 @@
   pub fn from_name(name: &str) -> Option<Self>
   pub fn vocabulary() -> String
   pub const fn cost(&self) -> Cost
-  pub fn data_type(&self) -> DataType
+  pub fn dtype(&self) -> DataType
   pub fn field(&self) -> Field
   pub fn read_url(&self, url: &Url) -> Scalar
   pub trait Attributes
@@ -766,7 +765,7 @@
   pub struct Differences<'schema>
   pub struct OwnedDifferences
   pub fn from_fields( left: &Field, right: &Field, with_metadata: bool, return_equal: bool, ) -> Self
-  pub fn from_data_types( left: &DataType, right: &DataType, with_metadata: bool, return_equal: bool, ) -> Self
+  pub fn from_dtypes( left: &DataType, right: &DataType, with_metadata: bool, return_equal: bool, ) -> Self
 
 ### yggdryl::field  [rust\src\field\mod.rs]
   pub type NullField = TypedField<scalar::Null>;
@@ -813,13 +812,13 @@
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type FieldRef = Arc<ArrowField>;
   pub struct Field
-  pub fn new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Self
+  pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
   pub fn default_value(&self) -> Result<Scalar>
   pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
   pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
-  pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, data_type: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>,
+  pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>,
   pub fn name(&self) -> &str
-  pub const fn data_type(&self) -> &DataType
+  pub const fn dtype(&self) -> &DataType
   pub const fn is_nullable(&self) -> bool
   pub fn is_struct(&self) -> bool
   pub fn fields(&self) -> &[Field]
@@ -890,8 +889,8 @@
   pub fn next_property_entry<'field>( &'field self, scheme: &Scheme, after_name: Option<&str>, ) -> Option<(&'field str, &'field str)>
   pub fn set_name(&mut self, name: impl Into<SmolStr>)
   pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
-  pub fn set_data_type(&mut self, data_type: DataType) -> Result<()>
-  pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self>
+  pub fn set_dtype(&mut self, dtype: DataType) -> Result<()>
+  pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self>
   pub fn set_nullable(&mut self, nullable: bool)
   pub fn with_nullable(mut self, nullable: bool) -> Self
   pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()>
@@ -994,8 +993,8 @@
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>
   pub fn try_from_field(field: Field) -> Result<Self>
-  pub fn try_new(name: impl Into<SmolStr>, data_type: DataType, nullable: bool) -> Result<Self>
-  pub fn try_from_parts<I, M, V>( name: impl Into<SmolStr>, data_type: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>,
+  pub fn try_new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Result<Self>
+  pub fn try_from_parts<I, M, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>,
   pub const fn as_field(&self) -> &Field
   pub const fn as_typed_ref(&self) -> TypedFieldRef<'_, K>
   pub fn into_field(self) -> Field
@@ -1004,8 +1003,8 @@
   pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
   pub fn set_nullable(&mut self, nullable: bool)
   pub fn with_nullable(mut self, nullable: bool) -> Self
-  pub fn set_data_type(&mut self, data_type: DataType) -> Result<()>
-  pub fn try_with_data_type(mut self, data_type: DataType) -> Result<Self>
+  pub fn set_dtype(&mut self, dtype: DataType) -> Result<()>
+  pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self>
   pub fn insert_metadata( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<Option<String>>
   pub fn set_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
   pub fn update_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
@@ -1188,7 +1187,7 @@
   pub fn rename_column(&mut self, path: &str, name: &str)
   pub fn update_doc(&mut self, path: &str, doc: &str)
   pub fn make_nullable(&mut self, path: &str)
-  pub fn update_type(&mut self, path: &str, data_type: DataType)
+  pub fn update_type(&mut self, path: &str, dtype: DataType)
   pub fn into_field(self) -> Result<Field>
 
 ### yggdryl::iceberg::metadata (additions)
@@ -1347,8 +1346,8 @@
 ### yggdryl::iceberg::types  [rust\src\iceberg\types.rs]
   pub enum PrimitiveType
   pub fn from_str(value: &str) -> Result<Self>
-  pub fn into_data_type(self) -> Result<DataType>
-  pub fn from_data_type(data_type: &DataType) -> Result<Self>
+  pub fn into_dtype(self) -> Result<DataType>
+  pub fn from_dtype(dtype: &DataType) -> Result<Self>
 
 ### yggdryl::io::buffer  [rust\src\io\buffer.rs]
   pub struct Buffer
@@ -1568,7 +1567,6 @@
   pub fn iceberg(&self) -> ProtocolMetadata<'_>
   pub fn fix(&self) -> ProtocolMetadata<'_>
   pub fn field(&self) -> ProtocolMetadata<'_>
-  pub fn dtype(&self) -> ProtocolMetadata<'_>
   pub fn s3(&self) -> ProtocolMetadata<'_>
   pub fn gs(&self) -> ProtocolMetadata<'_>
   pub fn az(&self) -> ProtocolMetadata<'_>
@@ -1859,7 +1857,7 @@
   pub fn into_decimal_utf8(&self) -> Option<String>
 
 ### yggdryl::generic::inference  [rust\src\generic\inference.rs]
-  pub fn data_type(&self) -> Result<DataType>
+  pub fn dtype(&self) -> Result<DataType>
   pub fn inferred_scalar_field(&self) -> Result<Field>
   pub fn inferred_array_field(&self) -> Result<Field>
   pub fn inferred_struct_field(&self) -> Result<Field>
@@ -1906,7 +1904,7 @@
   pub const fn temporal_timezone(&self) -> Option<&Timezone>
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
   pub const fn is_temporal(&self) -> bool
-  pub fn temporal_data_type(&self) -> Option<DataType>
+  pub fn temporal_dtype(&self) -> Option<DataType>
 
 ### yggdryl::toml  [rust\src\toml\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 64;

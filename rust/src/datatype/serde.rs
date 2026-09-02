@@ -722,7 +722,7 @@ impl DataType {
             Ok((precision, scale))
         };
 
-        let data_type = match tag.as_str() {
+        let dtype = match tag.as_str() {
             "null" => Self::Null,
             "boolean" => Self::Boolean,
             "int8" => Self::Int8,
@@ -870,8 +870,8 @@ impl DataType {
                 ));
             }
         };
-        data_type.validate()?;
-        Ok(data_type)
+        dtype.validate()?;
+        Ok(dtype)
     }
 }
 

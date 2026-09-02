@@ -20,12 +20,12 @@ def test_lazy_sibling_and_private_default_factory_without_future_annotations() -
         count: int
 
     assert tuple(item.name for item in dc.fields(Earlier)) == ("later",)
-    assert tuple(item.name for item in Earlier.field().data_type) == (
+    assert tuple(item.name for item in Earlier.field().dtype) == (
         "later",
     )
     assert (
-        Earlier.field().data_type["later"].data_type
-        == Later.field().data_type
+        Earlier.field().dtype["later"].dtype
+        == Later.field().dtype
     )
     assert Earlier(Later(3)) == Earlier(later=Later(count=3))
 
@@ -38,7 +38,7 @@ def test_plain_private_annotation_without_future_is_not_a_dataclass_field() -> N
         __scratch: str
 
     assert tuple(item.name for item in dc.fields(Reading)) == ("value",)
-    assert tuple(item.name for item in Reading.field().data_type) == (
+    assert tuple(item.name for item in Reading.field().dtype) == (
         "value",
     )
     assert Reading(7).value == 7

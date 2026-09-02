@@ -7,17 +7,17 @@ use super::NESTED_SQL;
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("value");
-    let data_type = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
+    let dtype = DataType::from_str(NESTED_SQL).expect("static nested type must parse");
 
     group.bench_function("nested_datatype_clone", |bencher| {
-        bencher.iter(|| black_box(&data_type).clone());
+        bencher.iter(|| black_box(&dtype).clone());
     });
     group.bench_function("datatype_stable_hash", |bencher| {
-        bencher.iter(|| black_box(&data_type).stable_hash());
+        bencher.iter(|| black_box(&dtype).stable_hash());
     });
     group.bench_function("nested_validate", |bencher| {
         bencher.iter(|| {
-            black_box(&data_type)
+            black_box(&dtype)
                 .validate()
                 .expect("the benchmark datatype remains valid")
         });

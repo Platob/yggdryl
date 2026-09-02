@@ -93,7 +93,7 @@ impl DataType {
     pub fn is_nested(&self) -> bool {
         match self {
             Self::Dictionary(dictionary) => dictionary.value.is_nested(),
-            Self::RunEndEncoded(run_end) => run_end.values.data_type().is_nested(),
+            Self::RunEndEncoded(run_end) => run_end.values.dtype().is_nested(),
             other => other.id().is_nested(),
         }
     }
@@ -113,7 +113,7 @@ impl DataType {
     ///
     /// assert_eq!(id.name(), "id");
     /// assert!(!id.is_nullable());
-    /// assert!(tags.data_type().is_nested());
+    /// assert!(tags.dtype().is_nested());
     /// # Ok(())
     /// # }
     /// ```
@@ -200,7 +200,7 @@ impl DataType {
 
 impl Ord for DataType {
     fn cmp(&self, other: &Self) -> Ordering {
-        let rank = data_type_rank(self).cmp(&data_type_rank(other));
+        let rank = dtype_rank(self).cmp(&dtype_rank(other));
         if rank != Ordering::Equal {
             return rank;
         }
@@ -285,7 +285,7 @@ impl PartialOrd for DataType {
     }
 }
 
-fn data_type_rank(value: &DataType) -> u8 {
+fn dtype_rank(value: &DataType) -> u8 {
     match value {
         DataType::Null => 0,
         DataType::Boolean => 1,

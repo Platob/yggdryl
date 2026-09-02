@@ -85,8 +85,8 @@ custom_fields:
     # so the table exists before the first log line does.
     schema = field_from_pattern(options=options)
     assert schema.name == "row"
-    assert schema["level"].data_type == DataType("utf8")
-    assert schema["source"].data_type == DataType("utf8")
+    assert schema["level"].dtype == DataType("utf8")
+    assert schema["source"].dtype == DataType("utf8")
 
     reader = handle(tmp_path, LOG).read_arrow_lines(options=options)
     # The reader emits exactly the schema the builder answered from the
@@ -118,7 +118,7 @@ def test_log_mode_needs_no_expression_anywhere(tmp_path: pathlib.Path) -> None:
     assert table.column("level").to_pylist() == ["ERROR", "INFO"]
     assert table.column("logger").to_pylist() == [None, None]
     # And the schema is answerable from the options alone.
-    assert field_from_pattern(logs=True)["level"].data_type == DataType("utf8")
+    assert field_from_pattern(logs=True)["level"].dtype == DataType("utf8")
 
 
 def test_both_batch_bounds_apply_and_the_first_to_trip_wins(

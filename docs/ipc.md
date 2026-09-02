@@ -336,7 +336,7 @@ fresh/opened `column_size` at 6.25 us/7.04 ns. Regenerate with
 
     const reader = handle.readArrowReader()
     // The schema is known before a single batch is decoded.
-    assert.deepEqual([...reader.field.dataType].map((child) => child.name), ['id'])
+    assert.deepEqual([...reader.field.dtype].map((child) => child.name), ['id'])
 
     let rows = 0
     for (const batch of reader) rows += batch.numRows
@@ -514,7 +514,7 @@ lazily is never materialized.
     assert projected.read_all().num_columns == 1
 
     # The stream itself is unchanged: it still carries all three.
-    assert len(handle.read_arrow_field().data_type) == 3
+    assert len(handle.read_arrow_field().dtype) == 3
     ```
 
 === "JavaScript"
@@ -538,11 +538,11 @@ lazily is never materialized.
     const wanted = fields.struct('row', [Field.from('id: int64')], { nullable: false })
 
     const projected = handle.readArrowReader(handle.recordOptions().withField(wanted))
-    assert.deepEqual([...projected.field.dataType].map((child) => child.name), ['id'])
+    assert.deepEqual([...projected.field.dtype].map((child) => child.name), ['id'])
     assert.equal(projected.intoTable().numCols, 1)
 
     // The stream itself is unchanged: it still carries all three.
-    assert.equal(handle.readArrowField().dataType.length, 3)
+    assert.equal(handle.readArrowField().dtype.length, 3)
     ```
 
 The `field` argument to `ipc::read_batch_reader` is a column pushdown and nothing else. A
@@ -668,7 +668,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     named = handle.record_options()
     named.root_name = "trade"
     assert handle.read_arrow_field(options=named).name == "trade"
-    assert [child.name for child in handle.read_arrow_field().data_type] == ["id"]
+    assert [child.name for child in handle.read_arrow_field().dtype] == ["id"]
     ```
 
 === "JavaScript"
@@ -690,7 +690,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     // Arrow names columns, not the record; the root name is chosen on this side.
     const named = handle.recordOptions().withRootName('trade')
     assert.equal(handle.readArrowField(named).name, 'trade')
-    assert.deepEqual([...handle.readArrowField().dataType].map((child) => child.name), ['id'])
+    assert.deepEqual([...handle.readArrowField().dtype].map((child) => child.name), ['id'])
     ```
 
 An IPC stream is self-describing, so a declared schema is never required to read one. When

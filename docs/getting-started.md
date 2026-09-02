@@ -52,7 +52,7 @@ A non-null struct field is the schema, and its children are the columns.
     );
 
     assert_eq!(schema.field_len(), 3);
-    assert_eq!(schema.fields()[2].data_type().to_string(), "decimal128(18,4)");
+    assert_eq!(schema.fields()[2].dtype().to_string(), "decimal128(18,4)");
     ```
 
 === "Python"
@@ -72,8 +72,8 @@ A non-null struct field is the schema, and its children are the columns.
         nullable=False,
     )
 
-    assert len(schema.data_type) == 3
-    assert str(schema.data_type[2].data_type) == "decimal128(18,4)"
+    assert len(schema.dtype) == 3
+    assert str(schema.dtype[2].dtype) == "decimal128(18,4)"
     ```
 
 === "JavaScript"
@@ -92,8 +92,8 @@ A non-null struct field is the schema, and its children are the columns.
       false,
     )
 
-    assert.equal(schema.dataType.length, 3)
-    assert.equal(String(schema.dataType.at(2).dataType), 'decimal128(18,4)')
+    assert.equal(schema.dtype.length, 3)
+    assert.equal(String(schema.dtype.at(2).dtype), 'decimal128(18,4)')
     ```
 
 ## Attach metadata

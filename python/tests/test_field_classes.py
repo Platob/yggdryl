@@ -60,23 +60,23 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
     assert root is field(Order)
     assert root is field(value)
     assert root.name == "Order"
-    assert root.data_type.id == "struct"
-    assert tuple(child.name for child in root.data_type) == (
+    assert root.dtype.id == "struct"
+    assert tuple(child.name for child in root.dtype) == (
         "order_id",
         "legs",
         "note",
     )
     assert root.metadata["python.kind"] == "field"
     assert root.metadata["description"] == "An executable order."
-    assert root.data_type["order_id"].metadata["description"] == (
+    assert root.dtype["order_id"].metadata["description"] == (
         "Stable order identifier."
     )
-    assert root.data_type["order_id"].parquet_field_id == 7
+    assert root.dtype["order_id"].parquet_field_id == 7
 
     renamed = field(Order, name="order")
     assert renamed is not root
     assert renamed.name == "order"
-    assert renamed.data_type == root.data_type
+    assert renamed.dtype == root.dtype
 
 
 def test_scalar_decorator_is_colocated_with_the_native_scalar_boundary() -> None:
@@ -134,7 +134,7 @@ def test_plain_dataclasses_compile_to_the_same_native_field_model() -> None:
     root = field(Point)
     assert root is field(Point(1))
     assert root.metadata["python.kind"] == "dataclass"
-    assert tuple(child.name for child in root.data_type) == ("x", "y")
+    assert tuple(child.name for child in root.dtype) == ("x", "y")
     assert json.loads('{"x":"3"}', cls=Point) == Point(3)
 
 
@@ -150,8 +150,8 @@ def test_later_local_annotations_are_resolved_lazily() -> None:
         count: int
 
     assert (
-        Parent.field().data_type["child"].data_type
-        == Child.field().data_type
+        Parent.field().dtype["child"].dtype
+        == Child.field().dtype
     )
     assert json.loads('{"child":{"count":"4"}}', cls=Parent) == Parent(Child(4))
 
@@ -172,9 +172,9 @@ def test_nested_field_class_keeps_its_native_datatype() -> None:
     assert Payload.field() is child
     assert (
         Envelope.field()
-        .data_type["payload"]
-        .data_type["narrow"]
-        .data_type.id
+        .dtype["payload"]
+        .dtype["narrow"]
+        .dtype.id
         == "int16"
     )
 
@@ -193,10 +193,10 @@ def test_generated_class_field_is_authoritative_for_pyhint_inference() -> None:
     Generated = root.into_dataclass(name="Generated")
 
     assert Generated.field() is root
-    assert DataType.from_pyhint(Generated) == root.data_type
+    assert DataType.from_pyhint(Generated) == root.dtype
     inferred = Field.from_pyhint("generated", Generated)
-    assert inferred.data_type == root.data_type
-    assert inferred.data_type["narrow"].data_type.id == "int16"
+    assert inferred.dtype == root.dtype
+    assert inferred.dtype["narrow"].dtype.id == "int16"
 
 
 def test_inherited_generated_fields_keep_their_exact_native_layout() -> None:
@@ -299,7 +299,7 @@ def test_nested_subclasses_keep_exact_fields_before_their_own_field_access() -> 
 
     nested = GenericParent.field()["child"]
     assert nested["narrow"] == root["narrow"]
-    assert nested["item"].data_type.id == "utf8"
+    assert nested["item"].dtype.id == "utf8"
 
 
 def test_plain_dataclass_field_attribute_does_not_override_annotations() -> None:
@@ -314,9 +314,9 @@ def test_plain_dataclass_field_attribute_does_not_override_annotations() -> None
             return unrelated
 
     assert Plain.field() is unrelated
-    assert DataType.from_pyhint(Plain)["value"].data_type.id == "int64"
-    assert Field.from_pyhint("plain", Plain)["value"].data_type.id == "int64"
-    assert field(Plain)["value"].data_type.id == "int64"
+    assert DataType.from_pyhint(Plain)["value"].dtype.id == "int64"
+    assert Field.from_pyhint("plain", Plain)["value"].dtype.id == "int64"
+    assert field(Plain)["value"].dtype.id == "int64"
 
 
 def test_generic_inheritance_reinfers_a_specialized_member() -> None:
@@ -330,8 +330,8 @@ def test_generic_inheritance_reinfers_a_specialized_member() -> None:
     class IntegerBox(Box[int]):
         pass
 
-    assert Box.field()["item"].data_type.id == "null"
-    assert IntegerBox.field()["item"].data_type.id == "int64"
+    assert Box.field()["item"].dtype.id == "null"
+    assert IntegerBox.field()["item"].dtype.id == "int64"
 
     LeftT = TypeVar("LeftT")
     RightT = TypeVar("RightT")
@@ -349,8 +349,8 @@ def test_generic_inheritance_reinfers_a_specialized_member() -> None:
     class Concrete(Swapped[int, str]):
         pass
 
-    assert Concrete.field()["left"].data_type.id == "utf8"
-    assert Concrete.field()["right"].data_type.id == "int64"
+    assert Concrete.field()["left"].dtype.id == "utf8"
+    assert Concrete.field()["right"].dtype.id == "int64"
     assert json.loads('{"left":"x","right":"3"}', cls=Concrete) == Concrete(
         left="x",
         right=3,

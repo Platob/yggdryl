@@ -15,7 +15,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
-    arrow_scalar_to_pyarrow_type, core_data_type_from_value, core_field_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
 use crate::media::{
@@ -51,11 +51,11 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         // PyArrow's Field C Schema bridge can omit datatype-only flags such as
         // Map.keys_sorted. Its standalone datatype bridge is lossless, so use
         // that authoritative type when it differs from the field projection.
-        let py_data_type = value.getattr("type")?;
-        let arrow_data_type = ArrowDataType::from_pyarrow_bound(&py_data_type)?;
-        let data_type = CoreDataType::try_from(arrow_data_type).map_err(value_error)?;
-        if field.data_type() != &data_type {
-            field = field.try_with_data_type(data_type).map_err(value_error)?;
+        let py_dtype = value.getattr("type")?;
+        let arrow_dtype = ArrowDataType::from_pyarrow_bound(&py_dtype)?;
+        let dtype = CoreDataType::try_from(arrow_dtype).map_err(value_error)?;
+        if field.dtype() != &dtype {
+            field = field.try_with_dtype(dtype).map_err(value_error)?;
         }
         Ok(field)
     })();
@@ -268,22 +268,22 @@ impl PyField {
 #[pymethods]
 impl PyField {
     #[new]
-    #[pyo3(signature = (name, data_type, nullable=true, metadata=None))]
+    #[pyo3(signature = (name, dtype, nullable=true, metadata=None))]
     fn new(
         name: String,
-        data_type: &Bound<'_, PyAny>,
+        dtype: &Bound<'_, PyAny>,
         nullable: bool,
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let data_type = core_data_type_from_value(data_type)?;
+        let dtype = core_dtype_from_value(dtype)?;
         if let Some(metadata) = metadata {
             let mut pairs = BTreeMap::new();
             extend_metadata_pairs(metadata, &mut pairs)?;
-            return CoreField::from_parts(name, data_type, nullable, pairs)
+            return CoreField::from_parts(name, dtype, nullable, pairs)
                 .map(Self::from_inner)
                 .map_err(value_error);
         }
-        let field = CoreField::new(name, data_type, nullable);
+        let field = CoreField::new(name, dtype, nullable);
         field.validate().map_err(value_error)?;
         Ok(Self::from_inner(field))
     }
@@ -741,9 +741,9 @@ impl PyField {
     }
 
     #[getter]
-    fn data_type(&self) -> PyDataType {
+    fn dtype(&self) -> PyDataType {
         PyDataType {
-            inner: self.inner.data_type().clone(),
+            inner: self.inner.dtype().clone(),
             children_read_only: self.read_only,
         }
     }
@@ -1319,12 +1319,6 @@ impl PyField {
         PyProtocolMetadata::new(slf, CoreScheme::FIELD)
     }
 
-    /// Returns the live Yggdryl datatype property view.
-    #[getter]
-    fn dtype(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::DTYPE)
-    }
-
     /// Returns the live Amazon S3 property view.
     #[getter]
     fn s3(slf: Py<Self>) -> PyProtocolMetadata {
@@ -1487,7 +1481,7 @@ impl PyField {
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        crate::child_of(self.inner.data_type(), key)
+        crate::child_of(self.inner.dtype(), key)
             .map(|field| Self::from_inner_with_read_only(field, self.read_only))
     }
 
@@ -1520,12 +1514,12 @@ impl PyField {
 
     /// Iterate the nested children, as `DataType` does.
     fn __iter__(&self) -> PyDataTypeIterator {
-        PyDataTypeIterator::over(self.inner.data_type().clone(), self.read_only)
+        PyDataTypeIterator::over(self.inner.dtype().clone(), self.read_only)
     }
 
     /// Whether a child name, position, or field is among the children.
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
-        crate::child_of(self.inner.data_type(), value).is_ok()
+        crate::child_of(self.inner.dtype(), value).is_ok()
             || value.extract::<PyRef<'_, Self>>().is_ok_and(|field| {
                 (0..self.inner.field_len())
                     .filter_map(|index| self.inner.get_field(index))

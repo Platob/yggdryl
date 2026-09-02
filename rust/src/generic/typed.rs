@@ -1,6 +1,6 @@
 //! A value and the datatype it belongs to, kept together.
 //!
-//! [`Scalar::data_type`] names the datatype a value already is, and a
+//! [`Scalar::dtype`] names the datatype a value already is, and a
 //! [`crate::Field`] validates a whole row against a schema. [`TypedScalar`] is
 //! the pair in between: one value and one datatype, checked against each other,
 //! for a caller holding a single value with no row and no schema around it.
@@ -22,18 +22,18 @@
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
-//! assert_eq!(price.data_type(), &DataType::Int64);
+//! assert_eq!(price.dtype(), &DataType::Int64);
 //! assert_eq!(price.value(), &Scalar::I64(7));
 //!
 //! // The value is checked against the datatype, so a pairing that exists holds.
 //! assert!(TypedScalar::from_parts(DataType::Int64, Scalar::from("seven")).is_err());
 //!
 //! // A value can also name its own datatype.
-//! assert_eq!(TypedScalar::from_value(Scalar::from(1.5))?.data_type(), &DataType::Float64);
+//! assert_eq!(TypedScalar::from_value(Scalar::from(1.5))?.dtype(), &DataType::Float64);
 //!
 //! // A marker fixes the datatype at compile time; the value is still checked.
 //! let typed = Int64Scalar::new(Scalar::from(7_i64))?;
-//! assert_eq!(typed.data_type(), &DataType::Int64);
+//! assert_eq!(typed.dtype(), &DataType::Int64);
 //! assert!(Int64Scalar::try_from_parts(DataType::Utf8, Scalar::from("seven")).is_err());
 //!
 //! // A null is accepted by every datatype, and `is_null` is how it reads back.
@@ -71,7 +71,7 @@ use crate::{AnyType, DataType, Error, FieldType, Result, Scalar};
 /// Pairings order first by datatype and then by value, matching their exact
 /// equality and hashing identity.
 pub struct TypedScalar<K: FieldType = AnyType> {
-    data_type: DataType,
+    dtype: DataType,
     value: Scalar,
     marker: PhantomData<K>,
 }
@@ -83,9 +83,9 @@ impl<K: FieldType> TypedScalar<K> {
     ///
     /// Returns an error when the datatype is not this marker's variant, or
     /// when the value is neither null nor a value the datatype accepts.
-    pub fn try_from_parts(data_type: DataType, value: Scalar) -> Result<Self> {
-        ensure_marker::<K>(&data_type)?;
-        Self::from_checked_parts(data_type, value)
+    pub fn try_from_parts(dtype: DataType, value: Scalar) -> Result<Self> {
+        ensure_marker::<K>(&dtype)?;
+        Self::from_checked_parts(dtype, value)
     }
 
     /// Pair a value with the datatype it already names, checking the marker.
@@ -93,21 +93,21 @@ impl<K: FieldType> TypedScalar<K> {
     /// # Errors
     ///
     /// Returns an error when the value names no single datatype, which is what
-    /// [`Scalar::data_type`] reports, or when that datatype is not this
+    /// [`Scalar::dtype`] reports, or when that datatype is not this
     /// marker's variant.
     pub fn try_from_value(value: Scalar) -> Result<Self> {
-        let data_type = value.data_type()?;
-        ensure_marker::<K>(&data_type)?;
+        let dtype = value.dtype()?;
+        ensure_marker::<K>(&dtype)?;
         Ok(Self {
-            data_type,
+            dtype,
             value,
             marker: PhantomData,
         })
     }
 
     /// The datatype this value belongs to.
-    pub const fn data_type(&self) -> &DataType {
-        &self.data_type
+    pub const fn dtype(&self) -> &DataType {
+        &self.dtype
     }
 
     /// The value itself.
@@ -131,7 +131,7 @@ impl<K: FieldType> TypedScalar<K> {
 
     /// Consume this pairing and return both halves.
     pub fn into_parts(self) -> (DataType, Scalar) {
-        (self.data_type, self.value)
+        (self.dtype, self.value)
     }
 
     /// Consume this pairing and return the value alone.
@@ -145,7 +145,7 @@ impl<K: FieldType> TypedScalar<K> {
     /// this only forgets which variant the type system was tracking.
     pub fn into_any(self) -> TypedScalar {
         TypedScalar {
-            data_type: self.data_type,
+            dtype: self.dtype,
             value: self.value,
             marker: PhantomData,
         }
@@ -158,19 +158,19 @@ impl<K: FieldType> TypedScalar<K> {
     /// Returns an error naming both markers when the datatype is not the
     /// requested variant.
     pub fn try_into_typed<J: FieldType>(self) -> Result<TypedScalar<J>> {
-        ensure_marker::<J>(&self.data_type)?;
+        ensure_marker::<J>(&self.dtype)?;
         Ok(TypedScalar {
-            data_type: self.data_type,
+            dtype: self.dtype,
             value: self.value,
             marker: PhantomData,
         })
     }
 
     /// Build the pairing without re-checking the marker.
-    fn from_checked_parts(data_type: DataType, value: Scalar) -> Result<Self> {
-        crate::field::validate_data_type_value_for(&data_type, &value)?;
+    fn from_checked_parts(dtype: DataType, value: Scalar) -> Result<Self> {
+        crate::field::validate_dtype_value_for(&dtype, &value)?;
         Ok(Self {
-            data_type,
+            dtype,
             value,
             marker: PhantomData,
         })
@@ -184,8 +184,8 @@ impl TypedScalar {
     ///
     /// Returns an error when the value is neither null nor a value the
     /// datatype accepts.
-    pub fn from_parts(data_type: DataType, value: Scalar) -> Result<Self> {
-        Self::from_checked_parts(data_type, value)
+    pub fn from_parts(dtype: DataType, value: Scalar) -> Result<Self> {
+        Self::from_checked_parts(dtype, value)
     }
 
     /// Pair a value with the datatype it already names.
@@ -193,10 +193,10 @@ impl TypedScalar {
     /// # Errors
     ///
     /// Returns an error when the value names no single datatype, which is what
-    /// [`Scalar::data_type`] reports.
+    /// [`Scalar::dtype`] reports.
     pub fn from_value(value: Scalar) -> Result<Self> {
         Ok(Self {
-            data_type: value.data_type()?,
+            dtype: value.dtype()?,
             value,
             marker: PhantomData,
         })
@@ -208,7 +208,7 @@ impl<K: FieldType> TypedScalar<K> {
     /// Materialize this pairing as an exact one-row Arrow array.
     ///
     /// The value projects through a synthetic non-nullable Field over
-    /// [`Self::data_type`], so a null materializes only when it is the
+    /// [`Self::dtype`], so a null materializes only when it is the
     /// datatype's own canonical default - [`crate::DataType::Null`] and
     /// transparent logical wrappers with a null-only default. A null under any
     /// other datatype is a property of the column beside it, which is what
@@ -221,7 +221,7 @@ impl<K: FieldType> TypedScalar<K> {
     /// let typed = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
     /// let array = typed.into_arrow_array()?;
     /// assert_eq!(array.len(), 1);
-    /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
+    /// assert_eq!(array.dtype(), &arrow_schema::DataType::Int64);
     /// # Ok(())
     /// # }
     /// ```
@@ -232,7 +232,7 @@ impl<K: FieldType> TypedScalar<K> {
     /// value, or when the value is a null the datatype's canonical default
     /// does not spell.
     pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-        let field = crate::Field::new("value", self.data_type.clone(), false);
+        let field = crate::Field::new("value", self.dtype.clone(), false);
         match crate::arrow::validate_scalar_value(&field, self.value.clone()) {
             Ok(value) => crate::arrow::value::array_from_values(&field, &[&value]),
             Err(error) => {
@@ -241,7 +241,7 @@ impl<K: FieldType> TypedScalar<K> {
                 // itself, null-only dictionaries, unions, run-end encodings -
                 // stays projectable even though the synthetic Field is
                 // non-nullable.
-                if self.data_type.is_default_value(&self.value)? {
+                if self.dtype.is_default_value(&self.value)? {
                     crate::arrow::value::array_from_values(&field, &[&self.value])
                 } else {
                     Err(error)
@@ -259,28 +259,28 @@ impl<K: FieldType> TypedScalar<K> {
     /// physical layout, or when the decoded value is not one the datatype
     /// accepts.
     pub fn try_from_arrow_array(
-        data_type: DataType,
+        dtype: DataType,
         array: &dyn arrow_array::Array,
     ) -> crate::arrow::Result<Self> {
-        ensure_marker::<K>(&data_type)?;
-        Self::decoded_from_arrow_array(data_type, array)
+        ensure_marker::<K>(&dtype)?;
+        Self::decoded_from_arrow_array(dtype, array)
     }
 
     /// Decode a validated one-row array without re-checking the marker.
     fn decoded_from_arrow_array(
-        data_type: DataType,
+        dtype: DataType,
         array: &dyn arrow_array::Array,
     ) -> crate::arrow::Result<Self> {
         // A null is accepted by every datatype here, so the synthetic Field is
         // nullable; the exact-datatype, length, and bounded-shape checks still
         // run inside the shared scalar decoder.
-        let field = crate::Field::new("value", data_type.clone(), true);
+        let field = crate::Field::new("value", dtype.clone(), true);
         let value = crate::arrow::scalar_value(&field, array)?;
         // The Arrow reading may spell a value physically - a float16 reads
         // back as its narrow float - so canonicalize through the same walk a
         // column value takes before the pairing holds it.
         let value = crate::arrow::validate_scalar_value(&field, value)?;
-        Self::from_checked_parts(data_type, value).map_err(crate::arrow::Error::from)
+        Self::from_checked_parts(dtype, value).map_err(crate::arrow::Error::from)
     }
 }
 
@@ -305,16 +305,16 @@ impl TypedScalar {
     /// datatype's exact physical layout, or when the decoded value is not one
     /// the datatype accepts.
     pub fn from_arrow_array(
-        data_type: DataType,
+        dtype: DataType,
         array: &dyn arrow_array::Array,
     ) -> crate::arrow::Result<Self> {
-        Self::decoded_from_arrow_array(data_type, array)
+        Self::decoded_from_arrow_array(dtype, array)
     }
 }
 
 /// Report a datatype that is not the marker's variant.
-fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
-    if K::matches(data_type) {
+fn ensure_marker<K: FieldType>(dtype: &DataType) -> Result<()> {
+    if K::matches(dtype) {
         Ok(())
     } else {
         Err(Error::InvalidDataType {
@@ -323,7 +323,7 @@ fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
                 "marker {} requires datatype {}, got {}",
                 std::any::type_name::<K>(),
                 K::NAME,
-                data_type.name()
+                dtype.name()
             )
             .into(),
         })
@@ -333,7 +333,7 @@ fn ensure_marker<K: FieldType>(data_type: &DataType) -> Result<()> {
 impl<K: FieldType> Clone for TypedScalar<K> {
     fn clone(&self) -> Self {
         Self {
-            data_type: self.data_type.clone(),
+            dtype: self.dtype.clone(),
             value: self.value.clone(),
             marker: PhantomData,
         }
@@ -344,7 +344,7 @@ impl<K: FieldType> fmt::Debug for TypedScalar<K> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("TypedScalar")
-            .field("data_type", &self.data_type)
+            .field("dtype", &self.dtype)
             .field("value", &self.value)
             .finish()
     }
@@ -352,7 +352,7 @@ impl<K: FieldType> fmt::Debug for TypedScalar<K> {
 
 impl<K: FieldType> PartialEq for TypedScalar<K> {
     fn eq(&self, other: &Self) -> bool {
-        self.data_type == other.data_type && self.value == other.value
+        self.dtype == other.dtype && self.value == other.value
     }
 }
 
@@ -366,15 +366,15 @@ impl<K: FieldType> PartialOrd for TypedScalar<K> {
 
 impl<K: FieldType> Ord for TypedScalar<K> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.data_type
-            .cmp(&other.data_type)
+        self.dtype
+            .cmp(&other.dtype)
             .then_with(|| self.value.cmp(&other.value))
     }
 }
 
 impl<K: FieldType> Hash for TypedScalar<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.data_type.hash(state);
+        self.dtype.hash(state);
         self.value.hash(state);
     }
 }
@@ -387,7 +387,7 @@ impl<K: FieldType> Serialize for TypedScalar<K> {
         S: Serializer,
     {
         let mut structure = serializer.serialize_struct("TypedScalar", 2)?;
-        structure.serialize_field("data_type", &self.data_type)?;
+        structure.serialize_field("dtype", &self.dtype)?;
         structure.serialize_field("value", &self.value)?;
         structure.end()
     }
@@ -406,12 +406,12 @@ impl<'de, K: FieldType> Deserialize<'de> for TypedScalar<K> {
         // This mirror must stay field-for-field identical to `TypedScalar`.
         #[derive(Deserialize)]
         struct StructuralTypedScalar {
-            data_type: DataType,
+            dtype: DataType,
             value: Scalar,
         }
 
         let structural = StructuralTypedScalar::deserialize(deserializer)?;
-        Self::try_from_parts(structural.data_type, structural.value).map_err(D::Error::custom)
+        Self::try_from_parts(structural.dtype, structural.value).map_err(D::Error::custom)
     }
 }
 
@@ -431,7 +431,7 @@ impl<K: FieldType> From<TypedScalar<K>> for Scalar {
 
 /// Give one statically known datatype an infallible-datatype constructor.
 macro_rules! static_value_constructor {
-    ($marker:path, $data_type:expr) => {
+    ($marker:path, $dtype:expr) => {
         impl TypedScalar<$marker> {
             /// Pairs this statically known datatype with a value it accepts.
             ///
@@ -440,7 +440,7 @@ macro_rules! static_value_constructor {
             /// Returns an error when the value is neither null nor a value the
             /// datatype accepts.
             pub fn new(value: Scalar) -> Result<Self> {
-                Self::from_checked_parts($data_type, value)
+                Self::from_checked_parts($dtype, value)
             }
         }
     };

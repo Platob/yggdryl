@@ -2409,8 +2409,8 @@ fn official_sort_order(order: &SortOrder) -> Result<OfficialSortOrder> {
 
 /// Collect every field identifier below a schema root, depth first.
 fn collect_field_ids(node: &Field, ids: &mut Vec<i32>) -> Result<()> {
-    for index in 0..node.data_type().field_len() {
-        let Some(child) = node.data_type().get_field(index) else {
+    for index in 0..node.dtype().field_len() {
+        let Some(child) = node.dtype().get_field(index) else {
             continue;
         };
         if let Some(id) = child.parquet_field_id()? {
@@ -2505,8 +2505,8 @@ fn collect_field_parents(
     parent: Option<i32>,
     fields: &mut HashMap<i32, Option<i32>>,
 ) -> Result<()> {
-    for index in 0..node.data_type().field_len() {
-        let Some(child) = node.data_type().get_field(index) else {
+    for index in 0..node.dtype().field_len() {
+        let Some(child) = node.dtype().get_field(index) else {
             continue;
         };
         let id = child.parquet_field_id()?.ok_or_else(|| {

@@ -444,7 +444,7 @@ export type JsExpression = Expression
 /** An Arrow field whose metadata and cache invariants are owned by Rust. */
 export declare class Field {
   /** Parse/clone a `Field`, or construct one from an inferred `DataType`. */
-  constructor(value: Field | string, dataType?: DataType | string | undefined | null, nullable?: boolean | undefined | null, metadata?: Array<MetadataEntry> | Record<string, string> | undefined | null)
+  constructor(value: Field | string, dtype?: DataType | string | undefined | null, nullable?: boolean | undefined | null, metadata?: Array<MetadataEntry> | Record<string, string> | undefined | null)
   /** Infer a Field from a native wrapper or field-expression string. */
   static from(value: Field | string): Field
   /** Parse canonical, Arrow, SQL, Hive, or Spark field syntax. */
@@ -454,7 +454,7 @@ export declare class Field {
   /** Physical field name. */
   get name(): string
   /** Logical native datatype. */
-  get dataType(): DataType
+  get dtype(): DataType
   /** Whether values may be null. */
   get nullable(): boolean
   /** Arrow IPC dictionary identifier, or `null` for non-dictionary fields. */
@@ -518,7 +518,7 @@ export declare class Field {
   /** Change the physical name through the native cache-aware setter. */
   setName(name: string): void
   /** Change the datatype from a native wrapper or parsed expression. */
-  setDataType(dataType: DataType | string): void
+  setDtype(dtype: DataType | string): void
   /** Change nullability through the native validated setter. */
   setNullable(nullable: boolean): void
   /** Change Arrow IPC dictionary options through the validated core setter. */
@@ -670,8 +670,6 @@ export declare class Field {
   get fix(): JsProtocolMetadata
   /** The live Yggdryl field property view. */
   get field(): JsProtocolMetadata
-  /** The live Yggdryl datatype property view. */
-  get dtype(): JsProtocolMetadata
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolMetadata
   /** The live Google Cloud Storage property view. */
@@ -1935,7 +1933,7 @@ export declare class Scalar {
   /** The scale of an exact decimal, or `null`. */
   get scale(): number | null
   /** Infer the exact native datatype this value names. */
-  get dataType(): JsDataType
+  get dtype(): JsDataType
   /** Infer the exact native Field for this scalar value. */
   intoField(): JsField
   /** Infer the exact item Field for this non-empty outer Sequence. */
@@ -2058,7 +2056,7 @@ export declare class SchemaUpdate {
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): void
   /** Record a type promotion on the column at `path`. */
-  updateType(path: string, dataType: DataTypeInput): void
+  updateType(path: string, dtype: DataTypeInput): void
 }
 export type JsSchemaUpdate = SchemaUpdate
 

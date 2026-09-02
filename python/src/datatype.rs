@@ -30,11 +30,11 @@ fn import_ffi_schema<'py>(
         .call_method1("_import_from_c", (std::ptr::from_ref(schema) as usize,))
 }
 
-pub(crate) fn core_data_type_to_pyarrow<'py>(
+pub(crate) fn core_dtype_to_pyarrow<'py>(
     py: Python<'py>,
-    data_type: &CoreDataType,
+    dtype: &CoreDataType,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = data_type.clone().into_arrow_ffi().map_err(value_error)?;
+    let schema = dtype.clone().into_arrow_ffi().map_err(value_error)?;
     import_ffi_schema(py, "DataType", &schema)
 }
 
@@ -57,7 +57,7 @@ pub(crate) fn default_arrow_scalar_to_pyarrow<'py>(
     array: &ArrayRef,
 ) -> PyResult<Bound<'py, PyAny>> {
     let data = array.to_data();
-    let (ffi_array, _data_type_schema) = to_ffi(&data).map_err(value_error)?;
+    let (ffi_array, _dtype_schema) = to_ffi(&data).map_err(value_error)?;
     let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
     py.import("pyarrow")?
         .getattr("Array")?
@@ -83,7 +83,7 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
     field: Option<&yggdryl::Field>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let data = array.to_data();
-    let (ffi_array, ffi_data_type) = to_ffi(&data).map_err(value_error)?;
+    let (ffi_array, ffi_dtype) = to_ffi(&data).map_err(value_error)?;
     let array_class = py.import("pyarrow")?.getattr("Array")?;
     if let Some(field) = field {
         let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
@@ -99,7 +99,7 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
         "_import_from_c",
         (
             std::ptr::from_ref(&ffi_array) as usize,
-            std::ptr::from_ref(&ffi_data_type) as usize,
+            std::ptr::from_ref(&ffi_dtype) as usize,
         ),
     )
 }
@@ -112,10 +112,10 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
 pub(crate) fn arrow_scalar_from_core_type<'py>(
     py: Python<'py>,
     value: &Bound<'py, PyAny>,
-    data_type: &CoreDataType,
+    dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let target = core_data_type_to_pyarrow(py, data_type)?;
+    let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
 }
 
@@ -185,7 +185,7 @@ fn typed_arrow_scalar<'py>(
     }
 }
 
-pub(crate) fn core_data_type_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
+pub(crate) fn core_dtype_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
     if let Ok(value) = value.extract::<PyRef<'_, PyDataType>>() {
         return Ok(value.inner.clone());
     }
@@ -199,10 +199,10 @@ pub(crate) fn core_data_type_from_value(value: &Bound<'_, PyAny>) -> PyResult<Co
         Err(_) => {}
     }
 
-    core_data_type_from_pyhint(value)
+    core_dtype_from_pyhint(value)
 }
 
-fn core_data_type_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
+fn core_dtype_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
     let inferred = hint
         .py()
         .import("yggdryl.fields._hints")?
@@ -327,7 +327,7 @@ impl PyDataType {
 impl PyDataType {
     #[new]
     fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_data_type_from_value(value).map(Self::from_inner)
+        core_dtype_from_value(value).map(Self::from_inner)
     }
 
     #[staticmethod]
@@ -550,8 +550,8 @@ impl PyDataType {
     #[staticmethod]
     fn _dictionary(key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let inner = CoreDataType::dictionary(
-            core_data_type_from_value(key)?,
-            core_data_type_from_value(value)?,
+            core_dtype_from_value(key)?,
+            core_dtype_from_value(value)?,
         )
         .map_err(value_error)?;
         Self::from_validated(inner)
@@ -629,7 +629,7 @@ impl PyDataType {
     /// Infers a native datatype from a Python type annotation.
     #[staticmethod]
     fn from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_data_type_from_pyhint(hint).map(Self::from_inner)
+        core_dtype_from_pyhint(hint).map(Self::from_inner)
     }
 
     #[staticmethod]
@@ -664,10 +664,10 @@ impl PyDataType {
 
     /// Returns the cached Python annotation corresponding to this datatype.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let data_type = Py::new(py, self.clone())?;
+        let dtype = Py::new(py, self.clone())?;
         py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyhint_from_datatype")?
-            .call1((data_type,))
+            .call1((dtype,))
     }
 
     /// Returns the native canonical default as an exact `PyArrow` Scalar.
@@ -682,10 +682,10 @@ impl PyDataType {
         let array = self.inner.default_arrow_array().map_err(value_error)?;
         let field = yggdryl::Field::new("value", self.inner.clone(), false);
         let scalar = default_arrow_scalar_to_pyarrow(py, &field, &array)?;
-        let data_type = Py::new(py, self.clone())?;
+        let dtype = Py::new(py, self.clone())?;
         py.import("yggdryl.fields._defaults")?
             .getattr("_default_pyvalue_from_datatype")?
-            .call1((data_type, scalar))
+            .call1((dtype, scalar))
     }
 
     /// Returns a recursively normalized datatype for a named compatibility target.
@@ -757,7 +757,7 @@ impl PyDataType {
 
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        core_data_type_to_pyarrow(py, &self.inner)
+        core_dtype_to_pyarrow(py, &self.inner)
     }
 
     /// Serialize as deterministic structural JSON.
@@ -932,7 +932,7 @@ impl PyDataType {
         with_metadata: bool,
         return_equal: bool,
     ) -> PyDifferenceIterator {
-        PyDifferenceIterator::from_data_types(
+        PyDifferenceIterator::from_dtypes(
             &self.inner,
             &other.inner,
             with_metadata,
@@ -981,7 +981,7 @@ impl PyDataType {
 
     /// Refuse child mutation: a `DataType` is a read-only child collection.
     ///
-    /// Reading is shared with `Field` - `data_type["price"]` and
+    /// Reading is shared with `Field` - `dtype["price"]` and
     /// `field["price"]` both reach a nested child - but *writing* belongs on
     /// `Field`, which owns the cache-aware mutation the core requires and the
     /// metadata a datatype does not carry. A `DataType` is immutable and

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from .._native import Field
-from ._common import MetadataInput, new_field, simple_data_type
+from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
@@ -21,14 +21,14 @@ else:
     Int8Field = Int16Field = Int32Field = Int64Field = Field
     UInt8Field = UInt16Field = UInt32Field = UInt64Field = Field
 
-_INT8 = simple_data_type("int8")
-_INT16 = simple_data_type("int16")
-_INT32 = simple_data_type("int32")
-_INT64 = simple_data_type("int64")
-_UINT8 = simple_data_type("uint8")
-_UINT16 = simple_data_type("uint16")
-_UINT32 = simple_data_type("uint32")
-_UINT64 = simple_data_type("uint64")
+_INT8 = simple_dtype("int8")
+_INT16 = simple_dtype("int16")
+_INT32 = simple_dtype("int32")
+_INT64 = simple_dtype("int64")
+_UINT8 = simple_dtype("uint8")
+_UINT16 = simple_dtype("uint16")
+_UINT32 = simple_dtype("uint32")
+_UINT64 = simple_dtype("uint64")
 
 
 def int8(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Int8Field:

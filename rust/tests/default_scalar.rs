@@ -66,39 +66,39 @@ fn representative_types() -> Vec<DataType> {
 
 #[test]
 fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
-    for data_type in representative_types() {
-        let expected = data_type.default_value().unwrap();
-        let array = data_type
+    for dtype in representative_types() {
+        let expected = dtype.default_value().unwrap();
+        let array = dtype
             .default_arrow_array()
-            .unwrap_or_else(|error| panic!("{} Arrow default failed: {error}", data_type.kind()));
+            .unwrap_or_else(|error| panic!("{} Arrow default failed: {error}", dtype.kind()));
         assert_eq!(array.len(), 1);
         // The default projects through a synthetic non-nullable Field, which is
         // exactly what the foreign-array importer's canonical-default exception
         // exists to accept back.
-        let field = Field::new("value", data_type.clone(), false);
+        let field = Field::new("value", dtype.clone(), false);
         // The Arrow reading spells temporals and decimals with their unit,
         // zone, or scale; the canonical default recognizes both spellings.
         let read = scalar_value(&field, array.as_ref()).unwrap();
         assert!(
-            data_type.is_default_value(&read).unwrap(),
+            dtype.is_default_value(&read).unwrap(),
             "{} read {read:?} is not the default {expected:?}",
-            data_type.kind()
+            dtype.kind()
         );
 
         // The same array decodes as a typed pairing, which re-projects to an
         // equal one-row array: the default is closed under both directions.
-        let typed = TypedScalar::from_arrow_array(data_type.clone(), array.as_ref())
-            .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", data_type.kind()));
-        assert_eq!(typed.data_type(), &data_type);
+        let typed = TypedScalar::from_arrow_array(dtype.clone(), array.as_ref())
+            .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", dtype.kind()));
+        assert_eq!(typed.dtype(), &dtype);
         assert!(
-            data_type.is_default_value(typed.value()).unwrap(),
+            dtype.is_default_value(typed.value()).unwrap(),
             "{} typed {:?} is not the default {expected:?}",
-            data_type.kind(),
+            dtype.kind(),
             typed.value()
         );
         let reprojected = typed
             .into_arrow_array()
-            .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", data_type.kind()));
+            .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", dtype.kind()));
         assert_eq!(reprojected.as_ref(), array.as_ref());
     }
 }
@@ -164,16 +164,16 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         )
         .unwrap(),
     ];
-    for data_type in intrinsic_defaults {
-        let expected = data_type.default_value().unwrap();
-        let array = data_type.default_arrow_array().unwrap();
+    for dtype in intrinsic_defaults {
+        let expected = dtype.default_value().unwrap();
+        let array = dtype.default_arrow_array().unwrap();
         // The canonical-default exception admits the logical-null default back
         // through a non-nullable Field...
-        let field = Field::new("value", data_type.clone(), false);
+        let field = Field::new("value", dtype.clone(), false);
         assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), expected);
         // ...and the typed pairing projects the same null-only default out
         // through its synthetic non-nullable Field.
-        let typed = TypedScalar::from_parts(data_type, expected).unwrap();
+        let typed = TypedScalar::from_parts(dtype, expected).unwrap();
         assert_eq!(typed.into_arrow_array().unwrap().as_ref(), array.as_ref());
     }
 
@@ -196,7 +196,7 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
 
 #[test]
 fn nullable_dictionary_null_keys_decode_as_native_null() {
-    let data_type = DataType::dictionary(DataType::Int8, DataType::Utf8).unwrap();
+    let dtype = DataType::dictionary(DataType::Int8, DataType::Utf8).unwrap();
     let array: ArrayRef = Arc::new(
         DictionaryArray::<Int8Type>::try_new(
             Int8Array::from(vec![None]),
@@ -205,7 +205,7 @@ fn nullable_dictionary_null_keys_decode_as_native_null() {
         .unwrap(),
     );
     assert_eq!(
-        scalar_value(&Field::new("encoded", data_type, true), array.as_ref()).unwrap(),
+        scalar_value(&Field::new("encoded", dtype, true), array.as_ref()).unwrap(),
         Scalar::Null
     );
 }

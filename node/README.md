@@ -177,7 +177,7 @@ class Trade {
 const trade = intoField(Trade)
 console.assert(intoField(new Trade()) === trade)
 console.assert(builds === 1)
-console.assert(trade.dataType.kind === 'struct')
+console.assert(trade.dtype.kind === 'struct')
 ```
 
 `intoField(value, name?)` is the one dynamic field converter. A class exposes
@@ -210,7 +210,7 @@ console.assert(value[0] === 0 && value[1] === null)
 console.assert(payload.defaultJSHint().constructor === Array)
 console.assert(fields.int32('id', { nullable: false }).defaultArrowScalar() === 0)
 console.assert(
-  fields.uint8('small').intoSchemeCompat('spark').dataType.kind === 'int16',
+  fields.uint8('small').intoSchemeCompat('spark').dtype.kind === 'int16',
 )
 ```
 
@@ -257,7 +257,7 @@ const tags = fields.list('tags', fields.utf8('item'))
 const row = DataType.fromFields([id, tags])
 
 console.assert(id instanceof Field)
-console.assert(tags.dataType.kind === 'list')
+console.assert(tags.dtype.kind === 'list')
 console.assert(row.kind === 'struct')
 console.assert(id.showDiff(id) === '✓ equal')
 console.assert([...id.showDiffs(fields.int64('id'))].length > 0)

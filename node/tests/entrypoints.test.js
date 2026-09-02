@@ -426,7 +426,7 @@ test('field-class records infer and cache intoStructField', (t) => {
   handle.appendRecords([new Trade({ id: 3n, venue: 'XLON' })])
   assert.equal(accesses, 1)
   assert.deepEqual(
-    Array.from(handle.readArrowField().dataType, (child) => child.name),
+    Array.from(handle.readArrowField().dtype, (child) => child.name),
     ['id', 'venue'],
   )
 

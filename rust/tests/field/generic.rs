@@ -23,15 +23,15 @@ fn canonical_field_preserves_unicode_quotes_commas_and_metadata() {
 fn parser_accepts_sql_hive_and_arrow_shapes() {
     let sql = Field::from_str("order_id BIGINT NOT NULL").unwrap();
     assert_eq!(sql.name(), "order_id");
-    assert_eq!(sql.data_type(), &DataType::Int64);
+    assert_eq!(sql.dtype(), &DataType::Int64);
     assert!(!sql.is_nullable());
 
     let hive = Field::from_str("events:array<struct<id:bigint,name:string>>").unwrap();
     assert!(hive.is_nullable());
-    assert_eq!(hive.data_type().field_len(), 1);
+    assert_eq!(hive.dtype().field_len(), 1);
 
     let arrow = Field::from_str(
-        r#"Field { name: "id", data_type: Int64, nullable: false, metadata: {"source":"arrow"} }"#,
+        r#"Field { name: "id", dtype: Int64, nullable: false, metadata: {"source":"arrow"} }"#,
     )
     .unwrap();
     assert_eq!(
@@ -44,16 +44,16 @@ fn parser_accepts_sql_hive_and_arrow_shapes() {
 fn parser_accepts_flexible_sql_whitespace_and_doubled_quotes() {
     let spaced = Field::from_str("trade_id\tBIGINT \n NOT \t NULL").unwrap();
     assert_eq!(spaced.name(), "trade_id");
-    assert_eq!(spaced.data_type(), &DataType::Int64);
+    assert_eq!(spaced.dtype(), &DataType::Int64);
     assert!(!spaced.is_nullable());
 
     let single_quoted = Field::from_str("'owner''s code'   VARCHAR(32)").unwrap();
     assert_eq!(single_quoted.name(), "owner's code");
-    assert_eq!(single_quoted.data_type(), &DataType::Utf8);
+    assert_eq!(single_quoted.dtype(), &DataType::Utf8);
 
     let double_quoted = Field::from_str(r#""desk""label" STRING"#).unwrap();
     assert_eq!(double_quoted.name(), "desk\"label");
-    assert_eq!(double_quoted.data_type(), &DataType::Utf8);
+    assert_eq!(double_quoted.dtype(), &DataType::Utf8);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn native_order_hash_json_and_stable_hash_are_value_based() {
 }
 
 #[test]
-fn structural_json_uses_tagged_data_types_and_rejects_bad_shapes() {
+fn structural_json_uses_tagged_dtypes_and_rejects_bad_shapes() {
     let field = Field::new(
         "payload",
         DataType::from_str("struct<id:bigint,tags:array<string>>").unwrap(),
@@ -125,17 +125,17 @@ fn structural_json_uses_tagged_data_types_and_rejects_bad_shapes() {
     let field_json = field.into_json().unwrap();
     let field_value: serde_json::Value = serde_json::from_str(&field_json).unwrap();
     assert!(field_value.is_object());
-    assert_eq!(field_value["data_type"]["type"], "struct");
+    assert_eq!(field_value["dtype"]["type"], "struct");
 
     assert!(
         Field::from_json(
-            r#"{"name":"id","data_type":{"type":"int64"},"nullable":false,"unknown":true}"#,
+            r#"{"name":"id","dtype":{"type":"int64"},"nullable":false,"unknown":true}"#,
         )
         .is_err()
     );
     assert!(
         Field::from_json(
-            r#"{"name":"id","data_type":{"type":"int64"},"nullable":false,"dictionary_id":7}"#,
+            r#"{"name":"id","dtype":{"type":"int64"},"nullable":false,"dictionary_id":7}"#,
         )
         .is_err()
     );
@@ -252,14 +252,14 @@ fn no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it() {
 }
 
 #[test]
-fn invalid_data_type_replacement_is_transactional() {
+fn invalid_dtype_replacement_is_transactional() {
     let mut field = Field::new("value", DataType::Utf8, true);
     assert!(
         field
-            .set_data_type(DataType::Time32(TimeUnit::Nanosecond))
+            .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
             .is_err()
     );
-    assert_eq!(field.data_type(), &DataType::Utf8);
+    assert_eq!(field.dtype(), &DataType::Utf8);
 }
 
 #[test]
@@ -977,7 +977,7 @@ fn datatype_builds_fields_in_schema_reading_order() {
 
     // A nested type composes without naming the inner type twice.
     let tags = DataType::list(DataType::Utf8.nullable_field("item")).nullable_field("tags");
-    assert!(tags.data_type().is_nested());
+    assert!(tags.dtype().is_nested());
     assert_eq!(tags.name(), "tags");
 }
 
@@ -1269,7 +1269,7 @@ fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
     // schema never renumbers the columns that were already there.
     let mut evolved = schema
         .clone()
-        .try_with_data_type(
+        .try_with_dtype(
             DataType::from_fields(
                 schema
                     .fields()
@@ -1361,19 +1361,19 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     order.insert_metadata("owner", "trading").unwrap();
 
     // By name and by position, on the Field and on the DataType alike.
-    assert_eq!(order["id"].data_type(), &DataType::Int64);
+    assert_eq!(order["id"].dtype(), &DataType::Int64);
     assert_eq!(order[0].name(), "id");
-    assert_eq!(order.data_type()["id"].data_type(), &DataType::Int64);
-    assert_eq!(order.data_type()[1].name(), "line");
+    assert_eq!(order.dtype()["id"].dtype(), &DataType::Int64);
+    assert_eq!(order.dtype()[1].name(), "line");
 
     // Chained descent, two levels and through a List and a Map.
-    assert_eq!(order["line"]["price"].data_type(), &DataType::Float64);
+    assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
     assert_eq!(order["tags"][0].name(), "tag");
     assert_eq!(
-        order["counts"]["entries"]["key"].data_type(),
+        order["counts"]["entries"]["key"].dtype(),
         &DataType::Utf8
     );
-    assert_eq!(order["counts"][0]["value"].data_type(), &DataType::Int64);
+    assert_eq!(order["counts"][0]["value"].dtype(), &DataType::Int64);
 
     // Metadata is not reachable by subscript any more, and is still reachable
     // through its own view and the named accessor.
@@ -1420,7 +1420,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
-    assert_eq!(row["id"].data_type(), &DataType::Utf8);
+    assert_eq!(row["id"].dtype(), &DataType::Utf8);
 
     // An unknown name appends.
     row.set_field_by_name("price", DataType::Float64.nullable_field("price"))
@@ -1432,7 +1432,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     row.set_field(1, DataType::Int32.required_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 3);
-    assert_eq!(row["venue"].data_type(), &DataType::Int32);
+    assert_eq!(row["venue"].dtype(), &DataType::Int32);
     let refused = row
         .set_field(9, DataType::Int64.required_field("late"))
         .unwrap_err();

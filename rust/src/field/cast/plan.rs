@@ -84,7 +84,7 @@ pub trait ArrowCast {
 
 impl ArrowCast for DataType {
     fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<ArrayRef> {
-        let plan = ArrayCastPlan::new_data_type(self, array.data_type(), safe)?;
+        let plan = ArrayCastPlan::new_dtype(self, array.data_type(), safe)?;
         let mut budget = MaterializationBudget::default();
         plan.cast(array, &mut budget)
     }
@@ -122,7 +122,7 @@ pub(crate) fn cast_record_batch(
             "record-batch cast target Struct Field must be non-nullable".to_owned(),
         ));
     }
-    if target.data_type().as_fields().is_none() {
+    if target.dtype().as_fields().is_none() {
         return Err(Error::IncompatibleSchema(format!(
             "record-batch cast target {:?} must have a struct datatype",
             target.name()
@@ -236,14 +236,14 @@ enum ListPlanKind {
 }
 
 impl ArrayCastPlan {
-    fn new_data_type(
-        data_type: &DataType,
+    fn new_dtype(
+        dtype: &DataType,
         source_type: &ArrowDataType,
         safe: bool,
     ) -> Result<Self> {
-        data_type.validate_bounded()?;
+        dtype.validate_bounded()?;
         Self::new_nested_validated(
-            &Field::new("value", data_type.clone(), false),
+            &Field::new("value", dtype.clone(), false),
             source_type,
             safe,
             NullPolicy::DataType,
@@ -311,11 +311,11 @@ impl ArrayCastPlan {
         // A geospatial target validates WKB on the way in, so an exact Binary
         // source must still take the planned path rather than the shortcut.
         let ingest_validated = matches!(
-            field.data_type(),
+            field.dtype(),
             DataType::Geometry(_) | DataType::Geography(_)
         );
         let kind = if source_type == &expected
-            && !is_reconcilable_nested(field.data_type())
+            && !is_reconcilable_nested(field.dtype())
             && !ingest_validated
         {
             ArrayCastKind::Exact
@@ -350,8 +350,8 @@ impl ArrayCastPlan {
         struct_policy: StructPolicy,
         may_be_fully_hidden: bool,
     ) -> Result<ArrayCastKind> {
-        let data_type = field.data_type();
-        let kind = match (data_type, source_type) {
+        let dtype = field.dtype();
+        let kind = match (dtype, source_type) {
             // The three extension-typed variants follow declared rules, never
             // the positional kernel: WKB is validated entering a geospatial
             // column, WKT needs a parser this workspace deliberately lacks,
@@ -364,20 +364,20 @@ impl ArrayCastPlan {
                 | ArrowDataType::FixedSizeBinary(_) => ArrayCastKind::GeospatialIngest,
                 ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View => {
                     return Err(Error::Unsupported {
-                        kind: data_type.name(),
+                        kind: dtype.name(),
                         reason: format!(
                             "casting text to {} would need the WKT parser this workspace \
                              deliberately does not have yet",
-                            data_type.name()
+                            dtype.name()
                         ),
                     });
                 }
                 other => {
                     return Err(Error::Unsupported {
-                        kind: data_type.name(),
+                        kind: dtype.name(),
                         reason: format!(
                             "expected a binary column of WKB payloads to cast into {}, got {other:?}",
-                            data_type.name()
+                            dtype.name()
                         ),
                     });
                 }
@@ -389,7 +389,7 @@ impl ArrayCastPlan {
                     ArrayCastKind::Kernel
                 } else {
                     return Err(Error::Unsupported {
-                        kind: data_type.name(),
+                        kind: dtype.name(),
                         reason: format!(
                             "casting {source:?} to variant goes through the variant codec, \
                              which lands with the Iceberg v3 layer"
@@ -610,9 +610,9 @@ impl ArrayCastPlan {
                     )?),
                 }
             }
-            _ if contains_struct(data_type) => {
+            _ if contains_struct(dtype) => {
                 return Err(Error::Unsupported {
-                    kind: data_type.name(),
+                    kind: dtype.name(),
                     reason: "a wrapper/layout change around Struct values is not supported because positional Arrow casting would bypass case-insensitive name reconciliation".to_owned(),
                 });
             }
@@ -631,7 +631,7 @@ impl ArrayCastPlan {
             },
             _ => {
                 return Err(Error::Unsupported {
-                    kind: data_type.name(),
+                    kind: dtype.name(),
                     reason: format!(
                         "Arrow cannot cast source datatype {source_type:?} to target datatype {expected:?}"
                     ),
@@ -701,7 +701,7 @@ impl ArrayCastPlan {
                 let has_visible_value = exposed > logical_nulls;
                 if has_visible_value {
                     return Err(Error::Unsupported {
-                        kind: self.field.data_type().name(),
+                        kind: self.field.dtype().name(),
                         reason: reason.clone(),
                     });
                 }
@@ -748,7 +748,7 @@ impl ArrayCastPlan {
             )?;
         }
         let null_count =
-            exposed_logical_null_count(cast.as_ref(), self.field.data_type(), exposure)?;
+            exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?;
         match self.null_policy {
             NullPolicy::Reject if null_count != 0 => {
                 return Err(Error::IncompatibleSchema(format!(
@@ -775,13 +775,13 @@ impl ArrayCastPlan {
             if matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
                 && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
             {
-                exposed_logical_null_count(cast.as_ref(), self.field.data_type(), exposure)?
+                exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
             } else {
                 0
             };
         if remaining_nulls != 0 {
             let default = if matches!(self.null_policy, NullPolicy::DataType) {
-                self.field.data_type().default_arrow_array()?
+                self.field.dtype().default_arrow_array()?
             } else {
                 self.field.default_arrow_array()?
             };
@@ -1040,7 +1040,7 @@ impl ArrayCastPlan {
                 ordered,
             )?) as ArrayRef
         };
-        let DataType::Map(target_map) = self.field.data_type() else {
+        let DataType::Map(target_map) = self.field.dtype() else {
             return Err(internal_target_error("map"));
         };
         if !unchanged || source_map != target_map.as_ref() {
@@ -1068,7 +1068,7 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     let Some(source) = source else {
         return Ok(());
     };
-    match (target.data_type(), source) {
+    match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
@@ -1082,7 +1082,7 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             DataType::Geometry(target_geospatial) | DataType::Geography(target_geospatial),
             RecognizedExtension::Geospatial(source_geospatial),
         ) => {
-            let target_kind = target.data_type().name();
+            let target_kind = target.dtype().name();
             match (target_geospatial.algorithm(), source_geospatial.algorithm()) {
                 (None, Some(algorithm)) => Err(Error::Unsupported {
                     kind: target_kind,
@@ -1150,7 +1150,7 @@ fn validate_wkb_ingest(
             Error::IncompatibleSchema(format!(
                 "field {:?} row {index}: expected WKB bytes for a {} value, got {error}",
                 field.name(),
-                field.data_type().name(),
+                field.dtype().name(),
             ))
         })?;
     }
@@ -1183,7 +1183,7 @@ fn render_wkt_array(
         })?;
         maximum = maximum.max(text.len());
     }
-    budget.add_array(field.data_type(), source.len())?;
+    budget.add_array(field.dtype(), source.len())?;
     budget.add_bytes(total)?;
     // View outputs keep the largest logical value alive while the final view
     // buffers are appended.
@@ -1234,12 +1234,12 @@ fn validate_map_invariants(
     let array = downcast::<MapArray>(array)?;
     let phase = budget.mark();
     let keys = array.entries().column(0);
-    let Some([key_field, _]) = map.entries().data_type().as_fields() else {
+    let Some([key_field, _]) = map.entries().dtype().as_fields() else {
         return Err(Error::IncompatibleSchema(
             "map entries must contain key and value fields".to_owned(),
         ));
     };
-    let compare = make_yggdryl_key_comparator(key_field.data_type(), keys, budget)?;
+    let compare = make_yggdryl_key_comparator(key_field.dtype(), keys, budget)?;
     let offsets = array.value_offsets();
 
     let mut maximum_row_len = 0usize;
@@ -1271,7 +1271,7 @@ fn validate_map_invariants(
         }
         let (start, end) = offset_pair(i64::from(offsets[row]), i64::from(offsets[row + 1]))?;
         for index in start..end {
-            if logical_null_at(keys.as_ref(), key_field.data_type(), index)? {
+            if logical_null_at(keys.as_ref(), key_field.dtype(), index)? {
                 return Err(Error::IncompatibleSchema(format!(
                     "map row {row} has a null key at entry {}",
                     index - start
@@ -1314,8 +1314,8 @@ fn validate_map_invariants(
     Ok(())
 }
 
-fn requires_yggdryl_key_comparator(data_type: &DataType) -> bool {
-    match data_type {
+fn requires_yggdryl_key_comparator(dtype: &DataType) -> bool {
+    match dtype {
         DataType::Float16
         | DataType::Float32
         | DataType::Float64
@@ -1327,18 +1327,18 @@ fn requires_yggdryl_key_comparator(data_type: &DataType) -> bool {
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
         | DataType::LargeList(child)
-        | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.data_type()),
+        | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
         DataType::Struct(fields) => fields
             .iter()
-            .any(|field| requires_yggdryl_key_comparator(field.data_type())),
-        DataType::Map(map) => requires_yggdryl_key_comparator(map.entries().data_type()),
+            .any(|field| requires_yggdryl_key_comparator(field.dtype())),
+        DataType::Map(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
         _ => false,
     }
 }
 
-fn has_derived_logical_nulls(data_type: &DataType) -> bool {
+fn has_derived_logical_nulls(dtype: &DataType) -> bool {
     matches!(
-        data_type,
+        dtype,
         DataType::Null | DataType::Dictionary(_) | DataType::Union(..) | DataType::RunEndEncoded(_)
     )
 }
@@ -1346,11 +1346,11 @@ fn has_derived_logical_nulls(data_type: &DataType) -> bool {
 fn wrap_yggdryl_nulls(
     left: &ArrayRef,
     right: &ArrayRef,
-    data_type: &DataType,
+    dtype: &DataType,
     compare: DynComparator,
     budget: &mut MaterializationBudget,
 ) -> Result<DynComparator> {
-    if has_derived_logical_nulls(data_type) {
+    if has_derived_logical_nulls(dtype) {
         budget.add_bitmap(left.len())?;
         if !Arc::ptr_eq(left, right) {
             budget.add_bitmap(right.len())?;
@@ -1476,7 +1476,7 @@ fn run_key_comparator<R: RunEndIndexType>(
     let left_values = Arc::clone(left_source.values());
     let right_values = Arc::clone(right_source.values());
     let value_compare = make_yggdryl_comparator(
-        encoded.values().data_type(),
+        encoded.values().dtype(),
         &left_values,
         &right_values,
         budget,
@@ -1493,22 +1493,22 @@ fn run_key_comparator<R: RunEndIndexType>(
 
 #[allow(clippy::too_many_lines)] // Recurses only where native Scalar ordering differs from Arrow.
 fn make_yggdryl_key_comparator(
-    data_type: &DataType,
+    dtype: &DataType,
     array: &ArrayRef,
     budget: &mut MaterializationBudget,
 ) -> Result<DynComparator> {
-    make_yggdryl_comparator(data_type, array, array, budget)
+    make_yggdryl_comparator(dtype, array, array, budget)
 }
 
 #[allow(clippy::too_many_lines)] // Recurses only where native Scalar ordering differs from Arrow.
 fn make_yggdryl_comparator(
-    data_type: &DataType,
+    dtype: &DataType,
     left: &ArrayRef,
     right: &ArrayRef,
     budget: &mut MaterializationBudget,
 ) -> Result<DynComparator> {
-    if !requires_yggdryl_key_comparator(data_type) {
-        if has_derived_logical_nulls(data_type) {
+    if !requires_yggdryl_key_comparator(dtype) {
+        if has_derived_logical_nulls(dtype) {
             budget.add_bitmap(left.len())?;
             if !Arc::ptr_eq(left, right) {
                 budget.add_bitmap(right.len())?;
@@ -1518,7 +1518,7 @@ fn make_yggdryl_comparator(
             .map_err(Into::into);
     }
 
-    let compare: DynComparator = match data_type {
+    let compare: DynComparator = match dtype {
         DataType::Float16 => {
             let left_values = downcast::<Float16Array>(left.as_ref())?.values().clone();
             let right_values = downcast::<Float16Array>(right.as_ref())?.values().clone();
@@ -1562,7 +1562,7 @@ fn make_yggdryl_comparator(
             let left_values = Arc::clone(left_source.values());
             let right_values = Arc::clone(right_source.values());
             let child_compare =
-                make_yggdryl_comparator(child.data_type(), &left_values, &right_values, budget)?;
+                make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
             Box::new(move |left, right| {
                 let left = left_offsets[left].as_usize()..left_offsets[left + 1].as_usize();
                 let right = right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
@@ -1583,7 +1583,7 @@ fn make_yggdryl_comparator(
             let left_values = Arc::clone(left_source.values());
             let right_values = Arc::clone(right_source.values());
             let child_compare =
-                make_yggdryl_comparator(child.data_type(), &left_values, &right_values, budget)?;
+                make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
             Box::new(move |left, right| {
                 let left = left_offsets[left].as_usize()..left_offsets[left + 1].as_usize();
                 let right = right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
@@ -1606,7 +1606,7 @@ fn make_yggdryl_comparator(
             let left_values = Arc::clone(left_source.values());
             let right_values = Arc::clone(right_source.values());
             let child_compare =
-                make_yggdryl_comparator(child.data_type(), &left_values, &right_values, budget)?;
+                make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
             Box::new(move |left, right| {
                 let left_start = left_offsets[left].as_usize();
                 let right_start = right_offsets[right].as_usize();
@@ -1631,7 +1631,7 @@ fn make_yggdryl_comparator(
             let left_values = Arc::clone(left_source.values());
             let right_values = Arc::clone(right_source.values());
             let child_compare =
-                make_yggdryl_comparator(child.data_type(), &left_values, &right_values, budget)?;
+                make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
             Box::new(move |left, right| {
                 let left_start = left_offsets[left].as_usize();
                 let right_start = right_offsets[right].as_usize();
@@ -1650,7 +1650,7 @@ fn make_yggdryl_comparator(
             let left_values = Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
             let right_values = Arc::clone(downcast::<FixedSizeListArray>(right.as_ref())?.values());
             let child_compare =
-                make_yggdryl_comparator(child.data_type(), &left_values, &right_values, budget)?;
+                make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
             let size = usize::try_from(*size).map_err(|_| {
                 Error::IncompatibleSchema("map key fixed-list size is negative".to_owned())
             })?;
@@ -1674,7 +1674,7 @@ fn make_yggdryl_comparator(
                 .zip(left_source.columns())
                 .zip(right_source.columns())
                 .map(|((field, left), right)| {
-                    make_yggdryl_comparator(field.data_type(), left, right, budget)
+                    make_yggdryl_comparator(field.dtype(), left, right, budget)
                 })
                 .collect::<Result<Vec<_>>>()?;
             Box::new(move |left, right| {
@@ -1693,7 +1693,7 @@ fn make_yggdryl_comparator(
             let left_entries: ArrayRef = Arc::new(left_source.entries().clone());
             let right_entries: ArrayRef = Arc::new(right_source.entries().clone());
             let entry_compare = make_yggdryl_comparator(
-                map.entries().data_type(),
+                map.entries().dtype(),
                 &left_entries,
                 &right_entries,
                 budget,
@@ -1749,7 +1749,7 @@ fn make_yggdryl_comparator(
                 comparators.insert(
                     type_id,
                     make_yggdryl_comparator(
-                        field.data_type(),
+                        field.dtype(),
                         left_source.child(type_id),
                         right_source.child(type_id),
                         budget,
@@ -1775,7 +1775,7 @@ fn make_yggdryl_comparator(
             })
         }
         DataType::RunEndEncoded(encoded) => {
-            return match encoded.run_ends().data_type() {
+            return match encoded.run_ends().dtype() {
                 DataType::Int16 => run_key_comparator::<Int16Type>(left, right, encoded, budget),
                 DataType::Int32 => run_key_comparator::<Int32Type>(left, right, encoded, budget),
                 DataType::Int64 => run_key_comparator::<Int64Type>(left, right, encoded, budget),
@@ -1791,10 +1791,10 @@ fn make_yggdryl_comparator(
     };
     // Union's native representation is always a present `[id, payload]`
     // sequence. Every other sensitive wrapper follows ordinary Scalar nulls.
-    if matches!(data_type, DataType::Union(..)) {
+    if matches!(dtype, DataType::Union(..)) {
         Ok(compare)
     } else {
-        wrap_yggdryl_nulls(left, right, data_type, compare, budget)
+        wrap_yggdryl_nulls(left, right, dtype, compare, budget)
     }
 }
 
@@ -2010,26 +2010,26 @@ fn cast_run_planned(
     Ok(make_array(data))
 }
 
-fn contains_struct(data_type: &DataType) -> bool {
-    match data_type {
+fn contains_struct(dtype: &DataType) -> bool {
+    match dtype {
         DataType::Struct(_) | DataType::Map(_) => true,
         DataType::List(field)
         | DataType::ListView(field)
         | DataType::FixedSizeList(field, _)
         | DataType::LargeList(field)
-        | DataType::LargeListView(field) => contains_struct(field.data_type()),
+        | DataType::LargeListView(field) => contains_struct(field.dtype()),
         DataType::Union(fields, _) => fields
             .iter()
-            .any(|(_, field)| contains_struct(field.data_type())),
+            .any(|(_, field)| contains_struct(field.dtype())),
         DataType::Dictionary(dictionary) => contains_struct(dictionary.value()),
-        DataType::RunEndEncoded(encoded) => contains_struct(encoded.values().data_type()),
+        DataType::RunEndEncoded(encoded) => contains_struct(encoded.values().dtype()),
         _ => false,
     }
 }
 
-fn is_reconcilable_nested(data_type: &DataType) -> bool {
+fn is_reconcilable_nested(dtype: &DataType) -> bool {
     matches!(
-        data_type,
+        dtype,
         DataType::List(_)
             | DataType::ListView(_)
             | DataType::FixedSizeList(_, _)
@@ -2078,18 +2078,18 @@ fn run_logical_null_at<R: RunEndIndexType>(
     let array = downcast::<RunArray<R>>(array)?;
     logical_null_at(
         array.values().as_ref(),
-        encoded.values().data_type(),
+        encoded.values().dtype(),
         array.get_physical_index(index),
     )
 }
 
-fn logical_null_at(array: &dyn Array, data_type: &DataType, index: usize) -> Result<bool> {
+fn logical_null_at(array: &dyn Array, dtype: &DataType, index: usize) -> Result<bool> {
     if index >= array.len() {
         return Err(Error::IncompatibleSchema(
             "logical-null index exceeds its Arrow array".to_owned(),
         ));
     }
-    match data_type {
+    match dtype {
         DataType::Null => Ok(true),
         DataType::Dictionary(dictionary) => match dictionary.key() {
             DataType::Int8 => dictionary_logical_null_at::<Int8Type>(array, dictionary, index),
@@ -2118,11 +2118,11 @@ fn logical_null_at(array: &dyn Array, data_type: &DataType, index: usize) -> Res
                 })?;
             logical_null_at(
                 array.child(type_id).as_ref(),
-                field.data_type(),
+                field.dtype(),
                 array.value_offset(index),
             )
         }
-        DataType::RunEndEncoded(encoded) => match encoded.run_ends().data_type() {
+        DataType::RunEndEncoded(encoded) => match encoded.run_ends().dtype() {
             DataType::Int16 => run_logical_null_at::<Int16Type>(array, encoded, index),
             DataType::Int32 => run_logical_null_at::<Int32Type>(array, encoded, index),
             DataType::Int64 => run_logical_null_at::<Int64Type>(array, encoded, index),
@@ -2155,7 +2155,7 @@ fn run_exposed_logical_null_count<R: RunEndIndexType>(
         let end = end.as_usize();
         if logical_null_at(
             array.values().as_ref(),
-            encoded.values().data_type(),
+            encoded.values().dtype(),
             first_physical + offset,
         )? {
             let visible = exposure.map_or(end - start, |exposure| {
@@ -2172,7 +2172,7 @@ fn run_exposed_logical_null_count<R: RunEndIndexType>(
 
 fn exposed_logical_null_count(
     array: &dyn Array,
-    data_type: &DataType,
+    dtype: &DataType,
     exposure: Option<&BooleanBuffer>,
 ) -> Result<usize> {
     if exposure.is_some_and(|exposure| exposure.len() != array.len()) {
@@ -2180,8 +2180,8 @@ fn exposed_logical_null_count(
             "logical-null exposure has the wrong length".to_owned(),
         ));
     }
-    if let DataType::RunEndEncoded(encoded) = data_type {
-        return match encoded.run_ends().data_type() {
+    if let DataType::RunEndEncoded(encoded) = dtype {
+        return match encoded.run_ends().dtype() {
             DataType::Int16 => {
                 run_exposed_logical_null_count::<Int16Type>(array, encoded, exposure)
             }
@@ -2198,7 +2198,7 @@ fn exposed_logical_null_count(
     }
     let mut null_count = 0usize;
     for index in 0..array.len() {
-        if is_exposed(exposure, index) && logical_null_at(array, data_type, index)? {
+        if is_exposed(exposure, index) && logical_null_at(array, dtype, index)? {
             null_count += 1;
         }
     }
@@ -2207,13 +2207,13 @@ fn exposed_logical_null_count(
 
 fn logical_validity_buffer(
     array: &dyn Array,
-    data_type: &DataType,
+    dtype: &DataType,
     budget: &mut MaterializationBudget,
 ) -> Result<arrow_buffer::NullBuffer> {
     budget.add_bitmap(array.len())?;
     let mut builder = BooleanBufferBuilder::new(array.len());
     for index in 0..array.len() {
-        builder.append(!logical_null_at(array, data_type, index)?);
+        builder.append(!logical_null_at(array, dtype, index)?);
     }
     Ok(arrow_buffer::NullBuffer::new(builder.build()))
 }
@@ -2563,7 +2563,7 @@ fn reserve_run_source_take<R: RunEndIndexType>(
         }
         Ok(())
     })?;
-    budget.add_array(encoded.run_ends().data_type(), run_count)?;
+    budget.add_array(encoded.run_ends().dtype(), run_count)?;
     budget.add_array_layout(&DataType::UInt32, run_count)?;
 
     let mut value_indices = Vec::new();
@@ -2587,7 +2587,7 @@ fn reserve_run_source_take<R: RunEndIndexType>(
     })?;
     reserve_source_selection(
         source.values().as_ref(),
-        encoded.values().data_type(),
+        encoded.values().dtype(),
         SourceSelection::Indices(&value_indices),
         budget,
     )
@@ -2687,7 +2687,7 @@ fn reserve_source_children_and_payload(
             )?;
             reserve_source_selection(
                 array.values().as_ref(),
-                child.data_type(),
+                child.dtype(),
                 SourceSelection::Ranges(&ranges),
                 budget,
             )?;
@@ -2705,7 +2705,7 @@ fn reserve_source_children_and_payload(
             )?;
             reserve_source_selection(
                 array.values().as_ref(),
-                child.data_type(),
+                child.dtype(),
                 SourceSelection::Ranges(&ranges),
                 budget,
             )?;
@@ -2742,7 +2742,7 @@ fn reserve_source_children_and_payload(
             budget.add_array_layout(&DataType::UInt32, child_count)?;
             reserve_source_selection(
                 array.values().as_ref(),
-                child.data_type(),
+                child.dtype(),
                 SourceSelection::Ranges(&ranges),
                 budget,
             )?;
@@ -2755,7 +2755,7 @@ fn reserve_source_children_and_payload(
                 ));
             }
             for (field, child) in fields.iter().zip(array.columns()) {
-                reserve_source_selection(child.as_ref(), field.data_type(), selection, budget)?;
+                reserve_source_selection(child.as_ref(), field.dtype(), selection, budget)?;
             }
         }
         DataType::Map(map) => {
@@ -2771,7 +2771,7 @@ fn reserve_source_children_and_payload(
             )?;
             reserve_source_selection(
                 array.entries(),
-                map.entries().data_type(),
+                map.entries().dtype(),
                 SourceSelection::Ranges(&ranges),
                 budget,
             )?;
@@ -2781,7 +2781,7 @@ fn reserve_source_children_and_payload(
             for (type_id, field) in fields {
                 reserve_source_selection(
                     array.child(type_id).as_ref(),
-                    field.data_type(),
+                    field.dtype(),
                     selection,
                     budget,
                 )?;
@@ -2813,13 +2813,13 @@ fn reserve_source_children_and_payload(
                 })?;
                 reserve_source_selection(
                     array.child(type_id).as_ref(),
-                    field.data_type(),
+                    field.dtype(),
                     SourceSelection::Indices(&branch),
                     budget,
                 )?;
             }
         }
-        DataType::RunEndEncoded(encoded) => match encoded.run_ends().data_type() {
+        DataType::RunEndEncoded(encoded) => match encoded.run_ends().dtype() {
             DataType::Int16 => reserve_run_source_take(
                 downcast::<Int16RunArray>(array)?,
                 encoded,
@@ -2933,16 +2933,16 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
                 })?;
             projected_byte_len(
                 union.child(type_id).as_ref(),
-                field.data_type(),
+                field.dtype(),
                 union.value_offset(index),
             )?
         }
-        DataType::RunEndEncoded(encoded) => match encoded.run_ends().data_type() {
+        DataType::RunEndEncoded(encoded) => match encoded.run_ends().dtype() {
             DataType::Int16 => {
                 let run = downcast::<Int16RunArray>(array)?;
                 projected_byte_len(
                     run.values().as_ref(),
-                    encoded.values().data_type(),
+                    encoded.values().dtype(),
                     run.get_physical_index(index),
                 )?
             }
@@ -2950,7 +2950,7 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
                 let run = downcast::<Int32RunArray>(array)?;
                 projected_byte_len(
                     run.values().as_ref(),
-                    encoded.values().data_type(),
+                    encoded.values().dtype(),
                     run.get_physical_index(index),
                 )?
             }
@@ -2958,7 +2958,7 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
                 let run = downcast::<Int64RunArray>(array)?;
                 projected_byte_len(
                     run.values().as_ref(),
-                    encoded.values().data_type(),
+                    encoded.values().dtype(),
                     run.get_physical_index(index),
                 )?
             }
@@ -3108,13 +3108,13 @@ fn arrow_cast_exposed(
         if array.data_type() == expected {
             return Ok(Arc::clone(array));
         }
-        budget.add_array(target.data_type(), array.len())?;
+        budget.add_array(target.dtype(), array.len())?;
         let source_type = DataType::from_arrow(array.data_type())?;
         let full = [(0, array.len())];
         reserve_cast_output_payload(
             array.as_ref(),
             &source_type,
-            target.data_type(),
+            target.dtype(),
             SourceSelection::Ranges(&full),
             budget,
         )?;
@@ -3133,11 +3133,11 @@ fn arrow_cast_exposed(
         // layout and copied payload before invoking Arrow's take kernel.
         budget.add_array(&DataType::UInt32, selected_count)?;
         budget.add_array(&DataType::UInt32, array.len())?;
-        budget.add_array(target.data_type(), selected_count)?;
-        budget.add_array(target.data_type(), array.len())?;
+        budget.add_array(target.dtype(), selected_count)?;
+        budget.add_array(target.dtype(), array.len())?;
         if !target.is_nullable() {
-            budget.add_array(target.data_type(), 1)?;
-            budget.add_array(target.data_type(), array.len())?;
+            budget.add_array(target.dtype(), 1)?;
+            budget.add_array(target.dtype(), array.len())?;
         }
         let mut selected = Vec::new();
         selected
@@ -3160,7 +3160,7 @@ fn arrow_cast_exposed(
         reserve_selected_source_take(
             array.as_ref(),
             &selected,
-            target.data_type(),
+            target.dtype(),
             if target.is_nullable() { 2 } else { 3 },
             budget,
         )?;
@@ -3194,7 +3194,7 @@ fn arrow_cast_exposed(
         let mask = BooleanArray::new(exposure.clone(), None);
         let placeholder = crate::arrow::value::physical_placeholder_for_field(target)?;
         let placeholder = crate::arrow::value::array_from_values(target, &[&placeholder])?;
-        let (scattered, placeholder) = if contains_dictionary(target.data_type()) {
+        let (scattered, placeholder) = if contains_dictionary(target.dtype()) {
             align_nested_dictionaries(
                 target,
                 &scattered,
@@ -3217,12 +3217,12 @@ fn arrow_cast_exposed(
     let full = [(0, output.len())];
     reserve_source_selection(
         output.as_ref(),
-        target.data_type(),
+        target.dtype(),
         SourceSelection::Ranges(&full),
         budget,
     )?;
-    if contains_dictionary(target.data_type()) {
-        reserve_new_dictionary_vocabularies(&output, array, target.data_type(), budget)?;
+    if contains_dictionary(target.dtype()) {
+        reserve_new_dictionary_vocabularies(&output, array, target.dtype(), budget)?;
     }
     Ok(output)
 }
@@ -3230,18 +3230,18 @@ fn arrow_cast_exposed(
 fn fill_nulls(
     field: &Field,
     array: ArrayRef,
-    data_type_semantics: bool,
+    dtype_semantics: bool,
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    if data_type_semantics && field.data_type().is_default_value(&Scalar::Null)? {
+    if dtype_semantics && field.dtype().is_default_value(&Scalar::Null)? {
         return Ok(array);
     }
-    if let DataType::Dictionary(dictionary) = field.data_type() {
+    if let DataType::Dictionary(dictionary) = field.dtype() {
         return fill_dictionary_nulls(field, dictionary, array, exposure, budget);
     }
     let phase = budget.mark();
-    let logical = logical_validity_buffer(array.as_ref(), field.data_type(), budget)?;
+    let logical = logical_validity_buffer(array.as_ref(), field.dtype(), budget)?;
     let default_count = (0..array.len())
         .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
         .count();
@@ -3250,7 +3250,7 @@ fn fill_nulls(
         return Ok(array);
     }
     let exposed_count = exposure.map_or(array.len(), BooleanBuffer::count_set_bits);
-    if default_count == exposed_count && contains_dictionary(field.data_type()) {
+    if default_count == exposed_count && contains_dictionary(field.dtype()) {
         budget.restore(phase);
         return default_array(field, array.len(), None, budget);
     }
@@ -3258,14 +3258,14 @@ fn fill_nulls(
     // Reserve the one-row scalar and both parts of the final zip before
     // constructing any default. The source-range walk charges only values the
     // truthy side copies; exposed nulls are charged through canonical defaults.
-    budget.add_default_scalar_scratch(field.data_type())?;
-    if has_derived_logical_nulls(field.data_type()) {
+    budget.add_default_scalar_scratch(field.dtype())?;
+    if has_derived_logical_nulls(field.dtype()) {
         budget.add_bitmap(1)?;
     }
-    if contains_dictionary(field.data_type()) {
-        budget.add_repeated_default_without_dictionary_values(field.data_type(), default_count)?;
+    if contains_dictionary(field.dtype()) {
+        budget.add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
     } else {
-        budget.add_repeated_default(field.data_type(), default_count)?;
+        budget.add_repeated_default(field.dtype(), default_count)?;
     }
     let full = [(0, array.len())];
     let truthy_ranges = selected_child_ranges(
@@ -3288,8 +3288,8 @@ fn fill_nulls(
     }
 
     let source_for_retention = Arc::clone(&array);
-    let default = if data_type_semantics {
-        field.data_type().default_arrow_array()?
+    let default = if dtype_semantics {
+        field.dtype().default_arrow_array()?
     } else {
         field.default_arrow_array()?
     };
@@ -3304,7 +3304,7 @@ fn fill_nulls(
         }),
     };
     let mask = BooleanArray::new(mask, None);
-    let (array, default) = if contains_dictionary(field.data_type()) {
+    let (array, default) = if contains_dictionary(field.dtype()) {
         budget.add_bitmap(array.len())?;
         let live = BooleanBuffer::collect_bool(array.len(), |index| {
             is_exposed(exposure, index) && logical.is_valid(index)
@@ -3321,10 +3321,10 @@ fn fill_nulls(
     // range-planning reservations, then retain the exact two output parts in
     // the operation-wide aggregate for following columns.
     budget.restore(phase);
-    if contains_dictionary(field.data_type()) {
-        budget.add_repeated_default_without_dictionary_values(field.data_type(), default_count)?;
+    if contains_dictionary(field.dtype()) {
+        budget.add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
     } else {
-        budget.add_repeated_default(field.data_type(), default_count)?;
+        budget.add_repeated_default(field.dtype(), default_count)?;
     }
     reserve_source_selection(
         source_for_retention.as_ref(),
@@ -3332,11 +3332,11 @@ fn fill_nulls(
         SourceSelection::Ranges(&truthy_ranges),
         budget,
     )?;
-    if contains_dictionary(field.data_type()) {
+    if contains_dictionary(field.dtype()) {
         reserve_new_dictionary_vocabularies(
             &output,
             &source_for_retention,
-            field.data_type(),
+            field.dtype(),
             budget,
         )?;
     }
@@ -3385,7 +3385,7 @@ where
 {
     let source = downcast::<DictionaryArray<K>>(&array)?;
     let phase = budget.mark();
-    let logical = logical_validity_buffer(source, field.data_type(), budget)?;
+    let logical = logical_validity_buffer(source, field.dtype(), budget)?;
     let repair_count = (0..source.len())
         .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
         .count();
@@ -3474,7 +3474,7 @@ where
         ))
     })?;
 
-    budget.add_array_layout(field.data_type(), source.len())?;
+    budget.add_array_layout(field.dtype(), source.len())?;
     reserve_vec_bytes::<u32>(budget, representatives.len())?;
     let selected = representatives
         .iter()
@@ -3555,86 +3555,86 @@ where
     let output = Arc::new(DictionaryArray::<K>::try_new(keys, output_values)?) as ArrayRef;
 
     budget.restore(phase);
-    budget.add_array_layout(field.data_type(), source.len())?;
-    reserve_new_dictionary_vocabularies(&output, &array, field.data_type(), budget)?;
+    budget.add_array_layout(field.dtype(), source.len())?;
+    reserve_new_dictionary_vocabularies(&output, &array, field.dtype(), budget)?;
     Ok(output)
 }
 
 #[allow(clippy::too_many_lines)] // Mirrors Arrow concat's nested layout dispatch.
 fn reserve_concat_copy(
     array: &dyn Array,
-    data_type: &DataType,
+    dtype: &DataType,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
-    match data_type {
+    match dtype {
         DataType::BinaryView => {
             let array = downcast::<BinaryViewArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
         }
         DataType::Utf8View => {
             let array = downcast::<StringViewArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
         }
         // Dictionary inputs are vocabulary-aligned before concat, so Arrow
         // allocates only the concatenated key array and retains one vocab Arc.
-        DataType::Dictionary(_) => budget.add_array_layout(data_type, array.len())?,
+        DataType::Dictionary(_) => budget.add_array_layout(dtype, array.len())?,
         DataType::List(child) => {
             let array = downcast::<ListArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
             let end = array.offsets()[array.len()].as_usize();
             let values = array.values().slice(start, end - start);
-            reserve_concat_copy(values.as_ref(), child.data_type(), budget)?;
+            reserve_concat_copy(values.as_ref(), child.dtype(), budget)?;
         }
         DataType::LargeList(child) => {
             let array = downcast::<LargeListArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
             let end = array.offsets()[array.len()].as_usize();
             let values = array.values().slice(start, end - start);
-            reserve_concat_copy(values.as_ref(), child.data_type(), budget)?;
+            reserve_concat_copy(values.as_ref(), child.dtype(), budget)?;
         }
         // Arrow concat preserves every ListView backing child, including
         // ranges not referenced by a logical view.
         DataType::ListView(child) => {
             let array = downcast::<ListViewArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
-            reserve_concat_copy(array.values().as_ref(), child.data_type(), budget)?;
+            budget.add_array_layout(dtype, array.len())?;
+            reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
         DataType::LargeListView(child) => {
             let array = downcast::<LargeListViewArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
-            reserve_concat_copy(array.values().as_ref(), child.data_type(), budget)?;
+            budget.add_array_layout(dtype, array.len())?;
+            reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
         DataType::FixedSizeList(child, _) => {
             let array = downcast::<FixedSizeListArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
-            reserve_concat_copy(array.values().as_ref(), child.data_type(), budget)?;
+            budget.add_array_layout(dtype, array.len())?;
+            reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
         DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             for (field, child) in fields.iter().zip(array.columns()) {
-                reserve_concat_copy(child.as_ref(), field.data_type(), budget)?;
+                reserve_concat_copy(child.as_ref(), field.dtype(), budget)?;
             }
         }
         DataType::Map(map) => {
             let array = downcast::<MapArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
             let end = array.offsets()[array.len()].as_usize();
             let entries: ArrayRef = Arc::new(array.entries().slice(start, end - start));
-            reserve_concat_copy(entries.as_ref(), map.entries().data_type(), budget)?;
+            reserve_concat_copy(entries.as_ref(), map.entries().dtype(), budget)?;
         }
         // Union uses MutableArrayData, which visits every physical child, not
         // only the active branch selected by each logical row.
         DataType::Union(fields, _) => {
             let array = downcast::<UnionArray>(array)?;
-            budget.add_array_layout(data_type, array.len())?;
+            budget.add_array_layout(dtype, array.len())?;
             for (type_id, field) in fields {
-                reserve_concat_copy(array.child(type_id).as_ref(), field.data_type(), budget)?;
+                reserve_concat_copy(array.child(type_id).as_ref(), field.dtype(), budget)?;
             }
         }
         DataType::RunEndEncoded(encoded) => {
@@ -3643,11 +3643,11 @@ fn reserve_concat_copy(
                     let array = downcast::<RunArray<$run>>(array)?;
                     let values = array.values_slice();
                     budget.add_physical_slots(values.len())?;
-                    budget.add_array(encoded.run_ends().data_type(), values.len())?;
-                    reserve_concat_copy(values.as_ref(), encoded.values().data_type(), budget)?
+                    budget.add_array(encoded.run_ends().dtype(), values.len())?;
+                    reserve_concat_copy(values.as_ref(), encoded.values().dtype(), budget)?
                 }};
             }
-            match encoded.run_ends().data_type() {
+            match encoded.run_ends().dtype() {
                 DataType::Int16 => reserve_run!(Int16Type),
                 DataType::Int32 => reserve_run!(Int32Type),
                 DataType::Int64 => reserve_run!(Int64Type),
@@ -3660,28 +3660,28 @@ fn reserve_concat_copy(
         }
         _ => {
             let full = [(0, array.len())];
-            reserve_source_selection(array, data_type, SourceSelection::Ranges(&full), budget)?;
+            reserve_source_selection(array, dtype, SourceSelection::Ranges(&full), budget)?;
         }
     }
     Ok(())
 }
 
-fn contains_dictionary(data_type: &DataType) -> bool {
-    match data_type {
+fn contains_dictionary(dtype: &DataType) -> bool {
+    match dtype {
         DataType::Dictionary(_) => true,
         DataType::List(field)
         | DataType::ListView(field)
         | DataType::FixedSizeList(field, _)
         | DataType::LargeList(field)
-        | DataType::LargeListView(field) => contains_dictionary(field.data_type()),
+        | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
         DataType::Struct(fields) => fields
             .iter()
-            .any(|field| contains_dictionary(field.data_type())),
+            .any(|field| contains_dictionary(field.dtype())),
         DataType::Union(fields, _) => fields
             .iter()
-            .any(|(_, field)| contains_dictionary(field.data_type())),
-        DataType::Map(map) => contains_dictionary(map.entries().data_type()),
-        DataType::RunEndEncoded(encoded) => contains_dictionary(encoded.values().data_type()),
+            .any(|(_, field)| contains_dictionary(field.dtype())),
+        DataType::Map(map) => contains_dictionary(map.entries().dtype()),
+        DataType::RunEndEncoded(encoded) => contains_dictionary(encoded.values().dtype()),
         _ => false,
     }
 }
@@ -3730,16 +3730,16 @@ fn checked_valid_payload_bytes(
 fn reserve_new_materialized_array_without_dictionary_values(
     output: &ArrayRef,
     source: &ArrayRef,
-    data_type: &DataType,
+    dtype: &DataType,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     if Arc::ptr_eq(output, source) {
         return Ok(());
     }
-    if !matches!(data_type, DataType::RunEndEncoded(_)) {
-        budget.add_array_layout(data_type, output.len())?;
+    if !matches!(dtype, DataType::RunEndEncoded(_)) {
+        budget.add_array_layout(dtype, output.len())?;
     }
-    match data_type {
+    match dtype {
         DataType::Binary => {
             let output = downcast::<BinaryArray>(output.as_ref())?;
             budget.add_bytes(checked_valid_payload_bytes(
@@ -3785,26 +3785,26 @@ fn reserve_new_materialized_array_without_dictionary_values(
         DataType::List(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::LargeList(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::ListView(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::LargeListView(child) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<LargeListViewArray>(output.as_ref())?.values(),
                 downcast::<LargeListViewArray>(source.as_ref())?.values(),
-                child.data_type(),
+                child.dtype(),
                 budget,
             )?;
         }
@@ -3812,7 +3812,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<FixedSizeListArray>(output.as_ref())?.values(),
                 downcast::<FixedSizeListArray>(source.as_ref())?.values(),
-                child.data_type(),
+                child.dtype(),
                 budget,
             )?;
         }
@@ -3825,7 +3825,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 reserve_new_materialized_array_without_dictionary_values(
                     output,
                     source,
-                    field.data_type(),
+                    field.dtype(),
                     budget,
                 )?;
             }
@@ -3838,7 +3838,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
             reserve_new_materialized_array_without_dictionary_values(
                 &output,
                 &source,
-                map.entries().data_type(),
+                map.entries().dtype(),
                 budget,
             )?;
         }
@@ -3849,7 +3849,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 reserve_new_materialized_array_without_dictionary_values(
                     output.child(type_id),
                     source.child(type_id),
-                    field.data_type(),
+                    field.dtype(),
                     budget,
                 )?;
             }
@@ -3860,16 +3860,16 @@ fn reserve_new_materialized_array_without_dictionary_values(
                     let output = downcast::<RunArray<$run>>(output.as_ref())?;
                     let source = downcast::<RunArray<$run>>(source.as_ref())?;
                     budget.add_physical_slots(output.values().len())?;
-                    budget.add_array(encoded.run_ends().data_type(), output.values().len())?;
+                    budget.add_array(encoded.run_ends().dtype(), output.values().len())?;
                     reserve_new_materialized_array_without_dictionary_values(
                         output.values(),
                         source.values(),
-                        encoded.values().data_type(),
+                        encoded.values().dtype(),
                         budget,
                     )?;
                 }};
             }
-            match encoded.run_ends().data_type() {
+            match encoded.run_ends().dtype() {
                 DataType::Int16 => reserve_run!(Int16Type),
                 DataType::Int32 => reserve_run!(Int32Type),
                 DataType::Int64 => reserve_run!(Int64Type),
@@ -3934,10 +3934,10 @@ fn reserve_new_view_buffers(
 fn reserve_new_dictionary_vocabularies(
     output: &ArrayRef,
     source: &ArrayRef,
-    data_type: &DataType,
+    dtype: &DataType,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
-    match data_type {
+    match dtype {
         DataType::Dictionary(dictionary) => {
             let output_values = dictionary_values_ref(output.as_ref(), dictionary)?;
             let source_values = dictionary_values_ref(source.as_ref(), dictionary)?;
@@ -3977,37 +3977,37 @@ fn reserve_new_dictionary_vocabularies(
             for ((field, output), source) in
                 fields.iter().zip(output.columns()).zip(source.columns())
             {
-                reserve_new_dictionary_vocabularies(output, source, field.data_type(), budget)?;
+                reserve_new_dictionary_vocabularies(output, source, field.dtype(), budget)?;
             }
         }
         DataType::List(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::LargeList(child) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::ListView(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::LargeListView(child) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListViewArray>(output.as_ref())?.values(),
             downcast::<LargeListViewArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::FixedSizeList(child, _) => reserve_new_dictionary_vocabularies(
             downcast::<FixedSizeListArray>(output.as_ref())?.values(),
             downcast::<FixedSizeListArray>(source.as_ref())?.values(),
-            child.data_type(),
+            child.dtype(),
             budget,
         )?,
         DataType::Map(map) => {
@@ -4018,7 +4018,7 @@ fn reserve_new_dictionary_vocabularies(
             reserve_new_dictionary_vocabularies(
                 &output,
                 &source,
-                map.entries().data_type(),
+                map.entries().dtype(),
                 budget,
             )?;
         }
@@ -4029,7 +4029,7 @@ fn reserve_new_dictionary_vocabularies(
                 reserve_new_dictionary_vocabularies(
                     output.child(type_id),
                     source.child(type_id),
-                    field.data_type(),
+                    field.dtype(),
                     budget,
                 )?;
             }
@@ -4042,12 +4042,12 @@ fn reserve_new_dictionary_vocabularies(
                     reserve_new_dictionary_vocabularies(
                         output.values(),
                         source.values(),
-                        encoded.values().data_type(),
+                        encoded.values().dtype(),
                         budget,
                     )?;
                 }};
             }
-            match encoded.run_ends().data_type() {
+            match encoded.run_ends().dtype() {
                 DataType::Int16 => reserve_run!(Int16Type),
                 DataType::Int32 => reserve_run!(Int32Type),
                 DataType::Int64 => reserve_run!(Int64Type),
@@ -4197,7 +4197,7 @@ fn reserve_to_data_scratch(array: &ArrayRef, budget: &mut MaterializationBudget)
 fn byte_array_storage_ptr_eq(
     left: &dyn Array,
     right: &dyn Array,
-    data_type: &DataType,
+    dtype: &DataType,
 ) -> Result<bool> {
     macro_rules! shared {
         ($array:ty) => {{
@@ -4208,7 +4208,7 @@ fn byte_array_storage_ptr_eq(
                 && null_buffers_ptr_eq(left.nulls(), right.nulls())
         }};
     }
-    Ok(match data_type {
+    Ok(match dtype {
         DataType::Binary => shared!(BinaryArray),
         DataType::LargeBinary => shared!(LargeBinaryArray),
         DataType::Utf8 => shared!(StringArray),
@@ -4369,7 +4369,7 @@ fn align_nested_dictionaries(
     right_exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<(ArrayRef, ArrayRef)> {
-    if !contains_dictionary(field.data_type()) {
+    if !contains_dictionary(field.dtype()) {
         return Ok((Arc::clone(left), Arc::clone(right)));
     }
     if left.data_type() != right.data_type() {
@@ -4385,7 +4385,7 @@ fn align_nested_dictionaries(
         ));
     }
 
-    match field.data_type() {
+    match field.dtype() {
         DataType::Dictionary(dictionary) => align_dictionary_arrays(
             field,
             dictionary,
@@ -4747,7 +4747,7 @@ fn align_nested_dictionaries(
                     ))
                 }};
             }
-            match encoded.run_ends().data_type() {
+            match encoded.run_ends().dtype() {
                 DataType::Int16 => align_run!(Int16Type),
                 DataType::Int32 => align_run!(Int32Type),
                 DataType::Int64 => align_run!(Int64Type),
@@ -4863,7 +4863,7 @@ where
     K: ArrowDictionaryKeyType,
     K::Native: TryFrom<usize>,
 {
-    budget.add_array_layout(field.data_type(), source.len())?;
+    budget.add_array_layout(field.dtype(), source.len())?;
     let fallback = (!values.is_empty())
         .then(|| K::Native::try_from(0).ok())
         .flatten();
@@ -5158,7 +5158,7 @@ fn ensure_list_child_physical(
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
     if field.is_nullable()
-        || exposed_logical_null_count(array.as_ref(), field.data_type(), None)? == 0
+        || exposed_logical_null_count(array.as_ref(), field.dtype(), None)? == 0
     {
         Ok(array)
     } else {
@@ -5189,11 +5189,11 @@ fn default_array(
     let exposed = exposure.map_or(len, BooleanBuffer::count_set_bits);
     let hidden = len - exposed;
     if field.is_nullable() {
-        budget.add_null_array(field.data_type(), len)?;
+        budget.add_null_array(field.dtype(), len)?;
         return Ok(new_null_array(&arrow_type, len));
     }
     if exposed != 0 && hidden != 0 {
-        if let DataType::Dictionary(dictionary) = field.data_type() {
+        if let DataType::Dictionary(dictionary) = field.dtype() {
             let exposure = exposure.ok_or_else(|| {
                 Error::IncompatibleSchema(
                     "mixed missing dictionary exposure requires a mask".to_owned(),
@@ -5210,7 +5210,7 @@ fn default_array(
         reserve_field_default_scalar(field, budget)?;
     }
     if hidden != 0 && !single_scalar_output {
-        budget.add_null_scalar_scratch(field.data_type())?;
+        budget.add_null_scalar_scratch(field.dtype())?;
     }
 
     let output = match (exposed, hidden) {
@@ -5237,7 +5237,7 @@ fn default_array(
             let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
             let placeholder = crate::arrow::value::array_from_values(field, &[&placeholder])?;
             let mask = BooleanArray::new(exposure.clone(), None);
-            let (default, placeholder) = if contains_dictionary(field.data_type()) {
+            let (default, placeholder) = if contains_dictionary(field.dtype()) {
                 align_nested_dictionaries(field, &default, &placeholder, None, None, budget)?
             } else {
                 (default, placeholder)
@@ -5259,9 +5259,9 @@ fn reserve_field_default(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     if field.is_nullable() {
-        budget.add_null_array(field.data_type(), rows)
+        budget.add_null_array(field.dtype(), rows)
     } else {
-        budget.add_repeated_default(field.data_type(), rows)
+        budget.add_repeated_default(field.dtype(), rows)
     }
 }
 
@@ -5303,7 +5303,7 @@ where
     K::Native: TryFrom<usize>,
 {
     let phase = budget.mark();
-    budget.add_array_layout(field.data_type(), exposure.len())?;
+    budget.add_array_layout(field.dtype(), exposure.len())?;
     budget.add_default_scalar_scratch(dictionary.value())?;
     let zero = K::Native::try_from(0).map_err(|_| {
         Error::IncompatibleSchema("dictionary key cannot represent zero".to_owned())
@@ -5319,16 +5319,16 @@ where
     }
     let output = Arc::new(DictionaryArray::<K>::try_new(keys.finish(), values)?) as ArrayRef;
     budget.restore(phase);
-    budget.add_array_layout(field.data_type(), exposure.len())?;
+    budget.add_array_layout(field.dtype(), exposure.len())?;
     budget.add_repeated_default(dictionary.value(), 1)?;
     Ok(output)
 }
 
 fn reserve_field_default_scalar(field: &Field, budget: &mut MaterializationBudget) -> Result<()> {
     if field.is_nullable() {
-        budget.add_null_scalar_scratch(field.data_type())
+        budget.add_null_scalar_scratch(field.dtype())
     } else {
-        budget.add_default_scalar_scratch(field.data_type())
+        budget.add_default_scalar_scratch(field.dtype())
     }
 }
 
@@ -5339,7 +5339,7 @@ fn reserve_missing_output(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     reserve_field_default(field, exposed, budget)?;
-    budget.add_null_array(field.data_type(), hidden)
+    budget.add_null_array(field.dtype(), hidden)
 }
 
 fn repeat_scalar(array: &ArrayRef, len: usize) -> Result<ArrayRef> {

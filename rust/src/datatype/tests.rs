@@ -66,7 +66,7 @@ fn canonical_display_json_and_arrow_are_lossless() {
     let structural: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(structural.is_object());
     assert_eq!(structural["type"], "list");
-    assert_eq!(structural["field"]["data_type"]["type"], "struct");
+    assert_eq!(structural["field"]["dtype"]["type"], "struct");
     assert_eq!(DataType::from_json(&json).unwrap(), value);
     assert_eq!(
         DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
@@ -89,10 +89,10 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
         r#"{"type":"decimal128","precision":38,"scale":6}"#
     );
 
-    let field = |name: &str, data_type: serde_json::Value, nullable: bool| {
+    let field = |name: &str, dtype: serde_json::Value, nullable: bool| {
         serde_json::json!({
             "name": name,
-            "data_type": data_type,
+            "dtype": dtype,
             "nullable": nullable,
             "metadata": {}
         })
@@ -156,7 +156,7 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
             "type":"list",
             "field":{
                 "name":"item",
-                "data_type":{"type":"utf8"},
+                "dtype":{"type":"utf8"},
                 "nullable":true,
                 "metadata":{"source":"one","source":"two"}
             }
@@ -183,10 +183,10 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
         "invalid Dictionary datatype: expected an integer key datatype (int8, int16, int32, int64, uint8, uint16, uint32, or uint64), got float64"
     );
 
-    let field = |name: &str, data_type: serde_json::Value, nullable: bool| {
+    let field = |name: &str, dtype: serde_json::Value, nullable: bool| {
         serde_json::json!({
             "name": name,
-            "data_type": data_type,
+            "dtype": dtype,
             "nullable": nullable,
             "metadata": {}
         })
@@ -250,8 +250,8 @@ fn sql_hive_spark_and_arrow_spellings_parse_recursively() {
         "ROW(id INTEGER NOT NULL, payload VARBINARY, score DOUBLE PRECISION)",
         "struct<`quoted,name`:string,nested:map<string,array<decimal(38,18)>>>",
         "string[][]",
-        "Dictionary(UInt16, List(Field { name: 'item', data_type: Utf8, nullable: true, metadata: {} }))",
-        "Union([(0, Field { name: 'id', data_type: Int64, nullable: false, metadata: {} }), (7, Field { name: 'name', data_type: Utf8, nullable: true, metadata: {} })], Dense)",
+        "Dictionary(UInt16, List(Field { name: 'item', dtype: Utf8, nullable: true, metadata: {} }))",
+        "Union([(0, Field { name: 'id', dtype: Int64, nullable: false, metadata: {} }), (7, Field { name: 'name', dtype: Utf8, nullable: true, metadata: {} })], Dense)",
         "run_end_encoded(int32,array<string>)",
         "fixed_size_list(string,16)",
     ];
@@ -428,7 +428,7 @@ fn arrow_import_preserves_nested_field_projection_arcs() {
         &borrowed_outer.clone().into_arrow_ref().unwrap(),
         &outer
     ));
-    let borrowed_inner = borrowed_outer.data_type().get_field(0).unwrap();
+    let borrowed_inner = borrowed_outer.dtype().get_field(0).unwrap();
     assert!(Arc::ptr_eq(
         &borrowed_inner.clone().into_arrow_ref().unwrap(),
         &inner
@@ -440,7 +440,7 @@ fn arrow_import_preserves_nested_field_projection_arcs() {
         &owned_outer.clone().into_arrow_ref().unwrap(),
         &outer
     ));
-    let owned_inner = owned_outer.data_type().get_field(0).unwrap();
+    let owned_inner = owned_outer.dtype().get_field(0).unwrap();
     assert!(Arc::ptr_eq(
         &owned_inner.clone().into_arrow_ref().unwrap(),
         &inner
@@ -636,17 +636,17 @@ mod semi_structured_and_geospatial {
 
     #[test]
     fn serde_and_the_structural_value_round_trip() {
-        for data_type in [
+        for dtype in [
             DataType::Variant,
             DataType::geometry(Some("EPSG:4326")).unwrap(),
             DataType::geography(Some("EPSG:4326"), Some(EdgeAlgorithm::Karney)).unwrap(),
             DataType::geography(None, None).unwrap(),
         ] {
-            let json = data_type.clone().into_json().unwrap();
-            assert_eq!(DataType::from_json(&json).unwrap(), data_type, "{json}");
+            let json = dtype.clone().into_json().unwrap();
+            assert_eq!(DataType::from_json(&json).unwrap(), dtype, "{json}");
 
-            let value = data_type.clone().into_value();
-            assert_eq!(DataType::from_value(value).unwrap(), data_type);
+            let value = dtype.clone().into_value();
+            assert_eq!(DataType::from_value(value).unwrap(), dtype);
         }
     }
 

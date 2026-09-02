@@ -34,11 +34,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     });
     let deep = |leaf: DataType| {
-        let mut data_type = leaf;
+        let mut dtype = leaf;
         for _ in 0..64 {
-            data_type = DataType::list(Field::new("item", data_type, true));
+            dtype = DataType::list(Field::new("item", dtype, true));
         }
-        Field::new("root", data_type, false)
+        Field::new("root", dtype, false)
     };
     let deep_left = deep(DataType::Utf8);
     let deep_right = deep(DataType::Int64);

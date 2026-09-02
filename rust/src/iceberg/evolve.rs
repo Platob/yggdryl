@@ -106,8 +106,8 @@ pub fn can_promote(from: &DataType, to: &DataType) -> Result<()> {
 ///
 /// `decimal256` is deliberately absent: Iceberg's decimal stops at precision
 /// 38, so a 256-bit decimal is not a promotion target the format can store.
-const fn decimal_parts(data_type: &DataType) -> Option<(u8, i8)> {
-    match data_type {
+const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
+    match dtype {
         DataType::Decimal32 { precision, scale }
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale } => Some((*precision, *scale)),
@@ -149,7 +149,7 @@ enum Op {
     /// Relax a required column to optional.
     MakeNullable { path: SmolStr },
     /// Promote a column's type, gated by [`can_promote`].
-    UpdateType { path: SmolStr, data_type: DataType },
+    UpdateType { path: SmolStr, dtype: DataType },
 }
 
 impl SchemaUpdate {
@@ -226,10 +226,10 @@ impl SchemaUpdate {
 
     /// Record a type promotion on the column at `path`, checked against
     /// [`can_promote`] when the update is applied.
-    pub fn update_type(&mut self, path: &str, data_type: DataType) {
+    pub fn update_type(&mut self, path: &str, dtype: DataType) {
         self.ops.push(Op::UpdateType {
             path: SmolStr::new(path),
-            data_type,
+            dtype,
         });
     }
 
@@ -259,7 +259,7 @@ impl SchemaUpdate {
                 Op::RenameColumn { path, name } => apply_rename(&mut schema, &path, name)?,
                 Op::UpdateDoc { path, doc } => apply_doc(&mut schema, &path, &doc)?,
                 Op::MakeNullable { path } => apply_nullable(&mut schema, &path)?,
-                Op::UpdateType { path, data_type } => apply_type(&mut schema, &path, data_type)?,
+                Op::UpdateType { path, dtype } => apply_type(&mut schema, &path, dtype)?,
             }
         }
         schema.validate_struct_root()?;
@@ -349,13 +349,13 @@ fn apply_nullable(schema: &mut Field, path: &str) -> Result<()> {
 }
 
 /// Promote the type of the column at `path`.
-fn apply_type(schema: &mut Field, path: &str, data_type: DataType) -> Result<()> {
+fn apply_type(schema: &mut Field, path: &str, dtype: DataType) -> Result<()> {
     let (segments, target) = split_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
             return Err(missing_column(target, children, path));
         };
-        can_promote(children[index].data_type(), &data_type).map_err(|error| match error {
+        can_promote(children[index].dtype(), &dtype).map_err(|error| match error {
             Error::Codec {
                 format,
                 position,
@@ -367,7 +367,7 @@ fn apply_type(schema: &mut Field, path: &str, data_type: DataType) -> Result<()>
             },
             other => other,
         })?;
-        children[index].set_data_type(data_type)
+        children[index].set_dtype(dtype)
     })
 }
 
@@ -395,7 +395,7 @@ where
     let mut children = node.fields().to_vec();
     let Some((first, rest)) = segments.split_first() else {
         edit(&mut children)?;
-        return node.set_data_type(DataType::from_fields(children)?);
+        return node.set_dtype(DataType::from_fields(children)?);
     };
     let Some(index) = children.iter().position(|child| child.name() == *first) else {
         return Err(missing_column(first, &children, path));
@@ -405,11 +405,11 @@ where
             "expected a struct column {:?} at {:?}, got {}",
             elide_to(first, PATH_LIMIT),
             elide_to(path, PATH_LIMIT),
-            crate::text::elide_display(children[index].data_type())
+            crate::text::elide_display(children[index].dtype())
         )));
     }
     edit_children(&mut children[index], rest, path, edit)?;
-    node.set_data_type(DataType::from_fields(children)?)
+    node.set_dtype(DataType::from_fields(children)?)
 }
 
 /// Report a path segment that names no column, and the columns that exist.
@@ -429,20 +429,20 @@ fn missing_column(segment: &str, siblings: &[Field], path: &str) -> Error {
 /// [`Field::assign_parquet_field_ids`]'s job alone.
 fn strip_ids(field: &mut Field) -> Result<()> {
     field.remove_parquet_field_id()?;
-    let count = field.data_type().field_len();
+    let count = field.dtype().field_len();
     if count == 0 {
         return Ok(());
     }
     let mut children = Vec::with_capacity(count);
     for index in 0..count {
-        let Some(child) = field.data_type().get_field(index) else {
+        let Some(child) = field.dtype().get_field(index) else {
             continue;
         };
         let mut child = child.clone();
         strip_ids(&mut child)?;
         children.push(child);
     }
-    field.set_data_type(field.data_type().with_fields(children)?)
+    field.set_dtype(field.dtype().with_fields(children)?)
 }
 
 /// Report a malformed Iceberg schema evolution.

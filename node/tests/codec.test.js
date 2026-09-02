@@ -271,7 +271,7 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(wide.kind, 'd256')
   assert.equal(wide.unscaled, -(2n ** 200n))
   assert.equal(wide.scale, 7)
-  assert.match(wide.dataType.toString(), /^decimal256/)
+  assert.match(wide.dtype.toString(), /^decimal256/)
   assert.equal(typeof wide.stableHash(), 'bigint')
   assert.equal(wide.asJs().kind, 'd256')
   assert.equal(wide.asJs().unscaled, wide.unscaled)
@@ -530,19 +530,19 @@ test('Scalar Arrow scalar and array interop uses standard IPC', () => {
 test('Scalar Field accessors redirect to core inference', () => {
   const scalar = Scalar.fromJs(42).intoField()
   assert.equal(scalar.name, 'value')
-  assert.equal(scalar.dataType.toString(), 'int64')
+  assert.equal(scalar.dtype.toString(), 'int64')
   assert.equal(scalar.nullable, false)
 
   const item = Scalar.fromJs([1, null]).intoArrayField()
   assert.equal(item.name, 'item')
-  assert.equal(item.dataType.toString(), 'int64')
+  assert.equal(item.dtype.toString(), 'int64')
   assert.equal(item.nullable, true)
 
   const root = Scalar.fromJs([{ id: 1, venue: null }, { id: 2, venue: 'XNAS' }])
     .intoStructField()
   assert.equal(root.name, 'row')
   assert.equal(root.nullable, false)
-  const children = [...root.dataType]
+  const children = [...root.dtype]
   assert.deepEqual(children.map((child) => child.name), ['id', 'venue'])
   assert.equal(children[1].nullable, true)
 

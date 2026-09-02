@@ -107,9 +107,9 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 #[test]
 fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state() {
     let map = DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap();
-    let data_type = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
+    let dtype = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
 
-    let schema = data_type.into_arrow_ffi().unwrap();
+    let schema = dtype.into_arrow_ffi().unwrap();
     let map = schema.child(0);
     assert_flag(map, Flags::NULLABLE);
     assert_flag(map, Flags::MAP_KEYS_SORTED);
@@ -167,7 +167,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
         Some(&String::new())
     );
     let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
-    assert_eq!(imported.data_type(), &DataType::Variant);
+    assert_eq!(imported.dtype(), &DataType::Variant);
 }
 
 #[test]

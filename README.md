@@ -91,7 +91,7 @@ Hive, and Spark spellings:
 use yggdryl::{DataType, Field};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-let data_type = DataType::from_str(
+let dtype = DataType::from_str(
     "struct<id:bigint,items:array<struct<sku:string,price:decimal(18,4)>>>",
 )?;
 
@@ -99,7 +99,7 @@ let field = Field::from_str(
     r#"field("orders",struct<id:bigint>,nullable=false,metadata={"source":"warehouse"})"#,
 )?;
 
-assert_eq!(DataType::from_str(&data_type.to_string())?, data_type);
+assert_eq!(DataType::from_str(&dtype.to_string())?, dtype);
 assert_eq!(Field::from_str(&field.to_string())?, field);
 # Ok(())
 # }

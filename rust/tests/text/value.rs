@@ -172,7 +172,7 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.path("a.b");
         let _ = value.iter().count();
         let _ = value.kind();
-        let _ = value.data_type();
+        let _ = value.dtype();
     }
 }
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 from .._native import Field
 from .._native import DataType
-from ._common import MetadataInput, new_field, simple_data_type
+from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
@@ -24,8 +24,8 @@ else:
     TimestampField = Date32Field = Date64Field = Field
     Time32Field = Time64Field = TimeField = Duration32Field = Duration64Field = IntervalField = Field
 
-_DATE32 = simple_data_type("date32")
-_DATE64 = simple_data_type("date64")
+_DATE32 = simple_dtype("date32")
+_DATE64 = simple_dtype("date64")
 
 
 def timestamp(

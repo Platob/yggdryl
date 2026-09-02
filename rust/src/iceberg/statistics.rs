@@ -31,7 +31,7 @@ pub(super) fn data_file(schema: &Field, statistics: &FileStatistics) -> Result<D
         ..DataFile::default()
     };
 
-    for (name, id, data_type) in &columns {
+    for (name, id, dtype) in &columns {
         let mut size = 0_i64;
         let mut nulls = 0_u64;
         let mut has_nulls = false;
@@ -45,9 +45,9 @@ pub(super) fn data_file(schema: &Field, statistics: &FileStatistics) -> Result<D
                     has_nulls = true;
                     nulls = nulls.saturating_add(count);
                 }
-                if is_portable(data_type) {
-                    fold_bound(&mut lower, column, data_type, true);
-                    fold_bound(&mut upper, column, data_type, false);
+                if is_portable(dtype) {
+                    fold_bound(&mut lower, column, dtype, true);
+                    fold_bound(&mut upper, column, dtype, false);
                 }
             }
         }
@@ -103,7 +103,7 @@ pub(super) fn data_file_from_batches(
         ..DataFile::default()
     };
 
-    for (name, id, data_type) in &columns {
+    for (name, id, dtype) in &columns {
         let field = schema.get_field_by_name(name).ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected the measured column {name:?} in the schema, got none"
@@ -117,14 +117,14 @@ pub(super) fn data_file_from_batches(
                 continue;
             };
             nulls = nulls.saturating_add(i64::try_from(column.null_count()).unwrap_or(i64::MAX));
-            if !is_portable(data_type) {
+            if !is_portable(dtype) {
                 continue;
             }
             if let Some(encoded) = super::table::extreme(column, field, false)? {
-                fold_encoded(&mut lower, &encoded, data_type, true);
+                fold_encoded(&mut lower, &encoded, dtype, true);
             }
             if let Some(encoded) = super::table::extreme(column, field, true)? {
-                fold_encoded(&mut upper, &encoded, data_type, false);
+                fold_encoded(&mut upper, &encoded, dtype, false);
             }
         }
         file.value_counts.push((*id, num_rows));
@@ -143,16 +143,16 @@ pub(super) fn data_file_from_batches(
 fn fold_encoded(
     current: &mut Option<Vec<u8>>,
     candidate: &[u8],
-    data_type: &DataType,
+    dtype: &DataType,
     minimum: bool,
 ) {
-    if compare_single(candidate, candidate, data_type).is_none() {
+    if compare_single(candidate, candidate, dtype).is_none() {
         return;
     }
     match current {
         None => *current = Some(candidate.to_vec()),
         Some(held) => {
-            let replace = compare_single(candidate, held, data_type).is_some_and(|ordering| {
+            let replace = compare_single(candidate, held, dtype).is_some_and(|ordering| {
                 (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt())
             });
             if replace {
@@ -177,10 +177,10 @@ fn leaf_columns(schema: &Field) -> Result<Vec<(String, i32, DataType)>> {
                 field.name()
             ))
         })?;
-        if field.data_type().as_fields().is_some() {
+        if field.dtype().as_fields().is_some() {
             continue;
         }
-        columns.push((field.name().to_owned(), id, field.data_type().clone()));
+        columns.push((field.name().to_owned(), id, field.dtype().clone()));
     }
     Ok(columns)
 }
@@ -189,7 +189,7 @@ fn leaf_columns(schema: &Field) -> Result<Vec<(String, i32, DataType)>> {
 fn fold_bound(
     current: &mut Option<Vec<u8>>,
     column: &ColumnStatistics,
-    data_type: &DataType,
+    dtype: &DataType,
     minimum: bool,
 ) {
     let candidate = if minimum {
@@ -200,13 +200,13 @@ fn fold_bound(
     let Some(candidate) = candidate else {
         return;
     };
-    if compare_single(candidate, candidate, data_type).is_none() {
+    if compare_single(candidate, candidate, dtype).is_none() {
         return;
     }
     match current {
         None => *current = Some(candidate.clone()),
         Some(held) => {
-            let replace = compare_single(held, candidate, data_type).is_some_and(|ordering| {
+            let replace = compare_single(held, candidate, dtype).is_some_and(|ordering| {
                 if minimum {
                     ordering == std::cmp::Ordering::Greater
                 } else {

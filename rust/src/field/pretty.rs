@@ -111,7 +111,7 @@ impl fmt::Display for Pretty<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Field(field) => write_field(formatter, field, 0),
-            Self::DataType(data_type) => write_data_type(formatter, data_type, 0, None),
+            Self::DataType(dtype) => write_dtype(formatter, dtype, 0, None),
         }
     }
 }
@@ -121,7 +121,7 @@ fn write_field(formatter: &mut fmt::Formatter<'_>, field: &Field, columns: usize
     write_indent(formatter, columns)?;
     formatter.write_str(field.name())?;
     formatter.write_str(": ")?;
-    write_head(formatter, field.data_type())?;
+    write_head(formatter, field.dtype())?;
     formatter.write_str(if field.nullable {
         ", nullable"
     } else {
@@ -141,13 +141,13 @@ fn write_field(formatter: &mut fmt::Formatter<'_>, field: &Field, columns: usize
         write_indent(formatter, inner)?;
         write!(formatter, "@{key} = {value}")?;
     }
-    write_children(formatter, field.data_type(), inner)
+    write_children(formatter, field.dtype(), inner)
 }
 
 /// Write a datatype at the root of the rendering, with no field line above it.
-fn write_data_type(
+fn write_dtype(
     formatter: &mut fmt::Formatter<'_>,
-    data_type: &DataType,
+    dtype: &DataType,
     columns: usize,
     name: Option<&str>,
 ) -> fmt::Result {
@@ -156,17 +156,17 @@ fn write_data_type(
         formatter.write_str(name)?;
         formatter.write_str(": ")?;
     }
-    write_head(formatter, data_type)?;
-    write_children(formatter, data_type, columns + WIDTH)
+    write_head(formatter, dtype)?;
+    write_children(formatter, dtype, columns + WIDTH)
 }
 
 /// Write the one-line head of a datatype: its family and its parameters.
 ///
 /// A nested datatype's *children* are lines of their own, so the head names the
 /// family alone - `struct`, `list` - while a leaf spells itself in full.
-fn write_head(formatter: &mut fmt::Formatter<'_>, data_type: &DataType) -> fmt::Result {
+fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Result {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Struct(fields) => write!(formatter, "struct[{}]", fields.len()),
         D::List(_) => formatter.write_str("list"),
         D::ListView(_) => formatter.write_str("list_view"),
@@ -192,11 +192,11 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, data_type: &DataType) -> fmt::
 /// Write the children of a nested datatype, one indent deeper.
 fn write_children(
     formatter: &mut fmt::Formatter<'_>,
-    data_type: &DataType,
+    dtype: &DataType,
     columns: usize,
 ) -> fmt::Result {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Struct(fields) => {
             for field in fields.as_fields() {
                 formatter.write_str("\n")?;
@@ -235,7 +235,7 @@ fn write_children(
         }
         D::Dictionary(dictionary) => {
             formatter.write_str("\n")?;
-            write_data_type(formatter, dictionary.value(), columns, Some("value"))
+            write_dtype(formatter, dictionary.value(), columns, Some("value"))
         }
         _ => Ok(()),
     }
@@ -249,13 +249,13 @@ fn write_field_inline(
 ) -> fmt::Result {
     formatter.write_str(field.name())?;
     formatter.write_str(": ")?;
-    write_head(formatter, field.data_type())?;
+    write_head(formatter, field.dtype())?;
     formatter.write_str(if field.nullable {
         ", nullable"
     } else {
         ", required"
     })?;
-    write_children(formatter, field.data_type(), columns + WIDTH)
+    write_children(formatter, field.dtype(), columns + WIDTH)
 }
 
 /// Write `columns` spaces.

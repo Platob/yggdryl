@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from .._native import Field
-from ._common import MetadataInput, new_field, simple_data_type
+from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
@@ -15,8 +15,8 @@ else:
     NullField = Field
     BooleanField = Field
 
-_NULL = simple_data_type("null")
-_BOOLEAN = simple_data_type("boolean")
+_NULL = simple_dtype("null")
+_BOOLEAN = simple_dtype("boolean")
 
 
 def null(

@@ -75,7 +75,7 @@ cache-aware mutation.
 
     assert_eq!(quote.field_len(), 2);
     assert_eq!(quote.get_field(0).map(Field::name), Some("symbol"));
-    assert_eq!(quote.get_field_by_name("levels").unwrap().data_type().field_len(), 1);
+    assert_eq!(quote.get_field_by_name("levels").unwrap().dtype().field_len(), 1);
     assert!(quote.get_field_by_name("missing").is_none());
 
     // Every child-bearing type answers the same two questions.
@@ -99,10 +99,10 @@ cache-aware mutation.
     assert [field.name for field in quote] == ["symbol", "levels"]
     assert quote[0].name == "symbol"
     assert quote[-1].name == "levels"
-    assert len(quote["levels"].data_type) == 1
+    assert len(quote["levels"].dtype) == 1
     assert "levels" in quote and "missing" not in quote
 
-    lookup = fields.map_of("lookup", "utf8", "int64", keys_sorted=True).data_type
+    lookup = fields.map_of("lookup", "utf8", "int64", keys_sorted=True).dtype
     assert len(lookup) == 1
     assert lookup[0].name == "entries"
     ```
@@ -121,11 +121,11 @@ cache-aware mutation.
     assert.equal(quote.length, 2)
     assert.deepEqual(quote.keys(), ['symbol', 'levels'])
     assert.equal(quote.at(-1).name, 'levels')
-    assert.equal(quote.get('levels').dataType.length, 1)
+    assert.equal(quote.get('levels').dtype.length, 1)
     assert.equal(quote.contains('missing'), false)
     assert.deepEqual([...quote].map((field) => field.name), ['symbol', 'levels'])
 
-    const lookup = fields.mapOf('lookup', 'utf8', 'int64', true).dataType
+    const lookup = fields.mapOf('lookup', 'utf8', 'int64', true).dtype
     assert.equal(lookup.length, 1)
     assert.equal(lookup.at(0).name, 'entries')
     ```
@@ -183,8 +183,8 @@ nesting actually needs - a child is a name, a type, and a nullability flag.
     const assert = require('node:assert/strict')
     const { DataType, fields } = require('yggdryl')
 
-    assert.equal(fields.decimal('amount', 38, 4).dataType.toString(), 'decimal128(38,4)')
-    assert.equal(fields.decimal('wide', 39, 4).dataType.toString(), 'decimal256(39,4)')
+    assert.equal(fields.decimal('amount', 38, 4).dtype.toString(), 'decimal128(38,4)')
+    assert.equal(fields.decimal('wide', 39, 4).dtype.toString(), 'decimal256(39,4)')
     assert.equal(DataType.time('s').toString(), 'time32(s)')
     assert.equal(DataType.time('nano seconds').toString(), 'time64(ns)')
 
@@ -240,12 +240,12 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
 
     from yggdryl import fields
 
-    codes = fields.dictionary("codes", "int16", "utf8").data_type
+    codes = fields.dictionary("codes", "int16", "utf8").dtype
     runs = fields.run_end_encoded(
         "runs",
         fields.int16("run_ends", nullable=False),
         fields.utf8("values"),
-    ).data_type
+    ).dtype
 
     assert codes.kind == "dictionary"
     assert runs.kind == "run_end_encoded"
@@ -266,10 +266,10 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
     const assert = require('node:assert/strict')
     const { fields } = require('yggdryl')
 
-    const codes = fields.dictionary('codes', 'int16', 'utf8').dataType
+    const codes = fields.dictionary('codes', 'int16', 'utf8').dtype
     const runs = fields
       .runEndEncoded('runs', fields.int16('run_ends', { nullable: false }), fields.utf8('values'))
-      .dataType
+      .dtype
 
     assert.equal(codes.kind, 'dictionary')
     assert.equal(runs.kind, 'run_end_encoded')
@@ -449,7 +449,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     assert str(variant) == "variant"
     assert DataType("variant") == variant
     assert DataType("variant(n:int64)").id == "union"
-    assert fields.variant("payload").data_type == variant
+    assert fields.variant("payload").dtype == variant
 
     geometry = DataType.geometry()
     assert str(geometry) == "geometry"
@@ -464,7 +464,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     vincenty = DataType.geography("OGC:CRS84", "vincenty")
     assert str(vincenty) == 'geography("OGC:CRS84","vincenty")'
     assert DataType(str(vincenty)) == vincenty
-    assert fields.geography("region", "OGC:CRS84", "vincenty").data_type == vincenty
+    assert fields.geography("region", "OGC:CRS84", "vincenty").dtype == vincenty
 
     with pytest.raises(ValueError, match="expected no edge algorithm"):
         DataType("geometry('OGC:CRS84', 'vincenty')")
@@ -484,7 +484,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     assert.equal(variant.toString(), 'variant')
     assert.ok(new DataType('variant').equals(variant))
     assert.equal(DataType.fromString('variant(n:int64)').id, 'union')
-    assert.ok(fields.variant('payload').dataType.equals(variant))
+    assert.ok(fields.variant('payload').dtype.equals(variant))
 
     const geometry = DataType.geometry()
     assert.equal(geometry.toString(), 'geometry')
@@ -500,7 +500,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     assert.equal(vincenty.toString(), 'geography("OGC:CRS84","vincenty")')
     assert.ok(DataType.fromString(vincenty.toString()).equals(vincenty))
     assert.ok(
-      fields.geography('region', 'OGC:CRS84', 'vincenty').dataType.equals(vincenty),
+      fields.geography('region', 'OGC:CRS84', 'vincenty').dtype.equals(vincenty),
     )
 
     assert.throws(
@@ -591,8 +591,8 @@ and bounds by the one WKB reader documented there.
     assert.equal(DataType.from('timestamp(s)').id, stamp.id)
     assert.equal(DataType.from('timestamp(s)').equals(stamp), false)
 
-    assert.equal(fields.decimal('amount', 38, 4).dataType.id, 'decimal128')
-    assert.equal(fields.decimal('amount', 38, 4).dataType.kind, 'decimal')
+    assert.equal(fields.decimal('amount', 38, 4).dtype.id, 'decimal128')
+    assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
 `id` names the variant and `kind` names the family it belongs to - 44 ids across 16 kinds. Both are
@@ -751,7 +751,7 @@ rather than by three sets of tests. That is also what makes a schema *embeddable
 document can carry a declared schema inline beside the rest of its settings, with no
 JSON-string-inside-YAML awkwardness.
 
-The shape is what the JSON emit has always been: `name`, `data_type`, `nullable`, then
+The shape is what the JSON emit carries: `name`, `dtype`, `nullable`, then
 `dictionary_id` only when it is non-zero and `dictionary_is_ordered` only when it is set, then
 `metadata`. An unset optional attribute is **omitted**, never emitted as null - which is also why
 TOML, which has no null, loses nothing on the way out.
@@ -765,15 +765,15 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
     use yggdryl::DataType;
     use yggdryl::generic::Scalar;
 
-    let data_type = DataType::decimal128(9, 2)?;
+    let dtype = DataType::decimal128(9, 2)?;
 
     // One structural model, three formats over it.
-    assert_eq!(DataType::from_value(data_type.clone().into_value())?, data_type);
-    assert_eq!(DataType::from_json(&data_type.clone().into_json()?)?, data_type);
-    assert_eq!(DataType::from_yaml(&data_type.clone().into_yaml()?)?, data_type);
-    assert_eq!(DataType::from_toml(&data_type.clone().into_toml()?)?, data_type);
+    assert_eq!(DataType::from_value(dtype.clone().into_value())?, dtype);
+    assert_eq!(DataType::from_json(&dtype.clone().into_json()?)?, dtype);
+    assert_eq!(DataType::from_yaml(&dtype.clone().into_yaml()?)?, dtype);
+    assert_eq!(DataType::from_toml(&dtype.clone().into_toml()?)?, dtype);
 
-    let shape = data_type.into_value();
+    let shape = dtype.into_value();
     assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal128"));
     ```
 
@@ -782,14 +782,14 @@ Each format takes the shared [`Formatting`](text.md#formatting) option; Python s
     ```python
     from yggdryl import DataType
 
-    data_type = DataType.decimal(9, 2)
+    dtype = DataType.decimal(9, 2)
 
-    assert DataType.from_dict(data_type.into_dict()) == data_type
-    assert DataType.from_json(data_type.into_json()) == data_type
-    assert DataType.from_yaml(data_type.into_yaml()) == data_type
-    assert DataType.from_toml(data_type.into_toml()) == data_type
+    assert DataType.from_dict(dtype.into_dict()) == dtype
+    assert DataType.from_json(dtype.into_json()) == dtype
+    assert DataType.from_yaml(dtype.into_yaml()) == dtype
+    assert DataType.from_toml(dtype.into_toml()) == dtype
 
-    assert data_type.into_dict()["type"] == "decimal128"
+    assert dtype.into_dict()["type"] == "decimal128"
     ```
 
 === "JavaScript"
@@ -869,10 +869,10 @@ The output is stable across runs; nothing in it iterates a hash map.
 
     let spark = source.clone().into_scheme_compat(&Scheme::SPARK)?;
     let rewritten = spark.as_fields().unwrap();
-    assert_eq!(rewritten[0].data_type(), &DataType::Int16);
-    assert_eq!(rewritten[1].data_type(), &DataType::decimal128(20, 0)?);
+    assert_eq!(rewritten[0].dtype(), &DataType::Int16);
+    assert_eq!(rewritten[1].dtype(), &DataType::decimal128(20, 0)?);
     assert_eq!(
-        rewritten[2].data_type(),
+        rewritten[2].dtype(),
         &DataType::list(DataType::Utf8.nullable_field("item"))
     );
 
@@ -905,8 +905,8 @@ The output is stable across runs; nothing in it iterates a hash map.
     ])
 
     spark = source.into_scheme_compat("spark")
-    assert str(spark["small"].data_type) == "int16"
-    assert str(spark["wide"].data_type) == "decimal128(20,0)"
+    assert str(spark["small"].dtype) == "int16"
+    assert str(spark["wide"].dtype) == "decimal128(20,0)"
 
     assert source.into_scheme_compat("arrow") == source
     assert DataType("uint32").into_scheme_compat("polars") == DataType("uint32")
@@ -929,8 +929,8 @@ The output is stable across runs; nothing in it iterates a hash map.
     ])
 
     const spark = source.intoSchemeCompat('spark')
-    assert.equal(spark.get('small').dataType.toString(), 'int16')
-    assert.equal(spark.get('wide').dataType.toString(), 'decimal128(20,0)')
+    assert.equal(spark.get('small').dtype.toString(), 'int16')
+    assert.equal(spark.get('wide').dtype.toString(), 'decimal128(20,0)')
 
     assert.ok(source.intoSchemeCompat('arrow').equals(source))
     assert.ok(DataType.from('uint32').intoSchemeCompat('polars').equals(DataType.from('uint32')))

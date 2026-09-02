@@ -112,7 +112,7 @@ trade_id: Int32Field = fields.int32("trade_id", nullable=False)
 tags: ListField[str] = fields.list("tags", fields.utf8("item"))
 
 assert type(trade_id) is Field
-assert tags.data_type.kind == "list"
+assert tags.dtype.kind == "list"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```
 

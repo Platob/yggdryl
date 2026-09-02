@@ -150,14 +150,14 @@ def _nested_class_name(owner_name: str, path: tuple[str, ...]) -> str:
 
 
 def _hint_from_datatype(
-    data_type: DataType,
+    dtype: DataType,
     *,
     module: str,
     owner_name: str,
     path: tuple[str, ...],
     materialize_schema: bool = True,
 ) -> Any:
-    kind = data_type.id
+    kind = dtype.id
     if kind == "null":
         return type(None)
     if kind == "boolean":
@@ -183,7 +183,7 @@ def _hint_from_datatype(
     if kind in _STRING_KINDS:
         return str
     if kind in _LIST_KINDS:
-        child = data_type[0]
+        child = dtype[0]
         item = _hint_from_field(
             child,
             module=module,
@@ -194,7 +194,7 @@ def _hint_from_datatype(
         return types.GenericAlias(list, item)
     if kind == "struct":
         nested_name = _nested_class_name(owner_name, path)
-        fields = tuple(data_type)
+        fields = tuple(dtype)
         if not materialize_schema:
             try:
                 _validate_column_names(fields)
@@ -215,7 +215,7 @@ def _hint_from_datatype(
                 return fallback
         nested_root = NativeField(
             nested_name,
-            data_type,
+            dtype,
             nullable=False,
         )
         if materialize_schema:
@@ -240,11 +240,11 @@ def _hint_from_datatype(
                     path=(*path, child.name),
                     materialize_schema=materialize_schema,
                 )
-                for child in data_type
+                for child in dtype
             ]
         )
     if kind == "map":
-        entries = data_type[0].data_type
+        entries = dtype[0].dtype
         key = _hint_from_field(
             entries[0],
             module=module,
@@ -259,13 +259,13 @@ def _hint_from_datatype(
             path=(*path, "value"),
             materialize_schema=materialize_schema,
         )
-        if entries[0].data_type.is_nested:
+        if entries[0].dtype.is_nested:
             pair = types.GenericAlias(tuple, (key, item))
             return types.GenericAlias(list, pair)
         return types.GenericAlias(dict, (key, item))
     if kind == "run_end_encoded":
         return _hint_from_datatype(
-            data_type[1].data_type,
+            dtype[1].dtype,
             module=module,
             owner_name=owner_name,
             path=(*path, "values"),
@@ -273,7 +273,7 @@ def _hint_from_datatype(
         )
     if kind == "dictionary":
         return _hint_from_datatype(
-            data_type._dictionary_value_type(),
+            dtype._dictionary_value_type(),
             module=module,
             owner_name=owner_name,
             path=(*path, "dictionary"),
@@ -290,7 +290,7 @@ def _hint_from_field(
     path: tuple[str, ...],
     materialize_schema: bool = True,
 ) -> Any:
-    if materialize_schema and field.data_type.id == "struct":
+    if materialize_schema and field.dtype.id == "struct":
         nested_name = _nested_class_name(owner_name, path)
         # A nested non-null Struct can retain its exact source Field. For a
         # nullable member, Optional carries the parent's nullability while the
@@ -299,19 +299,19 @@ def _hint_from_field(
         if field.nullable:
             root = NativeField(
                 field.name,
-                field.data_type,
+                field.dtype,
                 nullable=False,
                 metadata=dict(field.metadata.items()),
             )
         hint = _materialize_dataclass(
             root,
-            tuple(field.data_type),
+            tuple(field.dtype),
             class_name=nested_name,
             module=module,
         )
         return _optional(hint, field.nullable)
     hint = _hint_from_datatype(
-        field.data_type,
+        field.dtype,
         module=module,
         owner_name=owner_name,
         path=path,
@@ -428,7 +428,7 @@ def dataclass_from_field(
 ) -> type[Any]:
     """Build a dataclass whose cached ``field()`` is exactly ``value``."""
 
-    if value.nullable or value.data_type.id != "struct":
+    if value.nullable or value.dtype.id != "struct":
         raise TypeError("into_dataclass requires a non-nullable Struct Field")
     metadata = dict(value.metadata.items())
     selected_name, selected_module = _select_identity(
@@ -439,7 +439,7 @@ def dataclass_from_field(
     )
     return _materialize_dataclass(
         value,
-        tuple(value.data_type),
+        tuple(value.dtype),
         class_name=selected_name,
         module=selected_module,
     )
@@ -452,36 +452,36 @@ class _TypePlan(typing.NamedTuple):
     map_as_pairs: bool
 
 
-def _prepare_type_plan(data_type: DataType, arrow_type: Any) -> _TypePlan:
+def _prepare_type_plan(dtype: DataType, arrow_type: Any) -> _TypePlan:
     storage_type = getattr(arrow_type, "storage_type", None)
     if storage_type is not None:
         return _TypePlan(
             "extension",
             arrow_type,
-            (_prepare_type_plan(data_type, storage_type),),
+            (_prepare_type_plan(dtype, storage_type),),
             False,
         )
-    kind = data_type.id
+    kind = dtype.id
     if kind == "dictionary":
         return _TypePlan(
             kind,
             arrow_type,
             (
                 _prepare_type_plan(
-                    data_type._dictionary_value_type(), arrow_type.value_type
+                    dtype._dictionary_value_type(), arrow_type.value_type
                 ),
             ),
             False,
         )
-    native_children = tuple(data_type)
+    native_children = tuple(dtype)
     children = tuple(
-        _prepare_type_plan(child.data_type, arrow_type.field(index).type)
+        _prepare_type_plan(child.dtype, arrow_type.field(index).type)
         for index, child in enumerate(native_children)
     )
     map_as_pairs = (
         kind == "map"
         and bool(native_children)
-        and native_children[0].data_type[0].data_type.is_nested
+        and native_children[0].dtype[0].dtype.is_nested
     )
     return _TypePlan(kind, arrow_type, children, map_as_pairs)
 

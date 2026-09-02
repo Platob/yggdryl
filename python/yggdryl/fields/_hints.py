@@ -192,13 +192,13 @@ class _Inference:
         if isinstance(hint, DataType):
             return hint
         if isinstance(hint, Field):
-            return hint.data_type
+            return hint.dtype
         if isinstance(hint, type):
             declared = _authoritative_field_class_root(hint)
             if declared is not None:
                 # A field class owns the exact native graph it was generated
                 # from. Do not widen its deliberately coarse Python hints.
-                return declared.data_type
+                return declared.dtype
         if hint is None or hint is _NONE_TYPE:
             return _native_datatype("null")
         if hint is Any or hint is object or hint in _no_value_hints():
@@ -328,7 +328,7 @@ class _Inference:
                     path=path,
                     depth=depth + 1,
                 )
-                data_type = imported.data_type
+                dtype = imported.dtype
                 explicit_extension = any(
                     key.startswith(_EXTENSION_METADATA_PREFIX)
                     for key in imported.metadata
@@ -339,16 +339,16 @@ class _Inference:
                 # Only an internally marked field class is authoritative;
                 # arbitrary class attributes remain unrelated user state.
                 imported = declared
-                data_type = imported.data_type
+                dtype = imported.dtype
                 explicit_extension = any(
                     key.startswith(_EXTENSION_METADATA_PREFIX)
                     for key in imported.metadata
                 )
             else:
-                data_type = self.datatype(base, path=path, depth=depth + 1)
+                dtype = self.datatype(base, path=path, depth=depth + 1)
         else:
             self._validate_logical_graph(base, path=path, depth=depth + 1)
-            data_type, imported, explicit_extension = _field_type_from_override(
+            dtype, imported, explicit_extension = _field_type_from_override(
                 name,
                 options.arrow_type,
                 nullable,
@@ -365,7 +365,7 @@ class _Inference:
         imported_metadata.update(overlay)
         result = Field(
             name,
-            data_type,
+            dtype,
             nullable=nullable,
             metadata=imported_metadata or None,
         )
@@ -617,16 +617,16 @@ class _Inference:
                 path=path,
                 depth=depth + 1,
             )
-            data_type = inferred.data_type
+            dtype = inferred.dtype
             if not collapse_equivalent or not any(
-                existing.data_type == data_type for _, existing in unique
+                existing.dtype == dtype for _, existing in unique
             ):
                 unique.append((hint, inferred))
 
         if not unique:
             return _native_datatype("null")
         if len(unique) == 1:
-            return unique[0][1].data_type
+            return unique[0][1].dtype
         if len(unique) > 128:
             raise TypeError(f"union at {path} exceeds Arrow's 128-member limit")
 
@@ -1245,7 +1245,7 @@ def _field_type_from_override(
                 "serialized extension metadata"
             ) from error
         raise
-    return imported.data_type, imported, is_extension
+    return imported.dtype, imported, is_extension
 
 
 def _is_pyarrow_extension_type(pa: Any, value: object) -> bool:
@@ -1271,7 +1271,7 @@ def _validate_extension_metadata(
 def _renamed_field(field: Field, name: str) -> Field:
     renamed = Field(
         name,
-        field.data_type,
+        field.dtype,
         nullable=field.nullable,
         metadata=dict(field.metadata.items()) or None,
     )

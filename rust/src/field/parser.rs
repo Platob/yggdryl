@@ -66,7 +66,7 @@ fn parse_canonical_field(body: &str) -> Result<Field> {
         return Err(parse_error(0, "field(...) requires a name and datatype"));
     }
     let name = parse_string(values[0].1).map_err(|error| offset_error(error, values[0].0))?;
-    let data_type = parse_data_type(values[1].1, values[1].0)?;
+    let dtype = parse_dtype(values[1].1, values[1].0)?;
     let mut nullable = true;
     let mut dictionary_id = 0;
     let mut dictionary_is_ordered = false;
@@ -117,7 +117,7 @@ fn parse_canonical_field(body: &str) -> Result<Field> {
 
     let field = Field {
         name: name.into(),
-        data_type,
+        dtype,
         nullable,
         dictionary_id,
         dictionary_is_ordered,
@@ -130,7 +130,7 @@ fn parse_canonical_field(body: &str) -> Result<Field> {
 
 fn parse_arrow_field(body: &str) -> Result<Field> {
     let mut name = None;
-    let mut data_type = None;
+    let mut dtype = None;
     let mut nullable = None;
     let mut dictionary_id = None;
     let mut dictionary_is_ordered = None;
@@ -147,7 +147,7 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
                 let (display_type, is_nullable) = strip_nullable_prefix(display_type);
                 nullable = Some(is_nullable);
                 let type_offset = offset + member.find(display_type).unwrap_or_default();
-                data_type = Some(parse_data_type(display_type, type_offset)?);
+                dtype = Some(parse_dtype(display_type, type_offset)?);
                 continue;
             }
         }
@@ -169,11 +169,11 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
                 name =
                     Some(parse_string(value).map_err(|error| offset_error(error, value_offset))?);
             }
-            "data_type" | "datatype" | "type" => {
-                if data_type.is_some() {
+            "dtype" | "type" => {
+                if dtype.is_some() {
                     return Err(parse_error(offset, "duplicate field datatype"));
                 }
-                data_type = Some(parse_data_type(value, value_offset)?);
+                dtype = Some(parse_dtype(value, value_offset)?);
             }
             "nullable" | "is_nullable" => {
                 if nullable.is_some() {
@@ -213,7 +213,7 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
         name: name
             .ok_or_else(|| parse_error(0, "Arrow field is missing name"))?
             .into(),
-        data_type: data_type.ok_or_else(|| parse_error(0, "Arrow field is missing data_type"))?,
+        dtype: dtype.ok_or_else(|| parse_error(0, "Arrow field is missing dtype"))?,
         // Arrow's Debug implementation omits `nullable` when it is false.
         nullable: nullable.unwrap_or(false),
         dictionary_id: dictionary_id.unwrap_or_default(),
@@ -227,35 +227,35 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
 
 fn parse_shorthand_field(value: &str) -> Result<Field> {
     let (value, nullable) = parse_nullability_suffix(value)?;
-    if let Some((name, data_type, type_offset)) = split_quoted_field_name(value)? {
+    if let Some((name, dtype, type_offset)) = split_quoted_field_name(value)? {
         let name = parse_identifier(name)?;
-        if data_type.trim().is_empty() {
+        if dtype.trim().is_empty() {
             return Err(parse_error(value.len(), "missing field datatype"));
         }
-        let field = Field::new(name, parse_data_type(data_type, type_offset)?, nullable);
+        let field = Field::new(name, parse_dtype(dtype, type_offset)?, nullable);
         field.validate()?;
         return Ok(field);
     }
     let parts = split_top_level(value, ':')?;
-    let (name, data_type, type_offset) = if parts.len() == 2 {
+    let (name, dtype, type_offset) = if parts.len() == 2 {
         (parts[0].1, parts[1].1, parts[1].0)
     } else if parts.len() > 2 {
         return Err(parse_error(parts[2].0, "unexpected top-level colon"));
     } else {
         let index = top_level_whitespace(value)?
             .ok_or_else(|| parse_error(0, "expected `name: datatype` or `name datatype`"))?;
-        let data_type = value[index..].trim_start();
+        let dtype = value[index..].trim_start();
         (
             &value[..index],
-            data_type,
-            index + value[index..].len().saturating_sub(data_type.len()),
+            dtype,
+            index + value[index..].len().saturating_sub(dtype.len()),
         )
     };
     let name = parse_identifier(name)?;
-    if data_type.trim().is_empty() {
+    if dtype.trim().is_empty() {
         return Err(parse_error(value.len(), "missing field datatype"));
     }
-    let field = Field::new(name, parse_data_type(data_type, type_offset)?, nullable);
+    let field = Field::new(name, parse_dtype(dtype, type_offset)?, nullable);
     field.validate()?;
     Ok(field)
 }
@@ -297,10 +297,10 @@ fn split_quoted_field_name(value: &str) -> Result<Option<(&str, &str, usize)>> {
     let suffix = &value[end..];
     let trimmed = suffix.trim_start();
     let whitespace = suffix.len() - trimmed.len();
-    if let Some(data_type) = trimmed.strip_prefix(':') {
-        let data_type = data_type.trim_start();
-        let offset = end + whitespace + 1 + trimmed[1..].len().saturating_sub(data_type.len());
-        return Ok(Some((name, data_type, offset)));
+    if let Some(dtype) = trimmed.strip_prefix(':') {
+        let dtype = dtype.trim_start();
+        let offset = end + whitespace + 1 + trimmed[1..].len().saturating_sub(dtype.len());
+        return Ok(Some((name, dtype, offset)));
     }
     if whitespace == 0 {
         return Err(parse_error(
@@ -643,7 +643,7 @@ fn parse_bool(value: &str, position: usize) -> Result<bool> {
     }
 }
 
-fn parse_data_type(value: &str, position: usize) -> Result<DataType> {
+fn parse_dtype(value: &str, position: usize) -> Result<DataType> {
     DataType::from_str(value).map_err(|error| match error {
         Error::Parse {
             position: nested,

@@ -255,8 +255,8 @@ fn field_from_json(entry: &Scalar) -> Result<Field> {
 fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Result<Field> {
     if let Some(primitive) = type_json.as_str() {
         let parsed = PrimitiveType::from_str(primitive)?;
-        let data_type = parsed.into_data_type()?;
-        let mut field = Field::new(name, data_type, nullable);
+        let dtype = parsed.into_dtype()?;
+        let mut field = Field::new(name, dtype, nullable);
         // `uuid` and `fixed[16]` share one physical type, so the declared
         // spelling is kept where the writer will find it again.
         if parsed == PrimitiveType::Uuid {
@@ -362,7 +362,7 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
 
 /// Render one field's datatype as an Iceberg type.
 fn type_to_json(field: &Field) -> Result<Scalar> {
-    match field.data_type() {
+    match field.dtype() {
         DataType::Struct(_) => Scalar::from_record([
             ("type", Scalar::from("struct")),
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
@@ -425,7 +425,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
             }))
         }
         other => {
-            let computed = PrimitiveType::from_data_type(other)?;
+            let computed = PrimitiveType::from_dtype(other)?;
             // The declared spelling wins only where the physical type agrees
             // with it, so a stale marker can never misdescribe a column.
             if computed == PrimitiveType::Fixed(16)

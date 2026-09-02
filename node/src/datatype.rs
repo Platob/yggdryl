@@ -12,10 +12,10 @@ use crate::{
     field::JsField,
     napi_error, ordering_value,
     record::arrow_scalar_to_ipc,
-    record::{JsValueHint, data_type_js_hint, field_value_to_js},
+    record::{JsValueHint, dtype_js_hint, field_value_to_js},
 };
 
-pub(crate) fn data_type_from_input(
+pub(crate) fn dtype_from_input(
     value: Either<ClassInstance<'_, JsDataType>, String>,
 ) -> Result<CoreDataType> {
     match value {
@@ -57,13 +57,13 @@ impl JsDataType {
     /// Parse a type expression or cheaply clone another native `DataType`.
     #[napi(constructor)]
     pub fn new(value: Either<ClassInstance<'_, JsDataType>, String>) -> Result<Self> {
-        data_type_from_input(value).map(Self::from_core)
+        dtype_from_input(value).map(Self::from_core)
     }
 
     /// Infer a type from a native wrapper or type-expression string.
     #[napi(factory, js_name = "from")]
     pub fn from_js(value: Either<ClassInstance<'_, JsDataType>, String>) -> Result<Self> {
-        data_type_from_input(value).map(Self::from_core)
+        dtype_from_input(value).map(Self::from_core)
     }
 
     /// Internal direct constructor for parameter-free typed Field factories.
@@ -282,7 +282,7 @@ impl JsDataType {
         value: Either<ClassInstance<'_, JsDataType>, String>,
     ) -> Result<Self> {
         let inner =
-            CoreDataType::dictionary(data_type_from_input(key)?, data_type_from_input(value)?)
+            CoreDataType::dictionary(dtype_from_input(key)?, dtype_from_input(value)?)
                 .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
@@ -302,8 +302,8 @@ impl JsDataType {
         keys_sorted: bool,
     ) -> Result<Self> {
         CoreDataType::map_of(
-            data_type_from_input(key)?,
-            data_type_from_input(value)?,
+            dtype_from_input(key)?,
+            dtype_from_input(value)?,
             keys_sorted,
         )
         .map(Self::from_core)
@@ -444,7 +444,7 @@ impl JsDataType {
         with_metadata: Option<bool>,
         return_equal: Option<bool>,
     ) -> JsDifferenceIterator {
-        JsDifferenceIterator::from_data_types(
+        JsDifferenceIterator::from_dtypes(
             &self.inner,
             &other.inner,
             with_metadata.unwrap_or(true),
@@ -491,7 +491,7 @@ impl JsDataType {
     /// Internal allocation-independent JavaScript constructor category.
     #[napi(js_name = "_defaultJSHintNative", skip_typescript)]
     pub fn default_js_hint_native(&self) -> Result<u8> {
-        data_type_js_hint(&self.inner).map(JsValueHint::code)
+        dtype_js_hint(&self.inner).map(JsValueHint::code)
     }
 
     /// Internal one-row copied IPC projection for Apache Arrow JS scalar

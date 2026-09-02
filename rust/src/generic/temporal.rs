@@ -435,8 +435,8 @@ impl Scalar {
     }
 
     /// Return the datatype this temporal materializes into.
-    pub fn temporal_data_type(&self) -> Option<DataType> {
-        self.is_temporal().then(|| self.data_type().ok()).flatten()
+    pub fn temporal_dtype(&self) -> Option<DataType> {
+        self.is_temporal().then(|| self.dtype().ok()).flatten()
     }
 }
 

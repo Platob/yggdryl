@@ -2,8 +2,8 @@
 //!
 //! A struct [`yggdryl::Field`] is the schema, so projecting one value means
 //! walking that field's children and building the matching JavaScript value.
-//! The categories here mirror `data_type_to_js` exactly: whatever that
-//! function produces for a datatype is what [`data_type_js_hint`] reports for
+//! The categories here mirror `dtype_to_js` exactly: whatever that
+//! function produces for a datatype is what [`dtype_js_hint`] reports for
 //! it, so a caller can pre-size or pre-type a value without projecting one.
 
 use napi::bindgen_prelude::{
@@ -49,11 +49,11 @@ impl JsValueHint {
 
 /// Report the JavaScript category one datatype projects into.
 ///
-/// This mirrors `data_type_to_js`; the two must stay in step.
-pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
+/// This mirrors `dtype_to_js`; the two must stay in step.
+pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
     use DataType as D;
 
-    Ok(match data_type {
+    Ok(match dtype {
         D::Null => JsValueHint::Null,
         D::Boolean => JsValueHint::Boolean,
         // 32-bit and smaller integers and every float fit a JS number.
@@ -105,8 +105,8 @@ pub(crate) fn data_type_js_hint(data_type: &DataType) -> Result<JsValueHint> {
         D::Interval(_) => return Err(napi_error("invalid native interval layout")),
         D::Map(_) => JsValueHint::Map,
         // Wrappers project as whatever they encode.
-        D::Dictionary(dictionary) => data_type_js_hint(dictionary.value())?,
-        D::RunEndEncoded(encoded) => data_type_js_hint(encoded.values().data_type())?,
+        D::Dictionary(dictionary) => dtype_js_hint(dictionary.value())?,
+        D::RunEndEncoded(encoded) => dtype_js_hint(encoded.values().dtype())?,
         other => {
             return Err(napi_error(format!(
                 "expected a datatype with a JavaScript projection, got {other}"
@@ -125,12 +125,12 @@ pub(crate) fn field_value_to_js<'env>(
 }
 
 fn value_to_js<'env>(env: &'env Env, field: &CoreField, value: &Scalar) -> Result<Unknown<'env>> {
-    data_type_to_js(env, field.data_type(), value)
+    dtype_to_js(env, field.dtype(), value)
 }
 
-fn data_type_to_js<'env>(
+fn dtype_to_js<'env>(
     env: &'env Env,
-    data_type: &DataType,
+    dtype: &DataType,
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     use DataType as D;
@@ -138,16 +138,16 @@ fn data_type_to_js<'env>(
     if matches!(value, Scalar::Null) {
         return Null.into_unknown(env);
     }
-    if let Some(value) = numeric_to_js(env, data_type, value)? {
+    if let Some(value) = numeric_to_js(env, dtype, value)? {
         return Ok(value);
     }
-    if let Some(value) = temporal_to_js(env, data_type, value)? {
+    if let Some(value) = temporal_to_js(env, dtype, value)? {
         return Ok(value);
     }
-    if let Some(value) = text_or_binary_to_js(env, data_type, value)? {
+    if let Some(value) = text_or_binary_to_js(env, dtype, value)? {
         return Ok(value);
     }
-    match data_type {
+    match dtype {
         D::Null => Null.into_unknown(env),
         D::List(item)
         | D::ListView(item)
@@ -156,7 +156,7 @@ fn data_type_to_js<'env>(
         | D::LargeListView(item) => sequence_to_js(env, item, value),
         D::Struct(fields) => struct_to_js(env, fields, value),
         D::Union(fields, _) => union_to_js(env, fields, value),
-        D::Dictionary(dictionary) => data_type_to_js(env, dictionary.value(), value),
+        D::Dictionary(dictionary) => dtype_to_js(env, dictionary.value(), value),
         D::Map(map) => map_to_js(env, map, value),
         D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value),
         // A non-null variant value crosses as the Parquet Variant binary
@@ -167,19 +167,19 @@ fn data_type_to_js<'env>(
              the variant binary encoding lands with the Iceberg v3 layer",
         )),
         _ => Err(napi_error(format!(
-            "unsupported native datatype {data_type}"
+            "unsupported native datatype {dtype}"
         ))),
     }
 }
 
 fn numeric_to_js<'env>(
     env: &'env Env,
-    data_type: &DataType,
+    dtype: &DataType,
     value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
-    let output = match data_type {
+    let output = match dtype {
         D::Boolean => value
             .as_bool()
             .ok_or_else(|| napi_error("invalid native boolean record value"))?
@@ -233,12 +233,12 @@ fn numeric_to_js<'env>(
 
 fn temporal_to_js<'env>(
     env: &'env Env,
-    data_type: &DataType,
+    dtype: &DataType,
     value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
-    let output = match data_type {
+    let output = match dtype {
         D::Date32 => temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Day, 32)?,
         D::Date64 => {
             temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Millisecond, 64)?
@@ -295,12 +295,12 @@ fn temporal_value_to_js<'env>(
 
 fn text_or_binary_to_js<'env>(
     env: &'env Env,
-    data_type: &DataType,
+    dtype: &DataType,
     value: &Scalar,
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
-    let output = match data_type {
+    let output = match dtype {
         D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Buffer::from(
             value
                 .as_bytes()
@@ -459,7 +459,7 @@ fn map_to_js<'env>(
         .ok_or_else(|| napi_error("invalid native map record value"))?;
     let fields = map
         .entries()
-        .data_type()
+        .dtype()
         .as_fields()
         .ok_or_else(|| napi_error("invalid native map entry schema"))?;
     let [key_field, value_field] = fields else {

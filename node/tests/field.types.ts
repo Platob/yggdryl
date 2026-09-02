@@ -104,7 +104,6 @@ const namedProtocols: ProtocolMetadata[] = [
   field.iceberg,
   field.fix,
   field.field,
-  field.dtype,
   field.s3,
   field.gs,
   field.az,

@@ -9,7 +9,7 @@ from yggdryl import DataType, Field, Url
 schema = Field("row", DataType.from_fields([Field("id", "int64", nullable=False)]), nullable=False)
 location = Url.from_path("C:/market data/trades.arrows")
 
-assert schema.data_type.id == "struct"
+assert schema.dtype.id == "struct"
 assert str(location) == "file:///C:/market%20data/trades.arrows"
 assert str(location.media_type.base) == "application/vnd.apache.arrow.stream"
 ```
@@ -64,7 +64,7 @@ Python-side parser.
 from yggdryl import DataType, Field, MediaType, MimeType, Url
 
 # A datatype expression is a datatype.
-assert str(Field("id", "int64", nullable=False).data_type) == "int64"
+assert str(Field("id", "int64", nullable=False).dtype) == "int64"
 assert DataType("list<int32>").id == "list"
 
 # A media type is its canonical name.
@@ -122,7 +122,7 @@ with `(count, unit, timezone=None)`. Exact physical variants remain visible in
 `kind` and survive Arrow, pickle, and repr round trips. Only `datetime` accepts
 a non-`NAIVE` zone; the core rejects it for date, time, and duration.
 
-All values are hashable. `kind` and `data_type` expose their exact native type;
+All values are hashable. `kind` and `dtype` expose their exact native type;
 `as_bytes` and `as_utf8` expose the matching scalar payload, while
 `as_json_bytes` and `as_json_utf8` use the core's natural JSON writer.
 `len`, iteration, indexing, `get`, `path`, containment, and
@@ -323,7 +323,7 @@ encoded = json.dumps(Trade(1, "AAPL"))
 # Without a target the document is what it says it is: data.
 assert json.loads(encoded) == {"trade_id": 1, "symbol": "AAPL"}
 assert json.loads(encoded, cls=Trade) == Trade(1, "AAPL")
-assert Trade.field()["trade_id"].data_type.id == "int64"
+assert Trade.field()["trade_id"].dtype.id == "int64"
 ```
 
 A dataclass used as a dictionary *key* reads back asymmetrically: JSON and YAML
@@ -402,8 +402,8 @@ schema = Field(
 ).with_partition_fields(["year"])
 
 assert schema.partition_field_names == ["year"]
-assert schema.data_type["year"].is_partition
-assert len(schema.without_partition_fields().data_type) == 1
+assert schema.dtype["year"].is_partition
+assert len(schema.without_partition_fields().dtype) == 1
 ```
 
 ## Field classes

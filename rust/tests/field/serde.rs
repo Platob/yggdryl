@@ -95,10 +95,10 @@ fn every_shape_round_trips_through_the_value_conversion() {
             "metadata survives {field}"
         );
 
-        let data_type = field.data_type().clone();
+        let dtype = field.dtype().clone();
         let restored =
-            DataType::from_value(data_type.clone().into_value()).expect("a datatype mapping");
-        assert_eq!(restored, data_type, "{data_type}");
+            DataType::from_value(dtype.clone().into_value()).expect("a datatype mapping");
+        assert_eq!(restored, dtype, "{dtype}");
     }
 }
 
@@ -115,13 +115,13 @@ fn the_value_shape_matches_the_json_structure_exactly() {
         .expect("UTF-8");
         assert_eq!(direct, through_value, "{field}");
 
-        let data_type = field.data_type();
-        let direct = data_type.clone().into_json().expect("structural JSON");
+        let dtype = field.dtype();
+        let direct = dtype.clone().into_json().expect("structural JSON");
         let through_value = String::from_utf8(
-            yggdryl::json::into_bytes(&data_type.clone().into_value()).expect("a JSON dump"),
+            yggdryl::json::into_bytes(&dtype.clone().into_value()).expect("a JSON dump"),
         )
         .expect("UTF-8");
-        assert_eq!(direct, through_value, "{data_type}");
+        assert_eq!(direct, through_value, "{dtype}");
     }
 }
 
@@ -131,7 +131,7 @@ fn a_malformed_mapping_is_refused_by_path() {
         Scalar::from_mapping([(Scalar::String("name".into()), Scalar::String("id".into()))])
             .unwrap();
     let refused = Field::from_value(missing).expect_err("no datatype");
-    assert!(refused.to_string().contains("data_type"), "{refused}");
+    assert!(refused.to_string().contains("dtype"), "{refused}");
 
     let unknown = Scalar::from_mapping([(
         Scalar::String("type".into()),
@@ -169,9 +169,9 @@ fn the_trait_forms_sit_beside_the_inherent_ones() {
     let value: Scalar = (&field).into();
     assert_eq!(Field::try_from(value).unwrap(), field);
 
-    let data_type = DataType::Utf8;
-    let value: Scalar = (&data_type).into();
-    assert_eq!(DataType::try_from(value).unwrap(), data_type);
+    let dtype = DataType::Utf8;
+    let value: Scalar = (&dtype).into();
+    assert_eq!(DataType::try_from(value).unwrap(), dtype);
 
     // Metadata keeps its own entries type; this is only the schema route.
     assert!(Metadata::new().is_empty());
@@ -200,18 +200,18 @@ fn every_shape_round_trips_through_every_format() {
             field
         );
 
-        let data_type = field.data_type().clone();
+        let dtype = field.dtype().clone();
         assert_eq!(
-            DataType::from_json(&data_type.clone().into_json().unwrap()).unwrap(),
-            data_type
+            DataType::from_json(&dtype.clone().into_json().unwrap()).unwrap(),
+            dtype
         );
         assert_eq!(
-            DataType::from_yaml(&data_type.clone().into_yaml().unwrap()).unwrap(),
-            data_type
+            DataType::from_yaml(&dtype.clone().into_yaml().unwrap()).unwrap(),
+            dtype
         );
         assert_eq!(
-            DataType::from_toml(&data_type.clone().into_toml().unwrap()).unwrap(),
-            data_type
+            DataType::from_toml(&dtype.clone().into_toml().unwrap()).unwrap(),
+            dtype
         );
     }
 }
@@ -227,11 +227,11 @@ fn natural_text_objects_feed_record_aware_structural_readers() {
 
     for document in documents {
         assert!(document.as_record().is_some(), "{document:?}");
-        let data_type = document.get_key_str("data_type").unwrap().clone();
-        assert!(data_type.as_record().is_some(), "{data_type:?}");
+        let dtype = document.get_key_str("dtype").unwrap().clone();
+        assert!(dtype.as_record().is_some(), "{dtype:?}");
         assert_eq!(
-            DataType::from_value(data_type).unwrap(),
-            field.data_type().clone()
+            DataType::from_value(dtype).unwrap(),
+            field.dtype().clone()
         );
         assert_eq!(Field::from_value(document).unwrap(), field);
     }
@@ -258,18 +258,18 @@ fn a_small_dump_reads_the_way_the_docs_say() {
 
     assert_eq!(
         field.clone().into_json().unwrap(),
-        r#"{"name":"row","data_type":{"type":"struct","fields":[{"name":"id","data_type":{"type":"int64"},"nullable":false,"metadata":{}}]},"nullable":false,"metadata":{}}"#
+        r#"{"name":"row","dtype":{"type":"struct","fields":[{"name":"id","dtype":{"type":"int64"},"nullable":false,"metadata":{}}]},"nullable":false,"metadata":{}}"#
     );
 
     assert_eq!(
         field.clone().into_yaml().unwrap(),
         "\
 name: row
-data_type:
+dtype:
   type: struct
   fields:
     - name: id
-      data_type:
+      dtype:
         type: int64
       nullable: false
       metadata: {}
@@ -282,7 +282,7 @@ metadata: {}
         field.into_toml().unwrap(),
         "\
 \"name\" = \"row\"
-\"data_type\" = {\"type\" = \"struct\", \"fields\" = [{\"name\" = \"id\", \"data_type\" = {\"type\" = \"int64\"}, \"nullable\" = false, \"metadata\" = {}}]}
+\"dtype\" = {\"type\" = \"struct\", \"fields\" = [{\"name\" = \"id\", \"dtype\" = {\"type\" = \"int64\"}, \"nullable\" = false, \"metadata\" = {}}]}
 \"nullable\" = false
 \"metadata\" = {}
 "
@@ -473,10 +473,10 @@ fn the_compact_form_is_unchanged_and_still_parses_back() {
         assert!(!compact.contains('\n'), "{compact}");
         assert_eq!(Field::from_str(&compact).unwrap(), field);
 
-        let data_type = field.data_type();
-        let compact = data_type.to_string();
+        let dtype = field.dtype();
+        let compact = dtype.to_string();
         assert!(!compact.contains('\n'), "{compact}");
-        assert_eq!(DataType::from_str(&compact).unwrap(), *data_type);
+        assert_eq!(DataType::from_str(&compact).unwrap(), *dtype);
     }
 }
 

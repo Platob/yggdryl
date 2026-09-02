@@ -260,7 +260,7 @@ impl ArrowLines {
         // definition every schema-directed read uses.
         let typed = (0..capture_count).any(|index| {
             root.get_field(leading + index)
-                .is_some_and(|field| field.data_type() != &DataType::Utf8)
+                .is_some_and(|field| field.dtype() != &DataType::Utf8)
         });
         let raw_schema = if typed {
             let mut raw = root.clone();

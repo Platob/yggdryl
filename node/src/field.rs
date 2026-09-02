@@ -11,7 +11,7 @@ use yggdryl::{Field as CoreField, ProtocolMetadata as CoreProtocolMetadata, Sche
 
 use crate::{
     JsDifferenceIterator,
-    datatype::{JsDataType, data_type_from_input},
+    datatype::{JsDataType, dtype_from_input},
     exact_i32,
     media::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
@@ -79,12 +79,12 @@ impl JsField {
     #[napi(constructor)]
     pub fn new(
         value: Either<ClassInstance<'_, JsField>, String>,
-        data_type: Option<Either<ClassInstance<'_, JsDataType>, String>>,
+        dtype: Option<Either<ClassInstance<'_, JsDataType>, String>>,
         nullable: Option<bool>,
         metadata: Option<Either<Vec<MetadataEntry>, HashMap<String, String>>>,
     ) -> Result<Self> {
-        let should_override_nullable = data_type.is_none();
-        let mut field = match (value, data_type) {
+        let should_override_nullable = dtype.is_none();
+        let mut field = match (value, dtype) {
             (Either::A(field), None) => field.inner.clone(),
             (Either::A(_), Some(_)) => {
                 return Err(Error::from_reason(
@@ -92,10 +92,10 @@ impl JsField {
                 ));
             }
             (Either::B(value), None) => CoreField::from_str(&value).map_err(napi_error)?,
-            (Either::B(name), Some(data_type)) => {
+            (Either::B(name), Some(dtype)) => {
                 let field = CoreField::new(
                     name,
-                    data_type_from_input(data_type)?,
+                    dtype_from_input(dtype)?,
                     nullable.unwrap_or(true),
                 );
                 field.validate().map_err(napi_error)?;
@@ -197,8 +197,8 @@ impl JsField {
 
     /// Logical native datatype.
     #[napi(getter)]
-    pub fn data_type(&self) -> JsDataType {
-        JsDataType::from_core(self.inner.data_type().clone())
+    pub fn dtype(&self) -> JsDataType {
+        JsDataType::from_core(self.inner.dtype().clone())
     }
 
     /// Whether values may be null.
@@ -404,12 +404,12 @@ impl JsField {
 
     /// Change the datatype from a native wrapper or parsed expression.
     #[napi]
-    pub fn set_data_type(
+    pub fn set_dtype(
         &mut self,
-        data_type: Either<ClassInstance<'_, JsDataType>, String>,
+        dtype: Either<ClassInstance<'_, JsDataType>, String>,
     ) -> Result<()> {
         self.inner
-            .set_data_type(data_type_from_input(data_type)?)
+            .set_dtype(dtype_from_input(dtype)?)
             .map_err(napi_error)
     }
 
@@ -935,12 +935,6 @@ impl JsField {
     #[napi(getter)]
     pub fn field(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
         JsProtocolMetadata::new(reference, CoreScheme::FIELD)
-    }
-
-    /// The live Yggdryl datatype property view.
-    #[napi(getter)]
-    pub fn dtype(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::DTYPE)
     }
 
     /// The live Amazon S3 property view.

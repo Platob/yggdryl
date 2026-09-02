@@ -84,11 +84,11 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
 /// reports the same failures, rooted at the value itself. A null is accepted
 /// by every datatype, because nullability belongs to the field that holds the
 /// column rather than to the value in it.
-pub(crate) fn validate_data_type_value_for(data_type: &DataType, value: &Scalar) -> Result<()> {
+pub(crate) fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
     if matches!(value, Scalar::Null) {
         return Ok(());
     }
-    validate_data_type_value(data_type, value, 0).map_err(|failure| {
+    validate_dtype_value(dtype, value, 0).map_err(|failure| {
         let mut path = String::from("$");
         for segment in failure.path {
             push_path_segment(&mut path, segment);
@@ -146,7 +146,7 @@ fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, 
     if matches!(value, Scalar::Null) {
         return Ok((Scalar::Null, false));
     }
-    canonicalize_data_type_value(field.data_type(), value)
+    canonicalize_dtype_value(field.dtype(), value)
 }
 
 /// The physical count a self-describing value carries for one column.
@@ -157,9 +157,9 @@ fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, 
 /// count the column stores and answers `None`, as does a restatement that would
 /// have dropped a digit - which then fails the ordinary check below, naming the
 /// kind that did not fit.
-fn restated(data_type: &DataType, value: &Scalar) -> Option<i128> {
+fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. }
             if value.is_decimal() =>
         {
@@ -211,9 +211,9 @@ fn temporal_matches(
 }
 
 #[allow(clippy::too_many_lines)]
-fn canonicalize_data_type_value(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
+fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     use DataType as D;
-    match data_type {
+    match dtype {
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
             let coefficient = if value.is_decimal() {
                 value.decimal_unscaled_at(*scale)
@@ -291,18 +291,18 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Scalar) -> Result<
         }
         _ => {}
     }
-    if let Some(physical) = restated(data_type, value) {
+    if let Some(physical) = restated(dtype, value) {
         // A restatement always rewrote something, so it is always a change.
-        let (canonical, _) = canonicalize_data_type_value(data_type, &Scalar::I128(physical))?;
+        let (canonical, _) = canonicalize_dtype_value(dtype, &Scalar::I128(physical))?;
         return Ok((canonical, true));
     }
-    match data_type {
+    match dtype {
         D::Null | D::Boolean => Ok((value.clone(), false)),
-        D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(data_type, value),
+        D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(dtype, value),
         // Interval tuples use the core's signed 64-bit component spelling;
         // they are not one of the physical integer widths selected above.
         D::Interval(TimeUnit::YearMonth) => canonical_signed(&D::Int64, value),
-        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(data_type, value),
+        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(dtype, value),
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
         D::Float64 => canonical_float(value, FloatWidth::Float64),
@@ -325,7 +325,7 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Scalar) -> Result<
         }
         D::Struct(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
-        D::Dictionary(dictionary) => canonicalize_data_type_value(dictionary.value(), value),
+        D::Dictionary(dictionary) => canonicalize_dtype_value(dictionary.value(), value),
         D::Decimal32 { .. }
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
@@ -351,7 +351,7 @@ fn canonicalize_data_type_value(data_type: &DataType, value: &Scalar) -> Result<
     }
 }
 
-fn canonical_signed(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
+fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(integer) = value.as_i128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -363,7 +363,7 @@ fn canonical_signed(data_type: &DataType, value: &Scalar) -> Result<(Scalar, boo
             ),
         });
     };
-    let canonical = match data_type {
+    let canonical = match dtype {
         DataType::Int8 => Scalar::I8(i8::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int16 => Scalar::I16(i16::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int32 => Scalar::I32(i32::try_from(integer).map_err(canonical_integer_error)?),
@@ -382,14 +382,14 @@ fn canonical_signed(data_type: &DataType, value: &Scalar) -> Result<(Scalar, boo
     Ok((canonical, changed))
 }
 
-fn canonical_unsigned(data_type: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
+fn canonical_unsigned(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(integer) = value.as_u128() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated unsigned value could not be canonicalized"),
         });
     };
-    let canonical = match data_type {
+    let canonical = match dtype {
         DataType::UInt8 => Scalar::U8(u8::try_from(integer).map_err(canonical_integer_error)?),
         DataType::UInt16 => Scalar::U16(u16::try_from(integer).map_err(canonical_integer_error)?),
         DataType::UInt32 => Scalar::U32(u32::try_from(integer).map_err(canonical_integer_error)?),
@@ -555,7 +555,7 @@ fn canonical_map(map: &crate::MapType, value: &Scalar) -> Result<(Scalar, bool)>
     let Some(entries) = value.as_mapping() else {
         return canonicalization_failure(&DataType::Map(map.clone().into()));
     };
-    let Some([key_field, value_field]) = map.entries().data_type().as_fields() else {
+    let Some([key_field, value_field]) = map.entries().dtype().as_fields() else {
         return canonicalization_failure(&DataType::Map(map.clone().into()));
     };
     for (index, (key, entry_value)) in entries.iter().enumerate() {
@@ -649,12 +649,12 @@ fn canonicalize_slice(
     Ok(None)
 }
 
-fn canonicalization_failure<T>(data_type: &DataType) -> Result<T> {
+fn canonicalization_failure<T>(dtype: &DataType) -> Result<T> {
     Err(Error::InvalidRecord {
         path: SmolStr::new_static("$"),
         reason: format_smolstr!(
             "validated {} value could not be canonicalized",
-            data_type.name()
+            dtype.name()
         ),
     })
 }
@@ -723,31 +723,31 @@ fn validate_field_payload_at_depth(
             DataType::PARSE_RECURSION_LIMIT
         )));
     }
-    if value_is_logically_null(field.data_type(), value) && !field.is_nullable() {
+    if value_is_logically_null(field.dtype(), value) && !field.is_nullable() {
         return Err(ValidationFailure::new("non-nullable field received null"));
     }
     if matches!(value, Scalar::Null)
         && !matches!(
-            field.data_type(),
+            field.dtype(),
             DataType::Union(..) | DataType::RunEndEncoded(_)
         )
     {
         return Ok(());
     }
-    validate_data_type_value(field.data_type(), value, depth)
+    validate_dtype_value(field.dtype(), value, depth)
 }
 
 #[allow(clippy::too_many_lines)]
-fn validate_data_type_value(
-    data_type: &DataType,
+fn validate_dtype_value(
+    dtype: &DataType,
     value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     use DataType as D;
-    if let Some(physical) = restated(data_type, value) {
-        return validate_data_type_value(data_type, &Scalar::I128(physical), depth);
+    if let Some(physical) = restated(dtype, value) {
+        return validate_dtype_value(dtype, &Scalar::I128(physical), depth);
     }
-    match data_type {
+    match dtype {
         D::Null => Err(expected("null", value)),
         D::Boolean => require(matches!(value, Scalar::Bool(_)), "boolean", value),
         D::Int8 => validate_signed(value, i128::from(i8::MIN), i128::from(i8::MAX), "int8"),
@@ -759,25 +759,25 @@ fn validate_data_type_value(
         D::UInt32 => validate_unsigned(value, u128::from(u32::MAX), "uint32"),
         D::UInt64 => validate_unsigned(value, u128::from(u64::MAX), "uint64"),
         D::Float16 | D::Float32 | D::Float64 => {
-            require(value.as_f64().is_some(), data_type.name(), value)
+            require(value.as_f64().is_some(), dtype.name(), value)
         }
         D::Timestamp(..) | D::Duration64(_) => validate_signed(
             value,
             i128::from(i64::MIN),
             i128::from(i64::MAX),
-            data_type.name(),
+            dtype.name(),
         ),
         D::Duration32(_) => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
-            data_type.name(),
+            dtype.name(),
         ),
         D::Date32 => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
-            data_type.name(),
+            dtype.name(),
         ),
         D::Date64 => validate_date64(value),
         D::Time32(unit) | D::Time64(unit) => validate_time(value, *unit),
@@ -795,7 +795,7 @@ fn validate_data_type_value(
         }
         D::Interval(_) => Err(ValidationFailure::new("invalid interval layout")),
         D::Binary | D::LargeBinary | D::BinaryView => {
-            require(matches!(value, Scalar::Bytes(_)), data_type.name(), value)
+            require(matches!(value, Scalar::Bytes(_)), dtype.name(), value)
         }
         D::FixedSizeBinary(width) => match value.as_bytes() {
             Some(bytes) if usize::try_from(*width).ok() == Some(bytes.len()) => Ok(()),
@@ -806,10 +806,10 @@ fn validate_data_type_value(
             None => Err(expected("fixed-size binary bytes", value)),
         },
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
-            require(matches!(value, Scalar::String(_)), data_type.name(), value)
+            require(matches!(value, Scalar::String(_)), dtype.name(), value)
         }
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
-            validate_sequence(field, value, None, data_type.name(), depth + 1)
+            validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
         D::FixedSizeList(field, size) => validate_sequence(
             field,
@@ -820,7 +820,7 @@ fn validate_data_type_value(
         ),
         D::Struct(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
-        D::Dictionary(dictionary) => validate_data_type_value(dictionary.value(), value, depth + 1),
+        D::Dictionary(dictionary) => validate_dtype_value(dictionary.value(), value, depth + 1),
         D::Decimal32 { precision, .. } => validate_decimal(value, *precision, 32),
         D::Decimal64 { precision, .. } => validate_decimal(value, *precision, 64),
         D::Decimal128 { precision, .. } => validate_decimal(value, *precision, 128),
@@ -839,8 +839,8 @@ fn validate_data_type_value(
         D::Geometry(_) | D::Geography(_) => match value.as_wkb() {
             Some(bytes) => crate::generic::wkb::Geometry::from_slice(bytes)
                 .map(|_| ())
-                .map_err(|error| expected_because(data_type.name(), value, &error)),
-            None => Err(expected(data_type.name(), value)),
+                .map_err(|error| expected_because(dtype.name(), value, &error)),
+            None => Err(expected(dtype.name(), value)),
         },
     }
 }
@@ -1138,7 +1138,7 @@ fn validate_map(
     let entries = value
         .as_mapping()
         .ok_or_else(|| expected("map entries", value))?;
-    let Some([key_field, value_field]) = map.entries().data_type().as_fields() else {
+    let Some([key_field, value_field]) = map.entries().dtype().as_fields() else {
         return Err(ValidationFailure::new(
             "map entries must declare exactly a key and a value field",
         ));

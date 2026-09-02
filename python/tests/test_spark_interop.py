@@ -158,9 +158,9 @@ class TestTableCreationAndFieldIds:
             "(id BIGINT NOT NULL, venue STRING) USING iceberg"
         )
         table = catalog.namespaces["ids"].tables["spark_made"]
-        assert [child.parquet_field_id for child in table.schema.data_type] == [1, 2]
-        assert not table.schema.data_type["id"].nullable
-        assert table.schema.data_type["venue"].nullable
+        assert [child.parquet_field_id for child in table.schema.dtype] == [1, 2]
+        assert not table.schema.dtype["id"].nullable
+        assert table.schema.dtype["venue"].nullable
 
     def test_yggdryl_creates_spark_describes_the_same_shape(
         self, spark: Any, catalog: Catalog

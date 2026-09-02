@@ -149,7 +149,7 @@ class TestColumnPushdown:
         ).read_all()
         assert projected.column_names == ["id"]
         # The resource is unchanged: it still holds all three.
-        assert len(stream.read_arrow_field().data_type) == 3
+        assert len(stream.read_arrow_field().dtype) == 3
 
     def test_field_selection_lives_only_on_options(self, stream: IOBase) -> None:
         stream.overwrite_arrow_reader(_reader(_batch()))
@@ -239,7 +239,7 @@ class TestWritesAndMerges:
         )
 
         assert stream.read_arrow_field().name == "row"
-        assert len(stream.read_arrow_field().data_type) == 1
+        assert len(stream.read_arrow_field().dtype) == 1
 
 
 class TestPartitionColumns:
@@ -268,7 +268,7 @@ class TestPartitionColumns:
 
         # Only `price` reached the leaf; the other two are the directory names.
         leaf = lake / "year=2024" / "month=01" / "part-0.arrows"
-        assert len(leaf.read_arrow_field().data_type) == 1
+        assert len(leaf.read_arrow_field().dtype) == 1
 
         restored = lake.read_arrow_reader(options=options).read_all()
         assert restored.column_names == ["price", "year", "month"]

@@ -175,14 +175,14 @@ impl JsDifferenceIterator {
         }
     }
 
-    pub(crate) fn from_data_types(
+    pub(crate) fn from_dtypes(
         left: &yggdryl::DataType,
         right: &yggdryl::DataType,
         with_metadata: bool,
         return_equal: bool,
     ) -> Self {
         Self {
-            inner: OwnedDifferences::from_data_types(left, right, with_metadata, return_equal),
+            inner: OwnedDifferences::from_dtypes(left, right, with_metadata, return_equal),
         }
     }
 }

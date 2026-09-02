@@ -2488,22 +2488,22 @@ fn summaries(
                 summary.contains_null = true;
                 continue;
             }
-            let Some(encoded) = single_value(value, child.data_type()) else {
+            let Some(encoded) = single_value(value, child.dtype()) else {
                 continue;
             };
-            fold(&mut summary.lower_bound, &encoded, child.data_type(), true);
-            fold(&mut summary.upper_bound, &encoded, child.data_type(), false);
+            fold(&mut summary.lower_bound, &encoded, child.dtype(), true);
+            fold(&mut summary.upper_bound, &encoded, child.dtype(), false);
         }
     }
     Ok(summaries)
 }
 
 /// Keep the smaller or larger of a running bound and one candidate.
-fn fold(current: &mut Option<Vec<u8>>, candidate: &[u8], data_type: &DataType, minimum: bool) {
+fn fold(current: &mut Option<Vec<u8>>, candidate: &[u8], dtype: &DataType, minimum: bool) {
     match current {
         None => *current = Some(candidate.to_vec()),
         Some(held) => {
-            let replace = compare_single(candidate, held, data_type).is_some_and(|ordering| {
+            let replace = compare_single(candidate, held, dtype).is_some_and(|ordering| {
                 (minimum && ordering.is_lt()) || (!minimum && ordering.is_gt())
             });
             if replace {
@@ -2528,7 +2528,7 @@ struct KeyBound {
     /// The column's field identifier, which statistics are keyed by.
     id: i32,
     /// The column's datatype, which says how a bound compares.
-    data_type: DataType,
+    dtype: DataType,
     /// Whether nothing about this column can exclude a file.
     unbounded: bool,
     /// Whether an incoming key holds no value for this column.
@@ -2561,8 +2561,8 @@ impl KeyBounds {
             let id = field.parquet_field_id()?;
             let mut bound = KeyBound {
                 id: id.unwrap_or_default(),
-                data_type: field.data_type().clone(),
-                unbounded: id.is_none() || !is_portable(field.data_type()),
+                dtype: field.dtype().clone(),
+                unbounded: id.is_none() || !is_portable(field.dtype()),
                 has_null: false,
                 lower: None,
                 upper: None,
@@ -2578,10 +2578,10 @@ impl KeyBounds {
                     continue;
                 }
                 if let Some(encoded) = extreme(column, field, false)? {
-                    fold(&mut bound.lower, &encoded, &bound.data_type, true);
+                    fold(&mut bound.lower, &encoded, &bound.dtype, true);
                 }
                 if let Some(encoded) = extreme(column, field, true)? {
-                    fold(&mut bound.upper, &encoded, &bound.data_type, false);
+                    fold(&mut bound.upper, &encoded, &bound.dtype, false);
                 }
             }
             // A non-null NaN is valid as a merge key but forbidden as an
@@ -2633,8 +2633,8 @@ impl KeyBound {
             // A file that records no range for the key has to be read.
             return true;
         };
-        let before = compare_single(upper, file_lower, &self.data_type);
-        let after = compare_single(lower, file_upper, &self.data_type);
+        let before = compare_single(upper, file_lower, &self.dtype);
+        let after = compare_single(lower, file_upper, &self.dtype);
         match (before, after) {
             (Some(before), Some(after)) => !(before.is_lt() || after.is_gt()),
             // A malformed external bound cannot prove a file disjoint.
@@ -2656,7 +2656,7 @@ mod key_bound_tests {
         let incoming = 37_i64.to_le_bytes().to_vec();
         let bound = KeyBound {
             id: 1,
-            data_type: DataType::Int64,
+            dtype: DataType::Int64,
             unbounded: false,
             has_null: false,
             lower: Some(incoming.clone()),
@@ -2674,7 +2674,7 @@ mod key_bound_tests {
         let incoming = 1.5_f64.to_le_bytes().to_vec();
         let float_bound = KeyBound {
             id: 1,
-            data_type: DataType::Float64,
+            dtype: DataType::Float64,
             unbounded: false,
             has_null: false,
             lower: Some(incoming.clone()),
@@ -2770,7 +2770,7 @@ pub(super) fn extreme(
     let slice = column.slice(row as usize, 1);
     let scalar = crate::arrow::scalar_value(&field.clone().with_nullable(true), slice.as_ref())
         .map_err(|error| invalid(format_smolstr!("{error}")))?;
-    Ok(single_value(&scalar, field.data_type()))
+    Ok(single_value(&scalar, field.dtype()))
 }
 
 /// Split every incoming batch into one group per partition tuple.
@@ -3302,7 +3302,7 @@ fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Expression 
     crate::Expression::all(pairs.iter().map(|(column, value)| {
         schema.get_field_by_name(column).map_or_else(
             || crate::Expression::column(*column).eq(crate::Expression::literal(*value)),
-            |field| crate::Expression::partition_equals(column, value, field.data_type()),
+            |field| crate::Expression::partition_equals(column, value, field.dtype()),
         )
     }))
 }
