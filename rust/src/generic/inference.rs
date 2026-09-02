@@ -275,43 +275,12 @@ fn agreed<'a>(
     Ok(agreed.map_or((DataType::Null, true), |dtype| (dtype, nullable)))
 }
 
-/// Merge nullability inside inferred records without widening scalar types.
+/// The one datatype two sampled values share, or `None`.
 fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
-    if left == right {
-        return Some(left.clone());
-    }
-    if matches!(left, DataType::Null) {
-        return Some(right.clone());
-    }
-    if matches!(right, DataType::Null) {
-        return Some(left.clone());
-    }
-    let (DataType::Struct(left), DataType::Struct(right)) = (left, right) else {
-        return None;
-    };
-    if left.len() != right.len()
-        || left
-            .iter()
-            .zip(right.iter())
-            .any(|(left, right)| left.name() != right.name())
-    {
-        return None;
-    }
-    let fields = left
-        .iter()
-        .zip(right.iter())
-        .map(|(left, right)| {
-            Some(Field::new(
-                left.name(),
-                merge_inferred(left.dtype(), right.dtype())?,
-                left.is_nullable()
-                    || right.is_nullable()
-                    || matches!(left.dtype(), DataType::Null)
-                    || matches!(right.dtype(), DataType::Null),
-            ))
-        })
-        .collect::<Option<Vec<_>>>()?;
-    DataType::from_fields(fields).ok()
+    // Inference widens: two sampled rows meet at the type that holds both.
+    // The rule table is [`DataType::merge_with`]'s, so an inferred schema and
+    // a declared one are reconciled by exactly the same rules.
+    left.merge_exact(right, crate::datatype::Widening::Up).ok()
 }
 
 /// Return the exact decimal a coefficient and scale name.

@@ -344,6 +344,76 @@ impl Field {
         self.fields().iter().position(|field| field.name() == name)
     }
 
+    /// Returns the field that describes both this one and `other`.
+    ///
+    /// The datatype is [`DataType::merge_with`]'s answer, so every promotion
+    /// rule lives in one place and this adds only what a field carries beyond
+    /// a type:
+    ///
+    /// * the **name** is this field's, because a merge answers in the
+    ///   receiver's vocabulary; struct children are paired by name, so the two
+    ///   already agree wherever it matters;
+    /// * the result is **nullable** when either side is, since a value absent
+    ///   from one of two sources is absent from their union;
+    /// * **metadata** is the union of both, and this field wins a key they
+    ///   disagree on. Reserved keys stay validated by the same path every
+    ///   other write uses, so a merge cannot assemble a field that would have
+    ///   been refused outright;
+    /// * **dictionary options** survive only where both sides encode, for the
+    ///   reason a dictionary does not survive a merge with a plain column.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let narrow = Field::new("price", DataType::Int32, false);
+    /// let wide = Field::new("price", DataType::Int64, true);
+    ///
+    /// let merged = narrow.merge_with(&wide, true)?;
+    /// assert_eq!(merged.dtype(), &DataType::Int64);
+    /// assert!(merged.is_nullable(), "either side being nullable carries over");
+    ///
+    /// // The other direction meets at the tightest type naming both.
+    /// assert_eq!(narrow.merge_with(&wide, false)?.dtype(), &DataType::Int32);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the two datatypes have no meeting point, or when
+    /// the merged metadata does not validate. Failure leaves both fields
+    /// untouched.
+    pub fn merge_with(&self, other: &Self, upscale: bool) -> Result<Self> {
+        self.merge(
+            other,
+            crate::datatype::Widening::upscale(upscale),
+            crate::datatype::Recode::Allowed,
+        )
+    }
+
+    /// The recursive worker behind [`Self::merge_with`], shared with the
+    /// datatype merge so nested children never take a different path.
+    pub(crate) fn merge(
+        &self,
+        other: &Self,
+        how: crate::datatype::Widening,
+        recode: crate::datatype::Recode,
+    ) -> Result<Self> {
+        let dtype = self.dtype.merge(&other.dtype, how, recode)?;
+        let mut merged = Self::new(self.name.clone(), dtype, self.nullable || other.nullable);
+        // One rule, on `Metadata` itself: the union of both, this field
+        // winning any key they disagree on.
+        merged.set_metadata(self.metadata.merge_with(&other.metadata)?.iter())?;
+        if self.dictionary_id != 0 && other.dictionary_id != 0 {
+            merged.set_dictionary_options(
+                self.dictionary_id,
+                self.dictionary_is_ordered && other.dictionary_is_ordered,
+            )?;
+        }
+        Ok(merged)
+    }
+
     /// Returns this struct root without the named children.
     ///
     /// Names it does not carry are ignored, so a caller can subtract a set

@@ -271,6 +271,31 @@ impl Metadata {
         None
     }
 
+    /// Returns the metadata carrying both this snapshot's entries and `other`'s.
+    ///
+    /// The union of the two, and this snapshot wins a key they disagree on.
+    /// That asymmetry is the whole rule: a merge that silently took the other
+    /// side would make a receiver's own declarations conditional on what it
+    /// was merged against, and one that refused outright would make combining
+    /// two descriptions of the same column impossible whenever they annotate
+    /// it differently.
+    ///
+    /// Every entry goes through the validation an ordinary write uses, so a
+    /// merge cannot assemble metadata that would have been refused.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged entry fails that validation.
+    pub fn merge_with(&self, other: &Self) -> Result<Self> {
+        // `other` lays the entries down and this snapshot overwrites them, so
+        // a shared key keeps this value while every key only `other` has still
+        // arrives. The map resolves the clash because `from_entries` refuses a
+        // duplicate key rather than picking a winner.
+        let mut entries: BTreeMap<&str, &str> = other.iter().collect();
+        entries.extend(self.iter());
+        Self::from_entries(entries)
+    }
+
     /// Returns a borrowed view of one protocol's properties.
     ///
     /// The view remembers the protocol, so every read spells the bare property
@@ -908,6 +933,27 @@ impl<'metadata> ProtocolMetadata<'metadata> {
     pub fn into_metadata(self) -> Result<Metadata> {
         Metadata::from_entries(self.iter().map(|(name, value)| (self.key(name), value)))
     }
+
+    /// Returns this protocol's properties merged with `other`'s.
+    ///
+    /// Both views contribute their own bare names and the result is keyed
+    /// under *this* view's protocol, so merging an `iceberg` view with a
+    /// `glue` one answers Iceberg properties. This view wins a name they
+    /// disagree on, exactly as [`Metadata::merge_with`] does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged property fails the validation every
+    /// write goes through.
+    pub fn merge_with(&self, other: &ProtocolMetadata<'_>) -> Result<Metadata> {
+        let mut names: BTreeMap<&str, &str> = other.iter().collect();
+        names.extend(self.iter());
+        Metadata::from_entries(
+            names
+                .into_iter()
+                .map(|(name, value)| (self.key(name), value)),
+        )
+    }
 }
 
 impl fmt::Debug for ProtocolMetadata<'_> {
@@ -1107,6 +1153,27 @@ impl<'field> ProtocolMetadataMut<'field> {
             .map(|(name, value)| (self.key(name.as_ref()), value.into()))
             .collect();
         self.field.update_metadata(overlay)
+    }
+
+    /// Merges another protocol view's properties into this one, in place.
+    ///
+    /// A name this field already carries keeps its value, so the merge only
+    /// ever adds - the same direction [`Metadata::merge_with`] resolves in,
+    /// seen from the receiving side. Properties of other protocols are
+    /// untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a merged property fails validation, leaving the
+    /// field unchanged.
+    pub fn merge_with(&mut self, other: &ProtocolMetadata<'_>) -> Result<()> {
+        let held: Vec<String> = self.iter().map(|(name, _)| name.to_owned()).collect();
+        let additions: Vec<(String, String)> = other
+            .iter()
+            .filter(|(name, _)| !held.iter().any(|kept| kept == name))
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+            .collect();
+        self.update(additions)
     }
 
     /// Replaces this protocol's properties with exactly these, atomically.

@@ -16,6 +16,7 @@ mod default;
 mod floating;
 mod geospatial;
 mod integer;
+mod merge;
 mod nested;
 mod parser;
 mod scalar;
@@ -34,6 +35,8 @@ pub use geospatial::GeospatialType;
 pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_extension_parts,
 };
+pub(crate) use merge::Recode;
+pub use merge::Widening;
 pub use nested::{DictionaryType, FieldKey, Fields, MapType, RunEndEncodedType, UnionFields};
 
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.

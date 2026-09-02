@@ -1472,3 +1472,90 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
         after.data_type()
     );
 }
+
+#[test]
+fn metadata_merges_as_a_union_the_receiver_wins() {
+    let held = Metadata::from_entries([("owner", "held"), ("only_held", "1")]).unwrap();
+    let other = Metadata::from_entries([("owner", "other"), ("only_other", "2")]).unwrap();
+
+    let merged = held.merge_with(&other).unwrap();
+
+    // Every key arrives, and the receiver wins the one they disagree on.
+    assert_eq!(merged.get("owner"), Some("held"));
+    assert_eq!(merged.get("only_held"), Some("1"));
+    assert_eq!(merged.get("only_other"), Some("2"));
+
+    // The direction is the whole rule, so the other way round differs.
+    assert_eq!(other.merge_with(&held).unwrap().get("owner"), Some("other"));
+
+    // Merging with itself changes nothing.
+    assert_eq!(held.merge_with(&held).unwrap(), held);
+}
+
+#[test]
+fn a_protocol_view_merges_under_its_own_namespace() {
+    let mut held = DataType::Int64.required_field("price");
+    held.protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "held")
+        .unwrap();
+
+    let mut other = DataType::Int64.required_field("price");
+    other
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "other")
+        .unwrap();
+    other
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("id", "7")
+        .unwrap();
+
+    let merged = held.iceberg().merge_with(&other.iceberg()).unwrap();
+    assert_eq!(merged.get("iceberg:doc"), Some("held"));
+    assert_eq!(merged.get("iceberg:id"), Some("7"));
+
+    // Both views contribute bare names, and the result is keyed under the
+    // receiver's protocol, so merging across two namespaces still answers one.
+    let mut glue = DataType::Int64.required_field("price");
+    glue.protocol_mut(&Scheme::GLUE)
+        .insert("comment", "from glue")
+        .unwrap();
+
+    let crossed = held.iceberg().merge_with(&glue.glue()).unwrap();
+    assert_eq!(crossed.get("iceberg:comment"), Some("from glue"));
+    assert!(crossed.get("glue:comment").is_none());
+}
+
+#[test]
+fn a_mutable_protocol_view_merges_in_place_and_only_adds() {
+    let mut source = DataType::Int64.required_field("price");
+    source
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "source")
+        .unwrap();
+    source
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("id", "7")
+        .unwrap();
+
+    let mut target = DataType::Int64.required_field("price");
+    target
+        .protocol_mut(&Scheme::ICEBERG)
+        .insert("doc", "target")
+        .unwrap();
+    target
+        .protocol_mut(&Scheme::GLUE)
+        .insert("comment", "glue")
+        .unwrap();
+
+    target
+        .protocol_mut(&Scheme::ICEBERG)
+        .merge_with(&source.iceberg())
+        .unwrap();
+
+    // A name already held keeps its value; a new one arrives.
+    assert_eq!(target.get_property(&Scheme::ICEBERG, "doc"), Some("target"));
+    assert_eq!(target.get_property(&Scheme::ICEBERG, "id"), Some("7"));
+
+    // A scoped merge leaves every other protocol alone.
+    assert_eq!(target.get_property(&Scheme::GLUE, "comment"), Some("glue"));
+}

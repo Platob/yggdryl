@@ -161,6 +161,84 @@ it already builds; and the `field:` property view is `field_properties` in Rust 
 `fieldProperties` in JavaScript. The namespace itself is unchanged, so `field:init` and
 `field:partition` are what they were.
 
+### Merging two schemas
+
+`merge_with` answers the type that describes both sides, and it is the only
+promotion table in the crate: expression typing and value inference call the
+same code, so two callers reading one pair of types can never disagree.
+
+The rules are tried in order:
+
+1. two equal types are that type;
+2. `null` yields to whatever is defined beside it, so a column read as all-null
+   takes the shape the other side gives it;
+3. two nested layouts of the same family recurse - a struct takes the **union**
+   of its fields, and lists, maps, unions and run-end nodes merge their
+   children;
+4. **bytes win**, because every other encoding fits inside them;
+5. **text wins next**, over numbers and temporals;
+6. numbers meet by width, and temporals by unit.
+
+Anything left is refused rather than guessed: a boolean and a timestamp have no
+meeting point that is not a re-encoding, and an exact decimal beside an
+approximate float would trade exactness for range without saying so.
+
+`upscale` picks the direction width resolves in. Widening is the default and
+loses nothing - `int32` and `int64` meet at `int64`. Passing `false` meets at
+the tightest type that names both, which is what a caller wants when the
+narrower type is the one the data actually fits.
+
+A struct child only one side declares becomes **nullable**, because the rows
+the other side described do not carry it, and field order is the receiver's
+with additions appended, so merging never reorders columns a caller depends on.
+
+`Field.merge_with` adds only what a field carries beyond a type: the name is
+the receiver's, the result is nullable when either side is, dictionary options
+survive only where both sides encode, and metadata is the union of both with
+the receiver winning any key they disagree on.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+
+    # fn main() -> yggdryl::Result<()> {
+    let left = DataType::from_fields([
+        DataType::Int32.required_field("id"),
+        DataType::Utf8.required_field("venue"),
+    ])?;
+    let right = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Float64.required_field("price"),
+    ])?;
+
+    let merged = left.merge_with(&right, true)?;
+
+    // The shared column widens; the two unshared ones arrive nullable.
+    assert_eq!(merged["id"].dtype(), &DataType::Int64);
+    assert!(merged["venue"].is_nullable());
+    assert!(merged["price"].is_nullable());
+
+    // Narrowing meets at the tightest type naming both.
+    assert_eq!(
+        DataType::Int32.merge_with(&DataType::Int64, false)?,
+        DataType::Int32,
+    );
+
+    // Bytes win over text, and text over numbers.
+    assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
+    assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+
+    // A field merge carries nullability and metadata across.
+    let a = Field::new("price", DataType::Int32, false);
+    let b = Field::new("price", DataType::Int64, true);
+    let field = a.merge_with(&b, true)?;
+    assert_eq!(field.dtype(), &DataType::Int64);
+    assert!(field.is_nullable());
+    # Ok(())
+    # }
+    ```
+
 ### Item access reaches a child, never metadata
 
 Subscripting a `Field` or a `DataType` means one thing: reach a nested child. A `str` is a child

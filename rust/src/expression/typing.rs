@@ -530,107 +530,13 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 
 /// The type two operands share, or `None` when they share none.
 ///
-/// This is the whole promotion table, and it is deliberately short.
-#[allow(clippy::too_many_lines)]
+/// The whole promotion table is [`DataType::merge_with`]; this is the one
+/// caller that wants an `Option` rather than a refusal naming both sides,
+/// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
-    let left = unwrap_dictionary(left);
-    let right = unwrap_dictionary(right);
-    if left == right {
-        return Some(left.clone());
-    }
-    // A null literal is comparable with anything: `x = null` is unknown, not
-    // a type error, and refusing it here would make three-valued logic
-    // unspellable.
-    if matches!(left, DataType::Null) {
-        return Some(right.clone());
-    }
-    if matches!(right, DataType::Null) {
-        return Some(left.clone());
-    }
-    if is_text(left) && is_text(right) {
-        return Some(DataType::Utf8);
-    }
-    if is_binary(left) && is_binary(right) {
-        return Some(DataType::Binary);
-    }
-    if matches!(left, DataType::Boolean) || matches!(right, DataType::Boolean) {
-        return None;
-    }
-    let left_decimal = decimal_parts(left);
-    let right_decimal = decimal_parts(right);
-    if left_decimal.is_some() || right_decimal.is_some() {
-        // An exact number and an approximate one have no honest meeting point.
-        if is_float(left) || is_float(right) {
-            return None;
-        }
-        let (left_precision, left_scale) = left_decimal.unwrap_or((DECIMAL_LIMIT, 0));
-        let (right_precision, right_scale) = right_decimal.unwrap_or((DECIMAL_LIMIT, 0));
-        // Only a decimal and a whole number meet at a decimal; anything else
-        // paired with one has no exact common type.
-        if left_decimal.is_none() && !is_integer(left) {
-            return None;
-        }
-        if right_decimal.is_none() && !is_integer(right) {
-            return None;
-        }
-        let scale = left_scale.max(right_scale);
-        let integral = left_precision
-            .saturating_sub(u8::try_from(left_scale.max(0)).unwrap_or(0))
-            .max(right_precision.saturating_sub(u8::try_from(right_scale.max(0)).unwrap_or(0)));
-        let precision = integral
-            .saturating_add(u8::try_from(scale.max(0)).unwrap_or(0))
-            .min(DECIMAL_LIMIT);
-        return DataType::decimal128(precision.max(1), scale).ok();
-    }
-    if is_float(left) && (is_float(right) || is_integer(right)) {
-        return Some(DataType::Float64);
-    }
-    if is_float(right) && is_integer(left) {
-        return Some(DataType::Float64);
-    }
-    if is_integer(left) && is_integer(right) {
-        return Some(DataType::Int64);
-    }
-    match (temporal_parts(left), temporal_parts(right)) {
-        (Some((left_family, left_unit)), Some((right_family, right_unit)))
-            if left_family == right_family =>
-        {
-            let unit = if unit_rank(left_unit) >= unit_rank(right_unit) {
-                left_unit
-            } else {
-                right_unit
-            };
-            Some(match left_family {
-                // Two dates meet at the wider of the two spellings.
-                0 => {
-                    if matches!(left, DataType::Date64) || matches!(right, DataType::Date64) {
-                        DataType::Date64
-                    } else {
-                        DataType::Date32
-                    }
-                }
-                1 => DataType::time(unit).ok()?,
-                2 => {
-                    let zone = match (left, right) {
-                        (DataType::Timestamp(_, Some(zone)), _)
-                        | (_, DataType::Timestamp(_, Some(zone))) => Some(zone.clone()),
-                        _ => None,
-                    };
-                    DataType::Timestamp(unit, zone)
-                }
-                _ => {
-                    if matches!(left, DataType::Duration64(_))
-                        || matches!(right, DataType::Duration64(_))
-                    {
-                        DataType::duration64(unit).ok()?
-                    } else {
-                        DataType::duration32(unit).ok()?
-                    }
-                }
-            })
-        }
-        _ => None,
-    }
+    unwrap_dictionary(left)
+        .merge_exact(unwrap_dictionary(right), crate::datatype::Widening::Up)
+        .ok()
 }
 
 /// The type an arithmetic node produces, or `None` when it has none.

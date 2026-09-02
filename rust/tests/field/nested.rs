@@ -258,3 +258,146 @@ fn setting_by_path_reaches_a_nested_child() {
     assert_eq!(row["line"].field_len(), 0);
     assert_eq!(row.field_len(), 1);
 }
+
+#[test]
+fn two_datatypes_meet_at_the_one_that_holds_both() {
+    let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
+    let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
+
+    // Width resolves in the direction asked for, and only in that direction.
+    assert_eq!(up(&DataType::Int32, &DataType::Int64), DataType::Int64);
+    assert_eq!(down(&DataType::Int32, &DataType::Int64), DataType::Int32);
+    assert_eq!(
+        up(&DataType::Float32, &DataType::Float64),
+        DataType::Float64
+    );
+    assert_eq!(down(&DataType::Utf8, &DataType::LargeUtf8), DataType::Utf8);
+
+    // A null column has no shape, so it takes the other's in either position
+    // and in either direction.
+    assert_eq!(up(&DataType::Null, &DataType::Utf8), DataType::Utf8);
+    assert_eq!(down(&DataType::Int64, &DataType::Null), DataType::Int64);
+
+    // Bytes hold every other encoding, and text holds all but bytes.
+    assert_eq!(up(&DataType::Utf8, &DataType::Binary), DataType::Binary);
+    assert_eq!(up(&DataType::Int64, &DataType::Binary), DataType::Binary);
+    assert_eq!(up(&DataType::Int64, &DataType::Utf8), DataType::Utf8);
+    assert_eq!(up(&DataType::Boolean, &DataType::Utf8), DataType::Utf8);
+    assert_eq!(up(&DataType::Date32, &DataType::Utf8), DataType::Utf8);
+
+    // A pair with no meeting point that is not a re-encoding is refused, and
+    // the refusal names both sides.
+    let refused = DataType::Boolean
+        .merge_with(&DataType::Int64, true)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("boolean") || refused.contains("int64"),
+        "{refused}"
+    );
+    assert!(
+        DataType::Float64
+            .merge_with(&DataType::decimal128(10, 2).unwrap(), true)
+            .is_err(),
+        "an exact number and an approximate one have no honest meeting point"
+    );
+}
+
+#[test]
+fn merging_structs_takes_the_union_of_their_fields() {
+    let left = DataType::from_fields([
+        DataType::Int32.required_field("id"),
+        DataType::Utf8.required_field("venue"),
+    ])
+    .unwrap();
+    let right = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Float64.required_field("price"),
+    ])
+    .unwrap();
+
+    let merged = left.merge_with(&right, true).unwrap();
+    assert_eq!(merged.field_len(), 3);
+
+    // A name both carry merges, and stays required because both require it.
+    assert_eq!(merged["id"].dtype(), &DataType::Int64);
+    assert!(!merged["id"].is_nullable());
+
+    // A name only one side carries becomes nullable: the rows the other side
+    // described do not have it.
+    assert!(merged["venue"].is_nullable());
+    assert!(merged["price"].is_nullable());
+
+    // Order is the receiver's, with additions appended, so a merge never
+    // reorders columns a caller already depends on.
+    assert_eq!(merged[0].name(), "id");
+    assert_eq!(merged[1].name(), "venue");
+    assert_eq!(merged[2].name(), "price");
+
+    // Merging a schema with itself changes nothing.
+    assert_eq!(merged.merge_with(&merged, true).unwrap(), merged);
+}
+
+#[test]
+fn merging_reaches_into_every_nested_layout() {
+    // Lists merge their item.
+    assert_eq!(
+        DataType::list(DataType::Int32.nullable_field("item"))
+            .merge_with(
+                &DataType::list(DataType::Int64.nullable_field("item")),
+                true
+            )
+            .unwrap(),
+        DataType::list(DataType::Int64.nullable_field("item")),
+    );
+
+    // Maps merge through their entries.
+    assert_eq!(
+        DataType::map_of(DataType::Utf8, DataType::Int32, true)
+            .unwrap()
+            .merge_with(
+                &DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+                true,
+            )
+            .unwrap(),
+        DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+    );
+
+    // And the recursion goes all the way down.
+    let deep = |inner: DataType| {
+        DataType::from_fields([DataType::from_fields([inner.required_field("n")])
+            .unwrap()
+            .required_field("in")])
+        .unwrap()
+    };
+    let merged = deep(DataType::Int32)
+        .merge_with(&deep(DataType::Int64), true)
+        .unwrap();
+    assert_eq!(merged["in"]["n"].dtype(), &DataType::Int64);
+}
+
+#[test]
+fn merging_fields_unions_metadata_and_keeps_the_receivers_value() {
+    let mut left = Field::new("price", DataType::Int32, false);
+    left.set_metadata([("owner", "left"), ("only_left", "1")])
+        .unwrap();
+    let mut right = Field::new("price", DataType::Int64, true);
+    right
+        .set_metadata([("owner", "right"), ("only_right", "2")])
+        .unwrap();
+
+    let merged = left.merge_with(&right, true).unwrap();
+    assert_eq!(merged.dtype(), &DataType::Int64);
+
+    // Either side being nullable carries over: a value absent from one of two
+    // sources is absent from their union.
+    assert!(merged.is_nullable());
+
+    // Every key arrives, and the receiver wins the one they disagree on.
+    assert_eq!(merged.get_metadata("owner"), Some("left"));
+    assert_eq!(merged.get_metadata("only_left"), Some("1"));
+    assert_eq!(merged.get_metadata("only_right"), Some("2"));
+
+    // Merging a field with itself changes nothing.
+    assert_eq!(merged.merge_with(&merged, true).unwrap(), merged);
+}

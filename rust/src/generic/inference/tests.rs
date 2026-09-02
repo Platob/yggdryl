@@ -245,12 +245,27 @@ mod refusals {
 
     #[test]
     fn children_that_disagree_are_an_error_and_not_a_guess() {
-        let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(1.5)]);
+        // A number beside a string names no datatype without deciding that
+        // both are text, which is a claim about the data rather than about
+        // the types, so inference refuses it.
+        let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
         let message = mixed.dtype().unwrap_err().to_string();
 
         assert!(message.contains("one datatype"), "{message}");
         assert!(message.contains("int64"), "{message}");
-        assert!(message.contains("float64"), "{message}");
+        assert!(message.contains("utf8"), "{message}");
+    }
+
+    #[test]
+    fn two_numbers_meet_at_the_one_that_holds_both() {
+        // Widening inside a family loses nothing, so it is a fact about the
+        // types and not a guess: every whole number here is exactly a float.
+        let widened = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(1.5)]);
+
+        assert_eq!(
+            widened.dtype().unwrap(),
+            crate::DataType::list(crate::Field::new("item", crate::DataType::Float64, false)),
+        );
     }
 
     #[test]
