@@ -472,11 +472,16 @@ def test_protocol_view_is_a_live_window_on_the_field_it_came_from() -> None:
         hash(view)
 
 
+#: `field` names a child on a schema node, so its property view is the one
+#: accessor that is not simply its scheme name.
+PROTOCOL_ACCESSORS = {"field": "field_properties"}
+
+
 def test_protocol_view_named_accessors_cover_every_well_known_protocol() -> None:
     field = Field("price", "float64", nullable=False)
 
     for protocol in WELL_KNOWN_PROTOCOLS:
-        view = getattr(field, protocol)
+        view = getattr(field, PROTOCOL_ACCESSORS.get(protocol, protocol))
         assert view.scheme == protocol
         assert view.prefix == protocol
         assert view.key("doc") == f"{protocol}:doc"
@@ -576,7 +581,7 @@ def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> No
     assert [child.name for child in marked.partition_fields] == ["year", "month"]
     assert all(isinstance(child, Field) for child in marked.partition_fields)
     assert all(child.is_partition for child in marked.partition_fields)
-    assert marked.partition_fields[0].field["partition"] == "true"
+    assert marked.partition_fields[0].field_properties["partition"] == "true"
     assert not root.has_partition_fields
 
     assert marked.only_partition_fields().partition_field_names == ["year", "month"]
@@ -593,7 +598,7 @@ def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> No
     year.set_partition(True)
     assert year.is_partition
     assert year.metadata["field:partition"] == "true"
-    assert year.field["partition"] == "true"
+    assert year.field_properties["partition"] == "true"
     year.set_partition(False)
     assert not year.is_partition
     assert year == Field("year", "int32", nullable=False)
@@ -917,15 +922,27 @@ def test_hash_locks_all_field_equality_state() -> None:
     assert "venue" in restored
 
 
-def test_a_datatype_is_a_read_only_child_collection() -> None:
+def test_a_datatype_mutates_its_own_children_until_it_is_hashed() -> None:
     row = DataType.from_fields([Field("id", "int64", nullable=False)])
 
-    # Reading is shared with `Field`; writing belongs on `Field`, which owns
-    # the cache-aware mutation and stays hashable because a `DataType` does.
-    with pytest.raises(TypeError):
-        row["venue"] = Field("venue", "utf8")
-    with pytest.raises(TypeError):
-        del row["id"]
+    # Reading and writing are the same story on both classes now.
+    row["venue"] = Field("venue", "utf8")
+    assert len(row) == 2
+    del row["id"]
+    assert [child.name for child in row] == ["venue"]
+
+    # Hashing locks it, so a datatype already in a dict or a set cannot move.
+    hashed = DataType.from_fields([Field("id", "int64", nullable=False)])
+    hash(hashed)
+    with pytest.raises(TypeError, match="hashed"):
+        hashed["venue"] = Field("venue", "utf8")
+    with pytest.raises(TypeError, match="hashed"):
+        del hashed["id"]
+
+    # Only a struct may grow or shrink; a list holds exactly one child.
+    items = DataType("list<utf8>")
+    with pytest.raises(ValueError, match="struct field"):
+        items["extra"] = Field("extra", "utf8")
 
 
 def test_metadata_is_not_reachable_by_subscript_but_is_through_the_view() -> None:
@@ -1056,11 +1073,11 @@ def test_child_mutation_replaces_by_position_and_appends_by_unknown_name() -> No
     with pytest.raises(KeyError):
         del row["absent"]
 
-    # A DataType is a read-only child collection: reading is shared, writing
-    # belongs on the Field that owns the cache-aware mutation.
-    with pytest.raises(TypeError):
+    # `Field.dtype` answers with a snapshot, so writing to it could never reach
+    # the field it came from. It refuses and names the field instead.
+    with pytest.raises(TypeError, match="snapshot"):
         row.dtype["price"] = Field("price", "int64")
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="snapshot"):
         del row.dtype["price"]
 
 

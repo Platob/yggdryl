@@ -8,7 +8,7 @@ use arrow_data::ArrayData;
 use arrow_pyarrow::{FromPyArrow, PyArrowType, ToPyArrow};
 use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList};
 use yggdryl::ArrowCast;
@@ -18,7 +18,10 @@ use yggdryl::{
 };
 
 use crate::field::PyField;
-use crate::{PyDifferenceIterator, child_of, compare, normalize_index, value_error};
+use crate::{
+    FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
+    normalize_index, one_field_key, value_error,
+};
 
 fn import_ffi_schema<'py>(
     py: Python<'py>,
@@ -294,25 +297,55 @@ impl FromPyObject<'_, '_> for DecimalScale {
     }
 }
 
-/// A cheaply cloned, immutable Yggdryl logical datatype.
-#[pyclass(
-    name = "DataType",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
+/// A cheaply cloned Yggdryl logical datatype.
+///
+/// Child mutation is copy-on-write, and hashing locks it: once a datatype has
+/// been hashed it refuses to change, so one that is already a dict key or a set
+/// member can never move. That is why this is no longer a `frozen` pyclass.
+#[pyclass(name = "DataType", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyDataType {
     pub(crate) inner: CoreDataType,
+    /// Set once this datatype has been hashed, so a later mutation cannot move
+    /// it inside a dict or a set. The same lock a mutable `Field` carries.
+    pub(crate) hash_locked: bool,
+    /// Set when this datatype is the snapshot `Field.dtype` answers with.
+    ///
+    /// Writing to that snapshot could never reach the field it came from, so
+    /// it refuses and names the field as the place to write instead of
+    /// silently mutating a copy the caller then discards.
+    pub(crate) borrowed_from_field: bool,
     /// Child Field views inherit the frozen state of the Field that exposed
     /// this datatype. The core datatype remains immutable in either case.
     pub(crate) children_read_only: bool,
 }
 
 impl PyDataType {
+    /// Refuse a mutation that would move an already-hashed datatype, or one
+    /// reached through a frozen `Field`.
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.borrowed_from_field {
+            Err(PyTypeError::new_err(
+                "a DataType read off a Field is a snapshot; mutate the Field instead",
+            ))
+        } else if self.children_read_only {
+            Err(PyTypeError::new_err(
+                "this datatype belongs to a frozen field and is read-only",
+            ))
+        } else if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed DataType is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) const fn from_inner(inner: CoreDataType) -> Self {
         Self {
             inner,
+            hash_locked: false,
+            borrowed_from_field: false,
             children_read_only: false,
         }
     }
@@ -560,6 +593,8 @@ impl PyDataType {
         match &self.inner {
             CoreDataType::Dictionary(dictionary) => Ok(Self {
                 inner: dictionary.value().clone(),
+                hash_locked: false,
+                borrowed_from_field: false,
                 children_read_only: self.children_read_only,
             }),
             _ => Err(PyTypeError::new_err(
@@ -968,32 +1003,195 @@ impl PyDataType {
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
-        child_of(&self.inner, key)
+        field_of(&self.inner, key)
             .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
     }
 
-    /// Refuse child mutation: a `DataType` is a read-only child collection.
+    /// Replace a nested child, or append one under an unresolved name.
     ///
-    /// Reading is shared with `Field` - `dtype["price"]` and
-    /// `field["price"]` both reach a nested child - but *writing* belongs on
-    /// `Field`, which owns the cache-aware mutation the core requires and the
-    /// metadata a datatype does not carry. A `DataType` is immutable and
-    /// hashable; letting a subscript rewrite one would break both.
-    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
-    fn __setitem__(&self, _key: &Bound<'_, PyAny>, _value: &Bound<'_, PyAny>) -> PyResult<()> {
-        Err(PyTypeError::new_err(
-            "a DataType is a read-only child collection; mutate children on the Field that \
-             carries it",
+    /// Reading and writing are now the same story on both classes: `dtype[key]`
+    /// and `field[key]` reach the same child, and either can rewrite it. A
+    /// datatype rebuilds itself in place, so a list stays a list and only a
+    /// struct may grow or shrink.
+    ///
+    /// A datatype that has been hashed refuses, so one already used as a dict
+    /// key or a set member can never move.
+    fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = crate::field::core_field_from_value(value)?;
+        match FieldKey::from_py(key)? {
+            FieldKey::Path(path) => self
+                .inner
+                .set_field_by_path(&path, child)
+                .map_err(value_error),
+            FieldKey::Position(index) => {
+                let position = normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| PyIndexError::new_err(index))?;
+                self.inner
+                    .set_field_at(position, child)
+                    .map_err(value_error)
+            }
+        }
+    }
+
+    /// Remove a nested child by position or by path, closing the gap.
+    fn __delitem__(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        match FieldKey::from_py(key)? {
+            FieldKey::Path(path) => self
+                .inner
+                .remove_field_by_path(&path)
+                .map(|_| ())
+                .map_err(|_| PyKeyError::new_err(path)),
+            FieldKey::Position(index) => {
+                let position = normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| PyIndexError::new_err(index))?;
+                self.inner
+                    .remove_field_at(position)
+                    .map(|_| ())
+                    .map_err(value_error)
+            }
+        }
+    }
+
+    /// Returns the nested child at `index`, or `None`.
+    ///
+    /// Negative positions count from the end, as everywhere else.
+    fn get_field_at(&self, index: isize) -> Option<PyField> {
+        field_at_of(&self.inner, index)
+            .ok()
+            .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
+    }
+
+    /// Returns the nested child `path` resolves to, or `None`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    fn get_field_by_path(&self, path: &str) -> Option<PyField> {
+        self.inner
+            .get_field_by_path(path)
+            .cloned()
+            .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
+    }
+
+    /// Returns the nested child a position or a path names, or `None`.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn get_field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Option<PyField>> {
+        Ok(self.field(key, idx, path).ok())
+    }
+
+    /// Returns the nested child at `index`.
+    ///
+    /// Raises `IndexError` when there is no child at that position.
+    fn field_at(&self, index: isize) -> PyResult<PyField> {
+        field_at_of(&self.inner, index)
+            .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
+    }
+
+    /// Returns the nested child `path` resolves to.
+    ///
+    /// Raises `KeyError` when no child carries that name and no decomposition
+    /// of it resolves.
+    fn field_by_path(&self, path: &str) -> PyResult<PyField> {
+        field_by_path_of(&self.inner, path)
+            .map(|field| PyField::from_inner_with_read_only(field, self.children_read_only))
+    }
+
+    /// Returns the nested child a position or a path names.
+    ///
+    /// The key may be positional, or named `idx=` or `path=`; naming more than
+    /// one is a `TypeError` rather than a silent precedence rule.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<PyField> {
+        let resolved = match one_field_key(key, idx, path)? {
+            FieldKey::Path(path) => field_by_path_of(&self.inner, &path),
+            FieldKey::Position(index) => field_at_of(&self.inner, index),
+        }?;
+        Ok(PyField::from_inner_with_read_only(
+            resolved,
+            self.children_read_only,
         ))
     }
 
-    /// Refuse child removal, for the reason `__setitem__` gives.
-    #[allow(clippy::unused_self, reason = "the dunder is a method by protocol")]
-    fn __delitem__(&self, _key: &Bound<'_, PyAny>) -> PyResult<()> {
-        Err(PyTypeError::new_err(
-            "a DataType is a read-only child collection; mutate children on the Field that \
-             carries it",
-        ))
+    /// Replaces the nested child at `index`.
+    fn set_field_at(&mut self, index: isize, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = crate::field::core_field_from_value(child)?;
+        let position = normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| PyIndexError::new_err(index))?;
+        self.inner
+            .set_field_at(position, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child `path` resolves to, appending an unresolved
+    /// name under it.
+    fn set_field_by_path(&mut self, path: &str, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = crate::field::core_field_from_value(child)?;
+        self.inner
+            .set_field_by_path(path, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child a position or a path names.
+    #[pyo3(signature = (key=None, child=None, *, idx=None, path=None))]
+    fn set_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        child: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        let child = child.ok_or_else(|| PyTypeError::new_err("set_field() needs a child"))?;
+        match one_field_key(key, idx, path)? {
+            FieldKey::Path(path) => self.set_field_by_path(&path, child),
+            FieldKey::Position(index) => self.set_field_at(index, child),
+        }
+    }
+
+    /// Removes and returns the nested child at `index`.
+    fn remove_field_at(&mut self, index: isize) -> PyResult<PyField> {
+        self.require_mutable()?;
+        let position = normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| PyIndexError::new_err(index))?;
+        self.inner
+            .remove_field_at(position)
+            .map(PyField::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Removes and returns the nested child `path` resolves to.
+    fn remove_field_by_path(&mut self, path: &str) -> PyResult<PyField> {
+        self.require_mutable()?;
+        self.inner
+            .remove_field_by_path(path)
+            .map(PyField::from_inner)
+            .map_err(|_| PyKeyError::new_err(path.to_owned()))
+    }
+
+    /// Removes and returns the nested child a position or a path names.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn remove_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<PyField> {
+        match one_field_key(key, idx, path)? {
+            FieldKey::Path(path) => self.remove_field_by_path(&path),
+            FieldKey::Position(index) => self.remove_field_at(index),
+        }
     }
 
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
@@ -1034,7 +1232,8 @@ impl PyDataType {
         self.inner.stable_hash()
     }
 
-    fn __hash__(&self) -> isize {
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
         crate::python_hash(self.inner.stable_hash())
     }
 

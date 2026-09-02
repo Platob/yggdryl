@@ -744,6 +744,8 @@ impl PyField {
     fn dtype(&self) -> PyDataType {
         PyDataType {
             inner: self.inner.dtype().clone(),
+            hash_locked: false,
+            borrowed_from_field: true,
             children_read_only: self.read_only,
         }
     }
@@ -1314,8 +1316,11 @@ impl PyField {
     }
 
     /// Returns the live Yggdryl field property view.
+    ///
+    /// Named for the namespace it exposes rather than plain `field`, which on
+    /// a schema node reaches a nested child.
     #[getter]
-    fn field(slf: Py<Self>) -> PyProtocolMetadata {
+    fn field_properties(slf: Py<Self>) -> PyProtocolMetadata {
         PyProtocolMetadata::new(slf, CoreScheme::FIELD)
     }
 
@@ -1480,8 +1485,145 @@ impl PyField {
     ///
     /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
     /// path form.
+    /// Returns the nested child at `index`, or `None`.
+    ///
+    /// Negative positions count from the end, as everywhere else.
+    fn get_field_at(&self, index: isize) -> Option<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .ok()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to, or `None`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    fn get_field_by_path(&self, path: &str) -> Option<Self> {
+        self.inner
+            .get_field_by_path(path)
+            .cloned()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names, or `None`.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn get_field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Option<Self>> {
+        Ok(self.field(key, idx, path).ok())
+    }
+
+    /// Returns the nested child at `index`.
+    ///
+    /// Raises `IndexError` when there is no child at that position.
+    fn field_at(&self, index: isize) -> PyResult<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to.
+    ///
+    /// Raises `KeyError` when no child carries that name and no decomposition
+    /// of it resolves.
+    fn field_by_path(&self, path: &str) -> PyResult<Self> {
+        crate::field_by_path_of(self.inner.dtype(), path)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names.
+    ///
+    /// The key may be positional, or named `idx=` or `path=`; naming more than
+    /// one is a `TypeError` rather than a silent precedence rule.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        let resolved = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => crate::field_by_path_of(self.inner.dtype(), &path),
+            crate::FieldKey::Position(index) => crate::field_at_of(self.inner.dtype(), index),
+        }?;
+        Ok(Self::from_inner_with_read_only(resolved, self.read_only))
+    }
+
+    /// Replaces the nested child at `index`.
+    fn set_field_at(&mut self, index: isize, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .set_field_at(position, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child `path` resolves to, appending an unresolved
+    /// name under it.
+    fn set_field_by_path(&mut self, path: &str, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        self.inner
+            .set_field_by_path(path, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child a position or a path names.
+    #[pyo3(signature = (key=None, child=None, *, idx=None, path=None))]
+    fn set_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        child: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        let child = child.ok_or_else(|| PyTypeError::new_err("set_field() needs a child"))?;
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.set_field_by_path(&path, child),
+            crate::FieldKey::Position(index) => self.set_field_at(index, child),
+        }
+    }
+
+    /// Removes and returns the nested child at `index`.
+    fn remove_field_at(&mut self, index: isize) -> PyResult<Self> {
+        self.require_mutable()?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .remove_field_at(position)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Removes and returns the nested child `path` resolves to.
+    fn remove_field_by_path(&mut self, path: &str) -> PyResult<Self> {
+        self.require_mutable()?;
+        self.inner
+            .remove_field_by_path(path)
+            .map(Self::from_inner)
+            .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path.to_owned()))
+    }
+
+    /// Removes and returns the nested child a position or a path names.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn remove_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.remove_field_by_path(&path),
+            crate::FieldKey::Position(index) => self.remove_field_at(index),
+        }
+    }
+
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        crate::child_of(self.inner.dtype(), key)
+        crate::field_of(self.inner.dtype(), key)
             .map(|field| Self::from_inner_with_read_only(field, self.read_only))
     }
 
@@ -1498,13 +1640,39 @@ impl PyField {
     fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         let child = core_field_from_value(value)?;
-        crate::set_child(&mut self.inner, key, child)
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .set_field_by_path(&path, child)
+                .map_err(value_error),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .set_field_at(position, child)
+                    .map_err(value_error)
+            }
+        }
     }
 
     /// Remove a nested child by name or by position, closing the gap.
     fn __delitem__(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        crate::remove_child(&mut self.inner, key)
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .remove_field_by_path(&path)
+                .map(|_| ())
+                .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path)),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .remove_field_at(position)
+                    .map(|_| ())
+                    .map_err(value_error)
+            }
+        }
     }
 
     /// The number of nested children, as `DataType` reports it.
@@ -1519,7 +1687,7 @@ impl PyField {
 
     /// Whether a child name, position, or field is among the children.
     fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
-        crate::child_of(self.inner.dtype(), value).is_ok()
+        crate::field_of(self.inner.dtype(), value).is_ok()
             || value.extract::<PyRef<'_, Self>>().is_ok_and(|field| {
                 (0..self.inner.field_len())
                     .filter_map(|index| self.inner.get_field(index))

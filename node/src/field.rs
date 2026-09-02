@@ -929,8 +929,11 @@ impl JsField {
     }
 
     /// The live Yggdryl field property view.
+    ///
+    /// Named for the namespace it exposes rather than plain `field`, which on
+    /// a schema node reaches a nested child.
     #[napi(getter)]
-    pub fn field(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
+    pub fn field_properties(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
         JsProtocolMetadata::new(reference, CoreScheme::FIELD)
     }
 

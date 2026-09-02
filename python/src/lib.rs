@@ -90,22 +90,22 @@ pub(crate) fn formatting_of(indent: Option<u8>) -> yggdryl::text::Formatting {
     }
 }
 
-/// Resolve a subscript key to a child position on a schema node.
+/// Resolve a subscript key to a child of a schema node.
 ///
-/// The one implementation behind `Field.__getitem__` and
-/// `DataType.__getitem__`, so the two classes cannot drift: a `str` is a child
-/// name, an `int` is a position (negative counting from the end), and anything
-/// else is a `TypeError` with the same message shape.
-pub(crate) enum ChildKey {
-    Name(String),
+/// The one implementation behind `Field` and `DataType`'s item access and
+/// their named accessors, so the two classes cannot drift: a `str` is a path
+/// resolved name-first, an `int` is a position counting from the end when
+/// negative, and anything else is a `TypeError`.
+pub(crate) enum FieldKey {
+    Path(String),
     Position(isize),
 }
 
-impl ChildKey {
-    /// Read a subscript key, or report what a schema node accepts.
+impl FieldKey {
+    /// Read a key, or report what a schema node accepts.
     pub(crate) fn from_py(key: &pyo3::Bound<'_, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
-        if let Ok(name) = key.extract::<String>() {
-            return Ok(Self::Name(name));
+        if let Ok(path) = key.extract::<String>() {
+            return Ok(Self::Path(path));
         }
         if let Ok(index) = key.extract::<isize>() {
             return Ok(Self::Position(index));
@@ -116,57 +116,61 @@ impl ChildKey {
     }
 }
 
-/// Read one nested child off a schema node, per [`ChildKey`]'s rules.
-pub(crate) fn child_of(
+/// Read one nested child by position, counting from the end when negative.
+pub(crate) fn field_at_of(
+    node: &yggdryl::DataType,
+    index: isize,
+) -> pyo3::PyResult<yggdryl::Field> {
+    normalize_index(index, node.field_len())
+        .and_then(|position| node.get_field_at(position).cloned())
+        .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))
+}
+
+/// Read one nested child by path, name-first.
+pub(crate) fn field_by_path_of(
+    node: &yggdryl::DataType,
+    path: &str,
+) -> pyo3::PyResult<yggdryl::Field> {
+    node.get_field_by_path(path)
+        .cloned()
+        .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(path.to_owned()))
+}
+
+/// Read one nested child off a schema node, per [`FieldKey`]'s rules.
+pub(crate) fn field_of(
     node: &yggdryl::DataType,
     key: &pyo3::Bound<'_, pyo3::types::PyAny>,
 ) -> pyo3::PyResult<yggdryl::Field> {
-    match ChildKey::from_py(key)? {
-        ChildKey::Name(name) => node
-            .get_field_by_path(&name)
-            .cloned()
-            .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(name)),
-        ChildKey::Position(index) => normalize_index(index, node.field_len())
-            .and_then(|position| node.get_field(position).cloned())
-            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index)),
+    match FieldKey::from_py(key)? {
+        FieldKey::Path(path) => field_by_path_of(node, &path),
+        FieldKey::Position(index) => field_at_of(node, index),
     }
 }
 
-/// Replace or append one nested child, through the core's cache-aware mutation.
+/// Resolve the one key a `field(...)` call names, refusing an ambiguous call.
 ///
-/// A name replaces in place or appends; a position replaces only. One
-/// implementation so `Field` and `DataType` cannot answer differently.
-pub(crate) fn set_child(
-    node: &mut yggdryl::Field,
-    key: &pyo3::Bound<'_, pyo3::types::PyAny>,
-    child: yggdryl::Field,
-) -> pyo3::PyResult<()> {
-    match ChildKey::from_py(key)? {
-        ChildKey::Name(name) => node.set_field_by_path(&name, child).map_err(value_error),
-        ChildKey::Position(index) => {
-            let position = normalize_index(index, node.field_len())
-                .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
-            node.set_field(position, child).map_err(value_error)
-        }
+/// The positional form and the two keyword forms are three spellings of one
+/// argument, so naming more than one of them is a `TypeError` rather than a
+/// silent precedence rule.
+pub(crate) fn one_field_key<'py>(
+    key: Option<&pyo3::Bound<'py, pyo3::types::PyAny>>,
+    idx: Option<isize>,
+    path: Option<&str>,
+) -> pyo3::PyResult<FieldKey> {
+    let given =
+        usize::from(key.is_some()) + usize::from(idx.is_some()) + usize::from(path.is_some());
+    if given != 1 {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "field() takes exactly one of a positional key, idx=, or path=",
+        ));
     }
-}
-
-/// Remove one nested child, through the core's cache-aware mutation.
-pub(crate) fn remove_child(
-    node: &mut yggdryl::Field,
-    key: &pyo3::Bound<'_, pyo3::types::PyAny>,
-) -> pyo3::PyResult<()> {
-    match ChildKey::from_py(key)? {
-        ChildKey::Name(name) => node
-            .remove_field_by_path(&name)
-            .map(|_| ())
-            .map_err(|_| pyo3::exceptions::PyKeyError::new_err(name)),
-        ChildKey::Position(index) => {
-            let position = normalize_index(index, node.field_len())
-                .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
-            node.remove_field(position).map(|_| ()).map_err(value_error)
-        }
+    if let Some(key) = key {
+        return FieldKey::from_py(key);
     }
+    if let Some(index) = idx {
+        return Ok(FieldKey::Position(index));
+    }
+    Ok(FieldKey::Path(path.unwrap_or_default().to_owned()))
 }
 
 /// Owning lazy iterator over stable native schema-difference lines.
