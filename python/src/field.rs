@@ -1513,6 +1513,34 @@ impl PyField {
             .map_err(value_error)
     }
 
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explode_fields` is what reaches inside one. Every name
+    /// this answers is one `field_by_path` resolves.
+    fn unnest_fields(&self) -> Vec<Self> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    fn explode_fields(&self) -> Vec<Self> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
     /// Returns the nested child at `index`, or `None`.
     ///
     /// Negative positions count from the end, as everywhere else.

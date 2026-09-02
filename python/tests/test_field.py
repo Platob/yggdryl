@@ -1290,3 +1290,35 @@ def test_every_format_carries_the_same_nested_shape() -> None:
     assert levels["type"] == "list"
     assert levels["field"]["dtype"]["fields"][0]["name"] == "sym"
     assert document["dtype"]["fields"][1]["dtype"]["type"] == "map"
+
+
+def test_unnesting_flattens_structs_and_exploding_reaches_inside_collections() -> None:
+    row = Field(
+        "row",
+        DataType(
+            "struct<id:int64 not null,line:struct<px:float64 not null>,"
+            "levels:list<float64>,tags:map<utf8,int64>>"
+        ),
+        nullable=False,
+    )
+
+    leaves = row.unnest_fields()
+    assert [child.name for child in leaves] == ["id", "line.px", "levels", "tags"]
+
+    # A leaf under a nullable ancestor is nullable, and a list is a leaf here.
+    assert not leaves[0].nullable
+    assert leaves[1].nullable
+
+    # Every name it answers is one the path accessor resolves.
+    for leaf in leaves:
+        assert row.get_field_by_path(leaf.name) is not None
+
+    exploded = row.explode_fields()
+    assert [child.name for child in exploded] == ["id", "line", "levels", "tags"]
+    assert exploded[0].dtype == DataType("int64"), "not a collection"
+    assert exploded[2].dtype == DataType("float64"), "a list answers its item"
+    assert len(exploded[3].dtype) == 2, "a map answers its entries struct"
+
+    # A datatype answers the same, so descending never changes the calls.
+    assert [c.name for c in row.dtype.unnest_fields()] == [c.name for c in leaves]
+    assert [c.name for c in row.dtype.explode_fields()] == [c.name for c in exploded]

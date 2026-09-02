@@ -414,6 +414,40 @@ impl Field {
         Ok(merged)
     }
 
+    /// Returns every leaf under this field, named by its dotted path.
+    ///
+    /// [`DataType::unnest_fields`] carries the rule; this node's datatype is
+    /// where it starts.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::from_fields([DataType::Float64.required_field("px")])?
+    ///         .nullable_field("line"),
+    /// ])?
+    /// .required_field("row");
+    ///
+    /// let leaves = row.unnest_fields();
+    /// let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
+    /// assert_eq!(names, ["id", "line.px"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn unnest_fields(&self) -> Vec<Self> {
+        self.dtype.unnest_fields()
+    }
+
+    /// Returns this field's children with every collection replaced by what it
+    /// holds.
+    ///
+    /// [`DataType::explode_fields`] carries the rule.
+    pub fn explode_fields(&self) -> Vec<Self> {
+        self.dtype.explode_fields()
+    }
+
     /// Returns this struct root without the named children.
     ///
     /// Names it does not carry are ignored, so a caller can subtract a set

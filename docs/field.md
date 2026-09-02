@@ -161,6 +161,62 @@ it already builds; and the `field:` property view is `field_properties` in Rust 
 `fieldProperties` in JavaScript. The namespace itself is unchanged, so `field:init` and
 `field:partition` are what they were.
 
+### Flattening and expanding
+
+Two projections answer the two questions a nested schema raises, and they are
+deliberately separate because they treat collections in opposite ways.
+
+`unnest_fields` flattens **struct** nesting to its leaves, each named by the
+dotted path that reaches it: `struct<id, line: struct<px>>` answers `id` and
+`line.px`. A leaf under a nullable ancestor is nullable, because a null parent
+leaves it with no value to carry, and every name it answers is one
+[`field_by_path`](#item-access-reaches-a-child-never-metadata) resolves - so a flattened column list and
+the tree it came from address children the same way. A list or a map is a
+**leaf** here: unnesting says what a flat column list looks like, and a list is
+one column.
+
+`explode_fields` is what reaches inside one. It replaces each **collection**
+child with what it holds - a list answers its item, a map its entries, a
+dictionary or run-end node the values it encodes - and returns anything else
+unchanged, so the result names the same columns in the same order. The column
+keeps its own name, and is nullable when either the collection or its element
+is, because an absent list yields no element. Only one level is unwrapped, so a
+list of lists answers a list; calling it again reaches the next one, which
+makes the depth the caller's decision.
+
+Both answer a list of fields rather than a node, the way `partition_fields`
+does; `DataType::from_fields` builds a node from either when you want one.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+
+    # fn main() -> yggdryl::Result<()> {
+    let row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::from_fields([DataType::Float64.required_field("px")])?
+            .nullable_field("line"),
+        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+    ])?;
+
+    // Structs flatten to leaves; the list stays one column.
+    let leaves = row.unnest_fields();
+    let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
+    assert_eq!(names, ["id", "line.px", "levels"]);
+
+    // The nullable parent makes its leaf nullable, and the name resolves.
+    assert!(leaves[1].is_nullable());
+    assert!(row.get_field_by_path("line.px").is_some());
+
+    // Exploding reaches inside the collection, keeping the column's name.
+    let exploded = row.explode_fields();
+    assert_eq!(exploded[2].name(), "levels");
+    assert_eq!(exploded[2].dtype(), &DataType::Float64);
+    # Ok(())
+    # }
+    ```
+
 ### Merging two schemas
 
 `merge_with` answers the type that describes both sides, and it is the only

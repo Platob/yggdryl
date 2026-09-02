@@ -401,3 +401,99 @@ fn merging_fields_unions_metadata_and_keeps_the_receivers_value() {
     // Merging a field with itself changes nothing.
     assert_eq!(merged.merge_with(&merged, true).unwrap(), merged);
 }
+
+#[test]
+fn unnesting_flattens_structs_to_leaves_named_by_their_path() {
+    let row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::from_fields([
+            DataType::Float64.required_field("px"),
+            DataType::from_fields([DataType::Utf8.required_field("ccy")])
+                .unwrap()
+                .required_field("meta"),
+        ])
+        .unwrap()
+        .nullable_field("line"),
+        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+    ])
+    .unwrap()
+    .required_field("row");
+
+    let leaves = row.unnest_fields();
+    let names: Vec<&str> = leaves.iter().map(Field::name).collect();
+
+    // Structs flatten all the way down; a list is a leaf, not its item.
+    assert_eq!(names, ["id", "line.px", "line.meta.ccy", "levels"]);
+
+    // A leaf under a nullable ancestor is nullable, because a null parent
+    // leaves it with no value to carry.
+    assert!(!leaves[0].is_nullable());
+    assert!(leaves[1].is_nullable(), "px is required, but line is not");
+    assert!(leaves[2].is_nullable());
+
+    // Every name it answers is one the path accessor resolves, so a flattened
+    // column list and the tree it came from address children the same way.
+    for leaf in &leaves {
+        assert!(
+            row.get_field_by_path(leaf.name()).is_some(),
+            "{:?} must resolve",
+            leaf.name()
+        );
+    }
+
+    // A node with no children answers nothing rather than failing.
+    assert!(DataType::Int64.unnest_fields().is_empty());
+}
+
+#[test]
+fn exploding_replaces_each_collection_with_what_it_holds() {
+    let row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+        DataType::map_of(DataType::Utf8, DataType::Int64, true)
+            .unwrap()
+            .nullable_field("tags"),
+        DataType::dictionary(DataType::Int16, DataType::Utf8)
+            .unwrap()
+            .required_field("codes"),
+    ])
+    .unwrap();
+
+    let exploded = row.explode_fields();
+
+    // Same columns, same order: one row's worth of an expanded table.
+    assert_eq!(exploded.len(), row.field_len());
+    assert_eq!(
+        exploded.iter().map(Field::name).collect::<Vec<_>>(),
+        ["id", "levels", "tags", "codes"],
+    );
+
+    assert_eq!(exploded[0].dtype(), &DataType::Int64, "not a collection");
+    assert_eq!(
+        exploded[1].dtype(),
+        &DataType::Float64,
+        "a list answers its item"
+    );
+    assert!(
+        exploded[2].dtype().as_fields().is_some(),
+        "a map answers its entries"
+    );
+    assert_eq!(
+        exploded[3].dtype(),
+        &DataType::Utf8,
+        "a dictionary answers its value"
+    );
+
+    // The column keeps its name and is nullable when the collection or its
+    // element is: an absent list yields no element.
+    assert!(exploded[1].is_nullable());
+
+    // One level only, so the depth is the caller's decision.
+    let deep = DataType::from_fields([DataType::list(
+        DataType::list(DataType::Int64.nullable_field("item")).nullable_field("item"),
+    )
+    .nullable_field("deep")])
+    .unwrap();
+    let once = DataType::from_fields(deep.explode_fields()).unwrap();
+    assert!(matches!(once.explode_fields()[0].dtype(), DataType::Int64));
+}

@@ -1103,6 +1103,112 @@ impl DataType {
         }
     }
 
+    /// Returns every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting is flattened all the way down: a child that is a struct
+    /// contributes its own leaves rather than itself, each named by the path
+    /// that reaches it. Every name this returns is one
+    /// [`Self::get_field_by_path`] resolves, so a flattened column list and
+    /// the tree it came from address children the same way.
+    ///
+    /// A leaf under a nullable ancestor is nullable, because a null parent
+    /// leaves the leaf with no value to carry.
+    ///
+    /// Collections are leaves here: a `list` or a `map` contributes itself,
+    /// not its element. Unnesting answers what a flat column list looks like,
+    /// and a list is one column; [`Self::explode_fields`] is what reaches
+    /// inside one.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::from_fields([DataType::Float64.required_field("px")])?
+    ///         .nullable_field("line"),
+    /// ])?;
+    ///
+    /// let leaves = row.unnest_fields();
+    /// let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
+    /// assert_eq!(names, ["id", "line.px"]);
+    ///
+    /// // The nullable parent makes its leaf nullable.
+    /// assert!(leaves[1].is_nullable());
+    /// assert_eq!(row.get_field_by_path("line.px").unwrap().name(), "px");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn unnest_fields(&self) -> Vec<Field> {
+        let mut leaves = Vec::with_capacity(self.field_len());
+        self.push_leaves("", false, &mut leaves);
+        leaves
+    }
+
+    /// Collect this node's leaves under an accumulated path.
+    fn push_leaves(&self, prefix: &str, nullable: bool, leaves: &mut Vec<Field>) {
+        for index in 0..self.field_len() {
+            let Some(child) = self.get_field_at(index) else {
+                continue;
+            };
+            let path = if prefix.is_empty() {
+                child.name().to_owned()
+            } else {
+                format!("{prefix}.{}", child.name())
+            };
+            let nullable = nullable || child.is_nullable();
+            match child.dtype().as_fields() {
+                // A struct contributes its leaves; anything else is one.
+                Some(_) => child.dtype().push_leaves(&path, nullable, leaves),
+                None => {
+                    let mut leaf = child.clone().with_name(path);
+                    leaf.set_nullable(nullable);
+                    leaves.push(leaf);
+                }
+            }
+        }
+    }
+
+    /// Returns this node's children with every collection replaced by what it
+    /// holds.
+    ///
+    /// A list answers its item, a map its entries, and a dictionary or run-end
+    /// node the values it encodes. A child that is not a collection is
+    /// returned unchanged, so the result always names the same columns in the
+    /// same order - one row's worth of a table whose collections have been
+    /// expanded.
+    ///
+    /// The column keeps its own name rather than the element's, because
+    /// exploding does not rename a column, and it is nullable when either the
+    /// collection or its element is: an absent list yields no element.
+    ///
+    /// Only one level is unwrapped, so a list of lists answers a list. Calling
+    /// it again reaches the next one, which is what makes the depth the
+    /// caller's decision rather than this method's.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+    /// ])?;
+    ///
+    /// let exploded = row.explode_fields();
+    /// assert_eq!(exploded[0].dtype(), &DataType::Int64, "not a collection, unchanged");
+    /// assert_eq!(exploded[1].name(), "levels", "the column keeps its name");
+    /// assert_eq!(exploded[1].dtype(), &DataType::Float64, "and answers its item");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn explode_fields(&self) -> Vec<Field> {
+        (0..self.field_len())
+            .filter_map(|index| self.get_field_at(index))
+            .map(exploded)
+            .collect()
+    }
+
     /// Returns the struct children as an owned vector, or a refusal.
     ///
     /// Appending and removing change the child count, and a struct is the only
@@ -1135,6 +1241,35 @@ impl DataType {
     fn index_of_name(&self, name: &str) -> Option<usize> {
         (0..self.field_len())
             .find(|index| self.get_field_at(*index).is_some_and(|f| f.name() == name))
+    }
+}
+
+/// One child with its collection, if it is one, replaced by what it holds.
+fn exploded(child: &Field) -> Field {
+    let held = match child.dtype() {
+        DataType::List(item)
+        | DataType::ListView(item)
+        | DataType::FixedSizeList(item, _)
+        | DataType::LargeList(item)
+        | DataType::LargeListView(item) => Some((item.dtype().clone(), item.is_nullable())),
+        DataType::Map(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
+        DataType::RunEndEncoded(encoded) => Some((
+            encoded.values().dtype().clone(),
+            encoded.values().is_nullable(),
+        )),
+        DataType::Dictionary(dictionary) => Some((dictionary.value().clone(), false)),
+        _ => None,
+    };
+    match held {
+        Some((dtype, element_nullable)) => {
+            let mut exploded =
+                Field::new(child.name(), dtype, child.is_nullable() || element_nullable);
+            // The column's own annotations describe the column, not the
+            // collection layout, so they survive the expansion.
+            let _ = exploded.set_metadata(child.metadata_iter());
+            exploded
+        }
+        None => child.clone(),
     }
 }
 
