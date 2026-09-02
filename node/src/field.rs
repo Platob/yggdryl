@@ -233,6 +233,36 @@ impl JsField {
             .map_err(napi_error)
     }
 
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explodeFields` is what reaches inside one. Every name this
+    /// answers is one `fieldByPath` resolves.
+    #[napi]
+    pub fn unnest_fields(&self) -> Vec<JsField> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    #[napi]
+    pub fn explode_fields(&self) -> Vec<JsField> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(JsField::from_core)
+            .collect()
+    }
+
     /// Number of direct child fields.
     #[napi(getter)]
     pub fn field_len(&self) -> u32 {

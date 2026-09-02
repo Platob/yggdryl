@@ -748,3 +748,44 @@ test('every format carries the same nested shape', () => {
   assert.equal(levels.field.dtype.fields[0].name, 'sym')
   assert.equal(document.dtype.fields[1].dtype.type, 'map')
 })
+
+test('unnesting flattens structs and exploding reaches inside collections', () => {
+  const row = new Field(
+    'row',
+    DataType.from(
+      'struct<id:int64 not null,line:struct<px:float64 not null>,' +
+        'levels:list<float64>,tags:map<utf8,int64>>',
+    ),
+    false,
+  )
+
+  const leaves = row.unnestFields()
+  assert.deepEqual(
+    leaves.map((child) => child.name),
+    ['id', 'line.px', 'levels', 'tags'],
+  )
+
+  // A leaf under a nullable ancestor is nullable, and a list is a leaf here.
+  assert.equal(leaves[0].nullable, false)
+  assert.equal(leaves[1].nullable, true)
+
+  // Every name it answers is one the path accessor resolves.
+  for (const leaf of leaves) {
+    assert.notEqual(row.getFieldByPath(leaf.name), null)
+  }
+
+  const exploded = row.explodeFields()
+  assert.deepEqual(
+    exploded.map((child) => child.name),
+    ['id', 'line', 'levels', 'tags'],
+  )
+  assert.ok(exploded[0].dtype.equals(DataType.from('int64')), 'not a collection')
+  assert.ok(exploded[2].dtype.equals(DataType.from('float64')), 'a list answers its item')
+  assert.equal(exploded[3].dtype.length, 2, 'a map answers its entries struct')
+
+  // A datatype answers the same, so descending never changes the calls.
+  assert.deepEqual(
+    row.dtype.unnestFields().map((child) => child.name),
+    leaves.map((child) => child.name),
+  )
+})
