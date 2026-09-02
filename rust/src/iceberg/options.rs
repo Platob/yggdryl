@@ -26,7 +26,7 @@ use crate::{Error, MimeType, Result};
 /// Configuration for one table's commit retries, file sizing, and reads.
 ///
 /// The value records only what was set on it; every getter answers with the
-/// field's documented default when nothing was. [`Self::for_metadata`] reads
+/// field's documented default when nothing was. [`Self::from_metadata`] reads
 /// the property layer of one table, and [`Table::options`](super::Table::options)
 /// resolves all three layers at once.
 ///
@@ -459,7 +459,7 @@ impl IcebergOptions {
     /// )?;
     /// metadata.set_property(IcebergOptions::COMMIT_RETRIES_KEY, "9")?;
     ///
-    /// let options = IcebergOptions::for_metadata(&metadata)?;
+    /// let options = IcebergOptions::from_metadata(&metadata)?;
     /// assert_eq!(options.commit_retries(), 9);
     /// assert_eq!(options.commit_min_backoff_ms(), 100); // untouched: default
     /// # Ok(())
@@ -471,7 +471,7 @@ impl IcebergOptions {
     /// Returns a typed error naming the key and the value when a property is
     /// present but does not parse, and the current-schema failure when the
     /// metadata has no current schema to read the fallback from.
-    pub fn for_metadata(metadata: &TableMetadata) -> Result<Self> {
+    pub fn from_metadata(metadata: &TableMetadata) -> Result<Self> {
         Self::resolved(None, metadata)
     }
 

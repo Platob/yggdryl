@@ -114,7 +114,7 @@ fn plan_table(label: &str, files: usize) -> Table<Folder> {
         )
         .expect("the batch matches the schema");
         table
-            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .expect("the append commits");
     }
     table
@@ -578,7 +578,7 @@ fn merge_table(label: &str, files: usize) -> Table<Folder> {
         )
         .expect("the batch matches the schema");
         table
-            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .expect("the append commits");
     }
     table
@@ -606,7 +606,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     // fold into one and the other forty are carried untouched, so an upsert of
     // stored keys adds no row and every later merge rewrites that one file.
     table
-        .merge(
+        .commit_merge(
             yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
             &merge_by_names,
             true,
@@ -623,7 +623,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     group.bench_function("upsert_into_50_files", |bencher| {
         bencher.iter(|| {
             table
-                .merge(
+                .commit_merge(
                     yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
                     black_box(&merge_by_names),
                     true,
@@ -690,7 +690,7 @@ fn read_table(label: &str, files: usize, rows: usize) -> Table<Folder> {
         )
         .expect("the batch matches the schema");
         table
-            .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .expect("the append commits");
     }
     table
@@ -812,7 +812,10 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
                             .expect("the batch matches the schema");
                             let _serialized = gate.lock().expect("the gate is not poisoned");
                             table
-                                .append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+                                .commit_append(yggdryl::arrow::batch_reader(
+                                    batch.schema(),
+                                    [batch],
+                                ))
                                 .expect("the contended append commits");
                         });
                     }

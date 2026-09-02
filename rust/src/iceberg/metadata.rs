@@ -36,7 +36,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
-use super::{Transform, schema_from_json, schema_to_json};
+use super::{Transform, schema_from_json, schema_into_json};
 use crate::{Error, Field, Result, Scalar};
 
 /// Which revision of the Iceberg table specification a table is written to.
@@ -616,9 +616,9 @@ impl TableMetadata {
         // highest identifier already assigned - exactly as [`Self::add_schema`]
         // numbers an evolution - so a schema that arrives numbered keeps every
         // id it came with and a plain Arrow schema needs no ceremony first.
-        let start = super::last_field_id(&schema)?.saturating_add(1);
+        let start = super::last_column_id(&schema)?.saturating_add(1);
         super::assign_field_ids(&mut schema, start)?;
-        let last_column_id = super::last_field_id(&schema)?;
+        let last_column_id = super::last_column_id(&schema)?;
         if schema.iceberg().get(super::schema::SCHEMA_ID).is_none() {
             schema.iceberg_mut().insert(super::schema::SCHEMA_ID, "0")?;
         }
@@ -1118,13 +1118,13 @@ impl TableMetadata {
 
         let mut schemas = Vec::with_capacity(self.schemas.len());
         for schema in &self.schemas {
-            schemas.push(schema_to_json(schema)?);
+            schemas.push(schema_into_json(schema)?);
         }
         if self.format_version == FormatVersion::V1 {
             // A v1 reader that predates `schemas` still needs the singular key.
             entries.push((
                 Scalar::from("schema"),
-                schema_to_json(self.current_schema()?)?,
+                schema_into_json(self.current_schema()?)?,
             ));
         }
         entries.push((Scalar::from("schemas"), Scalar::from_sequence(schemas)));
@@ -2347,7 +2347,7 @@ fn field_schema_id(schema: &Field) -> i32 {
 }
 
 fn official_schema(schema: &Field) -> Result<OfficialSchema> {
-    let document = schema_to_json(schema)?;
+    let document = schema_into_json(schema)?;
     let bytes = crate::json::into_bytes(&document)?;
     Ok(serde_json::from_slice(&bytes)?)
 }

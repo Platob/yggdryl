@@ -385,7 +385,7 @@ impl PartitionSpec {
     ///
     /// Returns an error when the field is not a struct, or when a child is
     /// missing its field identifier, source identifier, or transform.
-    pub fn from_field(partition: &Field) -> Result<Self> {
+    pub fn from_partition_field(partition: &Field) -> Result<Self> {
         partition.require_struct()?;
         let spec_id = partition.iceberg().get(SPEC_ID).map_or(Ok(0), |id| {
             id.parse::<i32>().map_err(|_| {
@@ -547,7 +547,7 @@ impl PartitionSpec {
     /// makes a partition value readable without consulting the path. Each child
     /// also carries what produced it - the transform, the source column's
     /// identifier, and the partition marker every path-borne column carries - so
-    /// the tuple describes itself and [`Self::from_field`] reads this spec back
+    /// the tuple describes itself and [`Self::from_partition_field`] reads this spec back
     /// out of it.
     ///
     /// # Errors

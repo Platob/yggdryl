@@ -1149,13 +1149,13 @@ mod tables {
         )
         .unwrap();
         table
-            .append(crate::arrow::batch_reader(
+            .commit_append(crate::arrow::batch_reader(
                 batch(1, "AAPL").schema(),
                 [batch(1, "AAPL")],
             ))
             .unwrap();
         table
-            .append(crate::arrow::batch_reader(
+            .commit_append(crate::arrow::batch_reader(
                 batch(2, "MSFT").schema(),
                 [batch(2, "MSFT")],
             ))

@@ -36,7 +36,7 @@
 //! assert!(table.current_snapshot().is_none());
 //!
 //! let rows = yggdryl::arrow::batch_reader(schema.into_arrow_schema()?, []);
-//! table.append(rows)?;
+//! table.commit_append(rows)?;
 //! assert!(table.current_snapshot().is_some());
 //! # Ok(())
 //! # }
@@ -44,13 +44,13 @@
 //!
 //! # Schema conversion alone
 //!
-//! [`schema_from_json`] and [`schema_to_json`] convert an Iceberg schema
+//! [`schema_from_json`] and [`schema_into_json`] convert an Iceberg schema
 //! document to and from a root [`Field`](crate::Field) without touching a
 //! table, which is
 //! what a caller integrating with someone else's catalog needs.
 //!
 //! ```
-//! use yggdryl::iceberg::{schema_from_json, schema_to_json};
+//! use yggdryl::iceberg::{schema_from_json, schema_into_json};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let document = yggdryl::json::from_utf8(
@@ -66,7 +66,7 @@
 //! assert!(!schema.fields()[0].is_nullable());
 //!
 //! // And writes back to the same document.
-//! assert_eq!(schema_to_json(&schema)?, document);
+//! assert_eq!(schema_into_json(&schema)?, document);
 //! # Ok(())
 //! # }
 //! ```
@@ -108,7 +108,7 @@ pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
 pub use options::IcebergOptions;
 pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform};
 pub use scan::{ScanPlan, ScanTask};
-pub use schema::{assign_field_ids, last_field_id, schema_from_json, schema_to_json};
+pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
@@ -151,12 +151,12 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.table.merge_where(&pairs, batches, &[], safe)
+        self.table.commit_merge_where(&pairs, batches, &[], safe)
     }
 
     /// Publish one already-shaped append cadence.
     pub(crate) fn append_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        self.table.append(batches)
+        self.table.commit_append(batches)
     }
 
     /// Publish one already-shaped merge cadence.
@@ -172,7 +172,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .merge_where(&pairs, batches, merge_by_names, safe)
+            .commit_merge_where(&pairs, batches, merge_by_names, safe)
     }
 
     /// Return the table a container handle addresses, if it addresses one.
@@ -259,12 +259,14 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         if commit_row_size.is_none() {
-            return self.table.merge_where(&pairs, batches, &[], options.safe());
+            return self
+                .table
+                .commit_merge_where(&pairs, batches, &[], options.safe());
         }
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches)?;
         let Some(first) = commits.next() else {
-            return self.table.merge_where(
+            return self.table.commit_merge_where(
                 &pairs,
                 crate::arrow::batch_reader(schema, []),
                 &[],
@@ -272,9 +274,9 @@ impl Located {
             );
         };
         self.table
-            .merge_where(&pairs, first?, &[], options.safe())?;
+            .commit_merge_where(&pairs, first?, &[], options.safe())?;
         for commit in commits {
-            self.table.append(commit?)?;
+            self.table.commit_append(commit?)?;
         }
         Ok(())
     }
@@ -306,10 +308,10 @@ impl Located {
             return Ok(());
         };
         if commit_row_size.is_none() {
-            return self.table.append(batches);
+            return self.table.commit_append(batches);
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.table.append(commit?)?;
+            self.table.commit_append(commit?)?;
         }
         Ok(())
     }
@@ -343,7 +345,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         if commit_row_size.is_none() {
-            return self.table.merge_where(
+            return self.table.commit_merge_where(
                 &pairs,
                 batches,
                 options.merge_by_names(),
@@ -351,8 +353,12 @@ impl Located {
             );
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.table
-                .merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
+            self.table.commit_merge_where(
+                &pairs,
+                commit?,
+                options.merge_by_names(),
+                options.safe(),
+            )?;
         }
         Ok(())
     }

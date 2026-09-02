@@ -147,7 +147,7 @@ fn a_table_created_through_a_dotted_name_round_trips_its_rows() {
     let batch = taxis(&[1, 2], &[Some("XNAS"), None]);
     catalog
         .tables()
-        .append(
+        .append_arrow_reader(
             "nyc.yellow.taxis",
             crate::arrow::batch_reader(batch.schema(), [batch]),
         )
@@ -263,7 +263,7 @@ fn append_creates_on_first_write_and_appends_on_the_second() {
     let first = taxis(&[1], &[Some("XNAS")]);
     let table = catalog
         .tables()
-        .append(
+        .append_arrow_reader(
             "ops.trips",
             crate::arrow::batch_reader(first.schema(), [first]),
         )
@@ -284,7 +284,7 @@ fn append_creates_on_first_write_and_appends_on_the_second() {
     let second = taxis(&[2], &[None]);
     let appended = catalog
         .tables()
-        .append(
+        .append_arrow_reader(
             "ops.trips",
             crate::arrow::batch_reader(second.schema(), [second]),
         )
@@ -316,7 +316,7 @@ fn append_takes_the_partition_marks_that_survived_the_arrow_round_trip() {
     .unwrap();
     let table = catalog
         .tables()
-        .append(
+        .append_arrow_reader(
             "nyc.marked",
             crate::arrow::batch_reader(arrow_schema, [batch]),
         )
@@ -335,7 +335,7 @@ fn overwrite_creates_when_absent_and_replaces_when_present() {
     let first = taxis(&[1, 2], &[Some("XNAS"), Some("XNYS")]);
     catalog
         .tables()
-        .overwrite(
+        .overwrite_arrow_reader(
             "nyc.taxis",
             crate::arrow::batch_reader(first.schema(), [first]),
         )
@@ -344,7 +344,7 @@ fn overwrite_creates_when_absent_and_replaces_when_present() {
     let second = taxis(&[9], &[None]);
     let table = catalog
         .tables()
-        .overwrite(
+        .overwrite_arrow_reader(
             "nyc.taxis",
             crate::arrow::batch_reader(second.schema(), [second]),
         )
@@ -752,7 +752,7 @@ fn table_writes_through_the_views_create_on_first_write() {
     let batch = taxis(&[1, 2], &[Some("XNAS"), None]);
     let table = sales
         .tables()
-        .append(
+        .append_arrow_reader(
             "orders",
             crate::arrow::batch_reader(batch.schema(), [batch]),
         )
@@ -763,7 +763,7 @@ fn table_writes_through_the_views_create_on_first_write() {
     let batch = taxis(&[9], &[None]);
     let table = sales
         .tables()
-        .overwrite(
+        .overwrite_arrow_reader(
             "orders",
             crate::arrow::batch_reader(batch.schema(), [batch]),
         )

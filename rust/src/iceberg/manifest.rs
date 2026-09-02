@@ -635,7 +635,7 @@ pub fn write_manifest<H: IOBase + ?Sized>(
         rows.push(entry_to_value(entry, version, &partition)?);
     }
 
-    let schema_json = super::schema_to_json(schema)?;
+    let schema_json = super::schema_into_json(schema)?;
     let schema_text = String::from_utf8_lossy(&crate::json::into_bytes(&schema_json)?).into_owned();
     let spec_text =
         String::from_utf8_lossy(&crate::json::into_bytes(&spec.clone().into_v1_json()?)?)
@@ -2565,7 +2565,7 @@ mod official_read_tests {
         spec: &PartitionSpec,
         row: Scalar,
     ) {
-        let schema_json = super::super::schema_to_json(field).unwrap();
+        let schema_json = super::super::schema_into_json(field).unwrap();
         let schema_text =
             String::from_utf8(crate::json::into_bytes(&schema_json).unwrap()).unwrap();
         let spec_text = String::from_utf8(
@@ -2591,7 +2591,7 @@ mod official_read_tests {
     ) -> (Scalar, String, String) {
         let partition = spec.partition_field(field).unwrap();
         let avro_schema = manifest_entry_schema(version, &partition).unwrap();
-        let schema = super::super::schema_to_json(field).unwrap();
+        let schema = super::super::schema_into_json(field).unwrap();
         let schema = crate::json::into_utf8(&schema).unwrap();
         let partition_spec = spec.clone().into_v1_json().unwrap();
         let partition_spec = crate::json::into_utf8(&partition_spec).unwrap();

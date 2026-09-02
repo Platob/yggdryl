@@ -33,10 +33,10 @@
 //!     PartitionSpec::unpartitioned(),
 //! )?;
 //!
-//! let mut update = SchemaUpdate::for_metadata(&metadata)?;
+//! let mut update = SchemaUpdate::from_metadata(&metadata)?;
 //! update.add_column("", DataType::Int64.nullable_field("quantity"));
 //! update.update_type("id", DataType::Int64);
-//! let evolved = update.apply()?;
+//! let evolved = update.into_field()?;
 //!
 //! // The added column is numbered above every id the table has assigned.
 //! assert_eq!(evolved.get_field_by_name("quantity").unwrap().parquet_field_id()?, Some(3));
@@ -117,9 +117,9 @@ const fn decimal_parts(data_type: &DataType) -> Option<(u8, i8)> {
 
 /// A recorded set of column operations against a table's current schema.
 ///
-/// Built by [`SchemaUpdate::for_metadata`], which captures the current schema
+/// Built by [`SchemaUpdate::from_metadata`], which captures the current schema
 /// and `last-column-id`. The recording methods store operations without
-/// touching anything; [`SchemaUpdate::apply`] then plays them back in call
+/// touching anything; [`SchemaUpdate::into_field`] then plays them back in call
 /// order, numbers every added column above the captured `last-column-id`, and
 /// returns the evolved root ready for [`TableMetadata::add_schema`].
 ///
@@ -159,7 +159,7 @@ impl SchemaUpdate {
     ///
     /// Returns an error when the metadata's current schema id resolves to no
     /// schema, or when `last-column-id` cannot grow.
-    pub fn for_metadata(metadata: &TableMetadata) -> Result<Self> {
+    pub fn from_metadata(metadata: &TableMetadata) -> Result<Self> {
         let schema = metadata.current_schema()?.clone();
         let next_id = metadata.last_column_id.checked_add(1).ok_or_else(|| {
             invalid(format_smolstr!(
@@ -243,7 +243,7 @@ impl SchemaUpdate {
     /// a name collision, an illegal promotion - or the final root's
     /// validation failure. The path errors name the missing segment and the
     /// columns that exist beside it.
-    pub fn apply(self) -> Result<Field> {
+    pub fn into_field(self) -> Result<Field> {
         let Self {
             mut schema,
             mut next_id,
