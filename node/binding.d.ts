@@ -1020,6 +1020,12 @@ export interface CodecOptions {
   scalar?: boolean | null
 }
 
+/** Options for one type-inferred `IOBase.readRange` call. */
+export interface RangeReadOptions {
+  /** Decode the range as UTF-8 text instead of returning its bytes. */
+  text?: boolean | null
+}
+
 /** Options for one format-inferred `IOBase.readScalar` call. */
 export interface ScalarReadOptions {
   /** Native schema used by the core parser to type natural values. */
@@ -1562,6 +1568,19 @@ declare module './index' {
     pstreamBytes(position?: number | null, batchSize?: number | null): ByteIterator
     /** Add or reconfigure one native page cache and return this handle. */
     buffered(options?: BufferedOptions | null): IOBase
+    /** Read `length` bytes from `offset` as bytes or as UTF-8 text. */
+    readRange(
+      offset: number,
+      length: number,
+      options: RangeReadOptions & { text: true },
+    ): string
+    readRange(
+      offset: number,
+      length: number,
+      options?: RangeReadOptions | null,
+    ): Buffer
+    /** Append bytes or UTF-8 text after the last byte, returning its offset. */
+    append(data: Uint8Array | ArrayBuffer | string): number
     /** Decode inferred JSON, YAML, or TOML, including its content coding. */
     readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
     readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T

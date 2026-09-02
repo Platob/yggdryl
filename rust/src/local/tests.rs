@@ -27,7 +27,7 @@ mod mapped {
 
             // Growing past the mapping remaps rather than failing.
             let large = vec![7_u8; 256 * 1024];
-            mapped.append(&large).unwrap();
+            mapped.append_bytes(&large).unwrap();
             assert_eq!(mapped.size(), 5 + large.len() as u64);
             assert!(mapped.capacity() >= mapped.size());
             mapped.flush().unwrap();
@@ -39,7 +39,7 @@ mod mapped {
         // Reopening sees the same bytes.
         let reopened = File::new(&path).unwrap();
         assert_eq!(reopened.size(), 5 + 256 * 1024);
-        assert_eq!(reopened.read_range(0, 5).unwrap(), b"trade");
+        assert_eq!(reopened.read_range_bytes(0, 5).unwrap(), b"trade");
         assert_eq!(reopened.url().unwrap().extension(), Some("bin"));
 
         // Teardown through the abstraction: absence is a no-op success.

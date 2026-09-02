@@ -76,7 +76,7 @@ class TestNativeHandleLayers:
 
         returned = handle.buffered(page_size=65, max_bytes=1, ttl=0.0)
         assert returned is handle
-        assert handle.pread(60, 140) == payload[60:200]
+        assert handle.read_range_bytes(60, 140) == payload[60:200]
 
         # Reconfiguration unwraps the first cache before installing the next,
         # and keeps the in-memory handle and its writes intact.
@@ -259,10 +259,19 @@ class TestPathlibParity:
         handle.write_bytes(b"symbol,price")
 
         # Random access is the contract, so there is nothing to open or seek.
-        assert handle.pread(0, 6) == b"symbol"
+        assert handle.read_range_bytes(0, 6) == b"symbol"
+        # The inferring entry point answers the same range as bytes or as text.
+        assert handle.read_range(0, 6) == b"symbol"
+        assert handle.read_range(0, 6, cls=bytes) == b"symbol"
+        assert handle.read_range(0, 6, cls=str) == "symbol"
         handle.pwrite(0, b"SYMBOL")
         assert handle.read_bytes() == b"SYMBOL,price"
-        assert handle.append(b"!") == 12
+        assert handle.append_bytes(b"!") == 12
+        # `append` infers its buffer type and redirects to `append_bytes`.
+        assert handle.append("?") == 13
+        assert handle.append(bytearray(b"#")) == 14
+        assert handle.append(memoryview(b"$")) == 15
+        assert handle.read_bytes() == b"SYMBOL,price!?#$"
 
     def test_mkdir_and_touch_bring_a_location_into_being(
         self, tmp_path: pathlib.Path

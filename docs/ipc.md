@@ -595,7 +595,7 @@ assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
 assert_eq!(media.read_arrow_field(&options)?, schema);
 
 // An Ipc is also the bytes it encodes: a stream opens with its continuation marker.
-assert_eq!(media.read_range(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
+assert_eq!(media.read_range_bytes(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
 ```
 
 `Ipc<H>` holds the handle, its default options, and the opened metadata cache.
@@ -604,7 +604,7 @@ canonical `IOMedia` call accepts. `handle`, `handle_mut`, and `into_handle`
 reach the wrapped handle; `options` and `options_mut` change future defaults.
 
 `Ipc<H>` implements `IOBase` by delegating to the handle it owns, which is why
-`read_range` above works on it directly. That is what lets a stream be copied, compressed,
+`read_range_bytes` above works on it directly. That is what lets a stream be copied, compressed,
 or handed to another reader without unwrapping it first, and what lets an `Ipc` be held as
 [`generic::Media::Ipc`](generic.md).
 

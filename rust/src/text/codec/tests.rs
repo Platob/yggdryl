@@ -37,7 +37,7 @@ fn handles_apply_their_own_content_coding() {
     let mut compressed = handle("quote.json.gz");
     Json.into_io(&expected, &mut compressed).unwrap();
     assert_eq!(Json.from_io(&compressed).unwrap(), expected);
-    assert_eq!(compressed.read_range(0, 2).unwrap(), [0x1F, 0x8B]);
+    assert_eq!(compressed.read_range_bytes(0, 2).unwrap(), [0x1F, 0x8B]);
 }
 
 #[test]

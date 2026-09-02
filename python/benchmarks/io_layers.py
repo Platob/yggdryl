@@ -45,7 +45,7 @@ def main() -> None:
 
     gc.disable()
     try:
-        _measure("buffered page hit", lambda: BUFFERED.pread(65_000, 128), arguments.iterations)
+        _measure("buffered page hit", lambda: BUFFERED.read_range_bytes(65_000, 128), arguments.iterations)
         _measure(
             "buffered idempotent redirect",
             lambda: BUFFERED.buffered(

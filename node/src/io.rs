@@ -587,10 +587,14 @@ impl JsIOBase {
     }
 
     /// Read `length` bytes from `offset`, which a path cannot do.
+    ///
+    /// The core's `read_range_bytes` under its own name: the ranged half of
+    /// the pair `readBytes` reads whole. `readRange` is the inferring entry
+    /// point over it.
     #[napi]
-    pub fn pread(&self, offset: f64, length: u32) -> Result<Buffer> {
+    pub fn read_range_bytes(&self, offset: f64, length: u32) -> Result<Buffer> {
         self.inner
-            .read_range(exact_u64(offset, "offset")?, length as usize)
+            .read_range_bytes(exact_u64(offset, "offset")?, length as usize)
             .map(Buffer::from)
             .map_err(napi_error)
     }
@@ -665,9 +669,12 @@ impl JsIOBase {
     }
 
     /// Append `data` after the last byte, returning the offset it landed at.
+    ///
+    /// The core's `append_bytes` under its own name; `append` is the inferring
+    /// entry point that also takes a string.
     #[napi]
-    pub fn append(&mut self, data: Uint8Array) -> Result<i64> {
-        let offset = self.inner.append(&data).map_err(napi_error)?;
+    pub fn append_bytes(&mut self, data: Uint8Array) -> Result<i64> {
+        let offset = self.inner.append_bytes(&data).map_err(napi_error)?;
         Ok(i64::try_from(offset).unwrap_or(i64::MAX))
     }
 
@@ -1339,8 +1346,8 @@ impl JsByteIterator {
 /// A positioned view over one handle, sharing the handle's bytes.
 ///
 /// Reads and writes advance the position; `seek`/`tell` move and report it;
-/// two cursors over one handle advance independently, exactly as two `pread`
-/// callers do.
+/// two cursors over one handle advance independently, exactly as two
+/// `readRange` callers do.
 #[napi(js_name = "IOCursor")]
 pub struct JsIOCursor {
     handle: Reference<JsIOBase>,

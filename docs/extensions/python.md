@@ -512,7 +512,7 @@ assert handle.is_io()
 
 # Random access needs no mode.
 handle.pwrite(0, b"MSFT")
-assert handle.pread(0, 4) == b"MSFT"
+assert handle.read_range_bytes(0, 4) == b"MSFT"
 
 # Children resolve the way they do for a Path.
 lake = IOBase(root / "lake" / "year=2024")

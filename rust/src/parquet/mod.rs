@@ -541,7 +541,7 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
         ))
         .into());
     }
-    let tail = handle.read_range(size - TAIL, TAIL as usize)?;
+    let tail = handle.read_range_bytes(size - TAIL, TAIL as usize)?;
     if tail.len() != TAIL as usize {
         return Err(ParquetError::EOF(format!(
             "expected an eight-byte Parquet footer tail, got {} bytes",
@@ -566,7 +566,7 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
             "Parquet footer length does not fit this address space".to_owned(),
         ))
     })?;
-    let footer = handle.read_range(footer_start, footer_length)?;
+    let footer = handle.read_range_bytes(footer_start, footer_length)?;
     if footer.len() != footer_length {
         return Err(ParquetError::EOF(format!(
             "expected {footer_length} Parquet footer bytes, got {} bytes",
@@ -632,7 +632,7 @@ fn bounded_builder<H: IOBase + ?Sized>(
     if size < TAIL {
         return Ok(None);
     }
-    let tail = handle.read_range(size - TAIL, TAIL as usize)?;
+    let tail = handle.read_range_bytes(size - TAIL, TAIL as usize)?;
     if tail.len() < TAIL as usize || &tail[4..] != b"PAR1" {
         return Ok(None);
     }
@@ -643,7 +643,7 @@ fn bounded_builder<H: IOBase + ?Sized>(
     ) else {
         return Ok(None);
     };
-    let footer = handle.read_range(footer_start, footer_length)?;
+    let footer = handle.read_range_bytes(footer_start, footer_length)?;
     let Ok(metadata) = ParquetMetaDataReader::decode_metadata(&footer) else {
         return Ok(None);
     };
@@ -668,7 +668,7 @@ fn bounded_builder<H: IOBase + ?Sized>(
     let Ok(end) = usize::try_from(end) else {
         return Ok(None);
     };
-    let prefix = Bytes::from(handle.read_range(0, end)?);
+    let prefix = Bytes::from(handle.read_range_bytes(0, end)?);
     let arrow_metadata =
         ArrowReaderMetadata::try_new(Arc::new(metadata), ArrowReaderOptions::new())?;
     Ok(Some(

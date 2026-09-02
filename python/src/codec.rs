@@ -24,8 +24,12 @@ use crate::value_error;
 const MAX_PYTHON_DOCUMENTS: usize = 1_024;
 
 /// Read bytes out of anything Python uses to hold them.
-fn with_python_bytes<T>(
+///
+/// `subject` names the rejected argument in the type error, so one reader
+/// serves every byte-taking boundary method.
+pub(crate) fn with_python_bytes<T>(
     value: &Bound<'_, PyAny>,
+    subject: &str,
     operation: impl FnOnce(&[u8]) -> PyResult<T>,
 ) -> PyResult<T> {
     if let Ok(value) = value.cast::<PyBytes>() {
@@ -39,9 +43,9 @@ fn with_python_bytes<T>(
         let value = value.call_method0("tobytes")?.cast_into::<PyBytes>()?;
         return operation(value.as_bytes());
     }
-    Err(PyTypeError::new_err(
-        "codec content must be bytes, bytearray, or memoryview",
-    ))
+    Err(PyTypeError::new_err(format!(
+        "{subject} must be bytes, bytearray, or memoryview"
+    )))
 }
 
 /// Parse one public codec alias through the core `Format` parser.
@@ -566,7 +570,7 @@ impl Write for PythonWriter<'_> {
 
 #[pyfunction(name = "_codec_infer")]
 pub(crate) fn codec_infer(data: &Bound<'_, PyAny>) -> PyResult<&'static str> {
-    with_python_bytes(data, |data| {
+    with_python_bytes(data, "codec content", |data| {
         yggdryl::text::infer_format(data)
             .map(Format::as_str)
             .map_err(value_error)
@@ -619,7 +623,7 @@ pub(crate) fn codec_decode_inferred(
 ) -> PyResult<Py<PyAny>> {
     let field = field.map(core_field_from_value).transpose()?;
     let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
-    let (_, value) = with_python_bytes(data, |data| {
+    let (_, value) = with_python_bytes(data, "codec content", |data| {
         let (format, value) =
             yggdryl::text::from_bytes_inferred_with_limits(data, limits).map_err(value_error)?;
         let value = field
@@ -808,7 +812,7 @@ pub(crate) fn codec_decode(
         field.clone(),
         limits_from(max_depth, max_input_bytes, max_nodes, max_documents),
     )?;
-    let value = with_python_bytes(data, |data| {
+    let value = with_python_bytes(data, "codec content", |data| {
         yggdryl::text::from_bytes_with(data, format, &loading).map_err(value_error)
     })?;
     decoded_into_py(py, value, field.as_ref(), native_scalar)
@@ -1104,7 +1108,7 @@ pub(crate) fn codec_decode_all(
     let format = format_from_str(format)?;
     let field = field.map(core_field_from_value).transpose()?;
     let limits = limits_from(max_depth, max_input_bytes, max_nodes, max_documents);
-    with_python_bytes(data, |data| {
+    with_python_bytes(data, "codec content", |data| {
         field
             .as_ref()
             .map_or_else(

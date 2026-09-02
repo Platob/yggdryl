@@ -2344,6 +2344,8 @@ const { IOBase, Timezone } = binding
 const nativeIOReadValue = IOBase.prototype._readScalarNative
 const nativeIOWriteValue = IOBase.prototype._writeScalarNative
 const nativeIOBuffered = IOBase.prototype._bufferedNative
+const nativeIOReadRangeBytes = IOBase.prototype.readRangeBytes
+const nativeIOAppendBytes = IOBase.prototype.appendBytes
 delete IOBase.prototype._readScalarNative
 delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
@@ -2364,6 +2366,37 @@ function checkedBufferedOptions(options) {
     }
   }
   return options
+}
+
+function rangeReadArguments(options) {
+  if (options === undefined || options === null) return false
+  if (!isPlainObject(options)) {
+    throw new TypeError('readRange options must be an object')
+  }
+  for (const name of Object.keys(options)) {
+    if (name !== 'text') {
+      throw new TypeError(`unknown readRange option ${name}`)
+    }
+  }
+  if (
+    options.text !== undefined &&
+    options.text !== null &&
+    typeof options.text !== 'boolean'
+  ) {
+    throw new TypeError('text must be a boolean')
+  }
+  return options.text === true
+}
+
+// The one place a JavaScript byte source becomes the `Uint8Array` the native
+// append borrows. A string is UTF-8, matching `writeText`.
+function appendedBytes(data) {
+  if (typeof data === 'string') return Buffer.from(data, 'utf8')
+  if (data instanceof Uint8Array) return data
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  throw new TypeError(
+    'appended data must be a Uint8Array, ArrayBuffer, or string',
+  )
 }
 
 function readScalarArguments(input) {
@@ -2406,6 +2439,21 @@ Object.defineProperties(IOBase.prototype, {
         options.ttlMs,
       )
       return this
+    },
+  },
+  readRange: {
+    configurable: true,
+    value(offset, length, options) {
+      // Settled before the read, so a rejected option costs no fetch.
+      const text = rangeReadArguments(options)
+      const bytes = nativeIOReadRangeBytes.call(this, offset, length)
+      return text ? bytes.toString('utf8') : bytes
+    },
+  },
+  append: {
+    configurable: true,
+    value(data) {
+      return nativeIOAppendBytes.call(this, appendedBytes(data))
     },
   },
   readScalar: {

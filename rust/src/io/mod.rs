@@ -1101,12 +1101,17 @@ pub trait IOBase: Send + IOMedia {
 
     /// Read `length` bytes starting at `offset`.
     ///
+    /// The ranged half of the byte-read family [`Self::read_all_bytes`] reads
+    /// whole; it names `bytes` for the same reason, because the answer is the
+    /// bytes rather than the rows
+    /// [`read_arrow_reader`](IOMedia::read_arrow_reader) answers.
+    ///
     /// The result is short only when the value ends first.
     ///
     /// # Errors
     ///
     /// Returns the backing store's read failure.
-    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         let available = self.size().saturating_sub(offset);
         let length = length.min(usize::try_from(available).unwrap_or(usize::MAX));
         let mut bytes = vec![0_u8; length];
@@ -1139,10 +1144,16 @@ pub trait IOBase: Send + IOMedia {
 
     /// Append bytes after the current end, returning the offset they start at.
     ///
+    /// The byte member of the append family, beside
+    /// [`append_arrow_reader`](IOMedia::append_arrow_reader) and
+    /// [`Text::append_lines`](crate::text::Text::append_lines): each names what
+    /// it appends, so the offset this one reports is unambiguously a byte
+    /// offset.
+    ///
     /// # Errors
     ///
     /// Returns the backing store's write failure.
-    fn append(&mut self, bytes: &[u8]) -> Result<u64> {
+    fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         let offset = self.size();
         self.pwrite_all(offset, bytes)?;
         Ok(offset)
@@ -1469,10 +1480,10 @@ pub trait IOBase: Send + IOMedia {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"symbol,price\n".to_vec())
     ///     .buffered(BufferedOptions::default());
-    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    /// assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
     ///
     /// // The second read of the same bytes reaches no further than memory.
-    /// assert_eq!(handle.read_range(0, 6)?, b"symbol");
+    /// assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
     /// assert_eq!(handle.cached_pages(), 1);
     /// # Ok(())
     /// # }
@@ -3023,8 +3034,8 @@ impl IOBase for Box<dyn IOBase> {
         self.as_ref().read_all_bytes()
     }
 
-    fn read_range(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.as_ref().read_range(offset, length)
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_ref().read_range_bytes(offset, length)
     }
 
     fn clear(&mut self) -> Result<()> {

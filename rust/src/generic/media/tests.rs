@@ -174,7 +174,7 @@ fn media_mirrors_the_bytes_of_its_handle() {
     media.overwrite_arrow_reader(reader(), &options).unwrap();
 
     // An Arrow IPC stream opens with the continuation marker.
-    assert_eq!(media.read_range(0, 4).unwrap(), [0xFF, 0xFF, 0xFF, 0xFF]);
+    assert_eq!(media.read_range_bytes(0, 4).unwrap(), [0xFF, 0xFF, 0xFF, 0xFF]);
     assert_eq!(media.size(), media.read_all_bytes().unwrap().len() as u64);
     assert_eq!(media.media_type().base(), &MimeType::ARROW_STREAM);
 }
@@ -187,7 +187,7 @@ fn a_compressed_handle_mirrors_the_compressed_bytes() {
     let options = media.record_options().unwrap();
     media.overwrite_arrow_reader(reader(), &options).unwrap();
 
-    assert_eq!(media.read_range(0, 2).unwrap(), [0x1F, 0x8B]);
+    assert_eq!(media.read_range_bytes(0, 2).unwrap(), [0x1F, 0x8B]);
 }
 
 #[test]

@@ -220,6 +220,16 @@ native_typed_loaded_value: Scalar = value_handle.read_scalar(
     "row: struct<id: int64 not null> not null",
     cls=Scalar,
 )
+byte_handle = IOBase("range.bin")
+appended_offset: int = byte_handle.append_bytes(b"symbol")
+appended_text_offset: int = byte_handle.append("!")
+appended_view_offset: int = byte_handle.append(memoryview(b"?"))
+range_bytes: bytes = byte_handle.read_range_bytes(0, 6)
+inferred_range: bytes = byte_handle.read_range(0, 6)
+explicit_range_bytes: bytes = byte_handle.read_range(0, 6, cls=bytes)
+range_text: str = byte_handle.read_range(0, 6, cls=str)
+byte_handle.read_range(0, 6, cls=int)  # type: ignore[call-overload]
+
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_data_type_value: object | Mapping[str, object] = (
     typed_struct.data_type.default_pyvalue()

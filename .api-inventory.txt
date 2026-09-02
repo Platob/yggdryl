@@ -1364,6 +1364,8 @@
   pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
+  fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
+  fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>
   fn is_io(&self) -> bool

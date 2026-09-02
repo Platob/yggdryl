@@ -72,7 +72,10 @@ const classTypedScalar: TypedRow = handle.readScalar<TypedRow>(TypedRow)
 const parquetStatistics: ParquetFileStatistics = handle.readParquetStatistics()
 const parquetGeospatial: ParquetGeospatialStatistics =
   handle.readParquetGeospatialStatistics('shape')
-const head: Buffer = handle.pread(0, 6)
+const head: Buffer = handle.readRangeBytes(0, 6)
+const inferredHead: Buffer = handle.readRange(0, 6)
+const explicitHeadBytes: Buffer = handle.readRange(0, 6, { text: false })
+const headText: string = handle.readRange(0, 6, { text: true })
 const byteStream: ByteIterator = handle.pstreamBytes()
 const positionedByteStream: ByteIterator = handle.pstreamBytes(7, 4096)
 const streamedChunks: Buffer[] = [...byteStream]
@@ -87,7 +90,9 @@ const cacheOptions: BufferedOptions = {
 }
 const cachedHandle: IOBase = handle.buffered(cacheOptions)
 const patched: number = handle.pwrite(0, new Uint8Array([65]))
-const appended: number = handle.append(Buffer.from('!'))
+const appended: number = handle.appendBytes(Buffer.from('!'))
+const appendedText: number = handle.append('!')
+const appendedView: number = handle.append(new Uint8Array([33]))
 const copied: number = handle.copyInto(memory)
 const asPath: string = handle.intoPath()
 const printed: string = handle.toString()

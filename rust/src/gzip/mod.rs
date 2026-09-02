@@ -149,8 +149,8 @@ impl<H: IOBase> IOBase for Gzip<H> {
         self.coded.read_all_bytes()
     }
 
-    fn read_range(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
-        self.coded.read_range(offset, length)
+    fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
+        self.coded.read_range_bytes(offset, length)
     }
 
     /// Use the coding view's owning streamed projection.

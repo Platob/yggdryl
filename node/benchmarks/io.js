@@ -75,8 +75,8 @@ benchmark('io/glob_fixed_prefix', () => lake.glob('year=2024/**/*.parquet'))
 benchmark('io/children_where', () => lake.childrenWhere({ year: '2024' }))
 benchmark('io/partitions', () => leaf.partitions)
 benchmark('io/read_leaf_bytes', () => leaf.readBytes())
-benchmark('io/memory_pread_4k', () => memory.pread(0, 4_096))
-benchmark('io/buffered_pread_4k_hit', () => cachedMemory.pread(0, 4_096))
+benchmark('io/memory_read_range_4k', () => memory.readRangeBytes(0, 4_096))
+benchmark('io/buffered_read_range_4k_hit', () => cachedMemory.readRangeBytes(0, 4_096))
 benchmark('io/buffered_idempotent_redirect', () => cachedMemory.buffered({
   pageSize: 4_096,
   maxBytes: 64 * 1_024,
