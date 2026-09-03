@@ -200,7 +200,21 @@ Canonical core spellings:
   `into_uri`; `Uri` adds `into_url`/`into_urn`, file values add `into_path`.
 - Structured text: `from_utf8`, `from_bytes`, `from_reader`, corresponding
   `_all`/iterator/inferred forms, and `into_utf8`, `into_bytes`,
-  `into_writer`. JSON/YAML/TOML mirror it without a format argument.
+  `into_writer`. JSON/YAML/TOML mirror it without a format argument. Those
+  are the explicit representation forms and carry the implementation. Each
+  format and direction also has exactly one inferring entry point that names
+  the `Scalar` it answers - `from_json_scalar`, `into_json_scalar`, the
+  field-directed `from_json_scalar_with_field`, and the YAML/TOML
+  counterparts - re-exported at the crate root beside `Scalar`. It coerces
+  at the boundary and redirects to the explicit form: byte-like input and
+  strings are content, never a path, and it parses, renders, validates and
+  bounds nothing of its own.
+- `local::Folder`: `new`, `from_url`, and the well-known roots `temporary`,
+  `home`, `config`. `home` reads `HOME`, then `USERPROFILE`, and fails
+  naming both when neither is set; `config` is `home` joined with `.config`;
+  `temporary` wraps the platform temporary directory. All three construct a
+  handle and create nothing. No other spelling of these directories through
+  `std::env` or string concatenation.
 - `TypedScalar<K>` is one validated `Scalar` plus a datatype marker. It owns
   no `Field`; Arrow projection routes through the core scalar-array boundary.
 
