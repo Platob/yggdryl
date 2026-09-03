@@ -1,4 +1,6 @@
-import { DataType, Field } from '..'
+import { Vector as ArrowVector } from 'apache-arrow'
+
+import { AsciiDictionary, DataType, Field } from '..'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
@@ -46,3 +48,39 @@ void vincentyGeography
 void asciiWidth
 void currencyType
 void logicalNames
+
+const currencies = new AsciiDictionary('ascii32')
+const seededCurrencies: AsciiDictionary = AsciiDictionary.fromValues(
+  DataType.ascii(3),
+  ['USD', 'EUR'],
+  'int64',
+)
+const currencyCode: number = currencies.push('USD')
+const currencyValue: string | null = currencies.get(0)
+const currencyLookup: number | null = currencies.getCode('USD')
+const currencyValues: string[] = currencies.values()
+const currencyCount: number = currencies.length
+const currencyDtype: DataType = currencies.dtype
+const currencyKey: DataType = currencies.key
+const currencyWidth: DataType = currencies.valuesDtype
+const currencyEquals: boolean = currencies.equals(seededCurrencies)
+const currencyText: string = currencies.toString()
+const currencyClone: AsciiDictionary = currencies.clone()
+const currencyEnum: Readonly<Record<string, number>> = currencies.intoEnum('Currency')
+const currencyColumn: ArrowVector = currencies.intoArrowArray(['USD', null])
+const recoveredCurrencies: AsciiDictionary =
+  AsciiDictionary.fromArrowArray(currencyColumn)
+
+void currencyCode
+void currencyValue
+void currencyLookup
+void currencyValues
+void currencyCount
+void currencyDtype
+void currencyKey
+void currencyWidth
+void currencyEquals
+void currencyText
+void currencyClone
+void currencyEnum
+void recoveredCurrencies

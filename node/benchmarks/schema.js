@@ -2,6 +2,7 @@
 
 const { performance } = require('node:perf_hooks')
 const {
+  AsciiDictionary,
   DataType,
   Expression,
   Field,
@@ -70,6 +71,13 @@ class BenchRow {
 // Resolve before timing so this measures the steady cached class accessor.
 intoField(BenchRow)
 
+const currencies = AsciiDictionary.fromValues('ascii32', ['USD', 'EUR', 'JPY', 'GBP'])
+// One bounded column per call: this measures the encode plus the copied Arrow
+// IPC crossing, not Arrow JS materialization of a large table.
+const currencyRows = Array.from({ length: 64 }, (_, index) =>
+  currencies.values()[index % currencies.length],
+)
+
 const knownMime = 'application/json'
 const customMime = 'application/vnd.benchmark+json'
 const compoundMedia = 'text/csv;encodings=application/gzip,application/zstd'
@@ -121,6 +129,11 @@ benchmark('schema/protocol_view_entries', () => iceberg.entries())
 benchmark('schema/partition_field_names', () => partitioned.partitionFieldNames())
 benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
+)
+benchmark('schema/ascii_dictionary_push_hit', () => currencies.push('EUR'))
+benchmark('schema/ascii_dictionary_enum', () => currencies.intoEnum('Currency'))
+benchmark('schema/ascii_dictionary_arrow_column_64', () =>
+  currencies.intoArrowArray(currencyRows),
 )
 benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
 benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))

@@ -1,4 +1,5 @@
 export {
+  AsciiDictionary,
   BatchReader,
   Bound,
   BoundStatement,
@@ -370,6 +371,22 @@ declare module './index' {
     projectArrow(table: ArrowTable): ArrowTable
     /** Sort one materialized batch by this statement's native ordering. */
     sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+  }
+
+  interface AsciiDictionary {
+    /** Encode one column and materialize it as an Apache Arrow Vector. */
+    intoArrowArray(values: readonly (string | null | undefined)[]): ArrowVector
+    /**
+     * Build the generated enum: a frozen object mapping each member name to
+     * its code, tagged with `name`. It is name to code only, because a
+     * numeric reverse map would collide with values that render as digits;
+     * `values()` is the code to value direction.
+     */
+    intoEnum(name: string): Readonly<Record<string, number>>
+  }
+  namespace AsciiDictionary {
+    /** Recover a vocabulary from an Apache Arrow Vector through native IPC. */
+    function fromArrowArray(value: ArrowVector): AsciiDictionary
   }
 
   interface DataType {

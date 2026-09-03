@@ -414,6 +414,8 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.AsciiDictionary = nativeBinding.AsciiDictionary
+module.exports.JsAsciiDictionary = nativeBinding.JsAsciiDictionary
 module.exports.AvroBlock = nativeBinding.AvroBlock
 module.exports.JsAvroBlock = nativeBinding.JsAvroBlock
 module.exports.AvroBlocks = nativeBinding.AvroBlocks

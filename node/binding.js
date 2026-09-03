@@ -163,6 +163,7 @@ function snapshotNativeJSON(value, label = 'JSON value') {
 }
 
 const {
+  AsciiDictionary: NativeAsciiDictionary,
   AvroBlock: NativeAvroBlock,
   AvroBlocks: NativeAvroBlocks,
   AvroSchema: NativeAvroSchema,
@@ -207,6 +208,12 @@ const nativeExpressionArithmetic = Object.freeze({
   divide: NativeExpression.prototype._divideNative,
   remainder: NativeExpression.prototype._remainderNative,
 })
+const nativeAsciiDictionaryIntoEnum =
+  NativeAsciiDictionary.prototype._intoEnumNative
+const nativeAsciiDictionaryIntoArrowArray =
+  NativeAsciiDictionary.prototype._intoArrowArrayIpcNative
+const nativeAsciiDictionaryFromArrowArray =
+  NativeAsciiDictionary._fromArrowArrayIpcNative.bind(NativeAsciiDictionary)
 const nativeScalarFromArrowScalar =
   NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
 const nativeScalarFromArrowArray =
@@ -268,6 +275,8 @@ for (const nativeName of [
 ]) {
   delete NativeExpression.prototype[nativeName]
 }
+delete NativeAsciiDictionary.prototype._intoEnumNative
+delete NativeAsciiDictionary.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowBatchIpcNative
@@ -368,6 +377,11 @@ const Scalar = publicNativeClass(
     '_fromArrowTableIpcNative',
   ]),
 )
+const AsciiDictionary = publicNativeClass(
+  NativeAsciiDictionary,
+  'AsciiDictionary',
+  new Set(['_fromArrowArrayIpcNative']),
+)
 const PartitionSpec = publicNativeClass(
   NativePartitionSpec,
   'PartitionSpec',
@@ -390,6 +404,7 @@ Object.defineProperty(AvroSchema.prototype, 'constructor', {
   writable: true,
 })
 
+binding.AsciiDictionary = AsciiDictionary
 binding.DataType = DataType
 binding.Field = Field
 binding.MimeType = MimeType
@@ -1259,6 +1274,43 @@ Object.defineProperties(Scalar.prototype, {
   toJSON: {
     value() {
       return JSON.parse(this.asJsonUtf8())
+    },
+  },
+})
+
+// The generated enum is name to code only: a numeric reverse map would
+// collide with values that render as digits, and `values()` already answers
+// the code to value direction.
+Object.defineProperties(AsciiDictionary.prototype, {
+  intoEnum: {
+    configurable: true,
+    value(name) {
+      if (typeof name !== 'string' || name.trim() === '') {
+        throw new TypeError('AsciiDictionary.intoEnum needs a non-empty enum name')
+      }
+      const members = Reflect.apply(nativeAsciiDictionaryIntoEnum, this, [])
+      Object.defineProperty(members, Symbol.toStringTag, { value: name })
+      return Object.freeze(members)
+    },
+  },
+  intoArrowArray: {
+    configurable: true,
+    value(values) {
+      return arrowVectorFromIPC(
+        Reflect.apply(nativeAsciiDictionaryIntoArrowArray, this, [values]),
+        'AsciiDictionary.intoArrowArray output',
+      )
+    },
+  },
+})
+
+Object.defineProperties(AsciiDictionary, {
+  fromArrowArray: {
+    configurable: true,
+    value(value) {
+      return nativeAsciiDictionaryFromArrowArray(
+        arrowVectorIntoIPC(value, 'AsciiDictionary.fromArrowArray input'),
+      )
     },
   },
 })

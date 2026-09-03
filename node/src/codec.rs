@@ -782,7 +782,7 @@ impl JsScalar {
     }
 }
 
-fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+pub(crate) fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     if bytes.is_empty() {
         return Err(napi_error("Arrow IPC input is empty and has no schema"));
     }
@@ -796,7 +796,7 @@ fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     Ok((schema, batches))
 }
 
-fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
+pub(crate) fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
     if schema.fields().len() == 1 {
         Ok(())
     } else {
@@ -807,7 +807,7 @@ fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
     }
 }
 
-fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
+pub(crate) fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
     let schema = Arc::new(Schema::new([field
         .clone()
         .into_arrow_ref()

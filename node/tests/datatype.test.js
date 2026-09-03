@@ -3,7 +3,9 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { DataType } = require('yggdryl')
+const arrow = require('apache-arrow')
+
+const { AsciiDictionary, DataType } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')
@@ -185,4 +187,136 @@ test('datatype direct structural JSON rejects invalid parameter states', () => {
 test('malformed recursive datatypes never use a permissive fallback', () => {
   assert.throws(() => DataType.fromString('struct<a: int64'))
   assert.throws(() => DataType.fromString('decimal(0, 9) trailing'))
+})
+
+test('the ASCII vocabulary registers as it encodes and keeps first codes', () => {
+  const currencies = new AsciiDictionary('ascii32')
+
+  assert.equal(currencies.push('USD'), 0)
+  assert.equal(currencies.push('EUR'), 1)
+  assert.equal(currencies.push('USD'), 0)
+  assert.equal(currencies.length, 2)
+  assert.deepEqual(currencies.values(), ['USD', 'EUR'])
+  assert.equal(currencies.get(1), 'EUR')
+  assert.equal(currencies.get(2), null)
+  assert.equal(currencies.getCode('USD'), 0)
+  // Storage pads with trailing NUL, so the padded spelling is the same value.
+  assert.equal(currencies.getCode('USD\0'), 0)
+  assert.equal(currencies.getCode('JPY'), null)
+  assert.equal(currencies.dtype.toString(), 'dictionary(int32,ascii32)')
+  assert.equal(currencies.key.toString(), 'int32')
+  assert.equal(currencies.valuesDtype.toString(), 'ascii32')
+  // The rendered text is the `fromValues` call that rebuilds it.
+  assert.equal(
+    currencies.toString(),
+    'AsciiDictionary.fromValues("ascii32", ["USD", "EUR"], "int32")',
+  )
+  assert.ok(
+    AsciiDictionary.fromValues('ascii32', ['USD', 'EUR'], 'int32').equals(currencies),
+  )
+
+  // What the width refuses is refused here, never silently registered.
+  assert.throws(() => currencies.push('EURO!'), /ASCII text of at most 4 bytes/)
+  assert.throws(() => currencies.push('€UR'), /ASCII text of at most 4 bytes/)
+  assert.throws(() => currencies.push('US\0D'), /ASCII text of at most 4 bytes/)
+  assert.equal(currencies.length, 2)
+  assert.throws(() => new AsciiDictionary('utf8'), /expected an ASCII width/)
+  assert.throws(
+    () => new AsciiDictionary('ascii32', 'int16'),
+    /expected an int32 or int64 key datatype/,
+  )
+})
+
+test('a seeded ASCII vocabulary is a value carried by its holder', () => {
+  const seeded = AsciiDictionary.fromValues('ascii32', ['USD', 'EUR', 'USD'])
+
+  assert.deepEqual(seeded.values(), ['USD', 'EUR'])
+  assert.ok(seeded.equals(AsciiDictionary.fromValues(DataType.ascii(3), ['USD', 'EUR'])))
+  // Equality is the width, the key type, and the values in order.
+  assert.equal(seeded.equals(AsciiDictionary.fromValues('ascii32', ['EUR', 'USD'])), false)
+  assert.equal(seeded.equals(AsciiDictionary.fromValues('ascii64', ['USD', 'EUR'])), false)
+  const wide = AsciiDictionary.fromValues('ascii32', ['USD', 'EUR'], 'int64')
+  assert.equal(seeded.equals(wide), false)
+  assert.equal(wide.dtype.toString(), 'dictionary(int64,ascii32)')
+
+  // A clone is a second vocabulary: it grows without touching the first.
+  const forked = seeded.clone()
+  assert.equal(forked.push('JPY'), 2)
+  assert.equal(seeded.length, 2)
+  assert.equal(seeded.getCode('JPY'), null)
+})
+
+test('the generated enum is the value list and the code is the position', () => {
+  const venues = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a', '3M'])
+  const Venue = venues.intoEnum('Venue')
+
+  assert.deepEqual({ ...Venue }, { XNAS: 0, N_A: 1, _3M: 2 })
+  assert.equal(Venue.XNAS, 0)
+  assert.equal(Object.isFrozen(Venue), true)
+  assert.equal(Object.prototype.toString.call(Venue), '[object Venue]')
+  // Name to code only; `values` stays the code to value direction.
+  assert.equal(venues.values()[Venue.N_A], 'n/a')
+
+  // A name that opens and closes with `_` drops its trailing underscores, so
+  // both runtimes name the same members.
+  const shapes = AsciiDictionary.fromValues('ascii64', ['-a-', '--b--', '-'])
+  assert.deepEqual({ ...shapes.intoEnum('Shape') }, { _A: 0, __B: 1, _: 2 })
+
+  assert.throws(() => venues.intoEnum(''), /non-empty enum name/)
+  assert.throws(() => venues.intoEnum(null), /non-empty enum name/)
+  assert.throws(
+    () => AsciiDictionary.fromValues('ascii128', ['identifier']).intoEnum('Wide'),
+    /expected ascii32 or ascii64 values/,
+  )
+  assert.throws(
+    () => AsciiDictionary.fromValues('ascii32', ['n/a', 'n-a']).intoEnum('Venue'),
+    /both name the member N_A/,
+  )
+})
+
+test('an ASCII vocabulary encodes Arrow columns whose codes continue', () => {
+  const currencies = new AsciiDictionary('ascii32')
+  const column = currencies.intoArrowArray(['USD', null, 'EUR', 'USD'])
+
+  assert.equal(column.length, 4)
+  assert.deepEqual(Array.from(column.data[0].values), [0, 0, 1, 0])
+  assert.equal(column.get(1), null)
+  // The values array is the width's padded FixedSizeBinary storage.
+  assert.deepEqual(Array.from(column.get(0)), [...Buffer.from('USD\0', 'latin1')])
+  assert.equal(column.type.valueType.byteWidth, 4)
+
+  // The vocabulary grows to the union, so a second column keeps the codes.
+  const next = currencies.intoArrowArray(['JPY', 'EUR'])
+  assert.deepEqual(Array.from(next.data[0].values), [2, 1])
+  assert.deepEqual(currencies.values(), ['USD', 'EUR', 'JPY'])
+
+  // The first column still carries the vocabulary it was encoded with.
+  const recovered = AsciiDictionary.fromArrowArray(column)
+  assert.deepEqual(recovered.values(), ['USD', 'EUR'])
+  assert.equal(recovered.dtype.toString(), 'dictionary(int32,ascii32)')
+  assert.ok(recovered.equals(AsciiDictionary.fromValues('ascii32', ['USD', 'EUR'])))
+
+  const wide = new AsciiDictionary('ascii64', 'int64')
+  const wideColumn = wide.intoArrowArray(['NASDAQ', null, 'NYSE'])
+  const wideBack = AsciiDictionary.fromArrowArray(wideColumn)
+  assert.equal(wideBack.key.toString(), 'int64')
+  assert.deepEqual(wideBack.values(), ['NASDAQ', 'NYSE'])
+
+  assert.throws(
+    () => AsciiDictionary.fromArrowArray(arrow.vectorFromArray(['USD'])),
+    /a dictionary array of int32 or int64 keys over an ASCII width/,
+  )
+  assert.throws(
+    () => AsciiDictionary.fromArrowArray('USD'),
+    /must be an Apache Arrow Vector/,
+  )
+
+  // A refused column registers nothing: the mutation fails atomically.
+  assert.throws(() => currencies.intoArrowArray(['GBP', 'EURO!']), /at most 4 bytes/)
+  assert.deepEqual(currencies.values(), ['USD', 'EUR', 'JPY'])
+
+  // The copied-IPC bridge stays inside the loader.
+  assert.equal(currencies._intoArrowArrayIpcNative, undefined)
+  assert.equal(currencies._intoEnumNative, undefined)
+  assert.equal(AsciiDictionary._fromArrowArrayIpcNative, undefined)
 })
