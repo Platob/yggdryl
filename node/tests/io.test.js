@@ -15,6 +15,8 @@ const {
   Field,
   IOBase,
   IOCursor,
+  RecordOptions,
+  TextOptions,
   Url,
 } = require('yggdryl')
 
@@ -548,247 +550,156 @@ test('childrenWhere selects the parts to rewrite', (t) => {
   assert.throws(() => handle.childrenWhere({ year: 2024 }), TypeError)
 })
 
-test('readLines streams decoded lines off a handle', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-lines-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-
-  const plain = path.join(root, 'rows.jsonl')
-  fs.writeFileSync(plain, '{"id":1}\n{"id":2}\r\n{"id":3}')
-  assert.deepEqual([...new IOBase(plain).readLines()], ['{"id":1}', '{"id":2}', '{"id":3}'])
-
-  // A gzip-named resource decodes as a stream; the lines read the same.
-  const zlib = require('node:zlib')
-  const coded = path.join(root, 'words.txt.gz')
-  fs.writeFileSync(coded, zlib.gzipSync('alpha\nbeta\n'))
-  assert.deepEqual([...new IOBase(coded).readLines()], ['alpha', 'beta'])
-
-  // Absence is emptiness, exactly as reading zero bytes is.
-  assert.deepEqual([...new IOBase(path.join(root, 'missing.txt')).readLines()], [])
-})
-
-test('readLines with a pattern groups log entries', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-loglines-'))
+test('plain text uses flat record options and ordinary record reads', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-records-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const target = path.join(root, 'app.log')
   fs.writeFileSync(
     target,
-    '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n' +
-      '2024-02-01 10:00:01.000_000 [ii] [beta] fine\n',
+    '  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r',
   )
-  const entries = [...new IOBase(target).readLines('^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}')]
-  assert.deepEqual(entries, [
-    '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one',
-    '2024-02-01 10:00:01.000_000 [ii] [beta] fine',
-  ])
-})
 
-test('readArrowLines projects matched records into typed batches', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-arrowlines-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const target = path.join(root, 'app.log')
-  fs.writeFileSync(
-    target,
-    'preamble carried from rotation\n' +
-      '2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n' +
-      '2024-02-01 10:00:01.500 [ii] [beta] fine\n',
-  )
-  const pattern =
-    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\S* \\[(?<level>[^\\]]+)\\] \\[(?<logger>[^\\]]+)\\]'
-  const table = new IOBase(target)
-    .readArrowLines(pattern, { customFields: { venue: 'XNAS' } })
-    .intoTable()
-  assert.equal(table.numRows, 3)
+  const options = new TextOptions()
+  options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  options.lstrip = '^\\s+'
+  options.rstrip = '\\s+$'
+
+  const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    [
-      'url',
-      'rownum',
-      'date',
-      'time',
-      'unix',
-      'hash',
-      'header',
-      'message',
-      'offset',
-      'lines',
-      'level',
-      'logger',
-      'venue',
-    ],
+    ['url', 'rownum', 'body', 'level', 'id'],
   )
-  const messages = [...table.getChild('message')]
-  assert.deepEqual(messages, [
-    'preamble carried from rotation',
-    'boom\n  at frame one',
-    'fine',
-  ])
-  // The preamble has no header: its level is null, its unix is null; the
-  // matched rows carry naive nanoseconds and the constant venue stamp.
-  assert.deepEqual([...table.getChild('level')], [null, 'ee', 'ii'])
-  const unix = [...table.getChild('unix')]
-  assert.equal(unix[0], null)
-  assert.equal(unix[1], 1_706_781_600_000_000_000n)
-  assert.deepEqual([...table.getChild('venue')], ['XNAS', 'XNAS', 'XNAS'])
-
-  // A gzip log reads the same rows through its streaming decode.
-  const zlib = require('node:zlib')
-  const coded = path.join(root, 'app2.log.gz')
-  fs.writeFileSync(coded, zlib.gzipSync('2024-02-01 10:00:00 [ii] [a] fine\n'))
-  assert.equal(new IOBase(coded).readArrowLines(pattern).intoTable().numRows, 1)
-
-  // Absence reads as zero rows with the schema still answered.
-  const empty = new IOBase(path.join(root, 'missing.log')).readArrowLines(pattern)
-  assert.equal(empty.intoTable().numRows, 0)
-
-  // An in-memory handle parses exactly as a file does.
-  const memory = IOBase.fromBytes(Buffer.from('2024-02-01 12:00:00 [ww] [m] held\n'))
-  assert.equal(memory.readArrowLines(pattern).intoTable().numRows, 1)
-
-  // Inputs that would silently misparse are refused instead.
-  assert.throws(() => new IOBase(target).readArrowLines(pattern, { customFields: 'venue' }), TypeError)
-  assert.throws(
-    () => new IOBase(target).readArrowLines(pattern, { batchRowSize: -1 }),
-    /batchRowSize must be a positive integer/,
-  )
-  assert.throws(
-    () => new IOBase(target).readArrowLines(pattern, { batchRowSize: 1.5 }),
-    /batchRowSize must be a positive integer/,
-  )
-  // The row bound has one spelling; the byte-stream `batchSize` is not it.
-  assert.throws(
-    () => new IOBase(target).readArrowLines(pattern, { batchSize: 10 }),
-    /unknown line option "batchSize"/,
-  )
-})
-
-test('named captures type themselves and declarations override', (t) => {
-  const { fieldFromPattern } = require('yggdryl')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-typedlines-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const target = path.join(root, 'typed.log')
-  fs.writeFileSync(target, '2024-02-01 10:00:00 [42] (info) qty=1.50\n')
-  const pattern =
-    '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?<threadId>\\d+)\\] \\((?<logLevel>\\w+)\\) qty=(?<qty>[0-9.]+)'
-
-  // The standalone builder answers the emitted root without a reader:
-  // `threadId` typed off its own `\d+` sub-pattern, `qty` by declaration.
-  const schema = fieldFromPattern(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-  assert.equal(schema.name, 'row')
-  assert.equal(String(schema.dtype.getField('threadId').dtype), 'int64')
-  assert.equal(String(schema.dtype.getField('qty').dtype), 'decimal128(9,2)')
-
-  const table = new IOBase(target)
-    .readArrowLines(pattern, { captureTypes: { qty: 'decimal(9, 2)' } })
-    .intoTable()
-  assert.deepEqual([...table.getChild('threadId')], [42n])
-  assert.deepEqual([...table.getChild('logLevel')], ['info'])
-})
-
-test('writeLines and appendLines stream and round-trip', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-writelines-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-
-  const target = new IOBase(path.join(root, 'out.log'))
-  // A generator, never an array the binding materializes first.
-  target.writeLines(
-    (function* rows() {
-      for (let index = 0; index < 1_000; index += 1) {
-        yield `row-${index}`
-      }
-    })(),
-  )
-  target.appendLines(['tail'])
-
-  assert.ok(target.readBytes().toString().endsWith('row-999\ntail\n'))
-  const records = [...target.readLines()]
-  assert.equal(records.length, 1_001)
-  assert.equal(records.at(-1), 'tail')
-
-  // A pinned terminator is written verbatim and read back exactly.
-  const pinned = new IOBase(path.join(root, 'crlf.log'))
-  pinned.writeLines(['one', 'two'], { linesep: '\\r\\n' })
-  assert.equal(pinned.readBytes().toString(), 'one\r\ntwo\r\n')
-  assert.deepEqual([...pinned.readLines({ linesep: '\\r\\n' })], ['one', 'two'])
-
-  // Bytes pass as themselves, and a bare string is refused rather than
-  // silently written one character per record.
-  const bytes = new IOBase(path.join(root, 'bytes.log'))
-  bytes.writeLines([Buffer.from('alpha'), 'beta'])
-  assert.deepEqual([...bytes.readLines()], ['alpha', 'beta'])
-  assert.throws(() => bytes.writeLines('alpha'), TypeError)
-})
-
-test('a reader is fully described by a configuration document', (t) => {
-  const { fieldFromPattern, yaml } = require('yggdryl')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-lineconfig-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const target = path.join(root, 'app.log')
-  fs.writeFileSync(
-    target,
-    '2024-02-01T10:00:00 [ERROR] boom\n\tat Handler.invoke(Handler.java:42)\n' +
-      '2024-02-01T10:00:01 [INFO] fine\n',
-  )
-
-  // No JavaScript in the loop: the document *is* the reader.
-  const options = yaml.loads(
-    [
-      "pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'",
-      'byte_size: 1048576',
-      'batch_row_size: 4096',
-      'timestamp_capture: stamp',
-      'custom_fields:',
-      '  source: gateway',
-    ].join('\n'),
-  )
-
-  // The schema answers from the document alone, with no resource in sight.
-  const schema = fieldFromPattern(options)
-  assert.equal(schema.name, 'row')
-  assert.equal(String(schema.dtype.getField('source').dtype), 'utf8')
-
-  const table = new IOBase(target).readArrowLines(options).intoTable()
-  assert.equal(table.numRows, 2)
-  assert.deepEqual([...table.getChild('level')], ['ERROR', 'INFO'])
-  assert.deepEqual([...table.getChild('source')], ['gateway', 'gateway'])
-})
-
-test('log mode needs no expression, and both batch bounds apply', (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-logmode-'))
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const target = path.join(root, 'app.log')
-  const rows = []
-  for (let index = 0; index < 50; index += 1) {
-    rows.push(`2024-02-01T10:00:00 [INFO] row ${index}`)
-  }
-  fs.writeFileSync(target, `${rows.join('\n')}\n`)
-  const handle = new IOBase(target)
-
-  // The fixed token columns come from the closed table, not from captures.
-  const table = handle.readArrowLines({ logs: true }).intoTable()
-  assert.equal(table.numRows, 50)
-  assert.deepEqual([...table.getChild('level')].slice(0, 2), ['INFO', 'INFO'])
-
-  const byRows = [...handle.readArrowLines({ logs: true, batchRowSize: 10 })]
+  assert.deepEqual([...table.getChild('rownum')], [1n, 2n, 3n])
   assert.deepEqual(
-    byRows.map((batch) => batch.numRows),
-    [10, 10, 10, 10, 10],
+    [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
+    ['first', 'second', 'plain'],
   )
+  assert.deepEqual([...table.getChild('level')], ['INFO', 'WARN', null])
+  assert.deepEqual([...table.getChild('id')], [7n, 9n, null])
 
-  // `byteSize` counts decoded input bytes, so it closes batches sooner here;
-  // whichever bound trips first wins, and every record still arrives.
-  const byBytes = [...handle.readArrowLines({ logs: true, byteSize: 100 })]
-  const counts = byBytes.map((batch) => batch.numRows)
-  assert.equal(
-    counts.reduce((total, count) => total + count, 0),
-    50,
+  const records = [...new IOBase(target).readRecords(options)]
+  assert.deepEqual(
+    records.map((row) => Buffer.from(row.body).toString()),
+    ['first', 'second', 'plain'],
   )
-  assert.ok(Math.max(...counts) < 10)
-
-  // An option the core does not know is refused by name, not ignored.
-  assert.throws(() => handle.readArrowLines({ 'batch-size': 1 }), TypeError)
-  assert.throws(() => handle.readLines({ timezone: 'Not/AZone' }), Error)
+  assert.deepEqual(records.map((row) => row.id), [7n, 9n, null])
 })
 
+test('text-only settings are flat native TextOptions value state', () => {
+  const options = new TextOptions()
+  options.rowheader = '(?<stamp>\\S+)'
+  options.lstrip = '^\\s+'
+  options.rstrip = '\\s+$'
+  options.linesep = '\\r\\n'
+  options.autotype = false
+  options.timezone = '+02:00'
+
+  assert.equal(options.rowheader, '(?<stamp>\\S+)')
+  assert.equal(options.lstrip, '^\\s+')
+  assert.equal(options.rstrip, '\\s+$')
+  assert.deepEqual(options.linesep, Buffer.from('\r\n'))
+  assert.equal(options.autotype, false)
+  assert.equal(options.timezone.toString(), '+02:00')
+  assert.ok(options.clone().equals(options))
+
+  assert.throws(() => {
+    options.rowheader = '(?<body>.+)'
+  }, /distinct from url, rownum, and body/)
+  const arrowOptions = RecordOptions.from('trades.arrows')
+  assert.equal('autotype' in arrowOptions, false)
+  assert.throws(() => {
+    arrowOptions.timezone = 'UTC'
+  }, /expected text options/)
+
+  const genericText = RecordOptions.from('text/plain')
+  genericText.timezone = 'UTC'
+  assert.equal(genericText.timezone.toString(), 'UTC')
+})
+
+test('retained text options parse the real execution row', () => {
+  const options = new TextOptions()
+  options.rowheader =
+    '^(?<stamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}_\\d{3}) ' +
+    '\\[(?<thread>[^]]+)\\] \\[(?<module>[^]]+)\\] \\((?<level>[A-Z]+)\\) '
+  options.timezone = 'UTC'
+  const source = IOBase.fromBytes(
+    Buffer.from(
+      '2026-08-29 00:00:00.434_958 ' +
+        '[77-2f3e6ff7:9f4d2a08b1:128] ' +
+        '[ModuleFailFastFilterChecker] (DEBUG) Execution report ' +
+        '(execId: 20260828180000369318, from session:\n',
+    ),
+  )
+
+  assert.equal(source.intoText(options), source)
+  assert.equal(source.intoText(), source)
+  const table = source.readArrowReader().intoTable()
+  const stamp = table.schema.fields.find((field) => field.name === 'stamp')
+  assert.equal(stamp.type.unit, arrow.TimeUnit.MICROSECOND)
+  assert.equal(stamp.type.timezone, 'UTC')
+  const [row] = [...table]
+  assert.equal(row.thread, '77-2f3e6ff7:9f4d2a08b1:128')
+  assert.equal(row.module, 'ModuleFailFastFilterChecker')
+  assert.equal(row.level, 'DEBUG')
+  assert.equal(
+    Buffer.from(row.body).toString(),
+    'Execution report (execId: 20260828180000369318, from session:',
+  )
+})
+
+test('generic record writes encode only the binary text body', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-write-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const target = new IOBase(path.join(root, 'out.txt'))
+  const options = new TextOptions()
+
+  target.overwriteRecords(
+    (function* records() {
+      yield { body: Buffer.from('one') }
+      yield { body: Buffer.from('two') }
+    })(),
+    options,
+  )
+  target.appendRecords([{ body: Buffer.from('three') }], options)
+  assert.equal(target.readBytes().toString(), 'one\ntwo\nthree\n')
+  assert.deepEqual(
+    [...target.readRecords(options)].map((row) => Buffer.from(row.body).toString()),
+    ['one', 'two', 'three'],
+  )
+
+  const crlf = new TextOptions()
+  crlf.linesep = '\\r\\n'
+  const pinned = new IOBase(path.join(root, 'crlf.txt'))
+  pinned.overwriteRecords([{ body: Buffer.from('first') }], crlf)
+  assert.equal(pinned.readBytes().toString(), 'first\r\n')
+
+  assert.throws(
+    () => target.appendRecords([{ body: Buffer.from('bad\nline') }], options),
+    /without its record terminator/,
+  )
+})
+
+test('text folders decode coded leaves through the same record path', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-folder-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(root, 'a.log'), '[INFO] id=1 from a\n')
+  fs.writeFileSync(
+    path.join(root, 'b.log.gz'),
+    zlib.gzipSync('[WARN] id=2 from b\n'),
+  )
+
+  const options = new TextOptions()
+  options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  options.lstrip = '^\\s+'
+  const rows = [...new IOBase(root).readRecords(options)]
+
+  assert.deepEqual(rows.map((row) => row.rownum), [1n, 1n])
+  assert.deepEqual(
+    rows.map((row) => Buffer.from(row.body).toString()),
+    ['from a', 'from b'],
+  )
+  assert.deepEqual(rows.map((row) => row.id), [1n, 2n])
+})
 test('a cursor shares the handle and owns its position', () => {
   const handle = IOBase.fromBytes()
   const cursor = handle.cursor()

@@ -63,7 +63,7 @@ pub enum Media {
     Parquet(crate::parquet::Parquet<Holder>),
     /// An Apache Avro object container.
     Avro(crate::avro::Avro<Holder>),
-    /// Text records: lines split, grouped, and projected as batches.
+    /// Plain-text rows under one retained flat configuration.
     Text(crate::text::Text<Holder>),
 }
 
@@ -129,7 +129,7 @@ impl Media {
         Self::Avro(crate::avro::Avro::new(handle))
     }
 
-    /// Hold text records over a handle.
+    /// Hold plain-text record media over a handle.
     pub fn text(handle: Holder) -> Self {
         Self::Text(crate::text::Text::new(handle))
     }
@@ -418,15 +418,15 @@ impl From<crate::parquet::Parquet<Holder>> for Media {
     }
 }
 
-impl From<crate::text::Text<Holder>> for Media {
-    fn from(value: crate::text::Text<Holder>) -> Self {
-        Self::Text(value)
-    }
-}
-
 impl From<crate::avro::Avro<Holder>> for Media {
     fn from(value: crate::avro::Avro<Holder>) -> Self {
         Self::Avro(value)
+    }
+}
+
+impl From<crate::text::Text<Holder>> for Media {
+    fn from(value: crate::text::Text<Holder>) -> Self {
+        Self::Text(value)
     }
 }
 

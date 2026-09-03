@@ -978,11 +978,7 @@ pub enum RecordOptions {
     Parquet(crate::parquet::ParquetOptions),
     /// Apache Avro container options.
     Avro(crate::avro::AvroOptions),
-    /// Text-line options: records split by a terminator, grouped and
-    /// projected by [`TextLineOptions`](crate::text::TextLineOptions).
-    ///
-    /// Boxed because the extractor - two compiled expressions and a schema -
-    /// dwarfs the other variants, and options are cloned per read.
+    /// Plain-text row options.
     Text(Box<crate::text::TextOptions>),
 }
 
@@ -997,6 +993,47 @@ impl RecordOptions {
             Self::Avro(options) => crate::stable_hash_of(&("avro", options)),
             Self::Text(options) => crate::stable_hash_of(&("text", options)),
         }
+    }
+
+    fn text_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::text::TextOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Text(options) => Ok(options),
+            Self::Ipc(_) | Self::Avro(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected text options to set {setting}, got {media_type} options"
+                ),
+            }),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected text options to set {setting}, got {media_type} options"
+                ),
+            }),
+        }
+    }
+
+    /// Borrow the text autotyping timezone, or `None` when unset or not text.
+    pub const fn timezone(&self) -> Option<&crate::Timezone> {
+        match self {
+            Self::Text(options) => options.timezone(),
+            Self::Ipc(_) | Self::Avro(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Set or clear the text autotyping timezone.
+    pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()> {
+        self.text_mut("$.timezone", "an autotyping timezone")?
+            .set_timezone(timezone);
+        Ok(())
     }
 
     fn avro_mut(
@@ -1570,12 +1607,6 @@ impl From<crate::avro::AvroOptions> for RecordOptions {
 impl From<crate::text::TextOptions> for RecordOptions {
     fn from(value: crate::text::TextOptions) -> Self {
         Self::Text(Box::new(value))
-    }
-}
-
-impl From<crate::text::TextLineOptions> for RecordOptions {
-    fn from(value: crate::text::TextLineOptions) -> Self {
-        Self::Text(Box::new(crate::text::TextOptions::with_lines(value)))
     }
 }
 

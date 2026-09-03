@@ -5,9 +5,8 @@ they measure:
 
 - [Arrow schema projection](arrow.md#what-schema-projection-costs) and
   [cached Field access](field.md#what-cached-field-access-costs);
-- [text-line projection](io.md#measured-against-cpython-and-at-production-size),
-  [record write dispatch](io.md#canonical-record-write-signatures), and
-  [Text dimensions](text.md#dimensions-and-opened-sessions);
+- [plain-text records](text.md#measuring-the-boundary) and
+  [record write dispatch](io.md#canonical-record-write-signatures);
 - [placeholder overhead](text.md#jinja-style-placeholders);
 - [native Scalar and Arrow boundaries](text.md#scalar-and-arrow-boundary-costs);
 - [natural codec boundaries](text.md#natural-codec-boundary-costs);
@@ -41,7 +40,6 @@ they measure:
     cargo bench --bench io --features "parquet" -- io_pstream --noplot
     cargo bench --bench io --features "parquet" -- io_value --noplot
     cargo bench --bench io --features "parquet" -- io_buffered
-    cargo bench --bench text -- lines_gzip
     cargo bench --bench arrowfs --features "parquet"
     cargo bench --bench iceberg --features "parquet iceberg"
     ```
@@ -54,8 +52,7 @@ they measure:
     .venv/Scripts/python benchmarks/fields_arrow.py --iterations 10000
     .venv/Scripts/python benchmarks/values.py --iterations 10000
     .venv/Scripts/python benchmarks/records_io.py --min-time 0.2 --repeat 7
-    .venv/Scripts/python benchmarks/read_lines.py --min-time 0.2 --repeat 5
-    .venv/Scripts/python benchmarks/read_lines_bulk.py --measure-memory
+    .venv/Scripts/python benchmarks/text.py --min-time 0.2 --repeat 7
     .venv/Scripts/python benchmarks/codecs.py --iterations 10000
     .venv/Scripts/python benchmarks/compression.py --min-time 0.2 --repeat 5
     .venv/Scripts/python benchmarks/iceberg.py --min-time 0.2 --repeat 5
@@ -71,7 +68,7 @@ they measure:
     npm run --prefix node bench:codec
     npm run --prefix node bench:defaults
     npm run --prefix node bench:io
-    npm run --prefix node bench:lines
+    npm run --prefix node bench:text
     npm run --prefix node bench:records
     npm run --prefix node bench:arrowfs
     ```
@@ -92,9 +89,8 @@ runs use one containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores,
 | `json`, `yaml`, `toml` | natural whole-value/streaming encode and decode, including exact Field recovery |
 | `avro` | type families, block sizing, projection, resolution plans and varints |
 | `io` | byte streams, structured values, record round trips, dimensions, opened caches, write dispatch and projection pushdown |
-| `read_lines` (Python) | native Arrow line projection against the equivalent CPython `re` loop |
-| `read_lines_bulk` (Python) | rotated gzip corpus plus peak binding RSS |
-| `lines` (JavaScript) | the same corpus at the copied-IPC boundary |
+| `text` (Python) | generic plain-text record projection against equivalent CPython `re` plus PyArrow |
+| `text` (JavaScript) | generic plain-text Arrow and object records at the copied-IPC boundary |
 | `arrowfs` | foreign filesystem boundary beside the native handle |
 | `iceberg` | planning, metadata, manifests, partitioning, merge, compaction and commits |
 | `compression` (Python) | byte codings beside the standard library on the same wire |

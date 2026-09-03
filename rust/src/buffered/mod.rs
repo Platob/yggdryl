@@ -487,42 +487,6 @@ impl<H: IOBase> IOBase for Buffered<H> {
         self.handle.opened()
     }
 
-    /// Stream the wrapped handle's records rather than the cache's.
-    ///
-    /// Deferring rather than defaulting, for two reasons. The wrapped handle
-    /// may have chosen a better implementation - a [`Coded`](crate::io::Coded)
-    /// view peels its coding as a streaming decoder instead of materializing
-    /// the decoded value - and a sequential scan has no reuse to cache anyway,
-    /// so paging it would fill the whole budget with pages nothing re-reads.
-    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + '_>>>
-    where
-        Self: Sized,
-    {
-        self.handle.read_lines()
-    }
-
-    /// Project the wrapped handle's records, not this cache's location.
-    ///
-    /// This one is correctness, not preference. The default projection reopens
-    /// the handle's *location*, which is sound for a storage handle and wrong
-    /// for a view: a `Buffered<Coded<_>>` reports the decoded media type while
-    /// its location still holds the compressed bytes, so the default reads a
-    /// gzip header as text. Deferring keeps whatever the wrapped handle
-    /// decided - [`Coded`](crate::io::Coded) reopens the encoded location under
-    /// one owning decoder (or snapshots only an unlocated source), while a
-    /// storage handle reopens directly. A cache that changes what a read
-    /// returns is not a cache.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_lines(
-        &self,
-        options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader>
-    where
-        Self: Sized,
-    {
-        self.handle.read_arrow_lines(options)
-    }
-
     /// Flush the inner handle and release every cached page.
     ///
     /// Pinned pages go too: `close` releases cached state, and the handle

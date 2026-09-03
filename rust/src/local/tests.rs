@@ -150,17 +150,7 @@ mod mapped {
         assert_eq!(second.size(), 8);
         assert_eq!(second.read_all_bytes().unwrap(), b"one\ntwo\n");
 
-        // Records read back through a fresh handle are exactly what was
-        // written: no trailing record made of padding.
-        let mut lines = second.read_lines().unwrap();
-        let mut seen = Vec::new();
-        while let Some(record) = lines.next() {
-            seen.push(record.unwrap().text().unwrap().to_owned());
-        }
-        assert_eq!(seen, ["one", "two"]);
-
         drop(writer);
-        drop(lines);
         // Teardown through the abstraction: absence is a no-op success.
         File::new(&path)
             .expect("a local leaf")

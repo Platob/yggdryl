@@ -1,164 +1,114 @@
-//! The Arrow projection of text records - the only Arrow-gated half.
-//!
-//! What streams out is the same decoded text [`Text::read_lines`] yields,
-//! grouped into records and projected into Arrow batches with **one batch in
-//! memory at a time**.
-//!
-//! # The schema
-//!
-//! A non-null Struct [`Field`] is the schema, and every base column is a
-//! datatype the strict Iceberg codec accepts **unchanged**, so the parsed
-//! batches append into an Iceberg table exactly as declared - not merely after
-//! widening:
-//!
-//! | column    | datatype     | Iceberg  | meaning |
-//! | --------- | ------------ | -------- | ------- |
-//! | `url`     | `utf8`       | `string` | the resource's canonical [`Url`](crate::Url) display |
-//! | `rownum`  | `int64`      | `long`   | 1-based record index within the resource |
-//! | `date`    | `date32`     | `date`   | the entry's civil date, **as written** |
-//! | `time`    | `time64(us)` | `time`   | the clock reading **as written**, truncated - never rounded - to microseconds |
-//! | `unix`    | `int64`      | `long`   | nanoseconds since the Unix epoch (see below) |
-//! | `hash`    | `int64`      | `long`   | the stable FNV-1a hash of `message` **only** |
-//! | `header`  | `utf8`       | `string` | the exact text the header expression matched |
-//! | `message` | `utf8`       | `string` | the record with the header removed, then stripped |
-//! | `offset`  | `int64`      | `long`   | byte offset of the record's first line in the *decoded* stream |
-//! | `lines`   | `int32`      | `int`    | how many lines the record spans |
-//!
-//! In **log mode** - no pattern, so records open where a timestamp opens -
-//! three more columns follow, always emitted and always nullable: `level`,
-//! `logger`, `thread`. They are a *fixed* set, never discovered from the data,
-//! so [`TextLineOptions::field`] still answers from configuration alone.
-//!
-//! Then one nullable column per **named capture group**, in group order - the
-//! union of the opening pattern's and the header pattern's - and finally the
-//! constant [`custom_fields`](TextLineOptions::custom_fields) columns.
-//!
-//! # `unix` versus `date` and `time`
-//!
-//! `date` and `time` are the **civil reading the record contains**, exactly as
-//! written. `unix` is the *instant*, which is the same number only when the
-//! reading is UTC. With [`timezone`](TextLineOptions::set_timezone) set, or with
-//! an offset in the text, a line reading `00:30` at `+02:00` carries the local
-//! date and a `unix` on the previous UTC day. Both are right; a reader has to
-//! be told, because it looks like a bug.
-//!
-//! Unset and with no offset in the text, `unix` is what it has always been: the
-//! civil reading counted from the epoch, with no zone applied - so it is *not*
-//! a Unix timestamp unless the log happens to be written in UTC.
-//!
-//! # Batching
-//!
-//! A batch closes on whichever bound trips first, and on a leaf boundary
-//! regardless. [`byte_size`](TextLineOptions::byte_size) measures **decoded
-//! input bytes** - each record's length plus its terminator, accounted as
-//! records arrive, never by introspecting builder memory - so it is not an
-//! allocation cap and reading it as one would be a mistake.
-//! [`batch_row_size`](TextLineOptions::batch_row_size) is the row bound.
-//!
-//! ```
-//! use yggdryl::io::{Buffer, IOBase};
-//! use yggdryl::text::TextLineOptions;
-//! use yggdryl::Url;
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut handle = Buffer::new()
-//!     .with_media_type(Url::from_str("file:///app.log")?.media_type());
-//! handle.write_all_bytes(
-//!     b"2024-02-01 10:00:00.000_000 [ee] [alpha] boom\n  at frame one\n\
-//!       2024-02-01 10:00:01.500_000 [ii] [beta] fine\n",
-//! )?;
-//!
-//! let options = TextLineOptions::with_pattern(
-//!     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\S* \[(?<level>[^\]]+)\] \[(?<logger>[^\]]+)\]",
-//! )?;
-//! let batches: Vec<_> = handle
-//!     .read_arrow_lines(&options)?
-//!     .collect::<Result<_, _>>()?;
-//!
-//! assert_eq!(batches.len(), 1);
-//! assert_eq!(batches[0].num_rows(), 2);
-//! assert_eq!(batches[0].schema().field(0).name(), "url");
-//! assert_eq!(batches[0].schema().field(10).name(), "level");
-//! # Ok(())
-//! # }
-//! ```
+//! `text/plain` rows through the shared Scalar/Arrow record boundary.
 
-use std::fmt::Write as _;
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::Arc;
 
-use arrow_array::builder::{
-    Date32Builder, Int32Builder, Int64Builder, StringBuilder, Time64MicrosecondBuilder,
-};
-use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
-use arrow_schema::{ArrowError, SchemaRef};
-use smol_str::{SmolStr, ToSmolStr, format_smolstr};
+use arrow_array::{Array as _, BinaryArray, RecordBatch};
+use arrow_schema::{DataType as ArrowDataType, Schema};
+use smol_str::{SmolStr, format_smolstr};
 
-use crate::arrow::{BatchReader, arrow_schema_from_field, scalar_array};
-use crate::generic::{Holder, iso};
-use crate::io::{Buffer, IOBase, Listing};
-use crate::{DataType, Error, Field, IOKind, Result};
+use crate::arrow::BatchReader;
+use crate::generic::{Holder, IORecordOptions, iso};
+use crate::io::{Buffer, Cursor, IOBase};
+use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone};
 
-use super::handle::{Text, TextLines, url_text};
-use super::options::TextLineOptions;
-use super::view::TextLine;
+use super::options::TextOptions;
+use super::reader::Lines;
 
-/// Project a borrowed handle's records, per the trait method's contract.
-///
-/// [`IOKind`] decides the shape, never a second existence check:
-///
-/// - A **leaf** parses that one resource's records. This borrowed variant needs
-///   an owned view behind the reader it returns, so it reopens the same
-///   location through [`IOBase::parent`] and [`IOBase::child_by_path`]; a handle with
-///   no parent - an in-memory buffer - contributes a snapshot of its
-///   still-encoded bytes instead, which those handles already hold in memory.
-///   [`into_arrow_lines`] avoids both by consuming the handle.
-/// - A **container** streams across the leaf files beneath it in deterministic
-///   name-sorted order, each opened lazily when the reader reaches it, each
-///   contributing its own `url` and restarting `rownum` at 1, and each decoded
-///   by its *own* media type - a folder mixing `a.log` and `b.log.gz` reads
-///   uniformly. A batch never spans two leaves.
-/// - [`IOKind::Unknown`] - the resource does not exist - reads as an **empty**
-///   reader: zero batches, schema still answered. Absence is never an error on
-///   the read path.
-pub(crate) fn read_arrow_lines<H: IOBase + ?Sized>(
-    handle: &H,
-    options: &TextLineOptions,
+/// Decode one borrowed leaf into ordinary record batches.
+pub(crate) fn read_arrow_reader(
+    handle: &(impl IOBase + ?Sized),
+    options: &TextOptions,
 ) -> Result<BatchReader> {
-    match handle.kind() {
-        IOKind::Directory => folder_lines(handle, options),
-        IOKind::Unknown => empty_lines(options),
-        _ => {
-            // The url column reports this handle's canonical location even when
-            // the owned view is reached another way.
-            let url = url_text(handle);
-            leaf_lines(reopened(handle)?, url, options)
-        }
-    }
+    let url = url_text(handle);
+    read_owned_arrow_reader_at(reopened(handle)?, url, options)
 }
 
-/// Project an owned handle's records, per the trait method's contract.
-pub(crate) fn into_arrow_lines<H: IOBase + 'static>(
+/// Decode an owned leaf without retaining decoded pages in its caller.
+pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
     handle: H,
-    options: &TextLineOptions,
+    options: &TextOptions,
 ) -> Result<BatchReader> {
-    match handle.kind() {
-        IOKind::Directory => folder_lines(&handle, options),
-        IOKind::Unknown => empty_lines(options),
-        _ => {
-            let url = url_text(&handle);
-            leaf_lines(handle, url, options)
-        }
-    }
+    let url = url_text(&handle);
+    read_owned_arrow_reader_at(handle, url, options)
 }
 
-/// An owned view of the same location a borrowed handle addresses.
-fn reopened<H: IOBase + ?Sized>(handle: &H) -> Result<Holder> {
+fn read_owned_arrow_reader_at<H: IOBase + 'static>(
+    handle: H,
+    url: SmolStr,
+    options: &TextOptions,
+) -> Result<BatchReader> {
+    let codings = handle.media_type().encodings().to_vec();
+    let mut source: Box<dyn Read + Send + 'static> = Box::new(Cursor::new(handle));
+    for coding in codings.iter().rev() {
+        source = Codec::from_mime_type(coding).reader_send(source);
+    }
+
+    let mut raw = RawRows::new(source, url, Arc::new(options.clone()));
+    let adaptive = options.autotype()
+        && options.dtype().is_none()
+        && options.capture_names().len() > 0
+        && options.max_row_size() != Some(0)
+        && options.max_byte_size() != Some(0);
+    let mut prefetched = VecDeque::new();
+    let capture_dtypes = if adaptive {
+        let mut sample_size = options
+            .batch_row_size()
+            .unwrap_or(crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE)
+            .max(1);
+        if let Some(maximum) = options.max_row_size() {
+            sample_size = sample_size.min(usize::try_from(maximum).unwrap_or(usize::MAX));
+        }
+        for _ in 0..sample_size {
+            let Some(row) = raw.next() else { break };
+            prefetched.push_back(row?);
+        }
+        inferred_capture_dtypes(&prefetched, options)?
+    } else {
+        vec![DataType::Utf8; options.capture_names().len()]
+    };
+    let field = options.source_field(&capture_dtypes)?;
+    let rows = Records {
+        raw,
+        prefetched,
+        capture_dtypes,
+        timezone: options.timezone().cloned(),
+    };
+    Ok(crate::arrow::rows::result_reader(
+        &field,
+        rows,
+        options.batch_row_size(),
+        None,
+        options.max_row_size(),
+    )?)
+}
+
+/// Count physical lines without materializing rows or Arrow arrays.
+pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<u64> {
+    let codings = handle.media_type().encodings().to_vec();
+    let mut source: Box<dyn Read + '_> =
+        Box::new(handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?);
+    for coding in codings.iter().rev() {
+        source = Codec::from_mime_type(coding).reader(source);
+    }
+    let mut lines = Lines::new(source);
+    let mut rows = 0_u64;
+    while let Some(line) = lines.next_line(options.linesep()) {
+        line?;
+        rows = rows.checked_add(1).ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: SmolStr::new_static("logical row count exceeds u64::MAX"),
+        })?;
+    }
+    Ok(rows)
+}
+
+/// Return an owned handle for a reader that must outlive this borrow.
+fn reopened(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     if let Some(parent) = handle.parent() {
         if let Some(name) = handle.url().and_then(crate::Url::file_name) {
             let mut child = parent.child_by_path(name)?;
-            // The reopened view keeps the caller's declared media type, so an
-            // override - a coding the name does not spell - survives.
             child.set_media_type(handle.media_type().clone());
             return Ok(child);
         }
@@ -168,560 +118,448 @@ fn reopened<H: IOBase + ?Sized>(handle: &H) -> Result<Holder> {
     Ok(Holder::buffer(buffer))
 }
 
-/// Zero batches, schema still answered - what absence reads as.
-fn empty_lines(options: &TextLineOptions) -> Result<BatchReader> {
-    let schema = arrow_schema_from_field(options.field())?;
-    Ok(crate::arrow::batch_reader(schema, []))
+fn url_text(handle: &(impl IOBase + ?Sized)) -> SmolStr {
+    handle.url().map_or_else(
+        || SmolStr::new_static(""),
+        |url| SmolStr::new(url.to_string()),
+    )
 }
 
-/// Stream a container's leaves, name-sorted, one open leaf at a time.
-fn folder_lines(handle: &(impl IOBase + ?Sized), options: &TextLineOptions) -> Result<BatchReader> {
-    // The listing itself stays live. Each leaf's bytes wait until the reader
-    // reaches it, and the projection never owns the complete leaf set.
-    ArrowLines::boxed(options, handle.children_where(&[], false)?, None)
+/// One parsed line before capture types are fixed.
+struct RawRow {
+    url: SmolStr,
+    rownum: i64,
+    body: Arc<[u8]>,
+    captures: Vec<Option<SmolStr>>,
 }
 
-/// Stream one leaf the reader already owns.
-fn leaf_lines<H: IOBase + 'static>(
-    handle: H,
-    url: Arc<str>,
-    options: &TextLineOptions,
-) -> Result<BatchReader> {
-    let current = opened_records(handle, url, options)?;
-    ArrowLines::boxed(options, Listing::empty(), Some(current))
-}
-
-/// Open one resource's records with their per-leaf row state.
-fn opened_records<H: IOBase + 'static>(
-    handle: H,
-    url: Arc<str>,
-    options: &TextLineOptions,
-) -> Result<LeafRecords> {
-    let mut handler = Text::with_options(handle, options.clone());
-    handler.set_url_override(url);
-    Ok(LeafRecords {
-        records: handler.into_read_lines()?,
-    })
-}
-
-/// One resource's records mid-stream.
-struct LeafRecords {
-    records: TextLines<Box<dyn Read + Send + 'static>>,
-}
-
-/// The streaming projection: text records in, Arrow batches out.
-///
-/// At most one leaf is open and one batch under construction at any time. A
-/// batch never spans two leaves, so every batch already emitted is complete
-/// before the next leaf is even opened - which is what makes the laziness
-/// observable: a later leaf that fails to decode surfaces its error only after
-/// every earlier leaf's batches have arrived.
-struct ArrowLines {
-    options: Arc<TextLineOptions>,
-    /// One-row constants, repeated to each batch's height. Held one row at a
-    /// time deliberately: the repetition is a `take`, not a stored column.
-    customs: Vec<ArrayRef>,
-    byte_size: usize,
-    batch_row_size: usize,
-    schema: SchemaRef,
-    /// The emitted root; a batch is cast onto it when any capture is typed.
-    root: Field,
-    /// The all-text shape the builders produce.
-    raw_schema: SchemaRef,
-    /// Whether any capture column is typed, so an untyped read never pays for a
-    /// cast that would hand every array back unchanged.
-    typed: bool,
-    /// Leaves not yet opened, in name-sorted order.
-    pending: Listing,
-    current: Option<LeafRecords>,
+/// Physical lines parsed into the three base values and raw captures.
+struct RawRows<R> {
+    lines: Lines<R>,
+    url: SmolStr,
+    options: Arc<TextOptions>,
+    rownum: i64,
     done: bool,
 }
 
-impl ArrowLines {
-    /// Assemble the reader over already-validated options.
-    fn boxed(
-        options: &TextLineOptions,
-        pending: Listing,
-        current: Option<LeafRecords>,
-    ) -> Result<BatchReader> {
-        let root = options.field();
-        let schema = arrow_schema_from_field(root)?;
-        let leading = options.leading_column_count();
-        let capture_count = options.capture_names().count();
-        let mut customs = Vec::with_capacity(options.custom_fields().len());
-        for (index, (_, value)) in options.custom_fields().iter().enumerate() {
-            let field = root
-                .get_field(leading + capture_count + index)
-                .ok_or_else(|| Error::from(crate::arrow::Error::internal("text::line::customs")))?;
-            customs.push(scalar_array(field, value)?);
-        }
-        // The builders always produce text captures; a typed capture is cast
-        // onto the declared root as each batch closes, through the one cast
-        // definition every schema-directed read uses.
-        let typed = (0..capture_count).any(|index| {
-            root.get_field(leading + index)
-                .is_some_and(|field| field.dtype() != &DataType::Utf8)
-        });
-        let raw_schema = if typed {
-            let mut raw = root.clone();
-            for index in 0..capture_count {
-                let name = root
-                    .get_field(leading + index)
-                    .map(|field| field.name().to_owned())
-                    .unwrap_or_default();
-                raw.set_field(leading + index, DataType::Utf8.nullable_field(name))?;
-            }
-            arrow_schema_from_field(&raw)?
-        } else {
-            Arc::clone(&schema)
-        };
-        Ok(Box::new(Self {
-            options: Arc::new(options.clone()),
-            customs,
-            byte_size: options.effective_byte_size(),
-            batch_row_size: options.effective_batch_row_size(),
-            schema,
-            root: root.clone(),
-            raw_schema,
-            typed,
-            pending,
-            current,
+impl<R: Read> RawRows<R> {
+    fn new(source: R, url: SmolStr, options: Arc<TextOptions>) -> Self {
+        Self {
+            lines: Lines::new(source),
+            url,
+            options,
+            rownum: 0,
             done: false,
-        }))
+        }
     }
 
-    /// Close the batch under construction into one `RecordBatch`.
-    fn finish(&self, builders: &mut RowBuilders) -> std::result::Result<RecordBatch, ArrowError> {
-        let rows = builders.rows;
-        let mut columns: Vec<ArrayRef> = vec![
-            Arc::new(builders.url.finish()),
-            Arc::new(builders.rownum.finish()),
-            Arc::new(builders.date.finish()),
-            Arc::new(builders.time.finish()),
-            Arc::new(builders.unix.finish()),
-            Arc::new(builders.hash.finish()),
-            Arc::new(builders.header.finish()),
-            Arc::new(builders.message.finish()),
-            Arc::new(builders.offset.finish()),
-            Arc::new(builders.lines.finish()),
-        ];
-        for token in &mut builders.tokens {
-            columns.push(Arc::new(token.finish()));
+    fn parse(options: &TextOptions, url: &str, line: &[u8], rownum: i64) -> Result<RawRow> {
+        let mut captures = vec![None; options.capture_names().len()];
+        let mut body = Vec::with_capacity(line.len());
+        if let Some(rowheader) = options.rowheader_regex() {
+            if let Some(found) = rowheader.captures(line) {
+                if let Some(whole) = found.get(0) {
+                    body.extend_from_slice(&line[..whole.start()]);
+                    body.extend_from_slice(&line[whole.end()..]);
+                } else {
+                    body.extend_from_slice(line);
+                }
+                for (target, (index, name)) in captures.iter_mut().zip(
+                    rowheader
+                        .capture_names()
+                        .enumerate()
+                        .filter_map(|(index, name)| name.map(|name| (index, name))),
+                ) {
+                    let Some(value) = found.get(index) else {
+                        continue;
+                    };
+                    let value = std::str::from_utf8(value.as_bytes()).map_err(|error| {
+                        row_error(
+                            rownum,
+                            url,
+                            name,
+                            format_smolstr!(
+                                "expected a UTF-8 row-header capture, got invalid byte at {}",
+                                error.valid_up_to()
+                            ),
+                        )
+                    })?;
+                    *target = Some(SmolStr::new(value));
+                }
+            } else {
+                body.extend_from_slice(line);
+            }
+        } else {
+            body.extend_from_slice(line);
         }
-        for capture in &mut builders.captures {
-            columns.push(Arc::new(capture.finish()));
+
+        let mut start = 0;
+        let mut end = body.len();
+        if let Some(lstrip) = options.lstrip_regex() {
+            if let Some(found) = lstrip
+                .find(&body[start..end])
+                .filter(|found| found.start() == 0)
+            {
+                start += found.end();
+            }
         }
-        for constant in &self.customs {
-            let indices = UInt32Array::from(vec![0_u32; rows]);
-            columns.push(arrow_select::take::take(constant.as_ref(), &indices, None)?);
+        if let Some(rstrip) = options.rstrip_regex() {
+            if let Some(found) = rstrip
+                .find_iter(&body[start..end])
+                .filter(|found| found.end() == end - start)
+                .last()
+            {
+                end = start + found.start();
+            }
         }
-        builders.reset();
-        let batch = RecordBatch::try_new(Arc::clone(&self.raw_schema), columns)?;
-        if !self.typed {
-            return Ok(batch);
-        }
-        // Typed captures land through the one cast definition, strictly: a
-        // captured text the declared datatype cannot read is an error, never a
-        // silent null.
-        use crate::field::cast::ArrowCast;
-        self.root
-            .cast_arrow_batch(batch, false)
-            .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+
+        Ok(RawRow {
+            url: SmolStr::new(url),
+            rownum,
+            body: Arc::from(&body[start..end]),
+            captures,
+        })
     }
 }
 
-impl Iterator for ArrowLines {
-    type Item = std::result::Result<RecordBatch, ArrowError>;
+impl<R: Read> Iterator for RawRows<R> {
+    type Item = Result<RawRow>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             return None;
         }
-        let log_mode = self.options.is_log_mode();
-        let mut builders = RowBuilders::new(self.options.capture_names().count(), log_mode);
-        loop {
-            let Some(current) = self.current.as_mut() else {
-                let Some(leaf) = self.pending.next() else {
-                    break;
-                };
-                let leaf = match leaf {
-                    Ok(leaf) => leaf,
-                    Err(error) => {
-                        self.done = true;
-                        return Some(Err(external(error)));
-                    }
-                };
-                let url = url_text(&leaf);
-                match opened_records(leaf, url, &self.options) {
-                    Ok(records) => self.current = Some(records),
-                    Err(error) => {
-                        self.done = true;
-                        return Some(Err(external(error)));
-                    }
-                }
-                continue;
+        let options = Arc::clone(&self.options);
+        let url = self.url.clone();
+        let line = match self.lines.next_line(options.linesep())? {
+            Ok(line) => line,
+            Err(error) => {
+                self.done = true;
+                return Some(Err(error));
+            }
+        };
+        let Some(rownum) = self.rownum.checked_add(1) else {
+            self.done = true;
+            return Some(Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.rownum"),
+                reason: SmolStr::new_static("text row number exceeds i64::MAX"),
+            }));
+        };
+        self.rownum = rownum;
+        Some(Self::parse(&options, &url, line, rownum))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Inferred {
+    Bool,
+    Int,
+    Float,
+    Date,
+    Time(TimeUnit),
+    Timestamp(TimeUnit, Option<Timezone>),
+    Text,
+}
+
+fn inferred_capture_dtypes(
+    rows: &VecDeque<RawRow>,
+    options: &TextOptions,
+) -> Result<Vec<DataType>> {
+    let mut inferred = vec![None; options.capture_names().len()];
+    for row in rows {
+        for (slot, value) in inferred.iter_mut().zip(&row.captures) {
+            let Some(value) = value else { continue };
+            let next = infer(value, options.timezone());
+            *slot = Some(match slot.take() {
+                Some(current) => merge_inferred(current, next),
+                None => next,
+            });
+        }
+    }
+    inferred
+        .into_iter()
+        .map(|kind| inferred_dtype(kind.unwrap_or(Inferred::Text)))
+        .collect()
+}
+
+fn infer(value: &str, timezone: Option<&Timezone>) -> Inferred {
+    if matches!(value, "true" | "false") {
+        return Inferred::Bool;
+    }
+    if value.parse::<i64>().is_ok() {
+        return Inferred::Int;
+    }
+    if value.parse::<f64>().is_ok_and(f64::is_finite) {
+        return Inferred::Float;
+    }
+    if let Ok((_, unit, zone)) = iso::parse_timestamp(value) {
+        return Inferred::Timestamp(unit, Some(timezone.cloned().unwrap_or(zone)));
+    }
+    if let Ok((_, unit)) = iso::parse_datetime(value) {
+        return Inferred::Timestamp(unit, timezone.cloned());
+    }
+    if iso::parse_date(value).is_ok() {
+        return Inferred::Date;
+    }
+    if let Ok((_, unit)) = iso::parse_time(value) {
+        return Inferred::Time(unit);
+    }
+    Inferred::Text
+}
+
+fn merge_inferred(left: Inferred, right: Inferred) -> Inferred {
+    use Inferred::{Bool, Date, Float, Int, Text, Time, Timestamp};
+    match (left, right) {
+        (Text, _) | (_, Text) => Text,
+        (Bool, Bool) => Bool,
+        (Int, Int) => Int,
+        (Int | Float, Int | Float) => Float,
+        (Date, Date) => Date,
+        (Time(left), Time(right)) => Time(finer_unit(left, right)),
+        (Timestamp(left, left_zone), Timestamp(right, right_zone)) if left_zone == right_zone => {
+            Timestamp(finer_unit(left, right), left_zone)
+        }
+        _ => Text,
+    }
+}
+
+fn finer_unit(left: TimeUnit, right: TimeUnit) -> TimeUnit {
+    if unit_rank(left) >= unit_rank(right) {
+        left
+    } else {
+        right
+    }
+}
+
+const fn unit_rank(unit: TimeUnit) -> u8 {
+    match unit {
+        TimeUnit::Second => 0,
+        TimeUnit::Millisecond => 1,
+        TimeUnit::Microsecond => 2,
+        TimeUnit::Nanosecond => 3,
+        TimeUnit::Day | TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 4,
+    }
+}
+
+fn inferred_dtype(kind: Inferred) -> Result<DataType> {
+    Ok(match kind {
+        Inferred::Bool => DataType::Boolean,
+        Inferred::Int => DataType::Int64,
+        Inferred::Float => DataType::Float64,
+        Inferred::Date => DataType::Date32,
+        Inferred::Time(unit) => DataType::time(unit)?,
+        Inferred::Timestamp(unit, zone) => DataType::Timestamp(unit, zone),
+        Inferred::Text => DataType::Utf8,
+    })
+}
+
+/// Raw rows converted under the schema fixed by the first batch.
+struct Records<R> {
+    raw: RawRows<R>,
+    prefetched: VecDeque<RawRow>,
+    capture_dtypes: Vec<DataType>,
+    timezone: Option<Timezone>,
+}
+
+impl<R: Read> Iterator for Records<R> {
+    type Item = Result<Scalar>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let raw = self
+            .prefetched
+            .pop_front()
+            .map(Ok)
+            .or_else(|| self.raw.next())?;
+        Some(raw.and_then(|row| self.convert(row)))
+    }
+}
+
+impl<R: Read> Records<R> {
+    fn convert(&self, row: RawRow) -> Result<Scalar> {
+        let mut entries = Vec::with_capacity(3 + row.captures.len());
+        entries.push((SmolStr::new_static("url"), Scalar::from(row.url.clone())));
+        entries.push((SmolStr::new_static("rownum"), Scalar::from(row.rownum)));
+        entries.push((SmolStr::new_static("body"), Scalar::from(row.body)));
+        for ((name, value), dtype) in self
+            .raw
+            .options
+            .capture_names()
+            .zip(row.captures)
+            .zip(&self.capture_dtypes)
+        {
+            let value = match value {
+                Some(value) => parse_capture(&value, dtype, self.timezone.as_ref())
+                    .map_err(|reason| row_error(row.rownum, &row.url, name, reason))?,
+                None => Scalar::Null,
             };
-            match current.records.next() {
-                Some(Ok(line)) => {
-                    if let Err(error) = append_row(&mut builders, &line, log_mode) {
-                        self.done = true;
-                        return Some(Err(external(error)));
-                    }
-                    // Whichever bound trips first closes the batch.
-                    if builders.rows >= self.batch_row_size || builders.bytes >= self.byte_size {
-                        return Some(self.finish(&mut builders));
-                    }
-                }
-                Some(Err(error)) => {
-                    self.done = true;
-                    return Some(Err(external(error)));
-                }
-                None => {
-                    // The drained leaf closes its batch before the next leaf is
-                    // opened, so a batch never spans two resources.
-                    self.current = None;
-                    if builders.rows > 0 {
-                        return Some(self.finish(&mut builders));
-                    }
-                }
-            }
+            entries.push((SmolStr::new(name), value));
         }
-        self.done = true;
-        if builders.rows == 0 {
-            return None;
-        }
-        Some(self.finish(&mut builders))
+        Scalar::from_record(entries)
     }
 }
 
-impl arrow_array::RecordBatchReader for ArrowLines {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(&self.schema)
-    }
-}
-
-/// Carry a core failure through the Arrow stream, typed and recoverable.
-fn external(error: Error) -> ArrowError {
-    ArrowError::ExternalError(Box::new(error))
-}
-
-/// The column builders of one batch under construction.
-struct RowBuilders {
-    url: StringBuilder,
-    rownum: Int64Builder,
-    date: Date32Builder,
-    time: Time64MicrosecondBuilder,
-    unix: Int64Builder,
-    hash: Int64Builder,
-    header: StringBuilder,
-    message: StringBuilder,
-    offset: Int64Builder,
-    lines: Int32Builder,
-    /// Log mode's fixed token columns, empty otherwise.
-    tokens: Vec<StringBuilder>,
-    captures: Vec<StringBuilder>,
-    rows: usize,
-    /// The last resolved zone offset and the interval it holds over.
-    offsets: super::timestamp::OffsetCache,
-    /// Decoded input bytes appended so far - the byte bound's accounting.
-    ///
-    /// Counted as records arrive, from each record's own length, rather than by
-    /// introspecting builder memory: the bound is over *input*, and asking a
-    /// builder how much it has allocated would answer a different question.
-    bytes: usize,
-}
-
-impl RowBuilders {
-    fn new(capture_count: usize, log_mode: bool) -> Self {
-        Self {
-            url: StringBuilder::new(),
-            rownum: Int64Builder::new(),
-            date: Date32Builder::new(),
-            time: Time64MicrosecondBuilder::new(),
-            unix: Int64Builder::new(),
-            hash: Int64Builder::new(),
-            header: StringBuilder::new(),
-            message: StringBuilder::new(),
-            offset: Int64Builder::new(),
-            lines: Int32Builder::new(),
-            tokens: (0..if log_mode {
-                super::options::LOG_COLUMNS.len()
-            } else {
-                0
-            })
-                .map(|_| StringBuilder::new())
-                .collect(),
-            captures: (0..capture_count).map(|_| StringBuilder::new()).collect(),
-            rows: 0,
-            offsets: super::timestamp::OffsetCache::default(),
-            bytes: 0,
-        }
-    }
-
-    /// Start the next batch's accounting; the builders reset themselves.
-    fn reset(&mut self) {
-        self.rows = 0;
-        self.bytes = 0;
-    }
-}
-
-/// Parse one record into one row of every column builder.
-///
-/// Every value comes from the [`TextLine`] accessors, which is what keeps the
-/// columns and a Rust caller's reads from drifting into two implementations.
-fn append_row(builders: &mut RowBuilders, line: &TextLine<'_>, log_mode: bool) -> Result<()> {
-    builders.rows += 1;
-    // The record's own decoded length, plus the terminator that ended it.
-    builders.bytes += line.bytes().len() + 1;
-    builders.url.append_value(line.url());
-    builders.rownum.append_value(line.rownum());
-
-    let offset = i64::try_from(line.offset()).map_err(|_| {
-        row_error(
-            line,
-            "offset",
-            format_smolstr!(
-                "expected a record offset within the signed 64-bit range, got {}",
-                line.offset()
-            ),
+fn parse_capture(
+    value: &str,
+    dtype: &DataType,
+    timezone: Option<&Timezone>,
+) -> std::result::Result<Scalar, SmolStr> {
+    let invalid = || {
+        format_smolstr!(
+            "expected a value of inferred datatype {dtype}, got {:?}",
+            crate::text::elide_to(value, crate::text::ERROR_TEXT_LIMIT)
         )
+    };
+    match dtype {
+        DataType::Utf8 => Ok(Scalar::from(value)),
+        DataType::Boolean => value
+            .parse::<bool>()
+            .map(Scalar::from)
+            .map_err(|_| invalid()),
+        DataType::Int64 => value
+            .parse::<i64>()
+            .map(Scalar::from)
+            .map_err(|_| invalid()),
+        DataType::Float64 => value
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(Scalar::from)
+            .ok_or_else(invalid),
+        DataType::Date32 => iso::parse_date(value)
+            .map(Scalar::date32)
+            .map_err(|_| invalid()),
+        DataType::Time32(unit) | DataType::Time64(unit) => {
+            let (count, source) = iso::parse_time(value).map_err(|_| invalid())?;
+            let count = rescale(count, source, *unit).ok_or_else(invalid)?;
+            Scalar::from_time(count, *unit, Timezone::NAIVE).map_err(|_| invalid())
+        }
+        DataType::Timestamp(unit, target_zone) => {
+            if let Ok((count, source, _)) = iso::parse_timestamp(value) {
+                let Some(zone) = target_zone else {
+                    return Err(invalid());
+                };
+                let count = rescale(count, source, *unit).ok_or_else(invalid)?;
+                return Scalar::datetime64(count, *unit, zone.clone()).map_err(|_| invalid());
+            }
+            let (local, source) = iso::parse_datetime(value).map_err(|_| invalid())?;
+            let count = match target_zone {
+                Some(zone) => {
+                    zoned_count(local, source, timezone.unwrap_or(zone)).map_err(|_| invalid())?
+                }
+                None => local,
+            };
+            let count = rescale(count, source, *unit).ok_or_else(invalid)?;
+            Scalar::datetime64(count, *unit, target_zone.clone().unwrap_or(Timezone::NAIVE))
+                .map_err(|_| invalid())
+        }
+        _ => Err(format_smolstr!(
+            "autotype produced unsupported datatype {dtype}"
+        )),
+    }
+}
+
+fn zoned_count(local: i64, unit: TimeUnit, zone: &Timezone) -> Result<i64> {
+    let per = iso::per_second(unit).ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new_static("$.timezone"),
+        reason: SmolStr::new_static("timestamp unit has no fixed second width"),
     })?;
-    builders.offset.append_value(offset);
-    builders.lines.append_value(line.line_count());
-    builders.hash.append_value(line.hash()?);
-
-    // The message is appended span by span, so a header spliced out of the
-    // middle of a line never materializes a joined `String`.
-    let [lead, tail] = line.message_parts()?;
-    if tail.is_empty() {
-        builders.message.append_value(lead);
-    } else {
-        // `GenericStringBuilder` implements `std::fmt::Write`, so the spans go
-        // straight into the builder's own buffer and `append_value("")` closes
-        // the row - the documented write-then-append pattern.
-        builders
-            .message
-            .write_str(lead)
-            .and_then(|()| builders.message.write_str(tail))
-            .map_err(|_| Error::from(crate::arrow::Error::internal("text::line::message")))?;
-        builders.message.append_value("");
-    }
-
-    let Some(header) = line.header()? else {
-        // The preamble a rotated file starts with, or a record whose opening
-        // line a separate header expression did not match: one rule for "no
-        // header here", not two.
-        builders.date.append_null();
-        builders.time.append_null();
-        builders.unix.append_null();
-        builders.header.append_null();
-        for token in &mut builders.tokens {
-            token.append_null();
-        }
-        for capture in &mut builders.captures {
-            capture.append_null();
-        }
-        return Ok(());
-    };
-    builders.header.append_value(header);
-
-    if log_mode {
-        let tokens = super::log::recognized(header);
-        for (builder, value) in builders.tokens.iter_mut().zip(tokens) {
-            match value {
-                Some(value) => builder.append_value(value),
-                None => builder.append_null(),
-            }
-        }
-    }
-
-    append_timestamp(builders, line, header)?;
-
-    for (index, builder) in builders.captures.iter_mut().enumerate() {
-        match line.capture_at(index)? {
-            Some(value) => builder.append_value(value),
-            None => builder.append_null(),
-        }
-    }
-    Ok(())
+    let seconds = local.div_euclid(per);
+    let fraction = local.rem_euclid(per);
+    zone.clone()
+        .into_utc(seconds)?
+        .checked_mul(per)
+        .and_then(|seconds| seconds.checked_add(fraction))
+        .ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$.timezone"),
+            reason: SmolStr::new_static("zoned timestamp is out of range"),
+        })
 }
 
-/// Read the entry timestamp and append the three temporal columns.
-fn append_timestamp(builders: &mut RowBuilders, line: &TextLine<'_>, header: &str) -> Result<()> {
-    let options = line.options();
-    let source = match options.timestamp_capture() {
-        Some(name) => line.capture(name)?.ok_or_else(|| {
-            row_error(
-                line,
-                "unix",
-                format_smolstr!(
-                    "expected the timestamp capture {name:?} to participate in the matched header \
-                     {:?}",
-                    crate::text::elide_to(header, crate::text::ERROR_TEXT_LIMIT)
-                ),
-            )
-        })?,
-        None => header,
-    };
-
-    let (count, unit, offset) = super::timestamp::read(source, options, &mut builders.offsets)
-        .map_err(|error| timestamp_error(line, source, &error))?;
-    let per = iso::per_second(unit)
-        .ok_or_else(|| Error::from(crate::arrow::Error::internal("text::line::per_second")))?;
-
-    // `date` and `time` are the civil reading as written; only `unix` moves
-    // with the zone.
-    let day = per * 86_400;
-    let days = count.div_euclid(day);
-    let in_day = count.rem_euclid(day);
-    let date = i32::try_from(days)
-        .map_err(|_| Error::from(crate::arrow::Error::internal("text::line::civil_date")))?;
-    // Truncation, never rounding: a sub-microsecond clock reading is only fully
-    // recoverable from `unix`.
-    let micros = if per > 1_000_000 {
-        in_day / (per / 1_000_000)
-    } else {
-        in_day * (1_000_000 / per)
-    };
-    let instant = count.checked_sub(offset.checked_mul(per).unwrap_or(i64::MAX));
-    let nanos = instant
-        .and_then(|instant| instant.checked_mul(1_000_000_000 / per))
-        .ok_or_else(|| {
-            row_error(
-                line,
-                "unix",
-                format_smolstr!(
-                    "expected a timestamp within the 64-bit nanosecond range (1677-09-21 to \
-                     2262-04-11), got {:?}",
-                    crate::text::elide_to(header, crate::text::ERROR_TEXT_LIMIT)
-                ),
-            )
-        })?;
-    builders.date.append_value(date);
-    builders.time.append_value(micros);
-    builders.unix.append_value(nanos);
-    Ok(())
+fn rescale(count: i64, source: TimeUnit, target: TimeUnit) -> Option<i64> {
+    let source = nanos(source)?;
+    let target = nanos(target)?;
+    let nanos = i128::from(count).checked_mul(source)?;
+    (nanos % target == 0)
+        .then(|| i64::try_from(nanos / target).ok())
+        .flatten()
 }
 
-// ---------------------------------------------------------------------------
-// The write half: Arrow batches out as text lines.
-//
-// This is what makes `Text` a full media rather than a read-only projection:
-// `overwrite_arrow_reader` and `append_arrow_reader` land here when
-// the record options say text, exactly as they land in the IPC encoder when
-// they say IPC.
-// ---------------------------------------------------------------------------
+const fn nanos(unit: TimeUnit) -> Option<i128> {
+    match unit {
+        TimeUnit::Second => Some(1_000_000_000),
+        TimeUnit::Millisecond => Some(1_000_000),
+        TimeUnit::Microsecond => Some(1_000),
+        TimeUnit::Nanosecond => Some(1),
+        _ => None,
+    }
+}
 
-/// Replace a handle's contents with `batches` rendered as text lines.
-///
-/// Each row renders as one line - the `header` column when present and
-/// non-null, a single space, then the `message` column; a message holding
-/// interior newlines writes back as the multi-line record it was read from.
-/// A batch with no `message` column but exactly one `utf8` column writes that
-/// column, so "write these strings as lines" needs no rename.
-///
-/// The encoded value is staged once before anything reaches the handle, so a
-/// failure mid-stream leaves the resource exactly as it was. Decoded text is
-/// only one reused batch buffer and is released as batches advance.
-///
-/// # Errors
-///
-/// Returns an error when no column can be read as the line text, or the
-/// handle's resize or write failure.
-pub(crate) fn write_arrow_lines(
+fn row_error(rownum: i64, url: &str, column: &str, reason: SmolStr) -> Error {
+    Error::InvalidRecord {
+        path: format_smolstr!("$[{}].{column}", rownum.saturating_sub(1)),
+        reason: format_smolstr!("{reason} in row {rownum} of {url}"),
+    }
+}
+
+/// Replace a leaf with the `body` bytes from each input row.
+pub(crate) fn write_arrow_reader(
     handle: &mut (impl IOBase + ?Sized),
     batches: BatchReader,
-    options: &super::record::TextOptions,
+    options: &TextOptions,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
-
-    let encoded = encoded_lines(batches, &options.lines, handle.codec(), options.level())?;
-    handle.write_all_bytes(&encoded)?;
-    Ok(())
+    let encoded = encoded_bodies(batches, options, handle.codec(), options.level())?;
+    handle.write_all_bytes(&encoded)
 }
 
-/// Add `batches` after a handle's current lines.
-///
-/// A stored final line without its terminator is closed first, so the first
-/// appended row never merges into it. An uncoded handle appends in place at
-/// its current end. A content coding is
-/// not appendable, so a coded handle decodes its value, extends it, and
-/// stores the whole coding again - stated rather than hidden, because it is
-/// the coding's cost, not the append's.
-///
-/// # Errors
-///
-/// Returns an error when no column can be read as the line text, or the
-/// handle's read, resize, or write failure.
-pub(crate) fn append_arrow_lines(
+/// Append input `body` values after the leaf's current final line.
+pub(crate) fn append_arrow_reader(
     handle: &mut (impl IOBase + ?Sized),
     batches: BatchReader,
-    options: &super::record::TextOptions,
+    options: &TextOptions,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
-
-    let linesep = options.lines.write_linesep();
+    let terminator = options.output_linesep();
     let codec = handle.codec();
-    if matches!(codec, crate::Codec::Identity) {
-        // Rendering is completed before the first positional mutation, so a
-        // malformed later batch cannot leave a partial append visible.
-        let rendered = encoded_lines(batches, &options.lines, codec, options.level())?;
+    if codec == Codec::Identity {
+        let rendered = encoded_bodies(batches, options, codec, options.level())?;
         let mut offset = handle.size();
-        // A stored final line may lack its terminator; appending straight
-        // after it would merge the first new row into it, so the terminator
-        // is supplied first.
-        if offset > 0 {
-            let mut last = [0_u8; 1];
-            handle.pread_exact(offset - 1, &mut last)?;
-            if Some(&last[0]) != linesep.last() {
-                handle.pwrite_all(offset, linesep)?;
-                offset += linesep.len() as u64;
-            }
+        if offset > 0 && !ends_with(handle, terminator)? {
+            handle.pwrite_all(offset, terminator)?;
+            offset += terminator.len() as u64;
         }
         handle.pwrite_all(offset, &rendered)?;
         return handle.flush();
     }
 
-    // A compressed representation cannot be extended in place. Re-encode its
-    // decoded stream into the one atomic output buffer while retaining only a
-    // transport chunk, then render incoming batches through the same encoder.
     let mut encoded = Vec::new();
     {
         let mut encoder = codec.writer_with_level(&mut encoded, options.level());
-        let mut source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
-        let mut prefix = [0_u8; 64];
-        let prefix_len = source.read(&mut prefix)?;
-        let mut last = None;
-        if prefix_len > 0 {
-            let replayed = std::io::Cursor::new(prefix)
-                .take(prefix_len as u64)
-                .chain(source);
-            let mut decoder = codec.reader(replayed);
-            let mut decoded = vec![0_u8; crate::io::DEFAULT_STREAM_BATCH_SIZE];
+        let mut suffix = Vec::new();
+        if !handle.is_empty() {
+            let source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+            let mut decoder = codec.reader(source);
+            let mut chunk = vec![0; crate::io::DEFAULT_STREAM_BATCH_SIZE];
             loop {
-                let read = decoder.read(&mut decoded)?;
+                let read = decoder.read(&mut chunk)?;
                 if read == 0 {
                     break;
                 }
-                last = Some(decoded[read - 1]);
-                encoder.write_all(&decoded[..read])?;
+                update_suffix(&mut suffix, &chunk[..read], terminator.len());
+                encoder.write_all(&chunk[..read])?;
             }
         }
-        if last.is_some() && last.as_ref() != linesep.last() {
-            encoder.write_all(linesep)?;
+        if !suffix.is_empty() && suffix.as_slice() != terminator {
+            encoder.write_all(terminator)?;
         }
-        render_batches(batches, &options.lines, &mut encoder)?;
+        render_batches(batches, options, &mut encoder)?;
         encoder.finish()?;
     }
-    handle.write_all_bytes(&encoded)?;
-    Ok(())
+    handle.write_all_bytes(&encoded)
 }
 
-/// Render batches through a content encoder into one atomic encoded value.
-fn encoded_lines(
+fn encoded_bodies(
     batches: BatchReader,
-    options: &TextLineOptions,
-    codec: crate::Codec,
+    options: &TextOptions,
+    codec: Codec,
     level: crate::Level,
 ) -> Result<Vec<u8>> {
     let mut encoded = Vec::new();
@@ -733,140 +571,114 @@ fn encoded_lines(
     Ok(encoded)
 }
 
-/// Render every batch into one reused decoded buffer and forward it.
 fn render_batches(
     batches: BatchReader,
-    options: &TextLineOptions,
+    options: &TextOptions,
     target: &mut impl Write,
 ) -> Result<()> {
-    let schema = batches.schema();
-    let columns = LineColumns::resolve(schema.as_ref())?;
-    let linesep = options.write_linesep();
+    let body = BodyColumn::resolve(batches.schema().as_ref())?;
+    let terminator = options.output_linesep();
     let mut rendered = Vec::with_capacity(crate::io::DEFAULT_STREAM_BATCH_SIZE);
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
         rendered.clear();
-        columns.render(&batch, linesep, &mut rendered)?;
+        body.render(
+            &batch,
+            options.linesep().is_none(),
+            terminator,
+            &mut rendered,
+        )?;
         target.write_all(&rendered)?;
     }
     Ok(())
 }
 
-/// Where a batch's line text lives: a `message` column, its optional
-/// `header`, or the single `utf8` column a plain batch holds.
-struct LineColumns {
-    message: usize,
-    header: Option<usize>,
-}
+struct BodyColumn(usize);
 
-impl LineColumns {
-    /// Resolve the line columns once per reader, ASCII case-insensitively -
-    /// the way every cast matches names.
-    fn resolve(schema: &arrow_schema::Schema) -> Result<Self> {
-        let named = |name: &str| {
-            schema
-                .fields()
-                .iter()
-                .position(|field| field.name().eq_ignore_ascii_case(name))
-        };
-        if let Some(message) = named("message") {
-            return Ok(Self {
-                message,
-                header: named("header"),
-            });
-        }
-        let mut texts = schema
+impl BodyColumn {
+    fn resolve(schema: &Schema) -> Result<Self> {
+        let index = schema
             .fields()
             .iter()
-            .enumerate()
-            .filter(|(_, field)| field.data_type() == &arrow_schema::DataType::Utf8);
-        if let (Some((only, _)), None) = (texts.next(), texts.next()) {
-            return Ok(Self {
-                message: only,
-                header: None,
+            .position(|field| field.name().eq_ignore_ascii_case("body"))
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$.body"),
+                reason: SmolStr::new_static("expected a binary body column to encode text rows"),
+            })?;
+        if schema.field(index).data_type() != &ArrowDataType::Binary {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.body"),
+                reason: format_smolstr!(
+                    "expected a binary body column, got {}",
+                    schema.field(index).data_type()
+                ),
             });
         }
-        Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got(
-                "rows a line can be rendered from (a `message` utf8 column, optionally beside a \
-                 `header` one, or exactly one utf8 column)",
-                format_smolstr!(
-                    "columns {:?}",
-                    schema
-                        .fields()
-                        .iter()
-                        .map(|field| field.name().as_str())
-                        .collect::<Vec<_>>()
-                ),
-            ),
-        })
+        Ok(Self(index))
     }
 
-    /// Append one batch's rows to `rendered`, each line terminated.
-    fn render(&self, batch: &RecordBatch, linesep: &[u8], rendered: &mut Vec<u8>) -> Result<()> {
-        use arrow_array::Array as _;
-
-        let message = text_column(batch, self.message)?;
-        let header = self
-            .header
-            .map(|index| text_column(batch, index))
-            .transpose()?;
+    fn render(
+        &self,
+        batch: &RecordBatch,
+        flexible: bool,
+        terminator: &[u8],
+        output: &mut Vec<u8>,
+    ) -> Result<()> {
+        let body = batch
+            .column(self.0)
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$.body"),
+                reason: SmolStr::new_static("expected a binary body column"),
+            })?;
         for row in 0..batch.num_rows() {
-            if let Some(header) = header {
-                if !header.is_null(row) && !header.value(row).is_empty() {
-                    rendered.extend_from_slice(header.value(row).as_bytes());
-                    if !message.is_null(row) && !message.value(row).is_empty() {
-                        rendered.push(b' ');
-                    }
-                }
+            if body.is_null(row) {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$[{row}].body"),
+                    reason: SmolStr::new_static("expected a non-null binary line body"),
+                });
             }
-            if !message.is_null(row) {
-                rendered.extend_from_slice(message.value(row).as_bytes());
+            let value = body.value(row);
+            let contains_break = if flexible {
+                memchr::memchr2(b'\n', b'\r', value).is_some()
+            } else {
+                memchr::memmem::find(value, terminator).is_some()
+            };
+            if contains_break {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$[{row}].body"),
+                    reason: SmolStr::new_static(
+                        "expected one line body without its record terminator",
+                    ),
+                });
             }
-            rendered.extend_from_slice(linesep);
+            output.extend_from_slice(value);
+            output.extend_from_slice(terminator);
         }
         Ok(())
     }
 }
 
-/// Borrow one column as text, or say what it is instead.
-fn text_column(batch: &RecordBatch, index: usize) -> Result<&arrow_array::StringArray> {
-    batch
-        .column(index)
-        .as_any()
-        .downcast_ref::<arrow_array::StringArray>()
-        .ok_or_else(|| Error::InvalidRecord {
-            path: format_smolstr!("$.{}", batch.schema().field(index).name()),
-            reason: crate::text::expected_got(
-                "a utf8 column to render lines from",
-                format_smolstr!("{}", batch.schema().field(index).data_type()),
-            ),
-        })
-}
-
-/// A typed per-row failure: the column path, the row, and the resource.
-fn row_error(line: &TextLine<'_>, column: &str, reason: SmolStr) -> Error {
-    Error::InvalidRecord {
-        path: format_smolstr!("$[{}].{column}", line.rownum() - 1),
-        reason: format_smolstr!("{reason} in row {} of {}", line.rownum(), line.url()),
+fn ends_with(handle: &(impl IOBase + ?Sized), suffix: &[u8]) -> Result<bool> {
+    let size = handle.size();
+    if size < suffix.len() as u64 {
+        return Ok(false);
     }
+    Ok(handle.read_range_bytes(size - suffix.len() as u64, suffix.len())? == suffix)
 }
 
-/// A malformed timestamp inside a matched header, with its byte position.
-fn timestamp_error(line: &TextLine<'_>, text: &str, error: &Error) -> Error {
-    let detail = match error {
-        Error::Parse {
-            position, reason, ..
-        } => format_smolstr!("{reason} at byte {position}"),
-        other => other.to_smolstr(),
-    };
-    row_error(
-        line,
-        "header",
-        format_smolstr!(
-            "expected an ISO datetime opening {:?} ({detail})",
-            crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
-        ),
-    )
+fn update_suffix(suffix: &mut Vec<u8>, bytes: &[u8], width: usize) {
+    if width == 0 {
+        return;
+    }
+    if bytes.len() >= width {
+        suffix.clear();
+        suffix.extend_from_slice(&bytes[bytes.len() - width..]);
+        return;
+    }
+    suffix.extend_from_slice(bytes);
+    if suffix.len() > width {
+        suffix.drain(..suffix.len() - width);
+    }
 }

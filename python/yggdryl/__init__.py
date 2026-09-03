@@ -19,13 +19,13 @@ from ._native import (
     ProtocolMetadata,
     RecordOptions,
     Statement,
+    TextOptions,
     Timezone,
     Uri,
     Url,
     Urn,
     __version__,
     combined,
-    field_from_pattern,
 )
 from . import avro, codec, enums, fields, gzip, iceberg, json, toml, yaml, zlib, zstd
 from .fields import field
@@ -44,6 +44,7 @@ __all__ = [
     "ProtocolMetadata",
     "RecordOptions",
     "Statement",
+    "TextOptions",
     "Timezone",
     "Uri",
     "Url",
@@ -60,7 +61,6 @@ __all__ = [
     "gzip",
     "iceberg",
     "json",
-    "field_from_pattern",
     "toml",
     "yaml",
     "zlib",

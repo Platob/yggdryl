@@ -141,11 +141,12 @@ fn the_declared_field_is_built_from_its_three_parts() {
 fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 
-    let lines = crate::text::TextLineOptions::with_pattern(r"^(?<id>\d+)").unwrap();
-    let text = crate::text::TextOptions::with_lines(lines);
+    let text = crate::text::TextOptions::new()
+        .try_with_rowheader(r"^(?<id>\d+)")
+        .unwrap();
     let options = RecordOptions::from(text.clone());
     let equal = options.clone();
-    let changed = RecordOptions::from(text.lines.clone().with_batch_row_size(3));
+    let changed = RecordOptions::from(text.clone().with_batch_row_size(3));
 
     assert_traits(&text);
     assert_traits(&options);

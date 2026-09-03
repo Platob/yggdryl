@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { Field, IOBase, fields, iceberg } = require('yggdryl')
+const { Field, IOBase, RecordOptions, fields, iceberg } = require('yggdryl')
 
 // A caller's own storage, the way a Node program already holds one: a Map of
 // paths to bytes, reached through `this`. A directory here is a prefix, which
@@ -352,12 +352,17 @@ test('records round trip over storage that is only a Map', () => {
     2,
   )
 
-  // Text lines read off a handler-backed handle too: the iterator rebuilds
-  // the handle, which is where keeping the file system matters.
-  const lines = IOBase.fromArrowFs(handler, 'bucket/rows.jsonl')
+  // Plain text reaches the same generic record path over a handler-backed
+  // handle; each physical line is the binary body of one row.
+  const lines = IOBase.fromArrowFs(handler, 'bucket/rows.txt')
   lines.writeText('{"id":1}\n{"id":2}\n')
   lines.flush()
-  assert.deepEqual([...lines.readLines()], ['{"id":1}', '{"id":2}'])
+  assert.deepEqual(
+    [...lines.readRecords(RecordOptions.from('text/plain'))].map((row) =>
+      Buffer.from(row.body).toString(),
+    ),
+    ['{"id":1}', '{"id":2}'],
+  )
 })
 
 test("a handler that throws surfaces its own message", () => {

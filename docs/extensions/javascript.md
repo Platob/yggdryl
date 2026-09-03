@@ -42,7 +42,6 @@ declarations are checked against the tests that use them.
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
 | `IOBase` | [io](../io.md) |
 | `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
-| `fieldFromPattern` | [io](../io.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
 | `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |

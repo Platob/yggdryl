@@ -245,7 +245,7 @@ impl IOBase for Folder {
         // `name` is URI-path text, not a raw object name: that is what the
         // reference backend resolves, what the trait documents (`.` and `..`
         // behave as `UriPath::joinpath` makes them), and what every generic
-        // caller hands over - `read_arrow_lines` reopens a leaf through
+        // caller hands over - a generic media read reopens a leaf through
         // `parent().child_by_path(url.file_name())`, and a folder write routes
         // rows by the segments under its root. Encoding here would escape
         // those escapes and address a different object. A caller holding a

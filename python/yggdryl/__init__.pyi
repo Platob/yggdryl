@@ -11,13 +11,13 @@ from ._native import (
     ProtocolMetadata as ProtocolMetadata,
     RecordOptions as RecordOptions,
     Statement as Statement,
+    TextOptions as TextOptions,
     Timezone as Timezone,
     Uri as Uri,
     Url as Url,
     Urn as Urn,
     __version__ as __version__,
     combined as combined,
-    field_from_pattern as field_from_pattern,
 )
 from . import (
     avro as avro,

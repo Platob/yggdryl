@@ -1,178 +1,293 @@
-"""The text-line surface: readers described by configuration, not by code."""
+"""Plain text uses the ordinary record-media surface."""
 
 from __future__ import annotations
 
+import copy
+import datetime
+import gzip as stdlib_gzip
 import pathlib
+import pickle
 
+import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, IOBase, field_from_pattern, yaml
+from yggdryl import DataType, IOBase, RecordOptions, TextOptions, Timezone
 
-PATTERN = r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]"
-
-LOG = (
-    "2024-02-01T10:00:00 [ERROR] boom\n"
-    "\tat Handler.invoke(Handler.java:42)\n"
-    "2024-02-01T10:00:01 [INFO] fine\n"
-)
+ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 
 
-def handle(tmp_path: pathlib.Path, text: str, name: str = "app.log") -> IOBase:
+def text_options() -> TextOptions:
+    return TextOptions()
+
+
+def handle(tmp_path: pathlib.Path, data: bytes, name: str = "app.log") -> IOBase:
     target = tmp_path / name
-    # Keep line terminators byte-exact on Windows as well as POSIX: these
-    # tests exercise CR, LF, and CRLF independently, so host newline
-    # translation would change the fixture before yggdryl sees it.
-    target.write_bytes(text.encode())
+    target.write_bytes(data)
     return IOBase(target)
 
 
-def test_records_read_as_text_and_group_by_the_pattern(tmp_path: pathlib.Path) -> None:
-    records = list(handle(tmp_path, LOG).read_lines(PATTERN))
-    assert len(records) == 2
-    # The stack trace joined its entry rather than becoming a record.
-    assert "Handler.java" in records[0]
+def test_text_options_are_flat_validated_values() -> None:
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = r"^\s+"
+    options.rstrip = r"\s+$"
+    options.linesep = r"\r\n"
+    options.autotype = False
+    options.timezone = "+02:00"
+    options.batch_row_size = 7
+
+    assert options.rowheader == ROWHEADER
+    assert options.lstrip == r"^\s+"
+    assert options.rstrip == r"\s+$"
+    assert options.linesep == b"\r\n"
+    assert options.autotype is False
+    assert options.timezone == Timezone("+02:00")
+    assert options.batch_row_size == 7
+
+    for rebuilt in (copy.copy(options), copy.deepcopy(options), pickle.loads(pickle.dumps(options))):
+        assert rebuilt == options
+        assert rebuilt.stable_hash() == options.stable_hash()
+
+    constructor, [state] = options.__reduce__()
+    state["header"] = state.pop("rowheader")
+    with pytest.raises(ValueError, match='missing "rowheader"'):
+        constructor(state)
+
+    with pytest.raises(ValueError, match="distinct from url, rownum, and body"):
+        options.rowheader = r"(?<body>.+)"
+    with pytest.raises(ValueError, match="valid byte regex"):
+        options.lstrip = "("
+
+    arrow = RecordOptions("application/vnd.apache.arrow.stream")
+    assert not hasattr(arrow, "autotype")
+    with pytest.raises(ValueError, match="text"):
+        arrow.timezone = Timezone.UTC
+
+    generic_text = RecordOptions("text/plain")
+    generic_text.timezone = Timezone.UTC
+    assert generic_text.timezone == Timezone.UTC
 
 
-def test_the_terminator_is_flexible_unset_and_exact_when_pinned(
+def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
     tmp_path: pathlib.Path,
 ) -> None:
-    mixed = "lf\ncrlf\r\ncr\rlast"
-    assert list(handle(tmp_path, mixed).read_lines()) == ["lf", "crlf", "cr", "last"]
+    source = handle(
+        tmp_path,
+        b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
+    )
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = r"^\s+"
+    options.rstrip = r"\s+$"
 
-    # Pinned, a lone `\n` is content rather than a break.
-    assert list(handle(tmp_path, mixed).read_lines(linesep=r"\r\n")) == [
-        "lf\ncrlf",
-        "cr\rlast",
+    reader = source.read_arrow_reader(options=options)
+    assert isinstance(reader, pa.RecordBatchReader)
+    assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
+    assert reader.schema.field("url").type == pa.string()
+    assert reader.schema.field("rownum").type == pa.int64()
+    assert reader.schema.field("body").type == pa.binary()
+    assert reader.schema.field("level").type == pa.string()
+    assert reader.schema.field("id").type == pa.int64()
+
+    table = reader.read_all()
+    assert table.column("rownum").to_pylist() == [1, 2, 3]
+    assert table.column("body").to_pylist() == [b"first", b"second", b"plain"]
+    assert table.column("level").to_pylist() == ["INFO", "WARN", None]
+    assert table.column("id").to_pylist() == [7, 9, None]
+    assert all(url.endswith("app.log") for url in table.column("url").to_pylist())
+
+    assert list(source.read_records(options=options)) == [
+        {
+            "url": table.column("url")[0].as_py(),
+            "rownum": 1,
+            "body": b"first",
+            "level": "INFO",
+            "id": 7,
+        },
+        {
+            "url": table.column("url")[1].as_py(),
+            "rownum": 2,
+            "body": b"second",
+            "level": "WARN",
+            "id": 9,
+        },
+        {
+            "url": table.column("url")[2].as_py(),
+            "rownum": 3,
+            "body": b"plain",
+            "level": None,
+            "id": None,
+        },
     ]
 
 
-def test_writing_is_deterministic_and_round_trips(tmp_path: pathlib.Path) -> None:
-    target = IOBase(tmp_path / "out.log")
-    # An iterable, never a list the binding materializes first.
-    target.write_lines(f"row-{index}" for index in range(1_000))
-    target.append_lines(["tail"])
-
-    assert target.read_bytes().endswith(b"row-999\ntail\n")
-    records = list(target.read_lines())
-    assert len(records) == 1_001
-    assert records[-1] == "tail"
-
-    # A pinned terminator is written verbatim and read back exactly.
-    pinned = IOBase(tmp_path / "crlf.log")
-    pinned.write_lines(["one", "two"], linesep=r"\r\n")
-    assert pinned.read_bytes() == b"one\r\ntwo\r\n"
-    assert list(pinned.read_lines(linesep=r"\r\n")) == ["one", "two"]
-
-
-def test_a_reader_is_fully_described_by_a_configuration_document(
+def test_rowheader_removal_and_stripping_are_independent_edge_operations(
     tmp_path: pathlib.Path,
 ) -> None:
-    # No Rust, no Python callbacks, no per-row Python: a document is the reader.
-    document = """
-pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
-byte_size: 1048576
-batch_row_size: 4096
-rstrip: ascii
-timestamp_capture: stamp
-capture_types:
-  level: utf8
-custom_fields:
-  source: gateway
-"""
-    options = yaml.loads(document)
+    source = handle(tmp_path, b"left [INFO] id=7 right --\n")
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = r"^left\s+"
+    options.rstrip = r"\s+--$"
 
-    # The schema answers from the document alone, with no resource in sight -
-    # so the table exists before the first log line does.
-    schema = field_from_pattern(options=options)
-    assert schema.name == "row"
-    assert schema["level"].dtype == DataType("utf8")
-    assert schema["source"].dtype == DataType("utf8")
-
-    reader = handle(tmp_path, LOG).read_arrow_lines(options=options)
-    # The reader emits exactly the schema the builder answered from the
-    # document, so the table can be created before any resource exists.
-    assert reader.schema.names == [field.name for field in schema]
-    table = reader.read_all()
-    assert table.num_rows == 2
-    assert table.column("level").to_pylist() == ["ERROR", "INFO"]
-    assert table.column("source").to_pylist() == ["gateway", "gateway"]
-    assert table.column("message").to_pylist()[1] == "fine"
+    row = next(source.read_records(options=options))
+    assert row["body"] == b"right"
+    assert row["level"] == "INFO"
+    assert row["id"] == 7
 
 
-def test_keywords_refine_a_document_and_both_validate_the_same_way(
+def test_autotype_can_be_disabled_and_fixes_types_after_the_first_batch(
     tmp_path: pathlib.Path,
 ) -> None:
-    reader = handle(tmp_path, LOG).read_arrow_lines(PATTERN, batch_row_size=1)
-    assert [batch.num_rows for batch in reader] == [1, 1]
+    source = handle(tmp_path, b"1\nword\n", "values.txt")
 
-    with pytest.raises(ValueError, match="a known option"):
-        handle(tmp_path, LOG).read_arrow_lines(options={"batch-row-size": 1})
-    with pytest.raises(ValueError, match="registry knows"):
-        handle(tmp_path, LOG).read_arrow_lines(PATTERN, timezone="Not/AZone")
+    strings = text_options()
+    strings.rowheader = r"(?<value>\S+)"
+    strings.autotype = False
+    table = source.read_arrow_reader(options=strings).read_all()
+    assert table.schema.field("value").type == pa.string()
+    assert table.column("value").to_pylist() == ["1", "word"]
+
+    adaptive = text_options()
+    adaptive.rowheader = r"(?<value>\S+)"
+    adaptive.batch_row_size = 1
+    reader = source.read_arrow_reader(options=adaptive)
+    assert reader.schema.field("value").type == pa.int64()
+    assert reader.read_next_batch().column("value").to_pylist() == [1]
+    with pytest.raises(ValueError, match="inferred datatype int64"):
+        reader.read_next_batch()
 
 
-def test_log_mode_needs_no_expression_anywhere(tmp_path: pathlib.Path) -> None:
-    table = handle(tmp_path, LOG).read_arrow_lines(logs=True).read_all()
-    assert table.num_rows == 2
-    # The fixed, always-emitted token columns.
-    assert table.column("level").to_pylist() == ["ERROR", "INFO"]
-    assert table.column("logger").to_pylist() == [None, None]
-    # And the schema is answerable from the options alone.
-    assert field_from_pattern(logs=True)["level"].dtype == DataType("utf8")
-
-
-def test_both_batch_bounds_apply_and_the_first_to_trip_wins(
+def test_timezone_is_used_only_for_autotyped_offset_free_timestamps(
     tmp_path: pathlib.Path,
 ) -> None:
-    text = "".join(f"2024-02-01T10:00:00 [INFO] row {index}\n" for index in range(50))
-    source = handle(tmp_path, text)
+    source = handle(tmp_path, b"2024-02-01T00:00:00 event\n")
+    options = text_options()
+    options.rowheader = r"(?<stamp>\S+)"
+    options.timezone = "+02:00"
 
-    by_rows = source.read_arrow_lines(PATTERN, batch_row_size=10)
-    assert [batch.num_rows for batch in by_rows] == [10] * 5
+    table = source.read_arrow_reader(options=options).read_all()
+    dtype = table.schema.field("stamp").type
+    assert pa.types.is_timestamp(dtype)
+    assert dtype.tz == "+02:00"
+    value = table.column("stamp")[0].as_py()
+    assert value.utcoffset() == datetime.timedelta(hours=2)
+    assert value.replace(tzinfo=None) == datetime.datetime(2024, 2, 1)
 
-    # `byte_size` counts decoded *input* bytes, not Arrow buffer memory.
-    by_bytes = source.read_arrow_lines(PATTERN, byte_size=100)
-    counts = [batch.num_rows for batch in by_bytes]
-    assert sum(counts) == 50
-    assert max(counts) < 10
 
-
-def test_a_zone_makes_unix_a_real_instant_and_unset_changes_nothing(
+def test_retained_text_options_parse_the_real_execution_row(
     tmp_path: pathlib.Path,
 ) -> None:
-    source = handle(tmp_path, "2024-02-01T00:00:00 [INFO] x\n")
-    naive = source.read_arrow_lines(PATTERN).read_all().column("unix").to_pylist()
-    zoned = (
-        source.read_arrow_lines(PATTERN, timezone="+02:00")
-        .read_all()
-        .column("unix")
-        .to_pylist()
+    source = handle(
+        tmp_path,
+        b"2026-08-29 00:00:00.434_958 "
+        b"[77-2f3e6ff7:9f4d2a08b1:128] "
+        b"[ModuleFailFastFilterChecker] (DEBUG) Execution report "
+        b"(execId: 20260828180000369318, from session:\n",
+        "execution.log",
     )
-    assert naive == [1_706_745_600_000_000_000]
-    assert zoned == [naive[0] - 2 * 3_600 * 1_000_000_000]
+    options = TextOptions()
+    options.rowheader = (
+        r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}_\d{3}) "
+        r"\[(?<thread>[^]]+)\] \[(?<module>[^]]+)\] \((?<level>[A-Z]+)\) "
+    )
+    options.timezone = Timezone.UTC
+
+    assert source.into_text(options) is source
+    assert source.into_text() is source
+    [row] = list(source.read_records())
+
+    assert row["stamp"] == datetime.datetime(
+        2026, 8, 29, 0, 0, 0, 434_958, tzinfo=datetime.timezone.utc
+    )
+    assert row["thread"] == "77-2f3e6ff7:9f4d2a08b1:128"
+    assert row["module"] == "ModuleFailFastFilterChecker"
+    assert row["level"] == "DEBUG"
+    assert row["body"] == (
+        b"Execution report (execId: 20260828180000369318, from session:"
+    )
 
 
-def test_a_folder_of_mixed_codings_reads_uniformly(tmp_path: pathlib.Path) -> None:
-    import gzip as stdlib_gzip
+def test_generic_record_writes_encode_only_binary_body(tmp_path: pathlib.Path) -> None:
+    target = IOBase(tmp_path / "out.txt")
+    options = text_options()
 
+    target.overwrite_records(({"body": value} for value in (b"one", b"two")), options=options)
+    target.append_records([{"body": b"three"}], options=options)
+    assert target.read_bytes() == b"one\ntwo\nthree\n"
+    assert [row["body"] for row in target.read_records(options=options)] == [
+        b"one",
+        b"two",
+        b"three",
+    ]
+
+    with pytest.raises(ValueError, match="without its record terminator"):
+        target.append_records([{"body": b"bad\nline"}], options=options)
+
+
+def test_pinned_line_separator_round_trips_through_generic_records(
+    tmp_path: pathlib.Path,
+) -> None:
+    target = IOBase(tmp_path / "rows.txt")
+    options = text_options()
+    options.linesep = r"\r\n"
+
+    target.overwrite_records([{"body": b"one"}, {"body": b"two"}], options=options)
+    assert target.read_bytes() == b"one\r\ntwo\r\n"
+    assert [row["body"] for row in target.read_records(options=options)] == [
+        b"one",
+        b"two",
+    ]
+
+
+def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path) -> None:
     root = tmp_path / "logs"
     root.mkdir()
-    (root / "a.log").write_text("2024-02-01T10:00:00 [INFO] from a\n")
+    (root / "a.log").write_bytes(b"[INFO] id=1 from a\n")
     (root / "b.log.gz").write_bytes(
-        stdlib_gzip.compress(b"2024-02-01T11:00:00 [WARN] from b\n")
+        stdlib_gzip.compress(b"[WARN] id=2 from b\n")
     )
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = r"^\s+"
 
-    table = IOBase(root).read_arrow_lines(PATTERN).read_all()
-    # Each leaf decoded by its own media type; nothing named a codec.
-    assert table.column("message").to_pylist() == ["from a", "from b"]
-    # `rownum` restarts per leaf, and each row names its own resource.
-    assert table.column("rownum").to_pylist() == [1, 1]
-    assert len({url for url in table.column("url").to_pylist()}) == 2
+    rows = list(IOBase(root).read_records(options=options))
+    assert [row["rownum"] for row in rows] == [1, 1]
+    assert [row["body"] for row in rows] == [b"from a", b"from b"]
+    assert [row["id"] for row in rows] == [1, 2]
+    assert [pathlib.PurePosixPath(row["url"]).name for row in rows] == [
+        "a.log",
+        "b.log.gz",
+    ]
 
 
-def test_an_absent_resource_reads_as_empty_with_the_schema_still_answered(
+def test_absence_and_zero_row_bounds_keep_an_adaptive_schema(
     tmp_path: pathlib.Path,
 ) -> None:
-    reader = IOBase(tmp_path / "never.log").read_arrow_lines(PATTERN)
-    assert reader.schema.field("url").name == "url"
+    options = text_options()
+    options.rowheader = ROWHEADER
+    reader = IOBase(tmp_path / "missing.log").read_arrow_reader(options=options)
+
+    assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
+    assert reader.schema.field("level").type == pa.string()
+    assert reader.schema.field("id").type == pa.string()
     assert reader.read_all().num_rows == 0
+
+    options.max_row_size = 0
+    reader = handle(tmp_path, b"[INFO] id=1 hidden\n").read_arrow_reader(options=options)
+    assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
+    assert reader.read_all().num_rows == 0
+
+
+def test_declared_text_field_uses_the_shared_projection_and_cast(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(tmp_path, b"[INFO] id=7 body\n")
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = r"^\s+"
+    options.dtype = "struct<body: binary not null, id: int64>"
+
+    field = source.read_arrow_field(options=options)
+    assert field.dtype == DataType("struct<body: binary not null, id: int64>")
+    assert list(source.read_records(options=options)) == [{"body": b"body", "id": 7}]

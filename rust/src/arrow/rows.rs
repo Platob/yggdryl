@@ -51,6 +51,37 @@ where
     }))
 }
 
+/// Widen a fallible stream of core scalar rows into Arrow batches.
+pub(crate) fn result_reader<I>(
+    field: &Field,
+    rows: I,
+    batch_row_size: Option<usize>,
+    commit_row_size: Option<usize>,
+    max_row_size: Option<u64>,
+) -> Result<BatchReader>
+where
+    I: IntoIterator<Item = crate::Result<Scalar>>,
+    I::IntoIter: Send + 'static,
+{
+    reader(
+        field,
+        rows.into_iter().map(FallibleScalar),
+        batch_row_size,
+        commit_row_size,
+        max_row_size,
+    )
+}
+
+struct FallibleScalar(crate::Result<Scalar>);
+
+impl TryFrom<FallibleScalar> for Scalar {
+    type Error = crate::Error;
+
+    fn try_from(value: FallibleScalar) -> crate::Result<Self> {
+        value.0
+    }
+}
+
 /// The one bounded row-to-batch iterator.
 struct Rows<I> {
     rows: I,

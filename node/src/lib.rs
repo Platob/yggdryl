@@ -26,6 +26,7 @@ mod iceberg;
 mod io;
 mod media;
 mod record;
+mod text;
 mod timezone;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
@@ -68,6 +69,7 @@ pub use iceberg::{
 };
 pub use io::JsIOBase;
 pub use media::{JsMediaType, JsMimeType};
+pub use text::JsTextOptions;
 pub use timezone::{JsTimezone, TimezoneAlias};
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
 

@@ -49,11 +49,13 @@ use pyo3::types::{
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::generic::{IORecordOptions, RecordOptions};
+use yggdryl::text::TextOptions as CoreTextOptions;
 use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
 use crate::datatype::{PyDataType, core_dtype_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::media::{PyMimeType, core_media_type_from_value};
+use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 
 /// Read a core root Field out of anything Python describes rows with.
@@ -1045,7 +1047,7 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
 /// so it turns a read of a hundred rows into a successful read of none. `None`
 /// is how "no bound" is spelled, and it is already available.
 fn set_batch_row_size_option(
-    options: &mut RecordOptions,
+    options: &mut impl IORecordOptions,
     batch_row_size: Option<usize>,
 ) -> PyResult<()> {
     if batch_row_size == Some(0) {
@@ -1096,6 +1098,29 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     Err(PyTypeError::new_err(
         "sync_marker must be bytes, bytearray, memoryview, or None",
     ))
+}
+
+/// Parse one text row terminator without losing arbitrary byte values.
+fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::LineSep> {
+    if let Ok(value) = value.extract::<&str>() {
+        return value.parse().map_err(value_error);
+    }
+    let bytes = if let Ok(value) = value.cast::<PyBytes>() {
+        value.as_bytes().to_vec()
+    } else if let Ok(value) = value.cast::<PyByteArray>() {
+        value.to_vec()
+    } else if value.cast::<PyMemoryView>().is_ok() {
+        value
+            .call_method0("tobytes")?
+            .cast_into::<PyBytes>()?
+            .as_bytes()
+            .to_vec()
+    } else {
+        return Err(PyTypeError::new_err(
+            "linesep must be str, bytes, bytearray, memoryview, or None",
+        ));
+    };
+    yggdryl::text::LineSep::new(bytes).map_err(value_error)
 }
 
 /// Read one required key from private `RecordOptions` pickle state.
@@ -1161,6 +1186,22 @@ impl PyRecordOptions {
         state.set_item("merge_by_names", self.inner.merge_by_names().to_vec())?;
         state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
         state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
+        if let RecordOptions::Text(options) = &self.inner {
+            state.set_item("rowheader", options.rowheader())?;
+            state.set_item("lstrip", options.lstrip())?;
+            state.set_item("rstrip", options.rstrip())?;
+            state.set_item(
+                "linesep",
+                options
+                    .linesep()
+                    .map(|linesep| PyBytes::new(py, linesep.as_bytes())),
+            )?;
+            state.set_item("autotype", options.autotype())?;
+            state.set_item(
+                "timezone",
+                options.timezone().cloned().map(PyTimezone::from_core),
+            )?;
+        }
         if let Some(block_codec) = self.inner.avro_block_codec() {
             state.set_item("block_codec", block_codec)?;
         }
@@ -1185,6 +1226,9 @@ impl PyRecordOptions {
 /// A caller who only wants to name the encoding passes the media type itself,
 /// which is the same derivation `IOBase.record_options` performs.
 pub(crate) fn core_record_options_from_value(value: &Bound<'_, PyAny>) -> PyResult<RecordOptions> {
+    if let Ok(options) = value.extract::<PyRef<'_, PyTextOptions>>() {
+        return Ok(options.inner.clone().into());
+    }
     if let Ok(options) = value.extract::<PyRef<'_, PyRecordOptions>>() {
         return Ok(options.inner.clone());
     }
@@ -1237,6 +1281,40 @@ impl PyRecordOptions {
         options.set_filter_partitions(
             required_record_pickle_item(state, "filter_partitions")?.extract()?,
         )?;
+
+        if let RecordOptions::Text(text) = &mut options.inner {
+            let value = required_record_pickle_item(state, "rowheader")?;
+            let value = (!value.is_none())
+                .then(|| value.extract::<String>())
+                .transpose()?;
+            text.set_rowheader(value.as_deref()).map_err(value_error)?;
+
+            let value = required_record_pickle_item(state, "lstrip")?;
+            let value = (!value.is_none())
+                .then(|| value.extract::<String>())
+                .transpose()?;
+            text.set_lstrip(value.as_deref()).map_err(value_error)?;
+
+            let value = required_record_pickle_item(state, "rstrip")?;
+            let value = (!value.is_none())
+                .then(|| value.extract::<String>())
+                .transpose()?;
+            text.set_rstrip(value.as_deref()).map_err(value_error)?;
+
+            let value = required_record_pickle_item(state, "linesep")?;
+            let linesep = (!value.is_none())
+                .then(|| line_sep_from_value(&value))
+                .transpose()?;
+            text.set_linesep(linesep);
+
+            text.set_autotype(required_record_pickle_item(state, "autotype")?.extract()?);
+
+            let value = required_record_pickle_item(state, "timezone")?;
+            let timezone = (!value.is_none())
+                .then(|| core_timezone_from_value(&value))
+                .transpose()?;
+            text.set_timezone(timezone);
+        }
 
         if let Some(value) = state.get_item("block_codec")? {
             options.set_block_codec(value.extract()?)?;
@@ -1468,6 +1546,19 @@ impl PyRecordOptions {
         Ok(())
     }
 
+    /// The timezone applied while autotyping offset-free timestamps.
+    #[getter]
+    fn timezone(&self) -> Option<PyTimezone> {
+        self.inner.timezone().cloned().map(PyTimezone::from_core)
+    }
+
+    #[setter]
+    fn set_timezone(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let timezone = value.map(core_timezone_from_value).transpose()?;
+        self.inner.set_timezone(timezone).map_err(value_error)
+    }
+
     /// The Avro block codec name, or `None` for another encoding.
     #[getter]
     fn block_codec(&self) -> Option<&str> {
@@ -1579,6 +1670,349 @@ impl PyRecordOptions {
         Ok(format!(
             "RecordOptions._from_pickle({})",
             state.repr()?.to_str()?
+        ))
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.pickle_state(py)?.into_any().unbind(),),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// Flat settings for physical-line `text/plain` records.
+#[pyclass(name = "TextOptions", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyTextOptions {
+    pub(crate) inner: CoreTextOptions,
+    hash_locked: bool,
+}
+
+impl Clone for PyTextOptions {
+    fn clone(&self) -> Self {
+        Self::from_core(self.inner.clone())
+    }
+}
+
+impl PyTextOptions {
+    pub(crate) const fn from_core(inner: CoreTextOptions) -> Self {
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "hashed TextOptions are frozen; copy them before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        PyRecordOptions::from_core(self.inner.clone().into()).pickle_state(py)
+    }
+}
+
+#[pymethods]
+impl PyTextOptions {
+    #[new]
+    fn new() -> Self {
+        Self::from_core(CoreTextOptions::new())
+    }
+
+    #[staticmethod]
+    fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
+        match PyRecordOptions::_from_pickle(state)?.inner {
+            RecordOptions::Text(options) => Ok(Self::from_core(*options)),
+            _ => Err(PyValueError::new_err(
+                "TextOptions pickle state must name text/plain",
+            )),
+        }
+    }
+
+    #[getter]
+    #[allow(clippy::unused_self)]
+    fn mime_type(&self) -> PyMimeType {
+        PyMimeType::from_core(yggdryl::MimeType::PLAIN_TEXT)
+    }
+
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    #[setter]
+    fn set_name(&mut self, name: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_name(name.into());
+        Ok(())
+    }
+
+    #[getter]
+    fn dtype(&self) -> Option<PyDataType> {
+        self.inner.dtype().cloned().map(PyDataType::from_inner)
+    }
+
+    #[setter]
+    fn set_dtype(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_dtype(value.map(core_dtype_from_value).transpose()?);
+        Ok(())
+    }
+
+    #[getter]
+    fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        metadata_into_dict(py, self.inner.metadata())
+    }
+
+    #[setter]
+    fn set_metadata(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_metadata(metadata_from_value(value)?);
+        Ok(())
+    }
+
+    #[getter]
+    fn field(&self) -> Option<PyField> {
+        self.inner.field().map(PyField::from_inner)
+    }
+
+    #[setter]
+    fn set_field(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let field = core_root_field_from_value(value, self.inner.name())?;
+        self.inner.set_field(field);
+        Ok(())
+    }
+
+    #[getter]
+    fn safe(&self) -> bool {
+        self.inner.safe()
+    }
+
+    #[setter]
+    fn set_safe(&mut self, safe: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_safe(safe);
+        Ok(())
+    }
+
+    #[getter]
+    fn batch_row_size(&self) -> Option<usize> {
+        self.inner.batch_row_size()
+    }
+
+    #[setter]
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) -> PyResult<()> {
+        self.require_mutable()?;
+        set_batch_row_size_option(&mut self.inner, batch_row_size)
+    }
+
+    #[getter]
+    fn commit_row_size(&self) -> Option<usize> {
+        self.inner.commit_row_size()
+    }
+
+    #[setter]
+    fn set_commit_row_size(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let rows = value
+            .map(|value| {
+                if value.is_instance_of::<PyBool>() {
+                    return Err(PyTypeError::new_err(
+                        "commit_row_size must be an integer or None, not bool",
+                    ));
+                }
+                value.extract::<usize>()
+            })
+            .transpose()?;
+        self.inner.set_commit_row_size(rows);
+        Ok(())
+    }
+
+    #[getter]
+    fn max_row_size(&self) -> Option<u64> {
+        self.inner.max_row_size()
+    }
+
+    #[setter]
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_max_row_size(max_row_size);
+        Ok(())
+    }
+
+    #[getter]
+    fn max_byte_size(&self) -> Option<u64> {
+        self.inner.max_byte_size()
+    }
+
+    #[setter]
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_max_byte_size(max_byte_size);
+        Ok(())
+    }
+
+    #[getter]
+    fn level(&self) -> u8 {
+        self.inner.level().get()
+    }
+
+    #[setter]
+    fn set_level(&mut self, level: u8) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_level(Level::new(level));
+        Ok(())
+    }
+
+    #[getter]
+    fn merge_by_names(&self) -> Vec<String> {
+        self.inner.merge_by_names().to_vec()
+    }
+
+    #[setter]
+    fn set_merge_by_names(&mut self, names: Vec<String>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_merge_by_names(names);
+        Ok(())
+    }
+
+    #[getter]
+    fn select_by_names(&self) -> Vec<String> {
+        self.inner.select_by_names().to_vec()
+    }
+
+    #[setter]
+    fn set_select_by_names(&mut self, names: Vec<String>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_select_by_names(names);
+        Ok(())
+    }
+
+    #[getter]
+    fn filter_partitions(&self) -> Vec<(String, String)> {
+        self.inner.filter_partitions().to_vec()
+    }
+
+    #[setter]
+    fn set_filter_partitions(&mut self, partitions: Vec<(String, String)>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_filter_partitions(partitions);
+        Ok(())
+    }
+
+    /// The regex searched for a row header in each physical line.
+    #[getter]
+    fn rowheader(&self) -> Option<&str> {
+        self.inner.rowheader()
+    }
+
+    #[setter]
+    fn set_rowheader(&mut self, rowheader: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_rowheader(rowheader).map_err(value_error)
+    }
+
+    #[getter]
+    fn lstrip(&self) -> Option<&str> {
+        self.inner.lstrip()
+    }
+
+    #[setter]
+    fn set_lstrip(&mut self, lstrip: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_lstrip(lstrip).map_err(value_error)
+    }
+
+    #[getter]
+    fn rstrip(&self) -> Option<&str> {
+        self.inner.rstrip()
+    }
+
+    #[setter]
+    fn set_rstrip(&mut self, rstrip: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_rstrip(rstrip).map_err(value_error)
+    }
+
+    #[getter]
+    fn linesep<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .linesep()
+            .map(|linesep| PyBytes::new(py, linesep.as_bytes()))
+    }
+
+    #[setter]
+    fn set_linesep(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_linesep(value.map(line_sep_from_value).transpose()?);
+        Ok(())
+    }
+
+    #[getter]
+    fn autotype(&self) -> bool {
+        self.inner.autotype()
+    }
+
+    #[setter]
+    fn set_autotype(&mut self, autotype: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_autotype(autotype);
+        Ok(())
+    }
+
+    #[getter]
+    fn timezone(&self) -> Option<PyTimezone> {
+        self.inner.timezone().cloned().map(PyTimezone::from_core)
+    }
+
+    #[setter]
+    fn set_timezone(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_timezone(value.map(core_timezone_from_value).transpose()?);
+        Ok(())
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
+            "TextOptions._from_pickle({})",
+            self.pickle_state(py)?.repr()?.to_str()?
         ))
     }
 

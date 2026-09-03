@@ -163,12 +163,6 @@ name = "combined"
 path = "tests/combined.rs"
 required-features = ["arrow"]
 
-# A counting global allocator, and a program has exactly one - so the
-# hot-path allocation claims are pinned in a target of their own.
-[[test]]
-name = "allocations"
-path = "tests/allocations.rs"
-
 [[test]]
 name = "batch_cast"
 required-features = ["arrow"]

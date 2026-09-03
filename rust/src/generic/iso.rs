@@ -312,18 +312,6 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
     Ok((count, unit, end))
 }
 
-/// Parse a naive datetime opening `text`, returning the end position too.
-///
-/// This is the shape a log parser needs: an entry's header starts with its
-/// timestamp and continues with the entry, so the datetime is read off the
-/// front and whatever follows stays the caller's business. It is also what
-/// makes timestamp-anchored record detection exact where a regex is
-/// approximate - a successful parse *is* the opener, and it yields the header's
-/// span for free.
-pub(crate) fn parse_datetime_prefix(text: &str) -> Result<(i64, TimeUnit, usize)> {
-    parse_datetime_at(text, "datetime")
-}
-
 /// Parse a naive datetime into a count of `unit` since the Unix epoch.
 pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
     let (count, unit, end) = parse_datetime_at(text, "datetime")?;

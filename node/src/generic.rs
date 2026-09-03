@@ -19,6 +19,7 @@ use crate::media::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
 };
 use crate::napi_error;
+use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// The settings one record read or write takes.
 #[napi(js_name = "RecordOptions")]
@@ -321,6 +322,19 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
         self.inner.set_filter_partitions(filter_partitions);
+    }
+
+    /// The timezone applied while autotyping offset-free timestamps.
+    #[napi(getter)]
+    pub fn timezone(&self) -> Option<JsTimezone> {
+        self.inner.timezone().cloned().map(JsTimezone::from_core)
+    }
+
+    /// Set or clear the timezone for autotyped timestamps.
+    #[napi(setter)]
+    pub fn set_timezone(&mut self, value: Option<TimezoneInput<'_>>) -> Result<()> {
+        let timezone = value.map(timezone_from_input).transpose()?;
+        self.inner.set_timezone(timezone).map_err(napi_error)
     }
 
     /// The Avro block codec name, or `null` for another encoding.

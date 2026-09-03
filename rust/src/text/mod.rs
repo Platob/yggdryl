@@ -33,9 +33,7 @@ pub use io::{
     into_io_all_with_formatting, into_io_with_formatting, into_io_with_level,
 };
 pub use limits::Limits;
-#[cfg(feature = "arrow")]
-pub use line::TextOptions;
-pub use line::{LineSep, Opening, Strip, Text, TextLine, TextLineBuf, TextLineOptions, TextLines};
+pub use line::{LineSep, Text, TextOptions};
 pub use loading::Loading;
 pub use placeholder::Placeholders;
 

@@ -937,12 +937,22 @@ mod wrappers {
             .unwrap();
         let handle = File::from_location(filesystem, "bucket/app.log.gz").unwrap();
 
-        let mut reader = handle.read_lines().unwrap();
-        let mut lines: Vec<String> = Vec::new();
-        while let Some(line) = reader.next() {
-            lines.push(line.unwrap().text().unwrap().to_owned());
-        }
-        assert_eq!(lines, ["alpha", "beta", "gamma"]);
+        let options = handle.record_options().unwrap();
+        let batch = handle
+            .read_arrow_reader(&options)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let body = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<arrow_array::BinaryArray>()
+            .unwrap();
+        assert_eq!(
+            body.iter().collect::<Vec<_>>(),
+            [Some(&b"alpha"[..]), Some(&b"beta"[..]), Some(&b"gamma"[..])]
+        );
     }
 }
 

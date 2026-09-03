@@ -221,7 +221,11 @@ assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 
 ## Media: a record encoding over a handle
 
-`Media` is to a record encoding what `Holder` is to a handle. `Media::open` reads the handle's declared media type and binds the implementation it names - [`ipc`](ipc.md) for Arrow IPC, [`parquet`](parquet.md) for Parquet, [`text`](text.md#text-media-and-arrow-batches) for plain text read and written as lines. Nothing is read to decide.
+`Media` is to a specialized record encoding what `Holder` is to a handle.
+`Media::open` reads the handle's declared media type and binds the IPC,
+Parquet, or Avro implementation it names. Plain text needs no wrapper: every
+`IOBase` reaches it through ordinary `IOMedia` dispatch and
+[`RecordOptions`](text.md#plain-text-records). Nothing is read to decide.
 
 ```rust
 use yggdryl::generic::{Holder, Media};
@@ -235,7 +239,6 @@ fn named(name: &str) -> Result<Holder, Box<dyn std::error::Error>> {
 
 assert!(matches!(Media::open(named("trades.arrows")?)?, Media::Ipc(_)));
 assert!(matches!(Media::open(named("trades.parquet")?)?, Media::Parquet(_)));
-assert!(matches!(Media::open(named("app.log")?)?, Media::Text(_)));
 ```
 
 Choosing the encoding is the only thing that changes. Every variant implements

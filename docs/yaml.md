@@ -7,7 +7,7 @@ private Yggdryl tags.
 
 A YAML document stream carries raw structured values, not line-record media.
 For streamed Arrow batches with explicit overwrite and append behavior, use
-[Text media](text.md#text-media-and-arrow-batches). Text deliberately refuses
+[Text media](text.md#plain-text-records). Text deliberately refuses
 keyed merge because a line has no stable row identity.
 
 ## Raw shared-Scalar access

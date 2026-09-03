@@ -626,16 +626,14 @@ pub(crate) fn folder_reader(
     }
     let field = match options.field() {
         Some(field) => Some(field.clone()),
-        // The line projection's shape follows from the options alone - no
-        // leaf holds a schema to probe, and an empty folder still answers.
-        None => match options {
-            RecordOptions::Text(text) => Some(text.lines.field().clone()),
-            _ => {
-                let (field, remaining) = derived_field(parts, root.as_ref(), options)?;
-                parts = remaining;
-                field
+        None => {
+            let (field, remaining) = derived_field(parts, root.as_ref(), options)?;
+            parts = remaining;
+            match (field, options) {
+                (None, RecordOptions::Text(text)) => Some(text.fallback_field()?),
+                (field, _) => field,
             }
-        },
+        }
     };
     let Some(field) = field else {
         // Nothing is stored and nothing was declared, so there is no shape to
@@ -662,7 +660,11 @@ fn derived_field(
 ) -> Result<(Option<Field>, Listing)> {
     while let Some(part) = parts.next() {
         let part = part?;
-        let Some(stored) = super::stored_field(&part, options)? else {
+        let stored = match options {
+            RecordOptions::Text(_) => Some(super::leaf_field(&part, options)?),
+            _ => super::stored_field(&part, options)?,
+        };
+        let Some(stored) = stored else {
             continue;
         };
         let pairs = pairs_under(&part, root);

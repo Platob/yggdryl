@@ -57,12 +57,11 @@ pub enum Holder {
     /// The box is what keeps the enum a fixed size: this variant holds a
     /// handle of the very type it belongs to.
     Buffered(Box<Buffered<Self>>),
-    /// Any of the others, read and written as text records.
+    /// Any handle retained as plain-text record media.
     ///
-    /// A [`Text`](crate::text::Text) handler mirrors its handle's bytes and
-    /// answers the record surface through the line projection, so a holder
-    /// wrapped this way reads and writes Arrow batches as lines by default.
-    /// Boxed for the same reason [`Self::Buffered`] is.
+    /// Boxed because the text wrapper owns another `Holder` while keeping its
+    /// flat [`TextOptions`](crate::text::TextOptions) as the default record
+    /// configuration.
     Text(Box<crate::text::Text<Self>>),
     /// Any of the others, retained behind its inferred record encoding.
     ///
@@ -133,9 +132,8 @@ impl Holder {
     ///
     /// The conversion is lazy: it only adds the stateful wrapper and reads no
     /// bytes. IPC, Parquet (when enabled), and Avro are held through
-    /// [`Self::Media`]; plain text uses the existing [`Self::Text`] wrapper.
-    /// An already promoted or text-wrapped holder is returned unchanged. A
-    /// page cache remains the outermost wrapper, so promotion followed by
+    /// [`Self::Media`]; plain text is retained through [`Self::Text`].
+    /// A page cache remains the outermost wrapper, so promotion followed by
     /// repeated buffering cannot stack caches.
     ///
     /// A directory, JSON document, or any other ordinary byte representation
@@ -174,15 +172,15 @@ impl Holder {
                 return Self::Buffered(Box::new(Buffered::new(held, options)));
             }
 
-            if base == crate::MimeType::PLAIN_TEXT {
-                return Self::Text(Box::new(crate::text::Text::new(self)));
-            }
             if base == crate::MimeType::ARROW_STREAM || base == crate::MimeType::ARROW_FILE {
                 return Self::Media(Box::new(crate::generic::Media::ipc(self)));
             }
             #[cfg(feature = "parquet")]
             if base == crate::MimeType::PARQUET {
                 return Self::Media(Box::new(crate::generic::Media::parquet(self)));
+            }
+            if base == crate::MimeType::PLAIN_TEXT {
+                return self.into_text();
             }
             debug_assert_eq!(base, crate::MimeType::AVRO);
             Self::Media(Box::new(crate::generic::Media::avro(self)))
@@ -216,51 +214,40 @@ impl Holder {
         }
     }
 
-    /// Hold this resource behind the text-line surface.
+    /// Retain this holder as plain-text record media.
     ///
-    /// Idempotent exactly as [`Text::into_text`](crate::text::Text::into_text)
-    /// is: a holder that is already text keeps its handler - and the options
-    /// it carries - rather than nesting a second one. This is the inherent
-    /// spelling of [`IOBase::into_text`], and it wins method resolution over
-    /// it, so a `Holder` stays a `Holder`.
+    /// Repeating the conversion preserves the existing `TextOptions`, and a
+    /// page cache stays the outermost wrapper.
     #[must_use]
     pub fn into_text(self) -> Self {
         match self {
             Self::Text(text) => Self::Text(text),
+            Self::Buffered(buffered) => {
+                let options = *buffered.options();
+                let held = buffered.into_handle().into_text();
+                Self::Buffered(Box::new(Buffered::new(held, options)))
+            }
             other => Self::Text(Box::new(crate::text::Text::new(other))),
         }
     }
 
-    /// Hold this resource behind the text-line surface, under `options`.
+    /// Retain this holder as plain-text record media with explicit options.
     ///
-    /// An already-text holder keeps its handle and replaces the extractor.
+    /// Repeating the conversion replaces the retained text configuration
+    /// without nesting another media wrapper.
     #[must_use]
-    pub fn into_text_with(self, options: crate::text::TextLineOptions) -> Self {
+    pub fn into_text_with(self, options: crate::text::TextOptions) -> Self {
         match self {
-            Self::Text(text) => Self::Text(Box::new(text.with_options_of(options))),
-            other => Self::Text(Box::new(crate::text::Text::with_options(other, options))),
+            Self::Text(text) => Self::Text(Box::new(text.with_options(options))),
+            Self::Buffered(buffered) => {
+                let buffered_options = *buffered.options();
+                let held = buffered.into_handle().into_text_with(options);
+                Self::Buffered(Box::new(Buffered::new(held, buffered_options)))
+            }
+            other => Self::Text(Box::new(
+                crate::text::Text::new(other).with_options(options),
+            )),
         }
-    }
-
-    /// Read this resource's records, consuming the holder.
-    ///
-    /// The inherent spelling of [`IOBase::into_read_lines`], and it wins
-    /// method resolution over it - which matters: the trait default wraps a
-    /// *fresh* text handler, while a holder that is already text must read
-    /// under the extractor it carries rather than silently under defaults.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read or
-    /// decode failure of its record.
-    pub fn into_read_lines(
-        self,
-    ) -> Result<crate::text::TextLines<Box<dyn std::io::Read + Send + 'static>>> {
-        let text = match self {
-            Self::Text(text) => *text,
-            other => crate::text::Text::new(other),
-        };
-        text.into_read_lines()
     }
 
     /// Borrow the held implementation as a trait object.

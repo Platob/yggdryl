@@ -7,6 +7,7 @@ use super::Media;
 use crate::buffered::BufferedOptions;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
 use crate::io::{Buffer, IOBase, IOMedia};
+use crate::text::TextOptions;
 use crate::{DataType, Field, MediaType, MimeType, Url};
 
 /// A struct field is the schema of the batches it describes.
@@ -62,6 +63,10 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("trades.parquet")).unwrap(),
         Media::Parquet(_)
     ));
+    assert!(matches!(
+        Media::open(handle("events.log")).unwrap(),
+        Media::Text(_)
+    ));
 }
 
 #[test]
@@ -77,6 +82,12 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
         RecordOptions::Avro(_)
     ));
 
+    let text = Media::text(Holder::buffer(Buffer::new())).with_field(schema());
+    assert!(matches!(
+        text.record_options().unwrap(),
+        RecordOptions::Text(_)
+    ));
+
     #[cfg(feature = "parquet")]
     {
         let parquet = Media::parquet(Holder::buffer(Buffer::new())).with_field(schema());
@@ -85,12 +96,6 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
             RecordOptions::Parquet(_)
         ));
     }
-
-    let text = Media::text(Holder::buffer(Buffer::new()));
-    assert!(matches!(
-        text.record_options().unwrap(),
-        RecordOptions::Text(_)
-    ));
 }
 
 #[test]
@@ -141,7 +146,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             #[cfg(feature = "parquet")]
             Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
-            Media::Text(_) => unreachable!("the fixture names a binary record encoding"),
+            Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();
@@ -273,6 +278,24 @@ fn holder_media_promotion_preserves_wrapper_idempotence_and_plain_bytes() {
 
     let text = handle("retained.txt").into_media().into_media();
     assert!(matches!(text, Holder::Text(_)));
+
+    let buffered_text = handle("retained.txt")
+        .buffered(options)
+        .into_text_with(
+            TextOptions::new()
+                .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")
+                .unwrap(),
+        )
+        .into_text();
+    match buffered_text {
+        Holder::Buffered(buffered) => match buffered.handle() {
+            Holder::Text(text) => {
+                assert_eq!(text.options().rowheader(), Some(r"^\[(?<level>[A-Z]+)\] "))
+            }
+            other => panic!("expected retained text media, got {other:?}"),
+        },
+        other => panic!("expected one outer page cache, got {other:?}"),
+    }
 
     // Structured text codecs are atomic Scalar documents, not row media. The
     // best-fitting conversion therefore leaves them as ordinary bytes, and

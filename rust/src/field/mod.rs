@@ -211,7 +211,6 @@ impl Field {
     /// Record options rebuild their declared root from stored parts on every
     /// ask; moving the shared snapshot in keeps that build free of allocation
     /// and of a second validation of entries the snapshot already checked.
-    #[cfg(feature = "arrow")]
     pub(crate) fn new_with_metadata(
         name: impl Into<SmolStr>,
         dtype: DataType,

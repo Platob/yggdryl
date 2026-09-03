@@ -1070,9 +1070,6 @@
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
   pub fn open(&mut self) -> Result<()>
-  pub fn into_text(self) -> Self
-  pub fn into_text_with(self, options: crate::text::TextLineOptions) -> Self
-  pub fn into_read_lines(self) -> Result<crate::text::TextLines<Box<dyn std::io::Read + Send + 'static>>>
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
@@ -1083,7 +1080,6 @@
   pub fn ipc(handle: Holder) -> Self
   pub fn parquet(handle: Holder) -> Self
   pub fn avro(handle: Holder) -> Self
-  pub fn text(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
@@ -1109,6 +1105,18 @@
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>
   pub const fn mime_type(&self) -> MimeType
+  pub fn header(&self) -> Option<&str>
+  pub fn set_header(&mut self, header: Option<&str>) -> Result<()>
+  pub fn lstrip(&self) -> Option<&str>
+  pub fn set_lstrip(&mut self, lstrip: Option<&str>) -> Result<()>
+  pub fn rstrip(&self) -> Option<&str>
+  pub fn set_rstrip(&mut self, rstrip: Option<&str>) -> Result<()>
+  pub const fn linesep(&self) -> Option<&crate::text::LineSep>
+  pub fn set_linesep(&mut self, linesep: Option<crate::text::LineSep>) -> Result<()>
+  pub const fn autotype(&self) -> Option<bool>
+  pub fn set_autotype(&mut self, autotype: bool) -> Result<()>
+  pub const fn timezone(&self) -> Option<&crate::Timezone>
+  pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()>
 
 ### yggdryl::gzip  [rust\src\gzip\mod.rs]
   pub fn load(input: &[u8]) -> Result<Vec<u8>>
@@ -1732,13 +1740,24 @@
   pub const fn max_documents(self) -> usize
 
 ### yggdryl::text  [rust\src\text\mod.rs]
-  pub enum Opening
-  pub const fn pattern(&self) -> Option<&Regex>
-  pub const fn is_timestamp(&self) -> bool
-  pub fn stable_hash(&self) -> u64
-  pub struct TextLineOptions
-  pub fn stable_hash(&self) -> u64
+  pub struct LineSep
+  pub fn new(terminator: impl AsRef<[u8]>) -> Result<Self>
+  pub fn as_bytes(&self) -> &[u8]
   pub struct TextOptions
+  pub fn new() -> Self
+  pub fn header(&self) -> Option<&str>
+  pub fn set_header(&mut self, header: Option<&str>) -> Result<()>
+  pub fn lstrip(&self) -> Option<&str>
+  pub fn set_lstrip(&mut self, lstrip: Option<&str>) -> Result<()>
+  pub fn rstrip(&self) -> Option<&str>
+  pub fn set_rstrip(&mut self, rstrip: Option<&str>) -> Result<()>
+  pub const fn linesep(&self) -> Option<&LineSep>
+  pub fn set_linesep(&mut self, linesep: Option<LineSep>)
+  pub const fn autotype(&self) -> bool
+  pub const fn set_autotype(&mut self, autotype: bool)
+  pub const fn timezone(&self) -> Option<&Timezone>
+  pub fn set_timezone(&mut self, timezone: Option<Timezone>)
+  pub fn capture_names(&self) -> impl ExactSizeIterator<Item = &str>
   pub fn stable_hash(&self) -> u64
   pub struct ValueIter<'a>
   pub fn from_utf8(input: &str, format: Format) -> Result<Scalar>

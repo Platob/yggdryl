@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::builder::{Int32Builder, ListBuilder};
 use arrow_array::{
-    ArrayRef, Int32Array, Int64Array, ListArray, RecordBatch, StringArray, StructArray,
+    ArrayRef, BinaryArray, Int32Array, Int64Array, ListArray, RecordBatch, StringArray, StructArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use criterion::measurement::WallTime;
@@ -24,7 +24,6 @@ use yggdryl::generic::{Holder, IORecordOptions, Media};
 use yggdryl::io::IOMedia;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
-use yggdryl::text::Text;
 use yggdryl::{DataType, Field, IOMode, Scalar};
 
 use super::{batch, handle, reader, stored_with, wide};
@@ -152,24 +151,24 @@ fn media_target(source: &RecordBatch, seeded: bool, merge: bool) -> Media {
     Media::from(ipc)
 }
 
-/// Text's writable record shape: one UTF-8 column needs no projection rename.
+/// Text's writable record shape: the encoder consumes the binary body column.
 fn text_source() -> RecordBatch {
     let schema = Arc::new(Schema::new(vec![ArrowField::new(
-        "message",
-        ArrowDataType::Utf8,
+        "body",
+        ArrowDataType::Binary,
         false,
     )]));
     RecordBatch::try_new(
         schema,
-        vec![Arc::new(StringArray::from_iter_values(
-            (0..STATEFUL_ROWS).map(|row| format!("event-{row:08}")),
+        vec![Arc::new(BinaryArray::from_iter_values(
+            (0..STATEFUL_ROWS).map(|row| format!("event-{row:08}").into_bytes()),
         ))],
     )
     .expect("a text-line fixture")
 }
 
-fn text_target(source: &RecordBatch, seeded: bool) -> Text<yggdryl::io::Buffer> {
-    let mut target = Text::new(handle("stateful.log"));
+fn text_target(source: &RecordBatch, seeded: bool) -> yggdryl::io::Buffer {
+    let mut target = handle("stateful.log");
     if seeded {
         let options = target.record_options().expect("text record options");
         target
