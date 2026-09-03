@@ -22,7 +22,8 @@ the next session.
   no dispatch.
 - The registry persists through `IOBase` into JSON shards of 100 tags each.
 - One process-wide registry autoloads once and is the default every other type
-  resolves against.
+  resolves against, from `~/.config/fix` on a real machine. The repository tracks
+  its seed dictionary at `config/fix`.
 - `FixMsg` is a message linked to the registry that types it.
 - Every FIX implementation lives in one core module folder. Nothing FIX-specific
   is added to `field/`, `metadata.rs`, `iceberg/`, or `io/`.
@@ -365,7 +366,16 @@ failure.
 
 The registry reads and writes through `IOBase` alone; no direct filesystem.
 
-- Root is a folder handle. Fields live under `records/fix/fields/`.
+- Root is a folder handle. Shards live at `<root>/records/<shard>.json`. The
+  root already names FIX, so no `fix` segment is repeated inside it.
+- Two roots are conventional, and they are different things:
+  - `config/fix/` in this repository, tracked in git. This is the seed
+    dictionary: the field definitions the project ships, and what the tests,
+    benchmarks and docs examples resolve against. Keep it small and legible —
+    it is read by humans in diffs.
+  - `~/.config/fix/` on a real machine. This is the production default, the one
+    `FixRegistry::global()` reaches when nothing else is configured. It is not
+    tracked, not created by the build, and not seeded automatically.
 - Shard index is `tag / 100`, so tags 0-99 are `0.json` and 100-199 are `1.json`.
   A tag reaches exactly one shard by arithmetic.
 - A shard file is a JSON array of the core `Field` JSON shape, ordered by tag,
@@ -414,12 +424,30 @@ wins:
 1. a registry installed by `install_global`;
 2. the folder named by `YGGDRYL_FIX_REGISTRY`, opened through `IOBase` like any
    other URL, so a local path, `mem://`, or a remote backend all work;
-3. the empty registry.
+3. `~/.config/fix`, the production default, when that folder exists;
+4. the empty registry.
 
-Environment access is the one concession, and it is read exactly once, at
-resolution. A malformed or unreadable location is a typed error surfaced from
-`global()`, never a silent fallback to empty: a registry that quietly loads
-nothing turns every later lookup into a wrong answer instead of a failure.
+Home resolution is `HOME`, falling back to `USERPROFILE` on Windows. Read both
+through `std::env`; do not add a dependency for this, and do not use the
+deprecated `std::env::home_dir`. With no home variable set, skip step 3 rather
+than guessing a path.
+
+Step 3 is the ONE place absence is not an error. A missing `~/.config/fix` means
+the machine has no dictionary installed, which is an ordinary first-run state, so
+it falls through to the empty registry. Every other failure is loud: a
+`YGGDRYL_FIX_REGISTRY` that is set but unreadable, and a `~/.config/fix` that
+exists but is malformed, are both typed errors surfaced from `global()`. Never
+fall back to empty on a corrupt read — a registry that quietly loads nothing
+turns every later lookup into a wrong answer instead of a failure.
+
+Environment access is the concession this design makes, and both variables are
+read exactly once, at resolution.
+
+The repository's own `config/fix` is NOT in this order. Nothing resolves a
+registry by walking up from the current directory looking for a repo: that would
+make behavior depend on where a process was started. Tests and docs examples
+point at `config/fix` explicitly, through `from_handle` or by setting
+`YGGDRYL_FIX_REGISTRY`.
 
 Do not autoload on module init and do not spawn a thread. Loading happens on the
 first `global()` call, on the calling thread.
@@ -547,6 +575,13 @@ Cover:
   `global()` fails, and an unreadable `YGGDRYL_FIX_REGISTRY` errors rather than
   loading empty. Isolate these: they touch process-wide state, so they need a
   serialized test or a separate integration test binary.
+- the resolution order end to end: the env var beats `~/.config/fix`, an absent
+  `~/.config/fix` falls through to empty, a present but malformed one ERRORS, and
+  an unset home variable skips step 3 instead of guessing a path. Point `HOME` at
+  a temporary directory rather than touching the developer's real one.
+- the tracked `config/fix` seed loads: open it with `from_handle`, resolve a tag,
+  a name and an alias, and assert the shard layout is exactly
+  `config/fix/records/<shard>.json`.
 - `FixMsg` links the global registry by default, keeps an explicitly supplied one,
   retains an unknown tag, and rejects a value its field refuses;
 - isolation: a check that nothing under `rust/src/fix/` is referenced from
