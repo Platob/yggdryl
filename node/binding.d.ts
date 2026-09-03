@@ -181,6 +181,9 @@ export type DataTypeId =
   | 'utf8'
   | 'large_utf8'
   | 'utf8_view'
+  | 'ascii32'
+  | 'ascii64'
+  | 'ascii128'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -252,6 +255,9 @@ interface DataTypeKindById {
   utf8: 'string'
   large_utf8: 'string'
   utf8_view: 'string'
+  ascii32: 'string'
+  ascii64: 'string'
+  ascii128: 'string'
   list: 'list'
   list_view: 'list'
   fixed_size_list: 'list'
@@ -471,6 +477,13 @@ export type BinaryViewField = FieldOf<'binary_view', Uint8Array>
 export type Utf8Field = FieldOf<'utf8', string>
 export type LargeUtf8Field = FieldOf<'large_utf8', string>
 export type Utf8ViewField = FieldOf<'utf8_view', string>
+/** ASCII text padded with trailing NUL to 4 bytes; values read back trimmed. */
+export type Ascii32Field = FieldOf<'ascii32', string>
+/** ASCII text padded with trailing NUL to 8 bytes; values read back trimmed. */
+export type Ascii64Field = FieldOf<'ascii64', string>
+/** ASCII text padded with trailing NUL to 16 bytes; values read back trimmed. */
+export type Ascii128Field = FieldOf<'ascii128', string>
+export type AsciiField = Ascii32Field | Ascii64Field | Ascii128Field
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<'list_view', V[], string, unknown>
 export type FixedSizeListField<V = unknown> = FieldOf<'fixed_size_list', V[], string, unknown>
@@ -606,6 +619,10 @@ export interface FieldsNamespace {
   utf8(name: string, options?: FieldOptions): Utf8Field
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
+  ascii32(name: string, options?: FieldOptions): Ascii32Field
+  ascii64(name: string, options?: FieldOptions): Ascii64Field
+  ascii128(name: string, options?: FieldOptions): Ascii128Field
+  ascii(name: string, width: number, options?: FieldOptions): AsciiField
   list<F extends Field>(
     name: string,
     item: F,
@@ -838,6 +855,10 @@ export interface FieldsNamespace {
   utf8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'utf8', string, N, O>
   largeUtf8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'large_utf8', string, N, O>
   utf8View<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'utf8_view', string, N, O>
+  ascii32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'ascii32', string, N, O>
+  ascii64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'ascii64', string, N, O>
+  ascii128<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'ascii128', string, N, O>
+  ascii<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, width: number, options?: O): NamedField<'ascii32', string, N, O> | NamedField<'ascii64', string, N, O> | NamedField<'ascii128', string, N, O>
   list<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
   listView<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
   fixedSizeList<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, length: number, options?: O): NamedField<'fixed_size_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>

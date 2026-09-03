@@ -159,6 +159,12 @@ function createFields(DataType, Field, native) {
     utf8: simple('utf8'),
     largeUtf8: simple('large_utf8'),
     utf8View: simple('utf8_view'),
+    ascii32: simple('ascii32'),
+    ascii64: simple('ascii64'),
+    ascii128: simple('ascii128'),
+    ascii(name, width, value) {
+      return field(name, DataType.ascii(width), value)
+    },
 
     list: list('list'),
     listView: list('list_view'),

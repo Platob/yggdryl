@@ -311,6 +311,21 @@ export declare class DataType {
   /** Creates the physical time-of-day type selected by its resolution. */
   static time(unit: string): DataType
   /**
+   * Creates the ASCII width holding `width` bytes: 1 through 4 is
+   * `ascii32`, 5 through 8 `ascii64`, and 9 through 16 `ascii128`.
+   */
+  static ascii(width: number): DataType
+  /**
+   * Resolves a registered logical name such as `currency`, ASCII
+   * case-insensitively and trimmed, to the ASCII width it names.
+   */
+  static fromLogicalName(name: string): DataType
+  /**
+   * The logical names registered over an ASCII width, keyed by name in
+   * registration order.
+   */
+  static logicalNames(): Record<string, DataType>
+  /**
    * Creates a geometry datatype: planar features as Well-Known Binary.
    * Omitting `crs` fills the `OGC:CRS84` default shared with Parquet and
    * Iceberg; a geometry takes no edge algorithm.
@@ -345,6 +360,8 @@ export declare class DataType {
   get id(): string
   /** The coarse datatype family shared by every variant of one kind. */
   get kind(): string
+  /** The storage width of an ASCII datatype in bytes, `null` for every other. */
+  get asciiWidth(): number | null
   /** Whether this type owns child fields. */
   get nested(): boolean
   /** Number of direct child fields. */

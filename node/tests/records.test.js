@@ -562,6 +562,34 @@ test('a field casts whatever Arrow JS holds, batch by batch', () => {
   assert.equal(target.cast(source).numRows, 2)
 })
 
+test('an ASCII column pads on the way in and trims on the way out', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  const declared = fields.struct('row', [fields.ascii32('ccy')], { nullable: false })
+  const options = handle.recordOptions().withField(declared)
+  const codes = (values) =>
+    new arrow.Table({ ccy: arrow.vectorFromArray(values, new arrow.Utf8()) })
+
+  handle.overwriteArrowTable(codes(['USD', 'EUR']), options)
+  // The identity survives the IPC stream, so the stored field is the ASCII width.
+  assert.ok(handle.readArrowField().equals(declared))
+  // Arrow JS sees the storage: the padded fixed width. Every string rendering
+  // trims, so reading under a declared text column is the core cast that
+  // turns the padding back into the text that went in.
+  const stored = handle.readArrowReader().intoTable().getChild('ccy')
+  assert.deepEqual([...stored.get(0)], [0x55, 0x53, 0x44, 0])
+  const text = fields.struct('row', [fields.utf8('ccy')], { nullable: false })
+  assert.deepEqual(
+    [...handle.readRecords(handle.recordOptions().withField(text))].map((row) => row.ccy),
+    ['USD', 'EUR'],
+  )
+
+  assert.throws(
+    () => handle.overwriteArrowTable(codes(['EURO!']), options),
+    /ASCII text of at most 4 bytes/,
+  )
+})
+
 test('a batch size of zero is refused rather than stored as a read of nothing', () => {
   const options = RecordOptions.forMimeType(MimeType.PARQUET)
 

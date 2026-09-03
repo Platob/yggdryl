@@ -89,7 +89,11 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::FixedSizeBinary(_)
         | D::Geometry(_)
         | D::Geography(_) => JsValueHint::Buffer,
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => JsValueHint::String,
+        // An ASCII width reads back as its trimmed text, so it projects as
+        // the string family does.
+        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => {
+            JsValueHint::String
+        }
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
@@ -302,7 +306,7 @@ fn text_or_binary_to_js<'env>(
                 .to_vec(),
         )
         .into_unknown(env)?,
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => value
+        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()

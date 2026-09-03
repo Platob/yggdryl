@@ -1,6 +1,6 @@
 //! Node.js view of the native `DataType` domain.
 
-use napi::bindgen_prelude::{ClassInstance, Either, Either3, Env, Error, Result, Unknown};
+use napi::bindgen_prelude::{ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::{
     DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
@@ -104,6 +104,9 @@ impl JsDataType {
             "utf8" => CoreDataType::Utf8,
             "large_utf8" => CoreDataType::LargeUtf8,
             "utf8_view" => CoreDataType::Utf8View,
+            "ascii32" => CoreDataType::Ascii32,
+            "ascii64" => CoreDataType::Ascii64,
+            "ascii128" => CoreDataType::Ascii128,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"
@@ -170,6 +173,35 @@ impl JsDataType {
         let inner = CoreDataType::fixed_size_binary(exact_i32(byte_width, "byteWidth")?)
             .map_err(napi_error)?;
         Ok(Self::from_core(inner))
+    }
+
+    /// Creates the ASCII width holding `width` bytes: 1 through 4 is
+    /// `ascii32`, 5 through 8 `ascii64`, and 9 through 16 `ascii128`.
+    #[napi(factory)]
+    pub fn ascii(width: f64) -> Result<Self> {
+        CoreDataType::ascii(exact_i32(width, "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Resolves a registered logical name such as `currency`, ASCII
+    /// case-insensitively and trimmed, to the ASCII width it names.
+    #[napi(factory)]
+    pub fn from_logical_name(name: String) -> Result<Self> {
+        CoreDataType::from_logical_name(&name)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The logical names registered over an ASCII width, keyed by name in
+    /// registration order.
+    #[napi(ts_return_type = "Record<string, DataType>")]
+    pub fn logical_names(env: &Env) -> Result<Object<'_>> {
+        let mut names = Object::new(env)?;
+        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
+            names.set(*name, Self::from_core(dtype.clone()))?;
+        }
+        Ok(names)
     }
 
     /// Internal direct exact-decimal constructor.
@@ -385,6 +417,12 @@ impl JsDataType {
     #[napi(getter)]
     pub fn kind(&self) -> String {
         self.inner.kind().as_str().to_owned()
+    }
+
+    /// The storage width of an ASCII datatype in bytes, `null` for every other.
+    #[napi(getter)]
+    pub fn ascii_width(&self) -> Option<i32> {
+        self.inner.ascii_width()
     }
 
     /// Whether this type owns child fields.

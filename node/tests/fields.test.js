@@ -143,6 +143,9 @@ test('typed field factories cover every native datatype variant', () => {
     ['utf8', fields.utf8('value')],
     ['large_utf8', fields.largeUtf8('value')],
     ['utf8_view', fields.utf8View('value')],
+    ['ascii32', fields.ascii32('value')],
+    ['ascii64', fields.ascii64('value')],
+    ['ascii128', fields.ascii128('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -165,7 +168,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 45)
+  assert.equal(byId.size, 48)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -198,6 +201,20 @@ test('typed field factories cover every native datatype variant', () => {
       'geospatial',
     ]),
   )
+})
+
+test('the ascii factory selects the width through the native constructor', () => {
+  const currency = fields.ascii('ccy', 3, { nullable: false })
+
+  assert.equal(currency.dtype.id, 'ascii32')
+  assert.equal(currency.dtype.asciiWidth, 4)
+  assert.equal(currency.nullable, false)
+  assert.ok(currency.dtype.equals(fields.ascii32('ccy').dtype))
+  assert.equal(fields.ascii('code', 12).dtype.id, 'ascii128')
+  assert.equal(fields.ascii('code', 12).nullable, true)
+  assert.equal(fields.ascii32('ccy').defaultJSValue(), null)
+  assert.equal(fields.ascii32('ccy', { nullable: false }).defaultJSValue(), '')
+  assert.throws(() => fields.ascii('code', 17), /expected an ASCII width from 1 to 16 bytes, got 17/)
 })
 
 test('nested factories preserve exact child metadata and dictionary state', () => {

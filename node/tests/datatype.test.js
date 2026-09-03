@@ -84,6 +84,43 @@ test('geometry and geography fill and display their shared defaults', () => {
   )
 })
 
+test('ASCII widths select their storage once and resolve registered names', () => {
+  const currency = DataType.ascii(3)
+
+  assert.equal(currency.id, 'ascii32')
+  assert.equal(currency.kind, 'string')
+  assert.equal(currency.toString(), 'ascii32')
+  assert.equal(currency.asciiWidth, 4)
+  assert.ok(new DataType('ascii32').equals(currency))
+  assert.ok(DataType.from('ascii(3)').equals(currency))
+  assert.ok(DataType.from('currency').equals(currency))
+  assert.ok(DataType.fromString(currency.toString()).equals(currency))
+  // The family constructor selects the width once: the storage is the id.
+  assert.equal(DataType.ascii(4).id, 'ascii32')
+  assert.equal(DataType.ascii(5).id, 'ascii64')
+  assert.equal(DataType.ascii(8).asciiWidth, 8)
+  assert.equal(DataType.ascii(16).id, 'ascii128')
+  assert.equal(new DataType('ascii128').asciiWidth, 16)
+  assert.equal(new DataType('utf8').asciiWidth, null)
+
+  // A registration is a name over a width, not a type: it displays as the width.
+  assert.ok(DataType.fromLogicalName('Currency').equals(currency))
+  assert.equal(DataType.fromLogicalName(' currency ').toString(), 'ascii32')
+  const names = DataType.logicalNames()
+  assert.deepEqual(Object.keys(names), ['currency'])
+  assert.ok(names.currency instanceof DataType)
+  assert.ok(names.currency.equals(currency))
+
+  assert.throws(
+    () => DataType.ascii(17),
+    /expected an ASCII width from 1 to 16 bytes, got 17/,
+  )
+  assert.throws(() => DataType.ascii(0), /got 0/)
+  assert.throws(() => DataType.ascii(2.5), /width must be a signed 32-bit integer/)
+  assert.throws(() => DataType.fromLogicalName('country'), /currency/)
+  assert.throws(() => DataType.fromString('ascii'))
+})
+
 test('recursive datatypes expose fields as a collection', () => {
   const nested = DataType.fromString(
     'struct<id: bigint not null, payload: array<struct<name: string, score: decimal(18, 4)>>>',

@@ -26,6 +26,10 @@ const geometryType: DataType = DataType.geometry()
 const projectedGeometry: DataType = DataType.geometry('EPSG:3857')
 const geographyType: DataType = DataType.geography()
 const vincentyGeography: DataType = DataType.geography('OGC:CRS84', 'vincenty')
+const asciiType: DataType = DataType.ascii(3)
+const asciiWidth: number | null = asciiType.asciiWidth
+const currencyType: DataType = DataType.fromLogicalName('currency')
+const logicalNames: Record<string, DataType> = DataType.logicalNames()
 
 void child
 void indexedChild
@@ -39,4 +43,6 @@ void geometryType
 void projectedGeometry
 void geographyType
 void vincentyGeography
-
+void asciiWidth
+void currencyType
+void logicalNames
