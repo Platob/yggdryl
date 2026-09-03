@@ -1,4 +1,5 @@
 from ._native import (
+    AsciiDictionary as AsciiDictionary,
     Bound as Bound,
     BoundStatement as BoundStatement,
     DataType as DataType,

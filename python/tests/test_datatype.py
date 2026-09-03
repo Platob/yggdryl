@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import decimal
+import enum
 import inspect
 import pickle
 from typing import Optional
@@ -9,7 +10,7 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field
+from yggdryl import AsciiDictionary, DataType, Field
 
 
 def test_dtype_infers_native_string_and_arrow_values() -> None:
@@ -395,3 +396,176 @@ def test_ascii_widths_pad_into_arrow_storage_and_trim_out_of_it() -> None:
         ascii32.arrow_scalar(True)
     with pytest.raises(ValueError, match="expected ascii32"):
         ccy.cast(1.5)
+
+
+def test_ascii_dictionary_registers_values_in_first_appearance_order() -> None:
+    currencies = AsciiDictionary("ascii32")
+
+    assert currencies.push("USD") == 0
+    assert currencies.push("EUR") == 1
+    assert currencies.push("USD") == 0
+    # The padded spelling storage holds is the same value, in either shape.
+    assert currencies.push("USD\x00") == 0
+    assert currencies.push(b"USD\x00") == 0
+
+    assert currencies.values == ["USD", "EUR"]
+    assert len(currencies) == 2
+    assert list(currencies) == ["USD", "EUR"]
+    assert "EUR" in currencies and "JPY" not in currencies
+    assert currencies.get(1) == "EUR"
+    assert currencies.get(7) is None
+    assert currencies.get_code("USD") == 0
+    assert currencies.get_code("USD\x00") == 0
+    assert currencies.get_code("JPY") is None
+
+    assert currencies.dtype == DataType("dictionary(int32,ascii32)")
+    assert currencies.key == DataType("int32")
+    assert currencies.values_dtype == DataType("ascii32")
+
+    seeded = AsciiDictionary.from_values("ascii32", ["USD", "EUR", "USD"])
+    assert seeded.values == currencies.values
+    assert seeded == currencies
+    assert copy.copy(currencies) == currencies
+    assert copy.deepcopy(currencies) == currencies
+
+    wide = AsciiDictionary("ascii64", key="int64")
+    assert wide.push("SEDOL1") == 0
+    assert wide.dtype == DataType("dictionary(int64,ascii64)")
+
+
+def test_ascii_dictionary_refuses_what_the_width_and_the_key_refuse() -> None:
+    currencies = AsciiDictionary("ascii32")
+
+    with pytest.raises(ValueError, match="at most 4 bytes, got 5 bytes"):
+        currencies.push("EURO!")
+    with pytest.raises(ValueError, match="at most 4 bytes, got a non-ASCII byte"):
+        currencies.push("€")
+    with pytest.raises(ValueError, match="at most 4 bytes, got a NUL byte at 2"):
+        currencies.push("US\x00D")
+    # Bytes meet the same width rule, never a decoding error of their own.
+    with pytest.raises(ValueError, match="at most 4 bytes, got a non-ASCII byte 0xFF"):
+        currencies.push(b"\xff\xfe")
+    assert currencies.get_code(b"\xff") is None
+    assert b"\xff" not in currencies
+    # Only text and bytes are ASCII values; nothing is stringified.
+    with pytest.raises(TypeError, match="must be str or bytes"):
+        currencies.push(3)
+    assert currencies.values == []
+
+    # A column is an iterable of values: one string is one value, not its
+    # characters.
+    with pytest.raises(TypeError, match="not one string"):
+        AsciiDictionary.from_values("ascii32", "USD")
+    with pytest.raises(TypeError, match="not one string"):
+        currencies.into_arrow_array("USD")
+    assert currencies.values == []
+
+    with pytest.raises(ValueError, match="an ASCII width"):
+        AsciiDictionary("utf8")
+    with pytest.raises(ValueError, match="an int32 or int64 key datatype"):
+        AsciiDictionary("ascii32", key="int16")
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        AsciiDictionary.from_values("ascii32", ["USD", "EURO!"])
+
+
+def test_ascii_dictionary_generates_an_intenum_from_the_core_member_listing() -> None:
+    codes = AsciiDictionary.from_values("ascii32", ["USD", "n/a", "42", ""])
+
+    Currency = codes.into_intenum("Currency")
+
+    assert issubclass(Currency, enum.IntEnum)
+    assert Currency.__name__ == "Currency"
+    assert [(member.name, member.value) for member in Currency] == [
+        ("USD", 0),
+        ("N_A", 1),
+        ("_42", 2),
+        ("_", 3),
+    ]
+    assert Currency.USD == 0
+    assert Currency(0).name == "USD"
+    assert Currency["N_A"] == 1
+
+    # A sixteen-byte vocabulary is text, not enum members.
+    with pytest.raises(ValueError, match="ascii32 or ascii64 values"):
+        AsciiDictionary.from_values("ascii128", ["USD"]).into_intenum("Wide")
+    # A collision is named, never silently renamed.
+    with pytest.raises(ValueError, match="both name the member N_A"):
+        AsciiDictionary.from_values("ascii32", ["n/a", "n-a"]).into_intenum("Bad")
+    # A name that opens and closes with `_` would be a reserved `_sunder_` or
+    # `__dunder__`, so the trailing run goes and every member is a member.
+    Shape = AsciiDictionary.from_values("ascii64", ["-a-", "--b--", "-"]).into_intenum(
+        "Shape"
+    )
+    assert [(member.name, member.value) for member in Shape] == [
+        ("_A", 0),
+        ("__B", 1),
+        ("_", 2),
+    ]
+    # The enum needs a name, the way the JavaScript binding needs one.
+    with pytest.raises(ValueError, match="non-empty enum name"):
+        codes.into_intenum("")
+
+
+def test_ascii_dictionary_encodes_arrow_columns_under_continuing_codes() -> None:
+    currencies = AsciiDictionary("ascii32")
+
+    first = currencies.into_arrow_array(["USD", None, "EUR", "USD"])
+    assert first.type == pa.dictionary(pa.int32(), pa.binary(4))
+    assert first.indices.to_pylist() == [0, None, 1, 0]
+    assert first.dictionary.to_pylist() == [b"USD\x00", b"EUR\x00"]
+    assert first.to_pylist() == [b"USD\x00", None, b"EUR\x00", b"USD\x00"]
+
+    # A second column continues the same codes, and an Arrow holder is a column.
+    second = currencies.into_arrow_array(pa.array(["JPY", "EUR"]))
+    assert second.indices.to_pylist() == [2, 1]
+    assert currencies.values == ["USD", "EUR", "JPY"]
+
+    recovered = AsciiDictionary.from_arrow_array(second)
+    assert recovered.values == currencies.values
+    assert recovered == currencies
+
+    keyed = AsciiDictionary("ascii32", key="int64")
+    wide = keyed.into_arrow_array(["USD"])
+    assert wide.type == pa.dictionary(pa.int64(), pa.binary(4))
+    assert AsciiDictionary.from_arrow_array(wide) == keyed
+
+    with pytest.raises(ValueError, match="a dictionary array of int32 or int64"):
+        AsciiDictionary.from_arrow_array(pa.array(["USD"]))
+    with pytest.raises(ValueError, match="a dictionary array of int32 or int64"):
+        AsciiDictionary.from_arrow_array(
+            pa.array(["USD"]).dictionary_encode()
+        )
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        currencies.into_arrow_array(["EURO!"])
+    # A refused column registers nothing: the mutation fails atomically.
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        currencies.into_arrow_array(["GBP", "EURO!"])
+    assert currencies.values == ["USD", "EUR", "JPY"]
+    assert currencies.push("GBP") == 3
+
+    # A vocabulary Arrow allows but a code cannot name: a repeat would shift
+    # every later code.
+    repeated = pa.DictionaryArray.from_arrays(
+        pa.array([2, 0], type=pa.int32()),
+        pa.array([b"USD\x00", b"USD\x00", b"EUR\x00"], type=pa.binary(4)),
+    )
+    with pytest.raises(ValueError, match="a vocabulary with no repeated value"):
+        AsciiDictionary.from_arrow_array(repeated)
+
+
+def test_ascii_dictionary_equality_is_the_width_the_key_and_the_value_order() -> None:
+    left = AsciiDictionary.from_values("ascii32", ["USD", "EUR"])
+
+    assert left == AsciiDictionary.from_values("ascii32", ["USD", "EUR"])
+    assert left != AsciiDictionary.from_values("ascii32", ["EUR", "USD"])
+    assert left != AsciiDictionary.from_values("ascii64", ["USD", "EUR"])
+    assert left != AsciiDictionary.from_values("ascii32", ["USD", "EUR"], key="int64")
+    assert left != "USD"
+
+    assert repr(left) == (
+        "AsciiDictionary.from_values(\"ascii32\", ['USD', 'EUR'], key=\"int32\")"
+    )
+    assert eval(repr(left), {"AsciiDictionary": AsciiDictionary}) == left
+    # Registration moves the vocabulary, so the value carries no hash.
+    with pytest.raises(TypeError):
+        hash(left)

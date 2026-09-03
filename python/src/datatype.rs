@@ -10,11 +10,12 @@ use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyDict, PyList};
+use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyIterator, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::{
-    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
-    TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    AsciiDictionary as CoreAsciiDictionary, DataType as CoreDataType,
+    EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
 
 use crate::field::PyField;
@@ -1442,5 +1443,261 @@ impl PyDataTypeIterator {
 
     fn __length_hint__(&self) -> usize {
         self.inner.field_len().saturating_sub(self.index)
+    }
+}
+
+/// One ASCII dictionary value at the boundary: text, or the bytes storage holds.
+///
+/// Bytes-like by cast rather than by extracting `Vec<u8>`, which a list of
+/// small integers would also satisfy. Nothing is decoded here: the bytes reach
+/// the width's own rule, which trims the storage padding and names the width
+/// when it refuses.
+fn ascii_value_of(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    if let Ok(text) = value.cast::<PyString>() {
+        return Ok(text.to_cow()?.as_bytes().to_vec());
+    }
+    if let Ok(bytes) = value.cast::<PyBytes>() {
+        return Ok(bytes.as_bytes().to_vec());
+    }
+    if let Ok(bytes) = value.cast::<PyByteArray>() {
+        return Ok(bytes.to_vec());
+    }
+    Err(PyTypeError::new_err(
+        "an ASCII dictionary value must be str or bytes",
+    ))
+}
+
+/// The column argument of the two bulk entry points.
+///
+/// A bare `str` is one value, not the column of its characters, so it is
+/// refused the way every other iterable-of-strings argument is.
+fn ascii_column_of<'py>(values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyIterator>> {
+    if values.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(
+            "an ASCII column must be an iterable of values, not one string",
+        ));
+    }
+    values.try_iter()
+}
+
+/// A per-column ASCII vocabulary and the codes that name its values.
+///
+/// The vocabulary is a value the caller carries, never a process-global
+/// registry: a code is stable exactly as far as this object travels, and two
+/// independent encodes agree only when the same dictionary crossed both.
+/// Nothing in the write path registers on its own.
+///
+/// The first argument is the ASCII *width* the values are stored as; the
+/// `values` property is the vocabulary itself, in the code order the generated
+/// enum names.
+#[pyclass(
+    name = "AsciiDictionary",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyAsciiDictionary {
+    inner: CoreAsciiDictionary,
+}
+
+impl PyAsciiDictionary {
+    fn keyed(inner: CoreAsciiDictionary, key: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let key = match key {
+            None => CoreDataType::Int32,
+            Some(key) => core_dtype_from_value(key)?,
+        };
+        inner
+            .with_key(key)
+            .map(|inner| Self { inner })
+            .map_err(value_error)
+    }
+}
+
+#[pymethods]
+impl PyAsciiDictionary {
+    // `push` moves the vocabulary, so equality cannot be frozen into a hash:
+    // a mutable value follows Python's hash contract by having none.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Creates an empty vocabulary over an ASCII width, with `int32` keys.
+    #[new]
+    #[pyo3(signature = (values, key=None))]
+    fn new(values: &Bound<'_, PyAny>, key: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let inner =
+            CoreAsciiDictionary::new(core_dtype_from_value(values)?).map_err(value_error)?;
+        Self::keyed(inner, key)
+    }
+
+    /// Creates a vocabulary pre-seeded in first-appearance order.
+    #[staticmethod]
+    #[pyo3(signature = (values, seen, key=None))]
+    fn from_values(
+        values: &Bound<'_, PyAny>,
+        seen: &Bound<'_, PyAny>,
+        key: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let mut dictionary = Self::new(values, key)?;
+        for value in ascii_column_of(seen)? {
+            dictionary.push(&value?)?;
+        }
+        Ok(dictionary)
+    }
+
+    /// Recovers the vocabulary of a `PyArrow` dictionary array over an ASCII
+    /// width, in the array's own value order.
+    #[staticmethod]
+    fn from_arrow_array(array: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let array = arrow_array_from_pyarrow(array)?;
+        CoreAsciiDictionary::from_arrow_array(array.as_ref())
+            .map(|inner| Self { inner })
+            .map_err(value_error)
+    }
+
+    /// Registers a value and returns its code, existing or newly appended.
+    fn push(&mut self, value: &Bound<'_, PyAny>) -> PyResult<i64> {
+        self.inner
+            .push_bytes(&ascii_value_of(value)?)
+            .map_err(value_error)
+    }
+
+    /// The value a code names, or `None` when the vocabulary has no such code.
+    fn get(&self, code: i64) -> Option<String> {
+        self.inner.get(code).map(str::to_owned)
+    }
+
+    /// The code a value has, or `None` when it was never registered.
+    fn get_code(&self, value: &Bound<'_, PyAny>) -> PyResult<Option<i64>> {
+        // Bytes that are not text were never registered, so a lookup misses.
+        let value = ascii_value_of(value)?;
+        Ok(std::str::from_utf8(&value)
+            .ok()
+            .and_then(|value| self.inner.get_code(value)))
+    }
+
+    /// The vocabulary in code order.
+    #[getter]
+    fn values(&self) -> Vec<&str> {
+        self.inner.as_values().iter().map(AsRef::as_ref).collect()
+    }
+
+    /// The datatype an encoded column carries: `dictionary(key, ascii-N)`.
+    #[getter]
+    fn dtype(&self) -> PyResult<PyDataType> {
+        self.inner
+            .dtype()
+            .map(PyDataType::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The integer type the codes are read as.
+    #[getter]
+    fn key(&self) -> PyDataType {
+        PyDataType::from_inner(self.inner.key().clone())
+    }
+
+    /// The ASCII width the values are stored as.
+    #[getter]
+    fn values_dtype(&self) -> PyDataType {
+        PyDataType::from_inner(self.inner.values_dtype().clone())
+    }
+
+    /// Encodes a column into a `PyArrow` dictionary array over this vocabulary.
+    ///
+    /// Unseen values register in first-appearance order and `None` is a null
+    /// key, so two calls on one dictionary answer two arrays whose codes agree.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arrow_array<'py>(
+        &mut self,
+        py: Python<'py>,
+        values: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        // An Arrow holder answers its own values; anything else is iterated.
+        let values = if values.hasattr("to_pylist")? {
+            values.call_method0("to_pylist")?
+        } else {
+            values.clone()
+        };
+        let mut column = Vec::new();
+        for value in ascii_column_of(&values)? {
+            let value = value?;
+            column.push(if value.is_none() {
+                None
+            } else {
+                Some(ascii_value_of(&value)?)
+            });
+        }
+        let array = self.inner.into_arrow_array(column).map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &array, None)
+    }
+
+    /// Builds an `enum.IntEnum` whose members are this vocabulary.
+    ///
+    /// The member names and their codes come from the core listing, so the
+    /// enum is the value list and a member is its position.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_intenum<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
+        if name.trim().is_empty() {
+            return Err(PyValueError::new_err(
+                "AsciiDictionary.into_intenum needs a non-empty enum name",
+            ));
+        }
+        let members = self.inner.into_members().map_err(value_error)?;
+        let members = PyList::new(
+            py,
+            members
+                .iter()
+                .map(|(member, code)| (member.as_str(), *code)),
+        )?;
+        py.import("enum")?
+            .getattr("IntEnum")?
+            .call1((name, members))
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let values = PyList::new(py, self.values())?;
+        Ok(values.try_iter()?.into_any())
+    }
+
+    fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
+        matches!(self.get_code(value), Ok(Some(_)))
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let values = PyList::new(py, self.values())?;
+        Ok(format!(
+            "AsciiDictionary.from_values({:?}, {}, key={:?})",
+            self.inner.values_dtype().to_string(),
+            values.repr()?.to_str()?,
+            self.inner.key().to_string(),
+        ))
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        let answer = match operation {
+            CompareOp::Eq => self.inner == other.inner,
+            CompareOp::Ne => self.inner != other.inner,
+            _ => return Ok(other.py().NotImplemented()),
+        };
+        Ok(answer
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
     }
 }

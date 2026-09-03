@@ -22,6 +22,7 @@ from typing import Annotated
 import pyarrow as pa
 
 from yggdryl import (
+    AsciiDictionary,
     DataType,
     Field,
     MediaType,
@@ -254,6 +255,27 @@ def _write_through_protocol_view() -> None:
     PROTOCOL_FIELD.iceberg["doc"] = "closing price"
 
 
+ASCII_VOCABULARY = ("USD", "EUR", "JPY", "GBP")
+ASCII_COLUMN = [ASCII_VOCABULARY[index % 4] for index in range(10_000)]
+ASCII_DICTIONARY = AsciiDictionary.from_values("ascii32", ASCII_VOCABULARY)
+
+
+def _ascii_push_hit() -> int:
+    return ASCII_DICTIONARY.push("GBP")
+
+
+def _ascii_push_miss() -> object:
+    dictionary = AsciiDictionary("ascii32")
+    for value in ASCII_VOCABULARY:
+        dictionary.push(value)
+    return dictionary
+
+
+def _ascii_encode_column() -> object:
+    # A fresh vocabulary per call: the encode registers as it goes.
+    return AsciiDictionary("ascii32").into_arrow_array(ASCII_COLUMN)
+
+
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
     samples = timeit.repeat(operation, number=iterations, repeat=7)
     median = statistics.median(samples)
@@ -374,6 +396,13 @@ def main() -> None:
             "media header inference",
             lambda: MediaType.from_content_headers(CONTENT_TYPE, CONTENT_ENCODING),
             args.iterations,
+        )
+        _measure("ASCII dictionary push hit", _ascii_push_hit, args.iterations)
+        _measure("ASCII dictionary push miss", _ascii_push_miss, args.iterations)
+        _measure(
+            "ASCII dictionary 10k encode",
+            _ascii_encode_column,
+            max(1, args.iterations // 1_000),
         )
     finally:
         gc.enable()
