@@ -165,7 +165,7 @@ fn the_wrapper_owns_ipc_options_over_an_unnamed_buffer() {
     let options = media.record_options().unwrap();
 
     assert!(matches!(options, RecordOptions::Ipc(_)));
-    assert_eq!(options.field(), Some(&schema()));
+    assert_eq!(options.field(), Some(schema()));
 }
 
 #[test]

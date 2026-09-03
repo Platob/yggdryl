@@ -165,11 +165,11 @@ impl<H: IOBase> Text<H> {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut once = Buffer::from_bytes(b"line\n".to_vec()).into_text();
-    /// once.set_batch_size(7);
+    /// once.set_batch_row_size(7);
     ///
     /// // Idempotent: the same handle, with the options it already carried.
     /// let twice = once.into_text();
-    /// assert_eq!(twice.options().batch_size(), Some(7));
+    /// assert_eq!(twice.options().batch_row_size(), Some(7));
     /// assert_eq!(twice.read_all_bytes()?, b"line\n");
     /// # Ok(())
     /// # }
@@ -309,14 +309,14 @@ impl<H: IOBase> Text<H> {
     }
 
     /// Set the row-per-batch bound.
-    pub fn set_batch_size(&mut self, batch_size: usize) {
-        self.refine(|options| options.set_batch_size(Some(batch_size)));
+    pub fn set_batch_row_size(&mut self, batch_row_size: usize) {
+        self.refine(|options| options.set_batch_row_size(Some(batch_row_size)));
     }
 
     /// Return this handler with a row-per-batch bound.
     #[must_use]
-    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
-        self.set_batch_size(batch_size);
+    pub fn with_batch_row_size(mut self, batch_row_size: usize) -> Self {
+        self.set_batch_row_size(batch_row_size);
         self
     }
 
@@ -671,8 +671,12 @@ impl<H: IOBase> crate::io::IOMedia for Text<H> {
     /// batches back as lines - the default path, with no options in sight.
     #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+        use crate::generic::IORecordOptions as _;
+
         let mut options = super::record::TextOptions::with_lines(self.options.as_ref().clone());
-        options.field = self.declared.clone();
+        if let Some(declared) = &self.declared {
+            options.set_field(declared.clone());
+        }
         Ok(crate::generic::RecordOptions::Text(Box::new(options)))
     }
 

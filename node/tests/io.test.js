@@ -646,8 +646,19 @@ test('readArrowLines projects matched records into typed batches', (t) => {
 
   // Inputs that would silently misparse are refused instead.
   assert.throws(() => new IOBase(target).readArrowLines(pattern, { customFields: 'venue' }), TypeError)
-  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: -1 }), TypeError)
-  assert.throws(() => new IOBase(target).readArrowLines(pattern, { batchSize: 1.5 }), TypeError)
+  assert.throws(
+    () => new IOBase(target).readArrowLines(pattern, { batchRowSize: -1 }),
+    /batchRowSize must be a positive integer/,
+  )
+  assert.throws(
+    () => new IOBase(target).readArrowLines(pattern, { batchRowSize: 1.5 }),
+    /batchRowSize must be a positive integer/,
+  )
+  // The row bound has one spelling; the byte-stream `batchSize` is not it.
+  assert.throws(
+    () => new IOBase(target).readArrowLines(pattern, { batchSize: 10 }),
+    /unknown line option "batchSize"/,
+  )
 })
 
 test('named captures type themselves and declarations override', (t) => {
@@ -723,7 +734,7 @@ test('a reader is fully described by a configuration document', (t) => {
     [
       "pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'",
       'byte_size: 1048576',
-      'batch_size: 4096',
+      'batch_row_size: 4096',
       'timestamp_capture: stamp',
       'custom_fields:',
       '  source: gateway',
@@ -757,7 +768,7 @@ test('log mode needs no expression, and both batch bounds apply', (t) => {
   assert.equal(table.numRows, 50)
   assert.deepEqual([...table.getChild('level')].slice(0, 2), ['INFO', 'INFO'])
 
-  const byRows = [...handle.readArrowLines({ logs: true, batchSize: 10 })]
+  const byRows = [...handle.readArrowLines({ logs: true, batchRowSize: 10 })]
   assert.deepEqual(
     byRows.map((batch) => batch.numRows),
     [10, 10, 10, 10, 10],

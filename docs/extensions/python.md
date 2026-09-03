@@ -660,7 +660,7 @@ inferred from `merge_by_names`; the shape remains explicit in the method name.
 These adapters are intentionally strict. A table passed to `overwrite_arrow_reader` is refused even
 though PyArrow can export it as a stream: `overwrite_arrow_table` preserves the representation the
 caller actually holds. A scanner participates by handing over `scanner.to_reader()`. Row iterables
-stay streaming and are grouped into at most `options.batch_size` rows; when a commit cadence falls
+stay streaming and are grouped into at most `options.batch_row_size` rows; when a commit cadence falls
 inside that grouping, conversion ends the current batch at the exact cadence boundary instead.
 Empty records cannot infer a shape and therefore require `options.field`.
 

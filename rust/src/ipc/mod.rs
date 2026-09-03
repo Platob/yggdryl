@@ -60,7 +60,6 @@ use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema};
 
-use crate::Field;
 use crate::Level;
 use crate::arrow::{
     BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema, from_reader_error,
@@ -68,10 +67,8 @@ use crate::arrow::{
 };
 use crate::generic::{IORecordOptions, RecordOptions};
 use crate::io::IOBase;
+use crate::{DataType, Field, Metadata};
 use smol_str::SmolStr;
-
-/// The default root Field name used when a stream's schema is inferred.
-pub const DEFAULT_ROOT_NAME: &str = "row";
 
 /// The settings an Arrow IPC read or write takes.
 ///
@@ -79,14 +76,16 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
 /// and its content coding comes from the handle.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IpcOptions {
-    /// Declared canonical schema; inferred from the stream when absent.
-    pub field: Option<Field>,
-    /// Root Field name used for an inferred schema.
-    pub root_name: SmolStr,
+    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME) unless set.
+    pub name: SmolStr,
+    /// Declared root datatype; inferred from the stream when absent.
+    pub dtype: Option<DataType>,
+    /// Root metadata; empty unless declared.
+    pub metadata: Metadata,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
-    pub batch_size: Option<usize>,
+    pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
@@ -107,10 +106,11 @@ impl IpcOptions {
     /// Build the default IPC options.
     pub fn new() -> Self {
         Self {
-            field: None,
-            root_name: SmolStr::new_static(DEFAULT_ROOT_NAME),
+            name: SmolStr::new_static(crate::generic::DEFAULT_ROOT_NAME),
+            dtype: None,
+            metadata: Metadata::new(),
             safe: false,
-            batch_size: None,
+            batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
             commit_row_size: None,
@@ -143,7 +143,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &IpcOptions) -> Resul
     }
     let schema = read_schema(handle)?
         .ok_or_else(|| ipc_metadata_error("an IPC stream has no schema message"))?;
-    field_from_arrow_schema(options.root_name(), &schema)
+    field_from_arrow_schema(options.name(), &schema)
 }
 
 /// Count the rows in an IPC stream from message metadata alone.
@@ -530,7 +530,7 @@ fn finish_batch_reader(
 /// Build the typed empty reader used for an absent IPC resource.
 fn empty_batch_reader(field: Option<&Field>, options: &IpcOptions) -> Result<BatchReader> {
     let schema = match options.field() {
-        Some(field) => arrow_schema_from_field(field)?,
+        Some(field) => arrow_schema_from_field(&field)?,
         None => Arc::new(Schema::empty()),
     };
     let schema = match field.and_then(|field| projection_indices(field, &schema)) {
@@ -745,10 +745,10 @@ impl<H: IOBase> Ipc<H> {
         self
     }
 
-    /// Return this stream with a different inferred-root Field name.
+    /// Return this stream with a different root Field name.
     #[must_use]
-    pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self {
-        self.options.set_root_name(root_name.into());
+    pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self {
+        self.options.set_name(name.into());
         self.invalidate_cached_metadata();
         self
     }
@@ -817,9 +817,7 @@ impl<H: IOBase> Ipc<H> {
         let rows = metadata.rows;
         let field = match (self.options.field(), metadata.schema) {
             (Some(field), _) => Some(field.clone()),
-            (None, Some(schema)) => {
-                Some(field_from_arrow_schema(self.options.root_name(), &schema)?)
-            }
+            (None, Some(schema)) => Some(field_from_arrow_schema(self.options.name(), &schema)?),
             (None, None) => None,
         };
         let columns = field.as_ref().map_or(0, Field::field_len);
@@ -902,12 +900,12 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
         // derive the bytes afresh rather than receive that unrelated Field.
         if self.opened && self.options.field().is_none() {
             if let Some(cached) = self.cached_schema.get() {
-                return Ok(cached.clone().with_name(options.root_name()));
+                return Ok(cached.clone().with_name(options.name()));
             }
         }
         let field = read_field(&self.handle, options)?;
         if self.opened && self.options.field().is_none() {
-            let cached = field.clone().with_name(self.options.root_name());
+            let cached = field.clone().with_name(self.options.name());
             let _ = self.cached_schema.set(cached);
         }
         Ok(field)
@@ -954,7 +952,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
         let opened = self.opened;
         let published = if opened {
             Some(field_from_arrow_schema(
-                options.root_name(),
+                options.name(),
                 batches.schema().as_ref(),
             )?)
         } else {

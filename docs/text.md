@@ -167,7 +167,7 @@ unchanged from a JSON, YAML, or TOML configuration:
 | `timestamp_capture`, `timezone` | turn a captured wall time into an instant |
 | `capture_types` | strictly type named captures |
 | `custom_fields` | append constant columns |
-| `byte_size`, `batch_size` | close a batch when the first bound is reached |
+| `byte_size`, `batch_row_size` | close a batch when the first bound is reached |
 
 `Opening`, `TextLineOptions`, and `TextOptions` are ordinary Rust values:
 cloning preserves the complete declaration, and `Eq`, `Ord`, and `Hash`

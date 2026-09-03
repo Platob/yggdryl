@@ -18,9 +18,10 @@ use crate::{
     record::{JsValueHint, dtype_js_hint, field_value_to_js},
 };
 
-pub(crate) fn dtype_from_input(
-    value: Either<ClassInstance<'_, JsDataType>, String>,
-) -> Result<CoreDataType> {
+/// A native `DataType` or the type expression naming one.
+pub type DataTypeInput<'a> = Either<ClassInstance<'a, JsDataType>, String>;
+
+pub(crate) fn dtype_from_input(value: DataTypeInput<'_>) -> Result<CoreDataType> {
     match value {
         Either::A(value) => Ok(value.inner.clone()),
         Either::B(value) => CoreDataType::from_str(&value).map_err(napi_error),

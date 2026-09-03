@@ -536,6 +536,7 @@ export type FieldMetadataInput =
   | Readonly<ObjectMap<string, string>>
   | ReadonlyMap<string, string>
   | ReadonlyArray<MetadataEntry | readonly [string, string]>
+  | Iterable<readonly [string, string]>
 
 export interface FieldOptions {
   nullable?: boolean
@@ -1573,6 +1574,8 @@ declare module './index' {
   type FieldInput = FieldLike
   /** A native `DataType`, or the type expression naming one. */
   type DataTypeInput = DataType | string
+  /** Declared root metadata: entries, a plain object, a Map, or a Field. */
+  type MetadataInput = FieldMetadataInput
   /** The `bigint` a snapshot reports, or a number no larger than 2^53. */
   type SnapshotIdInput = bigint | number
   /** Scan filters: the same `(column, value)` pairs `childrenWhere` takes. */
@@ -1658,7 +1661,7 @@ declare module './index' {
      * `captureTypes` declares the rest (a native `DataType` or a
      * type-expression string), parsed strictly: a captured text the datatype
      * cannot read is an error, never a silent null. A batch closes on
-     * whichever bound trips first, `byteSize` or `batchSize`.
+     * whichever bound trips first, `byteSize` or `batchRowSize`.
      * `fieldFromPattern` answers the same schema without a reader. The
      * boundary is the standard copied IPC one, never zero-copy.
      */
@@ -1989,7 +1992,7 @@ export interface TextLineInput {
   /** Close a batch after this many decoded input bytes. */
   byteSize?: number | null
   /** Close a batch after this many rows; the first bound to trip wins. */
-  batchSize?: number | null
+  batchRowSize?: number | null
   /** The named capture holding the record's timestamp. */
   timestampCapture?: string | null
   /** The zone a naive timestamp is read in, making `unix` a real instant. */

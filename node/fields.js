@@ -9,9 +9,6 @@ function metadataEntry(key, value) {
 
 function normalizeMetadata(values) {
   if (values === undefined) return undefined
-  if (values instanceof Map) {
-    return Array.from(values, ([key, value]) => metadataEntry(key, value))
-  }
   if (Array.isArray(values)) {
     return values.map((entry) => {
       if (Array.isArray(entry)) {
@@ -28,6 +25,15 @@ function normalizeMetadata(values) {
   }
   if (isOptions(values)) {
     return Object.entries(values).map(([key, value]) => metadataEntry(key, value))
+  }
+  // A Map, a Field, or any other iterable of [key, value] pairs.
+  if (values !== null && typeof values === 'object' && Symbol.iterator in values) {
+    return Array.from(values, (entry) => {
+      if (!Array.isArray(entry) || entry.length !== 2) {
+        throw new TypeError('field metadata tuples must contain two items')
+      }
+      return metadataEntry(entry[0], entry[1])
+    })
   }
   throw new TypeError('field metadata must be an object, Map, or entry array')
 }

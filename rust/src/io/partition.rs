@@ -337,7 +337,7 @@ pub(crate) fn filtered_reader(inner: BatchReader, options: &RecordOptions) -> Re
     if options.filter_partitions().is_empty() {
         return Ok(inner);
     }
-    let schema = field_from_arrow_schema("row", inner.schema().as_ref())?;
+    let schema = field_from_arrow_schema(options.name(), inner.schema().as_ref())?;
     let predicate = options.partition_predicate(&schema);
     if predicate.is_always_true() {
         return Ok(inner);
@@ -672,7 +672,7 @@ fn derived_field(
         // columns, because the layout is where that fact came from.
         let empty = RecordBatch::new_empty(arrow_schema_from_field(&stored)?);
         let widened = with_partitions(&empty, &pairs, None)?;
-        let field = field_from_arrow_schema(options.root_name(), widened.schema().as_ref())?;
+        let field = field_from_arrow_schema(options.name(), widened.schema().as_ref())?;
         // The schema-bearing part may also contain rows. Put it back in front
         // of the still-live listing instead of reopening or discarding it.
         let remaining = Listing::new(std::iter::once(Ok(part)).chain(parts));
@@ -920,7 +920,7 @@ impl FolderWriter {
             }
         };
 
-        let root = field_from_arrow_schema(self.options.root_name(), schema.as_ref())?;
+        let root = field_from_arrow_schema(self.options.name(), schema.as_ref())?;
         let columns: Vec<&str> = self.columns.iter().map(String::as_str).collect();
         let leaf_field = root.without_fields(&columns)?;
         let leaf_schema = arrow_schema_from_field(&leaf_field)?;

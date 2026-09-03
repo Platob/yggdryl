@@ -3247,7 +3247,7 @@ mod handles {
         let options = crate::io::IOMedia::record_options(&table).unwrap();
         assert_eq!(options.mime_type(), crate::MimeType::PARQUET);
         let field = table.read_arrow_field(&options).unwrap();
-        assert_eq!(field.name(), options.root_name());
+        assert_eq!(field.name(), options.name());
         assert_eq!(field.fields()[0].parquet_field_id().unwrap(), Some(1));
         assert_eq!(field.fields()[2].parquet_field_id().unwrap(), Some(3));
         let declared = options.clone().with_field(trade_schema());

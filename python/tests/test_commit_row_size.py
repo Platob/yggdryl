@@ -279,7 +279,7 @@ def test_non_dividing_row_batches_stop_at_the_exact_commit_before_row_n_plus_one
     handle = IOBase(path)
     seed(handle, intent)
     options = write_options(handle, intent, 1_500)
-    options.batch_size = 1_024
+    options.batch_row_size = 1_024
 
     def records() -> Iterator[dict[str, object]]:
         for row_id in range(1, 1_501):

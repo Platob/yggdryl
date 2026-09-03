@@ -105,8 +105,8 @@ pub use metadata::{ColumnStatistics, FileStatistics, RowGroupStatistics};
 
 /// The settings a Parquet read or write takes.
 ///
-/// The shared settings (schema, root name, cast strictness, batch size) are
-/// flat fields here, alongside the ones only Parquet has.
+/// The shared settings (root name, datatype, metadata, cast strictness, batch
+/// row size) are flat fields here, alongside the ones only Parquet has.
 /// The shared compression level is deliberately unused: Parquet compresses
 /// pages internally through [`Self::compression`], and an outer content coding
 /// would produce a file no Parquet reader can open.
@@ -119,14 +119,16 @@ pub struct ParquetOptions {
     pub max_row_group_size: usize,
     /// File-level key/value metadata written into the footer.
     pub key_value_metadata: Vec<(String, String)>,
-    /// Declared canonical schema; read from the footer when absent.
-    pub field: Option<Field>,
-    /// Root Field name used for a schema read from the footer.
-    pub root_name: smol_str::SmolStr,
+    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME) unless set.
+    pub name: smol_str::SmolStr,
+    /// Declared root datatype; read from the footer when absent.
+    pub dtype: Option<crate::DataType>,
+    /// Root metadata; empty unless declared.
+    pub metadata: crate::Metadata,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
-    pub batch_size: Option<usize>,
+    pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
@@ -154,10 +156,11 @@ struct ParquetOptionsIdentity<'a> {
     compression: CompressionIdentity,
     max_row_group_size: usize,
     key_value_metadata: &'a [(String, String)],
-    field: &'a Option<Field>,
-    root_name: &'a smol_str::SmolStr,
+    name: &'a smol_str::SmolStr,
+    dtype: &'a Option<crate::DataType>,
+    metadata: &'a crate::Metadata,
     safe: bool,
-    batch_size: Option<usize>,
+    batch_row_size: Option<usize>,
     max_row_size: Option<u64>,
     max_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
@@ -173,10 +176,11 @@ impl ParquetOptions {
             compression: compression_identity(self.compression),
             max_row_group_size: self.max_row_group_size,
             key_value_metadata: &self.key_value_metadata,
-            field: &self.field,
-            root_name: &self.root_name,
+            name: &self.name,
+            dtype: &self.dtype,
+            metadata: &self.metadata,
             safe: self.safe,
-            batch_size: self.batch_size,
+            batch_row_size: self.batch_row_size,
             max_row_size: self.max_row_size,
             max_byte_size: self.max_byte_size,
             commit_row_size: self.commit_row_size,
@@ -193,10 +197,11 @@ impl ParquetOptions {
             compression: Compression::ZSTD(ZstdLevel::default()),
             max_row_group_size: 1_048_576,
             key_value_metadata: Vec::new(),
-            field: None,
-            root_name: smol_str::SmolStr::new_static("row"),
+            name: smol_str::SmolStr::new_static(crate::generic::DEFAULT_ROOT_NAME),
+            dtype: None,
+            metadata: crate::Metadata::new(),
             safe: false,
-            batch_size: None,
+            batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
             commit_row_size: None,
@@ -381,7 +386,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> R
         return Ok(field.clone());
     }
     let schema = read_arrow_schema(handle)?;
-    field_from_arrow_schema(options.root_name(), schema.as_ref())
+    field_from_arrow_schema(options.name(), schema.as_ref())
 }
 
 /// Read the file `handle` holds, keeping only the columns `field` names.
@@ -405,7 +410,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     if handle.is_empty() {
         // Per the laziness contract, a missing file holds no batches.
         let schema = match options.field() {
-            Some(field) => arrow_schema_from_field(field)?,
+            Some(field) => arrow_schema_from_field(&field)?,
             None => Arc::new(Schema::empty()),
         };
         let schema = match field.and_then(|field| projection_indices(field, &schema)) {
@@ -421,7 +426,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         Some(builder) => builder,
         None => open_builder(handle)?,
     };
-    let builder = match options.batch_size() {
+    let builder = match options.batch_row_size() {
         Some(size) => builder.with_batch_size(size),
         None => builder,
     };
@@ -722,8 +727,8 @@ impl<H: IOBase> Parquet<H> {
 
     /// Return this file with a different root Field name.
     #[must_use]
-    pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self {
-        self.options.set_root_name(root_name.into());
+    pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self {
+        self.options.set_name(name.into());
         self.invalidate_metadata();
         self
     }
@@ -938,10 +943,7 @@ impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
             return Ok(field.clone());
         }
         let schema = self.read_arrow_schema()?;
-        Ok(field_from_arrow_schema(
-            options.root_name(),
-            schema.as_ref(),
-        )?)
+        Ok(field_from_arrow_schema(options.name(), schema.as_ref())?)
     }
 
     fn read_parquet_statistics(&self) -> crate::Result<FileStatistics> {

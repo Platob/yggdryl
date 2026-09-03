@@ -1804,7 +1804,7 @@ mod records {
         let (schema, batch) = batch();
         // An Arrow schema is anonymous, so the record's name is the options'
         // root name; naming it keeps the round trip exact.
-        let mut media = Avro::new(handle()).with_root_name("trades");
+        let mut media = Avro::new(handle()).with_name("trades");
         let options = media.record_options().unwrap();
         media
             .overwrite_arrow_reader(
@@ -1829,7 +1829,7 @@ mod records {
         let options = media.record_options().unwrap();
 
         assert!(matches!(options, RecordOptions::Avro(_)));
-        assert_eq!(options.field(), Some(&field));
+        assert_eq!(options.field(), Some(field));
     }
 
     #[test]
@@ -1915,7 +1915,7 @@ mod records {
             ],
         )
         .unwrap();
-        let mut media = Avro::new(handle()).with_root_name("trades");
+        let mut media = Avro::new(handle()).with_name("trades");
         let options = media.record_options().unwrap();
         media
             .overwrite_arrow_reader(

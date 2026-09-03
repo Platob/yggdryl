@@ -16,8 +16,7 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
-use yggdryl::generic::Holder;
-use yggdryl::generic::IORecordOptions as _;
+use yggdryl::generic::{DEFAULT_ROOT_NAME, Holder, IORecordOptions as _};
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
@@ -32,13 +31,10 @@ use crate::io::PyIOBase;
 use crate::media::{PyMimeType, core_mime_type_from_value};
 use crate::record::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
-    core_root_field_from_value,
+    core_root_field_from_value, string_pairs_from_value,
 };
 use crate::uri::core_url_from_value;
 use crate::value_error;
-
-/// The root name given to a schema that arrives as a bare Arrow schema.
-const SCHEMA_ROOT_NAME: &str = "row";
 
 /// Read one required key from a private pickle state mapping.
 fn required_pickle_item<'py>(
@@ -63,7 +59,7 @@ fn required_pickle_item<'py>(
 #[pyfunction(name = "assign_field_ids")]
 #[pyo3(signature = (schema, start = 1))]
 pub(crate) fn iceberg_assign_field_ids(schema: &Bound<'_, PyAny>, start: i32) -> PyResult<PyField> {
-    let mut root = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+    let mut root = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
     assign_field_ids(&mut root, start).map_err(value_error)?;
     Ok(PyField::from_inner(root))
 }
@@ -99,7 +95,7 @@ pub(crate) fn iceberg_schema_into_json(
     py: Python<'_>,
     schema: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let root = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+    let root = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
     let document = schema_into_json(&root).map_err(value_error)?;
     crate::scalar::as_py(py, &document)
 }
@@ -185,7 +181,7 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
         || value.extract::<&str>().is_ok()
         || value.hasattr("__arrow_c_schema__")?
     {
-        return core_root_field_from_value(value, SCHEMA_ROOT_NAME);
+        return core_root_field_from_value(value, DEFAULT_ROOT_NAME);
     }
     if let Ok(items) = value.try_iter() {
         let mut fields = Vec::new();
@@ -193,9 +189,9 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
             fields.push(core_field_from_value(&item?)?);
         }
         let dtype = CoreDataType::from_fields(fields).map_err(value_error)?;
-        return Ok(dtype.required_field(SCHEMA_ROOT_NAME));
+        return Ok(dtype.required_field(DEFAULT_ROOT_NAME));
     }
-    core_root_field_from_value(value, SCHEMA_ROOT_NAME)
+    core_root_field_from_value(value, DEFAULT_ROOT_NAME)
 }
 
 /// Read a schema root the way [`PyTable::create`] needs it: numbered.
@@ -208,29 +204,12 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
 /// numbering happens at this boundary rather than inside [`Table::create`]'s
 /// metadata alone.
 fn numbered_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
-    let mut schema = core_root_field_from_value(value, SCHEMA_ROOT_NAME)?;
+    let mut schema = core_root_field_from_value(value, DEFAULT_ROOT_NAME)?;
     let start = last_column_id(&schema)
         .map_err(value_error)?
         .saturating_add(1);
     assign_field_ids(&mut schema, start).map_err(value_error)?;
     Ok(schema)
-}
-
-/// Read `(key, value)` string pairs out of a mapping or an iterable of pairs.
-///
-/// These are the two shapes `IOBase.children_where` already accepts for the
-/// same vocabulary, so a filter and a property update are spelled alike.
-fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
-    let items = if value.hasattr("items")? {
-        value.call_method0("items")?
-    } else {
-        value.clone()
-    };
-    let mut pairs = Vec::new();
-    for item in items.try_iter()? {
-        pairs.push(item?.extract::<(String, String)>()?);
-    }
-    Ok(pairs)
 }
 
 /// Read the `(column, value)` filter pairs a scan takes; `None` means none.
@@ -1198,7 +1177,7 @@ impl PyTable {
     ) -> PyResult<Bound<'py, PyAny>> {
         let resolved = iceberg_call_options(options)?;
         let field = field
-            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
         let reader = with_call_options(&mut self.inner, resolved, |table| {
             table.scan(field.as_ref()).map_err(value_error)
@@ -1227,7 +1206,7 @@ impl PyTable {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
-            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
         let reader = with_call_options(&mut self.inner, resolved, |table| {
             table
@@ -1255,7 +1234,7 @@ impl PyTable {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
-            .map(|field| core_root_field_from_value(field, SCHEMA_ROOT_NAME))
+            .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
         let reader = with_call_options(&mut self.inner, resolved, |table| {
             table
@@ -1281,7 +1260,7 @@ impl PyTable {
     ) -> PyResult<Bound<'py, PyAny>> {
         let filter = crate::expression::expression_from_value(filter)?;
         let field = schema
-            .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
+            .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
         let reader = self
             .inner
@@ -1456,7 +1435,7 @@ impl PyTable {
 
     /// Add a schema, make it current, and write a new metadata document.
     fn evolve_schema(&mut self, schema: &Bound<'_, PyAny>) -> PyResult<i32> {
-        let schema = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+        let schema = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
         self.inner.evolve_schema(schema).map_err(value_error)
     }
 
@@ -1479,7 +1458,7 @@ impl PyTable {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = schema
-            .map(|schema| core_root_field_from_value(schema, SCHEMA_ROOT_NAME))
+            .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
         let reader = with_call_options(&mut self.inner, resolved, |table| {
             table
@@ -2375,7 +2354,7 @@ impl PyPartitionSpec {
         columns: &Bound<'_, PyAny>,
         spec_id: i32,
     ) -> PyResult<Self> {
-        let schema = core_root_field_from_value(schema, SCHEMA_ROOT_NAME)?;
+        let schema = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
         let names = crate::media::strings_from_iterable(columns, "columns")?;
         let borrowed: Vec<&str> = names.iter().map(String::as_str).collect();
         PartitionSpec::identity(spec_id, &schema, &borrowed)

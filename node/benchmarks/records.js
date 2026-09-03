@@ -97,7 +97,7 @@ memory.mediaType = MimeType.ARROW_STREAM
 benchmark('records/reader_from_ipc', () => BatchReader.fromIpc(ipc))
 benchmark('records/reader_from_arrow_table', () => BatchReader.from(table))
 benchmark('records/record_options', () => memory.recordOptions())
-const protocolOptions = memory.recordOptions().withField(schema).withBatchSize(writeBatchSize)
+const protocolOptions = memory.recordOptions().withField(schema).withBatchRowSize(writeBatchSize)
 benchmark('records/record_options_equals', () => protocolOptions.equals(protocolOptions))
 benchmark('records/record_options_compare', () => protocolOptions.compare(protocolOptions))
 benchmark('records/record_options_stable_hash', () => protocolOptions.stableHash())
@@ -145,7 +145,7 @@ function committed(handle, intent) {
   let options = handle
     .recordOptions()
     .withField(schema)
-    .withBatchSize(writeBatchSize)
+    .withBatchRowSize(writeBatchSize)
     .withCommitRowSize(commitRowSize)
   if (intent === 'merge') options = options.withMergeByNames(['id'])
   return options

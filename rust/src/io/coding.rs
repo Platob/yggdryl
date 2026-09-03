@@ -199,7 +199,7 @@ impl<H: IOBase> Coded<H> {
         use crate::generic::IORecordOptions;
 
         let reader = match options.field() {
-            Some(field) => crate::arrow::cast_reader(reader, field, options.safe())?,
+            Some(field) => crate::arrow::cast_reader(reader, &field, options.safe())?,
             None => reader,
         };
         let reader = crate::io::partition::filtered_reader(reader, options)?;
@@ -263,7 +263,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         }
         let reader = match options {
             crate::generic::RecordOptions::Ipc(ipc) => {
-                crate::ipc::read_owned_batch_reader(owned, options.field(), ipc)?
+                crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
             }
             crate::generic::RecordOptions::Text(text) => owned.into_arrow_lines(&text.lines)?,
             _ => return crate::io::IOMedia::read_arrow_reader(&owned, options),

@@ -206,6 +206,29 @@ impl Field {
         }
     }
 
+    /// Constructs a field around a metadata snapshot that is already valid.
+    ///
+    /// Record options rebuild their declared root from stored parts on every
+    /// ask; moving the shared snapshot in keeps that build free of allocation
+    /// and of a second validation of entries the snapshot already checked.
+    #[cfg(feature = "arrow")]
+    pub(crate) fn new_with_metadata(
+        name: impl Into<SmolStr>,
+        dtype: DataType,
+        nullable: bool,
+        metadata: Metadata,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            dtype,
+            nullable,
+            dictionary_id: 0,
+            dictionary_is_ordered: false,
+            metadata,
+            arrow: OnceLock::new(),
+        }
+    }
+
     /// Materializes this field's bounded canonical scalar default.
     ///
     /// Nullable fields prefer logical null. Union and run-end layouts encode

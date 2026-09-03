@@ -32,9 +32,10 @@ pub struct MetadataEntry {
     pub value: String,
 }
 
-type MetadataInput = Either<Vec<MetadataEntry>, HashMap<String, String>>;
+/// Metadata as `[{key, value}]` entries or one plain object.
+pub type MetadataInput = Either<Vec<MetadataEntry>, HashMap<String, String>>;
 
-fn metadata_pairs(value: MetadataInput) -> HashMap<String, String> {
+pub(crate) fn metadata_pairs(value: MetadataInput) -> HashMap<String, String> {
     match value {
         Either::A(entries) => {
             let mut values = HashMap::with_capacity(entries.len());

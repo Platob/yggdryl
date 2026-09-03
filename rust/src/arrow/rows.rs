@@ -17,18 +17,18 @@ use crate::{Field, Scalar};
 use super::{BatchReader, Error, Result, arrow_schema_from_field};
 
 /// Default number of row values materialized into one Arrow batch.
-pub(crate) const DEFAULT_BATCH_SIZE: usize = crate::generic::DEFAULT_RECORD_BATCH_SIZE;
+pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// Widen native row values into a lazy Arrow reader.
 ///
 /// Only the current batch is held.  The source is not touched during
-/// construction, and each call to `next` pulls at most `batch_size` rows.
+/// construction, and each call to `next` pulls at most `batch_row_size` rows.
 /// After the first conversion, validation, or materialization failure the
 /// reader is fused.
 pub(crate) fn reader<I, R>(
     field: &Field,
     rows: I,
-    batch_size: Option<usize>,
+    batch_row_size: Option<usize>,
     commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
 ) -> Result<BatchReader>
@@ -43,7 +43,7 @@ where
         rows: rows.into_iter(),
         field: field.clone(),
         schema,
-        batch_size: batch_size.unwrap_or(DEFAULT_BATCH_SIZE).max(1),
+        batch_row_size: batch_row_size.unwrap_or(DEFAULT_BATCH_ROW_SIZE).max(1),
         commit_row_size,
         rows_to_commit: commit_row_size,
         remaining_rows: max_row_size,
@@ -56,7 +56,7 @@ struct Rows<I> {
     rows: I,
     field: Field,
     schema: SchemaRef,
-    batch_size: usize,
+    batch_row_size: usize,
     commit_row_size: Option<usize>,
     rows_to_commit: Option<usize>,
     remaining_rows: Option<u64>,
@@ -78,11 +78,11 @@ where
 
         // A native row must not be converted past either an observable
         // publication boundary or the operation-wide row limit. In
-        // particular, `batch_size = 1024` and `commit_row_size = 1500` must
+        // particular, `batch_row_size = 1024` and `commit_row_size = 1500` must
         // yield 1024 then 476 rows: touching row 1501 before the 1500-row
         // prefix has been handed to the writer would make a conversion error
         // erase a prefix that was ready to publish.
-        let mut row_size = self.batch_size;
+        let mut row_size = self.batch_row_size;
         if let Some(remaining) = self.rows_to_commit {
             row_size = row_size.min(remaining);
         }
@@ -94,7 +94,7 @@ where
             return None;
         }
 
-        // `batch_size` is caller-controlled. Do not reserve it eagerly: an
+        // `batch_row_size` is caller-controlled. Do not reserve it eagerly: an
         // enormous bound over a two-row iterator must not request an enormous
         // allocation. Vec's growth remains bounded by rows actually pulled.
         let mut values = Vec::new();
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn zero_batch_size_still_makes_forward_progress() {
+    fn zero_batch_row_size_still_makes_forward_progress() {
         let rows = [Row { id: 1, name: None }, Row { id: 2, name: None }];
         let batches = reader(&field(), rows, Some(0), None, None).unwrap();
         assert_eq!(

@@ -8,12 +8,13 @@
 use napi::bindgen_prelude::{Buffer, Result};
 use napi_derive::napi;
 use yggdryl::generic::{
-    DEFAULT_RECORD_BATCH_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
+    DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
-use yggdryl::{IOMode, Level};
+use yggdryl::{IOMode, Level, Metadata};
 
+use crate::datatype::{DataTypeInput, JsDataType, dtype_from_input};
 use crate::exact_u8;
-use crate::field::{JsField, MetadataEntry};
+use crate::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
 use crate::media::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
 };
@@ -86,10 +87,11 @@ impl JsRecordOptions {
         JsMimeType::from_core(self.inner.mime_type())
     }
 
-    /// The declared canonical root Field, when one was declared.
+    /// The declared root Field, built from `name`, `dtype`, and `metadata`;
+    /// `null` until a datatype is declared.
     #[napi(getter)]
     pub fn field(&self) -> Option<JsField> {
-        self.inner.field().cloned().map(JsField::from_core)
+        self.inner.field().map(JsField::from_core)
     }
 
     /// Validate explicit write intent before JavaScript converts or pulls input.
@@ -103,25 +105,62 @@ impl JsRecordOptions {
         self.inner.require_write_mode(mode).map_err(napi_error)?;
         self.inner.require_commit_row_size().map_err(napi_error)?;
         self.inner.require_write_limits().map_err(napi_error)?;
-        u32::try_from(DEFAULT_RECORD_BATCH_SIZE).map_err(napi_error)
+        u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
 
-    /// Declare the canonical root Field.
+    /// Declare the root Field: its name, datatype, and metadata become the
+    /// three declared parts; nullability and dictionary options are dropped.
     #[napi(setter)]
     pub fn set_field(&mut self, field: &JsField) {
         self.inner.set_field(field.inner.clone());
     }
 
-    /// The root Field name used when a schema is inferred.
+    /// The root Field name, declared or given to an inferred schema.
     #[napi(getter)]
-    pub fn root_name(&self) -> String {
-        self.inner.root_name().to_owned()
+    pub fn name(&self) -> String {
+        self.inner.name().to_owned()
     }
 
-    /// Set the root Field name used when a schema is inferred.
+    /// Set the root Field name.
     #[napi(setter)]
-    pub fn set_root_name(&mut self, root_name: String) {
-        self.inner.set_root_name(root_name.into());
+    pub fn set_name(&mut self, name: String) {
+        self.inner.set_name(name.into());
+    }
+
+    /// The declared root datatype; `null` when the shape is inferred.
+    #[napi(getter)]
+    pub fn dtype(&self) -> Option<JsDataType> {
+        self.inner.dtype().cloned().map(JsDataType::from_core)
+    }
+
+    /// Declare the root datatype from a `DataType` or a type expression;
+    /// `null` clears it.
+    #[napi(setter)]
+    pub fn set_dtype(&mut self, dtype: Option<DataTypeInput<'_>>) -> Result<()> {
+        let dtype = dtype.map(dtype_from_input).transpose()?;
+        self.inner.set_dtype(dtype);
+        Ok(())
+    }
+
+    /// The root metadata entries in lexical key order; empty unless declared.
+    #[napi(getter)]
+    pub fn metadata(&self) -> Vec<MetadataEntry> {
+        self.inner
+            .metadata()
+            .iter()
+            .map(|(key, value)| MetadataEntry {
+                key: key.to_owned(),
+                value: value.to_owned(),
+            })
+            .collect()
+    }
+
+    /// Declare the root metadata from entries or a plain object; empty clears.
+    #[napi(setter)]
+    pub fn set_metadata(&mut self, values: MetadataInput) -> Result<()> {
+        let metadata = Metadata::from_entries(metadata_pairs(values)).map_err(napi_error)?;
+        self.inner.set_metadata(metadata);
+        Ok(())
     }
 
     /// Whether a cast may null a value it cannot convert.
@@ -138,8 +177,8 @@ impl JsRecordOptions {
 
     /// The rows-per-batch bound, when one is set.
     #[napi(getter)]
-    pub fn batch_size(&self) -> Option<u32> {
-        self.inner.batch_size().and_then(|size| {
+    pub fn batch_row_size(&self) -> Option<u32> {
+        self.inner.batch_row_size().and_then(|size| {
             // A bound past 2^32 rows per batch is a caller mistake rather than a
             // number to round, so it reads as unset instead of truncated.
             u32::try_from(size).ok()
@@ -152,14 +191,14 @@ impl JsRecordOptions {
     /// number, so it turns a read of a hundred rows into a successful read of
     /// none. `null` is how "no bound" is spelled.
     #[napi(setter)]
-    pub fn set_batch_size(&mut self, batch_size: Option<u32>) -> Result<()> {
-        if batch_size == Some(0) {
+    pub fn set_batch_row_size(&mut self, batch_row_size: Option<u32>) -> Result<()> {
+        if batch_row_size == Some(0) {
             return Err(napi::Error::from_reason(
-                "expected a positive row count for batchSize, got 0; pass null for no bound",
+                "expected a positive row count for batchRowSize, got 0; pass null for no bound",
             ));
         }
         self.inner
-            .set_batch_size(batch_size.map(|size| size as usize));
+            .set_batch_row_size(batch_row_size.map(|size| size as usize));
         Ok(())
     }
 
@@ -413,12 +452,28 @@ impl JsRecordOptions {
         options
     }
 
-    /// Return these options with a different inferred-root Field name.
+    /// Return these options with a different root Field name.
     #[napi]
-    pub fn with_root_name(&self, root_name: String) -> Self {
+    pub fn with_name(&self, name: String) -> Self {
         let mut options = self.clone();
-        options.set_root_name(root_name);
+        options.set_name(name);
         options
+    }
+
+    /// Return these options with a declared root datatype.
+    #[napi]
+    pub fn with_dtype(&self, dtype: DataTypeInput<'_>) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_dtype(Some(dtype))?;
+        Ok(options)
+    }
+
+    /// Return these options with declared root metadata.
+    #[napi]
+    pub fn with_metadata(&self, values: MetadataInput) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_metadata(values)?;
+        Ok(options)
     }
 
     /// Return these options with a different cast strictness.
@@ -431,9 +486,9 @@ impl JsRecordOptions {
 
     /// Return these options with a rows-per-batch bound.
     #[napi]
-    pub fn with_batch_size(&self, batch_size: u32) -> Result<Self> {
+    pub fn with_batch_row_size(&self, batch_row_size: u32) -> Result<Self> {
         let mut options = self.clone();
-        options.set_batch_size(Some(batch_size))?;
+        options.set_batch_row_size(Some(batch_row_size))?;
         Ok(options)
     }
 

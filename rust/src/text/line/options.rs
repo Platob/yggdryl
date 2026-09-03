@@ -40,12 +40,6 @@ pub(crate) const BASE_COLUMNS: [&str; 10] = [
 /// [`TextLineOptions::field`] still answers from configuration alone.
 pub(crate) const LOG_COLUMNS: [&str; 3] = ["level", "logger", "thread"];
 
-/// The name of the root Struct Field the projection reports.
-///
-/// The record surface infers roots under the same name, so a schema read off
-/// this projection and one read off a record encoding compose without rename.
-pub(crate) const ROOT_NAME: &str = "row";
-
 /// What opens a record.
 ///
 /// Three states rather than two, because "one record per line" and "a record
@@ -169,7 +163,7 @@ pub struct TextLineOptions {
     lstrip: Strip,
     rstrip: Strip,
     byte_size: Option<usize>,
-    batch_size: Option<usize>,
+    batch_row_size: Option<usize>,
     timestamp_capture: Option<SmolStr>,
     timezone: Option<Timezone>,
     custom_fields: Vec<(SmolStr, Scalar)>,
@@ -192,7 +186,7 @@ struct TextLineIdentity<'a> {
     lstrip: &'a Strip,
     rstrip: &'a Strip,
     byte_size: Option<usize>,
-    batch_size: Option<usize>,
+    batch_row_size: Option<usize>,
     timestamp_capture: Option<&'a SmolStr>,
     timezone: Option<&'a Timezone>,
     custom_fields: &'a [(SmolStr, Scalar)],
@@ -208,7 +202,7 @@ impl TextLineOptions {
             lstrip: &self.lstrip,
             rstrip: &self.rstrip,
             byte_size: self.byte_size,
-            batch_size: self.batch_size,
+            batch_row_size: self.batch_row_size,
             timestamp_capture: self.timestamp_capture.as_ref(),
             timezone: self.timezone.as_ref(),
             custom_fields: &self.custom_fields,
@@ -267,7 +261,7 @@ impl TextLineOptions {
     ///
     /// High enough that byte sizing is what normally closes a batch, low enough
     /// that a corpus of very short records still bounds its builders.
-    pub const DEFAULT_BATCH_SIZE: usize = 65_536;
+    pub const DEFAULT_BATCH_ROW_SIZE: usize = 65_536;
 
     /// The zero-configuration extractor: one record per line, the flexible
     /// terminator, whitespace-trimmed messages.
@@ -285,20 +279,21 @@ impl TextLineOptions {
             lstrip: Strip::default(),
             rstrip: Strip::default(),
             byte_size: None,
-            batch_size: None,
+            batch_row_size: None,
             timestamp_capture: None,
             timezone: None,
             custom_fields: Vec::new(),
             capture_types: Vec::new(),
             captures: Vec::new(),
             pattern_captures: 0,
-            field: Field::new(ROOT_NAME, DataType::Null, false),
+            field: Field::new(crate::generic::DEFAULT_ROOT_NAME, DataType::Null, false),
         };
         // The base schema cannot fail: its columns are this module's own.
-        options.field =
-            options
-                .rebuild_schema()
-                .unwrap_or(Field::new(ROOT_NAME, DataType::Null, false));
+        options.field = options.rebuild_schema().unwrap_or(Field::new(
+            crate::generic::DEFAULT_ROOT_NAME,
+            DataType::Null,
+            false,
+        ));
         options
     }
 
@@ -552,19 +547,19 @@ impl TextLineOptions {
 
     /// Return the row-per-batch bound, if declared.
     #[must_use]
-    pub const fn batch_size(&self) -> Option<usize> {
-        self.batch_size
+    pub const fn batch_row_size(&self) -> Option<usize> {
+        self.batch_row_size
     }
 
     /// Set the row-per-batch bound; `None` restores the default.
-    pub fn set_batch_size(&mut self, batch_size: Option<usize>) {
-        self.batch_size = batch_size;
+    pub fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
+        self.batch_row_size = batch_row_size;
     }
 
     /// Return these options with a row-per-batch bound.
     #[must_use]
-    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
-        self.set_batch_size(Some(batch_size));
+    pub fn with_batch_row_size(mut self, batch_row_size: usize) -> Self {
+        self.set_batch_row_size(Some(batch_row_size));
         self
     }
 
@@ -576,8 +571,10 @@ impl TextLineOptions {
 
     /// The row count a batch is closed at.
     #[must_use]
-    pub fn effective_batch_size(&self) -> usize {
-        self.batch_size.unwrap_or(Self::DEFAULT_BATCH_SIZE).max(1)
+    pub fn effective_batch_row_size(&self) -> usize {
+        self.batch_row_size
+            .unwrap_or(Self::DEFAULT_BATCH_ROW_SIZE)
+            .max(1)
     }
 
     /// Return the capture the entry timestamp is read from, when one is set.
@@ -929,7 +926,7 @@ impl TextLineOptions {
                 matches!(value, Scalar::Null),
             ));
         }
-        Ok(DataType::from_fields(fields)?.required_field(ROOT_NAME))
+        Ok(DataType::from_fields(fields)?.required_field(crate::generic::DEFAULT_ROOT_NAME))
     }
 
     /// How many columns precede the capture columns.
@@ -1208,8 +1205,8 @@ impl TextLineOptions {
         if let Some(byte_size) = self.byte_size {
             entries.push((key("byte_size"), Scalar::U64(byte_size as u64)));
         }
-        if let Some(batch_size) = self.batch_size {
-            entries.push((key("batch_size"), Scalar::U64(batch_size as u64)));
+        if let Some(batch_row_size) = self.batch_row_size {
+            entries.push((key("batch_row_size"), Scalar::U64(batch_row_size as u64)));
         }
         if let Some(capture) = &self.timestamp_capture {
             entries.push((key("timestamp_capture"), Scalar::String(capture.clone())));
@@ -1295,7 +1292,7 @@ impl TextLineOptions {
                 "lstrip" => options.set_lstrip(text(held, name)?.parse()?),
                 "rstrip" => options.set_rstrip(text(held, name)?.parse()?),
                 "byte_size" => options.set_byte_size(Some(count(held, name)?)),
-                "batch_size" => options.set_batch_size(Some(count(held, name)?)),
+                "batch_row_size" => options.set_batch_row_size(Some(count(held, name)?)),
                 "timestamp_capture" => timestamp_capture = Some(SmolStr::new(text(held, name)?)),
                 "timezone" => options.set_timezone(Some(text(held, name)?.parse()?))?,
                 "capture_types" => {
@@ -1329,7 +1326,7 @@ impl TextLineOptions {
                     return Err(unexpected(
                         other,
                         "a known option (pattern, opening, header, linesep, lstrip, rstrip, \
-                         byte_size, batch_size, timestamp_capture, timezone, capture_types, \
+                         byte_size, batch_row_size, timestamp_capture, timezone, capture_types, \
                          custom_fields)",
                         format_smolstr!("{other:?}"),
                     ));

@@ -293,7 +293,7 @@ fn the_wrapper_owns_parquet_options_over_an_unnamed_buffer() {
     let options = media.record_options().unwrap();
 
     assert!(matches!(options, RecordOptions::Parquet(_)));
-    assert_eq!(options.field(), Some(&field));
+    assert_eq!(options.field(), Some(field));
 }
 
 #[test]
@@ -583,7 +583,7 @@ fn every_compression_round_trips_and_changes_the_bytes() {
         let mut media = Parquet::new(handle(name)).with_options(
             ParquetOptions::new()
                 .with_compression(compression)
-                .with_batch_size(source.num_rows()),
+                .with_batch_row_size(source.num_rows()),
         );
         let options = media.record_options().unwrap();
         media
@@ -695,10 +695,10 @@ fn generic_statistics_redirect_validates_the_handle_encoding() {
 }
 
 #[test]
-fn a_bounded_batch_size_splits_the_read() {
+fn a_bounded_batch_row_size_splits_the_read() {
     let field = root();
     let mut media = Parquet::new(handle("batched.parquet"))
-        .with_options(ParquetOptions::new().with_batch_size(256));
+        .with_options(ParquetOptions::new().with_batch_row_size(256));
     let ids: Vec<i64> = (0..1_000).collect();
     let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
     let options = media.record_options().unwrap();
