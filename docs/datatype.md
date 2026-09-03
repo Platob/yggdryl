@@ -726,6 +726,140 @@ filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
 `readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII column arrives
 there as its padded bytes; read it under a declared `utf8` field, as above, for the text.
 
+### The dictionary vocabulary and its generated enum
+
+=== "Rust"
+
+    ```rust
+    use arrow_array::types::Int32Type;
+    use arrow_array::{Array, DictionaryArray, FixedSizeBinaryArray};
+    use yggdryl::{AsciiDictionary, DataType};
+
+    // Register as you encode: an unseen value takes the next code, a seen one
+    // answers the code it already has.
+    let mut currencies = AsciiDictionary::new(DataType::Ascii32)?;
+    assert_eq!(currencies.push("USD")?, 0);
+    assert_eq!(currencies.push("EUR")?, 1);
+    assert_eq!(currencies.push("USD")?, 0);
+    assert_eq!(currencies.as_values(), ["USD", "EUR"]);
+    assert_eq!(currencies.get(1), Some("EUR"));
+    assert_eq!(currencies.get_code("USD\0"), Some(0));
+
+    // An encoded column carries the key type over the width.
+    assert_eq!(currencies.dtype()?.to_string(), "dictionary(int32,ascii32)");
+    assert_eq!(currencies.key(), &DataType::Int32);
+    assert_eq!(currencies.values_dtype(), &DataType::Ascii32);
+
+    // The keys are the codes, a `None` is a null key, and the values are the
+    // vocabulary in the width's padded storage.
+    let column = currencies.into_arrow_array([Some("USD"), None, Some("JPY"), Some("EUR")])?;
+    let column = column
+        .as_any()
+        .downcast_ref::<DictionaryArray<Int32Type>>()
+        .unwrap();
+    assert_eq!(
+        column.keys().iter().collect::<Vec<_>>(),
+        [Some(0), None, Some(2), Some(1)]
+    );
+    let stored = column
+        .values()
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .unwrap();
+    assert_eq!(stored.value(2), b"JPY\0");
+    assert_eq!(AsciiDictionary::from_arrow_array(column)?, currencies);
+
+    // The enum is the value list and the code is the position.
+    let venues = AsciiDictionary::from_values(DataType::Ascii32, ["XNAS", "n/a"])?;
+    assert_eq!(venues.into_members()?, [("XNAS".into(), 0), ("N_A".into(), 1)]);
+    ```
+
+=== "Python"
+
+    ```python
+    import enum
+
+    import pyarrow as pa
+
+    from yggdryl import AsciiDictionary, DataType
+
+    # Register as you encode: an unseen value takes the next code, a seen one
+    # answers the code it already has.
+    currencies = AsciiDictionary("ascii32")
+    assert currencies.push("USD") == 0
+    assert currencies.push("EUR") == 1
+    assert currencies.push("USD") == 0
+    assert currencies.values == ["USD", "EUR"]
+    assert currencies.get(1) == "EUR"
+    assert currencies.get_code("USD\x00") == 0
+
+    # An encoded column carries the key type over the width.
+    assert currencies.dtype == DataType("dictionary(int32,ascii32)")
+    assert currencies.key == DataType("int32")
+    assert currencies.values_dtype == DataType("ascii32")
+
+    # The indices are the codes, `None` is a null key, and the dictionary is the
+    # vocabulary in the width's padded storage.
+    column = currencies.into_arrow_array(["USD", None, "JPY", "EUR"])
+    assert column.type == pa.dictionary(pa.int32(), pa.binary(4))
+    assert column.indices.to_pylist() == [0, None, 2, 1]
+    assert column.dictionary.to_pylist() == [b"USD\x00", b"EUR\x00", b"JPY\x00"]
+    assert AsciiDictionary.from_arrow_array(column) == currencies
+
+    # The enum is the value list and the code is the position.
+    Venue = AsciiDictionary.from_values("ascii32", ["XNAS", "n/a"]).into_intenum("Venue")
+    assert issubclass(Venue, enum.IntEnum)
+    assert [(member.name, member.value) for member in Venue] == [("XNAS", 0), ("N_A", 1)]
+    assert Venue(0).name == "XNAS"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { AsciiDictionary } = require('yggdryl')
+
+    // Register as you encode: an unseen value takes the next code, a seen one
+    // answers the code it already has.
+    const currencies = new AsciiDictionary('ascii32')
+    assert.equal(currencies.push('USD'), 0)
+    assert.equal(currencies.push('EUR'), 1)
+    assert.equal(currencies.push('USD'), 0)
+    assert.deepEqual(currencies.values(), ['USD', 'EUR'])
+    assert.equal(currencies.get(1), 'EUR')
+    assert.equal(currencies.getCode('USD\0'), 0)
+
+    // An encoded column carries the key type over the width.
+    assert.equal(currencies.dtype.toString(), 'dictionary(int32,ascii32)')
+    assert.equal(currencies.key.toString(), 'int32')
+    assert.equal(currencies.valuesDtype.toString(), 'ascii32')
+
+    // The keys are the codes, a `null` is a null key, and the values are the
+    // vocabulary in the width's padded storage.
+    const column = currencies.intoArrowArray(['USD', null, 'JPY', 'EUR'])
+    assert.deepEqual(Array.from(column.data[0].values), [0, 0, 2, 1])
+    assert.equal(column.get(1), null)
+    assert.deepEqual(Array.from(column.get(2)), [0x4a, 0x50, 0x59, 0])
+    assert.ok(AsciiDictionary.fromArrowArray(column).equals(currencies))
+
+    // The enum is the value list and the code is the position.
+    const Venue = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a']).intoEnum('Venue')
+    assert.deepEqual({ ...Venue }, { XNAS: 0, N_A: 1 })
+    assert.equal(Venue.N_A, 1)
+    ```
+
+`AsciiDictionary` is the vocabulary of one column and it is a value the caller
+carries, never a process-global registry: a code is stable exactly as far as
+that value travels, so two encodes agree only where the same dictionary crossed
+both, and nothing in the write path starts encoding a column on its own. The
+generated enum is that value list and a member's code is its position, named
+once by the core listing - an ASCII letter kept uppercased, a digit kept, every
+other byte `_`, a leading digit prefixed with `_`, and a name that both opens
+and closes with `_` dropping its trailing underscores, because that is the shape
+Python reserves for `_sunder_` and `__dunder__` names - which refuses `ascii128`
+and any two values that would name one member, and answers name to code because
+the vocabulary is already the code to value direction.
+
 ## Identity and family
 
 === "Rust"

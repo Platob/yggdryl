@@ -4,6 +4,7 @@
 # public declarations/runtime exports.
 
 ### python: yggdryl
+  AsciiDictionary: __contains__, __eq__, __iter__, __len__, __repr__, dtype, from_arrow_array, from_values, get, get_code, into_arrow_array, into_intenum, key, push, values, values_dtype
   Bound: columns, eval, expression, field, is_predicate, matches, partition_split, reads_rows
   BoundStatement: is_all, limit, ordering, output, predicate, project_arrow, project_arrow_reader, project_arrow_batch, project_arrow_table, projections, schema, sort_arrow_batch
   DataType: arrow_scalar, ascii, ascii_width, cast_arrow_array, cast_arrow_batch, decimal, default_arrow_scalar, default_pyhint, default_pyvalue, duration32, duration64, equals, field, field_at, field_by_path, from_arrow, from_dict, from_fields, from_json, from_logical_name, from_pyhint, from_str, from_toml, from_value, from_yaml, geography, geometry, get_field, get_field_at, get_field_by_path, id, into_arrow, into_dict, into_json, into_scheme_compat, into_toml, into_yaml, is_nested, kind, logical_names, pretty, remove_field, remove_field_at, remove_field_by_path, set_field, set_field_at, set_field_by_path, show_diff, show_diffs, stable_hash, time, timezone, variant
@@ -96,6 +97,9 @@
   DataType
     statics: from, fromString, time, ascii, fromLogicalName, logicalNames, fromJSON, fromFields, variant, geometry, geography, fromArrow
     instance: asciiWidth, clone, compare, contains, defaultArrowScalar, defaultJSHint, defaultJSValue, equals, field, fieldAt, fieldByPath, get, getField, getFieldAt, getFieldByPath, id, intoSchemeCompat, keys, kind, length, nested, removeField, removeFieldAt, removeFieldByPath, setField, setFieldAt, setFieldByPath, showDiff, showDiffs, stableHash, toJSON, toString, values
+  AsciiDictionary
+    statics: fromValues, fromArrowArray
+    instance: clone, dtype, equals, get, getCode, intoArrowArray, intoEnum, key, length, push, toString, values, valuesDtype
   Expression
     statics: alwaysFalse, alwaysTrue, attribute, column, fromJson, literal, parameter, parse
     instance: add, and, attributes, bind, clone, columns, compare, conjuncts, depth, divide, equals, field, intoJson, multiply, negate, not, or, parameters, remainder, stableHash, subtract, toJSON, toString
