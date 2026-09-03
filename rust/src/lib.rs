@@ -55,7 +55,8 @@ pub mod zlib;
 pub mod zstd;
 
 pub use datatype::{
-    DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType, UnionFields,
+    AsciiDictionary, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,
+    UnionFields,
 };
 pub use error::{Error, Result};
 pub use expression::Expression;

@@ -1065,3 +1065,245 @@ mod ascii {
         );
     }
 }
+
+/// The per-column ASCII vocabulary and the enum members it names.
+mod ascii_dictionary {
+    use super::super::{AsciiDictionary, DataType};
+
+    #[test]
+    fn registration_is_first_appearance_and_a_repeat_keeps_its_code() {
+        let mut currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        assert!(currencies.is_empty());
+        assert_eq!(currencies.push("USD").unwrap(), 0);
+        assert_eq!(currencies.push("EUR").unwrap(), 1);
+        assert_eq!(currencies.push("USD").unwrap(), 0);
+        assert_eq!(currencies.push("JPY").unwrap(), 2);
+        assert_eq!(currencies.push("EUR").unwrap(), 1);
+        assert_eq!(currencies.len(), 3);
+        assert!(!currencies.is_empty());
+        assert_eq!(currencies.as_values(), ["USD", "EUR", "JPY"]);
+
+        // Both directions, and the padded spelling resolves to its trimmed form.
+        assert_eq!(currencies.get(0), Some("USD"));
+        assert_eq!(currencies.get(2), Some("JPY"));
+        assert_eq!(currencies.get(3), None);
+        assert_eq!(currencies.get(-1), None);
+        assert_eq!(currencies.get_code("EUR"), Some(1));
+        assert_eq!(currencies.get_code("EUR\0"), Some(1));
+        assert_eq!(currencies.push("EUR\0\0").unwrap(), 1);
+        assert_eq!(currencies.get_code("GBP"), None);
+
+        // The width and key the codes are read under.
+        assert_eq!(currencies.values_dtype(), &DataType::Ascii32);
+        assert_eq!(currencies.key(), &DataType::Int32);
+    }
+
+    #[test]
+    fn the_bytes_spelling_registers_as_its_trimmed_text() {
+        let mut currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        assert_eq!(currencies.push_bytes(b"USD\0").unwrap(), 0);
+        assert_eq!(currencies.push("USD").unwrap(), 0);
+        assert_eq!(currencies.push_bytes(b"EUR").unwrap(), 1);
+        assert_eq!(currencies.as_values(), ["USD", "EUR"]);
+
+        // Bytes meet the width's own rule, never a decoding error of their own.
+        let refused = currencies.push_bytes(b"\xFF\xFE").unwrap_err().to_string();
+        assert!(
+            refused.contains("at most 4 bytes, got a non-ASCII byte 0xFF at 0"),
+            "{refused}"
+        );
+        assert_eq!(currencies.len(), 2);
+    }
+
+    #[test]
+    fn push_refuses_what_the_width_refuses_naming_the_width() {
+        let mut codes = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        for value in ["EUR\u{20ac}", "US\0D", "EURO!"] {
+            let refused = codes.push(value).unwrap_err().to_string();
+            assert!(
+                refused.contains("ASCII text of at most 4 bytes"),
+                "{value}: {refused}"
+            );
+        }
+        // A refusal registers nothing.
+        assert!(codes.is_empty());
+
+        // The wider member refuses at its own width.
+        let mut wide = AsciiDictionary::new(DataType::Ascii64).unwrap();
+        assert_eq!(wide.push("EURO!").unwrap(), 0);
+        let refused = wide.push("NINE-CHAR").unwrap_err().to_string();
+        assert!(
+            refused.contains("ASCII text of at most 8 bytes"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn the_values_and_key_datatypes_are_refused_by_name() {
+        let refused = AsciiDictionary::new(DataType::Utf8)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("an ASCII width"), "{refused}");
+        assert!(refused.contains("got utf8"), "{refused}");
+
+        let dictionary = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        assert_eq!(
+            dictionary.clone().with_key(DataType::Int64).unwrap().key(),
+            &DataType::Int64
+        );
+        for key in [DataType::Int16, DataType::UInt32, DataType::Utf8] {
+            let refused = dictionary
+                .clone()
+                .with_key(key.clone())
+                .unwrap_err()
+                .to_string();
+            assert!(
+                refused.contains("an int32 or int64 key datatype"),
+                "{refused}"
+            );
+            assert!(refused.contains(&format!("got {key}")), "{refused}");
+        }
+    }
+
+    #[test]
+    fn from_values_dedups_and_preserves_first_appearance_order() {
+        let seeded =
+            AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD", "EUR", "JPY", "USD"])
+                .unwrap();
+        assert_eq!(seeded.as_values(), ["EUR", "USD", "JPY"]);
+        assert_eq!(seeded.get_code("EUR"), Some(0));
+        assert_eq!(seeded.get_code("JPY"), Some(2));
+
+        // The same values pushed one at a time are the same vocabulary.
+        let mut pushed = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        for value in ["EUR", "USD", "EUR", "JPY", "USD"] {
+            pushed.push(value).unwrap();
+        }
+        assert_eq!(pushed, seeded);
+
+        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EURO!"])
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+    }
+
+    #[test]
+    fn the_datatype_is_the_dictionary_of_the_key_and_the_width() {
+        let currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
+        let dtype = currencies.dtype().unwrap();
+        assert_eq!(
+            dtype,
+            DataType::dictionary(DataType::Int32, DataType::Ascii32).unwrap()
+        );
+        assert_eq!(dtype.to_string(), "dictionary(int32,ascii32)");
+        assert_eq!(dtype.to_string().parse::<DataType>().unwrap(), dtype);
+
+        let wide = AsciiDictionary::new(DataType::Ascii64)
+            .unwrap()
+            .with_key(DataType::Int64)
+            .unwrap();
+        assert_eq!(
+            wide.dtype().unwrap().to_string(),
+            "dictionary(int64,ascii64)"
+        );
+    }
+
+    #[test]
+    fn equality_is_the_width_the_key_and_the_values_in_order() {
+        let usd_first = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"]).unwrap();
+        let eur_first = AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD"]).unwrap();
+        assert_ne!(usd_first, eur_first);
+        assert_eq!(
+            usd_first,
+            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"]).unwrap()
+        );
+        assert_ne!(
+            usd_first,
+            AsciiDictionary::from_values(DataType::Ascii64, ["USD", "EUR"]).unwrap()
+        );
+        assert_ne!(
+            usd_first,
+            usd_first.clone().with_key(DataType::Int64).unwrap()
+        );
+        assert_ne!(
+            usd_first,
+            AsciiDictionary::from_values(DataType::Ascii32, ["USD"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn members_apply_the_name_rule_once() {
+        let members =
+            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "n/a", "1st", "", "a-b"])
+                .unwrap()
+                .into_members()
+                .unwrap();
+        assert_eq!(
+            members,
+            [
+                ("USD".into(), 0),
+                ("N_A".into(), 1),
+                ("_1ST".into(), 2),
+                ("_".into(), 3),
+                ("A_B".into(), 4),
+            ]
+        );
+
+        // A name that opens and closes with `_` is the shape Python reserves,
+        // so the trailing run goes; a name of nothing but `_` keeps it.
+        let members = AsciiDictionary::from_values(DataType::Ascii64, ["-a-", "--b--", "-", "--"])
+            .unwrap()
+            .into_members()
+            .unwrap();
+        assert_eq!(
+            members,
+            [
+                ("_A".into(), 0),
+                ("__B".into(), 1),
+                ("_".into(), 2),
+                ("__".into(), 3),
+            ]
+        );
+        assert!(
+            AsciiDictionary::new(DataType::Ascii32)
+                .unwrap()
+                .into_members()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn members_refuse_a_collision_naming_both_values_and_the_widest_width() {
+        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "usd"])
+            .unwrap()
+            .into_members()
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("\"USD\""), "{refused}");
+        assert!(refused.contains("\"usd\""), "{refused}");
+        assert!(refused.contains("USD"), "{refused}");
+
+        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["a-b", "a/b"])
+            .unwrap()
+            .into_members()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("\"a-b\"") && refused.contains("\"a/b\""),
+            "{refused}"
+        );
+
+        // Sixteen bytes is text, not an enum vocabulary.
+        let refused = AsciiDictionary::from_values(DataType::Ascii128, ["USD"])
+            .unwrap()
+            .into_members()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("ascii32 or ascii64 values to name enum members"),
+            "{refused}"
+        );
+        assert!(refused.contains("got ascii128"), "{refused}");
+    }
+}

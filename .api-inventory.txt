@@ -131,6 +131,23 @@
   pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
   pub fn from_logical_name(name: &str) -> Result<Self>
+  pub struct AsciiDictionary
+  pub fn new(values: DataType) -> Result<Self>
+  pub fn with_key(self, key: DataType) -> Result<Self>
+  pub fn from_values<I, V>(values: DataType, seen: I) -> Result<Self> where I: IntoIterator<Item = V>, V: AsRef<str>,
+  pub fn push(&mut self, value: &str) -> Result<i64>
+  pub fn push_bytes(&mut self, value: &[u8]) -> Result<i64>
+  pub fn get(&self, code: i64) -> Option<&str>
+  pub fn get_code(&self, value: &str) -> Option<i64>
+  pub fn as_values(&self) -> &[SmolStr]
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub const fn key(&self) -> &DataType
+  pub const fn values_dtype(&self) -> &DataType
+  pub fn dtype(&self) -> Result<DataType>
+  pub fn into_members(&self) -> Result<Vec<(SmolStr, i64)>>
+  pub fn into_arrow_array<I, V>(&mut self, values: I) -> Result<ArrayRef> where I: IntoIterator<Item = Option<V>>, V: AsRef<[u8]>,
+  pub fn from_arrow_array(array: &dyn Array) -> Result<Self>
 
 ### yggdryl::datatype::nested  [rust\src\datatype\nested.rs]
   pub const fn new() -> Self
