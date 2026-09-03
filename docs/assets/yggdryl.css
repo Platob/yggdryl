@@ -162,3 +162,163 @@
 .md-footer-meta {
   border-top: 2px solid var(--yggdryl-red);
 }
+
+/* The playground: docs/assets/playground.js renders the generated manifest into
+ * these containers. Everything here is Material's own custom properties, so the
+ * light and dark schemes both work without a second palette.
+ */
+.ygg-pg {
+  margin: 1em 0 1.6em;
+}
+
+.ygg-pg__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.8em;
+}
+
+.ygg-pg__select,
+.ygg-pg__input,
+.ygg-pg__value,
+.ygg-pg__step {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color);
+  background-color: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  padding: 0.3em 0.6em;
+}
+
+.ygg-pg__value,
+.ygg-pg__step {
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.ygg-pg__step[disabled] {
+  cursor: default;
+  color: var(--md-default-fg-color--lighter);
+}
+
+.ygg-pg__value[aria-pressed="true"] {
+  border-color: var(--md-accent-fg-color);
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  font-weight: 650;
+}
+
+.ygg-pg__select:focus-visible,
+.ygg-pg__input:focus-visible,
+.ygg-pg__value:focus-visible,
+.ygg-pg__step:focus-visible,
+.ygg-pg .ygg-pg__calls summary:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 1px;
+}
+
+/* Material styles every list in the content, so the chip row has to outrank
+ * `.md-typeset ul` to be a flex row instead of a bulleted stack. */
+.md-typeset .ygg-pg__values:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin: 0 0 0.8em;
+  padding: 0;
+  list-style: none;
+}
+
+[dir] .md-typeset .ygg-pg__values li {
+  margin: 0;
+}
+
+.ygg-pg__tag {
+  margin-left: 0.5em;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.9em;
+}
+
+.ygg-pg__counter {
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The tables carry a class, so Material's own table rules do not reach them. */
+.ygg-pg table {
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin: 0 0 0.8em;
+}
+
+.ygg-pg table th,
+.ygg-pg table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35em 0.8em 0.35em 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.ygg-pg__detail th {
+  width: 10em;
+  color: var(--md-default-fg-color--light);
+  font-weight: 500;
+}
+
+/* A wide row scrolls inside the table rather than widening the page. */
+.ygg-pg__widths {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.ygg-pg__widths thead th {
+  border-bottom: 2px solid var(--yggdryl-red);
+  font-weight: 650;
+}
+
+.ygg-pg__code {
+  overflow-wrap: anywhere;
+}
+
+.ygg-pg__call {
+  margin: 0 0 0.8em;
+  padding: 0.5em 0.7em;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--md-code-fg-color);
+  background-color: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ygg-pg__names,
+.ygg-pg__counter,
+.ygg-pg__hit {
+  font-size: 0.75rem;
+}
+
+.ygg-pg__after h3 {
+  margin-top: 1.2em;
+  font-size: 0.85rem;
+}
+
+.ygg-pg__lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.8em;
+}
+
+.ygg-pg__error,
+.ygg-pg__miss {
+  padding: 0.5em 0.8em;
+  font-size: 0.75rem;
+  border-left: 3px solid var(--md-accent-fg-color);
+  background-color: var(--md-accent-fg-color--transparent);
+  border-radius: 0.3rem;
+}

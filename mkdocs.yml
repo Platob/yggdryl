@@ -62,6 +62,9 @@ theme:
 extra_css:
   - assets/yggdryl.css
 
+extra_javascript:
+  - assets/playground.js
+
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -128,6 +131,7 @@ nav:
       - datatype: datatype.md
       - field: field.md
       - arrow: arrow.md
+      - playground: playground.md
   - Generic:
       - generic: generic.md
   - Storage:
