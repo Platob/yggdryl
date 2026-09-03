@@ -1145,10 +1145,8 @@ pub trait IOBase: Send + IOMedia {
     /// Append bytes after the current end, returning the offset they start at.
     ///
     /// The byte member of the append family, beside
-    /// [`append_arrow_reader`](IOMedia::append_arrow_reader) and
-    /// [`Text::append_lines`](crate::text::Text::append_lines): each names what
-    /// it appends, so the offset this one reports is unambiguously a byte
-    /// offset.
+    /// [`append_arrow_reader`](IOMedia::append_arrow_reader), so the offset
+    /// this one reports is unambiguously a byte offset.
     ///
     /// # Errors
     ///
@@ -1504,183 +1502,6 @@ pub trait IOBase: Send + IOMedia {
             target: self,
             offset,
         }
-    }
-
-    /// Wrap this handle in the text-line handler.
-    ///
-    /// The entry point to [`text::line`](crate::text::line): every line read and
-    /// write goes through the handler this returns.
-    /// [`Text::new`](crate::text::Text::new) is lazy exactly as
-    /// [`Coded::new`](Coded) is - the resource is not opened, listed, or probed
-    /// here.
-    ///
-    /// **Idempotent.** A handle that is already a [`Text`](crate::text::Text)
-    /// returns itself unchanged, because `Text` carries an inherent
-    /// `into_text` and inherent methods win method resolution over trait ones.
-    /// So `handle.into_text().into_text()` is `handle.into_text()`, and a
-    /// caller who does not know whether they hold a raw handle or an
-    /// already-wrapped one can call it unconditionally.
-    ///
-    /// One edge that resolution rule leaves open: an explicit
-    /// `IOBase::into_text(text_handle)` still wraps, producing a
-    /// `Text<Text<H>>`. That composition behaves correctly through delegation -
-    /// it is wasteful, not broken - so call the method normally.
-    ///
-    /// It composes with the coding handles: `gzip_handle.into_text()` is a
-    /// `Text<Gzip<_>>`, and the codings are peeled as streams underneath.
-    ///
-    /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut handle = Buffer::new().into_text();
-    /// handle.write_lines(["one", "two"])?;
-    ///
-    /// // A constructor and one method call: no format strings, no mode flags.
-    /// let mut lines = handle.read_lines()?;
-    /// assert_eq!(lines.next().transpose()?.map(|line| line.bytes()), Some(&b"one"[..]));
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn into_text(self) -> crate::text::Text<Self>
-    where
-        Self: Sized,
-    {
-        crate::text::Text::new(self)
-    }
-
-    /// [`Self::into_text`] with an extractor already in hand.
-    ///
-    /// The one-call form, for a caller who built the options elsewhere - a
-    /// configuration document, a shared constant.
-    fn into_text_with(self, options: crate::text::TextLineOptions) -> crate::text::Text<Self>
-    where
-        Self: Sized,
-    {
-        crate::text::Text::with_options(self, options)
-    }
-
-    /// Iterate the resource's text records, one in memory at a time.
-    ///
-    /// A thin shim over [`Self::into_text`], so there is exactly one
-    /// implementation of line splitting in the tree. Bytes stream through a
-    /// bounded window and any content codings the media type declares are
-    /// peeled as streaming decoders - a `trades.jsonl.gz` reads its records
-    /// without ever holding the decompressed value. A resource that does not
-    /// exist yields no records, exactly as it reads zero bytes.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read or
-    /// decode failure of its record.
-    fn read_lines(&self) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
-    where
-        Self: Sized,
-    {
-        Ok(crate::text::line::borrowed_lines(
-            self,
-            std::sync::Arc::new(crate::text::TextLineOptions::new()),
-        ))
-    }
-
-    /// Group the resource's records by a pattern, one in memory at a time.
-    ///
-    /// A thin shim over [`Self::into_text`] with a record-opening pattern. A
-    /// record starts at a line `pattern` matches and carries every following
-    /// line until the next match, which is how a log whose entries open with a
-    /// timestamp reads whole: an entry, its stack trace, and its wrapped lines
-    /// arrive as one record. Lines before the first match form the first
-    /// record.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the pattern does not parse; each yielded item
-    /// carries the read or decode failure of its record.
-    fn read_lines_matching(
-        &self,
-        pattern: &str,
-    ) -> Result<crate::text::TextLines<Box<dyn Read + '_>>>
-    where
-        Self: Sized,
-    {
-        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
-        Ok(crate::text::line::borrowed_lines(
-            self,
-            std::sync::Arc::new(options),
-        ))
-    }
-
-    /// [`Self::read_lines`], consuming the handle so the records own it.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read or
-    /// decode failure of its record.
-    fn into_read_lines(self) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
-    where
-        Self: Sized + 'static,
-    {
-        self.into_text().into_read_lines()
-    }
-
-    /// [`Self::read_lines_matching`], consuming the handle so the records own it.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the pattern does not parse.
-    fn into_read_lines_matching(
-        self,
-        pattern: &str,
-    ) -> Result<crate::text::TextLines<Box<dyn Read + Send + 'static>>>
-    where
-        Self: Sized + 'static,
-    {
-        let options = crate::text::TextLineOptions::with_pattern(pattern)?;
-        self.into_text_with(options).into_read_lines()
-    }
-
-    /// Project the resource's text records into Arrow batches.
-    ///
-    /// The extractor-first spelling of the record surface: text is a record
-    /// encoding like any other, and [`IOMedia::read_arrow_reader`] under
-    /// [`RecordOptions::Text`] reaches
-    /// this very method - **not a fourth record method**. Decoding views
-    /// (a [`Coded`] handle, [`Gzip`](crate::gzip::Gzip) and its siblings)
-    /// override it to own the encoded location behind one streaming decoder;
-    /// an opened or dirty view snapshots only the presented value it already
-    /// holds. The
-    /// columns are described on [`TextLineOptions`](crate::text::TextLineOptions).
-    ///
-    /// # Errors
-    ///
-    /// Returns a listing or reopen failure; each yielded batch carries the
-    /// read, decode, or parse failure of its rows.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_lines(
-        &self,
-        options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        crate::text::line::arrow::read_arrow_lines(self, options)
-    }
-
-    /// [`Self::read_arrow_lines`], consuming the handle so the reader owns it.
-    ///
-    /// This is the shape the bindings hand across FFI, and the one a Rust
-    /// caller needs when the batches outlive the scope that built the handle.
-    ///
-    /// # Errors
-    ///
-    /// Returns a listing failure; each yielded batch carries the read, decode,
-    /// or parse failure of its rows.
-    #[cfg(feature = "arrow")]
-    fn into_arrow_lines(
-        self,
-        options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader>
-    where
-        Self: Sized + 'static,
-    {
-        crate::text::line::arrow::into_arrow_lines(self, options)
     }
 }
 
@@ -2628,10 +2449,7 @@ pub(crate) fn leaf_reader(
             crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
-        // Through the trait method rather than the free function, so a
-        // decoding view's snapshot override is honored: the record surface
-        // must see the value a handle presents, pending writes included.
-        RecordOptions::Text(text) => handle.read_arrow_lines(&text.lines)?,
+        RecordOptions::Text(text) => crate::text::line::arrow::read_arrow_reader(handle, text)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -2650,7 +2468,7 @@ pub(crate) fn leaf_row_size(
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
         RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
-        RecordOptions::Text(text) => crate::text::line::row_size(handle, &text.lines),
+        RecordOptions::Text(text) => crate::text::line::arrow::row_size(handle, text),
     }
 }
 
@@ -2674,7 +2492,13 @@ pub(crate) fn leaf_field(
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
-        RecordOptions::Text(text) => Ok(text.lines().field().clone()),
+        RecordOptions::Text(text) => {
+            let reader = crate::text::line::arrow::read_arrow_reader(handle, text)?;
+            Ok(crate::arrow::field_from_arrow_schema(
+                text.name(),
+                reader.schema().as_ref(),
+            )?)
+        }
     }
 }
 
@@ -2697,7 +2521,7 @@ pub(crate) fn leaf_writer(
         }
         RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
         RecordOptions::Text(text) => {
-            crate::text::line::arrow::write_arrow_lines(handle, batches, text)?;
+            crate::text::line::arrow::write_arrow_reader(handle, batches, text)?;
         }
     }
     Ok(())
@@ -2788,7 +2612,7 @@ fn append_leaf(
     // Text lines append natively: rows render after the current last line,
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
-        return crate::text::line::arrow::append_arrow_lines(handle, incoming, text);
+        return crate::text::line::arrow::append_arrow_reader(handle, incoming, text);
     }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)

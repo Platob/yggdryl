@@ -341,6 +341,15 @@ test('record options are values, and a setting is set or carried forward', () =>
 
 test('record option value protocols delegate every encoding to the core', () => {
   const marker = Buffer.from('0123456789abcdef')
+  const text = RecordOptions.from('trades.txt')
+    .withName('line')
+    .withBatchRowSize(32)
+  text.header = '(?<id>\\d+)'
+  text.lstrip = '^\\s+'
+  text.rstrip = '\\s+$'
+  text.linesep = '\\r\\n'
+  text.autotype = false
+  text.timezone = '+02:00'
   const variants = [
     RecordOptions.from('trades.arrows')
       .withName('ipc-row')
@@ -352,12 +361,7 @@ test('record option value protocols delegate every encoding to the core', () => 
       .withCompression('snappy')
       .withMaxRowGroupSize(512)
       .withKeyValue('source', 'protocol-test'),
-    // Text is a real RecordOptions variant, not IPC options inferred from the
-    // same shared fields. Its core identity also owns the line extractor,
-    // including the canonical regex source when one is configured in Rust.
-    RecordOptions.from('trades.txt')
-      .withName('line')
-      .withBatchRowSize(32),
+    text,
   ]
 
   for (const options of variants) {
@@ -741,4 +745,13 @@ test('a declared name roots the schema inferred from plain records', (t) => {
   stream.overwriteArrowTable(trades(), stream.recordOptions().withName('trade'))
   assert.equal(stream.readArrowField().name, 'row')
   assert.equal(stream.readArrowField(stream.recordOptions().withName('trade')).name, 'trade')
+
+  // Text has no stored schema: its extractor supplies the datatype, while the
+  // shared name still names the inferred root. Metadata alone declares none.
+  const text = new IOBase(path.join(root, 'events.log'))
+  text.writeText('first\nsecond\n')
+  const textOptions = text.recordOptions().withName('events').withMetadata({ owner: 'risk' })
+  const textField = text.readArrowField(textOptions)
+  assert.equal(textField.name, 'events')
+  assert.deepEqual(textField.entries(), [])
 })

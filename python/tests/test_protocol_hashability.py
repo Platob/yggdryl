@@ -87,6 +87,12 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.arrows", "merge_by_names", ["id"]),
         ("trades.arrows", "select_by_names", ["id"]),
         ("trades.arrows", "filter_partitions", [("venue", "XNAS")]),
+        ("events.txt", "header", r"(?<id>\\d+)"),
+        ("events.txt", "lstrip", r"^\\s+"),
+        ("events.txt", "rstrip", r"\\s+$"),
+        ("events.txt", "linesep", r"\\r\\n"),
+        ("events.txt", "autotype", False),
+        ("events.txt", "timezone", "+02:00"),
         ("trades.avro", "block_codec", "null"),
         ("trades.avro", "sync_marker", b"0123456789abcdef"),
         ("trades.parquet", "compression", "zstd(3)"),
@@ -130,6 +136,13 @@ def test_record_options_value_protocols_preserve_each_variant(
     options.merge_by_names = ["id"]
     options.select_by_names = ["id"]
     options.filter_partitions = [("venue", "XNAS")]
+    if options.autotype is not None:
+        options.header = r"(?<id>\\d+)"
+        options.lstrip = r"^\\s+"
+        options.rstrip = r"\\s+$"
+        options.linesep = r"\\r\\n"
+        options.autotype = False
+        options.timezone = "+02:00"
     if options.block_codec is not None:
         options.block_codec = "null"
         options.sync_marker = b"0123456789abcdef"
@@ -140,7 +153,12 @@ def test_record_options_value_protocols_preserve_each_variant(
 
     represented = eval(
         repr(options),
-        {"DataType": DataType, "Field": Field, "RecordOptions": RecordOptions},
+        {
+            "DataType": DataType,
+            "Field": Field,
+            "RecordOptions": RecordOptions,
+            "Timezone": Timezone,
+        },
     )
     restored = pickle.loads(pickle.dumps(options))
     copied = copy.copy(options)
@@ -158,7 +176,12 @@ def test_record_options_value_protocols_preserve_each_variant(
     for rebuilt in (
         eval(
             repr(options),
-            {"DataType": DataType, "Field": Field, "RecordOptions": RecordOptions},
+            {
+                "DataType": DataType,
+                "Field": Field,
+                "RecordOptions": RecordOptions,
+                "Timezone": Timezone,
+            },
         ),
         pickle.loads(pickle.dumps(options)),
         copy.copy(options),
@@ -184,14 +207,10 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
     field = Field("row", DataType.from_fields([Field("id", "int64")]))
     catalog = Catalog(tmp_path)
     namespace = catalog.namespace("sales")
-    text_path = tmp_path / "lines.txt"
-    text_path.write_bytes(b"one\ntwo\n")
-
     operational = [
         handle,
         handle.cursor(),
         handle.pstream_bytes(batch_size=2),
-        IOBase(text_path).read_lines(),
         IOBase(tmp_path).iterdir(),
         iter(Scalar.from_py([1, 2])),
         Scalar.from_py({"id": 1}).items(),

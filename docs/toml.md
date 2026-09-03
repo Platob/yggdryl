@@ -6,7 +6,7 @@ TOML is one natural record document backed by the shared Rust codec.
 
 A TOML document is a raw structured value, not line-record media. For streamed
 Arrow batches with explicit overwrite and append behavior, use [Text
-media](text.md#text-media-and-arrow-batches). Text deliberately refuses keyed
+media](text.md#plain-text-records). Text deliberately refuses keyed
 merge because a line has no stable row identity.
 
 ## Raw shared-Scalar access

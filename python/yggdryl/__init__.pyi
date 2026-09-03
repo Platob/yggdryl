@@ -17,7 +17,6 @@ from ._native import (
     Urn as Urn,
     __version__ as __version__,
     combined as combined,
-    field_from_pattern as field_from_pattern,
 )
 from . import (
     avro as avro,

@@ -265,7 +265,9 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
             crate::generic::RecordOptions::Ipc(ipc) => {
                 crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
             }
-            crate::generic::RecordOptions::Text(text) => owned.into_arrow_lines(&text.lines)?,
+            crate::generic::RecordOptions::Text(text) => {
+                crate::text::line::arrow::read_owned_arrow_reader(owned, text)?
+            }
             _ => return crate::io::IOMedia::read_arrow_reader(&owned, options),
         };
         Self::shape_owned_arrow_reader(reader, options)
@@ -273,18 +275,6 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
 }
 
 impl<H: IOBase> IOBase for Coded<H> {
-    /// Own the presented line stream without retaining decoded pages.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_lines(
-        &self,
-        options: &crate::text::TextLineOptions,
-    ) -> Result<crate::arrow::BatchReader>
-    where
-        Self: Sized,
-    {
-        self.owned_presented_handle()?.into_arrow_lines(options)
-    }
-
     /// Read the range out of the decoded value.
     ///
     /// An open handle answers from the value it already holds; a closed one

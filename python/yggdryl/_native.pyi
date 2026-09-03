@@ -263,23 +263,6 @@ def combined(
     *,
     safe: bool = True,
 ) -> pyarrow.RecordBatchReader: ...
-# The whole extractor as one mapping - what a YAML or TOML document parses
-# into - so a reader is specifiable from configuration alone.
-TextLineOptionsLike = Mapping[str, Any]
-
-def field_from_pattern(
-    pattern: str | None = None,
-    *,
-    options: TextLineOptionsLike | None = None,
-    header: str | None = None,
-    custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
-    capture_types: (
-        Mapping[str, DataType | str | Any]
-        | Iterable[tuple[str, DataType | str | Any]]
-        | None
-    ) = None,
-    logs: bool = False,
-) -> Field: ...
 def _codec_infer(data: bytes | bytearray | memoryview) -> str: ...
 def _codec_infer_path(value: str) -> str: ...
 def _codec_infer_text(data: str) -> str: ...
@@ -1770,56 +1753,6 @@ class IOBase:
     def read_parquet_geospatial_statistics(
         self, column: str
     ) -> ParquetGeospatialStatistics: ...
-    # The text-line surface, beside the record methods and never one of them.
-    # `options` takes the whole extractor at once; the keywords refine it.
-    # `linesep` unset means the flexible default on read - `\n`, `\r\n`, and a
-    # lone `\r`, mixed - and the platform-neutral `\n` on write.
-    def read_lines(
-        self,
-        pattern: str | None = None,
-        *,
-        options: TextLineOptionsLike | None = None,
-        header: str | None = None,
-        linesep: str | None = None,
-        lstrip: str | None = None,
-        rstrip: str | None = None,
-        logs: bool = False,
-    ) -> LineIterator: ...
-    def read_arrow_lines(
-        self,
-        pattern: str | None = None,
-        *,
-        options: TextLineOptionsLike | None = None,
-        header: str | None = None,
-        linesep: str | None = None,
-        lstrip: str | None = None,
-        rstrip: str | None = None,
-        byte_size: int | None = None,
-        batch_row_size: int | None = None,
-        timestamp_capture: str | None = None,
-        timezone: str | None = None,
-        custom_fields: Mapping[str, Any] | Iterable[tuple[str, Any]] | None = None,
-        capture_types: (
-            Mapping[str, DataType | str | Any]
-            | Iterable[tuple[str, DataType | str | Any]]
-            | None
-        ) = None,
-        logs: bool = False,
-    ) -> pyarrow.RecordBatchReader: ...
-    def write_lines(
-        self,
-        lines: Iterable[str | bytes],
-        *,
-        options: TextLineOptionsLike | None = None,
-        linesep: str | None = None,
-    ) -> None: ...
-    def append_lines(
-        self,
-        lines: Iterable[str | bytes],
-        *,
-        options: TextLineOptionsLike | None = None,
-        linesep: str | None = None,
-    ) -> None: ...
     def read_arrow_field(
         self,
         *,
@@ -2161,6 +2094,30 @@ class RecordOptions:
     def filter_partitions(
         self, filter_partitions: Iterable[tuple[str, str]]
     ) -> None: ...
+    @property
+    def header(self) -> str | None: ...
+    @header.setter
+    def header(self, header: str | None) -> None: ...
+    @property
+    def lstrip(self) -> str | None: ...
+    @lstrip.setter
+    def lstrip(self, lstrip: str | None) -> None: ...
+    @property
+    def rstrip(self) -> str | None: ...
+    @rstrip.setter
+    def rstrip(self, rstrip: str | None) -> None: ...
+    @property
+    def linesep(self) -> bytes | None: ...
+    @linesep.setter
+    def linesep(self, linesep: str | bytes | bytearray | memoryview | None) -> None: ...
+    @property
+    def autotype(self) -> bool | None: ...
+    @autotype.setter
+    def autotype(self, autotype: bool) -> None: ...
+    @property
+    def timezone(self) -> Timezone | None: ...
+    @timezone.setter
+    def timezone(self, timezone: Timezone | str | Any | None) -> None: ...
     @property
     def block_codec(self) -> str | None: ...
     @block_codec.setter
@@ -2906,14 +2863,6 @@ class Timezone:
     def __reduce__(self) -> tuple[object, tuple[str]]: ...
     def __copy__(self) -> Timezone: ...
     def __deepcopy__(self, memo: dict[int, Any]) -> Timezone: ...
-
-class LineIterator:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """Iterator over a resource's decoded text lines, one line at a time."""
-
-    def __iter__(self) -> LineIterator: ...
-    def __next__(self) -> str: ...
 
 class RecordIterator:
     __hash__: ClassVar[None]  # type: ignore[assignment]

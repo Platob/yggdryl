@@ -25,6 +25,16 @@ function isBytes(value) {
   )
 }
 
+function byteView(value) {
+  if (value === null || value === undefined) return value
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) return value
+  if (value instanceof ArrayBuffer) return new Uint8Array(value)
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  }
+  return new Uint8Array(value)
+}
+
 function isPlainRecord(value) {
   if (value === null || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -246,6 +256,22 @@ function installRecords({
       let table
       if (arrowSchema === undefined) {
         table = runtime.tableFromJSON(records)
+        const columns = Object.create(null)
+        let replaced = false
+        for (const field of table.schema.fields) {
+          const values = records.map((record) => record[field.name])
+          const present = values.filter((value) => value !== null && value !== undefined)
+          if (present.length > 0 && present.every(isBytes)) {
+            columns[field.name] = runtime.vectorFromArray(
+              values.map(byteView),
+              new runtime.Binary(),
+            )
+            replaced = true
+          } else {
+            columns[field.name] = table.getChild(field.name)
+          }
+        }
+        if (replaced) table = new runtime.Table(columns)
         arrowSchema = table.schema
       } else {
         const columns = Object.create(null)

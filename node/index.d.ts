@@ -1501,27 +1501,6 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
- * Iterator over a resource's text records, one at a time.
- *
- * Built by `readLines`. The handle is rebuilt from its location and owned
- * here, bytes stream through one bounded window, and any content codings the
- * name declares decode as streams, so a compressed resource costs one window
- * rather than its decoded size. `next()` is the native half of the iteration
- * protocol; the loader wraps it so `for...of` yields strings.
- *
- * Each record crosses as a JavaScript string. The core hands back a
- * *borrowed* view whose lifetime ends at the next read, and a JavaScript
- * value cannot borrow it - so this is the one place the line surface copies,
- * and it copies because the boundary requires it, not because the reader
- * does.
- */
-export declare class LineIterator {
-  /** The next record, or `null` when the resource is exhausted. */
-  next(): string | null
-}
-export type JsLineIterator = LineIterator
-
-/**
  * The entries of one listing, one at a time.
  *
  * Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
@@ -2054,6 +2033,30 @@ export declare class RecordOptions {
   get filterPartitions(): Array<[string, string]>
   /** Set the partition equalities a read is pruned and filtered by. */
   set filterPartitions(filterPartitions: Array<[string, string]>)
+  /** The regex searched for a header in each text row. */
+  get header(): string | null
+  /** Compile or clear the text header regex. */
+  set header(header: string | undefined | null)
+  /** The regex removed only when it matches the body's left edge. */
+  get lstrip(): string | null
+  /** Compile or clear the text left-edge regex. */
+  set lstrip(lstrip: string | undefined | null)
+  /** The regex removed only when it matches the body's right edge. */
+  get rstrip(): string | null
+  /** Compile or clear the text right-edge regex. */
+  set rstrip(rstrip: string | undefined | null)
+  /** The exact text row terminator; `null` accepts LF, CRLF, or CR. */
+  get linesep(): Buffer | null
+  /** Pin a text terminator from an escaped string or exact bytes, or clear it. */
+  set linesep(value: string | Uint8Array | undefined | null)
+  /** Whether named header captures infer their datatype from the first batch. */
+  get autotype(): boolean | null
+  /** Enable or disable adaptive text capture typing. */
+  set autotype(autotype: boolean)
+  /** The timezone applied while autotyping offset-free timestamps. */
+  get timezone(): JsTimezone | null
+  /** Set or clear the timezone for autotyped timestamps. */
+  set timezone(value: TimezoneInput | undefined | null)
   /** The Avro block codec name, or `null` for another encoding. */
   get blockCodec(): string | null
   /** Validate and set the Avro block codec name. */

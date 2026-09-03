@@ -54,6 +54,7 @@ use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 use crate::datatype::{PyDataType, core_dtype_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::media::{PyMimeType, core_media_type_from_value};
+use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 
 /// Read a core root Field out of anything Python describes rows with.
@@ -1098,6 +1099,29 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     ))
 }
 
+/// Parse one text row terminator without losing arbitrary byte values.
+fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::LineSep> {
+    if let Ok(value) = value.extract::<&str>() {
+        return value.parse().map_err(value_error);
+    }
+    let bytes = if let Ok(value) = value.cast::<PyBytes>() {
+        value.as_bytes().to_vec()
+    } else if let Ok(value) = value.cast::<PyByteArray>() {
+        value.to_vec()
+    } else if value.cast::<PyMemoryView>().is_ok() {
+        value
+            .call_method0("tobytes")?
+            .cast_into::<PyBytes>()?
+            .as_bytes()
+            .to_vec()
+    } else {
+        return Err(PyTypeError::new_err(
+            "linesep must be str, bytes, bytearray, memoryview, or None",
+        ));
+    };
+    yggdryl::text::LineSep::new(bytes).map_err(value_error)
+}
+
 /// Read one required key from private `RecordOptions` pickle state.
 fn required_record_pickle_item<'py>(
     state: &Bound<'py, PyDict>,
@@ -1161,6 +1185,22 @@ impl PyRecordOptions {
         state.set_item("merge_by_names", self.inner.merge_by_names().to_vec())?;
         state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
         state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
+        if self.inner.autotype().is_some() {
+            state.set_item("header", self.inner.header())?;
+            state.set_item("lstrip", self.inner.lstrip())?;
+            state.set_item("rstrip", self.inner.rstrip())?;
+            state.set_item(
+                "linesep",
+                self.inner
+                    .linesep()
+                    .map(|linesep| PyBytes::new(py, linesep.as_bytes())),
+            )?;
+            state.set_item("autotype", self.inner.autotype())?;
+            state.set_item(
+                "timezone",
+                self.inner.timezone().cloned().map(PyTimezone::from_core),
+            )?;
+        }
         if let Some(block_codec) = self.inner.avro_block_codec() {
             state.set_item("block_codec", block_codec)?;
         }
@@ -1237,6 +1277,25 @@ impl PyRecordOptions {
         options.set_filter_partitions(
             required_record_pickle_item(state, "filter_partitions")?.extract()?,
         )?;
+
+        if let Some(value) = state.get_item("header")? {
+            options.set_header((!value.is_none()).then(|| value.extract()).transpose()?)?;
+        }
+        if let Some(value) = state.get_item("lstrip")? {
+            options.set_lstrip((!value.is_none()).then(|| value.extract()).transpose()?)?;
+        }
+        if let Some(value) = state.get_item("rstrip")? {
+            options.set_rstrip((!value.is_none()).then(|| value.extract()).transpose()?)?;
+        }
+        if let Some(value) = state.get_item("linesep")? {
+            options.set_linesep((!value.is_none()).then_some(&value))?;
+        }
+        if let Some(value) = state.get_item("autotype")? {
+            options.set_autotype(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("timezone")? {
+            options.set_timezone((!value.is_none()).then_some(&value))?;
+        }
 
         if let Some(value) = state.get_item("block_codec")? {
             options.set_block_codec(value.extract()?)?;
@@ -1466,6 +1525,82 @@ impl PyRecordOptions {
         self.require_mutable()?;
         self.inner.set_filter_partitions(filter_partitions);
         Ok(())
+    }
+
+    /// The regex searched for a header in each text row.
+    #[getter]
+    fn header(&self) -> Option<&str> {
+        self.inner.header()
+    }
+
+    #[setter]
+    fn set_header(&mut self, header: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_header(header).map_err(value_error)
+    }
+
+    /// The regex removed only when it matches the body's left edge.
+    #[getter]
+    fn lstrip(&self) -> Option<&str> {
+        self.inner.lstrip()
+    }
+
+    #[setter]
+    fn set_lstrip(&mut self, lstrip: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_lstrip(lstrip).map_err(value_error)
+    }
+
+    /// The regex removed only when it matches the body's right edge.
+    #[getter]
+    fn rstrip(&self) -> Option<&str> {
+        self.inner.rstrip()
+    }
+
+    #[setter]
+    fn set_rstrip(&mut self, rstrip: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_rstrip(rstrip).map_err(value_error)
+    }
+
+    /// The exact text row terminator as bytes; `None` accepts LF, CRLF, or CR.
+    #[getter]
+    fn linesep<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .linesep()
+            .map(|linesep| PyBytes::new(py, linesep.as_bytes()))
+    }
+
+    #[setter]
+    fn set_linesep(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let linesep = value.map(line_sep_from_value).transpose()?;
+        self.inner.set_linesep(linesep).map_err(value_error)
+    }
+
+    /// Whether named text-header captures infer their datatype from the first batch.
+    #[getter]
+    fn autotype(&self) -> Option<bool> {
+        self.inner.autotype()
+    }
+
+    #[setter]
+    fn set_autotype(&mut self, autotype: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_autotype(autotype).map_err(value_error)
+    }
+
+    /// The timezone applied while autotyping offset-free timestamps.
+    #[getter]
+    fn timezone(&self) -> Option<PyTimezone> {
+        self.inner.timezone().cloned().map(PyTimezone::from_core)
+    }
+
+    #[setter]
+    fn set_timezone(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let timezone = value.map(core_timezone_from_value).transpose()?;
+        self.inner.set_timezone(timezone).map_err(value_error)
     }
 
     /// The Avro block codec name, or `None` for another encoding.

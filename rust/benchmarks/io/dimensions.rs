@@ -14,7 +14,6 @@ use yggdryl::generic::RecordOptions;
 use yggdryl::io::{Buffer, IOBase, IOMedia};
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
-use yggdryl::text::Text;
 
 use super::{ROWS, batch, handle, stored_with};
 
@@ -42,8 +41,6 @@ where
     assert_eq!(decoded_rows(&fresh, &options), expected_rows);
 
     opened.open().expect("the benchmark media opens");
-    // Text fills its dimension cells lazily; the binary formats already filled
-    // them during open. Either way, the timed opened cases are cache hits.
     assert_eq!(
         opened.row_size().expect("the opened row count"),
         expected_rows
@@ -242,6 +239,6 @@ pub(crate) fn dimension_benchmarks(criterion: &mut Criterion) {
                 .expect("the marker has exactly sixteen bytes");
         });
     });
-    media_cases(&mut group, "text", Text::new(text.clone()), Text::new(text));
+    media_cases(&mut group, "text", text.clone(), text);
     group.finish();
 }

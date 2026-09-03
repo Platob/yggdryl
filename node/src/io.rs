@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Either4, Env, Function, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Either4, Env, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 
@@ -19,7 +19,6 @@ use yggdryl::IOMode;
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _};
 use yggdryl::io::{IOBase as _, IOMedia as _};
-use yggdryl::text::TextLineOptions;
 
 use crate::arrow::JsBatchReader;
 use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
@@ -31,8 +30,6 @@ use crate::generic::JsRecordOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
-/// Bytes accumulated before a record write is flushed to the resource.
-const LINE_WRITE_CHUNK: usize = 64 * 1024;
 /// Default byte-stream window, shared with the Rust core.
 const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
@@ -926,109 +923,6 @@ impl JsIOBase {
         }
     }
 
-    /// Iterate this resource's text records, one at a time.
-    ///
-    /// The loader's `readLines` wraps this with its option coercion: the whole
-    /// extractor crosses as one native `Scalar` - the same shape a YAML or TOML
-    /// document parses into - so a reader is specifiable from configuration
-    /// alone, in JavaScript or in a file.
-    ///
-    /// Any content codings the resource's name declares - `trades.jsonl.gz`,
-    /// `log.txt.zst` - decode as streams, so a compressed resource is read
-    /// without ever holding its decompressed value. The iterator owns a
-    /// rebuilt handle, so it stays valid however long the caller keeps it.
-    #[napi(js_name = "_readLinesNative", skip_typescript)]
-    pub fn read_lines_native(
-        &self,
-        options: Option<ClassInstance<'_, JsScalar>>,
-    ) -> Result<JsLineIterator> {
-        let built = text_line_options(options.as_deref())?;
-        let handle = self.rebuilt()?;
-        let inner = handle
-            .inner
-            .into_text_with(built)
-            .into_read_lines()
-            .map_err(napi_error)?;
-        Ok(JsLineIterator { inner })
-    }
-
-    /// Project this resource's text records into a `BatchReader`.
-    ///
-    /// A text-line surface beside `readLines`, **never a record method**: each
-    /// record becomes one row - `url`, `rownum`, `date`, `time`, `unix`,
-    /// `hash`, `header`, `message`, `offset`, `lines`, then in log mode the
-    /// fixed `level`, `logger`, and `thread`, then one nullable column per
-    /// named capture group, then the constant custom columns.
-    ///
-    /// The boundary is the standard copied IPC one - each batch crosses as its
-    /// own self-contained Arrow IPC stream, never zero-copy.
-    #[napi(js_name = "_readArrowLinesNative", skip_typescript)]
-    pub fn read_arrow_lines_native(
-        &self,
-        options: Option<ClassInstance<'_, JsScalar>>,
-    ) -> Result<JsBatchReader> {
-        let built = text_line_options(options.as_deref())?;
-        // The borrowed core projection: it reopens a located leaf itself -
-        // keeping a declared media-type override - and snapshots an
-        // in-memory handle, so `fromBytes` parses exactly as a file does.
-        let reader = self.inner.read_arrow_lines(&built).map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(reader, "row"))
-    }
-
-    /// Replace this resource's records with what `pull` yields, each terminated.
-    ///
-    /// The loader turns any iterable into `pull`, a function answering the next
-    /// record or `null` at the end, so the records stream: they are never
-    /// collected into an array on either side of the boundary, and a
-    /// million-record write costs one reused buffer.
-    #[napi(js_name = "_writeLinesNative", skip_typescript)]
-    pub fn write_lines_native(
-        &mut self,
-        pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
-        options: Option<ClassInstance<'_, JsScalar>>,
-    ) -> Result<()> {
-        self.inner.truncate(0).map_err(napi_error)?;
-        self.append_lines_native(pull, options)
-    }
-
-    /// Append what `pull` yields after this resource's current end.
-    ///
-    /// Streams exactly as `_writeLinesNative` does, and publishes when it
-    /// finishes: appending records is a complete operation, so a staging
-    /// backend must not be left holding it.
-    #[napi(js_name = "_appendLinesNative", skip_typescript)]
-    pub fn append_lines_native(
-        &mut self,
-        pull: Function<'_, (), Option<Either<String, Uint8Array>>>,
-        options: Option<ClassInstance<'_, JsScalar>>,
-    ) -> Result<()> {
-        let built = text_line_options(options.as_deref())?;
-        let terminator = built.write_linesep().to_vec();
-        // One reused buffer, flushed in chunks, exactly as the core writes.
-        let mut pending: Vec<u8> = Vec::with_capacity(LINE_WRITE_CHUNK);
-        let mut offset = self.inner.size();
-        while let Some(record) = pull.call(())? {
-            match &record {
-                Either::A(text) => pending.extend_from_slice(text.as_bytes()),
-                Either::B(bytes) => pending.extend_from_slice(bytes.as_ref()),
-            }
-            pending.extend_from_slice(&terminator);
-            if pending.len() >= LINE_WRITE_CHUNK {
-                self.inner
-                    .pwrite_all(offset, &pending)
-                    .map_err(napi_error)?;
-                offset += pending.len() as u64;
-                pending.clear();
-            }
-        }
-        if !pending.is_empty() {
-            self.inner
-                .pwrite_all(offset, &pending)
-                .map_err(napi_error)?;
-        }
-        self.inner.flush().map_err(napi_error)
-    }
-
     /// Return the record settings this handle's media type names.
     ///
     /// The encoding is never guessed: it is whatever the handle already says it
@@ -1254,39 +1148,6 @@ impl JsListing {
     }
 }
 
-/// Iterator over a resource's text records, one at a time.
-///
-/// Built by `readLines`. The handle is rebuilt from its location and owned
-/// here, bytes stream through one bounded window, and any content codings the
-/// name declares decode as streams, so a compressed resource costs one window
-/// rather than its decoded size. `next()` is the native half of the iteration
-/// protocol; the loader wraps it so `for...of` yields strings.
-///
-/// Each record crosses as a JavaScript string. The core hands back a
-/// *borrowed* view whose lifetime ends at the next read, and a JavaScript
-/// value cannot borrow it - so this is the one place the line surface copies,
-/// and it copies because the boundary requires it, not because the reader
-/// does.
-#[napi(js_name = "LineIterator")]
-pub struct JsLineIterator {
-    inner: yggdryl::text::TextLines<Box<dyn std::io::Read + Send + 'static>>,
-}
-
-#[napi]
-impl JsLineIterator {
-    /// The next record, or `null` when the resource is exhausted.
-    #[napi]
-    pub fn next(&mut self) -> Result<Option<String>> {
-        match self.inner.next() {
-            None => Ok(None),
-            Some(record) => record
-                .and_then(|record| record.text().map(str::to_owned))
-                .map(Some)
-                .map_err(napi_error),
-        }
-    }
-}
-
 /// A lazy iterator of bounded byte arrays.
 ///
 /// Built by `IOBase.pstreamBytes` and `IOCursor.streamBytes`. The iterator
@@ -1485,31 +1346,4 @@ fn byte_stream_batch_size(value: Option<f64>) -> Result<usize> {
         ));
     }
     Ok(value)
-}
-
-/// Build the line projection's root Struct Field straight from a pattern.
-///
-/// The loader's `fieldFromPattern` wraps this with the same option coercion
-/// `readArrowLines` uses: the schema the reader emits - named captures typed
-/// by inference or declaration - without a resource or a reader in sight, so
-/// a caller marks its partition columns and creates the Iceberg table before
-/// the first log line exists.
-#[napi(js_name = "_fieldFromPatternNative", skip_typescript)]
-// Discovered through NAPI's generated registration inventory rather than an
-// ordinary Rust call site.
-#[allow(dead_code)]
-pub fn field_from_pattern_native(options: Option<ClassInstance<'_, JsScalar>>) -> Result<JsField> {
-    text_line_options(options.as_deref()).map(|options| JsField::from_core(options.into_field()))
-}
-
-/// Read the whole extractor out of the one native `Scalar` the loader built.
-///
-/// Every text-line entry point comes here, so the JavaScript surface and a
-/// configuration document are validated by exactly the same core conversion -
-/// there is no second option parser to drift.
-fn text_line_options(options: Option<&JsScalar>) -> Result<TextLineOptions> {
-    match options {
-        Some(value) => TextLineOptions::from_value(value.inner.clone()).map_err(napi_error),
-        None => Ok(TextLineOptions::new()),
-    }
 }

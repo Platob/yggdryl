@@ -6,7 +6,7 @@ JSON uses ordinary interoperable documents backed by the shared Rust codec.
 
 A JSON document is a raw structured value, not the line-record media surface.
 For streamed Arrow batches with explicit overwrite and append behavior, use
-[Text media](text.md#text-media-and-arrow-batches). Text deliberately refuses
+[Text media](text.md#plain-text-records). Text deliberately refuses
 keyed merge because a line has no stable row identity. JSON Lines is the
 multi-value document stream described below.
 

@@ -205,10 +205,10 @@ five bytes in the middle of an object - while `IOBase::pwrite` is positional. So
 That is why a file another reader will open is written inside a scope - `with` in Python, `using`
 in JavaScript - which binds to exactly `open` and `close`.
 
-A *whole-value* write needs none of that. `write_all_bytes`, `write_lines`, and `append_lines` each
-describe one complete value, which is one store operation, so they publish when they finish. The
-staging exists to fold many positional writes into one replacement; it is not a mode a caller has
-to remember to leave.
+A *whole-value* write needs none of that. `write_all_bytes` and the ordinary record overwrite or
+append methods each describe one complete operation, so they publish when they finish. The staging
+exists to fold many positional writes into one replacement; it is not a mode a caller has to
+remember to leave.
 
 Reads need none of it. A `pread` maps straight onto one ranged fetch, so asking for eight bytes of
 a large object transfers eight bytes rather than the object. What a record encoding does with that

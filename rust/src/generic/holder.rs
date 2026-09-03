@@ -57,13 +57,6 @@ pub enum Holder {
     /// The box is what keeps the enum a fixed size: this variant holds a
     /// handle of the very type it belongs to.
     Buffered(Box<Buffered<Self>>),
-    /// Any of the others, read and written as text records.
-    ///
-    /// A [`Text`](crate::text::Text) handler mirrors its handle's bytes and
-    /// answers the record surface through the line projection, so a holder
-    /// wrapped this way reads and writes Arrow batches as lines by default.
-    /// Boxed for the same reason [`Self::Buffered`] is.
-    Text(Box<crate::text::Text<Self>>),
     /// Any of the others, retained behind its inferred record encoding.
     ///
     /// The box breaks the recursive shape: a [`Media`](crate::generic::Media)
@@ -133,9 +126,9 @@ impl Holder {
     ///
     /// The conversion is lazy: it only adds the stateful wrapper and reads no
     /// bytes. IPC, Parquet (when enabled), and Avro are held through
-    /// [`Self::Media`]; plain text uses the existing [`Self::Text`] wrapper.
-    /// An already promoted or text-wrapped holder is returned unchanged. A
-    /// page cache remains the outermost wrapper, so promotion followed by
+    /// [`Self::Media`]. Plain text needs no wrapper: the ordinary record-media
+    /// methods select its decoder through [`RecordOptions`](super::RecordOptions).
+    /// A page cache remains the outermost wrapper, so promotion followed by
     /// repeated buffering cannot stack caches.
     ///
     /// A directory, JSON document, or any other ordinary byte representation
@@ -159,7 +152,6 @@ impl Holder {
             let supported = base == crate::MimeType::ARROW_STREAM
                 || base == crate::MimeType::ARROW_FILE
                 || base == crate::MimeType::AVRO
-                || base == crate::MimeType::PLAIN_TEXT
                 || cfg!(feature = "parquet") && base == crate::MimeType::PARQUET;
             if !supported {
                 return self;
@@ -174,9 +166,6 @@ impl Holder {
                 return Self::Buffered(Box::new(Buffered::new(held, options)));
             }
 
-            if base == crate::MimeType::PLAIN_TEXT {
-                return Self::Text(Box::new(crate::text::Text::new(self)));
-            }
             if base == crate::MimeType::ARROW_STREAM || base == crate::MimeType::ARROW_FILE {
                 return Self::Media(Box::new(crate::generic::Media::ipc(self)));
             }
@@ -210,57 +199,10 @@ impl Holder {
     #[cfg(feature = "arrow")]
     fn has_media_surface(&self) -> bool {
         match self {
-            Self::Media(_) | Self::Text(_) => true,
+            Self::Media(_) => true,
             Self::Buffered(buffered) => buffered.handle().has_media_surface(),
             _ => false,
         }
-    }
-
-    /// Hold this resource behind the text-line surface.
-    ///
-    /// Idempotent exactly as [`Text::into_text`](crate::text::Text::into_text)
-    /// is: a holder that is already text keeps its handler - and the options
-    /// it carries - rather than nesting a second one. This is the inherent
-    /// spelling of [`IOBase::into_text`], and it wins method resolution over
-    /// it, so a `Holder` stays a `Holder`.
-    #[must_use]
-    pub fn into_text(self) -> Self {
-        match self {
-            Self::Text(text) => Self::Text(text),
-            other => Self::Text(Box::new(crate::text::Text::new(other))),
-        }
-    }
-
-    /// Hold this resource behind the text-line surface, under `options`.
-    ///
-    /// An already-text holder keeps its handle and replaces the extractor.
-    #[must_use]
-    pub fn into_text_with(self, options: crate::text::TextLineOptions) -> Self {
-        match self {
-            Self::Text(text) => Self::Text(Box::new(text.with_options_of(options))),
-            other => Self::Text(Box::new(crate::text::Text::with_options(other, options))),
-        }
-    }
-
-    /// Read this resource's records, consuming the holder.
-    ///
-    /// The inherent spelling of [`IOBase::into_read_lines`], and it wins
-    /// method resolution over it - which matters: the trait default wraps a
-    /// *fresh* text handler, while a holder that is already text must read
-    /// under the extractor it carries rather than silently under defaults.
-    ///
-    /// # Errors
-    ///
-    /// Construction itself cannot fail; each yielded item carries the read or
-    /// decode failure of its record.
-    pub fn into_read_lines(
-        self,
-    ) -> Result<crate::text::TextLines<Box<dyn std::io::Read + Send + 'static>>> {
-        let text = match self {
-            Self::Text(text) => *text,
-            other => crate::text::Text::new(other),
-        };
-        text.into_read_lines()
     }
 
     /// Borrow the held implementation as a trait object.
@@ -274,7 +216,6 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
-            Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
         }
@@ -291,7 +232,6 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
-            Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
         }
@@ -309,7 +249,6 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
-            Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
         }
@@ -327,7 +266,6 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
-            Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
         }
@@ -585,12 +523,6 @@ impl From<crate::arrowfs::File> for Holder {
 impl From<Buffered<Holder>> for Holder {
     fn from(value: Buffered<Self>) -> Self {
         Self::Buffered(Box::new(value))
-    }
-}
-
-impl From<crate::text::Text<Holder>> for Holder {
-    fn from(value: crate::text::Text<Self>) -> Self {
-        Self::Text(Box::new(value))
     }
 }
 

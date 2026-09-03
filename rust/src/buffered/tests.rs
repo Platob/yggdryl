@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use super::{Buffered, BufferedOptions};
 use crate::generic::Holder;
-use crate::io::{Buffer, IOBase};
+use crate::io::{Buffer, IOBase, IOMedia};
 use crate::{MediaType, MimeType, Url};
 
 /// A handle that mirrors a [`Buffer`] and counts what reaches it.
@@ -660,7 +660,7 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
 #[cfg(feature = "arrow")]
 #[test]
 fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
-    use crate::text::TextLineOptions;
+    use crate::text::TextOptions;
 
     // A located leaf, because that is the case the projection gets wrong: it
     // reopens a handle's *location*, which for a coding view holds the
@@ -676,7 +676,10 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     let plain = b"2024-02-01T10:00:00 [INFO] alpha\n2024-02-01T10:00:01 [WARN] beta\n";
     std::fs::write(&path, crate::gzip::dump(plain).unwrap()).unwrap();
 
-    let options = TextLineOptions::with_pattern(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]").unwrap();
+    let options: crate::generic::RecordOptions = TextOptions::new()
+        .try_with_header(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
+        .unwrap()
+        .into();
     let rows = |reader: crate::arrow::BatchReader| -> usize {
         reader.map(|batch| batch.unwrap().num_rows()).sum()
     };
@@ -688,21 +691,21 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     let plain_file = rows(
         crate::local::File::new(&path)
             .unwrap()
-            .read_arrow_lines(&options)
+            .read_arrow_reader(&options)
             .unwrap(),
     );
     let cached_file = rows(
         crate::local::File::new(&path)
             .unwrap()
             .buffered(BufferedOptions::default())
-            .read_arrow_lines(&options)
+            .read_arrow_reader(&options)
             .unwrap(),
     );
-    let coded_view = rows(coded().read_arrow_lines(&options).unwrap());
+    let coded_view = rows(coded().read_arrow_reader(&options).unwrap());
     let cached_view = rows(
         coded()
             .buffered(BufferedOptions::default())
-            .read_arrow_lines(&options)
+            .read_arrow_reader(&options)
             .unwrap(),
     );
     assert_eq!(

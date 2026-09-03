@@ -1,191 +1,91 @@
-# Structured text and line media
+# Structured text and plain-text records
 
-`yggdryl::text` presents record media first and document codecs second:
+`yggdryl::text` owns two related surfaces:
 
-- plain text as streamed line records and Arrow batches;
-- JSON, JSON Lines, YAML, and TOML as the shared native [`Scalar`](generic.md).
+- `text/plain` as physical-line records through the ordinary media methods;
+- JSON, JSON Lines, YAML, and TOML over the shared native [`Scalar`](generic.md).
 
-Both use `IOBase` handles, infer their representation from media type, and keep
-parsing and encoding in the Rust core.
+Parsing, schema inference, casting, and encoding stay in the Rust core. Python
+and JavaScript only translate their native record and Arrow holders.
 
-## Text media and Arrow batches
+## Plain-text records
 
-A `.log` or `.txt` resource is a record encoding. Reads stream records into the
-same Arrow `BatchReader` used by IPC and Parquet. The same explicit write entry
-points expose overwrite and append; keyed merge is rejected because lines have
-no stable identity. No format argument is passed.
+A plain-text row always begins with this required schema:
+
+| column | datatype | value |
+| --- | --- | --- |
+| `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
+| `rownum` | `int64` | one-based physical line number, restarted for each leaf |
+| `body` | `binary` | line bytes without the record terminator |
+
+Use `RecordOptions` with `read_arrow_reader` / `readArrowReader` or
+`read_records` / `readRecords`. Plain text has no separate holder,
+line iterator, schema builder, or read/write vocabulary.
+
+`TextOptions` is the Rust variant held directly by `RecordOptions`. Its
+text-specific settings are flat:
+
+| option | contract |
+| --- | --- |
+| `header` | byte regex searched once per line; named captures append nullable columns |
+| `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding body edge |
+| `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
+| `autotype` | infer capture datatypes from the first batch; default `true` |
+| `timezone` | zone applied when autotyping offset-free timestamps |
+
+When `header` matches, its complete match is removed from `body`. Edge
+stripping runs afterward. A line without a match keeps its body and receives
+null capture values.
+
+Autotyping recognizes booleans, signed 64-bit integers, finite floats, ISO
+dates, times, and timestamps. Types are fixed after the first
+`batch_row_size` rows (or the shared default batch size). A later
+incompatible value is an error naming its row and capture. Set
+`autotype = false` to keep every capture as UTF-8. An empty resource still
+answers the complete schema, with capture columns as UTF-8.
 
 === "Rust"
 
     ```rust
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use arrow_array::{Array as _, BinaryArray, Int64Array};
+    use yggdryl::generic::{IORecordOptions as _, RecordOptions};
+    use yggdryl::io::{Buffer, IOMedia as _};
+    use yggdryl::text::TextOptions;
     use yggdryl::Url;
 
-    fn named(name: &str) -> yggdryl::Result<Buffer> {
-        Ok(Buffer::new().with_media_type(Url::from_str(&format!("file:///{name}"))?.media_type()))
-    }
+    let text_source = Buffer::from_bytes(
+        b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n".to_vec(),
+    )
+    .with_media_type(Url::from_str("file:///app.log")?.media_type());
 
-    let mut source = named("app.log")?;
-    source.write_all_bytes(b"first event\nsecond event\n")?;
+    let mut text_options: RecordOptions = TextOptions::new().into();
+    text_options.set_header(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))?;
+    text_options.set_lstrip(Some(r"^\s+"))?;
+    text_options.set_rstrip(Some(r"\s+$"))?;
 
-    let options = source.record_options()?;
-    let rows: usize = source
-        .read_arrow_reader(&options)?
-        .map(|batch| batch.map(|batch| batch.num_rows()))
-        .sum::<Result<_, _>>()?;
-    assert_eq!(rows, 2);
-
-    let mut target = named("copy.log")?;
-    target.overwrite_arrow_reader(source.read_arrow_reader(&options)?, &options)?;
-    target.append_arrow_reader(source.read_arrow_reader(&options)?, &options)?;
+    let text_batch = text_source
+        .read_arrow_reader(&text_options)?
+        .next()
+        .unwrap()?;
+    assert_eq!(text_batch.schema().fields().len(), 5);
     assert_eq!(
-        target.read_all_bytes()?,
-        b"first event\nsecond event\nfirst event\nsecond event\n"
+        text_batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap()
+            .values(),
+        &[1, 2],
     );
-
-    let merging = options.clone().with_merge_by_names(["message"]);
-    let refused = target.merge_arrow_reader(source.read_arrow_reader(&options)?, &merging);
-    assert!(refused.unwrap_err().to_string().contains("row identity"));
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import shutil
-    import tempfile
-
-    import pytest
-
-    from yggdryl import IOBase
-
-    root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-"))
-    (root / "app.log").write_text("first event\nsecond event\n")
-
-    table = IOBase(root / "app.log").read_arrow_reader().read_all()
-    assert table.num_rows == 2
-    assert table.column("message").to_pylist() == ["first event", "second event"]
-
-    target = IOBase(root / "copy.log")
-    target.overwrite_arrow_table(table)
-    target.append_arrow_table(table)
-    assert (root / "copy.log").read_text() == (
-        "first event\nsecond event\nfirst event\nsecond event\n"
-    )
-
-    merging = target.record_options()
-    merging.merge_by_names = ["message"]
-    with pytest.raises(ValueError, match="row identity"):
-        target.merge_arrow_table(table, options=merging)
-
-    shutil.rmtree(root)
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
-    fs.writeFileSync(path.join(root, 'app.log'), 'first event\nsecond event\n')
-
-    const table = new IOBase(path.join(root, 'app.log')).readArrowReader().intoTable()
-    assert.equal(table.numRows, 2)
-    assert.deepEqual([...table.getChild('message')], ['first event', 'second event'])
-
-    const target = new IOBase(path.join(root, 'copy.log'))
-    target.overwriteArrowTable(table)
-    target.appendArrowTable(table)
-    assert.equal(
-      fs.readFileSync(path.join(root, 'copy.log'), 'utf8'),
-      'first event\nsecond event\nfirst event\nsecond event\n',
-    )
-
-    assert.throws(
-      () => target.mergeArrowTable(table, target.recordOptions().withMergeByNames(['message'])),
-      /row identity/,
-    )
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-The default projection includes location, row number, timing, hash, header,
-message, offset, and line-count columns. Captures and constant fields add
-columns. Writes render `header` plus `message`, or one `utf8` column. Append is
-supported; keyed merge is refused because a text line has no stable identity.
-
-### Measured batch operations
-
-The write fixture contains 4,096 rows in one `utf8` message column. Criterion
-constructs the stored append/read side outside the timer, then drains or
-publishes through the same `IOMedia` methods shown above.
-
-| batch operation | rows | estimate | throughput |
-| --- | ---: | ---: | ---: |
-| read and drain `read_arrow_reader` | 4,096 | 1.19 ms | 3.45M rows/s |
-| `overwrite_arrow_reader` | 4,096 | 59.3 us | 69.1M rows/s |
-| `append_arrow_reader` | 4,096 | 87.4 us | 46.9M rows/s |
-| keyed `merge_arrow_reader` (upsert) | - | unsupported | no stable row identity |
-
-These are Criterion point estimates from a Windows x86_64 release smoke run
-on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). Regenerate them on the
-deployment host with:
-
-```console
-cargo bench -p yggdryl --bench io --features parquet -- "io_write_stateful/text"
-```
-
-The text fixture is deliberately narrow and should be compared between its own
-operations, not directly with the four-column IPC, Parquet, and Avro fixtures.
-
-### Line iteration with `Text`
-
-`Text<H>` wraps an `IOBase` handle without hiding its bytes. `into_text` is
-idempotent and adds:
-
-- `read_lines` / `into_read_lines`, yielding one borrowed `TextLine` at a time;
-- `write_lines` and `append_lines`, consuming iterables without collecting;
-- `read_arrow_lines`, projecting the same records into bounded Arrow batches.
-
-`TextLine` borrows its byte window and computes UTF-8, captures, and hash only
-when requested. Call `into_owned` only when a row must outlive that window.
-Python and JavaScript expose their native lazy iterator protocols.
-
-`TextLineOptions` is the complete extractor. It can be built in code or parsed
-unchanged from a JSON, YAML, or TOML configuration:
-
-| option | purpose |
-| --- | --- |
-| `opening` / `logs` / `pattern` | choose where a record begins |
-| `header` | parse the opening line separately from its message |
-| `linesep`, `lstrip`, `rstrip` | control record boundaries and trimming |
-| `timestamp_capture`, `timezone` | turn a captured wall time into an instant |
-| `capture_types` | strictly type named captures |
-| `custom_fields` | append constant columns |
-| `byte_size`, `batch_row_size` | close a batch when the first bound is reached |
-
-`Opening`, `TextLineOptions`, and `TextOptions` are ordinary Rust values:
-cloning preserves the complete declaration, and `Eq`, `Ord`, and `Hash`
-compare the declaration rather than compiled regex or schema caches. Their
-`stable_hash()` methods provide the same deterministic identity across runs;
-for a pattern, its source text is the declared identity.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::io::{Buffer, IOBase};
-
-    let handle = Buffer::from_bytes(b"first event\nsecond event\n".to_vec()).into_text();
-    let mut records = handle.read_lines()?;
-
-    assert_eq!(records.next().unwrap()?.text()?, "first event");
-    assert_eq!(records.next().unwrap()?.text()?, "second event");
-    assert!(records.next().is_none());
+    assert_eq!(
+        text_batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(0),
+        b"first",
+    );
     ```
 
 === "Python"
@@ -194,20 +94,28 @@ for a pattern, its source text is the declared identity.
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, RecordOptions
 
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / "app.log"
-        source.write_bytes(
-            b"2026-08-01 [ERROR] failed\n  detail\n"
-            b"2026-08-01 [INFO] ready\n"
-        )
-        records = list(
-            IOBase(source).read_lines(r"^\d{4}-\d{2}-\d{2} \[[A-Z]+\]")
-        )
+        source.write_bytes(b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n")
 
-        assert len(records) == 2
-        assert "detail" in records[0]
+        options = RecordOptions("text/plain")
+        options.header = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
+        options.lstrip = r"^\s+"
+        options.rstrip = r"\s+$"
+
+        rows = list(IOBase(source).read_records(options=options))
+        assert [row["rownum"] for row in rows] == [1, 2]
+        assert [row["body"] for row in rows] == [b"first", b"second"]
+        assert [row["id"] for row in rows] == [7, 9]
+
+        target = IOBase(pathlib.Path(directory) / "copy.txt")
+        target.overwrite_records(
+            ({"body": row["body"]} for row in rows),
+            options=RecordOptions("text/plain"),
+        )
+        assert target.read_bytes() == b"first\nsecond\n"
     ```
 
 === "JavaScript"
@@ -217,95 +125,57 @@ for a pattern, its source text is the declared identity.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase } = require('yggdryl')
+    const { IOBase, RecordOptions } = require('yggdryl')
 
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const target = path.join(root, 'app.log')
-    fs.writeFileSync(target, 'first event\nsecond event\n')
+    const textRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-'))
+    const textSource = path.join(textRoot, 'app.log')
+    fs.writeFileSync(textSource, '  [INFO] id=7 first  \r\n[WARN] id=9 second\n')
 
-    const handle = new IOBase(target)
-    assert.deepEqual([...handle.readLines()], ['first event', 'second event'])
+    const textOptions = RecordOptions.from('text/plain')
+    textOptions.header = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+    textOptions.lstrip = '^\\s+'
+    textOptions.rstrip = '\\s+$'
 
-    fs.rmSync(root, { recursive: true, force: true })
+    const textRows = [...new IOBase(textSource).readRecords(textOptions)]
+    assert.deepEqual(textRows.map((row) => row.rownum), [1n, 2n])
+    assert.deepEqual(
+      textRows.map((row) => Buffer.from(row.body).toString()),
+      ['first', 'second'],
+    )
+    assert.deepEqual(textRows.map((row) => row.id), [7n, 9n])
+
+    const textTarget = new IOBase(path.join(textRoot, 'copy.txt'))
+    textTarget.overwriteRecords(
+      textRows.map((row) => ({ body: row.body })),
+      RecordOptions.from('text/plain'),
+    )
+    assert.equal(textTarget.readBytes().toString(), 'first\nsecond\n')
+
+    fs.rmSync(textRoot, { recursive: true, force: true })
     ```
 
-Unset `linesep` accepts LF, CRLF, and lone CR; writes use LF. Compressed names
-such as `app.log.gz`, `app.log.zz`, and `app.log.zst` decode as streams. The
-reader reuses one byte window and retains only an unfinished cross-chunk row.
-Arrow projection consumes the same reader and emits each bounded batch when it
-closes. An absent resource yields an empty iterator.
+Writes consume the non-null Binary `body` column and append the configured
+terminator. A body containing that terminator is refused. Overwrite and append
+use the generic media methods; keyed merge remains unsupported for plain text.
 
-### First-item latency
+Content codings belong to the handle. Thus `app.log.gz` and a folder mixing
+plain and gzip leaves use the same options and stream decoded rows without
+retaining prior pages. The line splitter retains only the unfinished fragment
+needed across byte chunks.
 
-The `lines_identity` Criterion group measures `stable_hash()` for an opening
-rule, a complete line extractor, text record options, and the enclosing
-`RecordOptions`; each configured value is built outside the timed loop.
+### Measuring the boundary
 
-`lines_first` measures construction plus one result: one borrowed line, or one
-1,024-row Arrow batch from a 50,000-row corpus. `local` is a located file,
-OS-cache-warm after setup and Criterion warm-up; the Arrow reader reopens and
-owns that handle, so it streams without snapshotting the resource. `memory` is
-the direct borrowed-line control. `snapshot` is the separately named
-unlocated-`Buffer` Arrow fallback, which must copy its encoded value into an
-owned reader before returning.
+The three benchmark targets use the same generic record methods. Python also
+includes an equivalent `re` plus PyArrow baseline; JavaScript numbers include
+the copied IPC crossing required by Arrow JS.
 
 ```console
-cargo bench -p yggdryl --bench text -- lines_first --noplot
+cargo bench -p yggdryl --bench text
+cd python
+.venv/Scripts/python benchmarks/text.py --min-time 0.2 --repeat 7
+cd ..
+npm run --prefix node bench:text
 ```
-
-Observed 2026-08-23 on Windows 11 x86_64, AMD Ryzen 5 150 (6 cores / 12
-threads), rustc 1.96.1, release profile. Cells are Criterion median point
-estimates from the generated `new/estimates.json` files:
-
-| coding | first line, local | first line, memory | first Arrow batch, local | first Arrow batch, snapshot |
-| --- | ---: | ---: | ---: | ---: |
-| plain | 5.14 us | 6.58 us | 22.7 ms | 10.1 ms |
-| gzip | 65.5 us | 62.0 us | 20.1 ms | 4.57 ms |
-| zlib | 56.0 us | 58.5 us | 20.4 ms | 4.33 ms |
-| zstd | 192 us | 224 us | 21.0 ms | 4.82 ms |
-
-The snapshot numbers are an ownership baseline, not a claim about file
-streaming: their source bytes are already resident, and compressed snapshots
-copy fewer encoded bytes. The local Arrow cases exercise the production-shaped
-reader ownership path, not cold-disk latency. Their 20--23 ms first batches
-arrive after 1,024 rows rather than waiting for the remaining 48,976 rows or
-retaining decoded pages.
-
-### Dimensions and opened sessions
-
-`row_size` and `column_size` describe the complete text media, ignoring
-selection and read limits. A fresh row count walks record boundaries without
-building Arrow arrays. Column count comes from the configured Struct field and
-does not read bytes.
-
-`open` caches the resolved field, coding plan, and requested dimensions until
-`close`. Writes and option changes invalidate those values. Closed calls are
-always fresh.
-
-The benchmark uses 65,536 records and compares the borrowed count with the full
-ten-column Arrow projection:
-
-```console
-cargo bench -p yggdryl --bench io --features parquet -- io_dimensions/text --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10
-```
-
-One local Windows x86_64 release smoke run (Criterion point estimates;
-regenerate on the deployment host):
-
-| operation | estimate |
-| --- | ---: |
-| fresh `row_size` extractor walk | 4.64 ms |
-| opened `row_size` cache hit | 3.76 ns |
-| fresh `column_size` configured field | 4.36 ns |
-| opened `column_size` cache hit | 4.27 ns |
-| `record_options` resolution | 382 ns |
-| `is_io` media capability | 2.21 ns |
-| fresh `read_arrow_field` | 1.26 ms |
-| opened `read_arrow_field` | 1.40 ms |
-| full `read_arrow_reader` row decode | 46.3 ms |
-
-The fresh count was about ten times faster than Arrow decoding; opened counts
-and configuration-only width paths were nanosecond-scale.
 
 ## Raw shared-Scalar access
 

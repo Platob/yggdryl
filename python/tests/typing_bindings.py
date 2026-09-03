@@ -42,7 +42,6 @@ from yggdryl._native import (
     FieldMetadata,
     IOCursor,
     IcebergNames,
-    LineIterator,
     Listing,
     ScalarEntryIterator,
     ScalarIterator,
@@ -105,7 +104,6 @@ field_metadata_hash: None = FieldMetadata.__hash__
 protocol_metadata_hash: None = ProtocolMetadata.__hash__
 io_hash: None = IOBase.__hash__
 cursor_hash: None = IOCursor.__hash__
-line_iterator_hash: None = LineIterator.__hash__
 byte_iterator_hash: None = ByteIterator.__hash__
 listing_hash: None = Listing.__hash__
 value_iterator_hash: None = ScalarIterator.__hash__
@@ -512,11 +510,21 @@ avro_record_options.sync_marker = None
 record_match_key: list[str] = record_options.merge_by_names
 record_handle.merge_arrow_reader(record_batches, options=record_options)
 
-line_batches: pa.RecordBatchReader = record_handle.read_arrow_lines(
-    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<level>[^\]]+)\]",
-    batch_row_size=512,
-    custom_fields={"venue": "XNAS", "session": 7},
-    timestamp_capture=None,
+text_record_options = RecordOptions("text/plain")
+text_record_options.header = r"\[(?<level>[A-Z]+)\]"
+text_record_options.lstrip = r"^\s+"
+text_record_options.rstrip = r"\s+$"
+text_record_options.linesep = memoryview(b"\r\n")
+text_record_options.autotype = True
+text_record_options.timezone = Timezone.UTC
+text_header: str | None = text_record_options.header
+text_lstrip: str | None = text_record_options.lstrip
+text_rstrip: str | None = text_record_options.rstrip
+text_linesep: bytes | None = text_record_options.linesep
+text_autotype: bool | None = text_record_options.autotype
+text_timezone: Timezone | None = text_record_options.timezone
+line_batches: pa.RecordBatchReader = IOBase(Path("app.log")).read_arrow_reader(
+    options=text_record_options
 )
 
 generic_batches: pa.RecordBatchReader = record_handle.read_arrow_reader(options=record_options)

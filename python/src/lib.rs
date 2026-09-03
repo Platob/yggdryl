@@ -300,12 +300,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUriPathIterator>()?;
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<io::PyIOBase>()?;
-    module.add_function(wrap_pyfunction!(io::field_from_pattern, module)?)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(record::combined, module)?)?;
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<crate::io::PyByteIterator>()?;
-    module.add_class::<io::PyLineIterator>()?;
     module.add_class::<io::PyRecordIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;
     module.add_class::<record::PyRecordOptions>()?;

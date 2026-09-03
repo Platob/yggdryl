@@ -118,22 +118,6 @@ fn malformed_fraction_separators_are_rejected_with_their_byte_position() {
     assert!(parse_timestamp("2024-02-01T10:00:00.5_Z").is_err());
 }
 
-#[cfg(feature = "arrow")]
-#[test]
-fn datetime_prefixes_report_where_the_reading_ends() {
-    let (count, unit, end) = parse_datetime_prefix("2024-02-01 10:00:00.000_000 [INFO]").unwrap();
-    assert_eq!(
-        (count, unit),
-        parse_datetime("2024-02-01T10:00:00.000000").unwrap()
-    );
-    assert_eq!(end, 27);
-    assert_eq!(unit, TimeUnit::Microsecond);
-
-    // The prefix parser is as strict as the whole-text one about the reading
-    // itself; only trailing text is its caller's business.
-    assert!(parse_datetime_prefix("2024-02-30 10:00:00 x").is_err());
-}
-
 #[test]
 fn naive_datetimes_split_the_epoch_count_exactly() {
     assert_eq!(

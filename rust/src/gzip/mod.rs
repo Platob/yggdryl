@@ -152,18 +152,6 @@ impl<H: IOBase> IOBase for Gzip<H> {
     fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
         self.coded.read_range_bytes(offset, length)
     }
-
-    /// Use the coding view's owning streamed projection.
-    #[cfg(feature = "arrow")]
-    fn read_arrow_lines(
-        &self,
-        options: &crate::text::TextLineOptions,
-    ) -> crate::Result<crate::arrow::BatchReader>
-    where
-        Self: Sized,
-    {
-        self.coded.read_arrow_lines(options)
-    }
 }
 
 #[cfg(test)]
