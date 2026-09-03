@@ -30,9 +30,10 @@ the next session.
 - Serialization is inherited from `Field`'s JSON path and the generic `Scalar`
   codec. This module writes no serializer, parser or validator of its own; where
   an existing path falls short, it is improved generically instead.
-- A core refactor lands first (Phase 0), giving the structured-text facades
-  explicitly named entry points that say they answer a `Scalar`. FIX consumes
-  those rather than the representation-specific functions.
+- A core refactor lands first (Phase 0): explicitly named structured-text entry
+  points that say they answer a `Scalar`, and well-known local root helpers for
+  the temporary, home and config directories. FIX consumes both and adds no
+  private copy of either.
 - Python and JavaScript reach the whole surface in the same change, with parity
   tests and boundary benchmarks, per the `AGENTS.md` delivery order: Rust core
   and its contract first, then both extensions as redirects.
@@ -100,6 +101,53 @@ Rules for this refactor:
 Then, in the FIX module, use ONLY these entry points for value serialization.
 `from_json_scalar_with_field` is the one that types, orders, validates and
 canonicalizes a message value against its root `Field`.
+
+### Well-known local roots
+
+`rust/src/local/` has no helper for the home directory, the config directory or
+a temporary directory. It should, and this brief needs two of them, so add them
+here rather than reaching around `IOBase` from the FIX module.
+
+The duplication is already real and is what justifies the abstraction under
+`AGENTS.md` ("add an abstraction only when it removes real duplication"):
+`std::env::temp_dir()` is hand-spelled at roughly twenty sites across
+`rust/src/`, including public doctests in `io/mod.rs`, `iceberg/mod.rs`,
+`iceberg/table.rs`, `generic/holder.rs` and `expression/selector.rs`. There is no
+home helper at all, so every caller that wants one would invent its own.
+
+Add to `rust/src/local/`, answering the module's own `Folder`:
+
+```rust
+impl Folder {
+    /// The platform temporary directory.
+    pub fn temporary() -> Result<Self>;
+
+    /// The current user's home directory.
+    pub fn home() -> Result<Self>;
+
+    /// The current user's configuration directory, `~/.config`.
+    pub fn config() -> Result<Self>;
+}
+```
+
+- `home` resolves `HOME`, falling back to `USERPROFILE` on Windows, through
+  `std::env`. Do not add a dependency for this, and do not use the deprecated
+  `std::env::home_dir`. With neither variable set, return a typed error naming
+  both — a caller that wants to treat that as "no home" checks the result, and
+  guessing a path here would be worse than failing.
+- `config` is `home()` joined with `.config`, so the home rule lives in one place.
+- `temporary` wraps `std::env::temp_dir()`.
+- These construct a handle; they do not create the directory. Creation stays a
+  write consequence, per `AGENTS.md`.
+- Migrate the existing `std::env::temp_dir()` sites, doctests included, to
+  `Folder::temporary()`. That is the change paying for itself, and it is what
+  stops the helper from becoming a twenty-first spelling.
+- Add these three to `AGENTS.md`'s canonical-spellings list for local storage, so
+  the next person looking for a home directory finds them instead of writing
+  `std::env` again.
+
+The FIX registry then resolves `~/.config/fix` as `Folder::config()?.join("fix")`
+and never touches `std::env` itself.
 
 ## Read first
 
@@ -182,9 +230,27 @@ described next.
 
 ### Leverage what exists
 
-This module writes almost no serialization of its own. Everything it needs is
-already built, and reaching for a FIX-specific implementation is the failure
-mode this section exists to prevent.
+This module writes almost no infrastructure of its own. Nearly everything it
+needs is already built, and reaching for a FIX-specific implementation is the
+failure mode this section exists to prevent.
+
+Before writing any helper, find the core one. The standing rule for this work:
+
+- a value is a `Scalar`, a schema is a `Field`, a location is a `Url`, and
+  storage is an `IOBase` handle — this module introduces no parallel type for
+  any of them;
+- serialization is `Field`'s JSON path and the generic `Scalar` codec;
+- filesystem locations come from `rust/src/local/`'s well-known-root helpers, not
+  from `std::env` or string paths;
+- bounds come from `Limits`, errors from `yggdryl::Error`'s typed variants, and
+  lookups follow `Field`'s own `get_*`/failing pairs;
+- if the core helper does not exist, ADD IT TO CORE, generically, in its own
+  commit — the way Phase 0 adds the scalar entry points and the local roots.
+  Writing a private FIX copy is the outcome to avoid, because it is invisible to
+  every other caller who needed the same thing.
+
+A good check before adding anything to `rust/src/fix/`: would another module
+want this too? If yes, it belongs in core.
 
 Serializing a field record uses the existing `Field` JSON path:
 
@@ -427,10 +493,10 @@ wins:
 3. `~/.config/fix`, the production default, when that folder exists;
 4. the empty registry.
 
-Home resolution is `HOME`, falling back to `USERPROFILE` on Windows. Read both
-through `std::env`; do not add a dependency for this, and do not use the
-deprecated `std::env::home_dir`. With no home variable set, skip step 3 rather
-than guessing a path.
+Step 3 is `Folder::config()?.join("fix")`, using the helper Phase 0 adds. The FIX
+module does not read `HOME` itself, does not import `std::env`, and does not
+build a path by string concatenation. When `Folder::config()` fails because the
+machine has no home variable set, skip step 3 rather than guessing a path.
 
 Step 3 is the ONE place absence is not an error. A missing `~/.config/fix` means
 the machine has no dictionary installed, which is an ordinary first-run state, so
@@ -597,6 +663,11 @@ Cover:
   field-directed halves type and order against a root `Field`, inference treats a
   string as content and never as a path, and each redirects to the existing
   explicit method rather than parsing on its own;
+- Phase 0's local roots: `Folder::temporary()`, `Folder::home()` and
+  `Folder::config()` answer handles without creating anything, `config()` is
+  `home()` joined with `.config`, and `home()` errors naming both variables when
+  neither `HOME` nor `USERPROFILE` is set. Drive these with a temporary `HOME`,
+  never the developer's real one;
 - Python and JavaScript parity for every accessor: same answers, same argument
   order, same error type for absence, and the same canonical spelling returned
   for a case-insensitive hit;
