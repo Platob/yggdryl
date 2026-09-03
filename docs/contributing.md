@@ -98,10 +98,6 @@ Keep source documentation and Markdown compact: state the contract, one non-obvi
 measured behavior once. Remove repeated rationale, signature restatements, and prose already made
 obvious by names or examples; keep safety, streaming, failure, and compatibility guarantees.
 
-That same run generates the notebooks under `docs/notebooks/` and the `Notebooks` section it links
-them from, between the two comment markers at the foot of the page. Both are outputs: change the
-blocks, not the notebook, and never hand-write inside the markers.
-
 When you add or rename a page, update the `mkdocs.yml` navigation and every link to it in the same
 change; `mkdocs build --strict` fails otherwise.
 

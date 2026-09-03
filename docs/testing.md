@@ -46,18 +46,6 @@ rewired to this repository. The second builds the site strictly, which validates
 An example that cannot stand alone is tagged `rust,ignore`, `python,ignore`, or
 `javascript,ignore`; the checker reports those rather than hiding them.
 
-The same command regenerates the notebooks under `docs/notebooks/` from those blocks, relinks
-the pages that produced them, and fails if a second pass would still change something. The
-notebooks are therefore the examples that just passed, never a copy of them:
-
-```console
-python scripts/build_docs_notebooks.py
-python scripts/build_docs_notebooks.py --check
-```
-
-The first writes, the second only reports what is stale. Neither a notebook nor the `Notebooks`
-section at the foot of a page is edited by hand.
-
 ## Run tests by domain
 
 ```console
