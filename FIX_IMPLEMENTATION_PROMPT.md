@@ -26,6 +26,9 @@ the next session.
 - `FixMsg` is a message linked to the registry that types it.
 - Every FIX implementation lives in one core module folder. Nothing FIX-specific
   is added to `field/`, `metadata.rs`, `iceberg/`, or `io/`.
+- Serialization is inherited from `Field`'s JSON path and the generic `Scalar`
+  codec. This module writes no serializer, parser or validator of its own; where
+  an existing path falls short, it is improved generically instead.
 - Python and JavaScript reach the whole surface in the same change, with parity
   tests and boundary benchmarks, per the `AGENTS.md` delivery order: Rust core
   and its contract first, then both extensions as redirects.
@@ -105,7 +108,49 @@ Concretely, this change adds nothing FIX-specific to:
 
 FIX property key constants live in `rust/src/fix/field.rs` and stay private to
 the module. If something in `fix/` seems to need a change elsewhere in core,
-that is the signal to stop and re-read the model, not to widen a core type.
+that is the signal to stop and re-read the model, not to widen a core type. The
+one sanctioned exception is a generic improvement to an existing core path, as
+described next.
+
+### Leverage what exists
+
+This module writes almost no serialization of its own. Everything it needs is
+already built, and reaching for a FIX-specific implementation is the failure
+mode this section exists to prevent.
+
+Serializing a field record uses the existing `Field` JSON path:
+
+- `Field::into_json` / `Field::into_json_bytes` and `Field::from_json` /
+  `Field::from_json_bytes` (`rust/src/field/serde.rs`). A registry shard is an
+  array of exactly that shape. Metadata rides along, so the whole `fix:`
+  namespace persists with no extra work.
+- `Field::into_json_with_formatting` when a shard should be readable on disk.
+- `Metadata::into_json` / `Metadata::from_json` if a metadata-only shape is ever
+  needed.
+
+Serializing message values uses the generic `Scalar` codec:
+
+- `crate::json::from_bytes_with_field` / `from_utf8_with_field` /
+  `from_reader_with_field` — the field-directed forms. Passing the root `Field`
+  is what types natural strings, orders records, and validates and canonicalizes
+  in Rust, which is exactly the work a FIX transcriber would otherwise duplicate.
+- `crate::json::into_utf8` / `into_bytes` / `into_writer` on the way out.
+- `Limits` for bounded parsing. Do not invent FIX-specific bounds.
+- The reader and writer forms for anything streamed; nothing here materializes a
+  document it could stream.
+
+Therefore, do NOT add: a `Serialize`/`Deserialize` impl for a FIX type, a FIX
+JSON writer or reader, a FIX value parser, a FIX validator, a second limits
+type, an envelope, a version marker, or any private wire representation. A FIX
+field is a `Field` and a FIX message value is a `Scalar`; both already serialize.
+
+If an existing path genuinely cannot express something this module needs,
+IMPROVE THAT PATH rather than working around it. The improvement must be
+generic — justified for every caller, named in the core's own vocabulary, with
+its own tests, and never reachable only from FIX. Land it as its own commit so
+the core change is reviewable apart from the FIX work. A FIX-shaped special case
+added to `field/serde.rs` or `json/` is the same violation as a FIX-specific
+writer, only harder to find later.
 
 ## Data model
 
@@ -253,9 +298,11 @@ The registry reads and writes through `IOBase` alone; no direct filesystem.
 - Root is a folder handle. Fields live under `records/fix/fields/`.
 - Shard index is `tag / 100`, so tags 0-99 are `0.json` and 100-199 are `1.json`.
   A tag reaches exactly one shard by arithmetic.
-- A shard file is a JSON array of the core `Field` JSON shape, ordered by tag.
-  Reuse `Field::into_json`/`from_json`; invent no envelope, version marker, or
-  private wire form.
+- A shard file is a JSON array of the core `Field` JSON shape, ordered by tag,
+  produced and consumed by `Field::into_json_bytes`/`Field::from_json_bytes`.
+  The shard file itself is the only thing this module composes: an array of
+  already-serialized fields. See "Leverage what exists" — no envelope, version
+  marker, or private wire form, and no FIX serializer.
 - Alternate tags do not fan a field across shards. It is written once, under its
   canonical tag's shard; alternate tags are index entries only.
 - Loading builds both indexes. A name query is answered from the index, never by
@@ -362,6 +409,12 @@ impl FixMsg {
 Both constructors validate the value against the field with the existing
 `Field::validate_value`/`canonicalize_value`; no FIX-specific validator.
 
+Serialization is inherited, not written: a message is a `Field` plus a `Scalar`,
+so `Field::into_json` renders the schema and `crate::json::into_utf8` renders the
+value, while `crate::json::from_bytes_with_field` reads a value back already
+typed, ordered and canonicalized against that field. `FixMsg` needs no serde impl
+of its own.
+
 ## Python
 
 Stabilize the Rust contract first, then mirror it. No FIX logic in Python:
@@ -429,6 +482,12 @@ Cover:
 - isolation: a check that nothing under `rust/src/fix/` is referenced from
   `field/`, `metadata.rs`, `iceberg/` or `io/`, and that
   `cargo check -p yggdryl --no-default-features --lib` still passes;
+- a round trip proving serialization is inherited: a field with the full `fix:`
+  namespace, a Struct component and a List repeating group survive
+  `Field::into_json_bytes` then `Field::from_json_bytes` unchanged, and a
+  `FixMsg` value survives `crate::json::into_utf8` then
+  `from_utf8_with_field` typed and ordered. If either needs a FIX-side fixup to
+  pass, that is a core gap to fix in core, not to patch here;
 - Python and JavaScript parity for every accessor: same answers, same argument
   order, same error type for absence, and the same canonical spelling returned
   for a case-insensitive hit;
