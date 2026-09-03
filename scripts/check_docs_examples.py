@@ -15,10 +15,6 @@ rather than hidden. The comma form other tools accept is not one superfences
 highlights, so a fence written that way is reported as a formatting failure
 instead of shipping as an unhighlighted paragraph.
 
-The same blocks become the downloadable notebooks under ``docs/notebooks/``,
-which this regenerates and then checks for drift on every run, whatever
-``--lang`` selects.
-
 Usage:
     python scripts/check_docs_examples.py                 # every language
     python scripts/check_docs_examples.py --lang rust     # one language
@@ -257,21 +253,8 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
     return ran, skipped, failures
 
 
-def run_notebooks(pages) -> tuple[int, list[str]]:
-    """Regenerate the downloadable notebooks and prove the generator settled."""
-    # The builder reads its blocks from this module, so it is imported here
-    # rather than beside the others: at module scope the two would be a cycle.
-    from build_docs_notebooks import build
-
-    count, problems = build(pages)
-    # A generator that does not settle in one pass turns every documentation run
-    # into a diff, so the second pass has to find nothing left to do.
-    _, drift = build(pages, write=False)
-    return count, [*problems, *drift]
-
-
 def main() -> int:
-    """Run every documentation example, and rebuild what is generated from them."""
+    """Run every documentation example."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lang", choices=[*LANGUAGES, "all"], default="all")
     parser.add_argument("--keep", action="store_true", help="keep the generated Rust target")
@@ -285,13 +268,6 @@ def main() -> int:
     for problem in fences:
         print(f"  {problem}")
     if fences:
-        status |= 1
-
-    count, problems = run_notebooks(pages)
-    print(f"notebooks: {count} generated from {len(pages)} pages, {len(problems)} unresolved")
-    for problem in problems:
-        print(f"  {problem}")
-    if problems:
         status |= 1
 
     if arguments.lang in ("rust", "all"):

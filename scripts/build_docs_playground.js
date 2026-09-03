@@ -10,7 +10,7 @@
  * nothing else computes. Every value below - every byte, every refusal message,
  * every code - is what a real call answered.
  *
- * The manifest is committed, like the notebooks, so the same build runs on any
+ * The manifest is committed, so the same build runs on any
  * machine: fixed corpus, fixed key order, two-space JSON, LF, no timestamps and
  * no paths. `--check` proves the tree still matches what a regeneration writes,
  * comparing the text rather than the endings a checkout imposed on it.
