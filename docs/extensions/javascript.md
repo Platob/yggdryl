@@ -617,7 +617,7 @@ Plain objects infer one struct field through Arrow JS. A class instance whose co
 static `intoStructField` getter uses that native field; the accessor result is validated and cached
 once per class. Static methods and stored static Fields are rejected. An explicit `options.field`
 always wins.
-Records are pulled in bounded chunks of `options.batchSize` rows, or 1,024 rows when it is unset.
+Records are pulled in bounded chunks of `options.batchRowSize` rows, or 1,024 rows when it is unset.
 When `commitRowSize` is set, chunks also end exactly at the next publication boundary and at a
 global `maxRowSize` boundary. The first chunk fixes the Arrow JS physical schema and later chunks
 use those same column types.
@@ -658,7 +658,7 @@ chunk with one synchronous push into an opaque Rust session. The session owns th
 limits, fixed leaf/folder/table target, and incomplete cadence; overwrite publishes its first
 cadence as overwrite and later cadences as append, while append and merge retain their intent. A
 failure after a complete cadence leaves that prefix visible and drops only the incomplete one. A
-non-dividing pair such as `batchSize = 1024` and `commitRowSize = 1500` pulls 1024 then 476 records,
+non-dividing pair such as `batchRowSize = 1024` and `commitRowSize = 1500` pulls 1024 then 476 records,
 so record 1501 is never converted before the 1500-row prefix is published.
 
 `maxRowSize = 0` or `maxByteSize = 0` is a deterministic synchronous exception: append is a no-op,

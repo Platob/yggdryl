@@ -1083,7 +1083,7 @@ impl JsIOBase {
     pub fn read_arrow_reader(&self, options: Option<&JsRecordOptions>) -> Result<JsBatchReader> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         let reader = self.inner.read_arrow_reader(&options).map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(reader, options.root_name()))
+        Ok(JsBatchReader::from_core(reader, options.name()))
     }
 
     /// Replace this resource's rows with every batch `batches` yields.

@@ -49,8 +49,9 @@ use pyo3::types::{
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::generic::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowCast, Field as CoreField, Level};
+use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
+use crate::datatype::{PyDataType, core_dtype_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::media::{PyMimeType, core_media_type_from_value};
 use crate::value_error;
@@ -59,18 +60,18 @@ use crate::value_error;
 ///
 /// A root is a non-null Struct Field, and Python spells one four ways: the
 /// native wrapper, a field expression, a `pyarrow.Schema`, or a
-/// `pyarrow.Field`. `root_name` names the struct when the spelling carries no
+/// `pyarrow.Field`. `name` names the struct when the spelling carries no
 /// name of its own, because Arrow names columns and never the record.
 pub(crate) fn core_root_field_from_value(
     value: &Bound<'_, PyAny>,
-    root_name: &str,
+    name: &str,
 ) -> PyResult<CoreField> {
     if value.extract::<PyRef<'_, PyField>>().is_ok() || value.extract::<&str>().is_ok() {
         return core_field_from_value(value);
     }
     if is_pyarrow_schema(value) {
         let schema = core_schema_from_pyarrow(value)?;
-        return CoreField::from_arrow_schema(root_name, &schema).map_err(value_error);
+        return CoreField::from_arrow_schema(name, &schema).map_err(value_error);
     }
     core_field_from_value(value)
 }
@@ -180,7 +181,7 @@ pub(crate) fn record_batch_from_value(value: &Bound<'_, PyAny>) -> PyResult<Reco
 /// The rows one batch holds when a caller streaming plain rows sets no bound.
 ///
 /// Mappings and schema-shaped sequences use the same bounded grouping.
-const DEFAULT_ROWS_PER_BATCH: usize = yggdryl::generic::DEFAULT_RECORD_BATCH_SIZE;
+const DEFAULT_ROWS_PER_BATCH: usize = yggdryl::generic::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// A `DataFrame` library this boundary converts to and from.
 ///
@@ -377,7 +378,7 @@ pub(crate) fn batch_reader_from_records(
         return Ok(yggdryl::arrow::batch_reader(schema, []));
     };
     if options.field().is_none() && is_dataclass_instance(&first)? {
-        let field = core_root_field_from_value(&first, options.root_name())?;
+        let field = core_root_field_from_value(&first, options.name())?;
         options.set_field(field);
     }
     row_reader(&items, &first, options)
@@ -456,7 +457,7 @@ fn chained_reader(
             None => return row_reader(items, &first, options),
         },
     };
-    let root = CoreField::from_arrow_schema(options.root_name(), reader.schema().as_ref())
+    let root = CoreField::from_arrow_schema(options.name(), reader.schema().as_ref())
         .map_err(value_error)?;
     Ok(Box::new(Chained {
         items: items.clone().unbind(),
@@ -638,11 +639,11 @@ fn row_reader(
         names: None,
         schema: Arc::new(ArrowSchema::empty()),
         per_batch: options
-            .batch_size()
+            .batch_row_size()
             .unwrap_or(DEFAULT_ROWS_PER_BATCH)
             .max(1),
         // Conversion must stop at each exact publication boundary. A fixed
-        // `min(batch_size, commit_row_size)` is not enough when the two do not
+        // `min(batch_row_size, commit_row_size)` is not enough when the two do not
         // divide: for batch 1,024 and commit 1,500 the second conversion must
         // stop after 476 rows, publish, and only then inspect row 1,501.
         commit_row_size: options.commit_row_size().filter(|rows| *rows != 0),
@@ -1043,14 +1044,37 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
 /// so it turns a read of a hundred rows into a successful read of none. `None`
 /// is how "no bound" is spelled, and it is already available.
-fn set_batch_size_option(options: &mut RecordOptions, batch_size: Option<usize>) -> PyResult<()> {
-    if batch_size == Some(0) {
+fn set_batch_row_size_option(
+    options: &mut RecordOptions,
+    batch_row_size: Option<usize>,
+) -> PyResult<()> {
+    if batch_row_size == Some(0) {
         return Err(PyValueError::new_err(
-            "expected a positive row count for batch_size, got 0; pass None for no bound",
+            "expected a positive row count for batch_row_size, got 0; pass None for no bound",
         ));
     }
-    options.set_batch_size(batch_size);
+    options.set_batch_row_size(batch_row_size);
     Ok(())
+}
+
+/// Read root metadata out of a mapping, an iterable of pairs, or nothing.
+///
+/// `None` and an empty collection both spell the empty snapshot, which is how
+/// the core clears metadata.
+fn metadata_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Metadata> {
+    match value {
+        Some(value) => Metadata::from_entries(string_pairs_from_value(value)?).map_err(value_error),
+        None => Ok(Metadata::new()),
+    }
+}
+
+/// Snapshot metadata into a plain `dict`, the shape `key_value_metadata` uses.
+fn metadata_into_dict<'py>(py: Python<'py>, metadata: &Metadata) -> PyResult<Bound<'py, PyDict>> {
+    let pairs = PyDict::new(py);
+    for (key, value) in metadata {
+        pairs.set_item(key, value)?;
+    }
+    Ok(pairs)
 }
 
 /// Copy one Python byte-buffer value without accepting an integer sequence as
@@ -1122,13 +1146,14 @@ impl PyRecordOptions {
     fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let state = PyDict::new(py);
         state.set_item("media_type", self.inner.mime_type().as_str())?;
+        state.set_item("name", self.inner.name())?;
         state.set_item(
-            "field",
-            self.inner.field().cloned().map(PyField::from_inner),
+            "dtype",
+            self.inner.dtype().cloned().map(PyDataType::from_inner),
         )?;
-        state.set_item("root_name", self.inner.root_name())?;
+        state.set_item("metadata", metadata_into_dict(py, self.inner.metadata())?)?;
         state.set_item("safe", self.inner.safe())?;
-        state.set_item("batch_size", self.inner.batch_size())?;
+        state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_row_size", self.inner.commit_row_size())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
@@ -1188,14 +1213,15 @@ impl PyRecordOptions {
         let media_type = required_record_pickle_item(state, "media_type")?;
         let mut options = Self::new(&media_type)?;
 
-        let field = required_record_pickle_item(state, "field")?;
-        if !field.is_none() {
-            options.set_field(&field)?;
-        }
-        let root_name = required_record_pickle_item(state, "root_name")?.extract::<String>()?;
-        options.set_root_name(&root_name)?;
+        let name = required_record_pickle_item(state, "name")?.extract::<String>()?;
+        options.set_name(&name)?;
+        let dtype = required_record_pickle_item(state, "dtype")?;
+        options.set_dtype((!dtype.is_none()).then_some(&dtype))?;
+        let metadata = required_record_pickle_item(state, "metadata")?;
+        options.set_metadata(Some(&metadata))?;
         options.set_safe(required_record_pickle_item(state, "safe")?.extract()?)?;
-        options.set_batch_size(required_record_pickle_item(state, "batch_size")?.extract()?)?;
+        options
+            .set_batch_row_size(required_record_pickle_item(state, "batch_row_size")?.extract()?)?;
         let commit_row_size =
             required_record_pickle_item(state, "commit_row_size")?.extract::<Option<usize>>()?;
         options.inner.set_commit_row_size(commit_row_size);
@@ -1236,33 +1262,70 @@ impl PyRecordOptions {
         PyMimeType::from_core(self.inner.mime_type())
     }
 
-    /// The declared canonical root Field, when one was declared.
+    /// The root Field name: what an inferred root is called, and the name
+    /// of the built `field`.
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    #[setter]
+    fn set_name(&mut self, name: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        // The trait's setter names a `SmolStr`, which is the core's string type
+        // and not a dependency of this crate; its builder takes anything that
+        // converts into one, so the builder is the route from a Python string.
+        self.inner = self.inner.clone().with_name(name);
+        Ok(())
+    }
+
+    /// The declared root datatype, or `None` when the shape is inferred.
+    ///
+    /// The setter takes a `DataType`, a datatype expression, or anything else
+    /// that names a datatype; `None` clears the declaration.
+    #[getter]
+    fn dtype(&self) -> Option<PyDataType> {
+        self.inner.dtype().cloned().map(PyDataType::from_inner)
+    }
+
+    #[setter]
+    fn set_dtype(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let dtype = value.map(core_dtype_from_value).transpose()?;
+        self.inner.set_dtype(dtype);
+        Ok(())
+    }
+
+    /// The root metadata, as a snapshot; empty unless declared.
+    ///
+    /// The setter takes a mapping or an iterable of `(key, value)` string
+    /// pairs, `Field.metadata` included; `None` or nothing clears it.
+    #[getter]
+    fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        metadata_into_dict(py, self.inner.metadata())
+    }
+
+    #[setter]
+    fn set_metadata(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_metadata(metadata_from_value(value)?);
+        Ok(())
+    }
+
+    /// The declared canonical root Field, built from `name`, `dtype`, and
+    /// `metadata`; `None` until a datatype is declared.
+    ///
+    /// The setter takes any root spelling and declares its three parts.
     #[getter]
     fn field(&self) -> Option<PyField> {
-        self.inner.field().cloned().map(PyField::from_inner)
+        self.inner.field().map(PyField::from_inner)
     }
 
     #[setter]
     fn set_field(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        let field = core_root_field_from_value(value, self.inner.root_name())?;
+        let field = core_root_field_from_value(value, self.inner.name())?;
         self.inner.set_field(field);
-        Ok(())
-    }
-
-    /// The root Field name used when a schema is inferred.
-    #[getter]
-    fn root_name(&self) -> &str {
-        self.inner.root_name()
-    }
-
-    #[setter]
-    fn set_root_name(&mut self, root_name: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        // The trait's setter names a `SmolStr`, which is the core's string type
-        // and not a dependency of this crate; its builder takes anything that
-        // converts into one, so the builder is the route from a Python string.
-        self.inner = self.inner.clone().with_root_name(root_name);
         Ok(())
     }
 
@@ -1281,14 +1344,14 @@ impl PyRecordOptions {
 
     /// The row-per-batch bound, when one is set.
     #[getter]
-    fn batch_size(&self) -> Option<usize> {
-        self.inner.batch_size()
+    fn batch_row_size(&self) -> Option<usize> {
+        self.inner.batch_row_size()
     }
 
     #[setter]
-    fn set_batch_size(&mut self, batch_size: Option<usize>) -> PyResult<()> {
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) -> PyResult<()> {
         self.require_mutable()?;
-        set_batch_size_option(&mut self.inner, batch_size)
+        set_batch_row_size_option(&mut self.inner, batch_row_size)
     }
 
     /// The streamed-write publication cadence, in rows.

@@ -1625,7 +1625,7 @@ therefore intentionally visible if conversion, decoding, encoding, or
 publication fails later. An empty overwrite still publishes its shaped field;
 empty append and merge remain no-ops. `N = 0` is rejected before the input is
 pulled. Native Rust row conversion is bounded by the smaller of
-`options.batch_size` (or its default) and `commit_row_size`, so a failure at row
+`options.batch_row_size` (or its default) and `commit_row_size`, so a failure at row
 `N + 1` cannot erase the completed `N`-row prefix.
 
 “Publishes once” is one native publication for a leaf or table. A plain folder
@@ -1663,7 +1663,7 @@ The Rust `*_records` triplet takes any iterator whose row implements
 and resolved to that order. The field is required, and there is no separate
 record/schema model. An infallible Rust struct implements
 `From<Row> for Scalar` and receives the standard blanket `TryInto`
-implementation. Conversion is lazy, batches hold at most `options.batch_size`
+implementation. Conversion is lazy, batches hold at most `options.batch_row_size`
 rows and never more than `options.commit_row_size` when a cadence is set, and
 the resulting exact-schema reader redirects to the same three primitives
 above.
@@ -2713,7 +2713,7 @@ row, typed from their values. Capture declarations and custom columns alike are 
 the Iceberg vocabulary before anything is read.
 
 A batch closes on whichever bound trips first: `byte_size` counts the *decoded input bytes* of the
-records appended - not Arrow buffer memory, so it is not an allocation cap - and `batch_size`
+records appended - not Arrow buffer memory, so it is not an allocation cap - and `batch_row_size`
 counts rows. Both default (8 MiB, 65,536 rows), so a corpus of long records and a corpus of short
 ones both produce batches of a workable size without being told anything.
 
@@ -2835,7 +2835,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     let document = r#"
     pattern: '^(?<stamp>\S+) \[(?<level>[A-Z]+)\]'
     byte_size: 1048576
-    batch_size: 4096
+    batch_row_size: 4096
     timestamp_capture: stamp
     timezone: Europe/Paris
     capture_types:
@@ -2872,7 +2872,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     document = """
     pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
     byte_size: 1048576
-    batch_size: 4096
+    batch_row_size: 4096
     timestamp_capture: stamp
     capture_types:
       level: utf8
@@ -2891,7 +2891,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
     assert table.column("source").to_pylist() == ["gateway"]
 
     # Keywords refine a document rather than replacing it.
-    assert IOBase(target).read_arrow_lines(options=options, batch_size=1).read_all().num_rows == 1
+    assert IOBase(target).read_arrow_lines(options=options, batch_row_size=1).read_all().num_rows == 1
     ```
 
 === "JavaScript"
@@ -2907,7 +2907,7 @@ capture type naming a capture the pattern does not have is an error, an unknown 
       [
         "pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'",
         'byte_size: 1048576',
-        'batch_size: 4096',
+        'batch_row_size: 4096',
         'timestamp_capture: stamp',
         'custom_fields:',
         '  source: gateway',
@@ -3256,9 +3256,9 @@ starts, because a parser that split the multi-line records would just look fast.
     400,000 records to 800,000 - and from 63 MiB of text to 126 MiB - moves
     the peak by 6.3 MiB, because what is resident is one batch and its
     builders, never the file. The early rows grow with the allocator's first
-    few batches; the plateau they head for is what `batch_size` 65,536 and
+    few batches; the plateau they head for is what `batch_row_size` 65,536 and
     `byte_size` 8 MiB cost on this record shape, and a caller who would
-    rather have the footprint sets `batch_size` and gets it back
+    rather have the footprint sets `batch_row_size` and gets it back
     proportionally. That is the streaming contract as a measurement rather
     than a promise, and it is what lets a log directory larger than memory
     parse at all.

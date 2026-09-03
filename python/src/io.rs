@@ -1130,7 +1130,7 @@ impl PyIOBase {
     ///
     /// A batch closes on whichever bound trips first: `byte_size` counts the
     /// *decoded input bytes* of the records appended - not Arrow buffer
-    /// memory, so it is not an allocation cap - and `batch_size` counts rows.
+    /// memory, so it is not an allocation cap - and `batch_row_size` counts rows.
     ///
     /// `options` takes the whole extractor at once, so a YAML or TOML document
     /// describes the reader and **no Python runs per row**. The reader stays
@@ -1147,7 +1147,7 @@ impl PyIOBase {
         lstrip = None,
         rstrip = None,
         byte_size = None,
-        batch_size = None,
+        batch_row_size = None,
         timestamp_capture = None,
         timezone = None,
         custom_fields = None,
@@ -1165,7 +1165,7 @@ impl PyIOBase {
         lstrip: Option<&str>,
         rstrip: Option<&str>,
         byte_size: Option<usize>,
-        batch_size: Option<usize>,
+        batch_row_size: Option<usize>,
         timestamp_capture: Option<&str>,
         timezone: Option<&str>,
         custom_fields: Option<&Bound<'_, PyAny>>,
@@ -1180,7 +1180,7 @@ impl PyIOBase {
             lstrip,
             rstrip,
             byte_size,
-            batch_size,
+            batch_row_size,
             timestamp_capture,
             timezone,
             custom_fields,
@@ -1502,7 +1502,7 @@ impl PyIOBase {
                 )));
             }
             if options.field().is_none() {
-                let field = core_root_field_from_value(cls, options.root_name())?;
+                let field = core_root_field_from_value(cls, options.name())?;
                 options.set_field(field);
             }
         }
@@ -2074,7 +2074,7 @@ fn line_record_options(
     lstrip: Option<&str>,
     rstrip: Option<&str>,
     byte_size: Option<usize>,
-    batch_size: Option<usize>,
+    batch_row_size: Option<usize>,
     timestamp_capture: Option<&str>,
     timezone: Option<&str>,
     custom_fields: Option<&Bound<'_, PyAny>>,
@@ -2112,8 +2112,8 @@ fn line_record_options(
     if byte_size.is_some() {
         built.set_byte_size(byte_size);
     }
-    if batch_size.is_some() {
-        built.set_batch_size(batch_size);
+    if batch_row_size.is_some() {
+        built.set_batch_row_size(batch_row_size);
     }
     if let Some(timezone) = timezone {
         built

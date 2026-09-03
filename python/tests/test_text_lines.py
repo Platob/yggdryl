@@ -71,7 +71,7 @@ def test_a_reader_is_fully_described_by_a_configuration_document(
     document = """
 pattern: '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\]'
 byte_size: 1048576
-batch_size: 4096
+batch_row_size: 4096
 rstrip: ascii
 timestamp_capture: stamp
 capture_types:
@@ -102,11 +102,11 @@ custom_fields:
 def test_keywords_refine_a_document_and_both_validate_the_same_way(
     tmp_path: pathlib.Path,
 ) -> None:
-    reader = handle(tmp_path, LOG).read_arrow_lines(PATTERN, batch_size=1)
+    reader = handle(tmp_path, LOG).read_arrow_lines(PATTERN, batch_row_size=1)
     assert [batch.num_rows for batch in reader] == [1, 1]
 
     with pytest.raises(ValueError, match="a known option"):
-        handle(tmp_path, LOG).read_arrow_lines(options={"batch-size": 1})
+        handle(tmp_path, LOG).read_arrow_lines(options={"batch-row-size": 1})
     with pytest.raises(ValueError, match="registry knows"):
         handle(tmp_path, LOG).read_arrow_lines(PATTERN, timezone="Not/AZone")
 
@@ -127,7 +127,7 @@ def test_both_batch_bounds_apply_and_the_first_to_trip_wins(
     text = "".join(f"2024-02-01T10:00:00 [INFO] row {index}\n" for index in range(50))
     source = handle(tmp_path, text)
 
-    by_rows = source.read_arrow_lines(PATTERN, batch_size=10)
+    by_rows = source.read_arrow_lines(PATTERN, batch_row_size=10)
     assert [batch.num_rows for batch in by_rows] == [10] * 5
 
     # `byte_size` counts decoded *input* bytes, not Arrow buffer memory.

@@ -455,9 +455,9 @@ record_options_reduce: tuple[object, tuple[dict[str, Any]]] = (
 )
 record_options_copy: RecordOptions = hashable_record_options.__copy__()
 record_options_deepcopy: RecordOptions = hashable_record_options.__deepcopy__({})
-record_options.batch_size = 1024
+record_options.batch_row_size = 1024
 record_options.commit_row_size = 10_000
-record_options.root_name = "trade"
+record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
 declared_field: Field | None = record_options.field
@@ -487,7 +487,7 @@ record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 line_batches: pa.RecordBatchReader = record_handle.read_arrow_lines(
     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[(?<level>[^\]]+)\]",
-    batch_size=512,
+    batch_row_size=512,
     custom_fields={"venue": "XNAS", "session": 7},
     timestamp_capture=None,
 )
@@ -617,7 +617,7 @@ assert iceberg_reread
 # Record configuration crosses through the one options object.
 selected_options: RecordOptions = record_handle.record_options()
 selected_options.select_by_names = ["id"]
-selected_options.batch_size = 1024
+selected_options.batch_row_size = 1024
 selected_reader: pa.RecordBatchReader = record_handle.read_arrow_reader(
     options=selected_options
 )

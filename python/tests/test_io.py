@@ -544,7 +544,7 @@ class TestReadArrowLines:
             IOBase(logs)
             .read_arrow_lines(
                 LINE_PATTERN,
-                batch_size=16,
+                batch_row_size=16,
                 custom_fields={"venue": "XNAS", "session": 7},
             )
             .read_all()

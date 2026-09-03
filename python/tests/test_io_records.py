@@ -123,7 +123,7 @@ class TestTypedArrowWrites:
     ) -> None:
         handle = IOBase(tmp_path / "rowgen.parquet")
         options = handle.record_options()
-        options.batch_size = 2
+        options.batch_row_size = 2
 
         handle.overwrite_records(
             ({"id": index, "venue": "X"} for index in range(5)), options=options

@@ -617,8 +617,9 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
+    use yggdryl::generic::DEFAULT_ROOT_NAME;
     use yggdryl::io::{Buffer, IOMedia};
-    use yggdryl::ipc::{Ipc, DEFAULT_ROOT_NAME};
+    use yggdryl::ipc::Ipc;
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -640,7 +641,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     assert_eq!(reader.read_arrow_field(&options)?.name(), DEFAULT_ROOT_NAME);
 
     // Arrow names columns, not the record; the root name is chosen on this side.
-    let named = Ipc::new(Buffer::from_bytes(bytes)).with_root_name("trade");
+    let named = Ipc::new(Buffer::from_bytes(bytes)).with_name("trade");
     let options = named.record_options()?;
     let named_field = named.read_arrow_field(&options)?;
     assert_eq!(named_field.name(), "trade");
@@ -666,7 +667,7 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
 
     # Arrow names columns, not the record; the root name is chosen on this side.
     named = handle.record_options()
-    named.root_name = "trade"
+    named.name = "trade"
     assert handle.read_arrow_field(options=named).name == "trade"
     assert [child.name for child in handle.read_arrow_field().dtype] == ["id"]
     ```
@@ -688,15 +689,15 @@ or handed to another reader without unwrapping it first, and what lets an `Ipc` 
     assert.equal(handle.readArrowField().name, 'row')
 
     // Arrow names columns, not the record; the root name is chosen on this side.
-    const named = handle.recordOptions().withRootName('trade')
+    const named = handle.recordOptions().withName('trade')
     assert.equal(handle.readArrowField(named).name, 'trade')
     assert.deepEqual([...handle.readArrowField().dtype].map((child) => child.name), ['id'])
     ```
 
 An IPC stream is self-describing, so a declared schema is never required to read one. When
-When `IpcOptions::field` is set, `read_field` returns it without touching the handle; when it
-is absent, the stream's Arrow schema is converted back to a `Field` and the struct root
-is named `root_name`, which defaults to `DEFAULT_ROOT_NAME` - `"row"`. Arrow carries names
+`IpcOptions::dtype` is set, `read_field` returns the field it builds without touching the handle;
+when it is absent, the stream's Arrow schema is converted back to a `Field` and the struct root
+is named `name`, which defaults to `generic::DEFAULT_ROOT_NAME` - `"row"`. Arrow carries names
 for the columns and none for the record, so that one name is the only thing inference
 cannot recover.
 
@@ -900,8 +901,8 @@ handle declared. It does nothing when the handle declares none.
 === "Rust"
 
     ```rust
-    use yggdryl::generic::{IORecordOptions, RecordOptions};
-    use yggdryl::ipc::{IpcOptions, DEFAULT_ROOT_NAME};
+    use yggdryl::generic::{IORecordOptions, RecordOptions, DEFAULT_ROOT_NAME};
+    use yggdryl::ipc::IpcOptions;
     use yggdryl::{DataType, Level, MimeType};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -910,14 +911,15 @@ handle declared. It does nothing when the handle declares none.
         .with_field(schema.clone())
         .with_level(Level::BEST);
 
-    assert_eq!(options.field(), Some(&schema));
-    assert_eq!(options.root_name(), DEFAULT_ROOT_NAME);
+    assert_eq!(options.field(), Some(schema.clone()));
+    assert_eq!(options.name(), DEFAULT_ROOT_NAME);
+    assert_eq!(options.dtype(), Some(schema.dtype()));
     assert_eq!(options.level(), Level::BEST);
 
     // The fields are public, so a setting can also be written directly.
     let mut direct = IpcOptions::new();
-    direct.batch_size = Some(1024);
-    assert_eq!(direct.batch_size(), Some(1024));
+    direct.batch_row_size = Some(1024);
+    assert_eq!(direct.batch_row_size(), Some(1024));
 
     // It converts into the enum every encoding's settings share.
     let erased: RecordOptions = options.into();
@@ -939,11 +941,11 @@ handle declared. It does nothing when the handle declares none.
     options.level = 9
 
     assert options.field is not None
-    assert options.root_name == "row"
+    assert options.name == "row"
     assert options.level == 9
 
-    options.batch_size = 1024
-    assert options.batch_size == 1024
+    options.batch_row_size = 1024
+    assert options.batch_row_size == 1024
 
     assert str(options.mime_type) == "application/vnd.apache.arrow.stream"
     # A setting another encoding has is absent rather than invented here.
@@ -964,11 +966,11 @@ handle declared. It does nothing when the handle declares none.
     options.level = 9
 
     assert.ok(options.field.equals(schema))
-    assert.equal(options.rootName, 'row')
+    assert.equal(options.name, 'row')
     assert.equal(options.level, 9)
 
-    options.batchSize = 1024
-    assert.equal(options.batchSize, 1024)
+    options.batchRowSize = 1024
+    assert.equal(options.batchRowSize, 1024)
 
     assert.equal(options.mimeType.toString(), 'application/vnd.apache.arrow.stream')
     // `with*` returns a new value rather than changing the one it was built from.
@@ -976,10 +978,11 @@ handle declared. It does nothing when the handle declares none.
     assert.equal(options.safe, false)
     ```
 
-`IpcOptions` stores the shared record settings as public fields: `field`, `root_name`,
-`safe`, `batch_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`,
+`IpcOptions` stores the shared record settings as public fields: `name`, `dtype`, `metadata`,
+`safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`,
 `merge_by_names`, `select_by_names`, and `filter_partitions`. It implements
-[`IORecordOptions`](generic.md), which defines their accessors and `with_*` builders once.
+[`IORecordOptions`](generic.md), which defines their accessors, the `field` built from the first
+three, and the `with_*` builders once.
 IPC adds no format-specific setting: the stream carries its schema and the handle carries
 its optional outer coding.
 
@@ -989,9 +992,9 @@ selection, limits, partition filters, commit cadence, and write intent around th
 Consequently the same `RecordOptions` value has one meaning even when the caller does not
 know which encoding is underneath.
 
-`Ipc::with_options` replaces the whole settings value at once, and every builder on `Ipc`
-that touches the field or the root name drops the cached field with it. `with_level` does
-not: it changes how bytes are written, not what they say.
+`Ipc::with_options` replaces the whole settings value at once; `with_field` and `with_name`
+reach through to the declared root. Every builder on `Ipc` drops the opened metadata cache,
+`with_level` included: the cache is what the bytes say, and the options decide how they are read.
 
 ## Absence
 

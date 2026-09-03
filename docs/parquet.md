@@ -444,16 +444,16 @@ types, so a caller wanting a different shape casts afterwards.
     let options = ParquetOptions::new()
         .with_max_row_group_size(4_096)
         .with_key_value("iceberg.schema-id", "7")
-        .with_batch_size(256)
-        .with_root_name("trade");
+        .with_batch_row_size(256)
+        .with_name("trade");
 
     assert_eq!(options.max_row_group_size, 4_096);
     assert_eq!(
         options.key_value_metadata,
         [("iceberg.schema-id".to_owned(), "7".to_owned())]
     );
-    assert_eq!(options.batch_size(), Some(256));
-    assert_eq!(options.root_name(), "trade");
+    assert_eq!(options.batch_row_size(), Some(256));
+    assert_eq!(options.name(), "trade");
     assert!(!options.safe());
 
     // Unused here: Parquet compresses pages itself.
@@ -467,7 +467,7 @@ types, so a caller wanting a different shape casts afterwards.
         &call_options,
     )?;
 
-    // batch_size bounds the reader, so no batch holds all 1,000 rows.
+    // batch_row_size bounds the reader, so no batch holds all 1,000 rows.
     let rows: Vec<usize> = media
         .read_arrow_reader(&call_options)?
         .collect::<Result<Vec<_>, _>>()?
@@ -506,18 +506,18 @@ types, so a caller wanting a different shape casts afterwards.
     options = handle.record_options()
     options.max_row_group_size = 4_096
     options.key_value_metadata = {"iceberg.schema-id": "7"}
-    options.batch_size = 256
-    options.root_name = "trade"
+    options.batch_row_size = 256
+    options.name = "trade"
 
     assert options.max_row_group_size == 4_096
     assert options.key_value_metadata == {"iceberg.schema-id": "7"}
-    assert options.batch_size == 256
-    assert options.root_name == "trade"
+    assert options.batch_row_size == 256
+    assert options.name == "trade"
     assert not options.safe
 
     handle.overwrite_arrow_batch(batch, options=options)
 
-    # batch_size bounds the reader, so no batch holds all 1,000 rows.
+    # batch_row_size bounds the reader, so no batch holds all 1,000 rows.
     counts = [part.num_rows for part in handle.read_arrow_reader(options=options)]
     assert sum(counts) == 1_000
     assert all(count <= 256 for count in counts), counts
@@ -544,13 +544,13 @@ types, so a caller wanting a different shape casts afterwards.
       .recordOptions()
       .withMaxRowGroupSize(4_096)
       .withKeyValue('iceberg.schema-id', '7')
-      .withBatchSize(256)
-      .withRootName('trade')
+      .withBatchRowSize(256)
+      .withName('trade')
 
     assert.equal(options.maxRowGroupSize, 4_096)
     assert.deepEqual(options.keyValueMetadata, [{ key: 'iceberg.schema-id', value: '7' }])
-    assert.equal(options.batchSize, 256)
-    assert.equal(options.rootName, 'trade')
+    assert.equal(options.batchRowSize, 256)
+    assert.equal(options.name, 'trade')
     assert.equal(options.safe, false)
 
     const ids = Array.from({ length: 1_000 }, (_, index) => BigInt(index))
@@ -559,7 +559,7 @@ types, so a caller wanting a different shape casts afterwards.
       options,
     )
 
-    // batchSize bounds the reader, so no batch holds all 1,000 rows.
+    // batchRowSize bounds the reader, so no batch holds all 1,000 rows.
     const counts = [...handle.readArrowReader(options)].map((batch) => batch.numRows)
     assert.equal(counts.reduce((total, count) => total + count, 0), 1_000)
     assert.ok(counts.every((count) => count <= 256), counts.join())
@@ -574,7 +574,7 @@ types, so a caller wanting a different shape casts afterwards.
 `max_row_group_size`, the row bound that decides how many row groups the file gets; and
 `key_value_metadata`, entries written into the footer next to the ones the writer adds itself. The
 rest are the flat shared fields every record encoding stores under the same names, reached through
-[`IORecordOptions`](generic.md): `field`, `root_name`, `safe`, `batch_size`, `max_row_size`,
+[`IORecordOptions`](generic.md): `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`,
 `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and
 `filter_partitions`.
 
@@ -582,10 +582,10 @@ rest are the flat shared fields every record encoding stores under the same name
 and Parquet has no outer coding to apply it to; `compression` is the setting that decides how the
 file compresses.
 
-`Parquet::with_options` replaces the whole set, while `with_field` and `with_root_name` reach
-through to the two most commonly changed. A declared field short-circuits `field` - it is
-returned as it was given, without reading the file - and `root_name` only names a root recovered
-from the footer when no schema was declared.
+`Parquet::with_options` replaces the whole set, while `with_field` and `with_name` reach
+through to the declared root. A declared `dtype` short-circuits `read_arrow_field` - the field it
+builds is returned without reading the file - and `name` roots a declared field and a field
+recovered from the footer alike.
 
 ## Compression
 
@@ -636,7 +636,7 @@ from the footer when no schema was declared.
             .with_options(
                 ParquetOptions::new()
                     .with_compression(compression)
-                    .with_batch_size(batch.num_rows()),
+                    .with_batch_row_size(batch.num_rows()),
             );
         let options = media.record_options()?;
         media.overwrite_arrow_reader(
@@ -681,7 +681,7 @@ from the footer when no schema was declared.
         # One batch per read, so the comparison is not split by the default bound.
         options = handle.record_options()
         options.compression = compression
-        options.batch_size = rows
+        options.batch_row_size = rows
         handle.overwrite_arrow_table(table, options=options)
 
         # Nothing on the read side names the compression: the footer records it.
@@ -716,7 +716,7 @@ from the footer when no schema was declared.
       const options = handle
         .recordOptions()
         .withCompression(compression)
-        .withBatchSize(table.numRows)
+        .withBatchRowSize(table.numRows)
       handle.overwriteArrowTable(table, options)
 
       // Nothing on the read side names the compression: the footer records it.

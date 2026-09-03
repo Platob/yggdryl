@@ -2611,6 +2611,22 @@ const { BatchReader, RecordOptions } = binding
 // a fourth public write abstraction.
 delete binding.ArrowWriteSession
 
+// The declared root metadata takes the same inputs `Field.prototype.update`
+// does: entries, a plain object, a Map, or a Field's own pairs.
+const recordMetadata = Object.getOwnPropertyDescriptor(RecordOptions.prototype, 'metadata')
+Object.defineProperty(RecordOptions.prototype, 'metadata', {
+  configurable: true,
+  enumerable: recordMetadata.enumerable,
+  get: recordMetadata.get,
+  set(values) {
+    recordMetadata.set.call(this, normalizeMetadata(values))
+  },
+})
+const recordWithMetadata = RecordOptions.prototype.withMetadata
+RecordOptions.prototype.withMetadata = function withMetadata(values) {
+  return recordWithMetadata.call(this, normalizeMetadata(values))
+}
+
 // The record surface is one shape in both directions: a read returns a
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
@@ -3025,8 +3041,8 @@ const LINE_OPTION_NAMES = new Map([
   ['rstrip', 'rstrip'],
   ['byteSize', 'byte_size'],
   ['byte_size', 'byte_size'],
-  ['batchSize', 'batch_size'],
-  ['batch_size', 'batch_size'],
+  ['batchRowSize', 'batch_row_size'],
+  ['batch_row_size', 'batch_row_size'],
   ['timestampCapture', 'timestamp_capture'],
   ['timestamp_capture', 'timestamp_capture'],
   ['timezone', 'timezone'],
@@ -3107,10 +3123,12 @@ function lineOptionsValue(options, pattern) {
     document.pattern = pattern
   }
   if (
-    document.batch_size !== undefined &&
-    (!Number.isInteger(document.batch_size) || document.batch_size <= 0)
+    document.batch_row_size !== undefined &&
+    (!Number.isInteger(document.batch_row_size) || document.batch_row_size <= 0)
   ) {
-    throw new TypeError(`batchSize must be a positive integer, got ${document.batch_size}`)
+    throw new TypeError(
+      `batchRowSize must be a positive integer, got ${document.batch_row_size}`,
+    )
   }
   if (
     document.byte_size !== undefined &&

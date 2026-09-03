@@ -12,7 +12,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
 };
 use napi_derive::napi;
-use yggdryl::generic::Holder;
+use yggdryl::generic::{DEFAULT_ROOT_NAME, Holder};
 use yggdryl::iceberg::{
     Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
@@ -25,7 +25,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar
 
 use crate::arrow::JsBatchReader;
 use crate::codec::JsScalar;
-use crate::datatype::{JsDataType, dtype_from_input};
+use crate::datatype::{DataTypeInput, dtype_from_input};
 use crate::field::{JsField, MetadataEntry};
 use crate::io::{JsIOBase, LocationInput, folder_from_input};
 use crate::media::{JsMimeType, MimeTypeInput, mime_type_from_input};
@@ -41,9 +41,6 @@ pub type TableSchemaInput<'a> =
 
 /// A native `Field` or the field expression naming one.
 pub type FieldInput<'a> = Either<ClassInstance<'a, JsField>, String>;
-
-/// A native `DataType` or the type expression naming one.
-pub type DataTypeInput<'a> = Either<ClassInstance<'a, JsDataType>, String>;
 
 /// A retained snapshot id: the `bigint` a snapshot reports, or a safe number.
 pub type SnapshotIdInput = Either<BigInt, f64>;
@@ -71,12 +68,6 @@ fn property_changes(
     (updates, removes.unwrap_or_default())
 }
 
-/// The root name a schema assembled from bare child fields is given.
-///
-/// It matches the name the core catalog gives a schema inferred from an
-/// incoming reader, so both spellings of "just the columns" agree.
-const ROOT_NAME: &str = "row";
-
 /// Read the schema an input names: a root `Field` as it stands, an expression
 /// through the core parser, or bare children assembled under a `row` root.
 fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
@@ -87,7 +78,7 @@ fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
             let fields = children.iter().map(|child| child.inner.clone());
             Ok(CoreDataType::from_fields(fields)
                 .map_err(napi_error)?
-                .required_field(ROOT_NAME))
+                .required_field(DEFAULT_ROOT_NAME))
         }
     }
 }

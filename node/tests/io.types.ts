@@ -159,7 +159,7 @@ void appended
 void copied
 const lineBatches: BatchReader = handle.readArrowLines('^\\d{4}')
 const lineBatchesTuned: BatchReader = handle.readArrowLines('^\\d{4}', {
-  batchSize: 512,
+  batchRowSize: 512,
   customFields: { venue: 'XNAS', session: 7 },
   timestampCapture: null,
 })
@@ -187,7 +187,7 @@ const lineRecordsFromLogs: LineIterator = handle.readLines({
 })
 const lineBatchesFromOptions: BatchReader = handle.readArrowLines({
   logs: true,
-  batchSize: 512,
+  batchRowSize: 512,
 })
 handle.writeLines(['one', 'two'])
 handle.appendLines(

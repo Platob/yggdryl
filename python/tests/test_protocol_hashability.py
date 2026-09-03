@@ -75,9 +75,11 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
     ("media_type", "attribute", "value"),
     [
         ("trades.arrows", "field", Field("row", DataType.from_fields([]), False)),
-        ("trades.arrows", "root_name", "records"),
+        ("trades.arrows", "name", "records"),
+        ("trades.arrows", "dtype", "struct<id: int64>"),
+        ("trades.arrows", "metadata", {"owner": "tests"}),
         ("trades.arrows", "safe", True),
-        ("trades.arrows", "batch_size", 32),
+        ("trades.arrows", "batch_row_size", 32),
         ("trades.arrows", "commit_row_size", 64),
         ("trades.arrows", "max_row_size", 128),
         ("trades.arrows", "max_byte_size", 4096),
@@ -117,9 +119,10 @@ def test_record_options_value_protocols_preserve_each_variant(
         DataType.from_fields([Field("id", "int64", nullable=False)]),
         nullable=False,
     )
-    options.root_name = "records"
+    options.name = "records"
+    options.metadata = {"owner": "tests"}
     options.safe = True
-    options.batch_size = 32
+    options.batch_row_size = 32
     options.commit_row_size = 64
     options.max_row_size = 128
     options.max_byte_size = 4096

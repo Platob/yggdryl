@@ -265,8 +265,11 @@ scheme vocabulary.
   `write_arrow_reader(reader, options, mode)`.
 - Table, record-batch, and row-record entry points infer/wrap input and use the
   same reader pipeline. Nothing streamable accepts/returns `Vec` batches.
-- `options.field` is the only declared datatype/schema. Reads project in the
-  encoding and cast each batch. Writes cast incoming batches once, pop the
+- `options.field` is the only declared datatype/schema, built on every ask
+  from three stored parts - `name` (default `generic::DEFAULT_ROOT_NAME`),
+  `dtype` (none declared means inferred), `metadata` (empty unless declared) -
+  so each part mutates alone and equal declarations have one stored form.
+  Reads project in the encoding and cast each batch. Writes cast incoming batches once, pop the
   field before delegating to overwrite, and never materialize the stream.
 - `options.commit_row_size`: unset commits once; non-zero `N` publishes each N
   rows and the final remainder, retaining at most one bounded commit. First

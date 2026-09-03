@@ -20,7 +20,7 @@ use napi_derive::napi;
 use yggdryl::arrow::BatchReader;
 
 use crate::iceberg::{FieldInput, field_from_input};
-use yggdryl::ipc::DEFAULT_ROOT_NAME;
+use yggdryl::generic::DEFAULT_ROOT_NAME;
 
 use crate::field::JsField;
 use crate::napi_error;
@@ -101,7 +101,7 @@ impl Iterator for IpcPullReader {
                     return Some(Err(error));
                 }
             };
-            let next = match JsBatchReader::decoded(&bytes, yggdryl::ipc::DEFAULT_ROOT_NAME) {
+            let next = match JsBatchReader::decoded(&bytes, DEFAULT_ROOT_NAME) {
                 Ok(mut reader) => match reader.take() {
                     Ok(reader) => reader,
                     Err(error) => {

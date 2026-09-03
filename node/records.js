@@ -210,8 +210,8 @@ function installRecords({
   // exact types so one native BatchReader remains a valid stream. The native
   // pull bridge asks for a chunk only as the core drains it, preserving one
   // logical write and one publication without holding the incoming iterable.
-  function recordChunker(settings, defaultBatchSize) {
-    const rowSize = settings.batchSize ?? defaultBatchSize
+  function recordChunker(settings, defaultBatchRowSize) {
+    const rowSize = settings.batchRowSize ?? defaultBatchRowSize
     const cadence = settings.commitRowSize
     let rowsToCommit = cadence
     let remainingRows = settings.maxRowSize
@@ -336,14 +336,14 @@ function installRecords({
     )
   }
 
-  function recordsReader(source, settings, defaultBatchSize) {
-    const chunks = recordChunker(settings, defaultBatchSize)
+  function recordsReader(source, settings, defaultBatchRowSize) {
+    const chunks = recordChunker(settings, defaultBatchRowSize)
     const iterator = syncRecordIterator(source)
     const first = chunks.sync(iterator)
     if (first === undefined) return emptyRecordsReader(settings)
 
     const inferred = chunks.inferred()
-    let reader = BatchReader.fromIpc(first, rootName(inferred ?? settings.field))
+    let reader = BatchReader.fromIpc(first, settings.name)
     // An explicit field wins. Otherwise a field class supplies its cached root;
     // plain objects take the native field inferred from the bounded first
     // chunk. The core remains the one place that applies the declared cast.
@@ -371,14 +371,14 @@ function installRecords({
   // then replayed through the same native pull reader. RAM stays bounded and
   // the resource still sees one core write/publication; cleanup runs on every
   // success and failure path.
-  async function awaitedRecordsReader(source, settings, defaultBatchSize) {
+  async function awaitedRecordsReader(source, settings, defaultBatchRowSize) {
     const iterator = source[Symbol.asyncIterator]()
-    const chunks = recordChunker(settings, defaultBatchSize)
+    const chunks = recordChunker(settings, defaultBatchRowSize)
     const first = await chunks.async(iterator)
     if (first === undefined) return emptyRecordsReader(settings)
 
     if (settings.field === null) {
-      const inferred = BatchReader.fromIpc(first, rootName(settings.field))
+      const inferred = BatchReader.fromIpc(first, settings.name)
       settings = settings.withField(chunks.inferred() ?? inferred.field)
     }
 
@@ -462,7 +462,7 @@ function installRecords({
         read(bytes)
         return bytes
       }
-      let reader = BatchReader.fromIpc(first, rootName(settings.field))
+      let reader = BatchReader.fromIpc(first, settings.name)
       reader = Reflect.apply(chainIpcPull, reader, [pull])
       return { close, reader, settings }
     } catch (error) {
@@ -479,19 +479,19 @@ function installRecords({
     handle,
     source,
     settings,
-    defaultBatchSize,
+    defaultBatchRowSize,
     intent,
     publish,
   ) {
     const iterator = source[Symbol.asyncIterator]()
-    const chunks = recordChunker(settings, defaultBatchSize)
+    const chunks = recordChunker(settings, defaultBatchRowSize)
     let session
     let finished = false
     try {
       for (;;) {
         const bytes = await chunks.async(iterator)
         if (bytes === undefined) break
-        const reader = BatchReader.fromIpc(bytes, rootName(settings.field))
+        const reader = BatchReader.fromIpc(bytes, settings.name)
         if (settings.field === null) {
           settings = settings.withField(chunks.inferred() ?? reader.field)
         }
@@ -658,10 +658,6 @@ function installRecords({
     return value === undefined || value === null ? value : intoField(value)
   }
 
-  function rootName(field) {
-    return field === undefined || field === null ? undefined : field.name
-  }
-
   Object.defineProperties(BatchReader.prototype, {
     // Iterating a reader is what consuming a stream means everywhere else.
     [Symbol.iterator]: {
@@ -729,7 +725,7 @@ function installRecords({
             const converted = emptyRecordsReader(settings)
             return native.call(this, converted.reader, converted.settings)
           }
-          const reader = convert(source, rootName(settings.field))
+          const reader = convert(source, settings.name)
           settings = inferredRecordOptions(settings, reader)
           return native.call(this, reader, settings)
         },
@@ -757,7 +753,7 @@ function installRecords({
             converted.settings,
           )
         }
-        const reader = convert(source, rootName(settings.field))
+        const reader = convert(source, settings.name)
         settings = inferredRecordOptions(settings, reader)
         return nativeWrite.call(this, reader, intent, settings)
       },
@@ -836,7 +832,7 @@ function installRecords({
   // return a Promise; synchronous records stay lazy.
   function writeRecordSource(handle, rows, options, intent, publish) {
     const settings = resolvedRecordOptions(handle, options)
-    const defaultBatchSize = preflightWriteIntent(settings, intent)
+    const defaultBatchRowSize = preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
       if (intent === 'append') return undefined
       // A limited merge was rejected by preflight. Overwrite still publishes
@@ -850,13 +846,13 @@ function installRecords({
         handle,
         rows,
         settings,
-        defaultBatchSize,
+        defaultBatchRowSize,
         intent,
         publish,
       )
     }
     if (asynchronous) {
-      return awaitedRecordsReader(rows, settings, defaultBatchSize).then((converted) => {
+      return awaitedRecordsReader(rows, settings, defaultBatchRowSize).then((converted) => {
         try {
           return publish(converted.reader, converted.settings)
         } finally {
@@ -864,7 +860,7 @@ function installRecords({
         }
       })
     }
-    const converted = recordsReader(rows, settings, defaultBatchSize)
+    const converted = recordsReader(rows, settings, defaultBatchRowSize)
     return publish(converted.reader, converted.settings)
   }
 

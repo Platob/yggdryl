@@ -3,11 +3,13 @@ import { Buffer } from 'node:buffer'
 
 import {
   BatchReader,
+  DataType,
   Field,
   IOBase,
   MimeType,
   RecordOptions,
   type BatchSource,
+  type MetadataEntry,
   type RecordOptionsInput,
   type SchemaInput,
 } from '..'
@@ -27,19 +29,29 @@ const optionsHash: bigint = options.stableHash()
 
 const mime: MimeType = options.mimeType
 const declared: Field | null = options.field
-const rootName: string = options.rootName
+const name: string = options.name
+const dtype: DataType | null = options.dtype
+const metadata: MetadataEntry[] = options.metadata
 const safe: boolean = options.safe
-const batchSize: number | null = options.batchSize
+const batchRowSize: number | null = options.batchRowSize
 const maxRowSize: number | null = options.maxRowSize
 const maxByteSize: number | null = options.maxByteSize
 const commitRowSize: number | null = options.commitRowSize
 const level: number = options.level
 const blockCodec: string | null = options.blockCodec
 const syncMarker: Buffer | null = options.syncMarker
-options.rootName = 'trade'
+options.name = 'trade'
+options.dtype = 'struct<id: int64>'
+options.dtype = new DataType('struct<id: int64>')
+options.dtype = null
+options.metadata = { source: 'book' }
+options.metadata = new Map([['source', 'book']])
+options.metadata = [{ key: 'source', value: 'book' }]
+options.metadata = [['source', 'book']]
+options.metadata = Field.from('row: int64')
 options.safe = true
-options.batchSize = 1024
-options.batchSize = null
+options.batchRowSize = 1024
+options.batchRowSize = null
 options.maxRowSize = 10
 options.maxRowSize = null
 options.maxByteSize = 1024
@@ -56,9 +68,14 @@ const avroCopy: RecordOptions = avroOptions
   .withSyncMarker(Buffer.from('fedcba9876543210'))
 const chained: RecordOptions = options
   .withField(Field.from('row: struct<id: int64> not null'))
-  .withRootName('trade')
+  .withName('trade')
+  .withDtype('struct<id: int64>')
+  .withDtype(new DataType('struct<id: int64>'))
+  .withMetadata({ source: 'book' })
+  .withMetadata(new Map([['source', 'book']]))
+  .withMetadata(Field.from('row: int64'))
   .withSafe(false)
-  .withBatchSize(512)
+  .withBatchRowSize(512)
   .withMaxRowSize(10)
   .withMaxByteSize(1024)
   .withCommitRowSize(1_000)

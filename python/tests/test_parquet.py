@@ -133,10 +133,10 @@ class TestOptions:
         with pytest.raises(ValueError, match="compression"):
             options.compression = "definitely not a codec"
 
-    def test_a_batch_size_bounds_what_a_read_yields(self, file: IOBase) -> None:
+    def test_a_batch_row_size_bounds_what_a_read_yields(self, file: IOBase) -> None:
         file.overwrite_arrow_table(_table())
         options = file.record_options()
-        options.batch_size = 250
+        options.batch_row_size = 250
 
         counts = [batch.num_rows for batch in file.read_arrow_reader(options=options)]
         assert counts == [250, 250, 250, 250]

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import pathlib
+import pickle
 
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, IOBase, RecordOptions
+from yggdryl import DataType, Field, IOBase, RecordOptions
 
 SCHEMA = pa.schema(
     [
@@ -48,8 +49,10 @@ class TestTheEncodingComesFromTheHandle:
         options = stream.record_options()
 
         assert str(options.mime_type) == "application/vnd.apache.arrow.stream"
-        assert options.root_name == "row"
-        assert options.batch_size is None
+        assert options.name == "row"
+        assert options.dtype is None
+        assert options.metadata == {}
+        assert options.batch_row_size is None
 
     def test_an_encoding_this_build_lacks_is_named_rather_than_guessed(
         self, tmp_path: pathlib.Path
@@ -282,17 +285,17 @@ class TestOptions:
         self, stream: IOBase
     ) -> None:
         options = RecordOptions("trades.arrows")
-        options.root_name = "trade"
+        options.name = "trade"
         options.safe = True
-        options.batch_size = 1
+        options.batch_row_size = 1
         options.commit_row_size = 2
         options.level = 9
         options.merge_by_names = ["id"]
 
         assert (
-            options.root_name,
+            options.name,
             options.safe,
-            options.batch_size,
+            options.batch_row_size,
             options.commit_row_size,
             options.level,
             options.merge_by_names,
@@ -333,9 +336,170 @@ class TestOptions:
     ) -> None:
         stream.overwrite_arrow_reader(_reader(_batch()))
         options = stream.record_options()
-        options.root_name = "trade"
+        options.name = "trade"
 
         assert stream.read_arrow_field(options=options).name == "trade"
+
+
+class TestTheDeclaredRootHasThreeParts:
+    """`field` is built from `name`, `dtype`, and `metadata` on every ask."""
+
+    def test_the_parts_round_trip_and_build_the_field(self) -> None:
+        options = RecordOptions("trades.arrows")
+        assert options.field is None
+
+        options.name = "trade"
+        options.dtype = "struct<id: int64 not null>"
+        options.metadata = {"owner": "tests"}
+
+        assert options.name == "trade"
+        assert options.dtype == DataType("struct<id: int64 not null>")
+        assert options.metadata == {"owner": "tests"}
+        built = options.field
+        assert built == Field(
+            "trade",
+            "struct<id: int64 not null>",
+            nullable=False,
+            metadata={"owner": "tests"},
+        )
+        # Built, never stored: a part changed later is what the next ask sees.
+        options.name = "row"
+        assert options.field is not None
+        assert options.field.name == "row"
+        assert built.name == "trade"
+
+    def test_a_declared_field_decomposes_into_its_parts(self) -> None:
+        options = RecordOptions("trades.arrows")
+        options.field = Field(
+            "trade",
+            "struct<id: int64 not null>",
+            nullable=True,
+            metadata={"owner": "tests"},
+        )
+
+        assert options.name == "trade"
+        assert options.dtype == DataType("struct<id: int64 not null>")
+        assert options.metadata == {"owner": "tests"}
+        # Nullability is not a declaration: the built root is non-null.
+        assert options.field is not None
+        assert not options.field.nullable
+        # A bare Arrow schema takes the declared name.
+        options.field = SCHEMA
+        assert options.name == "trade"
+        assert options.field is not None
+        assert options.field.name == "trade"
+
+    def test_dtype_takes_every_datatype_spelling_and_none_clears(self) -> None:
+        options = RecordOptions("trades.arrows")
+        expected = DataType("struct<id: int64>")
+
+        options.dtype = expected
+        assert options.dtype == expected
+        options.dtype = "struct<id: int64>"
+        assert options.dtype == expected
+        options.dtype = pa.struct([pa.field("id", pa.int64())])
+        assert options.dtype == expected
+        with pytest.raises(ValueError):
+            options.dtype = "struct<id: not a datatype>"
+        assert options.dtype == expected
+
+        options.dtype = None
+        assert options.dtype is None
+        assert options.field is None
+
+    def test_metadata_takes_a_mapping_pairs_or_a_field_view(self) -> None:
+        options = RecordOptions("trades.arrows")
+
+        options.metadata = {"owner": "tests", "kind": "unit"}
+        assert options.metadata == {"kind": "unit", "owner": "tests"}
+        options.metadata = [("owner", "core")]
+        assert options.metadata == {"owner": "core"}
+        source = Field("row", "int64", metadata={"role": "payload"})
+        options.metadata = source.metadata
+        assert options.metadata == {"role": "payload"}
+        # A snapshot: the view it came from moves on without it.
+        source.metadata["role"] = "header"
+        assert options.metadata == {"role": "payload"}
+        with pytest.raises(ValueError, match="duplicate metadata key"):
+            options.metadata = [("owner", "tests"), ("owner", "core")]
+        assert options.metadata == {"role": "payload"}
+
+        options.metadata = None
+        assert options.metadata == {}
+        options.metadata = {"owner": "tests"}
+        options.metadata = {}
+        assert options.metadata == {}
+
+    def test_metadata_reaches_the_field_only_through_a_declared_dtype(
+        self,
+    ) -> None:
+        options = RecordOptions("trades.arrows")
+        options.metadata = {"owner": "tests"}
+        assert options.field is None
+
+        options.dtype = "struct<id: int64>"
+        assert options.field is not None
+        assert dict(options.field.metadata.items()) == {"owner": "tests"}
+
+    def test_equality_and_hash_ignore_how_the_root_was_declared(self) -> None:
+        root = Field(
+            "row",
+            "struct<id: int64 not null>",
+            nullable=False,
+            metadata={"owner": "tests"},
+        )
+        by_field = RecordOptions("trades.arrows")
+        by_field.field = root
+        by_parts = RecordOptions("trades.arrows")
+        by_parts.dtype = "struct<id: int64 not null>"
+        by_parts.metadata = {"owner": "tests"}
+
+        assert by_field == by_parts
+        assert by_field.stable_hash() == by_parts.stable_hash()
+        assert hash(by_field) == hash(by_parts)
+        assert len({by_field, by_parts}) == 1
+
+        by_parts = RecordOptions("trades.arrows")
+        by_parts.dtype = "struct<id: int64 not null>"
+        assert by_field != by_parts
+
+    def test_pickle_state_carries_the_three_parts(self) -> None:
+        options = RecordOptions("trades.arrows")
+        options.name = "trade"
+        options.dtype = "struct<id: int64 not null>"
+        options.metadata = {"owner": "tests"}
+        options.batch_row_size = 16
+
+        _, (state,) = options.__reduce__()
+        assert state["name"] == "trade"
+        assert state["dtype"] == DataType("struct<id: int64 not null>")
+        assert state["metadata"] == {"owner": "tests"}
+        assert state["batch_row_size"] == 16
+        assert not {"field", "root_name", "batch_size"} & state.keys()
+
+        restored = pickle.loads(pickle.dumps(options))
+        assert restored == options
+        assert restored.field == options.field
+        assert restored.batch_row_size == 16
+
+        options.dtype = None
+        _, (state,) = options.__reduce__()
+        assert state["dtype"] is None
+        assert pickle.loads(pickle.dumps(options)).field is None
+
+    def test_a_batch_of_no_rows_is_refused(self) -> None:
+        options = RecordOptions("trades.arrows")
+        options.batch_row_size = 8
+
+        with pytest.raises(
+            ValueError,
+            match=r"^expected a positive row count for batch_row_size, got 0; "
+            r"pass None for no bound$",
+        ):
+            options.batch_row_size = 0
+        assert options.batch_row_size == 8
+        options.batch_row_size = None
+        assert options.batch_row_size is None
 
 
 class TestAbsenceAndScope:

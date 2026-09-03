@@ -54,7 +54,7 @@ function optionsForIntent(handle, intent, cadence = null) {
   let options = handle
     .recordOptions()
     .withField(handle.readArrowField())
-    .withBatchSize(2)
+    .withBatchRowSize(2)
   if (cadence !== null) options = options.withCommitRowSize(cadence)
   if (intent === 'merge') options = options.withMergeByNames(['id'])
   return options
@@ -421,7 +421,7 @@ test('field-class records infer and cache intoStructField', (t) => {
       new Trade({ id: 1n, venue: 'XNAS' }),
       new Trade({ id: 2n, venue: 'XNYS' }),
     ],
-    handle.recordOptions().withBatchSize(1),
+    handle.recordOptions().withBatchRowSize(1),
   )
   handle.appendRecords([new Trade({ id: 3n, venue: 'XLON' })])
   assert.equal(accesses, 1)
@@ -453,7 +453,7 @@ test('a record generator crosses in bounded chunks under one atomic write', (t) 
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(path.join(root, 'generated.arrows'))
   handle.overwriteArrowTable(table())
-  const options = handle.recordOptions().withBatchSize(17)
+  const options = handle.recordOptions().withBatchRowSize(17)
   let pulled = 0
 
   function* records() {
@@ -509,7 +509,7 @@ test('an async record sequence returns a promise and uses the same adapter', asy
 
   const pending = handle.overwriteRecords(
     records(),
-    handle.recordOptions().withBatchSize(1),
+    handle.recordOptions().withBatchRowSize(1),
   )
   assert.ok(pending instanceof Promise)
   await pending
@@ -656,7 +656,7 @@ test('bounded async row and byte limits stop without another source pull', async
       },
     }
     const options = limited(
-      handle.recordOptions().withBatchSize(2).withCommitRowSize(2),
+      handle.recordOptions().withBatchRowSize(2).withCommitRowSize(2),
     )
     await handle.overwriteRecords(source, options)
     assert.ok(closed)
@@ -686,7 +686,7 @@ test('async record spools are removed on success, source failure, and invalid in
   })
 
   const handle = new IOBase(path.join(root, 'spooled.arrows'))
-  const options = handle.recordOptions().withBatchSize(1)
+  const options = handle.recordOptions().withBatchRowSize(1)
   async function* valid() {
     yield { id: 1n, venue: 'XNAS' }
     yield { id: 2n, venue: 'XNYS' }

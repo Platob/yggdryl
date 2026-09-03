@@ -9,12 +9,12 @@ const test = require('node:test')
 const arrow = require('apache-arrow')
 
 // Capture the private native preflight before the public loader hides it. Its
-// return value is the core-owned conversion bound used only when batchSize is
+// return value is the core-owned conversion bound used only when batchRowSize is
 // absent, so this protects the language boundary from growing its own default.
 const nativeBinding = require('../index.js')
 const requireWritePreflightNative =
   nativeBinding.RecordOptions.prototype._requireWritePreflightNative
-const { BatchReader, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
+const { BatchReader, DataType, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-records-'))
@@ -59,9 +59,9 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   // The encoding is never guessed: it is whatever the handle says it holds.
   const options = handle.recordOptions()
   assert.equal(options.toString(), 'application/vnd.apache.arrow.stream')
-  assert.equal(options.rootName, 'row')
+  assert.equal(options.name, 'row')
   assert.equal(options.safe, false)
-  assert.equal(options.batchSize, null)
+  assert.equal(options.batchRowSize, null)
 
   handle.overwriteArrowReader(BatchReader.from(trades()))
   assert.ok(handle.size > 0)
@@ -319,17 +319,17 @@ test('record options are values, and a setting is set or carried forward', () =>
   assert.equal(options.mimeType.toString(), 'application/vnd.apache.parquet')
   assert.equal(options.field, null)
 
-  const declared = options.withField(schema()).withBatchSize(1024).withSafe(true)
+  const declared = options.withField(schema()).withBatchRowSize(1024).withSafe(true)
   assert.ok(declared.field.equals(schema()))
-  assert.equal(declared.batchSize, 1024)
+  assert.equal(declared.batchRowSize, 1024)
   assert.equal(declared.safe, true)
   // `with*` returns a new value, so the one it was built from is untouched.
-  assert.equal(options.batchSize, null)
+  assert.equal(options.batchRowSize, null)
   assert.equal(options.safe, false)
 
-  options.rootName = 'trade'
+  options.name = 'trade'
   options.level = 9
-  assert.equal(options.rootName, 'trade')
+  assert.equal(options.name, 'trade')
   assert.equal(options.level, 9)
 
   // An encoding this build does not implement is named rather than guessed.
@@ -343,8 +343,8 @@ test('record option value protocols delegate every encoding to the core', () => 
   const marker = Buffer.from('0123456789abcdef')
   const variants = [
     RecordOptions.from('trades.arrows')
-      .withRootName('ipc-row')
-      .withBatchSize(64),
+      .withName('ipc-row')
+      .withBatchRowSize(64),
     RecordOptions.from('trades.avro')
       .withBlockCodec('null')
       .withSyncMarker(marker),
@@ -356,8 +356,8 @@ test('record option value protocols delegate every encoding to the core', () => 
     // same shared fields. Its core identity also owns the line extractor,
     // including the canonical regex source when one is configured in Rust.
     RecordOptions.from('trades.txt')
-      .withRootName('line')
-      .withBatchSize(32),
+      .withName('line')
+      .withBatchRowSize(32),
   ]
 
   for (const options of variants) {
@@ -569,13 +569,148 @@ test('a batch size of zero is refused rather than stored as a read of nothing', 
   // turns a read of a hundred rows into a successful read of none; `null` is
   // how "no bound" is already spelled.
   assert.throws(() => {
-    options.batchSize = 0
-  }, /expected a positive row count for batchSize, got 0/)
-  assert.throws(() => options.withBatchSize(0), /got 0/)
+    options.batchRowSize = 0
+  }, /expected a positive row count for batchRowSize, got 0/)
+  assert.throws(() => options.withBatchRowSize(0), /got 0/)
 
-  assert.equal(options.batchSize, null)
-  options.batchSize = 32
-  assert.equal(options.batchSize, 32)
-  options.batchSize = null
-  assert.equal(options.batchSize, null)
+  assert.equal(options.batchRowSize, null)
+  options.batchRowSize = 32
+  assert.equal(options.batchRowSize, 32)
+  options.batchRowSize = null
+  assert.equal(options.batchRowSize, null)
+})
+
+test('the declared root is three parts, and field is built from them', () => {
+  const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM)
+  assert.equal(options.name, 'row')
+  assert.equal(options.dtype, null)
+  assert.deepEqual(options.metadata, [])
+  assert.equal(options.field, null)
+
+  // A datatype expression or a native DataType declares the shape; the field
+  // is the non-null Struct root assembled from the three parts on every ask.
+  options.dtype = 'struct<id: int64>'
+  assert.ok(options.dtype.equals(new DataType('struct<id: int64>')))
+  options.name = 'trade'
+  options.metadata = { source: 'book' }
+  const built = options.field
+  assert.equal(built.name, 'trade')
+  assert.equal(built.nullable, false)
+  assert.ok(built.dtype.equals(new DataType('struct<id: int64>')))
+  assert.deepEqual(built.entries(), [{ key: 'source', value: 'book' }])
+  assert.ok(options.field.equals(built))
+
+  // A declared field decomposes into the same three parts.
+  const declared = RecordOptions.from('trades.parquet').withField(built)
+  assert.equal(declared.name, 'trade')
+  assert.ok(declared.dtype.equals(built.dtype))
+  assert.deepEqual(declared.metadata, [{ key: 'source', value: 'book' }])
+  assert.ok(declared.field.equals(built))
+
+  // Clearing the datatype clears the field and keeps the name and metadata.
+  options.dtype = null
+  assert.equal(options.dtype, null)
+  assert.equal(options.field, null)
+  assert.equal(options.name, 'trade')
+  assert.deepEqual(options.metadata, [{ key: 'source', value: 'book' }])
+
+  const typed = options.withDtype(new DataType('struct<id: int64, symbol: utf8>'))
+  assert.equal(typed.field.name, 'trade')
+  assert.equal(typed.field.dtype.length, 2)
+  assert.equal(options.field, null)
+  assert.equal(typed.withName('row').field.name, 'row')
+  assert.throws(() => options.withDtype('struct<'), /invalid datatype expression/)
+  assert.throws(() => {
+    options.dtype = 'struct<'
+  }, /invalid datatype expression/)
+  assert.equal(options.dtype, null)
+})
+
+test('a root declared through a field or a datatype is the same value', () => {
+  const field = Field.from('row: struct<id: int64, symbol: utf8> not null')
+  const byField = RecordOptions.from('trades.parquet').withField(field)
+  const byDtype = RecordOptions.from('trades.parquet').withDtype(field.dtype)
+  assert.ok(byField.equals(byDtype))
+  assert.equal(byField.compare(byDtype), 0)
+  assert.equal(byField.stableHash(), byDtype.stableHash())
+  assert.ok(byField.field.equals(byDtype.field))
+
+  // Each part takes a side in equality on its own.
+  assert.ok(!byField.equals(byDtype.withName('trade')))
+  assert.ok(!byField.equals(byDtype.withMetadata({ source: 'book' })))
+  assert.ok(byField.withMetadata({ source: 'book' }).equals(byDtype.withMetadata({ source: 'book' })))
+
+  // Nullability is not one of the parts: the root is always required.
+  const nullable = RecordOptions.from('trades.parquet').withField(
+    Field.from('row: struct<id: int64, symbol: utf8>'),
+  )
+  assert.ok(nullable.equals(byField))
+  assert.equal(nullable.field.nullable, false)
+})
+
+test('root metadata takes entries, a plain object, a Map, or a Field', () => {
+  const options = RecordOptions.from('trades.parquet').withDtype('struct<id: int64>')
+
+  options.metadata = [{ key: 'source', value: 'book' }]
+  assert.deepEqual(options.metadata, [{ key: 'source', value: 'book' }])
+  options.metadata = { venue: 'XNAS', session: 'regular' }
+  assert.deepEqual(options.metadata, [
+    { key: 'session', value: 'regular' },
+    { key: 'venue', value: 'XNAS' },
+  ])
+  options.metadata = new Map([['currency', 'EUR']])
+  assert.deepEqual(options.metadata, [{ key: 'currency', value: 'EUR' }])
+  options.metadata = [['precision', 'micros']]
+  assert.deepEqual(options.metadata, [{ key: 'precision', value: 'micros' }])
+  options.metadata = new Field('price', 'decimal(18, 6)', false, { unit: 'cents' })
+  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
+  assert.deepEqual(options.field.entries(), [{ key: 'unit', value: 'cents' }])
+
+  // `withMetadata` is the same setter on a copy, and empty clears.
+  const copied = options.withMetadata(new Map([['source', 'book']]))
+  assert.deepEqual(copied.metadata, [{ key: 'source', value: 'book' }])
+  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
+  assert.deepEqual(copied.withMetadata([]).metadata, [])
+  assert.deepEqual(copied.withMetadata({}).field.entries(), [])
+
+  // The core validates the entries; a refused value leaves the options as is.
+  assert.throws(() => {
+    options.metadata = [{ key: '', value: 'x' }]
+  }, /metadata keys must not be empty/)
+  assert.throws(() => {
+    options.metadata = 'source=book'
+  }, TypeError)
+  assert.throws(() => options.withMetadata({ source: 7 }), TypeError)
+  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
+})
+
+test('a declared name roots the schema inferred from plain records', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // Avro spells the root name in the container header, so the name a plain
+  // object inference was rooted by is visible in what was written.
+  const handle = new IOBase(path.join(root, 'trades.avro'))
+  handle.overwriteRecords(
+    [
+      { id: 1n, qty: 2.5 },
+      { id: 2n, qty: 3.5 },
+    ],
+    handle.recordOptions().withName('trade'),
+  )
+  const written = Buffer.from(handle.readBytes())
+  assert.ok(written.includes('"name":"trade"'))
+  assert.ok(!written.includes('"name":"row"'))
+  assert.equal(handle.readArrowReader().intoTable().numRows, 2)
+
+  const byDefault = new IOBase(path.join(root, 'rows.avro'))
+  byDefault.overwriteRecords([{ id: 1n, qty: 2.5 }])
+  assert.ok(Buffer.from(byDefault.readBytes()).includes('"name":"row"'))
+
+  // A read names its root the same way.
+  const stream = IOBase.fromBytes()
+  stream.mediaType = MimeType.ARROW_STREAM
+  stream.overwriteArrowTable(trades(), stream.recordOptions().withName('trade'))
+  assert.equal(stream.readArrowField().name, 'row')
+  assert.equal(stream.readArrowField(stream.recordOptions().withName('trade')).name, 'trade')
 })

@@ -1902,20 +1902,37 @@ export declare class RecordOptions {
   static forMimeType(value: MimeTypeInput): RecordOptions
   /** The MIME type of the encoding these options describe. */
   get mimeType(): JsMimeType
-  /** The declared canonical root Field, when one was declared. */
+  /**
+   * The declared root Field, built from `name`, `dtype`, and `metadata`;
+   * `null` until a datatype is declared.
+   */
   get field(): Field | null
-  /** Declare the canonical root Field. */
+  /**
+   * Declare the root Field: its name, datatype, and metadata become the
+   * three declared parts; nullability and dictionary options are dropped.
+   */
   set field(field: Field)
-  /** The root Field name used when a schema is inferred. */
-  get rootName(): string
-  /** Set the root Field name used when a schema is inferred. */
-  set rootName(rootName: string)
+  /** The root Field name, declared or given to an inferred schema. */
+  get name(): string
+  /** Set the root Field name. */
+  set name(name: string)
+  /** The declared root datatype; `null` when the shape is inferred. */
+  get dtype(): DataType | null
+  /**
+   * Declare the root datatype from a `DataType` or a type expression;
+   * `null` clears it.
+   */
+  set dtype(dtype: DataTypeInput | undefined | null)
+  /** The root metadata entries in lexical key order; empty unless declared. */
+  get metadata(): Array<MetadataEntry>
+  /** Declare the root metadata from entries or a plain object; empty clears. */
+  set metadata(values: MetadataInput)
   /** Whether a cast may null a value it cannot convert. */
   get safe(): boolean
   /** Set whether a cast may null a value it cannot convert. */
   set safe(safe: boolean)
   /** The rows-per-batch bound, when one is set. */
-  get batchSize(): number | null
+  get batchRowSize(): number | null
   /**
    * Set the rows-per-batch bound.
    *
@@ -1923,7 +1940,7 @@ export declare class RecordOptions {
    * number, so it turns a read of a hundred rows into a successful read of
    * none. `null` is how "no bound" is spelled.
    */
-  set batchSize(batchSize: number | undefined | null)
+  set batchRowSize(batchRowSize: number | undefined | null)
   /**
    * The bound on how many result rows flow in total, when one is set.
    *
@@ -2007,12 +2024,16 @@ export declare class RecordOptions {
   withSyncMarker(marker?: Buffer | undefined | null): RecordOptions
   /** Return these options with a declared canonical root Field. */
   withField(field: Field): RecordOptions
-  /** Return these options with a different inferred-root Field name. */
-  withRootName(rootName: string): RecordOptions
+  /** Return these options with a different root Field name. */
+  withName(name: string): RecordOptions
+  /** Return these options with a declared root datatype. */
+  withDtype(dtype: DataTypeInput): RecordOptions
+  /** Return these options with declared root metadata. */
+  withMetadata(values: MetadataInput): RecordOptions
   /** Return these options with a different cast strictness. */
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
-  withBatchSize(batchSize: number): RecordOptions
+  withBatchRowSize(batchRowSize: number): RecordOptions
   /** Return these options with a bound on how many result rows flow. */
   withMaxRowSize(maxRowSize: number): RecordOptions
   /** Return these options with a bound on the result rows' Arrow bytes. */
