@@ -29,9 +29,76 @@ the next session.
 - Serialization is inherited from `Field`'s JSON path and the generic `Scalar`
   codec. This module writes no serializer, parser or validator of its own; where
   an existing path falls short, it is improved generically instead.
+- A core refactor lands first (Phase 0), giving the structured-text facades
+  explicitly named entry points that say they answer a `Scalar`. FIX consumes
+  those rather than the representation-specific functions.
 - Python and JavaScript reach the whole surface in the same change, with parity
   tests and boundary benchmarks, per the `AGENTS.md` delivery order: Rust core
   and its contract first, then both extensions as redirects.
+
+## Phase 0: core refactor, before any FIX code
+
+Do this first, land it as its own commit, and only then start the FIX module. The
+FIX work then consumes it instead of reaching past it.
+
+Today a caller writes `yggdryl::json::from_utf8(text)` and nothing in the name
+says it answers a `Scalar`. `AGENTS.md` already refuses that shape one layer
+down — "every derived read and append names the core type it answers", which is
+why `IOBase` has `read_scalar` and never a bare `read`. The structured-text
+facades are the place that rule was not applied.
+
+Add one explicitly named, inferring entry point per format and direction,
+answering the generic `Scalar`:
+
+```rust
+pub fn from_json_scalar(input: impl Into<...>) -> Result<Scalar>;
+pub fn into_json_scalar(value: &Scalar) -> Result<String>;
+pub fn from_yaml_scalar(input: impl Into<...>) -> Result<Scalar>;
+pub fn into_yaml_scalar(value: &Scalar) -> Result<String>;
+pub fn from_toml_scalar(input: impl Into<...>) -> Result<Scalar>;
+pub fn into_toml_scalar(value: &Scalar) -> Result<String>;
+```
+
+Plus the field-directed halves, because typing the parse is the whole reason FIX
+uses them:
+
+```rust
+pub fn from_json_scalar_with_field(input: ..., field: &Field) -> Result<Scalar>;
+// and the yaml and toml counterparts
+```
+
+Rules for this refactor:
+
+- These are NOT aliases, and the change must not read as one. Each is the single
+  inferring entry point over the existing explicit representation methods,
+  coercing at the boundary and redirecting to them — exactly the pattern
+  `AGENTS.md` already sanctions for `IOBase` ("may add one inferring entry point
+  over the explicit method, which coerces at the boundary and redirects to it").
+  State that in the module docs so a later reader does not delete them as
+  duplicates.
+- One implementation. They contain coercion and a redirect, and no parsing,
+  rendering, validation or limits logic of their own.
+- Do NOT rename the 130 existing `from_utf8`/`from_bytes`/`from_reader`/
+  `into_utf8`/`into_bytes`/`into_writer` functions and their `_all`,
+  `_with_field`, `_with_limits` and `_with_formatting` modifiers. They are the
+  explicit representation methods these redirect to, they are correct, and
+  churning them buys nothing.
+- Inference is deterministic and documented: byte-like input is content, and a
+  string is content, never a path. Do not import the path-sniffing rule from the
+  I/O facades; a JSON document that happens to name a file must not be read as
+  one.
+- Re-export the six from the crate root beside `Scalar`, so the call site reads
+  `yggdryl::from_json_scalar(bytes)` without a stuttering module path.
+- Amend `AGENTS.md`'s structured-text canonical-spellings bullet in the same
+  change to name this family and say what it is for. The bullet currently lists
+  only the representation forms, so leaving it alone would make the new surface
+  undocumented by contract.
+- Tests and benchmarks for the new entry points, and a docs pass wherever the
+  structured-text facades are shown.
+
+Then, in the FIX module, use ONLY these entry points for value serialization.
+`from_json_scalar_with_field` is the one that types, orders, validates and
+canonicalizes a message value against its root `Field`.
 
 ## Read first
 
@@ -130,11 +197,14 @@ Serializing a field record uses the existing `Field` JSON path:
 
 Serializing message values uses the generic `Scalar` codec:
 
-- `crate::json::from_bytes_with_field` / `from_utf8_with_field` /
-  `from_reader_with_field` — the field-directed forms. Passing the root `Field`
-  is what types natural strings, orders records, and validates and canonicalizes
-  in Rust, which is exactly the work a FIX transcriber would otherwise duplicate.
-- `crate::json::into_utf8` / `into_bytes` / `into_writer` on the way out.
+- `from_json_scalar_with_field` (Phase 0). Passing the root `Field` is what types
+  natural strings, orders records, and validates and canonicalizes in Rust, which
+  is exactly the work a FIX transcriber would otherwise duplicate.
+- `into_json_scalar` on the way out, and the yaml/toml counterparts wherever a
+  FIX dictionary is authored in those formats.
+- The representation-specific `crate::json::from_reader_with_field` /
+  `into_writer` forms only where something is genuinely streamed and the
+  inferring entry point cannot express it.
 - `Limits` for bounded parsing. Do not invent FIX-specific bounds.
 - The reader and writer forms for anything streamed; nothing here materializes a
   document it could stream.
@@ -485,9 +555,13 @@ Cover:
 - a round trip proving serialization is inherited: a field with the full `fix:`
   namespace, a Struct component and a List repeating group survive
   `Field::into_json_bytes` then `Field::from_json_bytes` unchanged, and a
-  `FixMsg` value survives `crate::json::into_utf8` then
-  `from_utf8_with_field` typed and ordered. If either needs a FIX-side fixup to
-  pass, that is a core gap to fix in core, not to patch here;
+  `FixMsg` value survives `into_json_scalar` then `from_json_scalar_with_field`
+  typed and ordered. If either needs a FIX-side fixup to pass, that is a core gap
+  to fix in core, not to patch here;
+- Phase 0 in its own right: each of the six entry points round-trips, the
+  field-directed halves type and order against a root `Field`, inference treats a
+  string as content and never as a path, and each redirects to the existing
+  explicit method rather than parsing on its own;
 - Python and JavaScript parity for every accessor: same answers, same argument
   order, same error type for absence, and the same canonical spelling returned
   for a case-insensitive hit;
