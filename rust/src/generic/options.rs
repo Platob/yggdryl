@@ -1,13 +1,22 @@
 //! The settings a record read or write takes, shared across encodings.
 //!
 //! Reading rows out of an Arrow IPC stream and reading them out of a Parquet
-//! file need the same handful of answers - what field, what to call an
-//! inferred root, how strict a cast may be, how many rows per batch, how much
-//! may flow at all, how hard to compress, and what makes two rows the same
-//! row - and each encoding then
-//! adds its own. [`IORecordOptions`] is that shared surface, each encoding
-//! stores those settings as its own flat fields, and [`RecordOptions`] is the
-//! enum naming every encoding's options.
+//! file need the same handful of answers - what to call the root, what
+//! datatype and metadata it declares, how strict a cast may be, how many rows
+//! per batch, how much may flow at all, how hard to compress, and what makes
+//! two rows the same row - and each encoding then adds its own.
+//! [`IORecordOptions`] is that shared surface, each encoding stores those
+//! settings as its own flat fields, and [`RecordOptions`] is the enum naming
+//! every encoding's options.
+//!
+//! The declared root is three parts - `name`, `dtype`, `metadata` - and
+//! [`field`](IORecordOptions::field) builds the non-null Struct [`Field`] from
+//! them on every ask, so one part changes without the others: a datatype
+//! swapped under the same name, a name given to a datatype, metadata added to
+//! either. Only the datatype is optional: without one nothing is declared and
+//! the shape is inferred, while the name and metadata always have a value -
+//! [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME) and no entries -
+//! so one declaration has one spelling.
 //!
 //! An encoding is never guessed: [`RecordOptions::for_media_type`] derives it
 //! from the handle's media type, which is what [`crate::io::IOBase`]'s record
@@ -25,12 +34,20 @@
 //! // the same in a default build as in one with the `parquet` feature on.
 //! let options = RecordOptions::for_media_type(&Url::from_str("file:///t.arrows")?.media_type())?
 //!     .with_field(schema.clone())
-//!     .with_batch_size(1024)
+//!     .with_batch_row_size(1024)
 //!     .with_commit_row_size(10_000);
 //!
-//! assert_eq!(options.field(), Some(&schema));
-//! assert_eq!(options.batch_size(), Some(1024));
+//! assert_eq!(options.field(), Some(schema.clone()));
+//! assert_eq!(options.name(), "row");
+//! assert_eq!(options.dtype(), Some(schema.dtype()));
+//! assert!(options.metadata().is_empty());
+//! assert_eq!(options.batch_row_size(), Some(1024));
 //! assert_eq!(options.commit_row_size(), Some(10_000));
+//!
+//! // Each part mutates on its own: the same datatype under another root name.
+//! let renamed = options.with_name("trade").require_field()?;
+//! assert_eq!(renamed.name(), "trade");
+//! assert_eq!(renamed.dtype(), schema.dtype());
 //! # Ok(())
 //! # }
 //! ```
@@ -39,13 +56,13 @@ use smol_str::SmolStr;
 
 use crate::Level;
 use crate::ipc::IpcOptions;
-use crate::{Error, Field, IOMode, MediaType, MimeType, Result};
+use crate::{DataType, Error, Field, IOMode, MediaType, Metadata, MimeType, Result};
 
 /// Default rows materialized in one native-record conversion batch.
 ///
 /// Runtime bindings use this same value when their host-language rows must be
 /// widened into Arrow before entering the core reader surface.
-pub const DEFAULT_RECORD_BATCH_SIZE: usize = 65_536;
+pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
 
 /// The read and write settings shared by every record encoding.
 ///
@@ -53,24 +70,81 @@ pub const DEFAULT_RECORD_BATCH_SIZE: usize = 65_536;
 /// struct to thread through - and the builders here are what every caller uses,
 /// so the encodings cannot drift apart in what a shared setting means.
 pub trait IORecordOptions: Sized {
-    /// Borrow the declared canonical field, if any.
-    fn field(&self) -> Option<&Field>;
+    /// Borrow the root Field name.
+    ///
+    /// The name is one of the three parts [`field`](Self::field) is built
+    /// from, and it names an inferred root as well, so a stream read without
+    /// a schema and one read under a declared datatype answer the same root
+    /// name. It defaults to
+    /// [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME).
+    fn name(&self) -> &str;
 
-    /// Declare the canonical field.
-    fn set_field(&mut self, field: Field);
+    /// Set the root Field name.
+    fn set_name(&mut self, name: SmolStr);
+
+    /// Borrow the declared root datatype, if any.
+    ///
+    /// A declared datatype is what makes a field declared at all: reads
+    /// project onto it and writes cast onto it, while `None` infers the shape
+    /// from the encoding or the incoming rows.
+    fn dtype(&self) -> Option<&DataType>;
+
+    /// Declare or clear the root datatype.
+    fn set_dtype(&mut self, dtype: Option<DataType>);
+
+    /// Borrow the root metadata; empty unless declared.
+    ///
+    /// Metadata reaches a read or write only through the field a declared
+    /// datatype builds: on its own it declares nothing.
+    fn metadata(&self) -> &Metadata;
+
+    /// Set the root metadata; an empty snapshot clears it.
+    fn set_metadata(&mut self, metadata: Metadata);
+
+    /// Build the declared canonical field from its parts, if a datatype is
+    /// declared.
+    ///
+    /// The field is built on every ask - the non-null Struct root that
+    /// [`name`](Self::name), [`dtype`](Self::dtype), and
+    /// [`metadata`](Self::metadata) spell - so it is never stale against a
+    /// part changed after it. The parts are shared handles, so the build
+    /// clones no datatype tree and no metadata map; a caller casting many
+    /// batches builds it once and keeps it.
+    fn field(&self) -> Option<Field> {
+        let dtype = self.dtype()?.clone();
+        Some(Field::new_with_metadata(
+            self.name(),
+            dtype,
+            false,
+            self.metadata().clone(),
+        ))
+    }
+
+    /// Declare the canonical field, part by part.
+    ///
+    /// The field's name, datatype, and metadata become the three parts. Its
+    /// nullability and dictionary options are not part of a declaration and
+    /// are dropped: a row root is a non-null Struct, which is what the build
+    /// answers.
+    fn set_field(&mut self, field: Field) {
+        self.set_name(SmolStr::new(field.name()));
+        self.set_dtype(Some(field.dtype().clone()));
+        self.set_metadata(field.as_metadata().clone());
+    }
 
     /// Remove and return the declared canonical field, if any.
     ///
-    /// Write combinators use this after casting an incoming stream. The
-    /// delegated overwrite then receives rows already in the declared shape
-    /// and cannot cast them a second time.
-    fn take_field(&mut self) -> Option<Field>;
-
-    /// Borrow the root Field name used when a schema is inferred.
-    fn root_name(&self) -> &str;
-
-    /// Set the root Field name used when a schema is inferred.
-    fn set_root_name(&mut self, root_name: SmolStr);
+    /// The datatype and metadata are cleared either way; the name stays,
+    /// because it still names the root a delegated write infers. Write
+    /// combinators use this after casting an incoming stream: the delegated
+    /// overwrite then receives rows already in the declared shape and cannot
+    /// cast them a second time.
+    fn take_field(&mut self) -> Option<Field> {
+        let field = self.field();
+        self.set_dtype(None);
+        self.set_metadata(Metadata::new());
+        field
+    }
 
     /// Return whether a cast may null a value it cannot convert.
     fn safe(&self) -> bool;
@@ -79,27 +153,27 @@ pub trait IORecordOptions: Sized {
     fn set_safe(&mut self, safe: bool);
 
     /// Return the row-per-batch bound, if any.
-    fn batch_size(&self) -> Option<usize>;
+    fn batch_row_size(&self) -> Option<usize>;
 
     /// Set the row-per-batch bound.
-    fn set_batch_size(&mut self, batch_size: Option<usize>);
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>);
 
     /// Return the row materialization bound for a native-record write.
     ///
     /// Row conversion must never run past the next publication boundary: a
     /// conversion error at row `N + 1` must not erase the complete `N`-row
-    /// prefix waiting to commit. The smaller of `batch_size` and
+    /// prefix waiting to commit. The smaller of `batch_row_size` and
     /// `commit_row_size` is therefore the writer's batch size; either setting
     /// alone supplies the bound.
-    fn write_batch_size(&self) -> Option<usize> {
+    fn write_batch_row_size(&self) -> Option<usize> {
         match self.commit_row_size() {
             Some(commit) => Some(
-                self.batch_size()
-                    .unwrap_or(DEFAULT_RECORD_BATCH_SIZE)
+                self.batch_row_size()
+                    .unwrap_or(DEFAULT_RECORD_BATCH_ROW_SIZE)
                     .max(1)
                     .min(commit),
             ),
-            None => self.batch_size(),
+            None => self.batch_row_size(),
         }
     }
 
@@ -223,16 +297,16 @@ pub trait IORecordOptions: Sized {
         )
     }
 
-    /// Borrow the declared field, or say that one is required.
+    /// Build the declared field, or say that one is required.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the builder that declares a field.
-    fn require_field(&self) -> Result<&Field> {
+    /// Returns an error naming the builders that declare a field.
+    fn require_field(&self) -> Result<Field> {
         self.field().ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static(
-                "expected a declared field to write records; call with_field first",
+                "expected a declared field to write records; call with_field or with_dtype first",
             ),
         })
     }
@@ -244,10 +318,24 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Return these options with a different inferred-root Field name.
+    /// Return these options with a different root Field name.
     #[must_use]
-    fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self {
-        self.set_root_name(root_name.into());
+    fn with_name(mut self, name: impl Into<SmolStr>) -> Self {
+        self.set_name(name.into());
+        self
+    }
+
+    /// Return these options with a declared root datatype.
+    #[must_use]
+    fn with_dtype(mut self, dtype: DataType) -> Self {
+        self.set_dtype(Some(dtype));
+        self
+    }
+
+    /// Return these options with root metadata.
+    #[must_use]
+    fn with_metadata(mut self, metadata: Metadata) -> Self {
+        self.set_metadata(metadata);
         self
     }
 
@@ -260,8 +348,8 @@ pub trait IORecordOptions: Sized {
 
     /// Return these options with a row-per-batch bound.
     #[must_use]
-    fn with_batch_size(mut self, batch_size: usize) -> Self {
-        self.set_batch_size(Some(batch_size));
+    fn with_batch_row_size(mut self, batch_row_size: usize) -> Self {
+        self.set_batch_row_size(Some(batch_row_size));
         self
     }
 
@@ -359,16 +447,14 @@ pub trait IORecordOptions: Sized {
     ) -> Result<arrow_array::RecordBatch> {
         let safe = self.safe();
         let batch = match self.field() {
-            Some(declared) => crate::field::cast::cast_record_batch(declared, batch, safe)?,
+            Some(declared) => crate::field::cast::cast_record_batch(&declared, batch, safe)?,
             None => batch,
         };
-        let root =
-            crate::arrow::field_from_arrow_schema(self.root_name(), batch.schema().as_ref())?;
-        let batch =
-            match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
-                Some(target) => crate::field::cast::cast_record_batch(&target, batch, safe)?,
-                None => batch,
-            };
+        let root = crate::arrow::field_from_arrow_schema(self.name(), batch.schema().as_ref())?;
+        let batch = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())? {
+            Some(target) => crate::field::cast::cast_record_batch(&target, batch, safe)?,
+            None => batch,
+        };
         match existing {
             Some(stored) => Ok(crate::field::cast::cast_record_batch(stored, batch, true)?),
             None => Ok(batch),
@@ -391,16 +477,15 @@ pub trait IORecordOptions: Sized {
     ) -> Result<crate::arrow::BatchReader> {
         let safe = self.safe();
         let reader = match self.field() {
-            Some(declared) => crate::arrow::cast_reader(reader, declared, safe)?,
+            Some(declared) => crate::arrow::cast_reader(reader, &declared, safe)?,
             None => reader,
         };
-        let root =
-            crate::arrow::field_from_arrow_schema(self.root_name(), reader.schema().as_ref())?;
-        let reader =
-            match crate::arrow::selected_root(&root, self.select_by_names(), self.root_name())? {
-                Some(target) => crate::arrow::cast_reader(reader, &target, safe)?,
-                None => reader,
-            };
+        let root = crate::arrow::field_from_arrow_schema(self.name(), reader.schema().as_ref())?;
+        let reader = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())?
+        {
+            Some(target) => crate::arrow::cast_reader(reader, &target, safe)?,
+            None => reader,
+        };
         match existing {
             Some(stored) => Ok(crate::arrow::cast_reader(reader, stored, true)?),
             None => Ok(reader),
@@ -782,24 +867,28 @@ impl Iterator for CommitReaders {
 #[macro_export]
 macro_rules! record_options_fields {
     () => {
-        fn field(&self) -> Option<&$crate::Field> {
-            self.field.as_ref()
+        fn name(&self) -> &str {
+            self.name.as_str()
         }
 
-        fn set_field(&mut self, field: $crate::Field) {
-            self.field = Some(field);
+        fn set_name(&mut self, name: smol_str::SmolStr) {
+            self.name = name;
         }
 
-        fn take_field(&mut self) -> Option<$crate::Field> {
-            self.field.take()
+        fn dtype(&self) -> Option<&$crate::DataType> {
+            self.dtype.as_ref()
         }
 
-        fn root_name(&self) -> &str {
-            self.root_name.as_str()
+        fn set_dtype(&mut self, dtype: Option<$crate::DataType>) {
+            self.dtype = dtype;
         }
 
-        fn set_root_name(&mut self, root_name: smol_str::SmolStr) {
-            self.root_name = root_name;
+        fn metadata(&self) -> &$crate::Metadata {
+            &self.metadata
+        }
+
+        fn set_metadata(&mut self, metadata: $crate::Metadata) {
+            self.metadata = metadata;
         }
 
         fn safe(&self) -> bool {
@@ -810,12 +899,12 @@ macro_rules! record_options_fields {
             self.safe = safe;
         }
 
-        fn batch_size(&self) -> Option<usize> {
-            self.batch_size
+        fn batch_row_size(&self) -> Option<usize> {
+            self.batch_row_size
         }
 
-        fn set_batch_size(&mut self, batch_size: Option<usize>) {
-            self.batch_size = batch_size;
+        fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
+            self.batch_row_size = batch_row_size;
         }
 
         fn max_row_size(&self) -> Option<u64> {
@@ -1218,53 +1307,63 @@ impl RecordOptions {
 }
 
 impl IORecordOptions for RecordOptions {
-    fn field(&self) -> Option<&Field> {
+    fn name(&self) -> &str {
         match self {
-            Self::Ipc(options) => options.field(),
+            Self::Ipc(options) => options.name(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.field(),
-            Self::Avro(options) => options.field(),
-            Self::Text(options) => options.field(),
+            Self::Parquet(options) => options.name(),
+            Self::Avro(options) => options.name(),
+            Self::Text(options) => options.name(),
         }
     }
 
-    fn set_field(&mut self, field: Field) {
+    fn set_name(&mut self, name: SmolStr) {
         match self {
-            Self::Ipc(options) => options.set_field(field),
+            Self::Ipc(options) => options.set_name(name),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_field(field),
-            Self::Avro(options) => options.set_field(field),
-            Self::Text(options) => options.set_field(field),
+            Self::Parquet(options) => options.set_name(name),
+            Self::Avro(options) => options.set_name(name),
+            Self::Text(options) => options.set_name(name),
         }
     }
 
-    fn take_field(&mut self) -> Option<Field> {
+    fn dtype(&self) -> Option<&DataType> {
         match self {
-            Self::Ipc(options) => options.take_field(),
+            Self::Ipc(options) => options.dtype(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.take_field(),
-            Self::Avro(options) => options.take_field(),
-            Self::Text(options) => options.take_field(),
+            Self::Parquet(options) => options.dtype(),
+            Self::Avro(options) => options.dtype(),
+            Self::Text(options) => options.dtype(),
         }
     }
 
-    fn root_name(&self) -> &str {
+    fn set_dtype(&mut self, dtype: Option<DataType>) {
         match self {
-            Self::Ipc(options) => options.root_name(),
+            Self::Ipc(options) => options.set_dtype(dtype),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.root_name(),
-            Self::Avro(options) => options.root_name(),
-            Self::Text(options) => options.root_name(),
+            Self::Parquet(options) => options.set_dtype(dtype),
+            Self::Avro(options) => options.set_dtype(dtype),
+            Self::Text(options) => options.set_dtype(dtype),
         }
     }
 
-    fn set_root_name(&mut self, root_name: SmolStr) {
+    fn metadata(&self) -> &Metadata {
         match self {
-            Self::Ipc(options) => options.set_root_name(root_name),
+            Self::Ipc(options) => options.metadata(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_root_name(root_name),
-            Self::Avro(options) => options.set_root_name(root_name),
-            Self::Text(options) => options.set_root_name(root_name),
+            Self::Parquet(options) => options.metadata(),
+            Self::Avro(options) => options.metadata(),
+            Self::Text(options) => options.metadata(),
+        }
+    }
+
+    fn set_metadata(&mut self, metadata: Metadata) {
+        match self {
+            Self::Ipc(options) => options.set_metadata(metadata),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_metadata(metadata),
+            Self::Avro(options) => options.set_metadata(metadata),
+            Self::Text(options) => options.set_metadata(metadata),
         }
     }
 
@@ -1288,23 +1387,23 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
-    fn batch_size(&self) -> Option<usize> {
+    fn batch_row_size(&self) -> Option<usize> {
         match self {
-            Self::Ipc(options) => options.batch_size(),
+            Self::Ipc(options) => options.batch_row_size(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.batch_size(),
-            Self::Avro(options) => options.batch_size(),
-            Self::Text(options) => options.batch_size(),
+            Self::Parquet(options) => options.batch_row_size(),
+            Self::Avro(options) => options.batch_row_size(),
+            Self::Text(options) => options.batch_row_size(),
         }
     }
 
-    fn set_batch_size(&mut self, batch_size: Option<usize>) {
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
         match self {
-            Self::Ipc(options) => options.set_batch_size(batch_size),
+            Self::Ipc(options) => options.set_batch_row_size(batch_row_size),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_batch_size(batch_size),
-            Self::Avro(options) => options.set_batch_size(batch_size),
-            Self::Text(options) => options.set_batch_size(batch_size),
+            Self::Parquet(options) => options.set_batch_row_size(batch_row_size),
+            Self::Avro(options) => options.set_batch_row_size(batch_row_size),
+            Self::Text(options) => options.set_batch_row_size(batch_row_size),
         }
     }
 

@@ -53,7 +53,7 @@
 //! input bytes** - each record's length plus its terminator, accounted as
 //! records arrive, never by introspecting builder memory - so it is not an
 //! allocation cap and reading it as one would be a mistake.
-//! [`batch_size`](TextLineOptions::batch_size) is the row bound.
+//! [`batch_row_size`](TextLineOptions::batch_row_size) is the row bound.
 //!
 //! ```
 //! use yggdryl::io::{Buffer, IOBase};
@@ -222,7 +222,7 @@ struct ArrowLines {
     /// time deliberately: the repetition is a `take`, not a stored column.
     customs: Vec<ArrayRef>,
     byte_size: usize,
-    batch_size: usize,
+    batch_row_size: usize,
     schema: SchemaRef,
     /// The emitted root; a batch is cast onto it when any capture is typed.
     root: Field,
@@ -279,7 +279,7 @@ impl ArrowLines {
             options: Arc::new(options.clone()),
             customs,
             byte_size: options.effective_byte_size(),
-            batch_size: options.effective_batch_size(),
+            batch_row_size: options.effective_batch_row_size(),
             schema,
             root: root.clone(),
             raw_schema,
@@ -368,7 +368,7 @@ impl Iterator for ArrowLines {
                         return Some(Err(external(error)));
                     }
                     // Whichever bound trips first closes the batch.
-                    if builders.rows >= self.batch_size || builders.bytes >= self.byte_size {
+                    if builders.rows >= self.batch_row_size || builders.bytes >= self.byte_size {
                         return Some(self.finish(&mut builders));
                     }
                 }

@@ -44,28 +44,97 @@ fn rows(reader: BatchReader) -> usize {
 }
 
 #[test]
-fn the_declared_field_has_one_accessor_family() {
+fn the_declared_field_is_built_from_its_three_parts() {
     let declared = schema();
     let mut options = IpcOptions::new();
 
+    // Nothing declared: no field, the default root name, no metadata.
     assert!(options.field().is_none());
+    assert_eq!(options.name(), crate::generic::DEFAULT_ROOT_NAME);
+    assert_eq!(options.dtype(), None);
+    assert!(options.metadata().is_empty());
     let message = options.require_field().unwrap_err().to_string();
     assert!(message.contains("with_field"), "{message}");
+    assert!(message.contains("with_dtype"), "{message}");
 
+    // A field declares all three parts at once and builds back the same.
     options.set_field(declared.clone());
-    assert_eq!(options.field(), Some(&declared));
-    assert_eq!(options.require_field().unwrap(), &declared);
+    assert_eq!(options.name(), "row");
+    assert_eq!(options.dtype(), Some(declared.dtype()));
+    assert!(options.metadata().is_empty());
+    assert_eq!(options.field(), Some(declared.clone()));
+    assert_eq!(options.require_field().unwrap(), declared);
+
+    // Declaring the datatype alone spells the same declaration: one stored
+    // form, so the two compare and hash equal.
+    let by_dtype = IpcOptions::new().with_dtype(declared.dtype().clone());
+    assert_eq!(options, by_dtype);
+    assert_eq!(
+        RecordOptions::Ipc(options.clone()).stable_hash(),
+        RecordOptions::Ipc(by_dtype).stable_hash()
+    );
+
+    // Each part mutates alone and the next build reflects it.
+    options.set_name("trade".into());
+    assert_eq!(options.name(), "trade");
+    assert_eq!(options.field().unwrap().name(), "trade");
+    assert_eq!(options.field().unwrap().dtype(), declared.dtype());
+
+    let metadata = crate::Metadata::from_entries([("source", "test")]).unwrap();
+    options.set_metadata(metadata.clone());
+    assert_eq!(options.metadata(), &metadata);
+    assert_eq!(
+        options.field().unwrap().get_metadata("source"),
+        Some("test")
+    );
+    assert!(!options.field().unwrap().is_nullable());
+
+    let widened = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+    ])
+    .unwrap();
+    options.set_dtype(Some(widened.clone()));
+    let built = options.field().unwrap();
+    assert_eq!(built.name(), "trade");
+    assert_eq!(built.dtype(), &widened);
+    assert_eq!(built.get_metadata("source"), Some("test"));
+
+    // A declared field's nullability is not part of the declaration: the
+    // build is the non-null row root.
+    let nullable = IpcOptions::new().with_field(declared.clone().with_nullable(true));
+    assert!(!nullable.field().unwrap().is_nullable());
+    assert_eq!(nullable, IpcOptions::new().with_field(declared.clone()));
+
+    // Taking the field clears the datatype and metadata; the name still names
+    // the root a delegated write infers.
+    let mut taken = options.clone();
+    assert_eq!(taken.take_field(), Some(built.clone()));
+    assert!(taken.field().is_none());
+    assert_eq!(taken.dtype(), None);
+    assert!(taken.metadata().is_empty());
+    assert_eq!(taken.name(), "trade");
+    assert_eq!(taken.take_field(), None);
+
+    // Without a datatype there is nothing to build, whatever else is set, and
+    // taking still clears the metadata that would otherwise resurface.
+    let mut named = IpcOptions::new().with_name("trade").with_metadata(metadata);
+    assert!(named.field().is_none());
+    assert_eq!(named.take_field(), None);
+    assert!(named.metadata().is_empty());
 
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let options = RecordOptions::for_media_type(&media_type)
         .unwrap()
         .with_field(declared.clone());
-    assert_eq!(options.field(), Some(&declared));
+    assert_eq!(options.field(), Some(declared.clone()));
 
     let RecordOptions::Ipc(inner) = options else {
         panic!("an arrows handle names the IPC encoding");
     };
-    assert_eq!(inner.field, Some(declared));
+    assert_eq!(inner.name, "row");
+    assert_eq!(inner.dtype.as_ref(), Some(declared.dtype()));
+    assert!(inner.metadata.is_empty());
 }
 
 #[test]
@@ -76,7 +145,7 @@ fn record_options_have_complete_value_traits_and_stable_hashes() {
     let text = crate::text::TextOptions::with_lines(lines);
     let options = RecordOptions::from(text.clone());
     let equal = options.clone();
-    let changed = RecordOptions::from(text.lines.clone().with_batch_size(3));
+    let changed = RecordOptions::from(text.lines.clone().with_batch_row_size(3));
 
     assert_traits(&text);
     assert_traits(&options);
@@ -438,31 +507,31 @@ fn parquet_only_setters_reject_another_inferred_encoding() {
 
 #[test]
 fn native_batch_writes_stop_at_the_smaller_conversion_or_commit_bound() {
-    assert_eq!(crate::generic::DEFAULT_RECORD_BATCH_SIZE, 65_536);
+    assert_eq!(crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE, 65_536);
     assert_eq!(
-        crate::arrow::rows::DEFAULT_BATCH_SIZE,
-        crate::generic::DEFAULT_RECORD_BATCH_SIZE
+        crate::arrow::rows::DEFAULT_BATCH_ROW_SIZE,
+        crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE
     );
     let default = IpcOptions::new().with_commit_row_size(usize::MAX);
     assert_eq!(
-        default.write_batch_size(),
-        Some(crate::arrow::rows::DEFAULT_BATCH_SIZE)
+        default.write_batch_row_size(),
+        Some(crate::arrow::rows::DEFAULT_BATCH_ROW_SIZE)
     );
     assert_eq!(
         IpcOptions::new()
-            .with_batch_size(7)
+            .with_batch_row_size(7)
             .with_commit_row_size(11)
-            .write_batch_size(),
+            .write_batch_row_size(),
         Some(7)
     );
     assert_eq!(
         IpcOptions::new()
-            .with_batch_size(11)
+            .with_batch_row_size(11)
             .with_commit_row_size(7)
-            .write_batch_size(),
+            .write_batch_row_size(),
         Some(7)
     );
-    assert_eq!(IpcOptions::new().write_batch_size(), None);
+    assert_eq!(IpcOptions::new().write_batch_row_size(), None);
 }
 
 #[test]

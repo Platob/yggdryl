@@ -500,7 +500,7 @@ fn native_record_benchmarks(criterion: &mut Criterion) {
         .record_options()
         .expect("an implemented encoding")
         .with_field(wide())
-        .with_batch_size(512);
+        .with_batch_row_size(512);
     let merging = options.clone().with_merge_by_names(["id"]);
 
     let mut group = criterion.benchmark_group("io_write_records");
@@ -580,7 +580,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
         .record_options()
         .expect("an implemented encoding")
         .with_field(wide())
-        .with_batch_size(512);
+        .with_batch_row_size(512);
     let merging = plain.clone().with_merge_by_names(["id"]);
     let mut group = criterion.benchmark_group("io_write_mode_dispatch");
     group.sample_size(10);

@@ -69,7 +69,7 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
     let ipc = Media::ipc(Holder::buffer(Buffer::new())).with_field(schema());
     let options = ipc.record_options().unwrap();
     assert!(matches!(options, RecordOptions::Ipc(_)));
-    assert_eq!(options.field(), Some(&schema()));
+    assert_eq!(options.field(), Some(schema()));
 
     let avro = Media::avro(Holder::buffer(Buffer::new())).with_field(schema());
     assert!(matches!(

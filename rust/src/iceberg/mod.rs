@@ -234,7 +234,8 @@ impl Located {
     pub(crate) fn read(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         use crate::generic::IORecordOptions;
 
-        self.table.scan_where(&self.pairs(), options.field())
+        self.table
+            .scan_where(&self.pairs(), options.field().as_ref())
     }
 
     /// Replace the addressed table partition in one commit.

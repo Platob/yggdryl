@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::generic::{IORecordOptions, RecordOptions};
 use crate::io::IOBase;
-use crate::{Field, Level, Limits};
+use crate::{DataType, Field, Level, Limits, Metadata};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
 use super::container::{
@@ -51,9 +51,6 @@ use super::container::{
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::schema::{Node, Schema};
 
-/// The default root Field name used when a schema is inferred.
-pub const DEFAULT_ROOT_NAME: &str = "row";
-
 /// The settings an Avro record read or write takes.
 ///
 /// Avro adds two settings to the shared surface: the block compression codec,
@@ -61,14 +58,16 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
 /// an optional fixed synchronization marker for byte-reproducible output.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AvroOptions {
-    /// Declared canonical schema; inferred from the container when absent.
-    pub field: Option<Field>,
-    /// Root Field name used for an inferred schema.
-    pub root_name: SmolStr,
+    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME) unless set.
+    pub name: SmolStr,
+    /// Declared root datatype; inferred from the container when absent.
+    pub dtype: Option<DataType>,
+    /// Root metadata; empty unless declared.
+    pub metadata: Metadata,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch a reader yields.
-    pub batch_size: Option<usize>,
+    pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
@@ -95,10 +94,11 @@ impl AvroOptions {
     /// Build the default Avro options.
     pub fn new() -> Self {
         Self {
-            field: None,
-            root_name: SmolStr::new_static(DEFAULT_ROOT_NAME),
+            name: SmolStr::new_static(crate::generic::DEFAULT_ROOT_NAME),
+            dtype: None,
+            metadata: Metadata::new(),
             safe: false,
-            batch_size: None,
+            batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
             commit_row_size: None,
@@ -137,7 +137,7 @@ impl IORecordOptions for AvroOptions {
 }
 
 /// How many rows one batch carries when the caller does not say.
-const DEFAULT_BATCH_ROWS: usize = crate::generic::DEFAULT_RECORD_BATCH_SIZE;
+const DEFAULT_BATCH_ROWS: usize = crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// Read the schema of the container `handle` holds.
 ///
@@ -153,7 +153,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &AvroOptions) -> Resu
     }
     reject_outer_coding(handle)?;
     let blocks = super::container::read_blocks(handle)?;
-    Ok(field_from_schema(blocks.schema(), options.root_name())?)
+    Ok(field_from_schema(blocks.schema(), options.name())?)
 }
 
 /// Return the number of rows declared by an Avro container's block headers.
@@ -194,7 +194,7 @@ fn read_dimensions<H: IOBase + ?Sized>(
     }
     reject_outer_coding(handle)?;
     let mut blocks = super::container::read_blocks(handle)?;
-    let field = field_from_schema(blocks.schema(), options.root_name())?;
+    let field = field_from_schema(blocks.schema(), options.name())?;
     let mut rows = 0_u64;
     while let Some(count) = blocks.next_block_count()? {
         rows = rows.checked_add(count).ok_or_else(row_count_overflow)?;
@@ -232,7 +232,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     if bytes.is_empty() {
         // Per the laziness contract, a missing container holds no batches.
         let schema = match options.field() {
-            Some(field) => arrow_schema_from_field(field)?,
+            Some(field) => arrow_schema_from_field(&field)?,
             None => Arc::new(arrow_schema::Schema::empty()),
         };
         return Ok(Box::new(RecordBatchIterator::new(
@@ -249,8 +249,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 
     let keep: Option<Vec<&str>> =
         field.map(|field| field.fields().iter().map(|child| child.name()).collect());
-    let (root, arrow_schema) =
-        RootReader::new(&header.schema, options.root_name(), keep.as_deref())?;
+    let (root, arrow_schema) = RootReader::new(&header.schema, options.name(), keep.as_deref())?;
 
     Ok(Box::new(AvroBatchReader {
         bytes,
@@ -261,7 +260,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         sync: header.sync,
         limits,
         root,
-        batch_size: options.batch_size().unwrap_or(DEFAULT_BATCH_ROWS).max(1),
+        batch_row_size: options
+            .batch_row_size()
+            .unwrap_or(DEFAULT_BATCH_ROWS)
+            .max(1),
         block: None,
         failed: false,
     }))
@@ -285,7 +287,7 @@ where
     H: IOBase + ?Sized,
 {
     reject_outer_coding(handle)?;
-    let root = field_from_arrow_schema(options.root_name(), batches.schema().as_ref())?;
+    let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let schema_json = schema_json_from_field(&root)?;
     let schema = Schema::from_json(&schema_json)?;
     // The canonical shape is what the encoder walks: casting each batch onto
@@ -361,7 +363,7 @@ struct AvroBatchReader {
     /// The columnar decoder.
     root: RootReader,
     /// Rows per yielded batch.
-    batch_size: usize,
+    batch_row_size: usize,
     /// The block being decoded: decompressed payload, offset, rows left.
     block: Option<(Vec<u8>, usize, u64)>,
     /// Whether an error ended the stream.
@@ -408,14 +410,14 @@ impl AvroBatchReader {
     /// Decode up to one batch of rows.
     fn next_batch(&mut self) -> crate::Result<Option<RecordBatch>> {
         let mut rows = 0_usize;
-        while rows < self.batch_size {
+        while rows < self.batch_row_size {
             let Some((payload, mut offset, mut left)) = self.block.take() else {
                 if !self.next_block()? {
                     break;
                 }
                 continue;
             };
-            while rows < self.batch_size && left > 0 {
+            while rows < self.batch_row_size && left > 0 {
                 let mut cursor = Cursor::new(&payload);
                 cursor.position = offset;
                 let mut budget = self.limits.max_nodes();
@@ -1421,10 +1423,10 @@ impl<H: IOBase> Avro<H> {
         self
     }
 
-    /// Return this container with a different inferred-root Field name.
+    /// Return this container with a different root Field name.
     #[must_use]
-    pub fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self {
-        self.options.set_root_name(root_name.into());
+    pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self {
+        self.options.set_name(name.into());
         self.invalidate_dimensions();
         self
     }
@@ -1570,7 +1572,7 @@ impl<H: IOBase> crate::io::IOMedia for Avro<H> {
         }
         if self.opened {
             if let Some(dimensions) = self.dimensions()? {
-                return Ok(dimensions.field.with_name(options.root_name()));
+                return Ok(dimensions.field.with_name(options.name()));
             }
         }
         Ok(read_field(&self.handle, options)?)

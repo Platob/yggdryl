@@ -1844,7 +1844,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     let published = target
         .clone()
         .or(Some(crate::arrow::field_from_arrow_schema(
-            delegated.root_name(),
+            delegated.name(),
             schema.as_ref(),
         )?));
     if commit_row_size.is_some() {
@@ -1935,7 +1935,7 @@ fn overwrite_arrow_reader_folder(
     let mut writer = partition::FolderWriter::new(folder, options)?;
     let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
     let schema = batches.schema();
-    let published = crate::arrow::field_from_arrow_schema(delegated.root_name(), schema.as_ref())?;
+    let published = crate::arrow::field_from_arrow_schema(delegated.name(), schema.as_ref())?;
     writer.set_options(routing_options(delegated, declared))?;
     if commit_row_size.is_none() {
         writer.overwrite(folder, batches)?;
@@ -2034,7 +2034,7 @@ fn prepare_leaf_arrow_write(
         Some(stored) => Some(stored),
         None if matches!(options, RecordOptions::Text(_)) => None,
         None => Some(crate::arrow::field_from_arrow_schema(
-            delegated.root_name(),
+            delegated.name(),
             batches.schema().as_ref(),
         )?),
     };
@@ -2377,7 +2377,7 @@ impl ArrowWriteSession {
         if matches!(self.target, Some(ArrowWriteTarget::EmptyLeaf)) {
             self.target = Some(ArrowWriteTarget::Leaf {
                 stored: crate::arrow::field_from_arrow_schema(
-                    self.delegated.root_name(),
+                    self.delegated.name(),
                     schema.as_ref(),
                 )?,
             });
@@ -2605,9 +2605,8 @@ pub(crate) fn select_reader(
     if names.is_empty() {
         return Ok(reader);
     }
-    let root =
-        crate::arrow::field_from_arrow_schema(options.root_name(), reader.schema().as_ref())?;
-    match crate::arrow::selected_root(&root, names, options.root_name())? {
+    let root = crate::arrow::field_from_arrow_schema(options.name(), reader.schema().as_ref())?;
+    match crate::arrow::selected_root(&root, names, options.name())? {
         Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
         None => Ok(reader),
     }
@@ -2621,6 +2620,7 @@ pub(crate) fn leaf_reader(
     use crate::generic::IORecordOptions;
 
     let declared = options.field();
+    let declared = declared.as_ref();
     let reader = match options {
         RecordOptions::Ipc(ipc) => crate::ipc::read_batch_reader(handle, declared, ipc)?,
         #[cfg(feature = "parquet")]
@@ -2724,7 +2724,7 @@ pub(crate) fn stored_field(
         return Ok(None);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
-    probe.set_root_name(smol_str::SmolStr::new(options.root_name()));
+    probe.set_name(smol_str::SmolStr::new(options.name()));
     Ok(Some(leaf_field(handle, &probe)?))
 }
 
@@ -2839,7 +2839,7 @@ fn target_field(
         return Ok(field);
     }
     Ok(crate::arrow::field_from_arrow_schema(
-        options.root_name(),
+        options.name(),
         incoming.schema().as_ref(),
     )?)
 }

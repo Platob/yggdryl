@@ -1437,7 +1437,7 @@ mod records {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_batch_size(1);
+            .with_batch_row_size(1);
 
         handle
             .write_arrow_reader(reader(), IOMode::Overwrite, &options)
@@ -1750,7 +1750,7 @@ mod records {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_batch_size(1);
+            .with_batch_row_size(1);
 
         handle
             .overwrite_records(
@@ -1899,7 +1899,7 @@ mod records {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_batch_size(1);
+            .with_batch_row_size(1);
         handle
             .overwrite_records(
                 [NativeRow {
@@ -1995,7 +1995,7 @@ mod records {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_batch_size(2)
+            .with_batch_row_size(2)
             .with_commit_row_size(3);
         let mut records = Vec::new();
         for id in 1..=3_i64 {
@@ -2043,7 +2043,7 @@ mod records {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_batch_size(2)
+            .with_batch_row_size(2)
             .with_max_row_size(3);
 
         handle.overwrite_records(records, &options).unwrap();

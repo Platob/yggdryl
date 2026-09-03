@@ -2113,9 +2113,9 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
     /// batches.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         if let Some(field) = options.field() {
-            return Ok(field.clone());
+            return Ok(field);
         }
-        Ok(self.schema()?.clone().with_name(options.root_name()))
+        Ok(self.schema()?.clone().with_name(options.name()))
     }
 
     /// Scan the current snapshot, the options' filters answered by the plan.
@@ -2125,7 +2125,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        let reader = self.scan_where(&pairs, options.field())?;
+        let reader = self.scan_where(&pairs, options.field().as_ref())?;
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied scan stops decoding data files.
         options.limit_arrow_reader(crate::io::select_reader(reader, options)?)

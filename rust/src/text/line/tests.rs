@@ -654,7 +654,7 @@ mod arrow_lines {
         let handle = named("app.log", LOG);
         let split = batches(
             handle
-                .read_arrow_lines(&options().with_batch_size(3))
+                .read_arrow_lines(&options().with_batch_row_size(3))
                 .unwrap(),
         );
         // Four records into batches of three: a full batch and the remainder.
@@ -1776,7 +1776,7 @@ mod batching {
     fn the_row_bound_closes_a_batch_at_exactly_that_many_rows() {
         let options = TextLineOptions::with_pattern(PATTERN)
             .unwrap()
-            .with_batch_size(7);
+            .with_batch_row_size(7);
         assert_eq!(row_counts(&even(15, 4), &options), [7, 7, 1]);
     }
 
@@ -1796,7 +1796,7 @@ mod batching {
         let handle = uneven(30);
         let both = TextLineOptions::with_pattern(PATTERN)
             .unwrap()
-            .with_batch_size(8)
+            .with_batch_row_size(8)
             .with_byte_size(8_000);
         let counts = row_counts(&handle, &both);
         // No batch exceeds the row bound, and the wide records close batches
@@ -1811,7 +1811,7 @@ mod batching {
         let handle = uneven(200);
         let by_rows = TextLineOptions::with_pattern(PATTERN)
             .unwrap()
-            .with_batch_size(16);
+            .with_batch_row_size(16);
         let by_bytes = TextLineOptions::with_pattern(PATTERN)
             .unwrap()
             .with_byte_size(16 * 1024);
@@ -1859,7 +1859,7 @@ mod batching {
         let handle = even(100, 4);
         let mut options = TextLineOptions::with_pattern(PATTERN).unwrap();
         // Explicitly beyond the corpus, which is what "unbounded" means here.
-        options.set_batch_size(Some(usize::MAX));
+        options.set_batch_row_size(Some(usize::MAX));
         options.set_byte_size(Some(usize::MAX));
         assert_eq!(row_counts(&handle, &options), [100]);
     }
@@ -1867,7 +1867,7 @@ mod batching {
     #[test]
     fn the_defaults_are_byte_driven_with_the_row_bound_as_a_guard() {
         assert_eq!(TextLineOptions::DEFAULT_BYTE_SIZE, 8 * 1024 * 1024);
-        assert_eq!(TextLineOptions::DEFAULT_BATCH_SIZE, 65_536);
+        assert_eq!(TextLineOptions::DEFAULT_BATCH_ROW_SIZE, 65_536);
 
         // A small corpus is one batch under the defaults, where the old
         // 1024-row default would have split it - a deliberate change.
@@ -2145,7 +2145,7 @@ linesep: '\r\n'
 lstrip: none
 rstrip: ascii
 byte_size: 1048576
-batch_size: 4096
+batch_row_size: 4096
 timestamp_capture: stamp
 timezone: 'Europe/Paris'
 capture_types:
@@ -2160,7 +2160,7 @@ custom_fields:
         assert!(matches!(options.lstrip(), Strip::None));
         assert!(matches!(options.rstrip(), Strip::Ascii));
         assert_eq!(options.byte_size(), Some(1_048_576));
-        assert_eq!(options.batch_size(), Some(4_096));
+        assert_eq!(options.batch_row_size(), Some(4_096));
         assert_eq!(options.timestamp_capture(), Some("stamp"));
         assert_eq!(
             options.timezone().map(crate::Timezone::as_str),
@@ -2214,7 +2214,7 @@ custom_fields:
             .with_lstrip(Strip::Characters(" \t".into()))
             .with_rstrip(Strip::None)
             .with_byte_size(4_096)
-            .with_batch_size(128)
+            .with_batch_row_size(128)
             .try_with_timestamp_capture("stamp")
             .unwrap()
             .try_with_timezone("+05:30".parse().unwrap())
@@ -2229,7 +2229,7 @@ custom_fields:
         assert_eq!(restored.header(), options.header());
         assert_eq!(restored.linesep(), options.linesep());
         assert_eq!(restored.byte_size(), options.byte_size());
-        assert_eq!(restored.batch_size(), options.batch_size());
+        assert_eq!(restored.batch_row_size(), options.batch_row_size());
         assert_eq!(restored.timestamp_capture(), options.timestamp_capture());
         assert_eq!(restored.timezone(), options.timezone());
         assert_eq!(restored.capture_types(), options.capture_types());
@@ -2266,7 +2266,7 @@ custom_fields:
             restored.opening().stable_hash()
         );
 
-        let changed = restored.with_batch_size(7);
+        let changed = restored.with_batch_row_size(7);
         assert_ne!(options, changed);
         assert_ne!(options.stable_hash(), changed.stable_hash());
     }

@@ -13,7 +13,7 @@ use crate::io::IOBase;
 use crate::{Field, Result};
 
 /// The root name a schema inferred from an incoming reader is given.
-const ROOT_NAME: &str = "row";
+const ROOT_NAME: &str = crate::generic::DEFAULT_ROOT_NAME;
 
 /// The tables of one namespace - or of the warehouse root - as a lazy view.
 ///

@@ -194,7 +194,7 @@ pub trait IOMedia: Send {
         }
         let schema = self.read_arrow_reader(options)?.schema();
         Ok(crate::arrow::field_from_arrow_schema(
-            options.root_name(),
+            options.name(),
             schema.as_ref(),
         )?)
     }
@@ -522,7 +522,7 @@ pub trait IOMedia: Send {
     /// standard library supplies its `TryInto` implementation.
     ///
     /// Rows are converted lazily and held only for the current
-    /// [`batch_size`](crate::generic::IORecordOptions::batch_size), additionally
+    /// [`batch_row_size`](crate::generic::IORecordOptions::batch_row_size), additionally
     /// bounded by `commit_row_size` when it is smaller so conversion never
     /// reads past the next publication. The exact
     /// declared schema reaches the reader primitive unchanged. Its one shaping
@@ -586,7 +586,7 @@ pub trait IOMedia: Send {
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_size(),
+            options.write_batch_row_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;
@@ -622,7 +622,7 @@ pub trait IOMedia: Send {
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_size(),
+            options.write_batch_row_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;
@@ -658,7 +658,7 @@ pub trait IOMedia: Send {
         let batches = crate::arrow::rows::reader(
             &field,
             records,
-            options.write_batch_size(),
+            options.write_batch_row_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;

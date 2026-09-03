@@ -64,7 +64,7 @@ pub(crate) fn codec_benchmarks(criterion: &mut Criterion) {
             );
             let options = AvroOptions::new()
                 .with_codec(codec)
-                .with_batch_size(block_rows);
+                .with_batch_row_size(block_rows);
             let batches: Vec<RecordBatch> = (0..ROWS / block_rows)
                 .map(|index| batch(index * block_rows, block_rows))
                 .collect();

@@ -86,7 +86,7 @@ const FIRST_BATCH_ROWS: usize = 1_024;
 pub(crate) fn lines_identity_benchmarks(criterion: &mut Criterion) {
     let lines = TextLineOptions::with_pattern(PATTERN)
         .expect("a valid pattern")
-        .with_batch_size(FIRST_BATCH_ROWS);
+        .with_batch_row_size(FIRST_BATCH_ROWS);
     let opening = lines.opening().clone();
     let text = TextOptions::with_lines(lines.clone());
     let record = RecordOptions::from(text.clone());
@@ -254,7 +254,7 @@ pub(crate) fn lines_first_benchmarks(criterion: &mut Criterion) {
     // the first and only batch closes at EOF and measures a full drain.
     let options = TextLineOptions::with_pattern(PATTERN)
         .expect("a valid pattern")
-        .with_batch_size(FIRST_BATCH_ROWS);
+        .with_batch_row_size(FIRST_BATCH_ROWS);
     let text = corpus();
     let gzip = yggdryl::gzip::dump(text.as_bytes()).expect("a gzip fixture");
     let zlib = yggdryl::zlib::dump(text.as_bytes()).expect("a zlib fixture");
@@ -706,7 +706,7 @@ pub(crate) fn lines_shape_benchmarks(criterion: &mut Criterion) {
 
     // The spread each bound produces, measured once and reported in the docs.
     for (label, options) in [
-        ("rows", base.clone().with_batch_size(1_024)),
+        ("rows", base.clone().with_batch_row_size(1_024)),
         ("bytes", base.clone().with_byte_size(1 << 20)),
     ] {
         let sizes: Vec<usize> = handle

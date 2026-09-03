@@ -12,7 +12,7 @@
 use smol_str::SmolStr;
 
 use crate::generic::IORecordOptions;
-use crate::{Field, Level};
+use crate::{DataType, Level, Metadata};
 
 use super::options::TextLineOptions;
 
@@ -47,10 +47,12 @@ use super::options::TextLineOptions;
 pub struct TextOptions {
     /// The extractor the lines are parsed under.
     pub lines: TextLineOptions,
-    /// Declared canonical schema the projected rows are cast onto.
-    pub field: Option<Field>,
-    /// Root Field name used for an inferred schema.
-    pub root_name: SmolStr,
+    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::generic::DEFAULT_ROOT_NAME) unless set.
+    pub name: SmolStr,
+    /// Declared root datatype; the extractor's own projection when absent.
+    pub dtype: Option<DataType>,
+    /// Root metadata; empty unless declared.
+    pub metadata: Metadata,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Compression level applied when the handle declares a coding.
@@ -84,8 +86,9 @@ impl TextOptions {
     pub fn with_lines(lines: TextLineOptions) -> Self {
         Self {
             lines,
-            field: None,
-            root_name: SmolStr::new_static(super::options::ROOT_NAME),
+            name: SmolStr::new_static(crate::generic::DEFAULT_ROOT_NAME),
+            dtype: None,
+            metadata: Metadata::new(),
             safe: false,
             level: Level::DEFAULT,
             merge_by_names: Vec::new(),
@@ -111,24 +114,28 @@ impl TextOptions {
 }
 
 impl IORecordOptions for TextOptions {
-    fn field(&self) -> Option<&Field> {
-        self.field.as_ref()
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 
-    fn set_field(&mut self, field: Field) {
-        self.field = Some(field);
+    fn set_name(&mut self, name: SmolStr) {
+        self.name = name;
     }
 
-    fn take_field(&mut self) -> Option<Field> {
-        self.field.take()
+    fn dtype(&self) -> Option<&DataType> {
+        self.dtype.as_ref()
     }
 
-    fn root_name(&self) -> &str {
-        &self.root_name
+    fn set_dtype(&mut self, dtype: Option<DataType>) {
+        self.dtype = dtype;
     }
 
-    fn set_root_name(&mut self, root_name: SmolStr) {
-        self.root_name = root_name;
+    fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
+    fn set_metadata(&mut self, metadata: Metadata) {
+        self.metadata = metadata;
     }
 
     fn safe(&self) -> bool {
@@ -140,12 +147,12 @@ impl IORecordOptions for TextOptions {
     }
 
     /// The row bound is the extractor's own, so there is one source of truth.
-    fn batch_size(&self) -> Option<usize> {
-        self.lines.batch_size()
+    fn batch_row_size(&self) -> Option<usize> {
+        self.lines.batch_row_size()
     }
 
-    fn set_batch_size(&mut self, batch_size: Option<usize>) {
-        self.lines.set_batch_size(batch_size);
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
+        self.lines.set_batch_row_size(batch_row_size);
     }
 
     fn max_row_size(&self) -> Option<u64> {
