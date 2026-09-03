@@ -20,10 +20,10 @@ use yggdryl::{Codec, IOMode, Level};
 use crate::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
 use crate::field::{PyField, core_field_from_value};
 use crate::record::{
-    Frames, PyRecordOptions, batch_reader_from_arrow_reader, batch_reader_from_arrow_table,
-    batch_reader_from_records, batch_reader_to_pyarrow, core_record_options_from_value,
-    core_root_field_from_value, frame_batch_reader, frame_from_reader, frames_batch_reader,
-    frames_from_reader, record_batch_from_value,
+    Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
+    batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
+    core_record_options_from_value, core_root_field_from_value, frame_batch_reader,
+    frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
 use crate::scalar::{PyScalar, from_py};
 use crate::uri::{PyUrl, core_url_from_value};
@@ -886,6 +886,23 @@ impl PyIOBase {
         let held = std::mem::replace(&mut slf.inner, Holder::Buffer(yggdryl::io::Buffer::new()));
         slf.inner = held.buffered(options);
         Ok(slf)
+    }
+
+    /// Retain this handle as plain-text record media.
+    ///
+    /// The handle is updated in place and returned for chaining. Repeating the
+    /// call replaces explicit options without stacking another text wrapper.
+    #[pyo3(signature = (options = None))]
+    fn into_text<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        options: Option<PyRef<'_, PyTextOptions>>,
+    ) -> PyRefMut<'py, Self> {
+        let held = std::mem::replace(&mut slf.inner, Holder::Buffer(yggdryl::io::Buffer::new()));
+        slf.inner = match options {
+            Some(options) => held.into_text_with(options.inner.clone()),
+            None => held.into_text(),
+        };
+        slf
     }
 
     /// Materialize the resource and cache what repeated calls would re-derive.

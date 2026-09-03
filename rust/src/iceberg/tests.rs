@@ -5332,7 +5332,7 @@ mod line_projection {
         let path = root("text-record-media");
         let source = named(b"[INFO] id=7 first  \n[WARN] id=42 second\n");
         let mut options: RecordOptions = TextOptions::new()
-            .try_with_header(HEADER)
+            .try_with_rowheader(HEADER)
             .unwrap()
             .try_with_rstrip(r"\s+$")
             .unwrap()

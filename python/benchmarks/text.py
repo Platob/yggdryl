@@ -23,11 +23,11 @@ from typing import Callable
 
 import pyarrow as pa
 
-from yggdryl import IOBase, RecordOptions
+from yggdryl import IOBase, TextOptions
 
 ROWS = 50_000
-HEADER = r"^(?P<stamp>\S+) \[(?P<level>[A-Z]+)\] id=(?P<id>\d+)"
-COMPILED = re.compile(HEADER)
+ROWHEADER = r"^(?P<stamp>\S+) \[(?P<level>[A-Z]+)\] id=(?P<id>\d+)"
+COMPILED = re.compile(ROWHEADER)
 ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-text-"))
 PLAIN = ROOT / "events.log"
 CODED = ROOT / "events.log.gz"
@@ -41,9 +41,9 @@ def corpus() -> str:
     )
 
 
-def options() -> RecordOptions:
-    value = RecordOptions("text/plain")
-    value.header = HEADER
+def options() -> TextOptions:
+    value = TextOptions()
+    value.rowheader = ROWHEADER
     value.lstrip = r"^\s+"
     value.rstrip = r"\s+$"
     return value
@@ -53,9 +53,10 @@ TEXT_OPTIONS = options()
 
 
 def native(target: pathlib.Path) -> int:
+    handle = IOBase(target).into_text(TEXT_OPTIONS)
     return sum(
         batch.num_rows
-        for batch in IOBase(target).read_arrow_reader(options=TEXT_OPTIONS)
+        for batch in handle.read_arrow_reader()
     )
 
 

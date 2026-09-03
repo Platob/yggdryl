@@ -76,6 +76,7 @@ function installRecords({
   Field,
   IOBase,
   RecordOptions,
+  TextOptions,
   Table,
   Tables,
 }) {
@@ -100,6 +101,11 @@ function installRecords({
     throw new TypeError('native binding is missing RecordOptions._requireWritePreflightNative')
   }
   delete RecordOptions.prototype._requireWritePreflightNative
+  const textRecordOptions = TextOptions.prototype._recordOptionsNative
+  if (typeof textRecordOptions !== 'function') {
+    throw new TypeError('native binding is missing TextOptions._recordOptionsNative')
+  }
+  delete TextOptions.prototype._recordOptionsNative
   const beginWriteSession = IOBase.prototype._beginArrowWriteSessionNative
   if (typeof beginWriteSession !== 'function') {
     throw new TypeError(
@@ -562,6 +568,7 @@ function installRecords({
   function recordOptions(options) {
     if (options === undefined || options === null) return options
     if (options instanceof RecordOptions) return options
+    if (options instanceof TextOptions) return textRecordOptions.call(options)
     return RecordOptions.from(options)
   }
 

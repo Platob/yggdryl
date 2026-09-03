@@ -5,7 +5,7 @@
 //! media type, which is what [`crate::io::JsIOBase::record_options`] reads off
 //! the handle.
 
-use napi::bindgen_prelude::{Buffer, Either, Result, Uint8Array};
+use napi::bindgen_prelude::{Buffer, Result};
 use napi_derive::napi;
 use yggdryl::generic::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
@@ -322,75 +322,6 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
         self.inner.set_filter_partitions(filter_partitions);
-    }
-
-    /// The regex searched for a header in each text row.
-    #[napi(getter)]
-    pub fn header(&self) -> Option<String> {
-        self.inner.header().map(ToOwned::to_owned)
-    }
-
-    /// Compile or clear the text header regex.
-    #[napi(setter)]
-    pub fn set_header(&mut self, header: Option<String>) -> Result<()> {
-        self.inner.set_header(header.as_deref()).map_err(napi_error)
-    }
-
-    /// The regex removed only when it matches the body's left edge.
-    #[napi(getter)]
-    pub fn lstrip(&self) -> Option<String> {
-        self.inner.lstrip().map(ToOwned::to_owned)
-    }
-
-    /// Compile or clear the text left-edge regex.
-    #[napi(setter)]
-    pub fn set_lstrip(&mut self, lstrip: Option<String>) -> Result<()> {
-        self.inner.set_lstrip(lstrip.as_deref()).map_err(napi_error)
-    }
-
-    /// The regex removed only when it matches the body's right edge.
-    #[napi(getter)]
-    pub fn rstrip(&self) -> Option<String> {
-        self.inner.rstrip().map(ToOwned::to_owned)
-    }
-
-    /// Compile or clear the text right-edge regex.
-    #[napi(setter)]
-    pub fn set_rstrip(&mut self, rstrip: Option<String>) -> Result<()> {
-        self.inner.set_rstrip(rstrip.as_deref()).map_err(napi_error)
-    }
-
-    /// The exact text row terminator; `null` accepts LF, CRLF, or CR.
-    #[napi(getter)]
-    pub fn linesep(&self) -> Option<Buffer> {
-        self.inner
-            .linesep()
-            .map(|linesep| linesep.as_bytes().to_vec().into())
-    }
-
-    /// Pin a text terminator from an escaped string or exact bytes, or clear it.
-    #[napi(setter)]
-    pub fn set_linesep(&mut self, value: Option<Either<String, Uint8Array>>) -> Result<()> {
-        let linesep = value
-            .map(|value| match value {
-                Either::A(value) => value.parse(),
-                Either::B(value) => yggdryl::text::LineSep::new(value.as_ref()),
-            })
-            .transpose()
-            .map_err(napi_error)?;
-        self.inner.set_linesep(linesep).map_err(napi_error)
-    }
-
-    /// Whether named header captures infer their datatype from the first batch.
-    #[napi(getter)]
-    pub fn autotype(&self) -> Option<bool> {
-        self.inner.autotype()
-    }
-
-    /// Enable or disable adaptive text capture typing.
-    #[napi(setter)]
-    pub fn set_autotype(&mut self, autotype: bool) -> Result<()> {
-        self.inner.set_autotype(autotype).map_err(napi_error)
     }
 
     /// The timezone applied while autotyping offset-free timestamps.

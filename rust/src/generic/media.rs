@@ -63,6 +63,8 @@ pub enum Media {
     Parquet(crate::parquet::Parquet<Holder>),
     /// An Apache Avro object container.
     Avro(crate::avro::Avro<Holder>),
+    /// Plain-text rows under one retained flat configuration.
+    Text(crate::text::Text<Holder>),
 }
 
 impl Media {
@@ -97,9 +99,12 @@ impl Media {
         if base == &MimeType::AVRO {
             return Ok(Self::Avro(crate::avro::Avro::new(handle)));
         }
+        if base == &MimeType::PLAIN_TEXT {
+            return Ok(Self::Text(crate::text::Text::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro), got {base}",
+             (application/vnd.apache.arrow.stream{}, application/avro, text/plain), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -124,6 +129,11 @@ impl Media {
         Self::Avro(crate::avro::Avro::new(handle))
     }
 
+    /// Hold plain-text record media over a handle.
+    pub fn text(handle: Holder) -> Self {
+        Self::Text(crate::text::Text::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -132,6 +142,7 @@ impl Media {
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
+            Self::Text(text) => Self::Text(text.with_field(field)),
         }
     }
 
@@ -142,6 +153,7 @@ impl Media {
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
+            Self::Text(text) => text,
         }
     }
 
@@ -152,6 +164,7 @@ impl Media {
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
+            Self::Text(text) => text,
         }
     }
 
@@ -167,6 +180,7 @@ impl Media {
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
+            Self::Text(text) => text,
         }
     }
 
@@ -177,6 +191,7 @@ impl Media {
             #[cfg(feature = "parquet")]
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
+            Self::Text(text) => text,
         }
     }
 }
@@ -406,6 +421,12 @@ impl From<crate::parquet::Parquet<Holder>> for Media {
 impl From<crate::avro::Avro<Holder>> for Media {
     fn from(value: crate::avro::Avro<Holder>) -> Self {
         Self::Avro(value)
+    }
+}
+
+impl From<crate::text::Text<Holder>> for Media {
+    fn from(value: crate::text::Text<Holder>) -> Self {
+        Self::Text(value)
     }
 }
 

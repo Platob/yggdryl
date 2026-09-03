@@ -156,8 +156,8 @@ impl<R: Read> RawRows<R> {
     fn parse(options: &TextOptions, url: &str, line: &[u8], rownum: i64) -> Result<RawRow> {
         let mut captures = vec![None; options.capture_names().len()];
         let mut body = Vec::with_capacity(line.len());
-        if let Some(header) = options.header_regex() {
-            if let Some(found) = header.captures(line) {
+        if let Some(rowheader) = options.rowheader_regex() {
+            if let Some(found) = rowheader.captures(line) {
                 if let Some(whole) = found.get(0) {
                     body.extend_from_slice(&line[..whole.start()]);
                     body.extend_from_slice(&line[whole.end()..]);
@@ -165,7 +165,7 @@ impl<R: Read> RawRows<R> {
                     body.extend_from_slice(line);
                 }
                 for (target, (index, name)) in captures.iter_mut().zip(
-                    header
+                    rowheader
                         .capture_names()
                         .enumerate()
                         .filter_map(|(index, name)| name.map(|name| (index, name))),
@@ -179,7 +179,7 @@ impl<R: Read> RawRows<R> {
                             url,
                             name,
                             format_smolstr!(
-                                "expected a UTF-8 header capture, got invalid byte at {}",
+                                "expected a UTF-8 row-header capture, got invalid byte at {}",
                                 error.valid_up_to()
                             ),
                         )

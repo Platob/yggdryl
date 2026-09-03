@@ -33,7 +33,7 @@ pub use io::{
     into_io_all_with_formatting, into_io_with_formatting, into_io_with_level,
 };
 pub use limits::Limits;
-pub use line::{LineSep, TextOptions};
+pub use line::{LineSep, Text, TextOptions};
 pub use loading::Loading;
 pub use placeholder::Placeholders;
 

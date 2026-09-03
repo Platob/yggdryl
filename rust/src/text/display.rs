@@ -46,9 +46,9 @@ pub const fn stable_hash_bytes(bytes: &[u8]) -> u64 {
 ///
 /// The fold is associative over the chunk boundary, so the chunks of a value
 /// and the contiguous value hash **identically**. That is what lets a message
-/// spliced from two spans - the record with the header removed from the middle
+/// spliced from two spans - the record with the row header removed from the middle
 /// of a line - hash the same as the equivalent joined string, without ever
-/// building the join. A hash that depended on where the header sat in the line
+/// building the join. A hash that depended on where the row header sat in the line
 /// would be a silent correctness bug.
 ///
 /// ```

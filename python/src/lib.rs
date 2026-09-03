@@ -307,6 +307,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<io::PyRecordIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;
     module.add_class::<record::PyRecordOptions>()?;
+    module.add_class::<record::PyTextOptions>()?;
     module.add_class::<iceberg::PyCatalog>()?;
     module.add_class::<iceberg::PyNamespace>()?;
     module.add_class::<iceberg::PyNamespaces>()?;

@@ -2,7 +2,7 @@ use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray};
 
 use crate::generic::{IORecordOptions as _, RecordOptions};
 use crate::io::{Buffer, IOBase as _, IOMedia as _};
-use crate::text::{LineSep, TextOptions};
+use crate::text::{LineSep, Text, TextOptions};
 use crate::{DataType, Timezone};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
@@ -13,14 +13,27 @@ fn named(name: &str, bytes: &[u8]) -> Buffer {
     )
 }
 
-fn options(header: &str) -> RecordOptions {
-    TextOptions::new().try_with_header(header).unwrap().into()
+fn options(rowheader: &str) -> TextOptions {
+    TextOptions::new().try_with_rowheader(rowheader).unwrap()
+}
+
+fn assert_text_buffer(_: &Text<Buffer>) {}
+
+#[test]
+fn repeated_text_conversion_reconfigures_one_wrapper() {
+    let text = named("app.log", b"body\n")
+        .into_text()
+        .into_text()
+        .into_text_with(options(r"(?<value>body)"));
+
+    assert_text_buffer(&text);
+    assert_eq!(text.options().rowheader(), Some(r"(?<value>body)"));
 }
 
 #[test]
-fn options_are_flat_and_validate_header_names() {
+fn options_are_flat_and_validate_rowheader_names() {
     let mut options = TextOptions::new()
-        .try_with_header(r"\[(?<level>[A-Z]+)\] (?<id>\d+)")
+        .try_with_rowheader(r"\[(?<level>[A-Z]+)\] (?<id>\d+)")
         .unwrap()
         .try_with_lstrip(r"^\s+")
         .unwrap()
@@ -31,7 +44,10 @@ fn options_are_flat_and_validate_header_names() {
         .with_timezone(Timezone::UTC);
     options.set_batch_row_size(Some(7));
 
-    assert_eq!(options.header(), Some(r"\[(?<level>[A-Z]+)\] (?<id>\d+)"));
+    assert_eq!(
+        options.rowheader(),
+        Some(r"\[(?<level>[A-Z]+)\] (?<id>\d+)")
+    );
     assert_eq!(options.lstrip(), Some(r"^\s+"));
     assert_eq!(options.rstrip(), Some(r"\s+$"));
     assert_eq!(options.linesep(), Some(&LineSep::CRLF));
@@ -40,7 +56,7 @@ fn options_are_flat_and_validate_header_names() {
     assert_eq!(options.batch_row_size(), Some(7));
 
     let error = TextOptions::new()
-        .try_with_header(r"(?<body>.+)")
+        .try_with_rowheader(r"(?<body>.+)")
         .unwrap_err()
         .to_string();
     assert!(error.contains("distinct from url, rownum, and body"));
@@ -52,9 +68,10 @@ fn ordinary_record_reading_emits_base_columns_and_adaptive_captures() {
         "app.log",
         b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
     );
-    let mut options = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
-    options.set_lstrip(Some(r"^\s+")).unwrap();
-    options.set_rstrip(Some(r"\s+$")).unwrap();
+    let mut text = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
+    text.set_lstrip(Some(r"^\s+")).unwrap();
+    text.set_rstrip(Some(r"\s+$")).unwrap();
+    let options = text.into();
 
     let batches = source
         .read_arrow_reader(&options)
@@ -108,7 +125,8 @@ fn ordinary_record_reading_emits_base_columns_and_adaptive_captures() {
 #[test]
 fn autotype_can_be_disabled_and_is_fixed_after_the_first_batch() {
     let mut strings = options(r"(?<value>\S+)");
-    strings.set_autotype(false).unwrap();
+    strings.set_autotype(false);
+    let strings = strings.into();
     let batch = named("values.log", b"1\nword\n")
         .read_arrow_reader(&strings)
         .unwrap()
@@ -122,12 +140,69 @@ fn autotype_can_be_disabled_and_is_fixed_after_the_first_batch() {
 
     let mut adaptive = options(r"(?<value>\S+)");
     adaptive.set_batch_row_size(Some(1));
+    let adaptive = adaptive.into();
     let mut reader = named("values.log", b"1\nword\n")
         .read_arrow_reader(&adaptive)
         .unwrap();
     assert!(reader.next().unwrap().is_ok());
     let error = reader.next().unwrap().unwrap_err().to_string();
     assert!(error.contains("inferred datatype int64"));
+}
+
+#[test]
+fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
+    let source = named(
+        "execution.log",
+        b"2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] \
+[ModuleFailFastFilterChecker] (DEBUG) Execution report \
+(execId: 20260828180000369318, from session:\n",
+    );
+    let text = TextOptions::new()
+        .try_with_rowheader(concat!(
+            r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}_\d{3}) ",
+            r"\[(?<thread>[^]]+)\] \[(?<module>[^]]+)\] \((?<level>[A-Z]+)\) ",
+        ))
+        .unwrap();
+    let mut options: RecordOptions = text.into();
+    options.set_timezone(Some(Timezone::UTC)).unwrap();
+
+    let batch = source
+        .read_arrow_reader(&options)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field(3).data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
+    );
+    assert_eq!(
+        batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(0),
+        b"Execution report (execId: 20260828180000369318, from session:"
+    );
+    assert_eq!(
+        batch
+            .column(4)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .value(0),
+        "77-2f3e6ff7:9f4d2a08b1:128"
+    );
+    assert_eq!(
+        batch
+            .column(5)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .value(0),
+        "ModuleFailFastFilterChecker"
+    );
 }
 
 #[test]

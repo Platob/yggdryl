@@ -5,6 +5,7 @@ import {
   type IOCursor,
   MediaType,
   RecordOptions,
+  TextOptions,
   Timezone,
   Url,
   type BatchReader,
@@ -157,8 +158,8 @@ void cachedHandle
 void patched
 void appended
 void copied
-const textOptions: RecordOptions = RecordOptions.from('text/plain')
-textOptions.header = '\\[(?<level>[A-Z]+)\\]'
+const textOptions: TextOptions = new TextOptions()
+textOptions.rowheader = '\\[(?<level>[A-Z]+)\\]'
 textOptions.lstrip = '^\\s+'
 textOptions.rstrip = '\\s+$'
 textOptions.linesep = new Uint8Array([13, 10])
@@ -168,15 +169,16 @@ textOptions.autotype = true
 textOptions.timezone = Timezone.UTC
 textOptions.timezone = 'Europe/Paris'
 textOptions.timezone = null
-const textHeader: string | null = textOptions.header
+const textHeader: string | null = textOptions.rowheader
 const textLstrip: string | null = textOptions.lstrip
 const textRstrip: string | null = textOptions.rstrip
 const textLinesep: Buffer | null = textOptions.linesep
-const textAutotype: boolean | null = textOptions.autotype
+const textAutotype: boolean = textOptions.autotype
 const textTimezone: Timezone | null = textOptions.timezone
 const lineBatches: BatchReader = handle.readArrowReader(textOptions)
 const lineRecords: IterableIterator<Record<string, unknown>> =
   handle.readRecords(textOptions)
+const retainedText: IOBase = handle.intoText(textOptions)
 handle.overwriteRecords([{ body: Buffer.from('one') }], textOptions)
 handle.appendRecords([{ body: Buffer.from('two') }], textOptions)
 
@@ -188,6 +190,7 @@ void textRstrip
 void textLinesep
 void textAutotype
 void textTimezone
+void retainedText
 
 const coding: string | null = handle.codec
 const encoded: number = handle.compressInto(memory)

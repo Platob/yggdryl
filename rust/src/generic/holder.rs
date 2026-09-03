@@ -57,6 +57,12 @@ pub enum Holder {
     /// The box is what keeps the enum a fixed size: this variant holds a
     /// handle of the very type it belongs to.
     Buffered(Box<Buffered<Self>>),
+    /// Any handle retained as plain-text record media.
+    ///
+    /// Boxed because the text wrapper owns another `Holder` while keeping its
+    /// flat [`TextOptions`](crate::text::TextOptions) as the default record
+    /// configuration.
+    Text(Box<crate::text::Text<Self>>),
     /// Any of the others, retained behind its inferred record encoding.
     ///
     /// The box breaks the recursive shape: a [`Media`](crate::generic::Media)
@@ -126,8 +132,7 @@ impl Holder {
     ///
     /// The conversion is lazy: it only adds the stateful wrapper and reads no
     /// bytes. IPC, Parquet (when enabled), and Avro are held through
-    /// [`Self::Media`]. Plain text needs no wrapper: the ordinary record-media
-    /// methods select its decoder through [`RecordOptions`](super::RecordOptions).
+    /// [`Self::Media`]; plain text is retained through [`Self::Text`].
     /// A page cache remains the outermost wrapper, so promotion followed by
     /// repeated buffering cannot stack caches.
     ///
@@ -152,6 +157,7 @@ impl Holder {
             let supported = base == crate::MimeType::ARROW_STREAM
                 || base == crate::MimeType::ARROW_FILE
                 || base == crate::MimeType::AVRO
+                || base == crate::MimeType::PLAIN_TEXT
                 || cfg!(feature = "parquet") && base == crate::MimeType::PARQUET;
             if !supported {
                 return self;
@@ -172,6 +178,9 @@ impl Holder {
             #[cfg(feature = "parquet")]
             if base == crate::MimeType::PARQUET {
                 return Self::Media(Box::new(crate::generic::Media::parquet(self)));
+            }
+            if base == crate::MimeType::PLAIN_TEXT {
+                return self.into_text();
             }
             debug_assert_eq!(base, crate::MimeType::AVRO);
             Self::Media(Box::new(crate::generic::Media::avro(self)))
@@ -199,9 +208,45 @@ impl Holder {
     #[cfg(feature = "arrow")]
     fn has_media_surface(&self) -> bool {
         match self {
-            Self::Media(_) => true,
+            Self::Media(_) | Self::Text(_) => true,
             Self::Buffered(buffered) => buffered.handle().has_media_surface(),
             _ => false,
+        }
+    }
+
+    /// Retain this holder as plain-text record media.
+    ///
+    /// Repeating the conversion preserves the existing `TextOptions`, and a
+    /// page cache stays the outermost wrapper.
+    #[must_use]
+    pub fn into_text(self) -> Self {
+        match self {
+            Self::Text(text) => Self::Text(text),
+            Self::Buffered(buffered) => {
+                let options = *buffered.options();
+                let held = buffered.into_handle().into_text();
+                Self::Buffered(Box::new(Buffered::new(held, options)))
+            }
+            other => Self::Text(Box::new(crate::text::Text::new(other))),
+        }
+    }
+
+    /// Retain this holder as plain-text record media with explicit options.
+    ///
+    /// Repeating the conversion replaces the retained text configuration
+    /// without nesting another media wrapper.
+    #[must_use]
+    pub fn into_text_with(self, options: crate::text::TextOptions) -> Self {
+        match self {
+            Self::Text(text) => Self::Text(Box::new(text.with_options(options))),
+            Self::Buffered(buffered) => {
+                let buffered_options = *buffered.options();
+                let held = buffered.into_handle().into_text_with(options);
+                Self::Buffered(Box::new(Buffered::new(held, buffered_options)))
+            }
+            other => Self::Text(Box::new(
+                crate::text::Text::new(other).with_options(options),
+            )),
         }
     }
 
@@ -216,6 +261,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
+            Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
         }
@@ -232,6 +278,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
+            Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
         }
@@ -249,6 +296,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
+            Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
         }
@@ -266,6 +314,7 @@ impl Holder {
             Self::ArrowPath(inner) => inner,
             Self::ArrowFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
+            Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
         }
@@ -523,6 +572,12 @@ impl From<crate::arrowfs::File> for Holder {
 impl From<Buffered<Holder>> for Holder {
     fn from(value: Buffered<Self>) -> Self {
         Self::Buffered(Box::new(value))
+    }
+}
+
+impl From<crate::text::Text<Holder>> for Holder {
+    fn from(value: crate::text::Text<Self>) -> Self {
+        Self::Text(Box::new(value))
     }
 }
 

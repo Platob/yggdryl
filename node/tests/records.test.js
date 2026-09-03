@@ -14,7 +14,16 @@ const arrow = require('apache-arrow')
 const nativeBinding = require('../index.js')
 const requireWritePreflightNative =
   nativeBinding.RecordOptions.prototype._requireWritePreflightNative
-const { BatchReader, DataType, Field, IOBase, MimeType, RecordOptions, fields } = require('yggdryl')
+const {
+  BatchReader,
+  DataType,
+  Field,
+  IOBase,
+  MimeType,
+  RecordOptions,
+  TextOptions,
+  fields,
+} = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-records-'))
@@ -344,11 +353,6 @@ test('record option value protocols delegate every encoding to the core', () => 
   const text = RecordOptions.from('trades.txt')
     .withName('line')
     .withBatchRowSize(32)
-  text.header = '(?<id>\\d+)'
-  text.lstrip = '^\\s+'
-  text.rstrip = '\\s+$'
-  text.linesep = '\\r\\n'
-  text.autotype = false
   text.timezone = '+02:00'
   const variants = [
     RecordOptions.from('trades.arrows')
@@ -388,6 +392,27 @@ test('record option value protocols delegate every encoding to the core', () => 
       assert.notEqual(variants[left].compare(variants[right]), 0)
     }
   }
+})
+
+test('text options value protocols include every flat text setting', () => {
+  const options = new TextOptions()
+    .withName('line')
+    .withBatchRowSize(32)
+    .withSelectByNames(['body'])
+  options.rowheader = '(?<id>\\d+)'
+  options.lstrip = '^\\s+'
+  options.rstrip = '\\s+$'
+  options.linesep = '\\r\\n'
+  options.autotype = false
+  options.timezone = '+02:00'
+
+  const clone = options.clone()
+  assert.ok(clone.equals(options))
+  assert.equal(clone.compare(options), 0)
+  assert.equal(clone.stableHash(), options.stableHash())
+  clone.safe = true
+  assert.ok(!clone.equals(options))
+  assert.notEqual(clone.compare(options), 0)
 })
 
 test('a setting one encoding has is absent on the others', (t) => {

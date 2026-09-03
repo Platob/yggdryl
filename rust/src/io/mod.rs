@@ -1493,6 +1493,26 @@ pub trait IOBase: Send + IOMedia {
         crate::buffered::Buffered::new(self, options)
     }
 
+    /// Consume this handle into plain-text record media.
+    ///
+    /// The wrapper is lazy and adds no line-only API. Its retained
+    /// [`TextOptions`](crate::text::TextOptions) become the defaults for the
+    /// ordinary [`IOMedia`] record methods.
+    fn into_text(self) -> crate::text::Text<Self>
+    where
+        Self: Sized,
+    {
+        crate::text::Text::new(self)
+    }
+
+    /// Consume this handle into plain-text record media with explicit options.
+    fn into_text_with(self, options: crate::text::TextOptions) -> crate::text::Text<Self>
+    where
+        Self: Sized,
+    {
+        crate::text::Text::new(self).with_options(options)
+    }
+
     /// Borrow a streaming writer positioned at `offset`.
     fn writer_at(&mut self, offset: u64) -> Writer<'_>
     where

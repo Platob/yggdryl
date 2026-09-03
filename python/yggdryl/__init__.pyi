@@ -11,6 +11,7 @@ from ._native import (
     ProtocolMetadata as ProtocolMetadata,
     RecordOptions as RecordOptions,
     Statement as Statement,
+    TextOptions as TextOptions,
     Timezone as Timezone,
     Uri as Uri,
     Url as Url,

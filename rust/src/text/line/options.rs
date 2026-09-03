@@ -62,7 +62,7 @@ impl PartialOrd for Expression {
 
 /// Settings for text rows reached through the ordinary record-media methods.
 ///
-/// Each physical line is one row. `header`, when set, is searched once in the
+/// Each physical line is one row. `rowheader`, when set, is searched once in the
 /// line; its named captures become nullable columns and its complete match is
 /// removed from `body`. `lstrip` and `rstrip` then remove a match only when it
 /// touches the corresponding edge. With `autotype`, capture datatypes are
@@ -93,7 +93,7 @@ pub struct TextOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by.
     pub filter_partitions: Vec<(String, String)>,
-    header: Option<Expression>,
+    rowheader: Option<Expression>,
     lstrip: Option<Expression>,
     rstrip: Option<Expression>,
     linesep: Option<LineSep>,
@@ -119,7 +119,7 @@ impl TextOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
-            header: None,
+            rowheader: None,
             lstrip: None,
             rstrip: None,
             linesep: None,
@@ -129,23 +129,23 @@ impl TextOptions {
         }
     }
 
-    /// Borrow the header regex source.
+    /// Borrow the row-header regex source.
     #[must_use]
-    pub fn header(&self) -> Option<&str> {
-        self.header
+    pub fn rowheader(&self) -> Option<&str> {
+        self.rowheader
             .as_ref()
             .map(|expression| expression.source.as_str())
     }
 
-    /// Compile or clear the header regex atomically.
+    /// Compile or clear the row-header regex atomically.
     ///
     /// # Errors
     ///
     /// Returns an error for malformed syntax or a named capture colliding with
     /// `url`, `rownum`, or `body` under ASCII case folding.
-    pub fn set_header(&mut self, header: Option<&str>) -> Result<()> {
-        let expression = header
-            .map(|source| Expression::new(source, "$.header"))
+    pub fn set_rowheader(&mut self, rowheader: Option<&str>) -> Result<()> {
+        let expression = rowheader
+            .map(|source| Expression::new(source, "$.rowheader"))
             .transpose()?;
         let captures = expression
             .as_ref()
@@ -164,25 +164,25 @@ impl TextOptions {
                 .any(|base| base.eq_ignore_ascii_case(capture))
             {
                 return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.header"),
+                    path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
                         "expected named captures distinct from url, rownum, and body, got {capture:?}"
                     ),
                 });
             }
         }
-        self.header = expression;
+        self.rowheader = expression;
         self.captures = captures;
         Ok(())
     }
 
-    /// Return these options with a compiled header regex.
+    /// Return these options with a compiled row-header regex.
     ///
     /// # Errors
     ///
-    /// Returns the same validation failures as [`Self::set_header`].
-    pub fn try_with_header(mut self, header: &str) -> Result<Self> {
-        self.set_header(Some(header))?;
+    /// Returns the same validation failures as [`Self::set_rowheader`].
+    pub fn try_with_rowheader(mut self, rowheader: &str) -> Result<Self> {
+        self.set_rowheader(Some(rowheader))?;
         Ok(self)
     }
 
@@ -284,7 +284,7 @@ impl TextOptions {
         self
     }
 
-    /// Iterate named header captures in regex order.
+    /// Iterate named row-header captures in regex order.
     pub fn capture_names(&self) -> impl ExactSizeIterator<Item = &str> {
         self.captures.iter().map(SmolStr::as_str)
     }
@@ -295,8 +295,10 @@ impl TextOptions {
         crate::stable_hash_of(self)
     }
 
-    pub(crate) fn header_regex(&self) -> Option<&Regex> {
-        self.header.as_ref().map(|expression| &expression.compiled)
+    pub(crate) fn rowheader_regex(&self) -> Option<&Regex> {
+        self.rowheader
+            .as_ref()
+            .map(|expression| &expression.compiled)
     }
 
     pub(crate) fn lstrip_regex(&self) -> Option<&Regex> {
@@ -315,7 +317,7 @@ impl TextOptions {
     pub(crate) fn source_field(&self, capture_dtypes: &[DataType]) -> Result<Field> {
         if capture_dtypes.len() != self.captures.len() {
             return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.header"),
+                path: SmolStr::new_static("$.rowheader"),
                 reason: format_smolstr!(
                     "expected {} capture datatypes, got {}",
                     self.captures.len(),

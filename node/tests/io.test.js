@@ -16,6 +16,7 @@ const {
   IOBase,
   IOCursor,
   RecordOptions,
+  TextOptions,
   Url,
 } = require('yggdryl')
 
@@ -558,8 +559,8 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
     '  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r',
   )
 
-  const options = RecordOptions.from('text/plain')
-  options.header = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  const options = new TextOptions()
+  options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
 
@@ -584,16 +585,16 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   assert.deepEqual(records.map((row) => row.id), [7n, 9n, null])
 })
 
-test('text-only settings are native RecordOptions value state', () => {
-  const options = RecordOptions.from('text/plain')
-  options.header = '(?<stamp>\\S+)'
+test('text-only settings are flat native TextOptions value state', () => {
+  const options = new TextOptions()
+  options.rowheader = '(?<stamp>\\S+)'
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'
 
-  assert.equal(options.header, '(?<stamp>\\S+)')
+  assert.equal(options.rowheader, '(?<stamp>\\S+)')
   assert.equal(options.lstrip, '^\\s+')
   assert.equal(options.rstrip, '\\s+$')
   assert.deepEqual(options.linesep, Buffer.from('\r\n'))
@@ -602,20 +603,55 @@ test('text-only settings are native RecordOptions value state', () => {
   assert.ok(options.clone().equals(options))
 
   assert.throws(() => {
-    options.header = '(?<body>.+)'
+    options.rowheader = '(?<body>.+)'
   }, /distinct from url, rownum, and body/)
   const arrowOptions = RecordOptions.from('trades.arrows')
-  assert.equal(arrowOptions.autotype, null)
+  assert.equal('autotype' in arrowOptions, false)
   assert.throws(() => {
-    arrowOptions.autotype = true
+    arrowOptions.timezone = 'UTC'
   }, /expected text options/)
+
+  const genericText = RecordOptions.from('text/plain')
+  genericText.timezone = 'UTC'
+  assert.equal(genericText.timezone.toString(), 'UTC')
+})
+
+test('retained text options parse the real execution row', () => {
+  const options = new TextOptions()
+  options.rowheader =
+    '^(?<stamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}_\\d{3}) ' +
+    '\\[(?<thread>[^]]+)\\] \\[(?<module>[^]]+)\\] \\((?<level>[A-Z]+)\\) '
+  options.timezone = 'UTC'
+  const source = IOBase.fromBytes(
+    Buffer.from(
+      '2026-08-29 00:00:00.434_958 ' +
+        '[77-2f3e6ff7:9f4d2a08b1:128] ' +
+        '[ModuleFailFastFilterChecker] (DEBUG) Execution report ' +
+        '(execId: 20260828180000369318, from session:\n',
+    ),
+  )
+
+  assert.equal(source.intoText(options), source)
+  assert.equal(source.intoText(), source)
+  const table = source.readArrowReader().intoTable()
+  const stamp = table.schema.fields.find((field) => field.name === 'stamp')
+  assert.equal(stamp.type.unit, arrow.TimeUnit.MICROSECOND)
+  assert.equal(stamp.type.timezone, 'UTC')
+  const [row] = [...table]
+  assert.equal(row.thread, '77-2f3e6ff7:9f4d2a08b1:128')
+  assert.equal(row.module, 'ModuleFailFastFilterChecker')
+  assert.equal(row.level, 'DEBUG')
+  assert.equal(
+    Buffer.from(row.body).toString(),
+    'Execution report (execId: 20260828180000369318, from session:',
+  )
 })
 
 test('generic record writes encode only the binary text body', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-write-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const target = new IOBase(path.join(root, 'out.txt'))
-  const options = RecordOptions.from('text/plain')
+  const options = new TextOptions()
 
   target.overwriteRecords(
     (function* records() {
@@ -631,7 +667,7 @@ test('generic record writes encode only the binary text body', (t) => {
     ['one', 'two', 'three'],
   )
 
-  const crlf = RecordOptions.from('text/plain')
+  const crlf = new TextOptions()
   crlf.linesep = '\\r\\n'
   const pinned = new IOBase(path.join(root, 'crlf.txt'))
   pinned.overwriteRecords([{ body: Buffer.from('first') }], crlf)
@@ -652,8 +688,8 @@ test('text folders decode coded leaves through the same record path', (t) => {
     zlib.gzipSync('[WARN] id=2 from b\n'),
   )
 
-  const options = RecordOptions.from('text/plain')
-  options.header = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  const options = new TextOptions()
+  options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
   options.lstrip = '^\\s+'
   const rows = [...new IOBase(root).readRecords(options)]
 

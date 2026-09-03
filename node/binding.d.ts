@@ -15,6 +15,7 @@ export {
   ProtocolMetadata,
   RecordOptions,
   Statement,
+  TextOptions,
   Timezone,
   Uri,
   Url,
@@ -44,6 +45,7 @@ import type {
   ProtocolMetadata,
   RecordOptions,
   Statement,
+  TextOptions,
   Timezone,
   Uri,
   Url,
@@ -1607,6 +1609,8 @@ declare module './index' {
     pstreamBytes(position?: number | null, batchSize?: number | null): ByteIterator
     /** Add or reconfigure one native page cache and return this handle. */
     buffered(options?: BufferedOptions | null): IOBase
+    /** Retain flat plain-text record options and return this handle. */
+    intoText(options?: TextOptions | null): IOBase
     /** Read `length` bytes from `offset` as bytes or as UTF-8 text. */
     readRange(
       offset: number,
@@ -1844,7 +1848,7 @@ export type StructRecord = Record<string, unknown> | (StructFieldInstance & obje
 /** One record or a synchronous sequence of records. */
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
-export type RecordOptionsInput = RecordOptions | MediaTypeInput
+export type RecordOptionsInput = RecordOptions | TextOptions | MediaTypeInput
 /** A partition spec, or the column names one would be built from. */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */

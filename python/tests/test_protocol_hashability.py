@@ -18,6 +18,7 @@ from yggdryl import (
     MimeType,
     RecordOptions,
     Statement,
+    TextOptions,
     Timezone,
     Uri,
     Scalar,
@@ -56,8 +57,9 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
     media_type = MediaType("application/json")
     uri = Uri("https://example.com/data.json")
     record_options = RecordOptions("trades.arrows")
+    text_options = TextOptions()
 
-    for value in (field, media_type, uri, record_options):
+    for value in (field, media_type, uri, record_options, text_options):
         assert isinstance(value.stable_hash(), int)
         assert isinstance(hash(value), int)
 
@@ -69,6 +71,8 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         uri.set_extension("parquet")
     with pytest.raises(TypeError, match="hashed"):
         record_options.safe = True
+    with pytest.raises(TypeError, match="hashed"):
+        text_options.rowheader = r"(?<id>\d+)"
 
 
 @pytest.mark.parametrize(
@@ -87,11 +91,6 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.arrows", "merge_by_names", ["id"]),
         ("trades.arrows", "select_by_names", ["id"]),
         ("trades.arrows", "filter_partitions", [("venue", "XNAS")]),
-        ("events.txt", "header", r"(?<id>\\d+)"),
-        ("events.txt", "lstrip", r"^\\s+"),
-        ("events.txt", "rstrip", r"\\s+$"),
-        ("events.txt", "linesep", r"\\r\\n"),
-        ("events.txt", "autotype", False),
         ("events.txt", "timezone", "+02:00"),
         ("trades.avro", "block_codec", "null"),
         ("trades.avro", "sync_marker", b"0123456789abcdef"),
@@ -136,12 +135,7 @@ def test_record_options_value_protocols_preserve_each_variant(
     options.merge_by_names = ["id"]
     options.select_by_names = ["id"]
     options.filter_partitions = [("venue", "XNAS")]
-    if options.autotype is not None:
-        options.header = r"(?<id>\\d+)"
-        options.lstrip = r"^\\s+"
-        options.rstrip = r"\\s+$"
-        options.linesep = r"\\r\\n"
-        options.autotype = False
+    if options.mime_type == MimeType.PLAIN_TEXT:
         options.timezone = "+02:00"
     if options.block_codec is not None:
         options.block_codec = "null"
@@ -189,6 +183,43 @@ def test_record_options_value_protocols_preserve_each_variant(
     ):
         rebuilt.safe = False
         assert rebuilt != options
+
+
+def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
+    options = TextOptions()
+    options.name = "records"
+    options.dtype = "struct<body: binary not null>"
+    options.metadata = {"owner": "tests"}
+    options.safe = True
+    options.batch_row_size = 32
+    options.commit_row_size = 64
+    options.max_row_size = 128
+    options.max_byte_size = 4096
+    options.level = 6
+    options.select_by_names = ["body"]
+    options.filter_partitions = [("venue", "XNAS")]
+    options.rowheader = r"(?<id>\d+)"
+    options.lstrip = r"^\s+"
+    options.rstrip = r"\s+$"
+    options.linesep = r"\r\n"
+    options.autotype = False
+    options.timezone = "+02:00"
+
+    represented = eval(
+        repr(options),
+        {"DataType": DataType, "TextOptions": TextOptions, "Timezone": Timezone},
+    )
+    for rebuilt in (
+        represented,
+        pickle.loads(pickle.dumps(options)),
+        copy.copy(options),
+        copy.deepcopy(options),
+    ):
+        assert rebuilt == options
+        assert rebuilt.stable_hash() == options.stable_hash()
+        assert rebuilt <= options and rebuilt >= options
+
+    assert {options: "kept"}[represented] == "kept"
 
 
 def test_record_options_stable_hash_does_not_lock_mutation() -> None:

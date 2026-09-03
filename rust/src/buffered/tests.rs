@@ -677,7 +677,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     std::fs::write(&path, crate::gzip::dump(plain).unwrap()).unwrap();
 
     let options: crate::generic::RecordOptions = TextOptions::new()
-        .try_with_header(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
+        .try_with_rowheader(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
         .unwrap()
         .into();
     let rows = |reader: crate::arrow::BatchReader| -> usize {

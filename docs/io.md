@@ -2421,11 +2421,13 @@ default, selects everything.
 
 `text/plain` uses the same record methods as IPC, Parquet, and Avro. Each
 physical line becomes `url: utf8`, `rownum: int64`, and `body: binary`.
-A flat `RecordOptions` value optionally adds regex header captures,
-edge stripping, a fixed line separator, first-batch autotyping, and a timezone.
+A flat `TextOptions` value adds regex `rowheader` captures, edge stripping, a
+fixed line separator, and first-batch autotyping. Generic `RecordOptions`
+retains the shared timezone accessor.
 
-There is no text holder, line iterator, line-only read/write method, or
-standalone schema builder. Use `read_arrow_reader` / `readArrowReader`,
+`into_text` / `intoText` retains those options without adding a line iterator,
+line-only read/write method, or standalone schema builder. Use
+`read_arrow_reader` / `readArrowReader`,
 `read_records` / `readRecords`, and the ordinary overwrite or append
 methods. [Structured text and plain-text records](text.md#plain-text-records)
 defines the schema, parsing order, errors, examples, and benchmark commands.

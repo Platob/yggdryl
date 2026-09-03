@@ -100,10 +100,10 @@ pin an unsettled design by implementing a binding first.
 - `rust/src/io/` owns the single `IOBase` storage trait, `Buffer`, transparent
   `Coded`, partition routing, and byte streams. `rust/src/buffered/` owns
   `Buffered<H>` only.
-- `rust/src/text/line/` owns the flat `TextOptions`, bounded physical-line
-  splitting, header capture, and body rendering. Plain text uses ordinary
-  `RecordOptions` and `IOMedia`; never add a text holder, line value, custom
-  iterator, schema builder, or line-only read/write method.
+- `rust/src/text/line/` owns `Text<H>`, the flat `TextOptions`, bounded
+  physical-line splitting, row-header capture, and body rendering. `Text<H>`
+  only retains options and delegates ordinary `IOMedia`; never add a line
+  value, custom iterator, schema builder, or line-only read/write method.
 - `rust/src/{gzip,zlib,zstd}/` each own `load`, `dump`, `reader`, `writer`, and
   an `IOBase` wrapper. `Codec` is the only dispatcher.
 - Storage backends are sibling module folders containing `Path`, `Folder`, and
@@ -285,8 +285,9 @@ scheme vocabulary.
 - Encoding comes from `MediaType` through `RecordOptions`; no format argument.
   Generic `write_*` accepts `IOMode` and redirects to specialized core paths.
 - Plain-text rows begin with required `url: utf8`, `rownum: int64`, and
-  `body: binary`. Flat `TextOptions` may add named header captures, edge-only
-  regex stripping, a line separator, first-batch `autotype`, and its timezone;
+  `body: binary`. Flat `TextOptions` owns named `rowheader` captures, edge-only
+  regex stripping, a line separator, and first-batch `autotype`. `timezone`
+  remains a shared `RecordOptions` accessor and controls text autotyping;
   writes consume only non-null binary `body` values.
 - Content coding belongs to the handle. Reject outer compression for formats
   such as Parquet that compress internally.
@@ -515,7 +516,7 @@ Both extensions:
 - Every supported example uses tabs in Rust, Python, JavaScript order with the
   same operation expressed idiomatically. Show Rust-only explicitly; never
   invent a binding.
-- Text docs include `Text`, line iteration, raw streaming, and batch read/write
+- Text docs include `Text`, raw byte streaming, and ordinary batch read/write
   examples. JSON/YAML/TOML examples use the shared `Scalar` and optional field.
 - Every code block is self-contained with an assertion and runs through
   `scripts/check_docs_examples.py`; ignored blocks use valid superfence syntax

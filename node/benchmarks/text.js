@@ -14,7 +14,7 @@ const path = require('node:path')
 const { performance } = require('node:perf_hooks')
 const zlib = require('node:zlib')
 
-const { IOBase, RecordOptions } = require('yggdryl')
+const { IOBase, TextOptions } = require('yggdryl')
 
 function positiveArgument(name, fallback) {
   const index = process.argv.indexOf(name)
@@ -31,7 +31,7 @@ const iterations = positiveArgument(
   '--iterations',
   Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5', 10),
 )
-const header = '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+const rowheader = '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
 
 function corpus(from, to) {
   const lines = new Array(to - from)
@@ -45,8 +45,8 @@ function corpus(from, to) {
 }
 
 function textOptions() {
-  const options = RecordOptions.from('text/plain')
-  options.header = header
+  const options = new TextOptions()
+  options.rowheader = rowheader
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
   return options
@@ -56,14 +56,16 @@ const options = textOptions()
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-bench-'))
 
 function countBatches(handle) {
+  handle.intoText(options)
   let count = 0
-  for (const batch of handle.readArrowReader(options)) count += batch.numRows
+  for (const batch of handle.readArrowReader()) count += batch.numRows
   return count
 }
 
 function countRecords(handle) {
+  handle.intoText(options)
   let count = 0
-  for (const row of handle.readRecords(options)) {
+  for (const row of handle.readRecords()) {
     assert.ok(row.body instanceof Uint8Array)
     count += 1
   }

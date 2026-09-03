@@ -18,22 +18,23 @@ A plain-text row always begins with this required schema:
 | `rownum` | `int64` | one-based physical line number, restarted for each leaf |
 | `body` | `binary` | line bytes without the record terminator |
 
-Use `RecordOptions` with `read_arrow_reader` / `readArrowReader` or
-`read_records` / `readRecords`. Plain text has no separate holder,
-line iterator, schema builder, or read/write vocabulary.
+Use `TextOptions` with the ordinary `read_arrow_reader` / `readArrowReader` or
+`read_records` / `readRecords` methods. `Text` retains those options for
+generic handles; it adds no line iterator, schema builder, or read/write
+vocabulary.
 
-`TextOptions` is the Rust variant held directly by `RecordOptions`. Its
-text-specific settings are flat:
+`TextOptions` is flat and converts into the text variant of `RecordOptions` at
+the generic dispatch boundary:
 
 | option | contract |
 | --- | --- |
-| `header` | byte regex searched once per line; named captures append nullable columns |
+| `rowheader` | byte regex searched once per line; named captures append nullable columns |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `autotype` | infer capture datatypes from the first batch; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
-When `header` matches, its complete match is removed from `body`. Edge
+When `rowheader` matches, its complete match is removed from `body`. Edge
 stripping runs afterward. A line without a match keeps its body and receives
 null capture values.
 
@@ -48,8 +49,8 @@ answers the complete schema, with capture columns as UTF-8.
 
     ```rust
     use arrow_array::{Array as _, BinaryArray, Int64Array};
-    use yggdryl::generic::{IORecordOptions as _, RecordOptions};
-    use yggdryl::io::{Buffer, IOMedia as _};
+    use yggdryl::generic::IORecordOptions as _;
+    use yggdryl::io::{Buffer, IOBase as _, IOMedia as _};
     use yggdryl::text::TextOptions;
     use yggdryl::Url;
 
@@ -58,13 +59,15 @@ answers the complete schema, with capture columns as UTF-8.
     )
     .with_media_type(Url::from_str("file:///app.log")?.media_type());
 
-    let mut text_options: RecordOptions = TextOptions::new().into();
-    text_options.set_header(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))?;
+    let mut text_options = TextOptions::new();
+    text_options.set_rowheader(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))?;
     text_options.set_lstrip(Some(r"^\s+"))?;
     text_options.set_rstrip(Some(r"\s+$"))?;
+    let text_source = text_source.into_text_with(text_options);
+    let record_options = text_source.record_options()?;
 
     let text_batch = text_source
-        .read_arrow_reader(&text_options)?
+        .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
     assert_eq!(text_batch.schema().fields().len(), 5);
@@ -94,18 +97,19 @@ answers the complete schema, with capture columns as UTF-8.
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase, RecordOptions
+    from yggdryl import IOBase, TextOptions
 
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / "app.log"
         source.write_bytes(b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n")
 
-        options = RecordOptions("text/plain")
-        options.header = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
+        options = TextOptions()
+        options.rowheader = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
         options.lstrip = r"^\s+"
         options.rstrip = r"\s+$"
 
-        rows = list(IOBase(source).read_records(options=options))
+        handle = IOBase(source).into_text(options)
+        rows = list(handle.read_records())
         assert [row["rownum"] for row in rows] == [1, 2]
         assert [row["body"] for row in rows] == [b"first", b"second"]
         assert [row["id"] for row in rows] == [7, 9]
@@ -113,7 +117,7 @@ answers the complete schema, with capture columns as UTF-8.
         target = IOBase(pathlib.Path(directory) / "copy.txt")
         target.overwrite_records(
             ({"body": row["body"]} for row in rows),
-            options=RecordOptions("text/plain"),
+            options=TextOptions(),
         )
         assert target.read_bytes() == b"first\nsecond\n"
     ```
@@ -125,18 +129,19 @@ answers the complete schema, with capture columns as UTF-8.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, RecordOptions } = require('yggdryl')
+    const { IOBase, TextOptions } = require('yggdryl')
 
     const textRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-'))
     const textSource = path.join(textRoot, 'app.log')
     fs.writeFileSync(textSource, '  [INFO] id=7 first  \r\n[WARN] id=9 second\n')
 
-    const textOptions = RecordOptions.from('text/plain')
-    textOptions.header = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+    const textOptions = new TextOptions()
+    textOptions.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
     textOptions.lstrip = '^\\s+'
     textOptions.rstrip = '\\s+$'
 
-    const textRows = [...new IOBase(textSource).readRecords(textOptions)]
+    const textHandle = new IOBase(textSource).intoText(textOptions)
+    const textRows = [...textHandle.readRecords()]
     assert.deepEqual(textRows.map((row) => row.rownum), [1n, 2n])
     assert.deepEqual(
       textRows.map((row) => Buffer.from(row.body).toString()),
@@ -147,7 +152,7 @@ answers the complete schema, with capture columns as UTF-8.
     const textTarget = new IOBase(path.join(textRoot, 'copy.txt'))
     textTarget.overwriteRecords(
       textRows.map((row) => ({ body: row.body })),
-      RecordOptions.from('text/plain'),
+      new TextOptions(),
     )
     assert.equal(textTarget.readBytes().toString(), 'first\nsecond\n')
 

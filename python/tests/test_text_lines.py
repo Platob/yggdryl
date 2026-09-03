@@ -11,13 +11,13 @@ import pickle
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, IOBase, RecordOptions, Timezone
+from yggdryl import DataType, IOBase, RecordOptions, TextOptions, Timezone
 
-HEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
+ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 
 
-def text_options() -> RecordOptions:
-    return RecordOptions("text/plain")
+def text_options() -> TextOptions:
+    return TextOptions()
 
 
 def handle(tmp_path: pathlib.Path, data: bytes, name: str = "app.log") -> IOBase:
@@ -28,7 +28,7 @@ def handle(tmp_path: pathlib.Path, data: bytes, name: str = "app.log") -> IOBase
 
 def test_text_options_are_flat_validated_values() -> None:
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     options.lstrip = r"^\s+"
     options.rstrip = r"\s+$"
     options.linesep = r"\r\n"
@@ -36,7 +36,7 @@ def test_text_options_are_flat_validated_values() -> None:
     options.timezone = "+02:00"
     options.batch_row_size = 7
 
-    assert options.header == HEADER
+    assert options.rowheader == ROWHEADER
     assert options.lstrip == r"^\s+"
     assert options.rstrip == r"\s+$"
     assert options.linesep == b"\r\n"
@@ -48,15 +48,24 @@ def test_text_options_are_flat_validated_values() -> None:
         assert rebuilt == options
         assert rebuilt.stable_hash() == options.stable_hash()
 
+    constructor, [state] = options.__reduce__()
+    state["header"] = state.pop("rowheader")
+    with pytest.raises(ValueError, match='missing "rowheader"'):
+        constructor(state)
+
     with pytest.raises(ValueError, match="distinct from url, rownum, and body"):
-        options.header = r"(?<body>.+)"
+        options.rowheader = r"(?<body>.+)"
     with pytest.raises(ValueError, match="valid byte regex"):
         options.lstrip = "("
 
     arrow = RecordOptions("application/vnd.apache.arrow.stream")
-    assert arrow.autotype is None
+    assert not hasattr(arrow, "autotype")
     with pytest.raises(ValueError, match="text"):
-        arrow.autotype = True
+        arrow.timezone = Timezone.UTC
+
+    generic_text = RecordOptions("text/plain")
+    generic_text.timezone = Timezone.UTC
+    assert generic_text.timezone == Timezone.UTC
 
 
 def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
@@ -67,7 +76,7 @@ def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
         b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
     )
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     options.lstrip = r"^\s+"
     options.rstrip = r"\s+$"
 
@@ -112,12 +121,12 @@ def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
     ]
 
 
-def test_header_removal_and_stripping_are_independent_edge_operations(
+def test_rowheader_removal_and_stripping_are_independent_edge_operations(
     tmp_path: pathlib.Path,
 ) -> None:
     source = handle(tmp_path, b"left [INFO] id=7 right --\n")
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     options.lstrip = r"^left\s+"
     options.rstrip = r"\s+--$"
 
@@ -133,14 +142,14 @@ def test_autotype_can_be_disabled_and_fixes_types_after_the_first_batch(
     source = handle(tmp_path, b"1\nword\n", "values.txt")
 
     strings = text_options()
-    strings.header = r"(?<value>\S+)"
+    strings.rowheader = r"(?<value>\S+)"
     strings.autotype = False
     table = source.read_arrow_reader(options=strings).read_all()
     assert table.schema.field("value").type == pa.string()
     assert table.column("value").to_pylist() == ["1", "word"]
 
     adaptive = text_options()
-    adaptive.header = r"(?<value>\S+)"
+    adaptive.rowheader = r"(?<value>\S+)"
     adaptive.batch_row_size = 1
     reader = source.read_arrow_reader(options=adaptive)
     assert reader.schema.field("value").type == pa.int64()
@@ -154,7 +163,7 @@ def test_timezone_is_used_only_for_autotyped_offset_free_timestamps(
 ) -> None:
     source = handle(tmp_path, b"2024-02-01T00:00:00 event\n")
     options = text_options()
-    options.header = r"(?<stamp>\S+)"
+    options.rowheader = r"(?<stamp>\S+)"
     options.timezone = "+02:00"
 
     table = source.read_arrow_reader(options=options).read_all()
@@ -164,6 +173,39 @@ def test_timezone_is_used_only_for_autotyped_offset_free_timestamps(
     value = table.column("stamp")[0].as_py()
     assert value.utcoffset() == datetime.timedelta(hours=2)
     assert value.replace(tzinfo=None) == datetime.datetime(2024, 2, 1)
+
+
+def test_retained_text_options_parse_the_real_execution_row(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(
+        tmp_path,
+        b"2026-08-29 00:00:00.434_958 "
+        b"[77-2f3e6ff7:9f4d2a08b1:128] "
+        b"[ModuleFailFastFilterChecker] (DEBUG) Execution report "
+        b"(execId: 20260828180000369318, from session:\n",
+        "execution.log",
+    )
+    options = TextOptions()
+    options.rowheader = (
+        r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}_\d{3}) "
+        r"\[(?<thread>[^]]+)\] \[(?<module>[^]]+)\] \((?<level>[A-Z]+)\) "
+    )
+    options.timezone = Timezone.UTC
+
+    assert source.into_text(options) is source
+    assert source.into_text() is source
+    [row] = list(source.read_records())
+
+    assert row["stamp"] == datetime.datetime(
+        2026, 8, 29, 0, 0, 0, 434_958, tzinfo=datetime.timezone.utc
+    )
+    assert row["thread"] == "77-2f3e6ff7:9f4d2a08b1:128"
+    assert row["module"] == "ModuleFailFastFilterChecker"
+    assert row["level"] == "DEBUG"
+    assert row["body"] == (
+        b"Execution report (execId: 20260828180000369318, from session:"
+    )
 
 
 def test_generic_record_writes_encode_only_binary_body(tmp_path: pathlib.Path) -> None:
@@ -206,7 +248,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
         stdlib_gzip.compress(b"[WARN] id=2 from b\n")
     )
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     options.lstrip = r"^\s+"
 
     rows = list(IOBase(root).read_records(options=options))
@@ -223,7 +265,7 @@ def test_absence_and_zero_row_bounds_keep_an_adaptive_schema(
     tmp_path: pathlib.Path,
 ) -> None:
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     reader = IOBase(tmp_path / "missing.log").read_arrow_reader(options=options)
 
     assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
@@ -242,7 +284,7 @@ def test_declared_text_field_uses_the_shared_projection_and_cast(
 ) -> None:
     source = handle(tmp_path, b"[INFO] id=7 body\n")
     options = text_options()
-    options.header = HEADER
+    options.rowheader = ROWHEADER
     options.lstrip = r"^\s+"
     options.dtype = "struct<body: binary not null, id: int64>"
 

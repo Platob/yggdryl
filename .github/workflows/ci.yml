@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # A feature-branch push with an open PR already emits `pull_request`'s
+  # synchronize event. Restricting `push` to main keeps one CI run per change.
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:

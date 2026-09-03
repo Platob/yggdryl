@@ -2033,26 +2033,6 @@ export declare class RecordOptions {
   get filterPartitions(): Array<[string, string]>
   /** Set the partition equalities a read is pruned and filtered by. */
   set filterPartitions(filterPartitions: Array<[string, string]>)
-  /** The regex searched for a header in each text row. */
-  get header(): string | null
-  /** Compile or clear the text header regex. */
-  set header(header: string | undefined | null)
-  /** The regex removed only when it matches the body's left edge. */
-  get lstrip(): string | null
-  /** Compile or clear the text left-edge regex. */
-  set lstrip(lstrip: string | undefined | null)
-  /** The regex removed only when it matches the body's right edge. */
-  get rstrip(): string | null
-  /** Compile or clear the text right-edge regex. */
-  set rstrip(rstrip: string | undefined | null)
-  /** The exact text row terminator; `null` accepts LF, CRLF, or CR. */
-  get linesep(): Buffer | null
-  /** Pin a text terminator from an escaped string or exact bytes, or clear it. */
-  set linesep(value: string | Uint8Array | undefined | null)
-  /** Whether named header captures infer their datatype from the first batch. */
-  get autotype(): boolean | null
-  /** Enable or disable adaptive text capture typing. */
-  set autotype(autotype: boolean)
   /** The timezone applied while autotyping offset-free timestamps. */
   get timezone(): JsTimezone | null
   /** Set or clear the timezone for autotyped timestamps. */
@@ -2806,6 +2786,127 @@ export declare class Tables {
   overwrite(name: string, batches: BatchReader, options?: IcebergOptions | undefined | null): Table
 }
 export type JsTables = Tables
+
+/** Flat settings for physical-line `text/plain` records. */
+export declare class TextOptions {
+  /** Build default plain-text record settings. */
+  constructor()
+  /** Return the fixed `text/plain` media type. */
+  get mimeType(): MimeType
+  /** Return the declared root field, if any. */
+  get field(): Field | null
+  /** Replace the declared root field. */
+  set field(field: Field)
+  /** Return the inferred or declared root name. */
+  get name(): string
+  /** Replace the root name. */
+  set name(name: string)
+  /** Return the declared root datatype, if any. */
+  get dtype(): DataType | null
+  /** Replace or clear the declared root datatype. */
+  set dtype(dtype: DataTypeInput | undefined | null)
+  /** Return root metadata entries in key order. */
+  get metadata(): Array<MetadataEntry>
+  /** Replace root metadata. */
+  set metadata(values: MetadataInput)
+  /** Return whether casts may null incompatible values. */
+  get safe(): boolean
+  /** Set whether casts may null incompatible values. */
+  set safe(safe: boolean)
+  /** Return the row-per-batch bound. */
+  get batchRowSize(): number | null
+  /** Set or clear the row-per-batch bound. */
+  set batchRowSize(size: number | undefined | null)
+  /** Return the streamed-write commit cadence. */
+  get commitRowSize(): number | null
+  /** Set or clear the streamed-write commit cadence. */
+  set commitRowSize(value: number | undefined | null)
+  /** Return the total result-row bound. */
+  get maxRowSize(): number | null
+  /** Set or clear the total result-row bound. */
+  set maxRowSize(value: number | undefined | null)
+  /** Return the Arrow-memory byte bound. */
+  get maxByteSize(): number | null
+  /** Set or clear the Arrow-memory byte bound. */
+  set maxByteSize(value: number | undefined | null)
+  /** Return the outer content-coding level. */
+  get level(): number
+  /** Set the outer content-coding level. */
+  set level(level: number)
+  /** Return write match-key column names. */
+  get mergeByNames(): Array<string>
+  /** Replace write match-key column names. */
+  set mergeByNames(names: Array<string>)
+  /** Return selected column names. */
+  get selectByNames(): Array<string>
+  /** Replace selected column names. */
+  set selectByNames(names: Array<string>)
+  /** Return partition filters. */
+  get filterPartitions(): Array<[string, string]>
+  /** Replace partition filters. */
+  set filterPartitions(partitions: Array<[string, string]>)
+  /** The regex searched for a row header in each physical line. */
+  get rowheader(): string | null
+  /** Compile or clear the row-header regex. */
+  set rowheader(rowheader: string | undefined | null)
+  /** Return the left-edge stripping regex. */
+  get lstrip(): string | null
+  /** Compile or clear the left-edge stripping regex. */
+  set lstrip(lstrip: string | undefined | null)
+  /** Return the right-edge stripping regex. */
+  get rstrip(): string | null
+  /** Compile or clear the right-edge stripping regex. */
+  set rstrip(rstrip: string | undefined | null)
+  /** Return the pinned physical-line terminator. */
+  get linesep(): Buffer | null
+  /** Set or clear the physical-line terminator. */
+  set linesep(value: string | Uint8Array | undefined | null)
+  /** Return whether first-batch capture autotyping is enabled. */
+  get autotype(): boolean
+  /** Enable or disable first-batch capture autotyping. */
+  set autotype(autotype: boolean)
+  /** Return the timezone for offset-free autotyped timestamps. */
+  get timezone(): JsTimezone | null
+  /** Set or clear the autotyping timezone. */
+  set timezone(value: TimezoneInput | undefined | null)
+  /** Return a copy with a declared root field. */
+  withField(field: Field): TextOptions
+  /** Return a copy with a different root name. */
+  withName(name: string): TextOptions
+  /** Return a copy with a declared root datatype. */
+  withDtype(dtype: DataTypeInput): TextOptions
+  /** Return a copy with declared root metadata. */
+  withMetadata(values: MetadataInput): TextOptions
+  /** Return a copy with different cast strictness. */
+  withSafe(safe: boolean): TextOptions
+  /** Return a copy with a row-per-batch bound. */
+  withBatchRowSize(size: number): TextOptions
+  /** Return a copy with a streamed-write commit cadence. */
+  withCommitRowSize(rows: number): TextOptions
+  /** Return a copy with a total result-row bound. */
+  withMaxRowSize(rows: number): TextOptions
+  /** Return a copy with an Arrow-memory byte bound. */
+  withMaxByteSize(bytes: number): TextOptions
+  /** Return a copy with a different content-coding level. */
+  withLevel(level: number): TextOptions
+  /** Return a copy with write match-key columns. */
+  withMergeByNames(names: Array<string>): TextOptions
+  /** Return a copy with selected columns. */
+  withSelectByNames(names: Array<string>): TextOptions
+  /** Return a copy with partition filters. */
+  withFilterPartitions(partitions: Array<[string, string]>): TextOptions
+  /** Return whether every setting is equal. */
+  equals(other: TextOptions): boolean
+  /** Compare every setting through the core total order. */
+  compare(other: TextOptions): number
+  /** Return deterministic hash bits for the complete value. */
+  stableHash(): bigint
+  /** Return a detached copy. */
+  clone(): TextOptions
+  /** Return the media type spelling. */
+  toString(): string
+}
+export type JsTextOptions = TextOptions
 
 /** A canonical IANA time zone, with the offset rules this build knows. */
 export declare class Timezone {

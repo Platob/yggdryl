@@ -2396,6 +2396,7 @@ const { IOBase, Timezone } = binding
 const nativeIOReadValue = IOBase.prototype._readScalarNative
 const nativeIOWriteValue = IOBase.prototype._writeScalarNative
 const nativeIOBuffered = IOBase.prototype._bufferedNative
+const nativeIOIntoText = IOBase.prototype._intoTextNative
 const nativeIOReadRangeBytes = IOBase.prototype.readRangeBytes
 const nativeIOAppendBytes = IOBase.prototype.appendBytes
 const nativeIOReadRangeText = IOBase.prototype._readRangeTextNative
@@ -2403,6 +2404,7 @@ delete IOBase.prototype._readRangeTextNative
 delete IOBase.prototype._readScalarNative
 delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
+delete IOBase.prototype._intoTextNative
 
 function checkedBufferedOptions(options) {
   if (options === undefined || options === null) return {}
@@ -2497,6 +2499,20 @@ Object.defineProperties(IOBase.prototype, {
         options.maxBytes,
         options.ttlMs,
       )
+      return this
+    },
+  },
+  intoText: {
+    configurable: true,
+    value(options) {
+      if (
+        options !== undefined &&
+        options !== null &&
+        !(options instanceof binding.TextOptions)
+      ) {
+        throw new TypeError('intoText options must be TextOptions or null')
+      }
+      nativeIOIntoText.call(this, options)
       return this
     },
   },
@@ -2658,25 +2674,27 @@ Object.defineProperty(Uri.prototype, 'joinPath', {
   },
 })
 
-const { BatchReader, RecordOptions } = binding
+const { BatchReader, RecordOptions, TextOptions } = binding
 // Runtime-only state used by the async record bridge. It is intentionally not
 // a fourth public write abstraction.
 delete binding.ArrowWriteSession
 
 // The declared root metadata takes the same inputs `Field.prototype.update`
 // does: entries, a plain object, a Map, or a Field's own pairs.
-const recordMetadata = Object.getOwnPropertyDescriptor(RecordOptions.prototype, 'metadata')
-Object.defineProperty(RecordOptions.prototype, 'metadata', {
-  configurable: true,
-  enumerable: recordMetadata.enumerable,
-  get: recordMetadata.get,
-  set(values) {
-    recordMetadata.set.call(this, normalizeMetadata(values))
-  },
-})
-const recordWithMetadata = RecordOptions.prototype.withMetadata
-RecordOptions.prototype.withMetadata = function withMetadata(values) {
-  return recordWithMetadata.call(this, normalizeMetadata(values))
+for (const Options of [RecordOptions, TextOptions]) {
+  const recordMetadata = Object.getOwnPropertyDescriptor(Options.prototype, 'metadata')
+  Object.defineProperty(Options.prototype, 'metadata', {
+    configurable: true,
+    enumerable: recordMetadata.enumerable,
+    get: recordMetadata.get,
+    set(values) {
+      recordMetadata.set.call(this, normalizeMetadata(values))
+    },
+  })
+  const recordWithMetadata = Options.prototype.withMetadata
+  Options.prototype.withMetadata = function withMetadata(values) {
+    return recordWithMetadata.call(this, normalizeMetadata(values))
+  }
 }
 
 // The record surface is one shape in both directions: a read returns a
@@ -2688,6 +2706,7 @@ const { icebergBatchReader, intoField } = installRecords({
   Field,
   IOBase,
   RecordOptions,
+  TextOptions,
   Table: binding.Table,
   Tables: binding.Tables,
 })

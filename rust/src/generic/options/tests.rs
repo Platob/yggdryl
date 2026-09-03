@@ -142,7 +142,7 @@ fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 
     let text = crate::text::TextOptions::new()
-        .try_with_header(r"^(?<id>\d+)")
+        .try_with_rowheader(r"^(?<id>\d+)")
         .unwrap();
     let options = RecordOptions::from(text.clone());
     let equal = options.clone();

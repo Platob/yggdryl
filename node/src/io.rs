@@ -27,6 +27,7 @@ use crate::codec::{
 };
 use crate::field::JsField;
 use crate::generic::JsRecordOptions;
+use crate::text::JsTextOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
@@ -680,6 +681,16 @@ impl JsIOBase {
         let held = std::mem::replace(&mut self.inner, Holder::buffer(yggdryl::io::Buffer::new()));
         self.inner = held.buffered(options);
         Ok(())
+    }
+
+    /// Replace this handle with one retained plain-text media view.
+    #[napi(js_name = "_intoTextNative", skip_typescript)]
+    pub fn into_text_native(&mut self, options: Option<&JsTextOptions>) {
+        let held = std::mem::replace(&mut self.inner, Holder::buffer(yggdryl::io::Buffer::new()));
+        self.inner = match options {
+            Some(options) => held.into_text_with(options.inner.clone()),
+            None => held.into_text(),
+        };
     }
 
     /// Write `data` at `offset`, growing and zero-filling as needed.

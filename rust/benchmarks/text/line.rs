@@ -9,7 +9,7 @@ use yggdryl::io::{Buffer, IOMedia};
 use yggdryl::text::TextOptions;
 
 const ROWS: usize = 50_000;
-const HEADER: &str = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)";
+const ROWHEADER: &str = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)";
 
 fn corpus() -> Vec<u8> {
     let mut bytes = Vec::with_capacity(ROWS * 40);
@@ -27,11 +27,11 @@ fn handle(bytes: Vec<u8>) -> Buffer {
     )
 }
 
-fn options(header: Option<&str>) -> RecordOptions {
-    let options = match header {
-        Some(header) => TextOptions::new()
-            .try_with_header(header)
-            .expect("a header regex"),
+fn options(rowheader: Option<&str>) -> RecordOptions {
+    let options = match rowheader {
+        Some(rowheader) => TextOptions::new()
+            .try_with_rowheader(rowheader)
+            .expect("a row-header regex"),
         None => TextOptions::new(),
     };
     options.into()
@@ -46,7 +46,7 @@ fn drain(handle: &Buffer, options: &RecordOptions) -> usize {
 }
 
 pub(crate) fn text_options_benchmarks(criterion: &mut Criterion) {
-    let options = options(Some(HEADER));
+    let options = options(Some(ROWHEADER));
     let mut group = criterion.benchmark_group("text_options");
     group.bench_function("stable_hash", |bencher| {
         bencher.iter(|| black_box(&options).stable_hash());
@@ -58,11 +58,11 @@ pub(crate) fn text_records_benchmarks(criterion: &mut Criterion) {
     let bytes = corpus();
     let source = handle(bytes.clone());
     let plain = options(None);
-    let captured = options(Some(HEADER));
+    let captured = options(Some(ROWHEADER));
     assert_eq!(drain(&source, &plain), ROWS);
     assert_eq!(drain(&source, &captured), ROWS);
 
-    let baseline = regex::bytes::Regex::new(HEADER).expect("a header regex");
+    let baseline = regex::bytes::Regex::new(ROWHEADER).expect("a row-header regex");
     let mut group = criterion.benchmark_group("text_records");
     group.throughput(Throughput::Bytes(bytes.len() as u64));
     group.bench_function("baseline/regex_rows", |bencher| {
@@ -77,7 +77,7 @@ pub(crate) fn text_records_benchmarks(criterion: &mut Criterion) {
     group.bench_function("record/plain", |bencher| {
         bencher.iter(|| drain(black_box(&source), black_box(&plain)));
     });
-    group.bench_function("record/header_autotype", |bencher| {
+    group.bench_function("record/rowheader_autotype", |bencher| {
         bencher.iter(|| drain(black_box(&source), black_box(&captured)));
     });
     group.finish();
