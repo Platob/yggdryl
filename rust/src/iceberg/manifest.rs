@@ -651,7 +651,7 @@ pub fn write_manifest<H: IOBase + ?Sized>(
         (
             "schema-id",
             schema
-                .iceberg()
+                .as_iceberg()
                 .get(super::schema::SCHEMA_ID)
                 .unwrap_or("0"),
         ),
@@ -1658,7 +1658,7 @@ fn partition_record(partition: &Field, name: &str) -> Result<Scalar> {
 fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
     let mut primitive = super::PrimitiveType::from_dtype(field.dtype())?;
     if primitive == super::PrimitiveType::Fixed(16)
-        && field.iceberg().get(super::schema::DECLARED_TYPE) == Some("uuid")
+        && field.as_iceberg().declared_type() == Some("uuid")
     {
         primitive = super::PrimitiveType::Uuid;
     }

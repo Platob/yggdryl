@@ -748,7 +748,7 @@ fn stored<'metadata>(
     if let Some(text) = metadata.property(key) {
         return Ok(Some((SmolStr::new_static(key), text)));
     }
-    let root = metadata.current_schema()?.iceberg();
+    let root = metadata.current_schema()?.as_iceberg();
     Ok(root
         .get(key)
         .map(|text| (SmolStr::new(root.key(key)), text)))

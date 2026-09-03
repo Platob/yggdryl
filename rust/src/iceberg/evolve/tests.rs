@@ -232,11 +232,7 @@ mod schema_updates {
         update.update_doc("quote.price", "closing price");
         let evolved = update.into_field().unwrap();
         assert_eq!(
-            evolved
-                .get_field_by_path("id")
-                .unwrap()
-                .iceberg()
-                .get("doc"),
+            evolved.get_field_by_path("id").unwrap().as_iceberg().doc(),
             Some("trade identifier")
         );
         assert_eq!(
@@ -370,13 +366,13 @@ mod schema_updates {
     fn schema_ids_come_from_the_official_result_and_overflow_is_atomic() {
         let mut metadata = metadata();
         metadata.schemas[0]
-            .iceberg_mut()
-            .insert("schema-id", i32::MAX.to_string())
+            .as_iceberg_mut()
+            .set_schema_id(i32::MAX)
             .unwrap();
         metadata.current_schema_id = i32::MAX;
 
         let mut reusable = metadata.current_schema().unwrap().clone();
-        reusable.iceberg_mut().insert("schema-id", "7").unwrap();
+        reusable.as_iceberg_mut().set_schema_id(7).unwrap();
         assert_eq!(metadata.add_schema(reusable).unwrap(), i32::MAX);
         assert_eq!(metadata.schemas.len(), 1);
 

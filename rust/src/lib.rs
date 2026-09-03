@@ -62,6 +62,15 @@ pub use error::{Error, Result};
 pub use expression::Expression;
 #[cfg(feature = "arrow")]
 pub use field::cast::{ArrowCast, ArrowFieldType};
+pub use field::protocol::{
+    ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, FieldPropertiesField,
+    FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut, GlueField,
+    GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField, IcebergFieldMut,
+    MysqlField, MysqlFieldMut, PandasField, PandasFieldMut, PolarsField, PolarsFieldMut,
+    PostgresField, PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField,
+    ProtocolFieldMut, S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut,
+    UrnField, UrnFieldMut,
+};
 pub use field::{
     AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
     PartitionFields, Pretty, TypedField, TypedFieldRef,
@@ -72,9 +81,7 @@ pub use generic::{
     UnionMode,
 };
 pub use generic::{I256, Scalar};
-pub use metadata::{
-    Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
-};
+pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use uri::{

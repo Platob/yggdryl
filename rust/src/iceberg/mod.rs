@@ -83,6 +83,7 @@
 
 mod catalog;
 mod evolve;
+mod field;
 mod inspect;
 mod manifest;
 mod metadata;

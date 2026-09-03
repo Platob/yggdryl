@@ -383,23 +383,32 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     )
     .unwrap();
 
-    assert_eq!(field.content_type(), Some("text/plain; charset=utf-8"));
-    assert_eq!(field.content_length().unwrap(), Some(42));
-    assert_eq!(field.etag(), Some("\"revision-1\""));
+    assert_eq!(
+        field.as_http().content_type(),
+        Some("text/plain; charset=utf-8")
+    );
+    assert_eq!(field.as_http().content_length().unwrap(), Some(42));
+    assert_eq!(field.as_http().etag(), Some("\"revision-1\""));
     assert_eq!(field.get_metadata("HTTP:CONTENT-LENGTH"), Some("42"));
     assert_eq!(field.get_metadata("http:content-length"), Some("42"));
 
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    field.set_content_type("text/plain; charset=utf-8").unwrap();
-    field.set_content_length(42);
+    field
+        .as_http_mut()
+        .set_content_type("text/plain; charset=utf-8")
+        .unwrap();
+    field.as_http_mut().set_content_length(42);
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
     ));
 
-    field.set_cache_control("public, max-age=60").unwrap();
-    assert_eq!(field.cache_control(), Some("public, max-age=60"));
+    field
+        .as_http_mut()
+        .set_cache_control("public, max-age=60")
+        .unwrap();
+    assert_eq!(field.as_http().cache_control(), Some("public, max-age=60"));
     assert!(!Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
@@ -408,15 +417,23 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     let unchanged = field.clone();
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    assert!(field.set_etag("good\r\nInjected: bad").is_err());
+    assert!(
+        field
+            .as_http_mut()
+            .set_etag("good\r\nInjected: bad")
+            .is_err()
+    );
     assert_eq!(field, unchanged);
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
     ));
 
-    assert_eq!(field.remove_content_length().unwrap(), Some(42));
-    assert_eq!(field.remove_content_length().unwrap(), None);
+    assert_eq!(
+        field.as_http_mut().remove_content_length().unwrap(),
+        Some(42)
+    );
+    assert_eq!(field.as_http_mut().remove_content_length().unwrap(), None);
     assert_eq!(
         field.remove_metadata("HTTP:ETAG").as_deref(),
         Some("\"revision-1\"")
@@ -426,7 +443,7 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
 #[test]
 fn http_case_collisions_and_typed_location_are_transactional() {
     let mut field = Field::new("payload", DataType::Binary, false);
-    field.set_accept("application/json").unwrap();
+    field.as_http_mut().set_accept("application/json").unwrap();
     let snapshot = field.clone();
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
@@ -447,21 +464,22 @@ fn http_case_collisions_and_typed_location_are_transactional() {
     field
         .insert_metadata("HTTP:Location", "../relative/resource")
         .unwrap();
-    assert!(field.http_location().is_err());
+    assert!(field.as_http().location().is_err());
     assert_eq!(
         field.get_metadata("http:location"),
         Some("../relative/resource")
     );
     let before_remove = field.clone();
-    assert!(field.remove_http_location().is_err());
+    assert!(field.as_http_mut().remove_location().is_err());
     assert_eq!(field, before_remove);
 
     let absolute = Url::from_str("HTTPS://example.test/data").unwrap();
-    field.set_http_location(absolute.clone());
-    assert_eq!(field.http_location().unwrap(), Some(absolute));
+    field.as_http_mut().set_location(absolute.clone());
+    assert_eq!(field.as_http().location().unwrap(), Some(absolute));
     assert_eq!(
         field
-            .remove_http_location()
+            .as_http_mut()
+            .remove_location()
             .unwrap()
             .map(|value| value.to_string()),
         Some("https://example.test/data".to_owned())
@@ -477,7 +495,7 @@ fn https_properties_share_the_canonical_http_namespace() {
             .unwrap(),
         None
     );
-    assert_eq!(field.content_type(), Some("application/json"));
+    assert_eq!(field.as_http().content_type(), Some("application/json"));
     assert_eq!(
         field.get_property(&Scheme::HTTP, "CONTENT-TYPE"),
         Some("application/json")
@@ -557,15 +575,16 @@ fn typed_http_media_preserves_raw_parameters_and_encoding_order() {
     .unwrap();
 
     assert_eq!(
-        field.content_type(),
+        field.as_http().content_type(),
         Some("Application/JSON; Charset=utf-8")
     );
-    assert_eq!(field.mime_type().unwrap(), MimeType::JSON);
-    let media = field.media_type().unwrap();
+    assert_eq!(field.as_http().mime_type().unwrap(), MimeType::JSON);
+    let media = field.as_http().media_type().unwrap();
     assert_eq!(media.base(), &MimeType::JSON);
     assert_eq!(media.encodings(), &[MimeType::GZIP, MimeType::BROTLI]);
     assert_eq!(
         Field::new("empty", DataType::Binary, true)
+            .as_http()
             .mime_type()
             .unwrap(),
         MimeType::OCTET_STREAM
@@ -580,14 +599,17 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
     )
     .unwrap();
     let mut field = Field::new("payload", DataType::Binary, false);
-    field.set_media_type(media.clone()).unwrap();
-    assert_eq!(field.content_type(), Some("text/csv"));
-    assert_eq!(field.content_encoding(), Some("gzip, compress, zstd"));
-    assert_eq!(field.media_type().unwrap(), media);
+    field.as_http_mut().set_media_type(media.clone()).unwrap();
+    assert_eq!(field.as_http().content_type(), Some("text/csv"));
+    assert_eq!(
+        field.as_http().content_encoding(),
+        Some("gzip, compress, zstd")
+    );
+    assert_eq!(field.as_http().media_type().unwrap(), media);
 
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    field.set_media_type(media).unwrap();
+    field.as_http_mut().set_media_type(media).unwrap();
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
@@ -595,22 +617,34 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
 
     let unsupported = MediaType::from_parts(MimeType::JSON, [MimeType::BZIP2]).unwrap();
     let unchanged = field.clone();
-    assert!(field.set_media_type(unsupported).is_err());
+    assert!(field.as_http_mut().set_media_type(unsupported).is_err());
     assert_eq!(field, unchanged);
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
     ));
 
-    field.set_mime_type(MimeType::JSON);
-    assert_eq!(field.content_type(), Some("application/json"));
-    assert_eq!(field.content_encoding(), Some("gzip, compress, zstd"));
-    assert_eq!(field.remove_mime_type().unwrap(), Some(MimeType::JSON));
-    assert_eq!(field.content_type(), None);
-    assert_eq!(field.content_encoding(), Some("gzip, compress, zstd"));
-    assert_eq!(field.media_type().unwrap().base(), &MimeType::OCTET_STREAM);
-    assert!(field.remove_media_type().unwrap().is_some());
-    assert_eq!(field.content_encoding(), None);
+    field.as_http_mut().set_mime_type(MimeType::JSON);
+    assert_eq!(field.as_http().content_type(), Some("application/json"));
+    assert_eq!(
+        field.as_http().content_encoding(),
+        Some("gzip, compress, zstd")
+    );
+    assert_eq!(
+        field.as_http_mut().remove_mime_type().unwrap(),
+        Some(MimeType::JSON)
+    );
+    assert_eq!(field.as_http().content_type(), None);
+    assert_eq!(
+        field.as_http().content_encoding(),
+        Some("gzip, compress, zstd")
+    );
+    assert_eq!(
+        field.as_http().media_type().unwrap().base(),
+        &MimeType::OCTET_STREAM
+    );
+    assert!(field.as_http_mut().remove_media_type().unwrap().is_some());
+    assert_eq!(field.as_http().content_encoding(), None);
 }
 
 #[test]
@@ -628,8 +662,8 @@ fn malformed_typed_http_media_removal_is_transactional() {
     let snapshot = field.clone();
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    assert!(field.media_type().is_err());
-    assert!(field.remove_media_type().is_err());
+    assert!(field.as_http().media_type().is_err());
+    assert!(field.as_http_mut().remove_media_type().is_err());
     assert_eq!(field, snapshot);
     assert!(Arc::ptr_eq(
         &cached,
@@ -644,10 +678,13 @@ fn malformed_typed_http_media_removal_is_transactional() {
     )
     .unwrap();
     assert_eq!(
-        duplicate.media_type().unwrap().encodings(),
+        duplicate.as_http().media_type().unwrap().encodings(),
         &[MimeType::GZIP, MimeType::GZIP]
     );
-    assert_eq!(duplicate.content_encoding(), Some(" gzip ,\tGZIP "));
+    assert_eq!(
+        duplicate.as_http().content_encoding(),
+        Some(" gzip ,\tGZIP ")
+    );
 
     for coding in ["", "identity", "gzip,", "unknown-coding"] {
         let raw = Field::from_parts(
@@ -657,8 +694,11 @@ fn malformed_typed_http_media_removal_is_transactional() {
             [("http:content-encoding", coding)],
         )
         .unwrap();
-        assert_eq!(raw.content_encoding(), Some(coding));
-        assert!(raw.media_type().is_err(), "accepted coding {coding:?}");
+        assert_eq!(raw.as_http().content_encoding(), Some(coding));
+        assert!(
+            raw.as_http().media_type().is_err(),
+            "accepted coding {coding:?}"
+        );
     }
 }
 
@@ -1027,29 +1067,32 @@ fn a_root_must_be_a_non_null_struct_and_says_why() {
 #[test]
 fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
     let mut field = DataType::Int64.required_field("price");
-    field.iceberg_mut().insert("doc", "closing price").unwrap();
     field
-        .iceberg_mut()
+        .as_iceberg_mut()
+        .insert("doc", "closing price")
+        .unwrap();
+    field
+        .as_iceberg_mut()
         .update([("schema-id", "3"), ("field-id", "7")])
         .unwrap();
-    field.postgres_mut().insert("comment", "trades").unwrap();
+    field.as_postgres_mut().insert("comment", "trades").unwrap();
 
     // The view spells the key once, so a caller never assembles one.
-    assert_eq!(field.iceberg().key("doc"), "iceberg:doc");
-    assert_eq!(field.iceberg().prefix(), "iceberg");
-    assert_eq!(field.iceberg().scheme(), &Scheme::ICEBERG);
-    assert_eq!(field.iceberg().get("doc"), Some("closing price"));
+    assert_eq!(field.as_iceberg().key("doc"), "iceberg:doc");
+    assert_eq!(field.as_iceberg().prefix(), "iceberg");
+    assert_eq!(field.as_iceberg().scheme(), &Scheme::ICEBERG);
+    assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
     assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
-    assert_eq!(&field.iceberg()["schema-id"], "3");
-    assert!(field.iceberg().contains_key("field-id"));
-    assert!(!field.iceberg().contains_key("comment"));
-    assert_eq!(field.iceberg().len(), 3);
-    assert_eq!(field.postgres().len(), 1);
-    assert!(field.mysql().is_empty());
+    assert_eq!(&field.as_iceberg()["schema-id"], "3");
+    assert!(field.as_iceberg().contains_key("field-id"));
+    assert!(!field.as_iceberg().contains_key("comment"));
+    assert_eq!(field.as_iceberg().len(), 3);
+    assert_eq!(field.as_postgres().len(), 1);
+    assert!(field.as_mysql().is_empty());
 
     // It reads out of the same map every other metadata accessor reads.
     assert_eq!(
-        field.iceberg().iter().collect::<Vec<_>>(),
+        field.as_iceberg().iter().collect::<Vec<_>>(),
         [
             ("doc", "closing price"),
             ("field-id", "7"),
@@ -1057,57 +1100,60 @@ fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
         ]
     );
     assert_eq!(
-        field.iceberg().next_entry(Some("doc")),
+        field.as_iceberg().next_entry(Some("doc")),
         Some(("field-id", "7"))
     );
     assert_eq!(
-        field.iceberg().to_string(),
+        field.as_iceberg().to_string(),
         r#"{"doc":"closing price","field-id":"7","schema-id":"3"}"#
     );
     assert_eq!(field.metadata_len(), 4);
 
     // A protocol-scoped replacement leaves every other protocol alone.
     field
-        .iceberg_mut()
+        .as_iceberg_mut()
         .set([("doc", "close"), ("sort-order-id", "1")])
         .unwrap();
     assert_eq!(
-        field.iceberg().iter().collect::<Vec<_>>(),
+        field.as_iceberg().iter().collect::<Vec<_>>(),
         [("doc", "close"), ("sort-order-id", "1")]
     );
-    assert_eq!(field.postgres().get("comment"), Some("trades"));
+    assert_eq!(field.as_postgres().get("comment"), Some("trades"));
 
-    assert_eq!(field.iceberg_mut().remove("doc").as_deref(), Some("close"));
-    field.iceberg_mut().clear();
-    assert!(field.iceberg().is_empty());
-    assert_eq!(field.postgres().len(), 1);
+    assert_eq!(
+        field.as_iceberg_mut().remove("doc").as_deref(),
+        Some("close")
+    );
+    field.as_iceberg_mut().clear();
+    assert!(field.as_iceberg().is_empty());
+    assert_eq!(field.as_postgres().len(), 1);
 }
 
 #[test]
 fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitive() {
     let mut field = DataType::Utf8.required_field("body");
     field
-        .http_mut()
+        .as_http_mut()
         .insert("Content-Type", "text/plain")
         .unwrap();
 
-    assert_eq!(field.http().get("content-type"), Some("text/plain"));
-    assert_eq!(field.http().get("CONTENT-TYPE"), Some("text/plain"));
-    assert_eq!(field.http().key("Content-Type"), "http:Content-Type");
+    assert_eq!(field.as_http().get("content-type"), Some("text/plain"));
+    assert_eq!(field.as_http().get("CONTENT-TYPE"), Some("text/plain"));
+    assert_eq!(field.as_http().key("Content-Type"), "http:Content-Type");
     assert_eq!(
         field.protocol(&Scheme::HTTPS).get("Content-Type"),
         Some("text/plain")
     );
     assert_eq!(field.protocol(&Scheme::HTTPS).prefix(), "http");
-    assert_eq!(field.content_type(), Some("text/plain"));
+    assert_eq!(field.as_http().content_type(), Some("text/plain"));
     assert_eq!(field.get_metadata("http:content-type"), Some("text/plain"));
 
     // The view is a borrow of the field's own snapshot, not a copy of it.
     let metadata = field.as_metadata().clone();
-    assert_eq!(metadata.http(), field.http());
+    assert_eq!(metadata.as_http(), field.as_http().as_properties());
     assert_eq!(
         metadata
-            .http()
+            .as_http()
             .into_metadata()
             .unwrap()
             .get("http:content-type"),
@@ -1120,7 +1166,7 @@ fn a_protocol_write_invalidates_the_arrow_cache_exactly_once() {
     let field = DataType::Int64.required_field("price");
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    field.iceberg_mut().insert("doc", "close").unwrap();
+    field.as_iceberg_mut().insert("doc", "close").unwrap();
     assert!(!Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
@@ -1128,19 +1174,19 @@ fn a_protocol_write_invalidates_the_arrow_cache_exactly_once() {
 
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
-    field.iceberg_mut().insert("doc", "close").unwrap();
+    field.as_iceberg_mut().insert("doc", "close").unwrap();
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
     ));
 
     // A rejected value leaves the field, and its cache, untouched.
-    assert!(field.iceberg_mut().insert("", "no name").is_err());
+    assert!(field.as_iceberg_mut().insert("", "no name").is_err());
     assert!(Arc::ptr_eq(
         &cached,
         &field.clone().into_arrow_ref().unwrap()
     ));
-    assert_eq!(field.iceberg().len(), 1);
+    assert_eq!(field.as_iceberg().len(), 1);
 }
 
 #[test]
@@ -1514,7 +1560,7 @@ fn a_protocol_view_merges_under_its_own_namespace() {
         .insert("id", "7")
         .unwrap();
 
-    let merged = held.iceberg().merge_with(&other.iceberg()).unwrap();
+    let merged = held.as_iceberg().merge_with(&other.as_iceberg()).unwrap();
     assert_eq!(merged.get("iceberg:doc"), Some("held"));
     assert_eq!(merged.get("iceberg:id"), Some("7"));
 
@@ -1525,7 +1571,7 @@ fn a_protocol_view_merges_under_its_own_namespace() {
         .insert("comment", "from glue")
         .unwrap();
 
-    let crossed = held.iceberg().merge_with(&glue.glue()).unwrap();
+    let crossed = held.as_iceberg().merge_with(&glue.as_glue()).unwrap();
     assert_eq!(crossed.get("iceberg:comment"), Some("from glue"));
     assert!(crossed.get("glue:comment").is_none());
 }
@@ -1554,7 +1600,7 @@ fn a_mutable_protocol_view_merges_in_place_and_only_adds() {
 
     target
         .protocol_mut(&Scheme::ICEBERG)
-        .merge_with(&source.iceberg())
+        .merge_with(&source.as_iceberg())
         .unwrap();
 
     // A name already held keeps its value; a new one arrives.

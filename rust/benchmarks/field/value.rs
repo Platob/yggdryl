@@ -84,19 +84,19 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("protocol_view_hit", |bencher| {
         bencher.iter(|| {
             black_box(&property_field)
-                .postgres()
+                .as_postgres()
                 .get(black_box("table"))
         });
     });
     group.bench_function("protocol_view_hit_wide", |bencher| {
         bencher.iter(|| {
             black_box(&wide_property_field)
-                .postgres()
+                .as_postgres()
                 .get(black_box("table"))
         });
     });
     group.bench_function("protocol_view_len_1024", |bencher| {
-        bencher.iter(|| black_box(&protocol_properties).postgres().len());
+        bencher.iter(|| black_box(&protocol_properties).as_postgres().len());
     });
     let partitioned = Field::new(
         "row",
@@ -162,11 +162,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .into_arrow_ref()
         .expect("the static HTTP field projects to Arrow");
     group.bench_function("http_content_type_exact", |bencher| {
-        bencher.iter(|| black_box(&http_field).content_type());
+        bencher.iter(|| black_box(&http_field).as_http().content_type());
     });
     group.bench_function("http_content_length_typed", |bencher| {
         bencher.iter(|| {
             black_box(&http_field)
+                .as_http()
                 .content_length()
                 .expect("the static content length remains valid")
         });
@@ -174,6 +175,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("http_media_type_typed", |bencher| {
         bencher.iter(|| {
             black_box(&http_field)
+                .as_http()
                 .media_type()
                 .expect("the static HTTP media headers remain valid")
         });
@@ -184,6 +186,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("http_media_type_set_noop", |bencher| {
         bencher.iter(|| {
             http_field
+                .as_http_mut()
                 .set_media_type(black_box(media.clone()))
                 .expect("the static media type remains valid");
         });
@@ -195,6 +198,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             || http_field.clone(),
             |mut field| {
                 field
+                    .as_http_mut()
                     .set_media_type(black_box(changed_media.clone()))
                     .expect("the changed media type remains valid");
                 black_box(field)

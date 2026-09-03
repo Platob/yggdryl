@@ -619,17 +619,18 @@ impl TableMetadata {
         let start = super::last_column_id(&schema)?.saturating_add(1);
         super::assign_field_ids(&mut schema, start)?;
         let last_column_id = super::last_column_id(&schema)?;
-        if schema.iceberg().get(super::schema::SCHEMA_ID).is_none() {
-            schema.iceberg_mut().insert(super::schema::SCHEMA_ID, "0")?;
+        if schema.as_iceberg().schema_id()?.is_none() {
+            schema.as_iceberg_mut().set_schema_id(0)?;
         }
         // The schema says how the table is laid out, so the columns the spec
         // partitions on are marked on it rather than only named beside it.
         let schema = spec.mark_partitions(&schema)?;
         let last_partition_id = spec.last_field_id();
         let current_schema_id = schema
-            .iceberg()
-            .get(super::schema::SCHEMA_ID)
-            .and_then(|id| id.parse::<i32>().ok())
+            .as_iceberg()
+            .schema_id()
+            .ok()
+            .flatten()
             .unwrap_or_default();
         let mut metadata = Self {
             format_version,
@@ -677,14 +678,9 @@ impl TableMetadata {
 
     /// Return one schema by identifier.
     pub fn schema_by_id(&self, schema_id: i32) -> Option<&Field> {
-        self.schemas.iter().find(|schema| {
-            schema
-                .iceberg()
-                .get(super::schema::SCHEMA_ID)
-                .and_then(|id| id.parse::<i32>().ok())
-                .unwrap_or_default()
-                == schema_id
-        })
+        self.schemas
+            .iter()
+            .find(|schema| field_schema_id(schema) == schema_id)
     }
 
     /// Return the snapshot a reader sees, when the table has one.
@@ -807,9 +803,7 @@ impl TableMetadata {
                     .metadata_iter()
                     .map(|(key, value)| (key.to_owned(), value.to_owned())),
             )?;
-            added
-                .iceberg_mut()
-                .insert(super::schema::SCHEMA_ID, schema_id.to_string())?;
+            added.as_iceberg_mut().set_schema_id(schema_id)?;
         }
         *self = updated;
         Ok(schema_id)
@@ -869,13 +863,7 @@ impl TableMetadata {
                 "expected a table metadata \"schemas\" array or a v1 \"schema\" object",
             )));
         }
-        schemas.sort_by_key(|schema| {
-            schema
-                .iceberg()
-                .get(super::schema::SCHEMA_ID)
-                .and_then(|id| id.parse::<i32>().ok())
-                .unwrap_or_default()
-        });
+        schemas.sort_by_key(field_schema_id);
 
         let mut partition_specs = Vec::new();
         for entry in document
@@ -2338,11 +2326,16 @@ fn official_snapshot_reference(reference: &SnapshotRef) -> Result<OfficialSnapsh
     ))
 }
 
+/// Read a schema's own identifier, defaulting an absent or unreadable one.
+///
+/// A schema whose identifier cannot be read still has to sort, group and match
+/// somewhere, and 0 is the identifier Iceberg gives a table's first schema.
 fn field_schema_id(schema: &Field) -> i32 {
     schema
-        .iceberg()
-        .get(super::schema::SCHEMA_ID)
-        .and_then(|id| id.parse().ok())
+        .as_iceberg()
+        .schema_id()
+        .ok()
+        .flatten()
         .unwrap_or_default()
 }
 

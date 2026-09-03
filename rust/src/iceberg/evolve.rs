@@ -329,9 +329,7 @@ fn apply_doc(schema: &mut Field, path: &str, doc: &str) -> Result<()> {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
             return Err(missing_column(target, children, path));
         };
-        children[index]
-            .iceberg_mut()
-            .insert(super::schema::DOC, doc)?;
+        children[index].as_iceberg_mut().set_doc(doc)?;
         Ok(())
     })
 }
