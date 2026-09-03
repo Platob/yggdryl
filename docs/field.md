@@ -229,7 +229,10 @@ The rules are tried in order:
    of its fields, and lists, maps, unions and run-end nodes merge their
    children;
 4. **bytes win**, because every other encoding fits inside them;
-5. **text wins next**, over numbers and temporals;
+5. **text wins next**, over numbers and temporals; two ASCII widths meet at
+   the wider (or, narrowing, the narrower) width, and a width beside
+   variable text meets at the variable text when widening and at the width
+   when narrowing;
 6. numbers meet by width, and temporals by unit.
 
 Anything left is refused rather than guessed: a boolean and a timestamp have no
@@ -822,13 +825,13 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     assert.equal(at.dtype.toString(), 'timestamp(us)')
     ```
 
-`Int64Field` and the forty aliases beside it are `TypedField<K>`, one `Field` plus a zero-sized sealed
-marker, `repr(transparent)` and exactly the size of the field it holds. The marker constrains the
-variant only: a decimal's precision, a timestamp's unit, a list's child all stay in the wrapped
-field, so the typed view never duplicates schema state. `try_as_typed` borrows a `TypedFieldRef`
-without allocating, `try_into_typed` consumes, and there is no `DerefMut` - replacing the datatype
-through a generic reference could violate `K`, so `set_dtype` on a typed field re-checks the
-marker and leaves the value untouched when it fails.
+`Int64Field` and the forty-seven aliases beside it are `TypedField<K>`, one `Field` plus a
+zero-sized sealed marker, `repr(transparent)` and exactly the size of the field it holds. The
+marker constrains the variant only: a decimal's precision, a timestamp's unit, a list's child all
+stay in the wrapped field, so the typed view never duplicates schema state. `try_as_typed`
+borrows a `TypedFieldRef` without allocating, `try_into_typed` consumes, and there is no
+`DerefMut` - replacing the datatype through a generic reference could violate `K`, so `set_dtype`
+on a typed field re-checks the marker and leaves the value untouched when it fails.
 
 Aliases with a statically known datatype get a `new(name, nullable)` that cannot fail, plus
 `from_parts(name, nullable, metadata)`; parameterized ones take the datatype through `try_new`. In
@@ -836,13 +839,15 @@ Python and JavaScript the aliases are static views over the same native class: `
 returns an ordinary `Field`, typed as `Int64Field` for a checker only. Watch the default -
 `nullable` defaults to `True` in Python and to `false` in JavaScript.
 
-The three newest datatypes -
-[variant, geometry, and geography](datatype.md#variant-geometry-and-geography) - follow the same
+[Variant, geometry, and geography](datatype.md#variant-geometry-and-geography) follow the same
 pattern: `yggdryl::field::VariantField` is parameterless and gets the static `new(name, nullable)`,
 while `GeometryField` and `GeographyField` are parameterized by CRS and edge algorithm, so they
 take their datatype through `try_new`. The binding-side `VariantField`, `GeometryField`, and
 `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography` are
 checker-level views over the one native class exactly like every alias above.
+The [ASCII widths](datatype.md#ascii-widths-and-the-currency-registration) are parameterless
+too: `Ascii32Field`, `Ascii64Field`, and `Ascii128Field` get the static `new`, and the bindings
+add `fields.ascii(name, width)` over `DataType.ascii` beside the three per-width factories.
 
 ## Converting to one native field
 

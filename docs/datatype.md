@@ -44,12 +44,13 @@ type, with Arrow itself kept out of the value model.
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
 
-There are 44 variants: one per Arrow logical type, plus Variant and the geospatial pair, which
-cross Arrow as extension-typed storage. The parser accepts the Arrow, SQL, Hive, and
-Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`, `row(...)`,
-`double precision` - and normalizes to one canonical form, so `to_string` is a losslessly
-re-parseable value rather than a debug rendering. `into_json` is a separate, structural encoding:
-tagged objects that name every parameter, which is what a schema written to disk should be.
+There are 48 variants: one per Arrow logical type, plus Variant, the geospatial pair, and the
+three ASCII widths, which cross Arrow as extension-typed storage. The parser accepts the Arrow,
+SQL, Hive, and Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`,
+`row(...)`, `double precision` - and normalizes to one canonical form, so `to_string` is a
+losslessly re-parseable value rather than a debug rendering. `into_json` is a separate, structural
+encoding: tagged objects that name every parameter, which is what a schema written to disk should
+be.
 
 Scalar variants are inline and nested children sit behind shared allocations, so cloning a
 `DataType` never allocates. The value is immutable; changing a type means building another one.
@@ -531,7 +532,8 @@ none. The algorithm vocabulary is the five canonical lowercase names of
 `karney` - parsed case-insensitively; the Python and JavaScript `algorithm` arguments accept those
 strings.
 
-Across an Arrow boundary the three are extension-typed storage: a variant is a struct of
+Across an Arrow boundary the three are extension-typed storage, as are the
+[ASCII widths](#ascii-widths-and-the-currency-registration) below: a variant is a struct of
 non-nullable `metadata` and `value` binaries under the canonical `arrow.parquet.variant` extension
 name, and both geospatial types are WKB bytes under the community `geoarrow.wkb` name, whose
 GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm. The identities
@@ -540,6 +542,189 @@ documentation says the specification is not finalized, so the `geoarrow.wkb` map
 community choice that may be revisited when it stabilizes. The geospatial *values* travel as
 Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
+
+## ASCII widths and the currency registration
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
+    use arrow_schema::DataType as ArrowDataType;
+    use yggdryl::arrow::{scalar_array, scalar_value};
+    use yggdryl::{ArrowCast, DataType, DataTypeKind, Field, Scalar};
+
+    // Three widths named by their bits; the family constructor selects one.
+    assert_eq!(DataType::ascii(3)?, DataType::Ascii32);
+    assert_eq!(DataType::from_str("ascii(12)")?, DataType::Ascii128);
+    assert_eq!(DataType::Ascii32.kind(), DataTypeKind::String);
+    assert_eq!(DataType::Ascii64.ascii_width(), Some(8));
+    assert_eq!(DataType::Utf8.ascii_width(), None);
+    assert!(DataType::ascii(17).is_err());
+
+    // `currency` is a registered name over `ascii32`, and displays as the width.
+    let currency = DataType::from_logical_name("Currency")?;
+    assert_eq!(currency, DataType::Ascii32);
+    assert_eq!(DataType::from_str("currency")?, currency);
+    assert_eq!(currency.to_string(), "ascii32");
+    assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
+
+    // Storage pads to the width; every string rendering trims the padding.
+    let ccy = Field::new("ccy", DataType::Ascii32, false);
+    let stored = scalar_array(&ccy, &Scalar::from("USD"))?;
+    let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
+    assert_eq!(bytes.value(0), b"USD\0");
+    assert_eq!(scalar_value(&ccy, stored.as_ref())?, Scalar::from("USD"));
+
+    // The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
+    let arrow = ccy.clone().into_arrow()?;
+    assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.ascii");
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
+    assert_eq!(Field::from_arrow(&arrow)?, ccy);
+
+    // A cast into the width pads; the stored column read under `utf8` trims.
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EU"]));
+    let padded = ccy.cast_arrow_array(text, false)?;
+    let bytes = padded.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
+    assert_eq!(bytes.value(1), b"EU\0\0");
+    let row = DataType::from_fields([ccy.clone()])?.required_field("row");
+    let batch = RecordBatch::try_new(row.into_arrow_schema()?, vec![padded])?;
+    let text = DataType::from_fields([DataType::Utf8.required_field("ccy")])?.required_field("row");
+    let trimmed = text.cast_arrow_batch(batch, false)?;
+    let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(trimmed.value(1), "EU");
+
+    assert_eq!(DataType::Ascii32.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+
+    let long: ArrayRef = Arc::new(StringArray::from(vec!["EURO!"]));
+    let refused = ccy.cast_arrow_array(long, false).unwrap_err().to_string();
+    assert!(refused.contains("at most 4 bytes"), "{refused}");
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    import pytest
+
+    from yggdryl import DataType, Field, fields
+
+    ascii32 = DataType("ascii32")
+    assert DataType.ascii(3) == ascii32
+    assert DataType("ascii(12)") == DataType("ascii128")
+    assert ascii32.kind == "string"
+    assert ascii32.ascii_width == 4
+    assert DataType("ascii64").ascii_width == 8
+    assert DataType("utf8").ascii_width is None
+    assert fields.ascii("ccy", 3).dtype == ascii32
+
+    # `currency` is a registered name over `ascii32`, and displays as the width.
+    currency = DataType.from_logical_name("Currency")
+    assert currency == ascii32
+    assert DataType("currency") == currency
+    assert str(currency) == "ascii32"
+    assert DataType.logical_names() == {"currency": ascii32}
+
+    # Storage pads to the width; every string rendering trims the padding.
+    ccy = Field("ccy", "ascii32", nullable=False)
+    assert ccy.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
+    assert ccy.default_pyvalue() == ""
+
+    # The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
+    arrow = ccy.into_arrow()
+    assert arrow.type == pa.binary(4)
+    assert arrow.metadata == {
+        b"ARROW:extension:name": b"yggdryl.ascii",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow) == ccy
+
+    # A cast into the width pads; the stored column read under `utf8` trims.
+    padded = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
+    assert padded.to_pylist() == [b"USD\x00", b"EU\x00\x00"]
+    stored = pa.record_batch([padded], schema=pa.schema([arrow]))
+    text = DataType.from_fields([fields.utf8("ccy")])
+    assert text.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", "EU"]
+
+    assert ascii32.merge_with("utf8") == DataType("utf8")
+
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        ccy.cast_arrow_array(pa.array(["EURO!"]))
+    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
+        DataType.ascii(17)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { DataType, fields } = require('yggdryl')
+
+    const ascii32 = new DataType('ascii32')
+    assert.ok(DataType.ascii(3).equals(ascii32))
+    assert.equal(DataType.from('ascii(12)').id, 'ascii128')
+    assert.equal(ascii32.kind, 'string')
+    assert.equal(ascii32.asciiWidth, 4)
+    assert.equal(new DataType('ascii64').asciiWidth, 8)
+    assert.equal(new DataType('utf8').asciiWidth, null)
+    assert.ok(fields.ascii('ccy', 3).dtype.equals(ascii32))
+
+    // `currency` is a registered name over `ascii32`, and displays as the width.
+    const currency = DataType.fromLogicalName('Currency')
+    assert.ok(currency.equals(ascii32))
+    assert.ok(DataType.from('currency').equals(currency))
+    assert.equal(currency.toString(), 'ascii32')
+    assert.deepEqual(Object.keys(DataType.logicalNames()), ['currency'])
+
+    // Storage pads to the width; every string rendering trims the padding.
+    const row = fields.struct('row', [fields.ascii32('ccy', { nullable: false })], {
+      nullable: false,
+    })
+    assert.equal(row.getField('ccy').defaultJSValue(), '')
+    const codes = (values) =>
+      new arrow.Table({ ccy: arrow.vectorFromArray(values, new arrow.Utf8()) })
+    const stored = row.castArrow(codes(['USD', 'EU']))
+    assert.deepEqual([...stored.getChild('ccy').get(1)], [0x45, 0x55, 0, 0])
+
+    // The Arrow field is `FixedSizeBinary[4]` under the `yggdryl.ascii` name,
+    // and a column carrying that identity reads under `utf8` as trimmed text.
+    const field = stored.schema.fields[0]
+    assert.equal(String(field.type), 'FixedSizeBinary[4]')
+    assert.equal(field.metadata.get('ARROW:extension:name'), 'yggdryl.ascii')
+    const text = fields.struct('row', [fields.utf8('ccy', { nullable: false })], {
+      nullable: false,
+    })
+    assert.deepEqual([...text.castArrow(stored).getChild('ccy')], ['USD', 'EU'])
+
+    assert.equal(ascii32.mergeWith('utf8').id, 'utf8')
+
+    assert.throws(() => row.castArrow(codes(['EURO!'])), /ASCII text of at most 4 bytes/)
+    assert.throws(() => DataType.ascii(17), /from 1 to 16 bytes, got 17/)
+    ```
+
+`ascii32`, `ascii64`, and `ascii128` are ASCII text padded with trailing NUL to 4, 8, and 16
+bytes, named by their bit width like `int32` and `decimal128`. A value is ASCII - every byte at
+most `0x7F` - of at most the width in bytes, with no NUL byte; storage pads it to exactly the width,
+and every string rendering trims the padding, so a column reads back as the text that went in. The
+canonical scalar is the trimmed string; bytes and a string carrying trailing NULs are accepted on
+the way in under the same rule and canonicalize to it. `ascii(n)` selects the width that holds `n`
+bytes, `ascii_width` answers the storage width, and a value that is not ASCII, holds a NUL, or is
+longer than the width is refused naming the width and, in a cast, the row.
+
+A registration is a name over a width, not a type: `currency` is ISO 4217's three-letter code, so
+it parses to `ascii32` and displays as `ascii32` - one canonical spelling. `LOGICAL_NAMES` is the
+registry and `from_logical_name` resolves it, ASCII case-insensitively and trimmed. Across Arrow the
+widths are `fixed_size_binary(4|8|16)` under the `yggdryl.ascii` extension name with an empty
+document, because the storage width says the width; a plain fixed binary of another width, or one
+carrying a document, imports as it is. Every other exchange sees text: Iceberg, Spark, Polars, and
+pandas [rewrite](#compatibility-rewriting) a width to `string`/`utf8`, Avro writes `string`, and a
+filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
+[merge](field.md#merging-two-schemas) as text. One boundary shows storage: JavaScript's
+`readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII column arrives
+there as its padded bytes; read it under a declared `utf8` field, as above, for the text.
 
 ## Identity and family
 
@@ -727,7 +912,7 @@ before materializing foreign state. Whole schemas cross the same boundary throug
     assert.equal(new DataType('int32').defaultArrowScalar(), 0)
     ```
 
-Every one of the 44 variants has a canonical default, and it is computed from the schema rather than
+Every one of the 48 variants has a canonical default, and it is computed from the schema rather than
 looked up per language: the core produces one value and each binding projects it. Rust yields a
 [`Scalar`](generic.md); Python yields a generated field dataclass or a Python scalar from `default_pyvalue`
 and a `pyarrow.Scalar` from `default_arrow_scalar`; JavaScript yields a plain array, `Buffer`,
