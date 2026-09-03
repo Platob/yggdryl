@@ -5310,7 +5310,7 @@ mod concurrency_and_compaction {
 }
 
 mod line_projection {
-    use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray};
+    use arrow_array::{BinaryArray, Int64Array, StringArray};
 
     use super::*;
     use crate::Url;
