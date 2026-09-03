@@ -15,7 +15,7 @@ import pyarrow as pa
 import pyarrow.dataset as pads
 import pytest
 
-from yggdryl import IOBase, scalar
+from yggdryl import DataType, Field, IOBase, scalar
 
 SCHEMA = pa.schema(
     [
@@ -761,3 +761,54 @@ class TestAbsentLibrary:
 
         with self.without("pandas"), pytest.raises(ImportError, match="needs pandas installed"):
             handle.read_pandas()
+
+
+@dataclass
+class Quote:
+    id: int
+    ccy: str
+
+
+class TestAsciiRecords:
+    def test_an_ascii_column_stores_padded_and_reads_trimmed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "ascii.parquet")
+        options = handle.record_options()
+        options.field = Field(
+            "row",
+            DataType.from_fields(
+                [
+                    Field("id", "int64", nullable=False),
+                    Field("ccy", "ascii32", nullable=False),
+                ]
+            ),
+            nullable=False,
+        )
+
+        # The declared field pads the text column on the way in.
+        handle.overwrite_arrow_table(
+            pa.table({"id": [1, 2], "ccy": ["USD", "EUR"]}), options=options
+        )
+
+        assert handle.read_arrow_field().dtype["ccy"].dtype == DataType("ascii32")
+        stored = handle.read_arrow_reader().read_all().column("ccy")
+        assert stored.to_pylist() == [b"USD\x00", b"EUR\x00"]
+        # Every read route renders the width trimmed through the one core rule.
+        assert list(handle.read_records(Quote)) == [Quote(1, "USD"), Quote(2, "EUR")]
+        assert list(handle.read_records(Quote, options=options)) == [
+            Quote(1, "USD"),
+            Quote(2, "EUR"),
+        ]
+        assert [row["ccy"] for row in handle.read_records()] == ["USD", "EUR"]
+        assert [row["ccy"] for row in handle.read_records(options=options)] == ["USD", "EUR"]
+        generated = options.field.into_dataclass()
+        assert [row.ccy for row in handle.read_records(generated, options=options)] == [
+            "USD",
+            "EUR",
+        ]
+
+        with pytest.raises(ValueError, match="at most 4 bytes"):
+            handle.overwrite_arrow_table(
+                pa.table({"id": [3], "ccy": ["EURO!"]}), options=options
+            )

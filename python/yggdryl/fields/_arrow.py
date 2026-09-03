@@ -14,7 +14,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from .._native import DataType, Field as NativeField, Uri, Url, Urn
+from .._native import DataType, Field as NativeField, Scalar, Uri, Url, Urn
 from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
 
 _IDENTITY_KEYS = (
@@ -30,7 +30,9 @@ _FLOAT_KINDS = frozenset(("float16", "float32", "float64"))
 _BINARY_KINDS = frozenset(
     ("binary", "fixed_size_binary", "large_binary", "binary_view")
 )
-_STRING_KINDS = frozenset(("utf8", "large_utf8", "utf8_view"))
+_STRING_KINDS = frozenset(
+    ("utf8", "large_utf8", "utf8_view", "ascii32", "ascii64", "ascii128")
+)
 _LIST_KINDS = frozenset(
     ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")
 )
@@ -447,6 +449,7 @@ def dataclass_from_field(
 
 class _TypePlan(typing.NamedTuple):
     type_id: str
+    dtype: DataType
     arrow_type: Any
     children: tuple[_TypePlan, ...]
     map_as_pairs: bool
@@ -457,6 +460,7 @@ def _prepare_type_plan(dtype: DataType, arrow_type: Any) -> _TypePlan:
     if storage_type is not None:
         return _TypePlan(
             "extension",
+            dtype,
             arrow_type,
             (_prepare_type_plan(dtype, storage_type),),
             False,
@@ -465,6 +469,7 @@ def _prepare_type_plan(dtype: DataType, arrow_type: Any) -> _TypePlan:
     if kind == "dictionary":
         return _TypePlan(
             kind,
+            dtype,
             arrow_type,
             (
                 _prepare_type_plan(
@@ -483,7 +488,7 @@ def _prepare_type_plan(dtype: DataType, arrow_type: Any) -> _TypePlan:
         and bool(native_children)
         and native_children[0].dtype[0].dtype.is_nested
     )
-    return _TypePlan(kind, arrow_type, children, map_as_pairs)
+    return _TypePlan(kind, dtype, arrow_type, children, map_as_pairs)
 
 
 def _arrow_scalar_value(
@@ -622,7 +627,12 @@ def _arrow_scalar_value(
                 preserve_union_branch=preserve_union_branch,
             )
         return scalar.as_py()
-    return scalar.as_py()
+    # A leaf crosses under its native datatype through the core scalar
+    # boundary, so storage such as an ASCII width's padding never reaches
+    # Python.
+    return Scalar.from_arrow_scalar(
+        scalar, NativeField("value", plan.dtype, nullable=True)
+    ).as_py()
 
 
 def _map_keys_equal(left: Any, right: Any) -> bool:

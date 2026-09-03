@@ -46,6 +46,8 @@ from yggdryl._native import (
     ScalarIterator,
 )
 from yggdryl.fields import (
+    Ascii32Field,
+    AsciiField,
     DenseUnionField,
     FixedSizeListField,
     GeographyField,
@@ -273,6 +275,15 @@ geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
 typed_geography: GeographyField = fields.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
+ascii_dtype: DataType = DataType.ascii(3)
+ascii_width: int | None = ascii_dtype.ascii_width
+currency_dtype: DataType = DataType.from_logical_name("currency")
+logical_names: dict[str, DataType] = DataType.logical_names()
+typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
+typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
+typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
+typed_ascii_width: AsciiField = fields.ascii("isin", 12)
+typed_ascii_width_value: str | None = typed_ascii_width.default_pyvalue()
 
 byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
     position=1, batch_size=3

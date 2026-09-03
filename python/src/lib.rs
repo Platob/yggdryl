@@ -305,6 +305,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<crate::io::PyIOCursor>()?;
     module.add_class::<crate::io::PyByteIterator>()?;
     module.add_class::<io::PyLineIterator>()?;
+    module.add_class::<io::PyRecordIterator>()?;
     module.add_class::<io::PyIOBaseIterator>()?;
     module.add_class::<record::PyRecordOptions>()?;
     module.add_class::<iceberg::PyCatalog>()?;

@@ -142,6 +142,18 @@ def _build_generic_time_field() -> Field:
     return fields.time("at", "us", nullable=False)
 
 
+def _build_ascii_datatype() -> DataType:
+    return DataType.ascii(3)
+
+
+def _build_ascii_field() -> Field:
+    return fields.ascii32("ccy", nullable=False)
+
+
+def _resolve_logical_name() -> DataType:
+    return DataType.from_logical_name("currency")
+
+
 def _build_variant_datatype() -> DataType:
     return DataType.variant(VARIANT_MEMBERS)
 
@@ -269,6 +281,9 @@ def main() -> None:
         _measure("native typed map", _build_nested_typed_field, args.iterations)
         _measure("generic time datatype", _build_generic_time_datatype, args.iterations)
         _measure("generic time field", _build_generic_time_field, args.iterations)
+        _measure("ascii width datatype", _build_ascii_datatype, args.iterations)
+        _measure("ascii width field", _build_ascii_field, args.iterations)
+        _measure("logical name lookup", _resolve_logical_name, args.iterations)
         _measure("native variant datatype", _build_variant_datatype, args.iterations)
         _measure("native variant field", _build_variant_field, args.iterations)
         _measure("inferred variant datatype", _infer_variant_datatype, args.iterations)

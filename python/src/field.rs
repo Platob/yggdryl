@@ -15,7 +15,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
-    arrow_scalar_to_pyarrow_type, core_dtype_from_value, core_field_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
 use crate::media::{
@@ -50,11 +50,14 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
 
         // PyArrow's Field C Schema bridge can omit datatype-only flags such as
         // Map.keys_sorted. Its standalone datatype bridge is lossless, so use
-        // that authoritative type when it differs from the field projection.
+        // that authoritative type when it differs from the field's own Arrow
+        // projection; a recognized extension projects to its storage type and
+        // keeps its identity.
         let py_dtype = value.getattr("type")?;
         let arrow_dtype = ArrowDataType::from_pyarrow_bound(&py_dtype)?;
-        let dtype = CoreDataType::try_from(arrow_dtype).map_err(value_error)?;
-        if field.dtype() != &dtype {
+        let projected = field.dtype().clone().into_arrow().map_err(value_error)?;
+        if projected != arrow_dtype {
+            let dtype = CoreDataType::try_from(arrow_dtype).map_err(value_error)?;
             field = field.try_with_dtype(dtype).map_err(value_error)?;
         }
         Ok(field)
@@ -454,11 +457,15 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        // Project the complete Field so registered extension metadata can be
-        // rehydrated by PyArrow before selecting its scalar target type.
-        let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
-        let target = arrow_field.getattr("type")?;
-        let scalar = arrow_scalar_to_pyarrow_type(py, value, target, safe)?;
+        let scalar = if self.inner.dtype().ascii_width().is_some() {
+            ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
+        } else {
+            // Project the complete Field so registered extension metadata can
+            // be rehydrated by PyArrow before selecting its scalar target type.
+            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+            let target = arrow_field.getattr("type")?;
+            arrow_scalar_to_pyarrow_type(py, value, target, safe)?
+        };
         if !self.inner.is_nullable() && !scalar.getattr("is_valid")?.extract::<bool>()? {
             return Err(PyValueError::new_err(format!(
                 "field {:?} is not nullable",

@@ -315,3 +315,83 @@ def test_dtype_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> No
     nested_map = projected.field("items").type.value_type.field("lookup").type
     assert nested_map.keys_sorted is True
     assert projected.field("codes").type.ordered is True
+
+
+def test_ascii_widths_select_once_and_register_currency() -> None:
+    ascii32 = DataType("ascii32")
+
+    assert DataType.ascii(3) == ascii32
+    assert DataType.ascii(8) == DataType("ascii64")
+    assert DataType.ascii(12) == DataType("ascii128")
+    assert DataType("ascii(3)") == ascii32
+    assert DataType("currency") == ascii32
+    assert str(ascii32) == "ascii32"
+    assert eval(repr(ascii32), {"DataType": DataType}) == ascii32
+    assert ascii32.id == "ascii32"
+    assert ascii32.kind == "string"
+    assert ascii32.ascii_width == 4
+    assert DataType("ascii128").ascii_width == 16
+    assert DataType("utf8").ascii_width is None
+
+    assert DataType.from_logical_name("Currency") == ascii32
+    assert DataType.logical_names() == {"currency": ascii32}
+    assert list(DataType.logical_names()) == ["currency"]
+
+    with pytest.raises(ValueError, match="currency"):
+        DataType.from_logical_name("isin")
+    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
+        DataType.ascii(17)
+    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 0"):
+        DataType.ascii(0)
+    with pytest.raises(ValueError):
+        DataType("ascii")
+
+
+def test_ascii_widths_pad_into_arrow_storage_and_trim_out_of_it() -> None:
+    ascii32 = DataType("ascii32")
+    ccy = Field("ccy", "ascii32")
+
+    assert ascii32.into_arrow() == pa.binary(4)
+    arrow_field = ccy.into_arrow()
+    assert arrow_field.type == pa.binary(4)
+    assert arrow_field.metadata == {
+        b"ARROW:extension:name": b"yggdryl.ascii",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow_field) == ccy
+    assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field(
+        "ccy", "fixed_size_binary(4)"
+    )
+
+    assert ascii32.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(b"USD\x00") == pa.scalar(b"USD\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(None) == pa.scalar(None, pa.binary(4))
+    assert ccy.arrow_scalar("EUR") == pa.scalar(b"EUR\x00", pa.binary(4))
+    assert ascii32.default_pyvalue() == ""
+    assert ascii32.default_pyhint() is str
+    assert ascii32.default_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
+
+    padded = ccy.cast_arrow_array(pa.array(["USD", None]))
+    assert padded.type == pa.binary(4)
+    assert padded.to_pylist() == [b"USD\x00", None]
+    # A datatype casts as a required column: nulls fill with the default.
+    filled = ascii32.cast_arrow_array(pa.array(["USD", None]))
+    assert filled.to_pylist() == [b"USD\x00", b"\x00" * 4]
+
+    row = DataType.from_fields([Field("ccy", "utf8")])
+    stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
+    assert row.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", None]
+
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        ascii32.cast_arrow_array(pa.array(["EURO!"]))
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        ascii32.arrow_scalar("EURO!")
+    with pytest.raises(ValueError, match="non-ASCII"):
+        ccy.arrow_scalar("€")
+    # Only text and bytes are ASCII values; nothing is stringified.
+    with pytest.raises(ValueError, match="expected ascii32, got i64"):
+        ascii32.arrow_scalar(3)
+    with pytest.raises(ValueError, match="expected ascii32, got boolean"):
+        ascii32.arrow_scalar(True)
+    with pytest.raises(ValueError, match="expected ascii32"):
+        ccy.cast(1.5)

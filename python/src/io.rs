@@ -1510,10 +1510,25 @@ impl PyIOBase {
             .inner
             .read_arrow_reader(&options)
             .map_err(value_error)?;
-        let reader = batch_reader_to_pyarrow(py, reader)?;
-        py.import("yggdryl.fields._classes")?
-            .getattr("iter_records")?
-            .call1((reader, cls))
+        let field =
+            yggdryl::Field::from_arrow_schema("row", &reader.schema()).map_err(value_error)?;
+        let from_dict = cls
+            .map(|cls| {
+                let from_dict = py.import("yggdryl.fields._classes")?.getattr("from_dict")?;
+                Ok::<_, PyErr>((from_dict.unbind(), cls.clone().unbind()))
+            })
+            .transpose()?;
+        Py::new(
+            py,
+            PyRecordIterator {
+                reader,
+                field,
+                from_dict,
+                rows: yggdryl::Scalar::from_sequence([]),
+                next: 0,
+            },
+        )
+        .map(|iterator| iterator.into_bound(py).into_any())
     }
 
     /// Replace this resource from an iterable of Python row records.
@@ -2236,6 +2251,58 @@ impl PyLineIterator {
             None => Ok(None),
             Some(Ok(line)) => Ok(Some(line)),
             Some(Err(error)) => Err(value_error(error)),
+        }
+    }
+}
+
+/// Lazy native iterator over a resource's rows as mappings or dataclasses.
+///
+/// One batch is lowered at a time through the core value boundary, so every
+/// value crosses under its datatype - an ASCII width reads back trimmed, a
+/// nested struct crosses as a mapping - and nothing binding-side reinterprets
+/// storage. A requested dataclass is built from that mapping by
+/// `yggdryl.fields._classes.from_dict`, one row at a time.
+#[pyclass(name = "RecordIterator", module = "yggdryl._native", unsendable)]
+pub(crate) struct PyRecordIterator {
+    reader: yggdryl::arrow::BatchReader,
+    field: yggdryl::Field,
+    from_dict: Option<(Py<PyAny>, Py<PyAny>)>,
+    // The current batch's rows and the next one to hand out.
+    rows: yggdryl::Scalar,
+    next: usize,
+}
+
+#[pymethods]
+impl PyRecordIterator {
+    // Consumption changes reader state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        loop {
+            if let Some(row) = self.rows.as_sequence().and_then(|rows| rows.get(self.next)) {
+                self.next += 1;
+                let record = crate::scalar::as_py_with_field(py, row, &self.field)?;
+                return match &self.from_dict {
+                    Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
+                    None => Ok(Some(record)),
+                };
+            }
+            // The read and the lowering run without the GIL.
+            let Some(rows) = py.detach(|| {
+                self.reader.next().map(|batch| {
+                    yggdryl::arrow::batch_to_value(&batch.map_err(value_error)?)
+                        .map_err(value_error)
+                })
+            }) else {
+                return Ok(None);
+            };
+            self.rows = rows?;
+            self.next = 0;
         }
     }
 }

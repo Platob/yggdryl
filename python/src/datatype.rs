@@ -18,6 +18,7 @@ use yggdryl::{
 };
 
 use crate::field::PyField;
+use crate::scalar::{arrow_scalar_into_array, from_py};
 use crate::{
     FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
@@ -118,8 +119,35 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
+    if dtype.ascii_width().is_some() {
+        return ascii_arrow_scalar(py, value, dtype, safe);
+    }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
+}
+
+/// Pads one value into an ASCII width through the core scalar boundary.
+///
+/// `PyArrow` builds a fixed-width binary only from exactly `width` bytes, so
+/// the core that owns the padding and the width refusal answers instead: a
+/// Python value crosses as a `Scalar` and takes the value contract, a
+/// `PyArrow` scalar takes the cast plan. Both run under a nullable field so
+/// `None` stays a null scalar; the caller's own field decides nullability.
+pub(crate) fn ascii_arrow_scalar<'py>(
+    py: Python<'py>,
+    value: &Bound<'py, PyAny>,
+    dtype: &CoreDataType,
+    safe: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let field = yggdryl::Field::new("value", dtype.clone(), true);
+    let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
+        field
+            .cast_arrow_array(arrow_scalar_into_array(value)?, safe)
+            .map_err(value_error)?
+    } else {
+        yggdryl::arrow::scalar_array(&field, &from_py(value)?).map_err(value_error)?
+    };
+    arrow_array_to_pyarrow(py, &array, None)?.get_item(0)
 }
 
 pub(crate) fn arrow_scalar_to_pyarrow_type<'py>(
@@ -393,6 +421,9 @@ impl PyDataType {
             "utf8" => CoreDataType::Utf8,
             "large_utf8" => CoreDataType::LargeUtf8,
             "utf8_view" => CoreDataType::Utf8View,
+            "ascii32" => CoreDataType::Ascii32,
+            "ascii64" => CoreDataType::Ascii64,
+            "ascii128" => CoreDataType::Ascii128,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"
@@ -577,6 +608,33 @@ impl PyDataType {
             .map_err(value_error)?;
         let inner = CoreDataType::geography(crs, algorithm).map_err(value_error)?;
         Self::from_validated(inner)
+    }
+
+    /// Creates the ASCII width holding ``width`` bytes: 1-4 is ``ascii32``,
+    /// 5-8 ``ascii64``, and 9-16 ``ascii128``.
+    #[staticmethod]
+    fn ascii(width: i32) -> PyResult<Self> {
+        let inner = CoreDataType::ascii(width).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// Resolves a registered logical name such as ``currency`` to its ASCII
+    /// width, case-insensitively.
+    #[staticmethod]
+    fn from_logical_name(name: &str) -> PyResult<Self> {
+        let inner = CoreDataType::from_logical_name(name).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// The registered logical names mapped to their ASCII width, in
+    /// registration order.
+    #[staticmethod]
+    fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let names = PyDict::new(py);
+        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
+            names.set_item(name, Self::from_validated(dtype.clone())?)?;
+        }
+        Ok(names)
     }
 
     /// Internal Dictionary constructor preserving exact native datatypes.
@@ -948,6 +1006,12 @@ impl PyDataType {
     #[getter]
     fn is_nested(&self) -> bool {
         self.inner.is_nested()
+    }
+
+    /// The storage width of an ASCII datatype in bytes, ``None`` for every other.
+    #[getter]
+    fn ascii_width(&self) -> Option<i32> {
+        self.inner.ascii_width()
     }
 
     /// Internal field-class conversion view of temporal resolution. Keeping this on

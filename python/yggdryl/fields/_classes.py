@@ -2905,23 +2905,4 @@ def _decorate_field_class(
     return decorated
 
 
-def iter_records(reader: Any, cls: type[Any] | None = None) -> typing.Iterator[Any]:
-    """Yield mappings or dataclass instances from an Arrow batch reader.
-
-    Only the current batch is lowered to Python mappings. Dataclass conversion
-    uses the same recursive native-field-aware conversion as ``from_dict``;
-    this is a row adapter, never a second schema implementation.
-    """
-
-    if cls is not None and (not isinstance(cls, type) or not dc.is_dataclass(cls)):
-        raise TypeError(f"{cls!r} is not a dataclass type")
-
-    def rows() -> typing.Iterator[Any]:
-        for batch in reader:
-            for values in batch.to_pylist():
-                yield values if cls is None else from_dict(cls, values)
-
-    return rows()
-
-
 __all__ = ["field"]

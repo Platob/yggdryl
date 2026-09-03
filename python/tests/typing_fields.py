@@ -13,12 +13,13 @@ from yggdryl import (
     Field,
     Scalar,
     field,
+    fields,
     json,
     scalar,
     toml,
     yaml,
 )
-from yggdryl.fields import StructField
+from yggdryl.fields import Ascii32Field, StructField
 
 
 @scalar(frozen=True, slots=True)
@@ -60,6 +61,8 @@ imported: Field = Field.from_arrow_schema(arrow_schema, name=root.name)
 dynamic_class: type[object] = imported.into_dataclass(
     name="DynamicTypedOrder"
 )
+currency: Ascii32Field = fields.ascii32("currency", nullable=False)
+currency_code: str | None = currency.default_pyvalue()
 
 
 assert payload["order_id"] == 42
@@ -68,3 +71,4 @@ assert datatype.is_nested
 assert optional.nullable
 assert from_yaml == from_toml == from_json == order
 assert dynamic_class.field() is imported  # type: ignore[attr-defined]
+assert currency_code == ""

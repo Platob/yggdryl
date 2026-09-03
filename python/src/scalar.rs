@@ -117,7 +117,7 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<I256> {
         .map_err(|error| PyOverflowError::new_err(error.to_string()))
 }
 
-fn arrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
+pub(crate) fn arrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
     ensure_pyarrow_instance(value, "Scalar")?;
     let py = value.py();
     let values = PyList::new(py, [value])?;
