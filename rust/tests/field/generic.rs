@@ -294,6 +294,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     let mut field = Field::new("trade", DataType::Utf8, false);
     field.set_alias("latest_trade").unwrap();
     field.set_comment("the latest trade").unwrap();
+    field.set_display("Latest trade").unwrap();
     // Catalog coordinates belong to whichever protocol names them, not to
     // straight metadata.
     field
@@ -303,6 +304,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     field.set_location(location.clone());
     assert_eq!(field.alias(), Some("latest_trade"));
     assert_eq!(field.comment(), Some("the latest trade"));
+    assert_eq!(field.display(), Some("Latest trade"));
     assert_eq!(
         field.get_property(&Scheme::ICEBERG, "table_name"),
         Some("trades")
@@ -366,6 +368,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
 
     assert_eq!(field.remove_alias().as_deref(), Some("latest_trade"));
     assert_eq!(field.remove_comment().as_deref(), Some("the latest trade"));
+    assert_eq!(field.remove_display().as_deref(), Some("Latest trade"));
     assert!(field.remove_location().unwrap().is_some());
 }
 
@@ -829,6 +832,7 @@ fn reserved_metadata_is_transactional_and_arbitrary_arrow_keys_are_preserved() {
     let snapshot = field.clone();
     assert!(field.set_alias("").is_err());
     assert!(field.set_comment("bad\nname").is_err());
+    assert!(field.set_display("bad\nname").is_err());
     assert!(field.set_property(&Scheme::POSTGRES, "", "value").is_err());
     assert!(
         field
@@ -1065,6 +1069,81 @@ fn a_root_must_be_a_non_null_struct_and_says_why() {
 }
 
 #[test]
+fn one_straight_comment_is_what_every_protocol_reads() {
+    let mut field = DataType::Int64.required_field("price");
+    assert_eq!(field.as_iceberg().comment(), None);
+
+    field.set_comment("the closing price").unwrap();
+    // Written once without a namespace, read by every protocol - the same
+    // fallback the other reserved text key answers with.
+    assert_eq!(field.as_iceberg().comment(), Some("the closing price"));
+    assert_eq!(field.as_glue().comment(), Some("the closing price"));
+    assert_eq!(field.as_glue_mut().comment(), Some("the closing price"));
+
+    // A protocol naming its own wins for itself alone, and the straight key is
+    // still not one of that protocol's properties.
+    field.as_glue_mut().insert("comment", "close").unwrap();
+    assert_eq!(field.as_glue().comment(), Some("close"));
+    assert_eq!(field.as_iceberg().comment(), Some("the closing price"));
+    assert!(field.as_iceberg().is_empty());
+    assert_eq!(field.comment(), Some("the closing price"));
+
+    assert_eq!(field.remove_comment().as_deref(), Some("the closing price"));
+    assert_eq!(field.as_iceberg().comment(), None);
+    assert_eq!(field.as_glue().comment(), Some("close"));
+
+    let metadata = Metadata::from_entries([("comment", "the ticker")]).unwrap();
+    assert_eq!(metadata.comment(), Some("the ticker"));
+    assert_eq!(metadata.as_iceberg().comment(), Some("the ticker"));
+}
+
+#[test]
+fn one_straight_display_name_is_what_every_protocol_reads() {
+    let mut field = DataType::Int64.required_field("price");
+    assert_eq!(field.display(), None);
+    assert_eq!(field.as_iceberg().display(), None);
+
+    field.set_display("Closing price").unwrap();
+    assert_eq!(field.get_metadata("display"), Some("Closing price"));
+    // Written once without a namespace, read by every protocol.
+    assert_eq!(field.as_iceberg().display(), Some("Closing price"));
+    assert_eq!(field.as_glue().display(), Some("Closing price"));
+    assert_eq!(field.as_glue_mut().display(), Some("Closing price"));
+
+    // A protocol naming its own wins for itself alone, and the straight key
+    // is still not one of that protocol's properties.
+    field.as_glue_mut().insert("display", "Close").unwrap();
+    assert_eq!(field.as_glue().display(), Some("Close"));
+    assert_eq!(
+        field.as_glue().iter().collect::<Vec<_>>(),
+        [("display", "Close")]
+    );
+    assert_eq!(field.as_iceberg().display(), Some("Closing price"));
+    assert!(field.as_iceberg().is_empty());
+    assert_eq!(field.display(), Some("Closing price"));
+
+    assert_eq!(field.remove_display().as_deref(), Some("Closing price"));
+    assert_eq!(field.as_iceberg().display(), None);
+    assert_eq!(field.as_glue().display(), Some("Close"));
+
+    let metadata = Metadata::from_entries([("display", "Ticker symbol")]).unwrap();
+    assert_eq!(metadata.display(), Some("Ticker symbol"));
+    assert_eq!(metadata.as_iceberg().display(), Some("Ticker symbol"));
+
+    let named = DataType::Utf8
+        .required_field("symbol")
+        .try_with_display("Ticker symbol")
+        .unwrap();
+    assert_eq!(named.display(), Some("Ticker symbol"));
+    assert!(
+        DataType::Utf8
+            .required_field("symbol")
+            .try_with_display("bad\nname")
+            .is_err()
+    );
+}
+
+#[test]
 fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
     let mut field = DataType::Int64.required_field("price");
     field
@@ -1187,6 +1266,99 @@ fn a_protocol_write_invalidates_the_arrow_cache_exactly_once() {
         &field.clone().into_arrow_ref().unwrap()
     ));
     assert_eq!(field.as_iceberg().len(), 1);
+}
+
+#[cfg(feature = "iceberg")]
+#[test]
+fn a_typed_read_outlives_the_view_it_was_read_through() {
+    let mut field = DataType::Int64.required_field("price");
+    field.as_iceberg_mut().set_doc("closing price").unwrap();
+    field.set_display("Closing price").unwrap();
+
+    // Compiling is the assertion. Every one of these reads through a view that
+    // dies at its own semicolon, and each answer carries the field's lifetime
+    // rather than the view's. Deref does not: `field.as_iceberg().name()` is
+    // E0716, which is what `as_field` exists to spell instead.
+    let name = field.as_iceberg().as_field().name();
+    let doc = field.as_iceberg().doc();
+    let declared = field.as_iceberg().declared_type();
+    let property = field.as_iceberg().get("doc");
+    let display = field.as_iceberg().display();
+
+    assert_eq!(name, "price");
+    assert_eq!(doc, Some("closing price"));
+    assert_eq!(declared, None);
+    assert_eq!(property, doc);
+    assert_eq!(display, Some("Closing price"));
+}
+
+#[test]
+fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
+    let mut row = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("venue"),
+    ])
+    .unwrap()
+    .required_field("row");
+    row.as_iceberg_mut().insert("doc", "one row").unwrap();
+    row.as_glue_mut().insert("id", "not a child").unwrap();
+
+    // Two operators that look alike. The view's `Output` is `str` and the
+    // field's is `Field`, and it is the concrete impl on the view that stops
+    // the child meaning from winning through the deref - `id` is both a child
+    // name and a property name here, so nothing but that impl separates them.
+    assert_eq!(&row.as_iceberg()["doc"], "one row");
+    assert_eq!(&row.as_glue()["id"], "not a child");
+    assert_eq!(row["id"].dtype(), &DataType::Int64);
+    assert_eq!(row["venue"].name(), "venue");
+
+    // A positional index is the field's, and the view does not forward to it:
+    // the view's only `Index` impl takes `&str`, so `row.as_iceberg()[1]` is a
+    // type error rather than a child lookup. The field is spelled out instead.
+    assert_eq!(row[0].name(), "id");
+    assert_eq!(row.as_iceberg().as_field()[1].name(), "venue");
+}
+
+#[test]
+fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
+    let media = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP]).unwrap();
+    let field = Field::new("payload", DataType::Binary, false);
+    let cached = Arc::new(field.clone().into_arrow().unwrap());
+    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+
+    // The two-key media write is effective, so the projection it invalidated
+    // is gone and the next ask rebuilds one.
+    field.as_http_mut().set_media_type(media.clone()).unwrap();
+    let rebuilt = field.clone().into_arrow_ref().unwrap();
+    assert!(!Arc::ptr_eq(&cached, &rebuilt));
+
+    // Once, though: the rebuilt projection survives writing the same value
+    // again, so the invalidation belongs to the change and not to the call.
+    let mut field = Field::from_arrow_ref(Arc::clone(&rebuilt)).unwrap();
+    field.as_http_mut().set_media_type(media.clone()).unwrap();
+    field.as_http_mut().set_media_type(media).unwrap();
+    assert!(Arc::ptr_eq(
+        &rebuilt,
+        &field.clone().into_arrow_ref().unwrap()
+    ));
+
+    #[cfg(feature = "iceberg")]
+    {
+        let field = DataType::Int64.required_field("price");
+        let cached = Arc::new(field.clone().into_arrow().unwrap());
+        let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+        field.as_iceberg_mut().set_doc("closing price").unwrap();
+        let rebuilt = field.clone().into_arrow_ref().unwrap();
+        assert!(!Arc::ptr_eq(&cached, &rebuilt));
+
+        let mut field = Field::from_arrow_ref(Arc::clone(&rebuilt)).unwrap();
+        field.as_iceberg_mut().set_doc("closing price").unwrap();
+        assert!(Arc::ptr_eq(
+            &rebuilt,
+            &field.clone().into_arrow_ref().unwrap()
+        ));
+        assert_eq!(field.as_iceberg().doc(), Some("closing price"));
+    }
 }
 
 #[test]

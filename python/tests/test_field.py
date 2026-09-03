@@ -319,12 +319,17 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
 
     field.set_alias("close")
     field.set_comment("closing price")
+    field.set_display("Close")
     # Catalog coordinates belong to whichever protocol names them.
     field.set_property("iceberg", "table_name", "bars")
     field.set_location(Uri("s3://warehouse/bars/day=2026-08-15/data.parquet"))
 
     assert field.alias == "close"
     assert field.comment == "closing price"
+    assert field.display == "Close"
+    # A protocol view falls back to the field's straight key for both.
+    assert field.iceberg.comment == "closing price"
+    assert field.iceberg.display == "Close"
     assert field.get_property("iceberg", "table_name") == "bars"
     assert "table_name" not in field.metadata
     assert field.location == Url("s3://warehouse/bars/day=2026-08-15/data.parquet")
@@ -352,6 +357,7 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
 
     assert field.remove_alias() == "close"
     assert field.remove_comment() == "closing price"
+    assert field.remove_display() == "Close"
     assert field.remove_location() == Url(
         "s3://warehouse/bars/day=2026-08-15/data.parquet"
     )
@@ -411,7 +417,7 @@ def test_protocol_view_implements_the_mapping_protocol_over_bare_names() -> None
     assert dict(view) == {"doc": "closing price", "field-id": "7"}
     assert str(view) == '{"doc":"closing price","field-id":"7"}'
     assert repr(view) == (
-        'ProtocolMetadata("iceberg", {"doc":"closing price","field-id":"7"})'
+        'ProtocolField("iceberg", {"doc":"closing price","field-id":"7"})'
     )
 
     with pytest.raises(KeyError, match="iceberg:missing"):
@@ -693,12 +699,15 @@ def test_typed_metadata_validation_is_atomic_and_arrow_compatible() -> None:
     assert field.get_property("postgres", "default") == ""
     assert field.remove_property("postgres", "default") == ""
     field.set_comment("events")
+    field.set_display("Events")
     field.set_property("arrow", "extension:name", "example.event")
     arrow = field.into_arrow()
     assert arrow.metadata[b"comment"] == b"events"
+    assert arrow.metadata[b"display"] == b"Events"
     assert arrow.metadata[b"arrow:extension:name"] == b"example.event"
     imported = Field.from_arrow(arrow)
     assert imported.comment == "events"
+    assert imported.display == "Events"
     assert imported.get_property("arrow", "extension:name") == "example.event"
 
 

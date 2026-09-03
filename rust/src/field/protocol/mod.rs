@@ -11,7 +11,7 @@
 //! and its two types in the same change. A named view carries the vocabulary
 //! of a *foreign* protocol; state a field owns whatever key it is stored
 //! under - [`Field::is_init`], [`Field::is_partition`], `alias`, `comment`,
-//! `location` and `PARQUET:field_id` - stays on [`Field`].
+//! `display`, `location` and `PARQUET:field_id` - stays on [`Field`].
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -43,12 +43,13 @@ mod http;
 /// lifetime and is the spelling that outlives it; every property read already
 /// returns that lifetime and needs no hop.
 ///
-/// Three names shadow [`Field`]'s through that deref, each deliberately:
-/// [`Self::comment`] is the protocol form and a strict superset of
-/// [`Field::comment`]; [`Self::merge_with`] takes one argument where
-/// [`Field::merge_with`] takes two, so a wrong pick is a compile error rather
-/// than a silent one; and `HttpField::location` reads `http:location` where
-/// [`Field::location`] reads the namespace-free `location`.
+/// Four names shadow [`Field`]'s through that deref, each deliberately:
+/// [`Self::comment`] and [`Self::display`] are the protocol forms and strict
+/// supersets of [`Field::comment`] and [`Field::display`]; [`Self::merge_with`]
+/// takes one argument where [`Field::merge_with`] takes two, so a wrong pick is
+/// a compile error rather than a silent one; and `HttpField::location` reads
+/// `http:location` where [`Field::location`] reads the namespace-free
+/// `location`.
 ///
 /// ```
 /// use yggdryl::DataType;
@@ -153,6 +154,13 @@ impl<'field> ProtocolField<'field> {
     /// [`ProtocolMetadata::comment`] carries the rule.
     pub fn comment(&self) -> Option<&'field str> {
         self.as_properties().comment()
+    }
+
+    /// Returns this protocol's display name, falling back to the straight one.
+    ///
+    /// [`ProtocolMetadata::display`] carries the rule.
+    pub fn display(&self) -> Option<&'field str> {
+        self.as_properties().display()
     }
 
     /// Collects this protocol's properties as a standalone snapshot.
@@ -376,6 +384,13 @@ impl<'field> ProtocolFieldMut<'field> {
     /// [`ProtocolMetadata::comment`] carries the rule.
     pub fn comment(&self) -> Option<&str> {
         self.as_protocol().comment()
+    }
+
+    /// Returns this protocol's display name, falling back to the straight one.
+    ///
+    /// [`ProtocolMetadata::display`] carries the rule.
+    pub fn display(&self) -> Option<&str> {
+        self.as_protocol().display()
     }
 
     /// Inserts or replaces one property and returns its prior value.

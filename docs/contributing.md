@@ -37,6 +37,7 @@ Start with the repository-wide `AGENTS.md`, which is the normative version of ev
 rust/src/generic/    shared vocabulary     -> rust/tests/enums.rs       -> docs/generic.md
 rust/src/datatype/   logical types         -> rust/tests/datatype/      -> docs/datatype.md
 rust/src/field/      schema and casting    -> rust/tests/field/         -> docs/field.md
+rust/src/field/protocol/ borrowed views    -> rust/tests/field/         -> docs/field.md
 rust/src/arrow/      scalars, projection   -> rust/tests/*.rs           -> docs/arrow.md
 rust/src/io/         IOBase, Buffer, roles -> rust/src/io/tests.rs      -> docs/io.md
 rust/src/generic/    enums and Scalar       -> rust/src/generic/**       -> docs/generic.md

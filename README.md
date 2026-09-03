@@ -50,8 +50,8 @@ pushes to `main` publish the result to GitHub Pages.
 ```text
 rust/                    The core crate
   src/datatype/          Categorized datatype implementation
-  src/field/             Field state, Arrow projection, casting, parsing, diffing
-  src/enums/             Shared value vocabularies: units, schemes, MIME values
+  src/field/             Field state, protocol views, Arrow projection, casting, parsing
+  src/field/protocol/    A field borrowed as one protocol, and each protocol's vocabulary
   src/metadata.rs        Immutable shared metadata value
   src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
   src/io/                The IOBase storage trait, Buffer, and Coded

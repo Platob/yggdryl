@@ -43,6 +43,11 @@ A schema therefore cannot disagree with the field it came from, because it *is* 
 Validation, canonicalization, Arrow projection, and comparison are all field operations, and every
 encoding, cast target, and Iceberg table reads the same value.
 
+A protocol namespace is a view of that one value, not a second one. `field.as_iceberg()` borrows the
+whole field and dereferences to it, so a foreign protocol's typed vocabulary lives on its view -
+[`HttpField`](field.md#one-protocol-at-a-time), `IcebergField`, and the rest - while the field keeps
+only its own state.
+
 ## Storage is one trait
 
 [`IOBase`](io.md) is positional rather than cursor-based: `pread` and `pwrite` take an explicit
@@ -144,7 +149,7 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 | Module | Owns |
 | --- | --- |
 | `datatype` | [The logical type tree](datatype.md) |
-| `field` | [Names, nullability, metadata, protocol views, partition marks, validation, casting](field.md) |
+| `field` | [Names, nullability, metadata, borrowed protocol views, partition marks, validation, casting](field.md) |
 | `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
 | `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
 | `expression` | [The one filter and projection tree, its grammar, its bind, and its three tiers](expression.md) |

@@ -389,7 +389,10 @@ assert.ok(!field.has('venue'))
 ```
 
 Typed identifiers and typed HTTP values (`dictionaryId`, `contentType`, `etag`, and the rest) are
-accessors rather than map keys, because they are validated.
+accessors rather than map keys, because they are validated. Rust splits that list by whose
+vocabulary it is - the `http:` headers live on `field.as_http()` there, while `parquet_field_id` and
+the straight `alias`/`comment`/`display`/`location` keys stay on `Field` - so a JavaScript name that
+reads `contentType` is `as_http().content_type()` on the other side.
 
 One protocol's properties are a `Map` of their own, and it is a live view of the same field rather
 than a copy of part of it.
@@ -418,7 +421,16 @@ assert.equal(field.iceberg.size, 0)
 
 Every well-known protocol is a getter - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
 the rest - and `field.protocol(name)` takes one that is only known at runtime. There is no `https`
-getter, because HTTPS shares the canonical `http:` namespace.
+getter, because HTTPS shares the canonical `http:` namespace. Rust spells the same accessors
+`as_iceberg()` / `as_iceberg_mut()`, and two of them differ by more than the prefix: `arrow` is
+`as_arrow_properties` and `fieldProperties` is `as_field_properties`, because `as_arrow` and
+`as_field` already mean something else on a Rust field.
+
+!!! note "Rust-only"
+    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+    carrying its protocol's typed vocabulary, and each dereferencing to the whole `Field` it borrows
+    - have no JavaScript counterpart yet. `field.iceberg` answers the generic property `Map` above,
+    and the validated HTTP values remain accessors on the field itself.
 
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.

@@ -157,9 +157,11 @@ answer `null` where Python answers `None` and Rust answers `Option`.
 
 Two names moved so that `field` could mean this on every class: the datatype constructor that was
 `DataType::field(name, nullable)` is `named_field`, beside the `nullable_field` and `required_field`
-it already builds; and the `field:` property view is `field_properties` in Rust and Python and
-`fieldProperties` in JavaScript. The namespace itself is unchanged, so `field:init` and
-`field:partition` are what they were.
+it already builds; and the `field:` property view is `as_field_properties` in Rust,
+`field_properties` in Python and `fieldProperties` in JavaScript. `as_field` could not be the Rust
+spelling because it already means "the `Field` inside" on a typed field and on a protocol view, and
+one receiver-dependent name for two returns is what this page exists to avoid. The namespace itself
+is unchanged, so `field:init` and `field:partition` are what they were.
 
 ### Flattening and expanding
 
@@ -478,8 +480,10 @@ Every write validates before it changes anything. `set_metadata` and `update_met
 thousand leaves the field exactly as it was. Equality, ordering, and hashing all include metadata
 and dictionary state. In Python, the first `hash(field)` therefore locks every equality-affecting
 mutation on that wrapper; `copy.copy(field)` makes an independent unlocked wrapper when an edit is
-needed. `stable_hash()` computes the same complete identity without locking it. Live metadata and
-protocol views remain unhashable because they can change through their owning field.
+needed. `stable_hash()` computes the same complete identity without locking it. The bindings' live
+metadata and protocol views remain unhashable because they can change through their owning field.
+Rust's borrowed protocol view hashes only the properties it exposes, never the field behind it,
+which is why it is not `Borrow<Field>`.
 
 ## Reserved keys and protocol properties
 
@@ -492,7 +496,8 @@ protocol views remain unhashable because they can change through their owning fi
 
     field.set_parquet_field_id(17);
     field.set_init(false);
-    field.set_content_type("application/json; charset=utf-8")?;
+    field.set_display("Raw payload")?;
+    field.as_http_mut().set_content_type("application/json; charset=utf-8")?;
     field.set_property(&Scheme::POSTGRES, "type", "jsonb")?;
 
     assert_eq!(field.parquet_field_id()?, Some(17));
@@ -500,13 +505,21 @@ protocol views remain unhashable because they can change through their owning fi
     assert!(!field.is_init()?);
     assert_eq!(field.get_metadata("field:init"), Some("false"));
 
-    // An http: property answers to either scheme and to a raw key lookup.
-    assert_eq!(field.mime_type()?, MimeType::JSON);
+    // A straight key belongs to no protocol, so every protocol falls back to it.
+    assert_eq!(field.display(), Some("Raw payload"));
+    assert_eq!(field.as_postgres().display(), Some("Raw payload"));
+
+    // An http: property answers to either scheme and to a raw key lookup, and its
+    // parsing accessors live on the field's http: view.
+    assert_eq!(field.as_http().mime_type()?, MimeType::JSON);
     assert_eq!(
         field.get_property(&Scheme::HTTPS, "Content-Type"),
-        field.content_type()
+        field.as_http().content_type()
     );
-    assert_eq!(field.get_metadata("http:content-type"), field.content_type());
+    assert_eq!(
+        field.get_metadata("http:content-type"),
+        field.as_http().content_type()
+    );
     assert_eq!(
         field.property_iter(&Scheme::POSTGRES).collect::<Vec<_>>(),
         [("type", "jsonb")]
@@ -522,12 +535,17 @@ protocol views remain unhashable because they can change through their owning fi
 
     field.set_parquet_field_id(17)
     field.metadata["field:init"] = "false"
+    field.set_display("Raw payload")
     field.set_content_type("application/json; charset=utf-8")
     field.set_property("postgres", "type", "jsonb")
 
     assert field.parquet_field_id == 17
     assert field.metadata["PARQUET:field_id"] == "17"
     assert field.metadata["field:init"] == "false"
+
+    # A straight key belongs to no protocol, so every protocol falls back to it.
+    assert field.display == "Raw payload"
+    assert field.postgres.display == "Raw payload"
 
     assert field.mime_type == MimeType.JSON
     assert field.get_property("https", "Content-Type") == field.content_type
@@ -545,12 +563,17 @@ protocol views remain unhashable because they can change through their owning fi
 
     field.setParquetFieldId(17)
     field.set('field:init', 'false')
+    field.setDisplay('Raw payload')
     field.setContentType('application/json; charset=utf-8')
     field.setProperty('postgres', 'type', 'jsonb')
 
     assert.equal(field.parquetFieldId, 17)
     assert.equal(field.get('PARQUET:field_id'), '17')
     assert.equal(field.get('field:init'), 'false')
+
+    // A straight key belongs to no protocol, so every protocol falls back to it.
+    assert.equal(field.display, 'Raw payload')
+    assert.equal(field.postgres.display, 'Raw payload')
 
     assert.ok(field.mimeType.equals(MimeType.JSON))
     assert.equal(field.getProperty('https', 'Content-Type'), field.contentType)
@@ -564,19 +587,28 @@ canonicalizes on the way in and out. `PARQUET:field_id` is a signed 32-bit integ
 `"2147483648"` fails.
 `field:init` is a reserved boolean: it is absent for an ordinary field, and setting it to `false`
 marks a field a schema still declares but a constructor must not accept. `location` parses as a
-[`Url`](uri.md), and `alias` and `comment` carry validated text. Catalog coordinates - a
-catalog, schema or table name - are protocol properties rather than straight keys, because which
-catalog names a column is the protocol's business: write them as `iceberg:table_name` or
-`glue:table_name`.
+[`Url`](uri.md), and `alias`, `comment` and `display` carry validated text: another name for the
+column, a description, and a human-readable label. None of the three belongs to a protocol, and a
+protocol view falls back to the straight `comment` and `display` when it names none of its own.
+Catalog coordinates - a catalog, schema or table name - are protocol
+properties rather than straight keys, because which catalog names a column is the protocol's
+business: write them as `iceberg:table_name` or `glue:table_name`.
 
 Anything shaped `scheme:name` is a protocol property, keyed by a known [`Scheme`](generic.md). The
 prefix is canonicalized, so `HTTPS:Content-Type`, `HTTP:content-type`, and `http:content-type` are
 one entry, and `get_property` matches HTTP names case-insensitively. The `http:` family is the one
 with parsing accessors on top - `content_type`, `content_length`, `mime_type`, `media_type`,
-`http_location` - because a field is also how a remote resource describes itself.
+`location` - because a field is also how a remote resource describes itself. In Rust they belong to
+the field's HTTP view, `as_http()` and `as_http_mut()`, not to `Field`: `as_http().location()` reads
+`http:location` while `field.location()` stays the straight `location` key, and the receiver is what
+says which. Python and JavaScript keep them as validated attributes on the field itself, where the
+two are told apart by name instead - `content_type` and `http_location`, `contentType` and
+`httpLocation`.
 
 Setting `field:init` has named methods in Rust only (`set_init`, `is_init`, `with_init`); Python and
 JavaScript write the reserved key through the mapping, which validates it exactly the same way.
+`display` is named in all three (`set_display`/`display`/`remove_display`, plus Rust's consuming
+`try_with_display`), on the field and on every protocol view.
 
 ## One protocol at a time
 
@@ -590,23 +622,29 @@ protocol view remembers the protocol instead, so the caller writes the bare name
 
     let mut field = Field::new("price", DataType::Int64, false);
 
-    field.iceberg_mut().insert("doc", "closing price")?;
-    field.iceberg_mut().update([("schema-id", "3"), ("field-id", "7")])?;
-    field.postgres_mut().insert("type", "numeric")?;
+    field.as_iceberg_mut().insert("doc", "closing price")?;
+    field.as_iceberg_mut().update([("schema-id", "3"), ("field-id", "7")])?;
+    field.as_postgres_mut().insert("type", "numeric")?;
 
-    assert_eq!(field.iceberg().get("doc"), Some("closing price"));
-    assert_eq!(field.iceberg().key("doc"), "iceberg:doc");
-    assert_eq!(field.iceberg().len(), 3);
-    assert!(field.mysql().is_empty());
+    assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
+    assert_eq!(field.as_iceberg().key("doc"), "iceberg:doc");
+    assert_eq!(field.as_iceberg().len(), 3);
+    assert!(field.as_mysql().is_empty());
 
     // It is a view of the one metadata map, not a copy of part of it.
     assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
     assert_eq!(field.metadata_len(), 4);
 
     // A protocol-scoped replacement leaves every other protocol alone.
-    field.iceberg_mut().set([("doc", "close")])?;
-    assert_eq!(field.iceberg().iter().collect::<Vec<_>>(), [("doc", "close")]);
-    assert_eq!(field.postgres().get("type"), Some("numeric"));
+    field.as_iceberg_mut().set([("doc", "close")])?;
+    assert_eq!(field.as_iceberg().iter().collect::<Vec<_>>(), [("doc", "close")]);
+    assert_eq!(field.as_postgres().get("type"), Some("numeric"));
+
+    // The view is the field: it dereferences to one, and `as_field` hands back a
+    // borrow that outlives the view rather than one that dies with it.
+    assert_eq!(field.as_iceberg().dtype(), &DataType::Int64);
+    let name = field.as_iceberg().as_field().name();
+    assert_eq!(name, "price");
 
     // The protocol can also come from a value rather than from the code.
     assert_eq!(field.protocol(&Scheme::POSTGRES).get("type"), Some("numeric"));
@@ -638,6 +676,12 @@ protocol view remembers the protocol instead, so the caller writes the bare name
     assert field.protocol("postgres")["type"] == "numeric"
     ```
 
+    !!! note "Rust-only"
+        The per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+        carrying its protocol's typed vocabulary - are Rust-only for now. `field.iceberg` answers the
+        generic property mapping shown here, and the validated HTTP values stay attributes on the
+        field itself.
+
 === "JavaScript"
 
     ```javascript
@@ -665,13 +709,30 @@ protocol view remembers the protocol instead, so the caller writes the bare name
     assert.equal(field.protocol('postgres').get('type'), 'numeric')
     ```
 
+    !!! note "Rust-only"
+        The per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+        carrying its protocol's typed vocabulary - are Rust-only for now. `field.iceberg` answers the
+        generic property `Map` shown here, and the validated HTTP values stay accessors on the field
+        itself.
+
 The view is a borrow, not a snapshot: it reads out of the field's own metadata and writes through the
 field's own cache-aware mutation, so two views of one field see each other's writes and a protocol
-write invalidates a populated Arrow projection exactly as a direct metadata write does. Every
-well-known protocol has a named accessor - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
-the rest of the [`Scheme`](generic.md) vocabulary - and `protocol` takes one that is only known at
-runtime. There is no `https` accessor, because HTTPS shares the canonical `http:` namespace; the view
-for either scheme reports `http` as its prefix.
+write invalidates a populated Arrow projection exactly as a direct metadata write does. In Rust the
+borrow is of the whole field: the view dereferences to `Field`, so one value answers both the
+protocol's properties and everything a field answers, and `as_field` is the spelling whose `&Field`
+outlives the view rather than dying with it. Every well-known protocol has a named accessor -
+`as_iceberg`, `as_postgres`, `as_http`, `as_arrow_properties`, `as_spark`, `as_s3`, and the rest of
+the [`Scheme`](generic.md) vocabulary, spelled `iceberg`, `postgres`, `http` and so on in the
+bindings - and `protocol` takes one that is only known at runtime. There is no `https` accessor,
+because HTTPS shares the canonical `http:` namespace; the view for either scheme reports `http` as
+its prefix.
+
+A protocol that has a typed vocabulary carries it on its own view and nowhere else. The `http:`
+headers are on `HttpField` and `HttpFieldMut`, and Iceberg's `doc`, `schema_id`, `spec_id` and
+`transform` are on [`IcebergField` and `IcebergFieldMut`](iceberg.md#a-field-carries-its-own-iceberg-vocabulary),
+which is why deleting a protocol's namespace never touches `Field`. `Field` keeps only what is its
+own state - `field:init`, `field:partition`, `alias`, `comment`, `display`, `location`, and the
+reserved `PARQUET:field_id` - whatever key that state is stored under.
 
 Rust's `set` is the one operation that is not a plain map write: it replaces exactly this protocol's
 properties and leaves every other key untouched, which is what a protocol-scoped assignment has to

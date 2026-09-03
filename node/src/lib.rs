@@ -58,7 +58,7 @@ pub use datatype::JsDataType;
 pub use expression::{
     BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
 };
-pub use field::{JsField, JsProtocolMetadata, MetadataEntry};
+pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use generic::JsRecordOptions;
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,

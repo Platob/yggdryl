@@ -7,7 +7,7 @@ use napi::bindgen_prelude::{
     Unknown,
 };
 use napi_derive::napi;
-use yggdryl::{Field as CoreField, ProtocolMetadata as CoreProtocolMetadata, Scheme as CoreScheme};
+use yggdryl::{Field as CoreField, ProtocolField as CoreProtocolField, Scheme as CoreScheme};
 
 use crate::{
     JsDifferenceIterator,
@@ -429,6 +429,15 @@ impl JsField {
         self.inner.comment().map(ToOwned::to_owned)
     }
 
+    /// Shared human-readable display name stored in Arrow-compatible metadata.
+    ///
+    /// The label a reader is shown in place of the physical name, belonging to
+    /// no protocol. Every protocol view falls back to it.
+    #[napi(getter)]
+    pub fn display(&self) -> Option<String> {
+        self.inner.display().map(ToOwned::to_owned)
+    }
+
     /// Arrow/Parquet signed 32-bit field identifier stored in metadata.
     #[napi(getter)]
     pub fn parquet_field_id(&self) -> Result<Option<i32>> {
@@ -447,55 +456,71 @@ impl JsField {
     /// Raw HTTP Accept field value.
     #[napi(getter)]
     pub fn accept(&self) -> Option<String> {
-        self.inner.accept().map(ToOwned::to_owned)
+        self.inner.as_http().accept().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Accept-Encoding field value.
     #[napi(getter)]
     pub fn accept_encoding(&self) -> Option<String> {
-        self.inner.accept_encoding().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .accept_encoding()
+            .map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Accept-Language field value.
     #[napi(getter)]
     pub fn accept_language(&self) -> Option<String> {
-        self.inner.accept_language().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .accept_language()
+            .map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Accept-Ranges field value.
     #[napi(getter)]
     pub fn accept_ranges(&self) -> Option<String> {
-        self.inner.accept_ranges().map(ToOwned::to_owned)
+        self.inner.as_http().accept_ranges().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Cache-Control field value.
     #[napi(getter)]
     pub fn cache_control(&self) -> Option<String> {
-        self.inner.cache_control().map(ToOwned::to_owned)
+        self.inner.as_http().cache_control().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Content-Disposition field value.
     #[napi(getter)]
     pub fn content_disposition(&self) -> Option<String> {
-        self.inner.content_disposition().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .content_disposition()
+            .map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Content-Encoding field value.
     #[napi(getter)]
     pub fn content_encoding(&self) -> Option<String> {
-        self.inner.content_encoding().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .content_encoding()
+            .map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Content-Language field value.
     #[napi(getter)]
     pub fn content_language(&self) -> Option<String> {
-        self.inner.content_language().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .content_language()
+            .map(ToOwned::to_owned)
     }
 
     /// Exact HTTP Content-Length value.
     #[napi(getter)]
     pub fn content_length(&self) -> Result<Option<BigInt>> {
         self.inner
+            .as_http()
             .content_length()
             .map(|value| value.map(BigInt::from))
             .map_err(napi_error)
@@ -504,25 +529,29 @@ impl JsField {
     /// Raw HTTP Content-Location field value.
     #[napi(getter)]
     pub fn content_location(&self) -> Option<String> {
-        self.inner.content_location().map(ToOwned::to_owned)
+        self.inner
+            .as_http()
+            .content_location()
+            .map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Content-Range field value.
     #[napi(getter)]
     pub fn content_range(&self) -> Option<String> {
-        self.inner.content_range().map(ToOwned::to_owned)
+        self.inner.as_http().content_range().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Content-Type field value, including parameters.
     #[napi(getter)]
     pub fn content_type(&self) -> Option<String> {
-        self.inner.content_type().map(ToOwned::to_owned)
+        self.inner.as_http().content_type().map(ToOwned::to_owned)
     }
 
     /// Typed base MIME value derived from Content-Type.
     #[napi(getter)]
     pub fn mime_type(&self) -> Result<JsMimeType> {
         self.inner
+            .as_http()
             .mime_type()
             .map(JsMimeType::from_core)
             .map_err(napi_error)
@@ -532,6 +561,7 @@ impl JsField {
     #[napi(getter)]
     pub fn media_type(&self) -> Result<JsMediaType> {
         self.inner
+            .as_http()
             .media_type()
             .map(JsMediaType::from_core)
             .map_err(napi_error)
@@ -540,26 +570,27 @@ impl JsField {
     /// Raw HTTP `ETag` field value.
     #[napi(getter)]
     pub fn etag(&self) -> Option<String> {
-        self.inner.etag().map(ToOwned::to_owned)
+        self.inner.as_http().etag().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Expires field value.
     #[napi(getter)]
     pub fn expires(&self) -> Option<String> {
-        self.inner.expires().map(ToOwned::to_owned)
+        self.inner.as_http().expires().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Last-Modified field value.
     #[napi(getter)]
     pub fn last_modified(&self) -> Option<String> {
-        self.inner.last_modified().map(ToOwned::to_owned)
+        self.inner.as_http().last_modified().map(ToOwned::to_owned)
     }
 
     /// Typed absolute HTTP Location URL.
     #[napi(getter)]
     pub fn http_location(&self) -> Result<Option<JsUrl>> {
         self.inner
-            .http_location()
+            .as_http()
+            .location()
             .map(|value| value.map(JsUrl::from_core))
             .map_err(napi_error)
     }
@@ -567,13 +598,13 @@ impl JsField {
     /// Raw HTTP Range field value.
     #[napi(getter)]
     pub fn range(&self) -> Option<String> {
-        self.inner.range().map(ToOwned::to_owned)
+        self.inner.as_http().range().map(ToOwned::to_owned)
     }
 
     /// Raw HTTP Vary field value.
     #[napi(getter)]
     pub fn vary(&self) -> Option<String> {
-        self.inner.vary().map(ToOwned::to_owned)
+        self.inner.as_http().vary().map(ToOwned::to_owned)
     }
 
     /// Number of metadata entries.
@@ -643,6 +674,18 @@ impl JsField {
         self.inner.remove_comment()
     }
 
+    /// Set the shared display name.
+    #[napi]
+    pub fn set_display(&mut self, value: String) -> Result<()> {
+        self.inner.set_display(value).map_err(napi_error)
+    }
+
+    /// Remove and return the shared display name.
+    #[napi]
+    pub fn remove_display(&mut self) -> Option<String> {
+        self.inner.remove_display()
+    }
+
     /// Set the canonical Arrow/Parquet signed 32-bit field identifier.
     #[napi]
     pub fn set_parquet_field_id(&mut self, id: f64) -> Result<()> {
@@ -683,67 +726,83 @@ impl JsField {
     /// Set raw HTTP Accept metadata.
     #[napi]
     pub fn set_accept(&mut self, value: String) -> Result<()> {
-        self.inner.set_accept(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_accept(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Accept metadata.
     #[napi]
     pub fn remove_accept(&mut self) -> Option<String> {
-        self.inner.remove_accept()
+        self.inner.as_http_mut().remove_accept()
     }
 
     /// Set raw HTTP Accept-Encoding metadata.
     #[napi]
     pub fn set_accept_encoding(&mut self, value: String) -> Result<()> {
-        self.inner.set_accept_encoding(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_encoding(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Accept-Encoding metadata.
     #[napi]
     pub fn remove_accept_encoding(&mut self) -> Option<String> {
-        self.inner.remove_accept_encoding()
+        self.inner.as_http_mut().remove_accept_encoding()
     }
 
     /// Set raw HTTP Accept-Language metadata.
     #[napi]
     pub fn set_accept_language(&mut self, value: String) -> Result<()> {
-        self.inner.set_accept_language(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_language(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Accept-Language metadata.
     #[napi]
     pub fn remove_accept_language(&mut self) -> Option<String> {
-        self.inner.remove_accept_language()
+        self.inner.as_http_mut().remove_accept_language()
     }
 
     /// Set raw HTTP Accept-Ranges metadata.
     #[napi]
     pub fn set_accept_ranges(&mut self, value: String) -> Result<()> {
-        self.inner.set_accept_ranges(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_ranges(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Accept-Ranges metadata.
     #[napi]
     pub fn remove_accept_ranges(&mut self) -> Option<String> {
-        self.inner.remove_accept_ranges()
+        self.inner.as_http_mut().remove_accept_ranges()
     }
 
     /// Set raw HTTP Cache-Control metadata.
     #[napi]
     pub fn set_cache_control(&mut self, value: String) -> Result<()> {
-        self.inner.set_cache_control(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_cache_control(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Cache-Control metadata.
     #[napi]
     pub fn remove_cache_control(&mut self) -> Option<String> {
-        self.inner.remove_cache_control()
+        self.inner.as_http_mut().remove_cache_control()
     }
 
     /// Set raw HTTP Content-Disposition metadata.
     #[napi]
     pub fn set_content_disposition(&mut self, value: String) -> Result<()> {
         self.inner
+            .as_http_mut()
             .set_content_disposition(value)
             .map_err(napi_error)
     }
@@ -751,31 +810,37 @@ impl JsField {
     /// Remove raw HTTP Content-Disposition metadata.
     #[napi]
     pub fn remove_content_disposition(&mut self) -> Option<String> {
-        self.inner.remove_content_disposition()
+        self.inner.as_http_mut().remove_content_disposition()
     }
 
     /// Set raw HTTP Content-Encoding metadata.
     #[napi]
     pub fn set_content_encoding(&mut self, value: String) -> Result<()> {
-        self.inner.set_content_encoding(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_content_encoding(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Content-Encoding metadata.
     #[napi]
     pub fn remove_content_encoding(&mut self) -> Option<String> {
-        self.inner.remove_content_encoding()
+        self.inner.as_http_mut().remove_content_encoding()
     }
 
     /// Set raw HTTP Content-Language metadata.
     #[napi]
     pub fn set_content_language(&mut self, value: String) -> Result<()> {
-        self.inner.set_content_language(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_content_language(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Content-Language metadata.
     #[napi]
     pub fn remove_content_language(&mut self) -> Option<String> {
-        self.inner.remove_content_language()
+        self.inner.as_http_mut().remove_content_language()
     }
 
     /// Set exact unsigned HTTP Content-Length metadata.
@@ -787,7 +852,7 @@ impl JsField {
                 "content length must fit in an unsigned 64-bit integer",
             ));
         }
-        self.inner.set_content_length(value);
+        self.inner.as_http_mut().set_content_length(value);
         Ok(())
     }
 
@@ -795,6 +860,7 @@ impl JsField {
     #[napi]
     pub fn remove_content_length(&mut self) -> Result<Option<BigInt>> {
         self.inner
+            .as_http_mut()
             .remove_content_length()
             .map(|value| value.map(BigInt::from))
             .map_err(napi_error)
@@ -803,43 +869,54 @@ impl JsField {
     /// Set raw HTTP Content-Location metadata.
     #[napi]
     pub fn set_content_location(&mut self, value: String) -> Result<()> {
-        self.inner.set_content_location(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_content_location(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Content-Location metadata.
     #[napi]
     pub fn remove_content_location(&mut self) -> Option<String> {
-        self.inner.remove_content_location()
+        self.inner.as_http_mut().remove_content_location()
     }
 
     /// Set raw HTTP Content-Range metadata.
     #[napi]
     pub fn set_content_range(&mut self, value: String) -> Result<()> {
-        self.inner.set_content_range(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_content_range(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Content-Range metadata.
     #[napi]
     pub fn remove_content_range(&mut self) -> Option<String> {
-        self.inner.remove_content_range()
+        self.inner.as_http_mut().remove_content_range()
     }
 
     /// Set raw HTTP Content-Type metadata.
     #[napi]
     pub fn set_content_type(&mut self, value: String) -> Result<()> {
-        self.inner.set_content_type(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_content_type(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Content-Type metadata.
     #[napi]
     pub fn remove_content_type(&mut self) -> Option<String> {
-        self.inner.remove_content_type()
+        self.inner.as_http_mut().remove_content_type()
     }
 
     /// Set a bare typed MIME value while preserving Content-Encoding.
     #[napi]
     pub fn set_mime_type(&mut self, value: MimeTypeInput<'_>) -> Result<()> {
-        self.inner.set_mime_type(mime_type_from_input(value)?);
+        self.inner
+            .as_http_mut()
+            .set_mime_type(mime_type_from_input(value)?);
         Ok(())
     }
 
@@ -847,6 +924,7 @@ impl JsField {
     #[napi]
     pub fn remove_mime_type(&mut self) -> Result<Option<JsMimeType>> {
         self.inner
+            .as_http_mut()
             .remove_mime_type()
             .map(|value| value.map(JsMimeType::from_core))
             .map_err(napi_error)
@@ -856,6 +934,7 @@ impl JsField {
     #[napi]
     pub fn set_media_type(&mut self, value: MediaTypeInput<'_>) -> Result<()> {
         self.inner
+            .as_http_mut()
             .set_media_type(media_type_from_input(value)?)
             .map_err(napi_error)
     }
@@ -864,6 +943,7 @@ impl JsField {
     #[napi]
     pub fn remove_media_type(&mut self) -> Result<Option<JsMediaType>> {
         self.inner
+            .as_http_mut()
             .remove_media_type()
             .map(|value| value.map(JsMediaType::from_core))
             .map_err(napi_error)
@@ -872,37 +952,43 @@ impl JsField {
     /// Set raw HTTP `ETag` metadata.
     #[napi]
     pub fn set_etag(&mut self, value: String) -> Result<()> {
-        self.inner.set_etag(value).map_err(napi_error)
+        self.inner.as_http_mut().set_etag(value).map_err(napi_error)
     }
 
     /// Remove raw HTTP `ETag` metadata.
     #[napi]
     pub fn remove_etag(&mut self) -> Option<String> {
-        self.inner.remove_etag()
+        self.inner.as_http_mut().remove_etag()
     }
 
     /// Set raw HTTP Expires metadata.
     #[napi]
     pub fn set_expires(&mut self, value: String) -> Result<()> {
-        self.inner.set_expires(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_expires(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Expires metadata.
     #[napi]
     pub fn remove_expires(&mut self) -> Option<String> {
-        self.inner.remove_expires()
+        self.inner.as_http_mut().remove_expires()
     }
 
     /// Set raw HTTP Last-Modified metadata.
     #[napi]
     pub fn set_last_modified(&mut self, value: String) -> Result<()> {
-        self.inner.set_last_modified(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_last_modified(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Last-Modified metadata.
     #[napi]
     pub fn remove_last_modified(&mut self) -> Option<String> {
-        self.inner.remove_last_modified()
+        self.inner.as_http_mut().remove_last_modified()
     }
 
     /// Set typed absolute HTTP Location metadata.
@@ -916,7 +1002,9 @@ impl JsField {
             String,
         >,
     ) -> Result<()> {
-        self.inner.set_http_location(url_from_input(value)?);
+        self.inner
+            .as_http_mut()
+            .set_location(url_from_input(value)?);
         Ok(())
     }
 
@@ -924,7 +1012,8 @@ impl JsField {
     #[napi]
     pub fn remove_http_location(&mut self) -> Result<Option<JsUrl>> {
         self.inner
-            .remove_http_location()
+            .as_http_mut()
+            .remove_location()
             .map(|value| value.map(JsUrl::from_core))
             .map_err(napi_error)
     }
@@ -932,25 +1021,28 @@ impl JsField {
     /// Set raw HTTP Range metadata.
     #[napi]
     pub fn set_range(&mut self, value: String) -> Result<()> {
-        self.inner.set_range(value).map_err(napi_error)
+        self.inner
+            .as_http_mut()
+            .set_range(value)
+            .map_err(napi_error)
     }
 
     /// Remove raw HTTP Range metadata.
     #[napi]
     pub fn remove_range(&mut self) -> Option<String> {
-        self.inner.remove_range()
+        self.inner.as_http_mut().remove_range()
     }
 
     /// Set raw HTTP Vary metadata.
     #[napi]
     pub fn set_vary(&mut self, value: String) -> Result<()> {
-        self.inner.set_vary(value).map_err(napi_error)
+        self.inner.as_http_mut().set_vary(value).map_err(napi_error)
     }
 
     /// Remove raw HTTP Vary metadata.
     #[napi]
     pub fn remove_vary(&mut self) -> Option<String> {
-        self.inner.remove_vary()
+        self.inner.as_http_mut().remove_vary()
     }
 
     /// Read one `scheme:name` protocol property.
@@ -1022,75 +1114,75 @@ impl JsField {
         &self,
         reference: Reference<JsField>,
         scheme: String,
-    ) -> Result<JsProtocolMetadata> {
+    ) -> Result<JsProtocolField> {
         let scheme = CoreScheme::from_str(&scheme).map_err(napi_error)?;
-        Ok(JsProtocolMetadata::new(reference, scheme))
+        Ok(JsProtocolField::new(reference, scheme))
     }
 
     /// The live HTTP and HTTPS representation property view.
     #[napi(getter)]
-    pub fn http(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::HTTP)
+    pub fn http(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::HTTP)
     }
 
     /// The live file protocol property view.
     #[napi(getter)]
-    pub fn file(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::FILE)
+    pub fn file(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::FILE)
     }
 
     /// The live uniform resource name property view.
     #[napi(getter)]
-    pub fn urn(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::URN)
+    pub fn urn(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::URN)
     }
 
     /// The live short-spelling `PostgreSQL` property view.
     #[napi(getter)]
-    pub fn postgres(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::POSTGRES)
+    pub fn postgres(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::POSTGRES)
     }
 
     /// The live long-spelling `PostgreSQL` property view.
     #[napi(getter)]
-    pub fn postgresql(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::POSTGRESQL)
+    pub fn postgresql(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::POSTGRESQL)
     }
 
     /// The live `MySQL` property view.
     #[napi(getter)]
-    pub fn mysql(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::MYSQL)
+    pub fn mysql(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::MYSQL)
     }
 
     /// The live Arrow property view.
     #[napi(getter)]
-    pub fn arrow(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::ARROW)
+    pub fn arrow(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::ARROW)
     }
 
     /// The live generic SQL property view.
     #[napi(getter)]
-    pub fn sql(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::SQL)
+    pub fn sql(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::SQL)
     }
 
     /// The live AWS Glue property view.
     #[napi(getter)]
-    pub fn glue(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::GLUE)
+    pub fn glue(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::GLUE)
     }
 
     /// The live Apache Iceberg property view.
     #[napi(getter)]
-    pub fn iceberg(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::ICEBERG)
+    pub fn iceberg(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::ICEBERG)
     }
 
     /// The live Financial Information eXchange property view.
     #[napi(getter)]
-    pub fn fix(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::FIX)
+    pub fn fix(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::FIX)
     }
 
     /// The live Yggdryl field property view.
@@ -1098,44 +1190,44 @@ impl JsField {
     /// Named for the namespace it exposes rather than plain `field`, which on
     /// a schema node reaches a nested child.
     #[napi(getter)]
-    pub fn field_properties(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::FIELD)
+    pub fn field_properties(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::FIELD)
     }
 
     /// The live Amazon S3 property view.
     #[napi(getter)]
-    pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::S3)
+    pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::S3)
     }
 
     /// The live Google Cloud Storage property view.
     #[napi(getter)]
-    pub fn gs(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::GS)
+    pub fn gs(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::GS)
     }
 
     /// The live Azure Blob Storage property view.
     #[napi(getter)]
-    pub fn az(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::AZ)
+    pub fn az(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::AZ)
     }
 
     /// The live Apache Spark property view.
     #[napi(getter)]
-    pub fn spark(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::SPARK)
+    pub fn spark(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::SPARK)
     }
 
     /// The live Polars property view.
     #[napi(getter)]
-    pub fn polars(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::POLARS)
+    pub fn polars(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::POLARS)
     }
 
     /// The live pandas property view.
     #[napi(getter)]
-    pub fn pandas(&self, reference: Reference<JsField>) -> JsProtocolMetadata {
-        JsProtocolMetadata::new(reference, CoreScheme::PANDAS)
+    pub fn pandas(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::PANDAS)
     }
 
     /// Whether this field carries the values a path spells out.
@@ -1402,25 +1494,25 @@ impl JsField {
 /// call through it, so a write through the view is visible on the field and a
 /// write on the field is visible through the view. Nothing is snapshotted, and
 /// the `scheme:` prefix is applied once, by the view.
-#[napi(js_name = "ProtocolMetadata")]
-pub struct JsProtocolMetadata {
+#[napi(js_name = "ProtocolField")]
+pub struct JsProtocolField {
     field: Reference<JsField>,
     scheme: CoreScheme,
 }
 
-impl JsProtocolMetadata {
+impl JsProtocolField {
     fn new(field: Reference<JsField>, scheme: CoreScheme) -> Self {
         Self { field, scheme }
     }
 
     /// Borrow the core read view, which reads the live field's metadata.
-    fn view(&self) -> CoreProtocolMetadata<'_> {
+    fn view(&self) -> CoreProtocolField<'_> {
         self.field.inner.protocol(&self.scheme)
     }
 }
 
 #[napi]
-impl JsProtocolMetadata {
+impl JsProtocolField {
     /// The protocol this view remembers, in its canonical lowercase spelling.
     #[napi(getter)]
     pub fn scheme(&self) -> String {
@@ -1518,12 +1610,20 @@ impl JsProtocolMetadata {
         self.view().comment().map(ToOwned::to_owned)
     }
 
+    /// This protocol's display name, falling back to the field's straight one.
+    ///
+    /// The fallback lives here for the reason [`Self::comment`]'s does.
+    #[napi(getter)]
+    pub fn display(&self) -> Option<String> {
+        self.view().display().map(ToOwned::to_owned)
+    }
+
     /// Merge another protocol view's properties into this one, in place.
     ///
     /// A name this view already carries keeps its value, so the merge only
     /// ever adds. Properties of other protocols are untouched.
     #[napi]
-    pub fn merge_with(&mut self, other: &JsProtocolMetadata) -> Result<()> {
+    pub fn merge_with(&mut self, other: &JsProtocolField) -> Result<()> {
         // Read both sides before writing: `other` may view this same field.
         let additions: Vec<(String, String)> = {
             let held = self.view();

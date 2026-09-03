@@ -668,12 +668,22 @@ folder write applies to a whole column, so a date is `day=2024-01-01` in a table
 Unlike Hive, an Iceberg data file still stores its partition columns, so a scan needs no restoration
 step in the normal case.
 
+### A field carries its own Iceberg vocabulary
+
 A spec and a schema say the same thing, so neither has to be spelled twice. The partition tuple
 carries what produced each of its columns - the transform, the source column, and the partition
-marker every path-borne column carries - and a schema can carry the marks itself:
+marker every path-borne column carries - and a schema can carry the marks itself.
+
+Those `iceberg:` properties are typed on the field's Iceberg view. `field.as_iceberg()` and
+`field.as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, which parse and canonicalize
+`schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `declared_type`,
+`spec_id`, `partition_source_id` and `transform` on the way in and out. They live here rather than on
+[`Field`](field.md#one-protocol-at-a-time) because they are Iceberg's vocabulary, not a field's own
+state; the partition *mark* is a field's own state, which is why `is_partition` stays on the field
+itself. The view borrows the whole field and dereferences to it, so one value answers both.
 
 ```rust
-use yggdryl::iceberg::{PartitionSpec, assign_field_ids};
+use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
 use yggdryl::DataType;
 
 let mut schema = DataType::from_fields([
@@ -686,10 +696,14 @@ let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 
 // The tuple describes itself, so the spec reads back off it.
 let partition = spec.partition_field(&schema)?;
-assert_eq!(partition.iceberg().get("spec-id"), Some("1"));
+assert_eq!(partition.as_iceberg().spec_id()?, Some(1));
 let venue = partition.get_field_by_path("venue").expect("the partition column");
 assert!(venue.is_partition());
-assert_eq!(venue.iceberg().get("transform"), Some("identity"));
+assert_eq!(venue.as_iceberg().transform()?, Some(Transform::Identity));
+assert_eq!(venue.as_iceberg().get("transform"), Some("identity"));
+
+// The view is the field, so the name and the property come off one value.
+assert_eq!(venue.as_iceberg().name(), "venue");
 assert_eq!(PartitionSpec::from_partition_field(&partition)?, spec);
 
 // And a schema that marks its own partition columns needs no column list.

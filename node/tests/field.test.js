@@ -8,7 +8,7 @@ const {
   Field,
   MediaType,
   MimeType,
-  ProtocolMetadata,
+  ProtocolField,
   Uri,
   Url,
   fields,
@@ -300,6 +300,7 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
 
   field.setAlias('close')
   field.setComment('closing price')
+  field.setDisplay('Close')
   // Catalog coordinates belong to whichever protocol names them.
   field.setProperty('iceberg', 'table_name', 'bars')
   field.setParquetFieldId(-2147483648)
@@ -309,6 +310,10 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
 
   assert.equal(field.alias, 'close')
   assert.equal(field.comment, 'closing price')
+  assert.equal(field.display, 'Close')
+  // A protocol view falls back to the field's straight key for both.
+  assert.equal(field.iceberg.comment, 'closing price')
+  assert.equal(field.iceberg.display, 'Close')
   assert.equal(field.getProperty('iceberg', 'table_name'), 'bars')
   assert.equal(field.get('table_name'), null)
   assert.equal(field.parquetFieldId, -2147483648)
@@ -342,6 +347,8 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
 
   assert.equal(field.removeAlias(), 'close')
   assert.equal(field.removeComment(), 'closing price')
+  assert.equal(field.removeDisplay(), 'Close')
+  assert.equal(field.display, null)
   assert.equal(field.removeParquetFieldId(), -2147483648)
   assert.ok(
     field
@@ -416,8 +423,8 @@ test('a protocol view is a Map over one namespace of bare names', () => {
   const field = new Field('price', 'decimal(18, 6)', false, { doc: 'shared' })
   const iceberg = field.iceberg
 
-  assert.ok(iceberg instanceof ProtocolMetadata)
-  assert.throws(() => new ProtocolMetadata(), /no `constructor`/)
+  assert.ok(iceberg instanceof ProtocolField)
+  assert.throws(() => new ProtocolField(), /no `constructor`/)
   assert.equal(iceberg.scheme, 'iceberg')
   assert.equal(iceberg.prefix, 'iceberg')
   assert.equal(iceberg.key('doc'), 'iceberg:doc')

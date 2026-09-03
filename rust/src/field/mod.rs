@@ -13,8 +13,8 @@ use crate::datatype::{
     DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
-    ALIAS_KEY, COMMENT_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, LOCATION_KEY, MetadataIter,
-    PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol, parse_field_id,
+    ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, LOCATION_KEY,
+    MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol, parse_field_id,
     parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::{Error, Metadata, Result, Scalar, Scheme, Url, stable_hash_display};
@@ -841,6 +841,13 @@ impl Field {
         self.metadata.comment()
     }
 
+    /// Returns the shared human-readable display name stored in metadata.
+    ///
+    /// [`Metadata::display`] carries what it is and who reads it.
+    pub fn display(&self) -> Option<&str> {
+        self.metadata.display()
+    }
+
     /// Parses the Arrow/Parquet field identifier stored in metadata.
     ///
     /// Generic metadata construction validates and canonicalizes the
@@ -1442,6 +1449,32 @@ impl Field {
     /// Removes and returns the comment.
     pub fn remove_comment(&mut self) -> Option<String> {
         self.remove_metadata(COMMENT_KEY)
+    }
+
+    /// Sets a validated display name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value fails the validation reserved text
+    /// goes through.
+    pub fn set_display(&mut self, value: impl Into<String>) -> Result<()> {
+        self.insert_metadata(DISPLAY_KEY, value)?;
+        Ok(())
+    }
+
+    /// Returns a persistent field with a validated display name.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_display`] raises.
+    pub fn try_with_display(mut self, value: impl Into<String>) -> Result<Self> {
+        self.set_display(value)?;
+        Ok(self)
+    }
+
+    /// Removes and returns the display name.
+    pub fn remove_display(&mut self) -> Option<String> {
+        self.remove_metadata(DISPLAY_KEY)
     }
 
     /// Sets the canonical Arrow/Parquet signed 32-bit field identifier.

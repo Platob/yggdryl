@@ -17,6 +17,7 @@ use crate::{Error, Result, Scheme, Url, stable_hash_display};
 
 pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
+pub(crate) const DISPLAY_KEY: &str = "display";
 pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "http:accept-encoding";
 pub(crate) const HTTP_ACCEPT_KEY: &str = "http:accept";
 pub(crate) const HTTP_ACCEPT_LANGUAGE_KEY: &str = "http:accept-language";
@@ -441,6 +442,15 @@ impl Metadata {
     /// catalog reads.
     pub fn comment(&self) -> Option<&str> {
         self.get(COMMENT_KEY)
+    }
+
+    /// Returns the shared human-readable display name.
+    ///
+    /// The one straight name a reader is shown, belonging to no protocol.
+    /// Every protocol view falls back to it, so one name written once is what
+    /// every catalog shows.
+    pub fn display(&self) -> Option<&str> {
+        self.get(DISPLAY_KEY)
     }
 
     /// Consumes and serializes this snapshot as deterministic structural JSON.
@@ -951,7 +961,17 @@ impl<'metadata> ProtocolMetadata<'metadata> {
     /// actually carries, so the view never reports a property that iterating
     /// it would not yield.
     pub fn comment(&self) -> Option<&'metadata str> {
-        self.get("comment").or_else(|| self.metadata.comment())
+        self.get(COMMENT_KEY).or_else(|| self.metadata.comment())
+    }
+
+    /// Returns this protocol's display name, falling back to the straight one.
+    ///
+    /// A protocol that names its own `display` answers it; one that does not
+    /// answers the field's straight `display`, so a name written once without
+    /// a namespace is what every protocol shows. [`Self::comment`] carries why
+    /// the fallback lives here rather than in [`Self::get`].
+    pub fn display(&self) -> Option<&'metadata str> {
+        self.get(DISPLAY_KEY).or_else(|| self.metadata.display())
     }
 
     /// Returns this protocol's properties merged with `other`'s.
@@ -1099,7 +1119,7 @@ fn validate_entry(key: String, value: String) -> Result<(String, String)> {
         return Err(Error::EmptyMetadataKey);
     }
     let value = match key.as_str() {
-        ALIAS_KEY | COMMENT_KEY => {
+        ALIAS_KEY | COMMENT_KEY | DISPLAY_KEY => {
             validate_reserved_text(&key, &value)?;
             value
         }
