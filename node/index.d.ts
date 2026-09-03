@@ -679,6 +679,13 @@ export declare class Field {
    * Every protocol view falls back to it.
    */
   get comment(): string | null
+  /**
+   * Shared human-readable display name stored in Arrow-compatible metadata.
+   *
+   * The label a reader is shown in place of the physical name, belonging to
+   * no protocol. Every protocol view falls back to it.
+   */
+  get display(): string | null
   /** Arrow/Parquet signed 32-bit field identifier stored in metadata. */
   get parquetFieldId(): number | null
   /** Typed location URL stored canonically in Arrow-compatible metadata. */
@@ -741,6 +748,10 @@ export declare class Field {
   setComment(value: string): void
   /** Remove and return the shared comment. */
   removeComment(): string | null
+  /** Set the shared display name. */
+  setDisplay(value: string): void
+  /** Remove and return the shared display name. */
+  removeDisplay(): string | null
   /** Set the canonical Arrow/Parquet signed 32-bit field identifier. */
   setParquetFieldId(id: number): void
   /** Remove and return the Arrow/Parquet signed 32-bit field identifier. */
@@ -847,48 +858,48 @@ export declare class Field {
    * The scheme accepts every spelling `getProperty` does, and the view keeps
    * reading and writing this same field.
    */
-  protocol(scheme: string): JsProtocolMetadata
+  protocol(scheme: string): JsProtocolField
   /** The live HTTP and HTTPS representation property view. */
-  get http(): JsProtocolMetadata
+  get http(): JsProtocolField
   /** The live file protocol property view. */
-  get file(): JsProtocolMetadata
+  get file(): JsProtocolField
   /** The live uniform resource name property view. */
-  get urn(): JsProtocolMetadata
+  get urn(): JsProtocolField
   /** The live short-spelling `PostgreSQL` property view. */
-  get postgres(): JsProtocolMetadata
+  get postgres(): JsProtocolField
   /** The live long-spelling `PostgreSQL` property view. */
-  get postgresql(): JsProtocolMetadata
+  get postgresql(): JsProtocolField
   /** The live `MySQL` property view. */
-  get mysql(): JsProtocolMetadata
+  get mysql(): JsProtocolField
   /** The live Arrow property view. */
-  get arrow(): JsProtocolMetadata
+  get arrow(): JsProtocolField
   /** The live generic SQL property view. */
-  get sql(): JsProtocolMetadata
+  get sql(): JsProtocolField
   /** The live AWS Glue property view. */
-  get glue(): JsProtocolMetadata
+  get glue(): JsProtocolField
   /** The live Apache Iceberg property view. */
-  get iceberg(): JsProtocolMetadata
+  get iceberg(): JsProtocolField
   /** The live Financial Information eXchange property view. */
-  get fix(): JsProtocolMetadata
+  get fix(): JsProtocolField
   /**
    * The live Yggdryl field property view.
    *
    * Named for the namespace it exposes rather than plain `field`, which on
    * a schema node reaches a nested child.
    */
-  get fieldProperties(): JsProtocolMetadata
+  get fieldProperties(): JsProtocolField
   /** The live Amazon S3 property view. */
-  get s3(): JsProtocolMetadata
+  get s3(): JsProtocolField
   /** The live Google Cloud Storage property view. */
-  get gs(): JsProtocolMetadata
+  get gs(): JsProtocolField
   /** The live Azure Blob Storage property view. */
-  get az(): JsProtocolMetadata
+  get az(): JsProtocolField
   /** The live Apache Spark property view. */
-  get spark(): JsProtocolMetadata
+  get spark(): JsProtocolField
   /** The live Polars property view. */
-  get polars(): JsProtocolMetadata
+  get polars(): JsProtocolField
   /** The live pandas property view. */
-  get pandas(): JsProtocolMetadata
+  get pandas(): JsProtocolField
   /** Whether this field carries the values a path spells out. */
   get isPartition(): boolean
   /** Mark or unmark this field as one a path spells out. */
@@ -1886,7 +1897,7 @@ export type JsPartitionSpec = PartitionSpec
  * write on the field is visible through the view. Nothing is snapshotted, and
  * the `scheme:` prefix is applied once, by the view.
  */
-export declare class ProtocolMetadata {
+export declare class ProtocolField {
   /** The protocol this view remembers, in its canonical lowercase spelling. */
   get scheme(): string
   /** The canonical key prefix this view applies. */
@@ -1918,12 +1929,18 @@ export declare class ProtocolMetadata {
    */
   get comment(): string | null
   /**
+   * This protocol's display name, falling back to the field's straight one.
+   *
+   * The fallback lives here for the reason [`Self::comment`]'s does.
+   */
+  get display(): string | null
+  /**
    * Merge another protocol view's properties into this one, in place.
    *
    * A name this view already carries keeps its value, so the merge only
    * ever adds. Properties of other protocols are untouched.
    */
-  mergeWith(other: ProtocolMetadata): void
+  mergeWith(other: ProtocolField): void
   /** Overlay several properties atomically, keeping the ones not named. */
   update(values: Array<MetadataEntry> | Record<string, string>): void
   /** Remove every property of this protocol, leaving shared keys alone. */
@@ -1933,7 +1950,7 @@ export declare class ProtocolMetadata {
   /** Serialize this protocol's bare names as a JSON object. */
   toJSON(): any
 }
-export type JsProtocolMetadata = ProtocolMetadata
+export type JsProtocolField = ProtocolField
 
 /** The settings one record read or write takes. */
 export declare class RecordOptions {

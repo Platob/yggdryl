@@ -354,8 +354,11 @@ del field.metadata["venue"]
 assert "venue" not in field.metadata
 ```
 
-Typed identifiers and typed HTTP values (`parquet_field_id`, `alias`, `content_type`, `etag`, and
-the rest) are attributes rather than map keys, because they are validated.
+Typed identifiers and typed HTTP values (`parquet_field_id`, `alias`, `comment`, `content_type`,
+`etag`, and the rest) are attributes rather than map keys, because they are validated. Rust splits
+that list by whose vocabulary it is - the `http:` headers live on `field.as_http()` there, while
+`parquet_field_id` and the straight `alias`/`comment`/`display`/`location` keys stay on `Field` -
+so a Python name that reads `content_type` is `as_http().content_type()` on the other side.
 
 One protocol's properties are a mapping of their own, and it is a live view of the same field rather
 than a copy of part of it.
@@ -383,7 +386,16 @@ assert not field.iceberg
 
 Every well-known protocol is an attribute - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`,
 and the rest - and `field.protocol(name)` takes one that is only known at runtime. There is no
-`https` attribute, because HTTPS shares the canonical `http:` namespace.
+`https` attribute, because HTTPS shares the canonical `http:` namespace. Rust spells the same
+accessors `as_iceberg()` / `as_iceberg_mut()`, and two of them differ by more than the prefix:
+`arrow` is `as_arrow_properties` and `field_properties` is `as_field_properties`, because `as_arrow`
+and `as_field` already mean something else on a Rust field.
+
+!!! note "Rust-only"
+    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+    carrying its protocol's typed vocabulary, and each dereferencing to the whole `Field` it borrows
+    - have no Python counterpart yet. `field.iceberg` answers the generic property mapping above,
+    and the validated HTTP values remain attributes on the field itself.
 
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.

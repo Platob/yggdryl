@@ -832,6 +832,11 @@ impl PyField {
     }
 
     #[getter]
+    fn display(&self) -> Option<&str> {
+        self.inner.display()
+    }
+
+    #[getter]
     fn location(&self) -> PyResult<Option<PyUrl>> {
         self.inner
             .location()
@@ -841,67 +846,68 @@ impl PyField {
 
     #[getter]
     fn accept(&self) -> Option<&str> {
-        self.inner.accept()
+        self.inner.as_http().accept()
     }
 
     #[getter]
     fn accept_encoding(&self) -> Option<&str> {
-        self.inner.accept_encoding()
+        self.inner.as_http().accept_encoding()
     }
 
     #[getter]
     fn accept_language(&self) -> Option<&str> {
-        self.inner.accept_language()
+        self.inner.as_http().accept_language()
     }
 
     #[getter]
     fn accept_ranges(&self) -> Option<&str> {
-        self.inner.accept_ranges()
+        self.inner.as_http().accept_ranges()
     }
 
     #[getter]
     fn cache_control(&self) -> Option<&str> {
-        self.inner.cache_control()
+        self.inner.as_http().cache_control()
     }
 
     #[getter]
     fn content_disposition(&self) -> Option<&str> {
-        self.inner.content_disposition()
+        self.inner.as_http().content_disposition()
     }
 
     #[getter]
     fn content_encoding(&self) -> Option<&str> {
-        self.inner.content_encoding()
+        self.inner.as_http().content_encoding()
     }
 
     #[getter]
     fn content_language(&self) -> Option<&str> {
-        self.inner.content_language()
+        self.inner.as_http().content_language()
     }
 
     #[getter]
     fn content_length(&self) -> PyResult<Option<u64>> {
-        self.inner.content_length().map_err(value_error)
+        self.inner.as_http().content_length().map_err(value_error)
     }
 
     #[getter]
     fn content_location(&self) -> Option<&str> {
-        self.inner.content_location()
+        self.inner.as_http().content_location()
     }
 
     #[getter]
     fn content_range(&self) -> Option<&str> {
-        self.inner.content_range()
+        self.inner.as_http().content_range()
     }
 
     #[getter]
     fn content_type(&self) -> Option<&str> {
-        self.inner.content_type()
+        self.inner.as_http().content_type()
     }
 
     #[getter]
     fn mime_type(&self) -> PyResult<PyMimeType> {
         self.inner
+            .as_http()
             .mime_type()
             .map(PyMimeType::from_core)
             .map_err(value_error)
@@ -910,6 +916,7 @@ impl PyField {
     #[getter]
     fn media_type(&self) -> PyResult<PyMediaType> {
         self.inner
+            .as_http()
             .media_type()
             .map(PyMediaType::from_core)
             .map_err(value_error)
@@ -917,35 +924,36 @@ impl PyField {
 
     #[getter]
     fn etag(&self) -> Option<&str> {
-        self.inner.etag()
+        self.inner.as_http().etag()
     }
 
     #[getter]
     fn expires(&self) -> Option<&str> {
-        self.inner.expires()
+        self.inner.as_http().expires()
     }
 
     #[getter]
     fn last_modified(&self) -> Option<&str> {
-        self.inner.last_modified()
+        self.inner.as_http().last_modified()
     }
 
     #[getter]
     fn http_location(&self) -> PyResult<Option<PyUrl>> {
         self.inner
-            .http_location()
+            .as_http()
+            .location()
             .map(|value| value.map(PyUrl::from_core))
             .map_err(value_error)
     }
 
     #[getter]
     fn range(&self) -> Option<&str> {
-        self.inner.range()
+        self.inner.as_http().range()
     }
 
     #[getter]
     fn vary(&self) -> Option<&str> {
-        self.inner.vary()
+        self.inner.as_http().vary()
     }
 
     fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> PyResult<()> {
@@ -986,6 +994,16 @@ impl PyField {
         Ok(self.inner.remove_comment())
     }
 
+    fn set_display(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_display(value).map_err(value_error)
+    }
+
+    fn remove_display(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_display())
+    }
+
     fn set_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_location(core_url_from_value(value)?);
@@ -1002,136 +1020,173 @@ impl PyField {
 
     fn set_accept(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_accept(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_accept(value)
+            .map_err(value_error)
     }
 
     fn remove_accept(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_accept())
+        Ok(self.inner.as_http_mut().remove_accept())
     }
 
     fn set_accept_encoding(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_accept_encoding(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_encoding(value)
+            .map_err(value_error)
     }
 
     fn remove_accept_encoding(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_accept_encoding())
+        Ok(self.inner.as_http_mut().remove_accept_encoding())
     }
 
     fn set_accept_language(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_accept_language(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_language(value)
+            .map_err(value_error)
     }
 
     fn remove_accept_language(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_accept_language())
+        Ok(self.inner.as_http_mut().remove_accept_language())
     }
 
     fn set_accept_ranges(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_accept_ranges(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_accept_ranges(value)
+            .map_err(value_error)
     }
 
     fn remove_accept_ranges(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_accept_ranges())
+        Ok(self.inner.as_http_mut().remove_accept_ranges())
     }
 
     fn set_cache_control(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_cache_control(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_cache_control(value)
+            .map_err(value_error)
     }
 
     fn remove_cache_control(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_cache_control())
+        Ok(self.inner.as_http_mut().remove_cache_control())
     }
 
     fn set_content_disposition(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
+            .as_http_mut()
             .set_content_disposition(value)
             .map_err(value_error)
     }
 
     fn remove_content_disposition(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_disposition())
+        Ok(self.inner.as_http_mut().remove_content_disposition())
     }
 
     fn set_content_encoding(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_encoding(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_content_encoding(value)
+            .map_err(value_error)
     }
 
     fn remove_content_encoding(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_encoding())
+        Ok(self.inner.as_http_mut().remove_content_encoding())
     }
 
     fn set_content_language(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_language(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_content_language(value)
+            .map_err(value_error)
     }
 
     fn remove_content_language(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_language())
+        Ok(self.inner.as_http_mut().remove_content_language())
     }
 
     fn set_content_length(&mut self, value: ContentLength) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_length(value.0);
+        self.inner.as_http_mut().set_content_length(value.0);
         Ok(())
     }
 
     fn remove_content_length(&mut self) -> PyResult<Option<u64>> {
         self.require_mutable()?;
-        self.inner.remove_content_length().map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .remove_content_length()
+            .map_err(value_error)
     }
 
     fn set_content_location(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_location(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_content_location(value)
+            .map_err(value_error)
     }
 
     fn remove_content_location(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_location())
+        Ok(self.inner.as_http_mut().remove_content_location())
     }
 
     fn set_content_range(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_range(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_content_range(value)
+            .map_err(value_error)
     }
 
     fn remove_content_range(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_range())
+        Ok(self.inner.as_http_mut().remove_content_range())
     }
 
     fn set_content_type(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_content_type(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_content_type(value)
+            .map_err(value_error)
     }
 
     fn remove_content_type(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_content_type())
+        Ok(self.inner.as_http_mut().remove_content_type())
     }
 
     fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_mime_type(core_mime_type_from_value(value)?);
+        self.inner
+            .as_http_mut()
+            .set_mime_type(core_mime_type_from_value(value)?);
         Ok(())
     }
 
     fn remove_mime_type(&mut self) -> PyResult<Option<PyMimeType>> {
         self.require_mutable()?;
         self.inner
+            .as_http_mut()
             .remove_mime_type()
             .map(|value| value.map(PyMimeType::from_core))
             .map_err(value_error)
@@ -1140,6 +1195,7 @@ impl PyField {
     fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
+            .as_http_mut()
             .set_media_type(core_media_type_from_value(value)?)
             .map_err(value_error)
     }
@@ -1147,6 +1203,7 @@ impl PyField {
     fn remove_media_type(&mut self) -> PyResult<Option<PyMediaType>> {
         self.require_mutable()?;
         self.inner
+            .as_http_mut()
             .remove_media_type()
             .map(|value| value.map(PyMediaType::from_core))
             .map_err(value_error)
@@ -1154,66 +1211,84 @@ impl PyField {
 
     fn set_etag(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_etag(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_etag(value)
+            .map_err(value_error)
     }
 
     fn remove_etag(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_etag())
+        Ok(self.inner.as_http_mut().remove_etag())
     }
 
     fn set_expires(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_expires(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_expires(value)
+            .map_err(value_error)
     }
 
     fn remove_expires(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_expires())
+        Ok(self.inner.as_http_mut().remove_expires())
     }
 
     fn set_last_modified(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_last_modified(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_last_modified(value)
+            .map_err(value_error)
     }
 
     fn remove_last_modified(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_last_modified())
+        Ok(self.inner.as_http_mut().remove_last_modified())
     }
 
     fn set_http_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_http_location(core_url_from_value(value)?);
+        self.inner
+            .as_http_mut()
+            .set_location(core_url_from_value(value)?);
         Ok(())
     }
 
     fn remove_http_location(&mut self) -> PyResult<Option<PyUrl>> {
         self.require_mutable()?;
         self.inner
-            .remove_http_location()
+            .as_http_mut()
+            .remove_location()
             .map(|value| value.map(PyUrl::from_core))
             .map_err(value_error)
     }
 
     fn set_range(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_range(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_range(value)
+            .map_err(value_error)
     }
 
     fn remove_range(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_range())
+        Ok(self.inner.as_http_mut().remove_range())
     }
 
     fn set_vary(&mut self, value: String) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_vary(value).map_err(value_error)
+        self.inner
+            .as_http_mut()
+            .set_vary(value)
+            .map_err(value_error)
     }
 
     fn remove_vary(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
-        Ok(self.inner.remove_vary())
+        Ok(self.inner.as_http_mut().remove_vary())
     }
 
     fn get_property(&self, scheme: &str, name: &str) -> PyResult<Option<&str>> {
@@ -1265,75 +1340,75 @@ impl PyField {
     ///
     /// The scheme accepts every spelling `get_property` accepts, so `HTTPS`
     /// selects the one canonical `http:` namespace.
-    fn protocol(slf: Py<Self>, scheme: &str) -> PyResult<PyProtocolMetadata> {
+    fn protocol(slf: Py<Self>, scheme: &str) -> PyResult<PyProtocolField> {
         let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
-        Ok(PyProtocolMetadata::new(slf, scheme))
+        Ok(PyProtocolField::new(slf, scheme))
     }
 
     /// Returns the live HTTP and HTTPS property view.
     #[getter]
-    fn http(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::HTTP)
+    fn http(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::HTTP)
     }
 
     /// Returns the live file protocol property view.
     #[getter]
-    fn file(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::FILE)
+    fn file(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FILE)
     }
 
     /// Returns the live uniform resource name property view.
     #[getter]
-    fn urn(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::URN)
+    fn urn(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::URN)
     }
 
     /// Returns the live short-spelling `PostgreSQL` property view.
     #[getter]
-    fn postgres(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::POSTGRES)
+    fn postgres(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POSTGRES)
     }
 
     /// Returns the live long-spelling `PostgreSQL` property view.
     #[getter]
-    fn postgresql(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::POSTGRESQL)
+    fn postgresql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POSTGRESQL)
     }
 
     /// Returns the live `MySQL` property view.
     #[getter]
-    fn mysql(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::MYSQL)
+    fn mysql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::MYSQL)
     }
 
     /// Returns the live Arrow property view.
     #[getter]
-    fn arrow(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::ARROW)
+    fn arrow(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::ARROW)
     }
 
     /// Returns the live generic SQL property view.
     #[getter]
-    fn sql(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::SQL)
+    fn sql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::SQL)
     }
 
     /// Returns the live AWS Glue property view.
     #[getter]
-    fn glue(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::GLUE)
+    fn glue(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::GLUE)
     }
 
     /// Returns the live Apache Iceberg property view.
     #[getter]
-    fn iceberg(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::ICEBERG)
+    fn iceberg(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::ICEBERG)
     }
 
     /// Returns the live Financial Information eXchange property view.
     #[getter]
-    fn fix(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::FIX)
+    fn fix(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FIX)
     }
 
     /// Returns the live Yggdryl field property view.
@@ -1341,44 +1416,44 @@ impl PyField {
     /// Named for the namespace it exposes rather than plain `field`, which on
     /// a schema node reaches a nested child.
     #[getter]
-    fn field_properties(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::FIELD)
+    fn field_properties(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FIELD)
     }
 
     /// Returns the live Amazon S3 property view.
     #[getter]
-    fn s3(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::S3)
+    fn s3(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::S3)
     }
 
     /// Returns the live Google Cloud Storage property view.
     #[getter]
-    fn gs(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::GS)
+    fn gs(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::GS)
     }
 
     /// Returns the live Azure Blob Storage property view.
     #[getter]
-    fn az(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::AZ)
+    fn az(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::AZ)
     }
 
     /// Returns the live Apache Spark property view.
     #[getter]
-    fn spark(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::SPARK)
+    fn spark(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::SPARK)
     }
 
     /// Returns the live Polars property view.
     #[getter]
-    fn polars(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::POLARS)
+    fn polars(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POLARS)
     }
 
     /// Returns the live pandas property view.
     #[getter]
-    fn pandas(slf: Py<Self>) -> PyProtocolMetadata {
-        PyProtocolMetadata::new(slf, CoreScheme::PANDAS)
+    fn pandas(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PANDAS)
     }
 
     /// Returns whether this field carries the values a path spells out.
@@ -1814,13 +1889,13 @@ impl PyField {
 /// through the view is therefore visible on the field, a write on the field is
 /// visible through the view, and two views of one field see each other's
 /// writes. Every mutation goes through the field's own frozen-schema gate.
-#[pyclass(name = "ProtocolMetadata", module = "yggdryl._native")]
-pub(crate) struct PyProtocolMetadata {
+#[pyclass(name = "ProtocolField", module = "yggdryl._native")]
+pub(crate) struct PyProtocolField {
     field: Py<PyField>,
     scheme: CoreScheme,
 }
 
-impl PyProtocolMetadata {
+impl PyProtocolField {
     fn new(field: Py<PyField>, scheme: CoreScheme) -> Self {
         Self { field, scheme }
     }
@@ -1839,7 +1914,7 @@ impl PyProtocolMetadata {
 }
 
 #[pymethods]
-impl PyProtocolMetadata {
+impl PyProtocolField {
     // A view of mutable metadata cannot promise a stable hash, so it is
     // unhashable for the same reason an explicitly mutated MediaType is.
     #[classattr]
@@ -1966,6 +2041,17 @@ impl PyProtocolMetadata {
             .inner
             .protocol(&self.scheme)
             .comment()
+            .map(str::to_owned))
+    }
+
+    /// This protocol's display name, falling back to the field's straight one.
+    #[getter]
+    fn display(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .protocol(&self.scheme)
+            .display()
             .map(str::to_owned))
     }
 

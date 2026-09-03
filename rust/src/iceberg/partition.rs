@@ -28,13 +28,13 @@ use crate::{DataType, Error, Field, Result, Scalar};
 pub const FIRST_PARTITION_ID: i32 = 1000;
 
 /// The Iceberg property naming how a partition value is derived.
-const TRANSFORM: &str = "transform";
+pub(super) const TRANSFORM: &str = "transform";
 
 /// The Iceberg property naming the schema column a partition field reads.
-const SOURCE_ID: &str = "partition-source-id";
+pub(super) const SOURCE_ID: &str = "partition-source-id";
 
 /// The Iceberg property naming the spec a partition tuple belongs to.
-const SPEC_ID: &str = "spec-id";
+pub(super) const SPEC_ID: &str = "spec-id";
 
 /// How a source column value becomes a partition value.
 ///
@@ -387,13 +387,7 @@ impl PartitionSpec {
     /// missing its field identifier, source identifier, or transform.
     pub fn from_partition_field(partition: &Field) -> Result<Self> {
         partition.require_struct()?;
-        let spec_id = partition.iceberg().get(SPEC_ID).map_or(Ok(0), |id| {
-            id.parse::<i32>().map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected an integer iceberg:{SPEC_ID} on a partition tuple, got {id:?}"
-                ))
-            })
-        })?;
+        let spec_id = partition.as_iceberg().spec_id()?.unwrap_or_default();
         let mut fields = Vec::with_capacity(partition.field_len());
         for child in partition.fields() {
             let name = child.name();
@@ -402,19 +396,15 @@ impl PartitionSpec {
                     "expected a PARQUET:field_id on the partition field {name:?}, got none"
                 ))
             })?;
-            let source_id = child
-                .iceberg()
-                .get(SOURCE_ID)
-                .and_then(|id| id.parse::<i32>().ok())
-                .ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "expected an integer iceberg:{SOURCE_ID} on the partition field {name:?}"
-                    ))
-                })?;
+            let source_id = child.as_iceberg().partition_source_id()?.ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected an iceberg:{SOURCE_ID} on the partition field {name:?}"
+                ))
+            })?;
             let transform = child
-                .iceberg()
-                .get(TRANSFORM)
-                .map_or(Ok(Transform::Identity), Transform::from_str)?;
+                .as_iceberg()
+                .transform()?
+                .unwrap_or(Transform::Identity);
             fields.push(PartitionField {
                 source_id,
                 field_id,
@@ -563,26 +553,20 @@ impl PartitionSpec {
             // spec can retire a field, and `void` produces nothing but null.
             let mut child = Field::new(field.name.as_str(), dtype, true);
             if child.dtype() == source.dtype() {
-                if let Some(declared) = source.iceberg().get(super::schema::DECLARED_TYPE) {
-                    child
-                        .iceberg_mut()
-                        .insert(super::schema::DECLARED_TYPE, declared)?;
+                if let Some(declared) = source.as_iceberg().declared_type() {
+                    child.as_iceberg_mut().set_declared_type(declared)?;
                 }
             }
             child.set_parquet_field_id(field.field_id);
             child.set_partition(true);
             child
-                .iceberg_mut()
-                .insert(SOURCE_ID, field.source_id.to_string())?;
-            child
-                .iceberg_mut()
-                .insert(TRANSFORM, field.transform.to_string())?;
+                .as_iceberg_mut()
+                .set_partition_source_id(field.source_id)?;
+            child.as_iceberg_mut().set_transform(&field.transform)?;
             children.push(child);
         }
         let mut partition = Field::new("partition", DataType::from_fields(children)?, false);
-        partition
-            .iceberg_mut()
-            .insert(SPEC_ID, self.spec_id.to_string())?;
+        partition.as_iceberg_mut().set_spec_id(self.spec_id)?;
         Ok(partition)
     }
 

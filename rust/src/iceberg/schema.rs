@@ -17,8 +17,8 @@
 //! column's documentation, the v3 default values - is kept as Iceberg protocol
 //! properties, so re-emitting a document reproduces it rather than quietly
 //! dropping what the field model has no slot for. Those properties are reached
-//! through [`Field::iceberg`] and [`Field::iceberg_mut`], which remember the
-//! `iceberg:` prefix so this module never spells a metadata key itself.
+//! through [`Field::as_iceberg`] and [`Field::as_iceberg_mut`], which own the
+//! `iceberg:` vocabulary so this module never spells a metadata key itself.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -32,13 +32,13 @@ pub(super) const SCHEMA_ID: &str = "schema-id";
 pub(super) const DOC: &str = "doc";
 
 /// The Iceberg property holding a v3 `initial-default`, as encoded JSON.
-const INITIAL_DEFAULT: &str = "initial-default";
+pub(super) const INITIAL_DEFAULT: &str = "initial-default";
 
 /// The Iceberg property holding a v3 `write-default`, as encoded JSON.
-const WRITE_DEFAULT: &str = "write-default";
+pub(super) const WRITE_DEFAULT: &str = "write-default";
 
 /// The Iceberg property listing the identifier field ids of a schema root.
-const IDENTIFIER: &str = "identifier-field-ids";
+pub(super) const IDENTIFIER: &str = "identifier-field-ids";
 
 /// The Iceberg property preserving a declared type the physical datatype
 /// cannot distinguish.
@@ -82,18 +82,19 @@ pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
     let schema = &normalized;
     let mut root = struct_field_from_json(name, schema, false)?;
     if let Some(id) = schema.get_key_str("schema-id").and_then(Scalar::as_i64) {
-        root.iceberg_mut().insert(SCHEMA_ID, id.to_string())?;
+        root.as_iceberg_mut()
+            .set_schema_id(narrowed(id, "schema-id")?)?;
     }
     if let Some(ids) = schema
         .get_key_str("identifier-field-ids")
         .and_then(Scalar::as_sequence)
     {
-        let joined: Vec<String> = ids
+        let ids = ids
             .iter()
             .filter_map(Scalar::as_i64)
-            .map(|id| id.to_string())
-            .collect();
-        root.iceberg_mut().insert(IDENTIFIER, joined.join(","))?;
+            .map(|id| narrowed(id, "identifier-field-id"))
+            .collect::<Result<Vec<i32>>>()?;
+        root.as_iceberg_mut().set_identifier_field_ids(&ids)?;
     }
     Ok(root)
 }
@@ -108,29 +109,21 @@ pub fn schema_into_json(root: &Field) -> Result<Scalar> {
     root.validate_struct_root()?;
 
     let mut entries = vec![(Scalar::from("type"), Scalar::from("struct"))];
-    if let Some(id) = root.iceberg().get(SCHEMA_ID) {
-        let id = id.parse::<i64>().map_err(|_| {
-            invalid(format_smolstr!(
-                "expected an integer {:?}, got {id:?}",
-                root.iceberg().key(SCHEMA_ID)
-            ))
-        })?;
-        entries.push((Scalar::from("schema-id"), json_integer(id)));
+    if let Some(id) = root.as_iceberg().schema_id()? {
+        entries.push((Scalar::from("schema-id"), json_integer(i64::from(id))));
     }
     entries.push((
         Scalar::from("fields"),
         Scalar::from_sequence(fields_to_json(root)?),
     ));
-    if let Some(ids) = root.iceberg().get(IDENTIFIER) {
-        let mut parsed = Vec::new();
-        for id in ids.split(',').filter(|id| !id.is_empty()) {
-            parsed.push(Scalar::from(id.trim().parse::<i64>().map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected comma-separated integers in {:?}, got {ids:?}",
-                    root.iceberg().key(IDENTIFIER)
-                ))
-            })?));
-        }
+    // A root that states no identifier columns and one that states an empty
+    // list are different documents, so presence decides the key.
+    if root.as_iceberg().contains_key(IDENTIFIER) {
+        let parsed = root
+            .as_iceberg()
+            .identifier_field_ids()?
+            .into_iter()
+            .map(|id| Scalar::from(i64::from(id)));
         entries.push((
             Scalar::from("identifier-field-ids"),
             Scalar::from_sequence(parsed),
@@ -233,20 +226,13 @@ fn field_from_json(entry: &Scalar) -> Result<Field> {
     let mut field = typed_field_from_json(name, type_json, !required)?;
     field.set_parquet_field_id(field_id(id, name)?);
     if let Some(doc) = entry.get_key_str("doc").and_then(Scalar::as_str) {
-        field.iceberg_mut().insert(DOC, doc)?;
+        field.as_iceberg_mut().set_doc(doc)?;
     }
-    // The v3 defaults are values, not schema, so they travel as encoded JSON
-    // rather than as a second parallel value model.
-    for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
-        if let Some(default) = entry.get_key_str(property) {
-            let encoded = crate::json::into_bytes(default)?;
-            let encoded = String::from_utf8(encoded).map_err(|error| {
-                invalid(format_smolstr!(
-                    "expected UTF-8 in an Iceberg {property} on {name:?}, got {error}"
-                ))
-            })?;
-            field.iceberg_mut().insert(property, encoded)?;
-        }
+    if let Some(default) = entry.get_key_str(INITIAL_DEFAULT) {
+        field.as_iceberg_mut().set_initial_default(default)?;
+    }
+    if let Some(default) = entry.get_key_str(WRITE_DEFAULT) {
+        field.as_iceberg_mut().set_write_default(default)?;
     }
     Ok(field)
 }
@@ -260,7 +246,7 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
         // `uuid` and `fixed[16]` share one physical type, so the declared
         // spelling is kept where the writer will find it again.
         if parsed == PrimitiveType::Uuid {
-            field.iceberg_mut().insert(DECLARED_TYPE, "uuid")?;
+            field.as_iceberg_mut().set_declared_type("uuid")?;
         }
         return Ok(field);
     }
@@ -337,13 +323,14 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
             (Scalar::from("required"), Scalar::from(!field.is_nullable())),
             (Scalar::from("type"), type_to_json(field)?),
         ];
-        if let Some(doc) = field.iceberg().get(DOC) {
+        if let Some(doc) = field.as_iceberg().doc() {
             object.push((Scalar::from("doc"), Scalar::from(doc)));
         }
-        for property in [INITIAL_DEFAULT, WRITE_DEFAULT] {
-            if let Some(encoded) = field.iceberg().get(property) {
-                object.push((Scalar::from(property), crate::json::from_utf8(encoded)?));
-            }
+        if let Some(default) = field.as_iceberg().initial_default()? {
+            object.push((Scalar::from(INITIAL_DEFAULT), default));
+        }
+        if let Some(default) = field.as_iceberg().write_default()? {
+            object.push((Scalar::from(WRITE_DEFAULT), default));
         }
         entries.push(Scalar::from_record(object.into_iter().map(
             |(key, value)| {
@@ -429,7 +416,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
             // The declared spelling wins only where the physical type agrees
             // with it, so a stale marker can never misdescribe a column.
             if computed == PrimitiveType::Fixed(16)
-                && field.iceberg().get(DECLARED_TYPE) == Some("uuid")
+                && field.as_iceberg().declared_type() == Some("uuid")
             {
                 return Ok(Scalar::from("uuid"));
             }
@@ -443,6 +430,15 @@ fn field_id(id: i64, name: &str) -> Result<i32> {
     i32::try_from(id).map_err(|_| {
         invalid(format_smolstr!(
             "expected a field identifier that fits 32 bits on {name:?}, got {id}"
+        ))
+    })
+}
+
+/// Narrow a schema-level identifier read from JSON.
+fn narrowed(id: i64, what: &str) -> Result<i32> {
+    i32::try_from(id).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected an Iceberg {what} that fits 32 bits, got {id}"
         ))
     })
 }

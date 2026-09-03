@@ -921,11 +921,14 @@ mod partition_specs {
 
         // The tuple carries what produced it, so the spec reads back off it.
         let partition = spec.partition_field(&schema).unwrap();
-        assert_eq!(partition.iceberg().get("spec-id"), Some("1"));
+        assert_eq!(partition.as_iceberg().spec_id().unwrap(), Some(1));
         let venue = partition.get_field_by_path("venue").unwrap();
         assert!(venue.is_partition());
-        assert_eq!(venue.iceberg().get("transform"), Some("identity"));
-        assert_eq!(venue.iceberg().get("partition-source-id"), Some("3"));
+        assert_eq!(
+            venue.as_iceberg().transform().unwrap(),
+            Some(Transform::Identity)
+        );
+        assert_eq!(venue.as_iceberg().partition_source_id().unwrap(), Some(3));
         assert_eq!(
             PartitionSpec::from_partition_field(&partition).unwrap(),
             spec
@@ -4156,7 +4159,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
     let path = root("target-schema-root");
     let mut schema = trade_schema();
     schema
-        .iceberg_mut()
+        .as_iceberg_mut()
         .insert("write.target-file-size-bytes", "1")
         .unwrap();
     let mut table = Table::create(

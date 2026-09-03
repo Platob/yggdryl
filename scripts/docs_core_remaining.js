@@ -19,7 +19,7 @@ PROJECT yggdryl. Rust core at ${REPO}/rust (crate "yggdryl"), Python package at 
 repository root; each member uses src/ tests/ benchmarks/ and there are NO examples/ directories -
 runnable examples live only in the documentation.
 
-TWO GENERATED INVENTORIES ARE YOUR GROUND TRUTH. Read them before writing a single name:
+TWO INVENTORIES ARE YOUR GROUND TRUTH. Read them before writing a single name:
   ${REPO}/.api-inventory.txt  - every public Rust item with its signature, grouped by module
   ${REPO}/.api-bindings.txt   - every public Python and JavaScript name the two packages expose
 If a name is not in the relevant inventory, IT DOES NOT EXIST. Do not write it.
@@ -43,8 +43,8 @@ ARCHITECTURE IN BRIEF:
   writes take that same reader. Reader, table, record-batch, and ordered row-record entry points
   name overwrite, append, or merge intent explicitly and converge on those primitives.
 - \`yggdryl::arrow\` holds scalars (scalar_array / scalar_value, StructScalar, the default_arrow_array methods), schema projection
-  (`Field::into_arrow_schema`, `Field::from_arrow_schema`,
-  `Field::into_arrow_exchange_schema`), and BatchReader.
+  (\`Field::into_arrow_schema\`, \`Field::from_arrow_schema\`,
+  \`Field::into_arrow_exchange_schema\`), and BatchReader.
 - \`yggdryl::field::cast\` holds the ArrowCast trait and the typed per-datatype casts
   (Int64Field::cast_arrow_array -> Int64Array via ArrowFieldType). Batch casting IS array casting.
 - \`yggdryl::generic\` holds the shared \`Scalar\` tree; \`yggdryl::text\` owns the four format types \`Json\`, \`Jsonl\`,

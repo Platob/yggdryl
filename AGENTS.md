@@ -85,8 +85,12 @@ pin an unsettled design by implementing a binding first.
   markers, and datatype-family modules. Modules own implementation, not empty
   facades around a monolith.
 - `Field` alone owns metadata and cache-aware mutation. `DataType` has no
-  metadata. Protocol metadata is inert `<scheme>:<property>` text in one map;
-  protocol views borrow it. `PARQUET:field_id` is the reserved typed exception.
+  metadata. Protocol metadata is inert `<scheme>:<property>` text in one map.
+  A protocol view borrows a whole `Field` and dereferences to it, and a foreign
+  protocol's typed vocabulary lives on that view, never on `Field`. `Field`
+  owns its own state whatever key it is stored under: `field:init`,
+  `field:partition`, `alias`, `comment`, `display`, `location`.
+  `PARQUET:field_id` is the reserved typed exception.
 - All shared and dispatch enums live directly in `rust/src/generic/` and are
   re-exported from `generic`: `Codec`, `DataTypeId`, `DataTypeKind`,
   `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`,
@@ -183,8 +187,15 @@ Canonical core spellings:
 - `Field`: `from_parts`, `from_str`, `from_arrow`, `from_arrow_ref`,
   `from_json`, `into_arrow`, `into_arrow_ref`, `into_json`, `default_value`,
   `into_scheme_compat`. Use `field`, never `schema`, in options and accessors.
+  `as_<protocol>`/`as_<protocol>_mut` borrow one protocol's view beside the
+  runtime-scheme `protocol`/`protocol_mut` pair. `as_field_properties` and
+  `as_arrow_properties` are two deliberate spellings in that family:
+  `as_field` already means `&Field` on `TypedField`, and `as_arrow` beside
+  `into_arrow`/`from_arrow` would misdescribe what it returns.
 - `Metadata`: `new`, `from_entries`, `from_arrow`, `from_json`, `into_arrow`,
-  `into_json`, `get`, `contains_key`, `iter`, `protocol`.
+  `into_json`, `get`, `contains_key`, `iter`, `protocol`, and the
+  `as_<protocol>` snapshot views. A bare snapshot has no field behind it, so it
+  answers `ProtocolMetadata` and carries no protocol's typed vocabulary.
 - `Uri`/`Url`/`Urn`: `from_str`, `from_path`, `from_uri`, `into_json`,
   `into_uri`; `Uri` adds `into_url`/`into_urn`, file values add `into_path`.
 - Structured text: `from_utf8`, `from_bytes`, `from_reader`, corresponding
@@ -405,7 +416,9 @@ Iceberg contract:
 
 - One sealed zero-sized marker per datatype variant. `TypedField<K>` owns one
   `Field`; borrowed forms own one pointer. No duplicated state or unchecked
-  mutable path that can invalidate the marker.
+  mutable path that can invalidate the marker. `ProtocolField`/
+  `ProtocolFieldMut` are the borrowed protocol counterparts: one pointer plus a
+  `Scheme`, no duplicated state.
 - Arrow schema parity is lossless. The C Data Interface routes only through
   core recursive `DataType`/`Field` exporters; bindings never build schemas
   recursively.

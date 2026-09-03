@@ -8,7 +8,7 @@ from ._native import (
     IOBase as IOBase,
     MediaType as MediaType,
     MimeType as MimeType,
-    ProtocolMetadata as ProtocolMetadata,
+    ProtocolField as ProtocolField,
     RecordOptions as RecordOptions,
     Statement as Statement,
     TextOptions as TextOptions,

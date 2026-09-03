@@ -19,7 +19,7 @@ from yggdryl import (
     IOBase,
     MediaType,
     MimeType,
-    ProtocolMetadata,
+    ProtocolField,
     RecordOptions,
     Statement,
     TextOptions,
@@ -102,7 +102,7 @@ timezone_reduce: tuple[object, tuple[str]] = Timezone.UTC.__reduce__()
 # Live handles, views, and consuming iterators opt out of Python's inherited
 # object-identity hash. These assignments make their stub slots testable.
 field_metadata_hash: None = FieldMetadata.__hash__
-protocol_metadata_hash: None = ProtocolMetadata.__hash__
+protocol_field_hash: None = ProtocolField.__hash__
 io_hash: None = IOBase.__hash__
 cursor_hash: None = IOCursor.__hash__
 byte_iterator_hash: None = ByteIterator.__hash__
@@ -121,6 +121,7 @@ schema_update_hash: None = iceberg.SchemaUpdate.__hash__
 
 field.set_alias("payload")
 field.set_comment("the latest trade")
+field.set_display("Last trade")
 field.set_location(file_url)
 field.set_property("postgres", "type", "text")
 field.set_accept("application/json")
@@ -362,14 +363,18 @@ assert typed_json is not None and typed_yaml is not None and typed_toml is not N
 assert returned_json and returned_yaml and returned_toml
 
 alias: str | None = field.alias
+comment: str | None = field.comment
+display: str | None = field.display
 location: Url | None = field.location
 property_value: str | None = field.get_property("postgres", "type")
 properties: list[tuple[str, str]] = list(field.property_iter("postgres"))
-iceberg_properties: ProtocolMetadata = field.iceberg
-postgres_properties: ProtocolMetadata = field.protocol("POSTGRES")
+iceberg_properties: ProtocolField = field.iceberg
+postgres_properties: ProtocolField = field.protocol("POSTGRES")
 protocol_scheme: str = iceberg_properties.scheme
 protocol_prefix: str = iceberg_properties.prefix
 protocol_key: str = iceberg_properties.key("doc")
+protocol_comment: str | None = iceberg_properties.comment
+protocol_display: str | None = iceberg_properties.display
 iceberg_properties["doc"] = "closing price"
 iceberg_properties.update({"schema-id": "3"}, snapshot="9")
 protocol_names: list[str] = list(iceberg_properties)
@@ -409,6 +414,10 @@ assert media_type
 assert stem
 assert removed_extension or cleared_extensions or not file_uri.extensions
 assert alias
+assert comment == "the latest trade"
+assert display == "Last trade"
+assert protocol_comment == "the latest trade"
+assert protocol_display == "Last trade"
 assert location
 assert property_value
 assert properties

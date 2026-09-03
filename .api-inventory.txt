@@ -1,7 +1,9 @@
 # Public Rust API inventory
 #
-# Maintained against the public items in rust/src, grouped by module. Use this
-# to check a name before writing it into the documentation.
+# Maintained by hand against the public items in rust/src, grouped by module:
+# there is no generator, so a change that adds or retires a public name edits
+# this file too. Use it to check a name before writing it into the
+# documentation.
 
 ### yggdryl::arrow  [rust\src\arrow\mod.rs]
   pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
@@ -846,13 +848,16 @@
   pub type Decimal256Field = TypedField<decimal::Decimal256>;
   pub type MapField = TypedField<nested::Map>;
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
+  pub type VariantField = TypedField<nested::Variant>;
+  pub type GeometryField = TypedField<geospatial::Geometry>;
+  pub type GeographyField = TypedField<geospatial::Geography>;
   pub type FieldRef = Arc<ArrowField>;
   pub struct Field
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
   pub fn default_value(&self) -> Result<Scalar>
   pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
   pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
-  pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>,
+  pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
   pub fn name(&self) -> &str
   pub const fn dtype(&self) -> &DataType
   pub const fn is_nullable(&self) -> bool
@@ -865,15 +870,22 @@
   pub fn field_at(&self, index: usize) -> Result<&Field>
   pub fn field_by_path(&self, path: &str) -> Result<&Field>
   pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field>
-  pub fn set_field_at(&mut self, index: usize, child: Field) -> Result<()>
-  pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()>
-  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Field) -> Result<()>
-  pub fn remove_field_at(&mut self, index: usize) -> Result<Field>
-  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field>
-  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field>
   pub fn index_of(&self, name: &str) -> Option<usize>
+  pub fn merge_with(&self, other: &Self, upscale: bool) -> Result<Self>
+  pub fn unnest_fields(&self) -> Vec<Self>
+  pub fn explode_fields(&self) -> Vec<Self>
+  pub fn without_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn is_partition(&self) -> bool
+  pub fn partition_fields(&self) -> PartitionFields<'_>
+  pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
+  pub fn partition_field_len(&self) -> usize
+  pub fn has_partition_fields(&self) -> bool
+  pub fn only_partition_fields(&self) -> Result<Self>
+  pub fn without_partition_fields(&self) -> Result<Self>
+  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
   pub fn validate_value(&self, value: &Scalar) -> Result<()>
   pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar>
+  pub fn from_natural_value(&self, value: Scalar) -> Result<Scalar>
   pub fn require_struct(&self) -> Result<()>
   pub fn validate_struct_root(&self) -> Result<()>
   pub const fn dictionary_id(&self) -> Option<i64>
@@ -886,54 +898,66 @@
   pub fn get_metadata(&self, key: &str) -> Option<&str>
   pub fn has_metadata(&self, key: &str) -> bool
   pub fn alias(&self) -> Option<&str>
+  pub fn comment(&self) -> Option<&str>
+  pub fn display(&self) -> Option<&str>
   pub fn parquet_field_id(&self) -> Result<Option<i32>>
   pub fn field_by_parquet_field_id(&self, id: i32) -> Option<&Self>
   pub fn max_parquet_field_id(&self) -> Result<Option<i32>>
   pub fn assign_parquet_field_ids(&mut self, start: i32) -> Result<i32>
-  pub fn is_partition(&self) -> bool
-  pub fn set_partition(&mut self, partition: bool)
-  pub fn with_partition(mut self, partition: bool) -> Self
-  pub fn partition_fields(&self) -> PartitionFields<'_>
-  pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
-  pub fn partition_field_len(&self) -> usize
-  pub fn has_partition_fields(&self) -> bool
-  pub fn only_partition_fields(&self) -> Result<Self>
-  pub fn without_partition_fields(&self) -> Result<Self>
-  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
-  pub fn protocol(&self, scheme: &Scheme) -> ProtocolMetadata<'_>
-  pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolMetadataMut<'_>
-  pub fn iceberg(&self) -> ProtocolMetadata<'_>
-  pub fn iceberg_mut(&mut self) -> ProtocolMetadataMut<'_>
   pub fn is_init(&self) -> Result<bool>
   pub fn location(&self) -> Result<Option<Url>>
-  pub fn accept(&self) -> Option<&str>
-  pub fn accept_encoding(&self) -> Option<&str>
-  pub fn accept_language(&self) -> Option<&str>
-  pub fn accept_ranges(&self) -> Option<&str>
-  pub fn cache_control(&self) -> Option<&str>
-  pub fn content_disposition(&self) -> Option<&str>
-  pub fn content_encoding(&self) -> Option<&str>
-  pub fn content_language(&self) -> Option<&str>
-  pub fn content_length(&self) -> Result<Option<u64>>
-  pub fn content_location(&self) -> Option<&str>
-  pub fn content_range(&self) -> Option<&str>
-  pub fn content_type(&self) -> Option<&str>
-  pub fn mime_type(&self) -> Result<MimeType>
-  pub fn media_type(&self) -> Result<MediaType>
-  pub fn etag(&self) -> Option<&str>
-  pub fn expires(&self) -> Option<&str>
-  pub fn last_modified(&self) -> Option<&str>
-  pub fn http_location(&self) -> Result<Option<Url>>
-  pub fn range(&self) -> Option<&str>
-  pub fn vary(&self) -> Option<&str>
   pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str>
   pub fn has_property(&self, scheme: &Scheme, name: &str) -> bool
   pub fn property_iter<'field, 'scheme>( &'field self, scheme: &'scheme Scheme, ) -> PropertyIter<'field, 'scheme>
   pub fn next_property_entry<'field>( &'field self, scheme: &Scheme, after_name: Option<&str>, ) -> Option<(&'field str, &'field str)>
+  pub fn protocol(&self, scheme: &Scheme) -> ProtocolField<'_>
+  pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolFieldMut<'_>
+  pub fn as_http(&self) -> protocol::HttpField<'_>
+  pub fn as_http_mut(&mut self) -> protocol::HttpFieldMut<'_>
+  pub fn as_file(&self) -> protocol::FileField<'_>
+  pub fn as_file_mut(&mut self) -> protocol::FileFieldMut<'_>
+  pub fn as_urn(&self) -> protocol::UrnField<'_>
+  pub fn as_urn_mut(&mut self) -> protocol::UrnFieldMut<'_>
+  pub fn as_postgres(&self) -> protocol::PostgresField<'_>
+  pub fn as_postgres_mut(&mut self) -> protocol::PostgresFieldMut<'_>
+  pub fn as_postgresql(&self) -> protocol::PostgresqlField<'_>
+  pub fn as_postgresql_mut(&mut self) -> protocol::PostgresqlFieldMut<'_>
+  pub fn as_mysql(&self) -> protocol::MysqlField<'_>
+  pub fn as_mysql_mut(&mut self) -> protocol::MysqlFieldMut<'_>
+  pub fn as_arrow_properties(&self) -> protocol::ArrowPropertyField<'_>
+  pub fn as_arrow_properties_mut(&mut self) -> protocol::ArrowPropertyFieldMut<'_>
+  pub fn as_sql(&self) -> protocol::SqlField<'_>
+  pub fn as_sql_mut(&mut self) -> protocol::SqlFieldMut<'_>
+  pub fn as_glue(&self) -> protocol::GlueField<'_>
+  pub fn as_glue_mut(&mut self) -> protocol::GlueFieldMut<'_>
+  pub fn as_iceberg(&self) -> protocol::IcebergField<'_>
+  pub fn as_iceberg_mut(&mut self) -> protocol::IcebergFieldMut<'_>
+  pub fn as_fix(&self) -> protocol::FixField<'_>
+  pub fn as_fix_mut(&mut self) -> protocol::FixFieldMut<'_>
+  pub fn as_field_properties(&self) -> protocol::FieldPropertiesField<'_>
+  pub fn as_field_properties_mut(&mut self) -> protocol::FieldPropertiesFieldMut<'_>
+  pub fn as_s3(&self) -> protocol::S3Field<'_>
+  pub fn as_s3_mut(&mut self) -> protocol::S3FieldMut<'_>
+  pub fn as_gs(&self) -> protocol::GsField<'_>
+  pub fn as_gs_mut(&mut self) -> protocol::GsFieldMut<'_>
+  pub fn as_az(&self) -> protocol::AzField<'_>
+  pub fn as_az_mut(&mut self) -> protocol::AzFieldMut<'_>
+  pub fn as_spark(&self) -> protocol::SparkField<'_>
+  pub fn as_spark_mut(&mut self) -> protocol::SparkFieldMut<'_>
+  pub fn as_polars(&self) -> protocol::PolarsField<'_>
+  pub fn as_polars_mut(&mut self) -> protocol::PolarsFieldMut<'_>
+  pub fn as_pandas(&self) -> protocol::PandasField<'_>
+  pub fn as_pandas_mut(&mut self) -> protocol::PandasFieldMut<'_>
   pub fn set_name(&mut self, name: impl Into<SmolStr>)
   pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
   pub fn set_dtype(&mut self, dtype: DataType) -> Result<()>
   pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self>
+  pub fn set_field_at(&mut self, index: usize, child: Self) -> Result<()>
+  pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()>
+  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Self) -> Result<()>
+  pub fn remove_field_at(&mut self, index: usize) -> Result<Self>
+  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Self>
+  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Self>
   pub fn set_nullable(&mut self, nullable: bool)
   pub fn with_nullable(mut self, nullable: bool) -> Self
   pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()>
@@ -949,14 +973,153 @@
   pub fn set_alias(&mut self, value: impl Into<String>) -> Result<()>
   pub fn try_with_alias(mut self, value: impl Into<String>) -> Result<Self>
   pub fn remove_alias(&mut self) -> Option<String>
+  pub fn set_comment(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_comment(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_comment(&mut self) -> Option<String>
+  pub fn set_display(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn try_with_display(mut self, value: impl Into<String>) -> Result<Self>
+  pub fn remove_display(&mut self) -> Option<String>
   pub fn set_parquet_field_id(&mut self, id: i32)
   pub fn with_parquet_field_id(mut self, id: i32) -> Self
   pub fn set_init(&mut self, init: bool)
   pub fn with_init(mut self, init: bool) -> Self
+  pub fn set_partition(&mut self, partition: bool)
+  pub fn with_partition(mut self, partition: bool) -> Self
   pub fn remove_parquet_field_id(&mut self) -> Result<Option<i32>>
   pub fn set_location(&mut self, location: Url)
   pub fn with_location(mut self, location: Url) -> Self
   pub fn remove_location(&mut self) -> Result<Option<Url>>
+  pub fn set_property( &mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Option<String>>
+  pub fn try_with_property( mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Self>
+  pub fn remove_property(&mut self, scheme: &Scheme, name: &str) -> Option<String>
+  pub fn clear_properties(&mut self, scheme: &Scheme)
+  pub fn with_properties_cleared(mut self, scheme: &Scheme) -> Self
+  pub fn validate(&self) -> Result<()>
+  pub fn validate_bounded(&self) -> Result<()>
+  pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
+  pub fn show_diffs<'schema>( &'schema self, other: &'schema Self, with_metadata: bool, return_equal: bool, ) -> Differences<'schema>
+  pub fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String
+  pub fn layout_eq(&self, other: &Self) -> bool
+  pub fn stable_hash(&self) -> u64
+  pub fn stable_layout_hash(&self) -> u64
+  pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
+  pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
+
+### yggdryl::field::protocol  [rust\src\field\protocol\mod.rs]
+  pub struct ProtocolField<'field>
+  pub const fn as_field(&self) -> &'field Field
+  pub fn as_properties(&self) -> ProtocolMetadata<'field>
+  pub const fn scheme(&self) -> &Scheme
+  pub fn prefix(&self) -> &str
+  pub fn key(&self, name: &str) -> String
+  pub fn get(&self, name: &str) -> Option<&'field str>
+  pub fn contains_key(&self, name: &str) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> PropertyIter<'field, '_>
+  pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&'field str, &'field str)>
+  pub fn comment(&self) -> Option<&'field str>
+  pub fn display(&self) -> Option<&'field str>
+  pub fn into_metadata(self) -> Result<Metadata>
+  pub fn merge_with(&self, other: &ProtocolField<'_>) -> Result<Metadata>
+  pub struct ProtocolFieldMut<'field>
+  pub const fn as_field(&self) -> &Field
+  pub fn as_protocol(&self) -> ProtocolField<'_>
+  pub const fn scheme(&self) -> &Scheme
+  pub fn prefix(&self) -> &str
+  pub fn key(&self, name: &str) -> String
+  pub fn get(&self, name: &str) -> Option<&str>
+  pub fn contains_key(&self, name: &str) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> PropertyIter<'_, '_>
+  pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&str, &str)>
+  pub fn comment(&self) -> Option<&str>
+  pub fn display(&self) -> Option<&str>
+  pub fn insert(&mut self, name: &str, value: impl Into<String>) -> Result<Option<String>>
+  pub fn update<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
+  pub fn set<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
+  pub fn merge_with(&mut self, other: &ProtocolField<'_>) -> Result<()>
+  pub fn remove(&mut self, name: &str) -> Option<String>
+  pub fn clear(&mut self)
+  pub struct HttpField<'field>(ProtocolField<'field>);
+  pub struct HttpFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> HttpField<'_>
+  pub struct FileField<'field>(ProtocolField<'field>);
+  pub struct FileFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> FileField<'_>
+  pub struct UrnField<'field>(ProtocolField<'field>);
+  pub struct UrnFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> UrnField<'_>
+  pub struct PostgresField<'field>(ProtocolField<'field>);
+  pub struct PostgresFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PostgresField<'_>
+  pub struct PostgresqlField<'field>(ProtocolField<'field>);
+  pub struct PostgresqlFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PostgresqlField<'_>
+  pub struct MysqlField<'field>(ProtocolField<'field>);
+  pub struct MysqlFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> MysqlField<'_>
+  pub struct ArrowPropertyField<'field>(ProtocolField<'field>);
+  pub struct ArrowPropertyFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> ArrowPropertyField<'_>
+  pub struct SqlField<'field>(ProtocolField<'field>);
+  pub struct SqlFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> SqlField<'_>
+  pub struct GlueField<'field>(ProtocolField<'field>);
+  pub struct GlueFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> GlueField<'_>
+  pub struct IcebergField<'field>(ProtocolField<'field>);
+  pub struct IcebergFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> IcebergField<'_>
+  pub struct FixField<'field>(ProtocolField<'field>);
+  pub struct FixFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> FixField<'_>
+  pub struct FieldPropertiesField<'field>(ProtocolField<'field>);
+  pub struct FieldPropertiesFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> FieldPropertiesField<'_>
+  pub struct S3Field<'field>(ProtocolField<'field>);
+  pub struct S3FieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> S3Field<'_>
+  pub struct GsField<'field>(ProtocolField<'field>);
+  pub struct GsFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> GsField<'_>
+  pub struct AzField<'field>(ProtocolField<'field>);
+  pub struct AzFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> AzField<'_>
+  pub struct SparkField<'field>(ProtocolField<'field>);
+  pub struct SparkFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> SparkField<'_>
+  pub struct PolarsField<'field>(ProtocolField<'field>);
+  pub struct PolarsFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PolarsField<'_>
+  pub struct PandasField<'field>(ProtocolField<'field>);
+  pub struct PandasFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PandasField<'_>
+
+### yggdryl::field::protocol::http  [rust\src\field\protocol\http.rs]
+  impl<'field> HttpField<'field>
+  pub fn accept(&self) -> Option<&'field str>
+  pub fn accept_encoding(&self) -> Option<&'field str>
+  pub fn accept_language(&self) -> Option<&'field str>
+  pub fn accept_ranges(&self) -> Option<&'field str>
+  pub fn cache_control(&self) -> Option<&'field str>
+  pub fn content_disposition(&self) -> Option<&'field str>
+  pub fn content_encoding(&self) -> Option<&'field str>
+  pub fn content_language(&self) -> Option<&'field str>
+  pub fn content_length(&self) -> Result<Option<u64>>
+  pub fn content_location(&self) -> Option<&'field str>
+  pub fn content_range(&self) -> Option<&'field str>
+  pub fn content_type(&self) -> Option<&'field str>
+  pub fn mime_type(&self) -> Result<MimeType>
+  pub fn media_type(&self) -> Result<MediaType>
+  pub fn etag(&self) -> Option<&'field str>
+  pub fn expires(&self) -> Option<&'field str>
+  pub fn last_modified(&self) -> Option<&'field str>
+  pub fn location(&self) -> Result<Option<Url>>
+  pub fn range(&self) -> Option<&'field str>
+  pub fn vary(&self) -> Option<&'field str>
+  impl HttpFieldMut<'_>
   pub fn set_accept(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_accept(&mut self) -> Option<String>
   pub fn set_accept_encoding(&mut self, value: impl Into<String>) -> Result<()>
@@ -974,7 +1137,6 @@
   pub fn set_content_language(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_content_language(&mut self) -> Option<String>
   pub fn set_content_length(&mut self, value: u64)
-  pub fn with_content_length(mut self, value: u64) -> Self
   pub fn remove_content_length(&mut self) -> Result<Option<u64>>
   pub fn set_content_location(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_content_location(&mut self) -> Option<String>
@@ -983,10 +1145,8 @@
   pub fn set_content_type(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_content_type(&mut self) -> Option<String>
   pub fn set_mime_type(&mut self, value: MimeType)
-  pub fn with_mime_type(mut self, value: MimeType) -> Self
   pub fn remove_mime_type(&mut self) -> Result<Option<MimeType>>
   pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
-  pub fn try_with_media_type(mut self, value: MediaType) -> Result<Self>
   pub fn remove_media_type(&mut self) -> Result<Option<MediaType>>
   pub fn set_etag(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_etag(&mut self) -> Option<String>
@@ -994,26 +1154,12 @@
   pub fn remove_expires(&mut self) -> Option<String>
   pub fn set_last_modified(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_last_modified(&mut self) -> Option<String>
-  pub fn set_http_location(&mut self, value: Url)
-  pub fn with_http_location(mut self, value: Url) -> Self
-  pub fn remove_http_location(&mut self) -> Result<Option<Url>>
+  pub fn set_location(&mut self, value: Url)
+  pub fn remove_location(&mut self) -> Result<Option<Url>>
   pub fn set_range(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_range(&mut self) -> Option<String>
   pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_vary(&mut self) -> Option<String>
-  pub fn set_property( &mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Option<String>>
-  pub fn try_with_property( mut self, scheme: &Scheme, name: &str, value: impl Into<String>, ) -> Result<Self>
-  pub fn remove_property(&mut self, scheme: &Scheme, name: &str) -> Option<String>
-  pub fn clear_properties(&mut self, scheme: &Scheme)
-  pub fn with_properties_cleared(mut self, scheme: &Scheme) -> Self
-  pub fn validate(&self) -> Result<()>
-  pub fn validate_bounded(&self) -> Result<()>
-  pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
-  pub fn show_diffs<'schema>( &'schema self, other: &'schema Self, with_metadata: bool, return_equal: bool, ) -> Differences<'schema>
-  pub fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String
-  pub fn layout_eq(&self, other: &Self) -> bool
-  pub fn stable_hash(&self) -> u64
-  pub fn stable_layout_hash(&self) -> u64
 
 ### yggdryl::field::parser  [rust\src\field\parser.rs]
   pub fn from_str(value: &str) -> Result<Self>
@@ -1391,6 +1537,28 @@
   pub fn into_dtype(self) -> Result<DataType>
   pub fn from_dtype(dtype: &DataType) -> Result<Self>
 
+### yggdryl::iceberg::field  [rust\src\iceberg\field.rs]
+  impl<'field> IcebergField<'field>
+  pub fn schema_id(&self) -> Result<Option<i32>>
+  pub fn identifier_field_ids(&self) -> Result<Vec<i32>>
+  pub fn doc(&self) -> Option<&'field str>
+  pub fn initial_default(&self) -> Result<Option<Scalar>>
+  pub fn write_default(&self) -> Result<Option<Scalar>>
+  pub fn declared_type(&self) -> Option<&'field str>
+  pub fn spec_id(&self) -> Result<Option<i32>>
+  pub fn partition_source_id(&self) -> Result<Option<i32>>
+  pub fn transform(&self) -> Result<Option<Transform>>
+  impl IcebergFieldMut<'_>
+  pub fn set_schema_id(&mut self, id: i32) -> Result<()>
+  pub fn set_identifier_field_ids(&mut self, ids: &[i32]) -> Result<()>
+  pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()>
+  pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()>
+  pub fn set_write_default(&mut self, value: &Scalar) -> Result<()>
+  pub fn set_declared_type(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn set_spec_id(&mut self, id: i32) -> Result<()>
+  pub fn set_partition_source_id(&mut self, id: i32) -> Result<()>
+  pub fn set_transform(&mut self, transform: &Transform) -> Result<()>
+
 ### yggdryl::io::buffer  [rust\src\io\buffer.rs]
   pub struct Buffer
   pub fn new() -> Self
@@ -1596,25 +1764,34 @@
   pub fn has_property(&self, scheme: &Scheme, name: &str) -> bool
   pub fn property_iter<'metadata, 'scheme>( &'metadata self, scheme: &'scheme Scheme, ) -> PropertyIter<'metadata, 'scheme>
   pub fn next_property_entry<'metadata>( &'metadata self, scheme: &Scheme, after_name: Option<&str>, ) -> Option<(&'metadata str, &'metadata str)>
+  pub fn merge_with(&self, other: &Self) -> Result<Self>
   pub fn protocol(&self, scheme: &Scheme) -> ProtocolMetadata<'_>
-  pub fn http(&self) -> ProtocolMetadata<'_>
-  pub fn file(&self) -> ProtocolMetadata<'_>
-  pub fn urn(&self) -> ProtocolMetadata<'_>
-  pub fn postgres(&self) -> ProtocolMetadata<'_>
-  pub fn postgresql(&self) -> ProtocolMetadata<'_>
-  pub fn mysql(&self) -> ProtocolMetadata<'_>
-  pub fn arrow(&self) -> ProtocolMetadata<'_>
-  pub fn sql(&self) -> ProtocolMetadata<'_>
-  pub fn glue(&self) -> ProtocolMetadata<'_>
-  pub fn iceberg(&self) -> ProtocolMetadata<'_>
-  pub fn fix(&self) -> ProtocolMetadata<'_>
-  pub fn field_properties(&self) -> ProtocolMetadata<'_>
-  pub fn s3(&self) -> ProtocolMetadata<'_>
-  pub fn gs(&self) -> ProtocolMetadata<'_>
-  pub fn az(&self) -> ProtocolMetadata<'_>
-  pub fn spark(&self) -> ProtocolMetadata<'_>
-  pub fn polars(&self) -> ProtocolMetadata<'_>
-  pub fn pandas(&self) -> ProtocolMetadata<'_>
+  pub fn as_http(&self) -> ProtocolMetadata<'_>
+  pub fn as_file(&self) -> ProtocolMetadata<'_>
+  pub fn as_urn(&self) -> ProtocolMetadata<'_>
+  pub fn as_postgres(&self) -> ProtocolMetadata<'_>
+  pub fn as_postgresql(&self) -> ProtocolMetadata<'_>
+  pub fn as_mysql(&self) -> ProtocolMetadata<'_>
+  pub fn as_arrow_properties(&self) -> ProtocolMetadata<'_>
+  pub fn as_sql(&self) -> ProtocolMetadata<'_>
+  pub fn as_glue(&self) -> ProtocolMetadata<'_>
+  pub fn as_iceberg(&self) -> ProtocolMetadata<'_>
+  pub fn as_fix(&self) -> ProtocolMetadata<'_>
+  pub fn as_field_properties(&self) -> ProtocolMetadata<'_>
+  pub fn as_s3(&self) -> ProtocolMetadata<'_>
+  pub fn as_gs(&self) -> ProtocolMetadata<'_>
+  pub fn as_az(&self) -> ProtocolMetadata<'_>
+  pub fn as_spark(&self) -> ProtocolMetadata<'_>
+  pub fn as_polars(&self) -> ProtocolMetadata<'_>
+  pub fn as_pandas(&self) -> ProtocolMetadata<'_>
+  pub fn comment(&self) -> Option<&str>
+  pub fn display(&self) -> Option<&str>
+  pub fn into_json(self) -> Result<String>
+  pub fn stable_hash(&self) -> u64
+  pub fn into_arrow(self) -> HashMap<String, String>
+  pub struct MetadataIter<'a>(btree_map::Iter<'a, String, String>);
+  pub struct MetadataIntoIter(btree_map::IntoIter<String, String>);
+  pub struct PropertyIter<'metadata, 'scheme>
   pub struct ProtocolMetadata<'metadata>
   pub const fn scheme(&self) -> &Scheme
   pub fn prefix(&self) -> &str
@@ -1627,48 +1804,9 @@
   pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&'metadata str, &'metadata str)>
   pub const fn as_metadata(&self) -> &'metadata Metadata
   pub fn into_metadata(self) -> Result<Metadata>
-  pub struct ProtocolMetadataMut<'field>
-  pub const fn scheme(&self) -> &Scheme
-  pub fn prefix(&self) -> &str
-  pub fn key(&self, name: &str) -> String
-  pub fn as_protocol(&self) -> ProtocolMetadata<'_>
-  pub fn get(&self, name: &str) -> Option<&str>
-  pub fn contains_key(&self, name: &str) -> bool
-  pub fn len(&self) -> usize
-  pub fn is_empty(&self) -> bool
-  pub fn iter(&self) -> PropertyIter<'_, '_>
-  pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&str, &str)>
-  pub fn insert(&mut self, name: &str, value: impl Into<String>) -> Result<Option<String>>
-  pub fn update<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
-  pub fn set<I, N, V>(&mut self, entries: I) -> Result<()> where I: IntoIterator<Item = (N, V)>, N: AsRef<str>, V: Into<String>,
-  pub fn remove(&mut self, name: &str) -> Option<String>
-  pub fn clear(&mut self)
-  pub fn accept(&self) -> Option<&str>
-  pub fn accept_encoding(&self) -> Option<&str>
-  pub fn accept_language(&self) -> Option<&str>
-  pub fn accept_ranges(&self) -> Option<&str>
-  pub fn cache_control(&self) -> Option<&str>
-  pub fn content_disposition(&self) -> Option<&str>
-  pub fn content_encoding(&self) -> Option<&str>
-  pub fn content_language(&self) -> Option<&str>
-  pub fn content_length(&self) -> Result<Option<u64>>
-  pub fn content_location(&self) -> Option<&str>
-  pub fn content_range(&self) -> Option<&str>
-  pub fn content_type(&self) -> Option<&str>
-  pub fn mime_type(&self) -> Result<MimeType>
-  pub fn media_type(&self) -> Result<MediaType>
-  pub fn etag(&self) -> Option<&str>
-  pub fn expires(&self) -> Option<&str>
-  pub fn last_modified(&self) -> Option<&str>
-  pub fn http_location(&self) -> Result<Option<Url>>
-  pub fn range(&self) -> Option<&str>
-  pub fn vary(&self) -> Option<&str>
-  pub fn into_json(self) -> Result<String>
-  pub fn stable_hash(&self) -> u64
-  pub fn into_arrow(self) -> HashMap<String, String>
-  pub struct MetadataIter<'a>(btree_map::Iter<'a, String, String>);
-  pub struct MetadataIntoIter(btree_map::IntoIter<String, String>);
-  pub struct PropertyIter<'metadata, 'scheme>
+  pub fn comment(&self) -> Option<&'metadata str>
+  pub fn display(&self) -> Option<&'metadata str>
+  pub fn merge_with(&self, other: &ProtocolMetadata<'_>) -> Result<Metadata>
 
 ### yggdryl::parquet::metadata  [rust\src\parquet\metadata.rs]
   pub struct ColumnStatistics

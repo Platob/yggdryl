@@ -12,7 +12,7 @@ export {
   Listing,
   MediaType,
   MimeType,
-  ProtocolMetadata,
+  ProtocolField,
   RecordOptions,
   Statement,
   TextOptions,
@@ -42,7 +42,7 @@ import type {
   MetadataEntry,
   MimeType,
   PartitionEntry,
-  ProtocolMetadata,
+  ProtocolField,
   RecordOptions,
   Statement,
   TextOptions,
@@ -1404,7 +1404,7 @@ declare module './index' {
   namespace Field {
     function fromArrow(value: Field | string | ArrowStringCompatible): Field
   }
-  interface ProtocolMetadata extends Iterable<readonly [string, string]> {
+  interface ProtocolField extends Iterable<readonly [string, string]> {
     update(values: FieldMetadataInput): void
   }
   namespace MimeType {

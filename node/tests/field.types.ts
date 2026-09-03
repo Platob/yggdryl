@@ -2,7 +2,7 @@ import {
   Field,
   MediaType,
   MimeType,
-  ProtocolMetadata,
+  ProtocolField,
   Url,
   fields,
   intoField,
@@ -48,6 +48,7 @@ const dictionaryId: bigint | null = field.dictionaryId
 const dictionaryOrdered: boolean | null = field.dictionaryIsOrdered
 field.setAlias('identifier')
 field.setComment('closing price')
+field.setDisplay('Close')
 field.setParquetFieldId(17)
 field.setLocation('s3://warehouse/events/data.parquet')
 field.setAccept('application/json')
@@ -73,6 +74,8 @@ field.setVary('accept-encoding')
 const alias: string | null = field.alias
 const comment: string | null = field.comment
 const protocolComment: string | null = field.iceberg.comment
+const display: string | null = field.display
+const protocolDisplay: string | null = field.iceberg.display
 const id: number | null = field.parquetFieldId
 const location: Url | null = field.location
 const accept: string | null = field.accept
@@ -87,8 +90,8 @@ const hasProperty: boolean = field.hasProperty('postgres', 'type')
 const properties: MetadataEntry[] = field.propertyIter('postgres')
 field.clearProperties('postgres')
 
-const iceberg: ProtocolMetadata = field.iceberg
-const namedProtocols: ProtocolMetadata[] = [
+const iceberg: ProtocolField = field.iceberg
+const namedProtocols: ProtocolField[] = [
   field.http,
   field.file,
   field.urn,
@@ -108,7 +111,7 @@ const namedProtocols: ProtocolMetadata[] = [
   field.polars,
   field.pandas,
 ]
-const protocol: ProtocolMetadata = field.protocol('HTTPS')
+const protocol: ProtocolField = field.protocol('HTTPS')
 const protocolScheme: string = protocol.scheme
 const protocolPrefix: string = protocol.prefix
 const protocolKey: string = protocol.key('content-type')
@@ -150,6 +153,8 @@ void dictionaryOrdered
 void alias
 void comment
 void protocolComment
+void display
+void protocolDisplay
 void id
 void location
 void accept

@@ -84,19 +84,24 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("protocol_view_hit", |bencher| {
         bencher.iter(|| {
             black_box(&property_field)
-                .postgres()
+                .as_postgres()
                 .get(black_box("table"))
         });
     });
     group.bench_function("protocol_view_hit_wide", |bencher| {
         bencher.iter(|| {
             black_box(&wide_property_field)
-                .postgres()
+                .as_postgres()
                 .get(black_box("table"))
         });
     });
     group.bench_function("protocol_view_len_1024", |bencher| {
-        bencher.iter(|| black_box(&protocol_properties).postgres().len());
+        bencher.iter(|| black_box(&protocol_properties).as_postgres().len());
+    });
+    // The view is built per call, so what a caller pays for one is the `Scheme`
+    // clone plus the snapshot borrow, with no map walk behind either.
+    group.bench_function("protocol_view_as_properties", |bencher| {
+        bencher.iter(|| black_box(&property_field).as_postgres().as_properties());
     });
     let partitioned = Field::new(
         "row",
@@ -162,11 +167,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .into_arrow_ref()
         .expect("the static HTTP field projects to Arrow");
     group.bench_function("http_content_type_exact", |bencher| {
-        bencher.iter(|| black_box(&http_field).content_type());
+        bencher.iter(|| black_box(&http_field).as_http().content_type());
     });
     group.bench_function("http_content_length_typed", |bencher| {
         bencher.iter(|| {
             black_box(&http_field)
+                .as_http()
                 .content_length()
                 .expect("the static content length remains valid")
         });
@@ -174,6 +180,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("http_media_type_typed", |bencher| {
         bencher.iter(|| {
             black_box(&http_field)
+                .as_http()
                 .media_type()
                 .expect("the static HTTP media headers remain valid")
         });
@@ -184,6 +191,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("http_media_type_set_noop", |bencher| {
         bencher.iter(|| {
             http_field
+                .as_http_mut()
                 .set_media_type(black_box(media.clone()))
                 .expect("the static media type remains valid");
         });
@@ -195,6 +203,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             || http_field.clone(),
             |mut field| {
                 field
+                    .as_http_mut()
                     .set_media_type(black_box(changed_media.clone()))
                     .expect("the changed media type remains valid");
                 black_box(field)
@@ -202,6 +211,96 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    #[cfg(feature = "iceberg")]
+    {
+        use yggdryl::iceberg::Transform;
+
+        let mut iceberg_field = DataType::Int64.required_field("id");
+        let mut view = iceberg_field.as_iceberg_mut();
+        view.set_schema_id(3)
+            .expect("the static schema identifier is valid");
+        view.set_identifier_field_ids(&[1, 2, 3])
+            .expect("the static identifier columns are valid");
+        view.set_doc("row identifier")
+            .expect("the static doc string is valid");
+        view.set_spec_id(7)
+            .expect("the static spec identifier is valid");
+        view.set_partition_source_id(11)
+            .expect("the static source column is valid");
+        view.set_transform(&Transform::Identity)
+            .expect("the static transform is valid");
+        iceberg_field
+            .clone()
+            .into_arrow_ref()
+            .expect("the static Iceberg field projects to Arrow");
+
+        group.bench_function("iceberg_doc_exact", |bencher| {
+            bencher.iter(|| black_box(&iceberg_field).as_iceberg().doc());
+        });
+        group.bench_function("iceberg_schema_id_typed", |bencher| {
+            bencher.iter(|| {
+                black_box(&iceberg_field)
+                    .as_iceberg()
+                    .schema_id()
+                    .expect("the static schema identifier remains valid")
+            });
+        });
+        // The one read whose assembled key outgrows the inline key buffer, so
+        // it is the pair that says what that boundary costs.
+        group.bench_function("iceberg_partition_source_id_typed", |bencher| {
+            bencher.iter(|| {
+                black_box(&iceberg_field)
+                    .as_iceberg()
+                    .partition_source_id()
+                    .expect("the static source column remains valid")
+            });
+        });
+        group.bench_function("iceberg_spec_id_typed", |bencher| {
+            bencher.iter(|| {
+                black_box(&iceberg_field)
+                    .as_iceberg()
+                    .spec_id()
+                    .expect("the static spec identifier remains valid")
+            });
+        });
+        group.bench_function("iceberg_transform_typed", |bencher| {
+            bencher.iter(|| {
+                black_box(&iceberg_field)
+                    .as_iceberg()
+                    .transform()
+                    .expect("the static transform remains valid")
+            });
+        });
+        group.bench_function("iceberg_identifier_field_ids_typed", |bencher| {
+            bencher.iter(|| {
+                black_box(&iceberg_field)
+                    .as_iceberg()
+                    .identifier_field_ids()
+                    .expect("the static identifier columns remain valid")
+            });
+        });
+        group.bench_function("iceberg_doc_set_noop", |bencher| {
+            bencher.iter(|| {
+                iceberg_field
+                    .as_iceberg_mut()
+                    .set_doc(black_box("row identifier"))
+                    .expect("the identical doc string remains valid");
+            });
+        });
+        group.bench_function("iceberg_doc_set_changed", |bencher| {
+            bencher.iter_batched(
+                || iceberg_field.clone(),
+                |mut field| {
+                    field
+                        .as_iceberg_mut()
+                        .set_doc(black_box("the row identifier"))
+                        .expect("the replacement doc string is valid");
+                    black_box(field)
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
     group.bench_function("metadata_into_arrow_unique", |bencher| {
         bencher.iter_batched(
             || {

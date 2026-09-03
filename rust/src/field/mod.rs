@@ -13,35 +13,32 @@ use crate::datatype::{
     DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
-    ALIAS_KEY, COMMENT_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, HTTP_ACCEPT_ENCODING_KEY,
-    HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY, HTTP_CACHE_CONTROL_KEY,
-    HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY, HTTP_CONTENT_LANGUAGE_KEY,
-    HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY, HTTP_CONTENT_RANGE_KEY,
-    HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY, HTTP_LAST_MODIFIED_KEY,
-    HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, LOCATION_KEY, MetadataIter,
-    PARQUET_FIELD_ID_KEY, PropertyIter, ProtocolMetadata, ProtocolMetadataMut,
-    for_each_well_known_protocol, parse_field_id, parse_reserved_bool, property_key,
-    write_json_string as write_quoted,
+    ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, LOCATION_KEY,
+    MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol, parse_field_id,
+    parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
-use crate::{
-    Error, MediaType, Metadata, MimeType, Result, Scalar, Scheme, Url, stable_hash_display,
-};
+use crate::{Error, Metadata, Result, Scalar, Scheme, Url, stable_hash_display};
 
-/// Emit the borrowed and mutable protocol view accessors of one protocol.
+use self::protocol::{ProtocolField, ProtocolFieldMut};
+
+/// Emit the borrowed and mutable named views of one protocol on a field.
 macro_rules! field_protocol_accessors {
-    ($name:ident, $mutable:ident, $constant:ident, $label:literal) => {
-        #[doc = concat!("Returns the borrowed ", $label, " property view.")]
+    ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
+        #[doc = concat!("Returns this field borrowed as its ", $label, " protocol.")]
         ///
-        /// This is [`Self::protocol`] with the protocol already chosen.
-        pub fn $name(&self) -> ProtocolMetadata<'_> {
-            self.protocol(&Scheme::$constant)
+        /// This is [`Self::protocol`] with the protocol and its type already
+        /// chosen. The result dereferences to `Field`.
+        pub fn $name(&self) -> protocol::$view<'_> {
+            protocol::$view::new(self)
         }
 
-        #[doc = concat!("Returns the mutable ", $label, " property view.")]
+        #[doc = concat!("Returns this field mutably borrowed as its ", $label, " protocol.")]
         ///
-        /// This is [`Self::protocol_mut`] with the protocol already chosen.
-        pub fn $mutable(&mut self) -> ProtocolMetadataMut<'_> {
-            self.protocol_mut(&Scheme::$constant)
+        /// This is [`Self::protocol_mut`] with the protocol and its type
+        /// already chosen. Every write routes through this field's own
+        /// cache-aware mutation.
+        pub fn $mutable(&mut self) -> protocol::$view_mut<'_> {
+            protocol::$view_mut::new(self)
         }
     };
 }
@@ -59,6 +56,7 @@ pub mod integer;
 pub mod nested;
 mod parser;
 mod pretty;
+pub mod protocol;
 pub mod scalar;
 mod serde;
 pub mod temporal;
@@ -838,11 +836,16 @@ impl Field {
 
     /// Returns the shared human-readable comment stored in metadata.
     ///
-    /// The one straight description a field carries, belonging to no protocol.
-    /// Every protocol view falls back to it when it has no comment of its own,
-    /// so one sentence written once is what Iceberg, Glue and Spark all read.
+    /// [`Metadata::comment`] carries what it is and who reads it.
     pub fn comment(&self) -> Option<&str> {
-        self.get_metadata(COMMENT_KEY)
+        self.metadata.comment()
+    }
+
+    /// Returns the shared human-readable display name stored in metadata.
+    ///
+    /// [`Metadata::display`] carries what it is and who reads it.
+    pub fn display(&self) -> Option<&str> {
+        self.metadata.display()
     }
 
     /// Parses the Arrow/Parquet field identifier stored in metadata.
@@ -988,106 +991,6 @@ impl Field {
             .transpose()
     }
 
-    /// Returns the raw HTTP `Accept` field value.
-    pub fn accept(&self) -> Option<&str> {
-        self.metadata.accept()
-    }
-
-    /// Returns the raw HTTP `Accept-Encoding` field value.
-    pub fn accept_encoding(&self) -> Option<&str> {
-        self.metadata.accept_encoding()
-    }
-
-    /// Returns the raw HTTP `Accept-Language` field value.
-    pub fn accept_language(&self) -> Option<&str> {
-        self.metadata.accept_language()
-    }
-
-    /// Returns the raw HTTP `Accept-Ranges` field value.
-    pub fn accept_ranges(&self) -> Option<&str> {
-        self.metadata.accept_ranges()
-    }
-
-    /// Returns the raw HTTP `Cache-Control` field value.
-    pub fn cache_control(&self) -> Option<&str> {
-        self.metadata.cache_control()
-    }
-
-    /// Returns the raw HTTP `Content-Disposition` field value.
-    pub fn content_disposition(&self) -> Option<&str> {
-        self.metadata.content_disposition()
-    }
-
-    /// Returns the raw HTTP `Content-Encoding` field value.
-    pub fn content_encoding(&self) -> Option<&str> {
-        self.metadata.content_encoding()
-    }
-
-    /// Returns the raw HTTP `Content-Language` field value.
-    pub fn content_language(&self) -> Option<&str> {
-        self.metadata.content_language()
-    }
-
-    /// Parses the canonical HTTP `Content-Length` field value.
-    pub fn content_length(&self) -> Result<Option<u64>> {
-        self.metadata.content_length()
-    }
-
-    /// Returns the raw HTTP `Content-Location` field value.
-    pub fn content_location(&self) -> Option<&str> {
-        self.metadata.content_location()
-    }
-
-    /// Returns the raw HTTP `Content-Range` field value.
-    pub fn content_range(&self) -> Option<&str> {
-        self.metadata.content_range()
-    }
-
-    /// Returns the raw HTTP `Content-Type` field value, including parameters.
-    pub fn content_type(&self) -> Option<&str> {
-        self.metadata.content_type()
-    }
-
-    /// Parses the base MIME type from HTTP `Content-Type`.
-    pub fn mime_type(&self) -> Result<MimeType> {
-        self.metadata.mime_type()
-    }
-
-    /// Parses HTTP `Content-Type` and `Content-Encoding` as one media value.
-    pub fn media_type(&self) -> Result<MediaType> {
-        self.metadata.media_type()
-    }
-
-    /// Returns the raw HTTP `ETag` field value.
-    pub fn etag(&self) -> Option<&str> {
-        self.metadata.etag()
-    }
-
-    /// Returns the raw HTTP `Expires` field value.
-    pub fn expires(&self) -> Option<&str> {
-        self.metadata.expires()
-    }
-
-    /// Returns the raw HTTP `Last-Modified` field value.
-    pub fn last_modified(&self) -> Option<&str> {
-        self.metadata.last_modified()
-    }
-
-    /// Parses HTTP `Location` as an absolute URL.
-    pub fn http_location(&self) -> Result<Option<Url>> {
-        self.metadata.http_location()
-    }
-
-    /// Returns the raw HTTP `Range` field value.
-    pub fn range(&self) -> Option<&str> {
-        self.metadata.range()
-    }
-
-    /// Returns the raw HTTP `Vary` field value.
-    pub fn vary(&self) -> Option<&str> {
-        self.metadata.vary()
-    }
-
     /// Looks up one canonical `scheme:name` property without allocating.
     pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str> {
         self.metadata.get_property(scheme, name)
@@ -1119,7 +1022,9 @@ impl Field {
     ///
     /// The view remembers the protocol, so a caller spells the bare property
     /// name and never assembles a `scheme:name` key itself. Nothing is copied:
-    /// it borrows this field's metadata and reads out of the same tree.
+    /// it borrows this field and reads out of the same metadata tree. A
+    /// runtime scheme cannot select a compile-time type, so this is the
+    /// dynamic half of the contract the `as_<protocol>` accessors type.
     ///
     /// ```
     /// use yggdryl::{DataType, Scheme};
@@ -1129,12 +1034,12 @@ impl Field {
     /// field.set_property(&Scheme::ICEBERG, "doc", "closing price")?;
     ///
     /// assert_eq!(field.protocol(&Scheme::ICEBERG).get("doc"), Some("closing price"));
-    /// assert_eq!(field.iceberg().get("doc"), Some("closing price"));
+    /// assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn protocol(&self, scheme: &Scheme) -> ProtocolMetadata<'_> {
-        self.metadata.protocol(scheme)
+    pub fn protocol(&self, scheme: &Scheme) -> ProtocolField<'_> {
+        ProtocolField::new(self, scheme.clone())
     }
 
     /// Returns a mutable view of one protocol's properties.
@@ -1155,8 +1060,8 @@ impl Field {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolMetadataMut<'_> {
-        ProtocolMetadataMut::new(self, scheme.clone())
+    pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolFieldMut<'_> {
+        ProtocolFieldMut::new(self, scheme.clone())
     }
 
     for_each_well_known_protocol!(field_protocol_accessors);
@@ -1546,6 +1451,32 @@ impl Field {
         self.remove_metadata(COMMENT_KEY)
     }
 
+    /// Sets a validated display name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value fails the validation reserved text
+    /// goes through.
+    pub fn set_display(&mut self, value: impl Into<String>) -> Result<()> {
+        self.insert_metadata(DISPLAY_KEY, value)?;
+        Ok(())
+    }
+
+    /// Returns a persistent field with a validated display name.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_display`] raises.
+    pub fn try_with_display(mut self, value: impl Into<String>) -> Result<Self> {
+        self.set_display(value)?;
+        Ok(self)
+    }
+
+    /// Removes and returns the display name.
+    pub fn remove_display(&mut self) -> Option<String> {
+        self.remove_metadata(DISPLAY_KEY)
+    }
+
     /// Sets the canonical Arrow/Parquet signed 32-bit field identifier.
     pub fn set_parquet_field_id(&mut self, id: i32) {
         let (_, changed) = self
@@ -1637,318 +1568,6 @@ impl Field {
         self.remove_metadata(LOCATION_KEY)
             .map(|value| Url::from_str(&value))
             .transpose()
-    }
-
-    /// Sets a validated raw HTTP `Accept` field value.
-    pub fn set_accept(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_ACCEPT_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Accept` field value.
-    pub fn remove_accept(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_ACCEPT_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Accept-Encoding` field value.
-    pub fn set_accept_encoding(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_ACCEPT_ENCODING_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Accept-Encoding` field value.
-    pub fn remove_accept_encoding(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_ACCEPT_ENCODING_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Accept-Language` field value.
-    pub fn set_accept_language(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_ACCEPT_LANGUAGE_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Accept-Language` field value.
-    pub fn remove_accept_language(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_ACCEPT_LANGUAGE_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Accept-Ranges` field value.
-    pub fn set_accept_ranges(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_ACCEPT_RANGES_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Accept-Ranges` field value.
-    pub fn remove_accept_ranges(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_ACCEPT_RANGES_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Cache-Control` field value.
-    pub fn set_cache_control(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CACHE_CONTROL_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Cache-Control` field value.
-    pub fn remove_cache_control(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CACHE_CONTROL_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Content-Disposition` field value.
-    pub fn set_content_disposition(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_DISPOSITION_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Disposition` field value.
-    pub fn remove_content_disposition(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_DISPOSITION_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Content-Encoding` field value.
-    pub fn set_content_encoding(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_ENCODING_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Encoding` field value.
-    pub fn remove_content_encoding(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_ENCODING_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Content-Language` field value.
-    pub fn set_content_language(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_LANGUAGE_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Language` field value.
-    pub fn remove_content_language(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_LANGUAGE_KEY)
-    }
-
-    /// Sets canonical HTTP `Content-Length` metadata.
-    pub fn set_content_length(&mut self, value: u64) {
-        let (_, changed) = self
-            .metadata
-            .insert_validated(HTTP_CONTENT_LENGTH_KEY.to_owned(), value.to_string());
-        if changed {
-            self.invalidate_arrow();
-        }
-    }
-
-    /// Returns a persistent field with canonical HTTP `Content-Length` metadata.
-    pub fn with_content_length(mut self, value: u64) -> Self {
-        self.set_content_length(value);
-        self
-    }
-
-    /// Removes and parses the prior HTTP `Content-Length` value.
-    pub fn remove_content_length(&mut self) -> Result<Option<u64>> {
-        let previous = self.content_length()?;
-        if previous.is_some() {
-            self.remove_metadata(HTTP_CONTENT_LENGTH_KEY);
-        }
-        Ok(previous)
-    }
-
-    /// Sets a validated raw HTTP `Content-Location` field value.
-    pub fn set_content_location(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_LOCATION_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Location` field value.
-    pub fn remove_content_location(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_LOCATION_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Content-Range` field value.
-    pub fn set_content_range(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_RANGE_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Range` field value.
-    pub fn remove_content_range(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_RANGE_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Content-Type` field value.
-    pub fn set_content_type(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_CONTENT_TYPE_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Content-Type` field value.
-    pub fn remove_content_type(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_CONTENT_TYPE_KEY)
-    }
-
-    /// Sets the bare HTTP `Content-Type` MIME value and preserves encodings.
-    pub fn set_mime_type(&mut self, value: MimeType) {
-        let (_, changed) = self
-            .metadata
-            .insert_validated(HTTP_CONTENT_TYPE_KEY.to_owned(), value.to_string());
-        if changed {
-            self.invalidate_arrow();
-        }
-    }
-
-    /// Returns a persistent field with a bare HTTP `Content-Type` MIME value.
-    pub fn with_mime_type(mut self, value: MimeType) -> Self {
-        self.set_mime_type(value);
-        self
-    }
-
-    /// Removes and parses the prior HTTP `Content-Type` MIME value.
-    ///
-    /// Existing `Content-Encoding` metadata is deliberately preserved.
-    pub fn remove_mime_type(&mut self) -> Result<Option<MimeType>> {
-        let Some(content_type) = self.content_type() else {
-            return Ok(None);
-        };
-        let previous = MimeType::from_content_type(content_type)?;
-        self.remove_metadata(HTTP_CONTENT_TYPE_KEY);
-        Ok(Some(previous))
-    }
-
-    /// Atomically projects a media value to HTTP content headers.
-    ///
-    /// File encodings without registered HTTP coding tokens are rejected
-    /// before either metadata key or the Arrow projection cache is changed.
-    pub fn set_media_type(&mut self, value: MediaType) -> Result<()> {
-        let content_type = value.base().to_string();
-        let mut content_encoding = String::new();
-        for encoding in value.encodings() {
-            let coding = encoding
-                .content_coding()
-                .ok_or_else(|| Error::InvalidMetadataValue {
-                    key: SmolStr::new_static(HTTP_CONTENT_ENCODING_KEY),
-                    reason: SmolStr::new_static(
-                        "media encoding has no registered HTTP Content-Encoding token",
-                    ),
-                })?;
-            if !content_encoding.is_empty() {
-                content_encoding.push_str(", ");
-            }
-            content_encoding.push_str(coding);
-        }
-
-        let mut metadata = self.metadata.clone();
-        metadata.insert_validated(HTTP_CONTENT_TYPE_KEY.to_owned(), content_type);
-        if content_encoding.is_empty() {
-            metadata.remove(HTTP_CONTENT_ENCODING_KEY);
-        } else {
-            metadata.insert_validated(HTTP_CONTENT_ENCODING_KEY.to_owned(), content_encoding);
-        }
-        if metadata != self.metadata {
-            self.metadata = metadata;
-            self.invalidate_arrow();
-        }
-        Ok(())
-    }
-
-    /// Returns a persistent field with atomically projected HTTP media headers.
-    pub fn try_with_media_type(mut self, value: MediaType) -> Result<Self> {
-        self.set_media_type(value)?;
-        Ok(self)
-    }
-
-    /// Removes both HTTP media header keys after parsing their prior value.
-    ///
-    /// If either stored header is malformed, this field remains unchanged.
-    pub fn remove_media_type(&mut self) -> Result<Option<MediaType>> {
-        if self.content_type().is_none() && self.content_encoding().is_none() {
-            return Ok(None);
-        }
-        let previous = self.media_type()?;
-        let mut metadata = self.metadata.clone();
-        metadata.remove(HTTP_CONTENT_TYPE_KEY);
-        metadata.remove(HTTP_CONTENT_ENCODING_KEY);
-        self.metadata = metadata;
-        self.invalidate_arrow();
-        Ok(Some(previous))
-    }
-
-    /// Sets a validated raw HTTP `ETag` field value.
-    pub fn set_etag(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_ETAG_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `ETag` field value.
-    pub fn remove_etag(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_ETAG_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Expires` field value.
-    pub fn set_expires(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_EXPIRES_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Expires` field value.
-    pub fn remove_expires(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_EXPIRES_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Last-Modified` field value.
-    pub fn set_last_modified(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_LAST_MODIFIED_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Last-Modified` field value.
-    pub fn remove_last_modified(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_LAST_MODIFIED_KEY)
-    }
-
-    /// Sets typed absolute HTTP `Location` metadata.
-    pub fn set_http_location(&mut self, value: Url) {
-        let (_, changed) = self
-            .metadata
-            .insert_validated(HTTP_LOCATION_KEY.to_owned(), value.to_string());
-        if changed {
-            self.invalidate_arrow();
-        }
-    }
-
-    /// Returns a persistent field with typed absolute HTTP `Location` metadata.
-    pub fn with_http_location(mut self, value: Url) -> Self {
-        self.set_http_location(value);
-        self
-    }
-
-    /// Removes and parses the prior typed HTTP `Location` URL.
-    pub fn remove_http_location(&mut self) -> Result<Option<Url>> {
-        let previous = self.http_location()?;
-        if previous.is_some() {
-            self.remove_metadata(HTTP_LOCATION_KEY);
-        }
-        Ok(previous)
-    }
-
-    /// Sets a validated raw HTTP `Range` field value.
-    pub fn set_range(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_RANGE_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Range` field value.
-    pub fn remove_range(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_RANGE_KEY)
-    }
-
-    /// Sets a validated raw HTTP `Vary` field value.
-    pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()> {
-        self.insert_metadata(HTTP_VARY_KEY, value)?;
-        Ok(())
-    }
-
-    /// Removes and returns the raw HTTP `Vary` field value.
-    pub fn remove_vary(&mut self) -> Option<String> {
-        self.remove_metadata(HTTP_VARY_KEY)
     }
 
     /// Sets one validated canonical `scheme:name` property.

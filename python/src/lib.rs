@@ -16,7 +16,7 @@ use crate::codec::{
 };
 use crate::datatype::{PyAsciiDictionary, PyDataType, PyDataTypeIterator};
 use crate::field::{
-    PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolMetadata,
+    PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
 use crate::media::{PyMediaType, PyMediaTypeIterator, PyMimeType};
 use crate::scalar::PyScalar;
@@ -288,7 +288,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
-    module.add_class::<PyProtocolMetadata>()?;
+    module.add_class::<PyProtocolField>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;

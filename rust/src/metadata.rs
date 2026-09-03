@@ -13,10 +13,11 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, MediaType, MimeType, Result, Scheme, Url, stable_hash_display};
+use crate::{Error, Result, Scheme, Url, stable_hash_display};
 
 pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
+pub(crate) const DISPLAY_KEY: &str = "display";
 pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "http:accept-encoding";
 pub(crate) const HTTP_ACCEPT_KEY: &str = "http:accept";
 pub(crate) const HTTP_ACCEPT_LANGUAGE_KEY: &str = "http:accept-language";
@@ -44,46 +45,154 @@ type MetadataMap = BTreeMap<String, String>;
 
 /// Apply `$emit` to every protocol that has a named metadata view.
 ///
-/// One list drives every generated accessor, so a protocol added here appears
-/// on the metadata snapshot and on [`crate::Field`] in the same change rather
-/// than in whichever of them someone remembered. `https` is deliberately absent:
-/// it shares the canonical `http:` prefix, and one spelling of one namespace is
+/// One list drives every generated accessor and every named view type, so a
+/// protocol added here appears on the metadata snapshot, on [`crate::Field`]
+/// and in [`crate::field::protocol`] in the same change rather than in
+/// whichever of them someone remembered. `https` is deliberately absent: it
+/// shares the canonical `http:` prefix, and one spelling of one namespace is
 /// what keeps a header from being stored twice.
+///
+/// Every emitter matches all six tokens even where it ignores some, which is
+/// what forces the accessors and the view types to grow together.
 macro_rules! for_each_well_known_protocol {
     ($emit:ident) => {
-        $emit!(http, http_mut, HTTP, "HTTP and HTTPS representation");
-        $emit!(file, file_mut, FILE, "file protocol");
-        $emit!(urn, urn_mut, URN, "uniform resource name");
         $emit!(
-            postgres,
-            postgres_mut,
+            as_http,
+            as_http_mut,
+            HTTP,
+            HttpField,
+            HttpFieldMut,
+            "HTTP and HTTPS representation"
+        );
+        $emit!(
+            as_file,
+            as_file_mut,
+            FILE,
+            FileField,
+            FileFieldMut,
+            "file protocol"
+        );
+        $emit!(
+            as_urn,
+            as_urn_mut,
+            URN,
+            UrnField,
+            UrnFieldMut,
+            "uniform resource name"
+        );
+        $emit!(
+            as_postgres,
+            as_postgres_mut,
             POSTGRES,
+            PostgresField,
+            PostgresFieldMut,
             "short-spelling PostgreSQL"
         );
         $emit!(
-            postgresql,
-            postgresql_mut,
+            as_postgresql,
+            as_postgresql_mut,
             POSTGRESQL,
+            PostgresqlField,
+            PostgresqlFieldMut,
             "long-spelling PostgreSQL"
         );
-        $emit!(mysql, mysql_mut, MYSQL, "MySQL");
-        $emit!(arrow, arrow_mut, ARROW, "Arrow");
-        $emit!(sql, sql_mut, SQL, "generic SQL");
-        $emit!(glue, glue_mut, GLUE, "AWS Glue");
-        $emit!(iceberg, iceberg_mut, ICEBERG, "Apache Iceberg");
-        $emit!(fix, fix_mut, FIX, "Financial Information eXchange");
         $emit!(
-            field_properties,
-            field_properties_mut,
+            as_mysql,
+            as_mysql_mut,
+            MYSQL,
+            MysqlField,
+            MysqlFieldMut,
+            "MySQL"
+        );
+        $emit!(
+            as_arrow_properties,
+            as_arrow_properties_mut,
+            ARROW,
+            ArrowPropertyField,
+            ArrowPropertyFieldMut,
+            "Arrow property"
+        );
+        $emit!(
+            as_sql,
+            as_sql_mut,
+            SQL,
+            SqlField,
+            SqlFieldMut,
+            "generic SQL"
+        );
+        $emit!(
+            as_glue,
+            as_glue_mut,
+            GLUE,
+            GlueField,
+            GlueFieldMut,
+            "AWS Glue"
+        );
+        $emit!(
+            as_iceberg,
+            as_iceberg_mut,
+            ICEBERG,
+            IcebergField,
+            IcebergFieldMut,
+            "Apache Iceberg"
+        );
+        $emit!(
+            as_fix,
+            as_fix_mut,
+            FIX,
+            FixField,
+            FixFieldMut,
+            "Financial Information eXchange"
+        );
+        $emit!(
+            as_field_properties,
+            as_field_properties_mut,
             FIELD,
+            FieldPropertiesField,
+            FieldPropertiesFieldMut,
             "Yggdryl field"
         );
-        $emit!(s3, s3_mut, S3, "Amazon S3");
-        $emit!(gs, gs_mut, GS, "Google Cloud Storage");
-        $emit!(az, az_mut, AZ, "Azure Blob Storage");
-        $emit!(spark, spark_mut, SPARK, "Apache Spark");
-        $emit!(polars, polars_mut, POLARS, "Polars");
-        $emit!(pandas, pandas_mut, PANDAS, "pandas");
+        $emit!(as_s3, as_s3_mut, S3, S3Field, S3FieldMut, "Amazon S3");
+        $emit!(
+            as_gs,
+            as_gs_mut,
+            GS,
+            GsField,
+            GsFieldMut,
+            "Google Cloud Storage"
+        );
+        $emit!(
+            as_az,
+            as_az_mut,
+            AZ,
+            AzField,
+            AzFieldMut,
+            "Azure Blob Storage"
+        );
+        $emit!(
+            as_spark,
+            as_spark_mut,
+            SPARK,
+            SparkField,
+            SparkFieldMut,
+            "Apache Spark"
+        );
+        $emit!(
+            as_polars,
+            as_polars_mut,
+            POLARS,
+            PolarsField,
+            PolarsFieldMut,
+            "Polars"
+        );
+        $emit!(
+            as_pandas,
+            as_pandas_mut,
+            PANDAS,
+            PandasField,
+            PandasFieldMut,
+            "pandas"
+        );
     };
 }
 
@@ -91,10 +200,15 @@ pub(crate) use for_each_well_known_protocol;
 
 /// Emit one borrowed protocol view accessor on a metadata snapshot.
 macro_rules! metadata_protocol_accessor {
-    ($name:ident, $mutable:ident, $constant:ident, $label:literal) => {
+    ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
         #[doc = concat!("Returns the borrowed ", $label, " property view.")]
         ///
-        /// This is [`Self::protocol`] with the protocol already chosen.
+        /// This is [`Self::protocol`] with the protocol already chosen. A bare
+        /// snapshot has no field behind it, so this answers a
+        /// [`ProtocolMetadata`] rather than the specialized field view
+        #[doc = concat!("[`", stringify!($view), "`](crate::field::protocol::", stringify!($view), "),")]
+        /// and a typed vocabulary that view would carry is a
+        /// [`get`](ProtocolMetadata::get) by bare name here.
         pub fn $name(&self) -> ProtocolMetadata<'_> {
             self.protocol(&Scheme::$constant)
         }
@@ -307,8 +421,8 @@ impl Metadata {
     /// let metadata = Metadata::from_entries([("iceberg:doc", "closing price")])?;
     ///
     /// assert_eq!(metadata.protocol(&Scheme::ICEBERG).get("doc"), Some("closing price"));
-    /// assert_eq!(metadata.iceberg().get("doc"), Some("closing price"));
-    /// assert_eq!(metadata.iceberg().key("doc"), "iceberg:doc");
+    /// assert_eq!(metadata.as_iceberg().get("doc"), Some("closing price"));
+    /// assert_eq!(metadata.as_iceberg().key("doc"), "iceberg:doc");
     /// # Ok(())
     /// # }
     /// ```
@@ -330,118 +444,13 @@ impl Metadata {
         self.get(COMMENT_KEY)
     }
 
-    /// Returns the raw HTTP `Accept` field value.
-    pub fn accept(&self) -> Option<&str> {
-        self.get(HTTP_ACCEPT_KEY)
-    }
-
-    /// Returns the raw HTTP `Accept-Encoding` field value.
-    pub fn accept_encoding(&self) -> Option<&str> {
-        self.get(HTTP_ACCEPT_ENCODING_KEY)
-    }
-
-    /// Returns the raw HTTP `Accept-Language` field value.
-    pub fn accept_language(&self) -> Option<&str> {
-        self.get(HTTP_ACCEPT_LANGUAGE_KEY)
-    }
-
-    /// Returns the raw HTTP `Accept-Ranges` field value.
-    pub fn accept_ranges(&self) -> Option<&str> {
-        self.get(HTTP_ACCEPT_RANGES_KEY)
-    }
-
-    /// Returns the raw HTTP `Cache-Control` field value.
-    pub fn cache_control(&self) -> Option<&str> {
-        self.get(HTTP_CACHE_CONTROL_KEY)
-    }
-
-    /// Returns the raw HTTP `Content-Disposition` field value.
-    pub fn content_disposition(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_DISPOSITION_KEY)
-    }
-
-    /// Returns the raw HTTP `Content-Encoding` field value.
-    pub fn content_encoding(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_ENCODING_KEY)
-    }
-
-    /// Returns the raw HTTP `Content-Language` field value.
-    pub fn content_language(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_LANGUAGE_KEY)
-    }
-
-    /// Parses the canonical HTTP `Content-Length` field value.
-    pub fn content_length(&self) -> Result<Option<u64>> {
-        self.get(HTTP_CONTENT_LENGTH_KEY)
-            .map(parse_content_length)
-            .transpose()
-    }
-
-    /// Returns the raw HTTP `Content-Location` field value.
-    pub fn content_location(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_LOCATION_KEY)
-    }
-
-    /// Returns the raw HTTP `Content-Range` field value.
-    pub fn content_range(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_RANGE_KEY)
-    }
-
-    /// Returns the raw HTTP `Content-Type` field value, including parameters.
-    pub fn content_type(&self) -> Option<&str> {
-        self.get(HTTP_CONTENT_TYPE_KEY)
-    }
-
-    /// Parses the base MIME type from HTTP `Content-Type`.
+    /// Returns the shared human-readable display name.
     ///
-    /// Parameters are validated but remain available through [`Self::content_type`].
-    /// A missing header defaults to `application/octet-stream`.
-    pub fn mime_type(&self) -> Result<MimeType> {
-        self.content_type()
-            .map(MimeType::from_content_type)
-            .transpose()
-            .map(Option::unwrap_or_default)
-    }
-
-    /// Parses HTTP `Content-Type` and `Content-Encoding` as one media value.
-    ///
-    /// A missing content type defaults to `application/octet-stream`; malformed
-    /// present MIME syntax or unsupported content codings return an error.
-    pub fn media_type(&self) -> Result<MediaType> {
-        MediaType::from_content_headers(self.content_type(), self.content_encoding())
-    }
-
-    /// Returns the raw HTTP `ETag` field value.
-    pub fn etag(&self) -> Option<&str> {
-        self.get(HTTP_ETAG_KEY)
-    }
-
-    /// Returns the raw HTTP `Expires` field value.
-    pub fn expires(&self) -> Option<&str> {
-        self.get(HTTP_EXPIRES_KEY)
-    }
-
-    /// Returns the raw HTTP `Last-Modified` field value.
-    pub fn last_modified(&self) -> Option<&str> {
-        self.get(HTTP_LAST_MODIFIED_KEY)
-    }
-
-    /// Parses HTTP `Location` as an absolute URL.
-    ///
-    /// Raw `http:location` metadata may be relative or opaque; such a value is
-    /// retained by generic access and reported as an error here.
-    pub fn http_location(&self) -> Result<Option<Url>> {
-        self.get(HTTP_LOCATION_KEY).map(Url::from_str).transpose()
-    }
-
-    /// Returns the raw HTTP `Range` field value.
-    pub fn range(&self) -> Option<&str> {
-        self.get(HTTP_RANGE_KEY)
-    }
-
-    /// Returns the raw HTTP `Vary` field value.
-    pub fn vary(&self) -> Option<&str> {
-        self.get(HTTP_VARY_KEY)
+    /// The one straight name a reader is shown, belonging to no protocol.
+    /// Every protocol view falls back to it, so one name written once is what
+    /// every catalog shows.
+    pub fn display(&self) -> Option<&str> {
+        self.get(DISPLAY_KEY)
     }
 
     /// Consumes and serializes this snapshot as deterministic structural JSON.
@@ -839,7 +848,7 @@ impl std::iter::FusedIterator for PropertyIter<'_, '_> {}
 /// `Scheme` clone of a known protocol - which allocates nothing - and no map
 /// walk at all. It is therefore cheap enough to build per call rather than
 /// stored, which is what the named accessors such as
-/// [`Metadata::iceberg`] do.
+/// [`Metadata::as_iceberg`] do.
 ///
 /// ```
 /// use yggdryl::Metadata;
@@ -851,7 +860,7 @@ impl std::iter::FusedIterator for PropertyIter<'_, '_> {}
 ///     ("postgres:table", "trades"),
 /// ])?;
 ///
-/// let iceberg = metadata.iceberg();
+/// let iceberg = metadata.as_iceberg();
 /// assert_eq!(iceberg.len(), 2);
 /// assert_eq!(iceberg.get("schema-id"), Some("3"));
 /// assert!(!iceberg.contains_key("table"));
@@ -952,8 +961,17 @@ impl<'metadata> ProtocolMetadata<'metadata> {
     /// actually carries, so the view never reports a property that iterating
     /// it would not yield.
     pub fn comment(&self) -> Option<&'metadata str> {
-        self.get("comment")
-            .or_else(|| self.metadata.get(COMMENT_KEY))
+        self.get(COMMENT_KEY).or_else(|| self.metadata.comment())
+    }
+
+    /// Returns this protocol's display name, falling back to the straight one.
+    ///
+    /// A protocol that names its own `display` answers it; one that does not
+    /// answers the field's straight `display`, so a name written once without
+    /// a namespace is what every protocol shows. [`Self::comment`] carries why
+    /// the fallback lives here rather than in [`Self::get`].
+    pub fn display(&self) -> Option<&'metadata str> {
+        self.get(DISPLAY_KEY).or_else(|| self.metadata.display())
     }
 
     /// Returns this protocol's properties merged with `other`'s.
@@ -1056,223 +1074,6 @@ impl<'metadata, 'view> IntoIterator for &'view ProtocolMetadata<'metadata> {
     }
 }
 
-/// One protocol's properties on a field, readable and writable by bare name.
-///
-/// This is [`ProtocolMetadata`] with the field's mutations added. It is a
-/// separate value for the reason every mutable view in Rust is: it borrows the
-/// field exclusively, so a read-only view can be handed out freely while this
-/// one exists only where a change is actually being made.
-///
-/// Every mutation goes through the field's own cache-aware methods, so a
-/// protocol write invalidates a populated Arrow projection exactly as a direct
-/// metadata write does, and a rejected value leaves the field untouched.
-///
-/// ```
-/// use yggdryl::{DataType, Field};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut field = DataType::Int64.required_field("price");
-///
-/// field.iceberg_mut().insert("doc", "closing price")?;
-/// field.iceberg_mut().insert("schema-id", "3")?;
-///
-/// assert_eq!(field.iceberg().get("doc"), Some("closing price"));
-/// assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
-///
-/// assert_eq!(field.iceberg_mut().remove("doc").as_deref(), Some("closing price"));
-/// field.iceberg_mut().clear();
-/// assert!(field.iceberg().is_empty());
-/// # Ok(())
-/// # }
-/// ```
-pub struct ProtocolMetadataMut<'field> {
-    field: &'field mut crate::Field,
-    scheme: Scheme,
-}
-
-impl<'field> ProtocolMetadataMut<'field> {
-    /// Borrows one protocol's properties on a field for reading and writing.
-    pub(crate) fn new(field: &'field mut crate::Field, scheme: Scheme) -> Self {
-        Self { field, scheme }
-    }
-
-    /// Returns the protocol this view remembers.
-    pub const fn scheme(&self) -> &Scheme {
-        &self.scheme
-    }
-
-    /// Returns the canonical key prefix this view applies.
-    pub fn prefix(&self) -> &str {
-        protocol_metadata_prefix(&self.scheme)
-    }
-
-    /// Returns the full metadata key one property name is stored under.
-    pub fn key(&self, name: &str) -> String {
-        property_key(&self.scheme, name)
-    }
-
-    /// Borrows the read-only view of the same protocol.
-    pub fn as_protocol(&self) -> ProtocolMetadata<'_> {
-        self.field.as_metadata().protocol(&self.scheme)
-    }
-
-    /// Returns one property value by its bare name.
-    pub fn get(&self, name: &str) -> Option<&str> {
-        self.field.get_property(&self.scheme, name)
-    }
-
-    /// Returns whether one property exists.
-    pub fn contains_key(&self, name: &str) -> bool {
-        self.field.has_property(&self.scheme, name)
-    }
-
-    /// Returns the number of properties this protocol holds.
-    pub fn len(&self) -> usize {
-        self.iter().count()
-    }
-
-    /// Returns whether this protocol holds no properties.
-    pub fn is_empty(&self) -> bool {
-        self.iter().next().is_none()
-    }
-
-    /// Iterates this protocol's names and values in lexical order.
-    pub fn iter(&self) -> PropertyIter<'_, '_> {
-        self.field.property_iter(&self.scheme)
-    }
-
-    /// Returns the first property after `after_name`, or the first for `None`.
-    pub fn next_entry(&self, after_name: Option<&str>) -> Option<(&str, &str)> {
-        self.field.next_property_entry(&self.scheme, after_name)
-    }
-
-    /// Inserts or replaces one property and returns its prior value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the name or value fails the validation the
-    /// protocol namespace applies, leaving the field unchanged.
-    pub fn insert(&mut self, name: &str, value: impl Into<String>) -> Result<Option<String>> {
-        self.field.set_property(&self.scheme, name, value)
-    }
-
-    /// Overlays several properties, keeping the ones not named.
-    ///
-    /// The whole overlay is validated before any of it is applied, so a
-    /// rejected entry leaves every other entry unwritten too.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when any name or value fails validation.
-    pub fn update<I, N, V>(&mut self, entries: I) -> Result<()>
-    where
-        I: IntoIterator<Item = (N, V)>,
-        N: AsRef<str>,
-        V: Into<String>,
-    {
-        let overlay: Vec<(String, String)> = entries
-            .into_iter()
-            .map(|(name, value)| (self.key(name.as_ref()), value.into()))
-            .collect();
-        self.field.update_metadata(overlay)
-    }
-
-    /// Returns this protocol's comment, falling back to the straight one.
-    ///
-    /// [`ProtocolMetadata::comment`] carries the rule.
-    pub fn comment(&self) -> Option<&str> {
-        self.as_protocol().comment()
-    }
-
-    /// Merges another protocol view's properties into this one, in place.
-    ///
-    /// A name this field already carries keeps its value, so the merge only
-    /// ever adds - the same direction [`Metadata::merge_with`] resolves in,
-    /// seen from the receiving side. Properties of other protocols are
-    /// untouched.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when a merged property fails validation, leaving the
-    /// field unchanged.
-    pub fn merge_with(&mut self, other: &ProtocolMetadata<'_>) -> Result<()> {
-        let held: Vec<String> = self.iter().map(|(name, _)| name.to_owned()).collect();
-        let additions: Vec<(String, String)> = other
-            .iter()
-            .filter(|(name, _)| !held.iter().any(|kept| kept == name))
-            .map(|(name, value)| (name.to_owned(), value.to_owned()))
-            .collect();
-        self.update(additions)
-    }
-
-    /// Replaces this protocol's properties with exactly these, atomically.
-    ///
-    /// Properties of other protocols and every shared key are untouched, which
-    /// is what makes this a protocol-scoped `set` rather than a metadata one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when any name or value fails validation, leaving the
-    /// field unchanged.
-    pub fn set<I, N, V>(&mut self, entries: I) -> Result<()>
-    where
-        I: IntoIterator<Item = (N, V)>,
-        N: AsRef<str>,
-        V: Into<String>,
-    {
-        let prefix = protocol_metadata_prefix(&self.scheme);
-        let mut replacement: Vec<(String, String)> = self
-            .field
-            .metadata_iter()
-            .filter(|(key, _)| property_name(key, prefix).is_none())
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect();
-        for (name, value) in entries {
-            replacement.push((self.key(name.as_ref()), value.into()));
-        }
-        self.field.set_metadata(replacement)
-    }
-
-    /// Removes one property and returns its prior value.
-    pub fn remove(&mut self, name: &str) -> Option<String> {
-        self.field.remove_property(&self.scheme, name)
-    }
-
-    /// Removes every property of this protocol.
-    pub fn clear(&mut self) {
-        self.field.clear_properties(&self.scheme);
-    }
-}
-
-impl fmt::Debug for ProtocolMetadataMut<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("ProtocolMetadataMut")
-            .field(&self.prefix())
-            .field(&format_args!("{}", self.as_protocol()))
-            .finish()
-    }
-}
-
-impl fmt::Display for ProtocolMetadataMut<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.as_protocol(), formatter)
-    }
-}
-
-impl Index<&str> for ProtocolMetadataMut<'_> {
-    type Output = str;
-
-    fn index(&self, name: &str) -> &Self::Output {
-        self.get(name).unwrap_or_else(|| {
-            panic!(
-                "metadata property {:?} is not present",
-                self.key(name).as_str()
-            )
-        })
-    }
-}
-
 /// Return the full `scheme:name` key one property is stored under.
 pub(crate) fn property_key(scheme: &Scheme, name: &str) -> String {
     let prefix = protocol_metadata_prefix(scheme);
@@ -1288,7 +1089,7 @@ fn property_lookup_key(scheme: &Scheme, name: &str) -> SmolStr {
     format_smolstr!("{}:{name}", protocol_metadata_prefix(scheme))
 }
 
-fn property_name<'a>(key: &'a str, scheme: &str) -> Option<&'a str> {
+pub(crate) fn property_name<'a>(key: &'a str, scheme: &str) -> Option<&'a str> {
     key.strip_prefix(scheme)?.strip_prefix(':')
 }
 
@@ -1318,7 +1119,7 @@ fn validate_entry(key: String, value: String) -> Result<(String, String)> {
         return Err(Error::EmptyMetadataKey);
     }
     let value = match key.as_str() {
-        ALIAS_KEY | COMMENT_KEY => {
+        ALIAS_KEY | COMMENT_KEY | DISPLAY_KEY => {
             validate_reserved_text(&key, &value)?;
             value
         }
@@ -1607,9 +1408,9 @@ mod tests {
         let equal =
             Metadata::from_entries([("postgres:a", "1"), ("s3:bucket", "ignored")]).unwrap();
         let later = Metadata::from_entries([("postgres:b", "1")]).unwrap();
-        assert_eq!(first.postgres(), equal.postgres());
-        assert_eq!(hash(&first.postgres()), hash(&equal.postgres()));
-        assert!(first.postgres() < later.postgres());
+        assert_eq!(first.as_postgres(), equal.as_postgres());
+        assert_eq!(hash(&first.as_postgres()), hash(&equal.as_postgres()));
+        assert!(first.as_postgres() < later.as_postgres());
     }
 
     #[test]
@@ -1629,8 +1430,14 @@ mod tests {
                 ("http:x-custom", "preserved"),
             ]
         );
-        assert_eq!(metadata.get("HTTP:CONTENT-TYPE"), metadata.content_type());
-        assert_eq!(metadata.get("HTTPS:CONTENT-TYPE"), metadata.content_type());
+        assert_eq!(
+            metadata.get("HTTP:CONTENT-TYPE"),
+            Some("text/plain; charset=utf-8")
+        );
+        assert_eq!(
+            metadata.get("HTTPS:CONTENT-TYPE"),
+            Some("text/plain; charset=utf-8")
+        );
         assert_eq!(
             metadata.get_property(&Scheme::HTTPS, "X-CUSTOM"),
             Some("preserved")
@@ -1643,7 +1450,7 @@ mod tests {
                 ("x-custom", "preserved"),
             ]
         );
-        assert_eq!(metadata.content_length().unwrap(), Some(42));
+        assert_eq!(metadata.get("http:content-length"), Some("42"));
         assert_eq!(
             metadata.remove("HTTPS:CONTENT-TYPE").as_deref(),
             Some("text/plain; charset=utf-8")
@@ -1683,9 +1490,8 @@ mod tests {
         assert_eq!(
             Metadata::from_entries([("http:content-length", u64::MAX.to_string())])
                 .unwrap()
-                .content_length()
-                .unwrap(),
-            Some(u64::MAX)
+                .get("http:content-length"),
+            Some("18446744073709551615")
         );
         for value in ["", "+1", "-1", " 1", "1 ", "١", "18446744073709551616"] {
             assert!(
