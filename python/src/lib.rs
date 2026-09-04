@@ -279,6 +279,18 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    register_classes(module)?;
+    register_functions(module)?;
+    module.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    // The two FIX facts a caller spells rather than derives: what an absent
+    // `fix:branch` means, and where the FIX specification's own tag range ends.
+    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.as_str())?;
+    module.add("STANDARD_TAG_LIMIT", yggdryl::FixId::STANDARD_TAG_LIMIT)?;
+    Ok(())
+}
+
+/// Register the native value and iterator classes.
+fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
     module.add_class::<PyAsciiEnum>()?;
     module.add_class::<PyField>()?;
@@ -339,6 +351,11 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iceberg::PyManifestFile>()?;
     module.add_class::<iceberg::PyDataFile>()?;
     xxhash::register(module)?;
+    Ok(())
+}
+
+/// Register the native free functions.
+fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(codings::gzip_loads, module)?)?;
     module.add_function(wrap_pyfunction!(codings::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zlib_loads, module)?)?;
@@ -376,10 +393,5 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(avro::avro_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(avro::avro_loads_single, module)?)?;
     module.add_function(wrap_pyfunction!(avro::avro_dumps_single, module)?)?;
-    module.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    // The two FIX facts a caller spells rather than derives: what an absent
-    // `fix:branch` means, and where the FIX specification's own tag range ends.
-    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.as_str())?;
-    module.add("STANDARD_TAG_LIMIT", yggdryl::FixId::STANDARD_TAG_LIMIT)?;
     Ok(())
 }
