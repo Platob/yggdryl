@@ -51,8 +51,9 @@ nav:
       - floating: types/floating.md
       - decimal: types/decimal.md
       - temporal: types/temporal.md
+      - text: types/text.md
       - ascii: types/ascii.md
-      - binary: types/binary.md
+      - bytes: types/bytes.md
       - nested: types/nested.md
       - geospatial: types/geospatial.md
       - protocol: types/protocol.md
@@ -168,10 +169,10 @@ Worked example of the ladder on `types/temporal.md`:
 
 === "Rust"
     ```rust
-    use yggdryl::types::temporal::{DateTime64, TemporalScalar, TemporalValue};
+    use yggdryl::types::temporal::{DateTime64, Temporal, TemporalValue};
 
     // Drill from the value to its family to its leaf; no match on 30 variants.
-    let Scalar::Temporal(TemporalScalar::DateTime64(at)) = value else { unreachable!() };
+    let Scalar::Temporal(Temporal::DateTime64(at)) = value else { unreachable!() };
     assert_eq!(at.unit(), TimeUnit::Microsecond);      // 16 bytes, Copy
     ```
 === "Python" …

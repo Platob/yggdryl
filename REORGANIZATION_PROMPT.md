@@ -158,7 +158,7 @@ types/
   temporal/         Timestamp, Date32/64, Time32/64, Duration32/64, Interval
   text/             Utf8, LargeUtf8, Utf8View
   ascii/            Ascii32/64/128, AsciiDictionary, iso.rs
-  binary/           Binary, FixedSizeBinary, LargeBinary, BinaryView
+  bytes/            Binary, FixedSizeBinary, LargeBinary, BinaryView
   nested/           List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Variant, Dictionary, Map, RunEndEncoded
   geospatial/       Geometry, Geography, wkb.rs
 ```
@@ -424,7 +424,7 @@ Split `field/cast/plan.rs` (5936 lines, the largest file in the crate):
 | `types/ascii/casts.rs` | `ingest_ascii_array`, `padded_ascii_array`, `render_ascii_text`, `ascii_cell` |
 | `types/geospatial/casts.rs` | `validate_wkb_ingest`, `render_wkt_array`, `wkt_for_cell` |
 | `types/decimal/casts.rs` | `DecimalText` |
-| `types/binary/casts.rs` | byte-array pointer equality, view buffers, projected byte length |
+| `types/bytes/casts.rs` | byte-array pointer equality, view buffers, projected byte length |
 
 Then delete `datatype/`, `field/`, `generic/`, and `io/`. They must already be
 empty; a leftover file means an earlier phase was incomplete.
