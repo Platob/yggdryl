@@ -128,11 +128,21 @@
 ### yggdryl::datatype  [rust\src\datatype\mod.rs]
   pub enum DataType
 
+### yggdryl::datatype::logical  [rust\src\datatype\logical.rs]
+  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)]
+  pub fn from_logical_name(name: &str) -> Result<Self>
+
+### yggdryl::datatype::vocabulary  [rust\src\datatype\vocabulary.rs]
+  pub const CURRENCIES: &'static [&'static str]
+  pub const COUNTRIES: &'static [&'static str]
+  pub const MICS: &'static [&'static str]
+  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]
+  pub fn from_logical_name(name: &str) -> Result<Self>
+  pub fn prebuilt_values(name: &str) -> &'static [&'static str]
+
 ### yggdryl::datatype::ascii  [rust\src\datatype\ascii.rs]
-  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("currency", DataType::Ascii32)];
   pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
-  pub fn from_logical_name(name: &str) -> Result<Self>
   pub struct AsciiDictionary
   pub fn new(values: DataType) -> Result<Self>
   pub fn with_key(self, key: DataType) -> Result<Self>

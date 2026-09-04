@@ -34,15 +34,6 @@ use crate::{DataType, Error, Result, Scalar};
 pub(crate) const ASCII_EXTENSION_NAME: &str = "yggdryl.ascii";
 
 impl DataType {
-    /// The logical names registered over an ASCII width, in registration order.
-    ///
-    /// A registration names a vocabulary that fits one width; it parses to that
-    /// width and is otherwise not a type of its own: the ASCII widths are the
-    /// whole type system, and a registration adds one spelling to the grammar.
-    /// `currency` is ISO 4217's three-letter code, stored `USD\0`.
-    pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] =
-        &[("currency", DataType::Ascii32)];
-
     /// Creates the ASCII width that holds `width` bytes.
     ///
     /// The family constructor selects the physical width once: 1 through 4
@@ -84,55 +75,6 @@ impl DataType {
             _ => None,
         }
     }
-
-    /// Resolves a registered logical name, ASCII case-insensitively and trimmed.
-    ///
-    /// ```
-    /// use arrow_array::{Array, FixedSizeBinaryArray};
-    /// use yggdryl::arrow::{scalar_array, scalar_value};
-    /// use yggdryl::{DataType, Scalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let currency = DataType::from_logical_name("Currency")?;
-    /// assert_eq!(currency, DataType::Ascii32);
-    /// assert_eq!(DataType::from_str("currency")?, currency);
-    ///
-    /// // Storage pads to the width; the scalar reads back trimmed.
-    /// let field = currency.required_field("ccy");
-    /// let array = scalar_array(&field, &Scalar::from("USD"))?;
-    /// let stored = array.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    /// assert_eq!(stored.value(0), b"USD\0");
-    /// assert_eq!(scalar_value(&field, array.as_ref())?, Scalar::from("USD"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the registered vocabulary when `name` is not
-    /// in it.
-    pub fn from_logical_name(name: &str) -> Result<Self> {
-        let name = name.trim();
-        Self::LOGICAL_NAMES
-            .iter()
-            .find(|(registered, _)| registered.eq_ignore_ascii_case(name))
-            .map(|(_, dtype)| dtype.clone())
-            .ok_or_else(|| Error::InvalidDataType {
-                kind: "ascii",
-                reason: crate::text::expected_got(
-                    format_args!("a registered logical name ({})", logical_vocabulary()),
-                    format_args!("{name:?}"),
-                ),
-            })
-    }
-}
-
-fn logical_vocabulary() -> String {
-    DataType::LOGICAL_NAMES
-        .iter()
-        .map(|(name, _)| *name)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// Validates bytes as an ASCII value of at most `width` bytes and trims the

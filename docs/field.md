@@ -906,7 +906,7 @@ while `GeometryField` and `GeographyField` are parameterized by CRS and edge alg
 take their datatype through `try_new`. The binding-side `VariantField`, `GeometryField`, and
 `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography` are
 checker-level views over the one native class exactly like every alias above.
-The [ASCII widths](datatype.md#ascii-widths-and-the-currency-registration) are parameterless
+The [ASCII widths](datatype.md#ascii-widths) are parameterless
 too: `Ascii32Field`, `Ascii64Field`, and `Ascii128Field` get the static `new`, and the bindings
 add `fields.ascii(name, width)` over `DataType.ascii` beside the three per-width factories.
 

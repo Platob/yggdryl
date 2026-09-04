@@ -8,6 +8,8 @@ mod compatibility;
 mod default;
 #[path = "datatype/floating.rs"]
 mod floating;
+#[path = "datatype/logical.rs"]
+mod logical;
 #[path = "datatype/nested.rs"]
 mod nested;
 #[path = "datatype/parser.rs"]

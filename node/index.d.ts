@@ -18,6 +18,16 @@ export declare class AsciiDictionary {
    * repeat keeps the code of its first appearance.
    */
   static fromValues(values: DataType | string, seen: Array<string>, key?: DataType | string | undefined | null): AsciiDictionary
+  /**
+   * Create the vocabulary a registered logical name prebuilds, such as
+   * `currency`, `country`, or `mic`.
+   *
+   * A registered name over an ASCII width with no prebuilt list answers an
+   * empty vocabulary of that width.
+   */
+  static fromLogicalName(name: string, key?: DataType | string | undefined | null): AsciiDictionary
+  /** The prebuilt vocabularies, keyed by the logical name that spells them. */
+  static prebuilt(): Record<string, string[]>
   /** Register `value` and return its code, existing or newly appended. */
   push(value: string): number
   /** The value a code names, or `null` when the vocabulary has no such code. */
@@ -365,13 +375,13 @@ export declare class DataType {
    */
   static ascii(width: number): DataType
   /**
-   * Resolves a registered logical name such as `currency`, ASCII
-   * case-insensitively and trimmed, to the ASCII width it names.
+   * Resolves a registered logical name such as `currency` or `Price` to
+   * the datatype it spells, folding case, `_`, `-`, and spaces.
    */
   static fromLogicalName(name: string): DataType
   /**
-   * The logical names registered over an ASCII width, keyed by name in
-   * registration order.
+   * The logical names, keyed by name in registration order, mapped to the
+   * datatype each spells.
    */
   static logicalNames(): Record<string, DataType>
   /**

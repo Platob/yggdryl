@@ -55,6 +55,8 @@ const seededCurrencies: AsciiDictionary = AsciiDictionary.fromValues(
   ['USD', 'EUR'],
   'int64',
 )
+const prebuiltLists: Record<string, string[]> = AsciiDictionary.prebuilt()
+const prebuiltMics: AsciiDictionary = AsciiDictionary.fromLogicalName('mic')
 const currencyCode: number = currencies.push('USD')
 const currencyValue: string | null = currencies.get(0)
 const currencyLookup: number | null = currencies.getCode('USD')
@@ -71,6 +73,8 @@ const currencyColumn: ArrowVector = currencies.intoArrowArray(['USD', null])
 const recoveredCurrencies: AsciiDictionary =
   AsciiDictionary.fromArrowArray(currencyColumn)
 
+void prebuiltLists
+void prebuiltMics
 void currencyCode
 void currencyValue
 void currencyLookup
