@@ -14,10 +14,26 @@
 //!
 //! The four resumable states - [`Xxh32`], [`Xxh64`], [`Xxh3_64`],
 //! [`Xxh3_128`] - feed bytes and readers and answer without being consumed, so
-//! the split of a payload never changes its digest:
+//! the split of a payload never changes its digest. That is what lets a
+//! message spliced from two spans - a record with the row header removed from
+//! the middle of a line - hash the same as the equivalent joined string,
+//! without ever building the join. A hash that depended on where the row
+//! header sat would be a silent correctness bug.
 //!
 //! ```
 //! use yggdryl::xxhash::{Xxh3_64, xxh3_64};
+//!
+//! let mut state = Xxh3_64::new();
+//! state.write_bytes(b"fill ");
+//! state.write_bytes(b"100");
+//! assert_eq!(state.as_u64(), xxh3_64(b"fill 100"));
+//!
+//! // An empty chunk contributes nothing, wherever it sits.
+//! let mut padded = Xxh3_64::new();
+//! for chunk in [b"".as_slice(), b"fill 100".as_slice(), b"".as_slice()] {
+//!     padded.write_bytes(chunk);
+//! }
+//! assert_eq!(padded.as_u64(), xxh3_64(b"fill 100"));
 //!
 //! let payload = b"symbol,price\nAAPL,187.23\n";
 //! for split in [1, 7, payload.len()] {
@@ -28,6 +44,10 @@
 //!     assert_eq!(state.as_u64(), xxh3_64(payload));
 //! }
 //! ```
+//!
+//! [`Scalar::write_bytes`](crate::Scalar::write_bytes) extends the same
+//! streaming feed to any value, and is what `stable_hash` and every row digest
+//! read.
 //!
 //! # This is not a cryptographic hash
 //!

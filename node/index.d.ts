@@ -481,7 +481,7 @@ export declare class DataType {
   showDiff(other: DataType, withMetadata?: boolean | undefined | null, returnEqual?: boolean | undefined | null): string
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: DataType): number
-  /** Deterministic FNV-1a hash of canonical native display text. */
+  /** Deterministic XXH3-64 hash of canonical native display text. */
   stableHash(): bigint
   /** Make an allocation-free or shared-state native clone. */
   clone(): DataType
@@ -944,7 +944,7 @@ export declare class Field {
   showDiff(other: Field, withMetadata?: boolean | undefined | null, returnEqual?: boolean | undefined | null): string
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Field): number
-  /** Deterministic FNV-1a hash of canonical native display text. */
+  /** Deterministic XXH3-64 hash of canonical native display text. */
   stableHash(): bigint
   /** Make a cheap clone preserving shared nested state and Arrow cache. */
   clone(): Field
@@ -2977,7 +2977,7 @@ export declare class Timezone {
   equals(other: Timezone): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Timezone): number
-  /** Deterministic FNV-1a hash of the canonical name. */
+  /** Deterministic XXH3-64 hash of the canonical name. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Timezone
@@ -3071,7 +3071,7 @@ export declare class Uri {
   equals(other: Uri): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Uri): number
-  /** Deterministic FNV-1a hash of the canonical URI. */
+  /** Deterministic XXH3-64 hash of the canonical URI. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Uri
@@ -3224,7 +3224,7 @@ export declare class Url {
   equals(other: Url): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Url): number
-  /** Deterministic FNV-1a hash of the canonical URL. */
+  /** Deterministic XXH3-64 hash of the canonical URL. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Url
@@ -3301,7 +3301,7 @@ export declare class Urn {
   equals(other: Urn): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Urn): number
-  /** Deterministic FNV-1a hash of the canonical URN. */
+  /** Deterministic XXH3-64 hash of the canonical URN. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Urn

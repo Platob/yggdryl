@@ -5,6 +5,8 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::xxhash::Xxh3_64;
+
 /// Maximum bytes of caller-controlled text interpolated into one error message.
 ///
 /// An error message must never allocate proportionally to an input payload, so
@@ -15,98 +17,50 @@ pub(crate) const ERROR_TEXT_LIMIT: usize = 64;
 /// The suffix appended when bounded interpolation drops trailing text.
 const ELLIPSIS: char = '\u{2026}';
 
-/// The FNV-1a offset basis every stable hash starts from.
-const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
-
-/// Fold `bytes` into an FNV-1a state.
-const fn fnv1a_fold(mut state: u64, bytes: &[u8]) -> u64 {
-    let mut index = 0;
-    while index < bytes.len() {
-        state ^= bytes[index] as u64;
-        state = state.wrapping_mul(1_099_511_628_211);
-        index += 1;
-    }
-    state
-}
-
-/// Hash raw bytes with the stable Yggdryl FNV-1a contract.
+/// Hash canonical display output with the stable Yggdryl XXH3-64 contract.
 ///
-/// This is the same 64-bit state every core value's `stable_hash` folds its
-/// canonical `Display` rendering through, exposed for a caller that already
-/// holds the bytes - hashing a `&str` here equals hashing its rendering
-/// there, so the two spellings can never disagree. It is the deterministic
-/// value the line projection's `hash` column carries (reinterpreted as
-/// `i64`, bit pattern preserved), so it is stable across runs, platforms,
-/// and releases by contract.
-pub const fn stable_hash_bytes(bytes: &[u8]) -> u64 {
-    fnv1a_fold(FNV_OFFSET_BASIS, bytes)
-}
-
-/// Hash a sequence of byte chunks as one value, with the same contract.
-///
-/// The fold is associative over the chunk boundary, so the chunks of a value
-/// and the contiguous value hash **identically**. That is what lets a message
-/// spliced from two spans - the record with the row header removed from the middle
-/// of a line - hash the same as the equivalent joined string, without ever
-/// building the join. A hash that depended on where the row header sat in the line
-/// would be a silent correctness bug.
-///
-/// ```
-/// use yggdryl::text::{stable_hash_bytes, stable_hash_chunks};
-///
-/// assert_eq!(
-///     stable_hash_chunks([b"fill ".as_slice(), b"100".as_slice()]),
-///     stable_hash_bytes(b"fill 100"),
-/// );
-/// // An empty chunk contributes nothing, wherever it sits.
-/// assert_eq!(
-///     stable_hash_chunks([b"".as_slice(), b"fill 100".as_slice(), b"".as_slice()]),
-///     stable_hash_bytes(b"fill 100"),
-/// );
-/// ```
-pub fn stable_hash_chunks<'chunk>(chunks: impl IntoIterator<Item = &'chunk [u8]>) -> u64 {
-    chunks.into_iter().fold(FNV_OFFSET_BASIS, fnv1a_fold)
-}
-
-/// Hash canonical display output with the stable Yggdryl FNV-1a contract.
+/// The rendering is streamed through the hasher rather than assembled, so a
+/// value whose canonical text is large costs no copy of it.
 pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
-    struct StableHasher(u64);
+    struct StableHasher(Xxh3_64);
 
     impl fmt::Write for StableHasher {
         fn write_str(&mut self, value: &str) -> fmt::Result {
-            self.0 = fnv1a_fold(self.0, value.as_bytes());
+            self.0.write_bytes(value.as_bytes());
             Ok(())
         }
     }
 
-    let mut hasher = StableHasher(FNV_OFFSET_BASIS);
+    let mut hasher = StableHasher(Xxh3_64::new());
     let result = fmt::write(&mut hasher, format_args!("{value}"));
     debug_assert!(result.is_ok(), "the stable hash sink is infallible");
-    hasher.0
+    hasher.0.as_u64()
 }
 
-/// Hash a native structural [`Hash`] implementation with the stable FNV sink.
+/// Hash a native structural [`Hash`] implementation with the stable sink.
 pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
     let mut hasher = StableHash::default();
     value.hash(&mut hasher);
     hasher.finish()
 }
 
-struct StableHash(u64);
-
-impl Default for StableHash {
-    fn default() -> Self {
-        Self(FNV_OFFSET_BASIS)
-    }
-}
+/// XXH3-64 behind explicit little-endian integer writes.
+///
+/// [`Hasher`]'s default `write_u8` through `write_usize` bodies use
+/// native-endian bytes, so handing a bare [`Xxh3_64`] to a [`Hash`]
+/// implementation would make a stored hash disagree between a big-endian and a
+/// little-endian machine. Overriding them is the whole reason this stays a
+/// named type rather than an inline call.
+#[derive(Default)]
+struct StableHash(Xxh3_64);
 
 impl Hasher for StableHash {
     fn finish(&self) -> u64 {
-        self.0
+        self.0.as_u64()
     }
 
     fn write(&mut self, bytes: &[u8]) {
-        self.0 = fnv1a_fold(self.0, bytes);
+        self.0.write_bytes(bytes);
     }
 
     fn write_u8(&mut self, value: u8) {
@@ -365,18 +319,39 @@ mod tests {
 
     #[test]
     fn byte_and_display_hashing_agree() {
-        use super::{stable_hash_bytes, stable_hash_display};
+        use super::stable_hash_display;
+        use crate::xxhash::xxh3_64;
 
-        // A str's Display output is its bytes, so the two entry points are the
-        // same function reached two ways.
+        // A str's Display output is its bytes, so hashing the rendering here
+        // and hashing the bytes with `xxhash::xxh3_64` are the same function
+        // reached two ways. That is the whole reason there is no second
+        // byte-oriented spelling beside this one.
         for text in ["", "x", "fill 100 @ 187.23", "é—both\nlines"] {
-            assert_eq!(
-                stable_hash_bytes(text.as_bytes()),
-                stable_hash_display(&text)
-            );
+            assert_eq!(xxh3_64(text.as_bytes()), stable_hash_display(&text));
         }
-        // The classic FNV-1a test vector pins the offset basis and prime.
-        assert_eq!(stable_hash_bytes(b""), 14_695_981_039_346_656_037);
-        assert_eq!(stable_hash_bytes(b"a"), 0xaf63_dc4c_8601_ec8c);
+        // The published XXH3-64 vectors pin the contract.
+        assert_eq!(stable_hash_display(&""), 0x2d06_8005_38d3_94c2);
+        assert_eq!(stable_hash_display(&"abc"), 0x78af_5f94_892f_3950);
+    }
+
+    #[test]
+    fn the_structural_sink_writes_little_endian_integers() {
+        use std::hash::Hasher as _;
+
+        use super::StableHash;
+        use crate::xxhash::xxh3_64;
+
+        // Every `write_*` override is pinned against the explicit
+        // little-endian bytes, so a big-endian target answers the same value a
+        // little-endian one stored.
+        let mut sink = StableHash::default();
+        sink.write_u32(0x0102_0304);
+        sink.write_i64(-2);
+        sink.write_usize(7);
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&0x0102_0304_u32.to_le_bytes());
+        expected.extend_from_slice(&(-2_i64).to_le_bytes());
+        expected.extend_from_slice(&7_u64.to_le_bytes());
+        assert_eq!(sink.finish(), xxh3_64(&expected));
     }
 }

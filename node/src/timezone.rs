@@ -202,7 +202,7 @@ impl JsTimezone {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of the canonical name.
+    /// Deterministic XXH3-64 hash of the canonical name.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
