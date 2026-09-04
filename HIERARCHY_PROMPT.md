@@ -93,11 +93,18 @@ pub enum DataType {
 | `IntegerType` | 8 | parameterless variants |
 | `FloatingType` | 3 | parameterless variants |
 | `DecimalType` | 4 | `DecimalParams { precision: u8, scale: i8 }` |
-| `TextType` | 6 | `Utf8`, `LargeUtf8`, `Utf8View`, `Ascii32/64/128` |
+| `TextType` | 3 | `Utf8`, `LargeUtf8`, `Utf8View` |
+| `AsciiType` | 3 | `Ascii32`, `Ascii64`, `Ascii128` |
 | `BinaryType` | 4 | `FixedSizeBinary(i32)` carries its width |
-| `TemporalType` | 8 | `DateTime64Type { unit, timezone }`, `Time32Type(TimeUnit)`, … |
-| `NestedType` | 11 | `ListType(Arc<Field>)`, `StructType(Fields)`, `UnionType(UnionFields, UnionMode)`, `DictionaryType`, `MapType`, `RunEndEncodedType`, `Variant` |
+| `TemporalType` | 8 | `DateTime64 { unit, timezone }`, `Time32(TimeUnit)`, … carried inline |
+| `NestedType` | 11 | `List(Arc<Field>)`, `Struct(Fields)`, `Union(UnionFields, UnionMode)`, `Arc<DictionaryType>`, `Arc<MapType>`, `Arc<RunEndEncodedType>`, `Variant` |
 | `GeospatialType` | 2 | `Geometry(Arc<GeospatialParams>)`, `Geography(…)` |
+
+Parameters ride inline in the family enum's variants; a separate leaf struct
+exists only where the parameters are shared, as `DecimalParams` is. That keeps
+the `*Type` suffix free for the zero-sized `FieldType` markers in `fields.rs`,
+which are `<Member>Type` — `Int32Type`, `DateTime64Type`. A family name is
+never a member name, so `IntegerType` and `Int32Type` never collide.
 
 `NestedType` is where the recursion lives and where it terminates: a
 `StructType` holds `Fields`, each `Field` holds a `DataType`, and a branch ends
@@ -135,9 +142,15 @@ allows an abstraction only when it removes real duplication; this one would
 not, and it would also force an awkward second name beside `TemporalType`.
 
 `DataTypeKind` becomes exactly the tier-1 discriminant and stops being a
-hand-maintained parallel list. Derive it: `DataType::kind()` matches ten arms,
-not forty-seven. Delete every `matches!` over variant groups that
+hand-maintained parallel list. Derive it: `DataType::kind()` matches eleven
+arms, not forty-seven. Delete every `matches!` over variant groups that
 `DataTypeKind` now answers.
+
+Its variants become the family list, per the *Symmetry law* in
+`SCALAR_HIERARCHY_PROMPT.md`: `String` is renamed `Text`, `Ascii` splits out of
+it, and the seven nested kinds collapse into `Nested` with `NestedType`
+answering the shape. `is_wrapper` moves onto `NestedType`, where a wrapper is
+what it describes.
 
 ## Field
 

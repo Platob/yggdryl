@@ -15,8 +15,11 @@ already exists.
 ## Outcome
 
 - `Scalar` is an enum over families, one variant per value family.
-- Each family is an enum over its widths: `Temporal`, `Integer`, `Decimal`,
-  `Float`, `Geospatial`, `Nested`. No `Scalar` suffix — see *Naming law*.
+- Each family is an enum over its widths: `Integer`, `Floating`, `Decimal`,
+  `Temporal`, `Text`, `Ascii`, `Binary`, `Geospatial`, `Nested`. No `Scalar`
+  suffix — see *Naming law*.
+- Every family owns a matching datatype enum, marker set, and value enum — see
+  *Symmetry law*. `Scalar::dtype()` becomes exact for every value.
 - Each width is a concrete final struct: `Int32`, `Decimal128`, `DateTime64`,
   `Date32`. Small, `Copy` where the payload allows, `repr(transparent)` where
   it is one field.
@@ -128,6 +131,96 @@ Consequences to apply everywhere:
 Sweep at the end: every remaining `*Scalar` name in the tree is either a
 pairing builder or a bug.
 
+## Symmetry law
+
+**Every datatype family owns the same trio, under the same name.** A family is
+one folder, and that folder answers all three questions:
+
+| File | Owns | Named |
+| --- | --- | --- |
+| `dtypes.rs` | the datatype family enum, one variant per member | `<F>Type` |
+| `fields.rs` | one zero-sized `FieldType` marker per member | `<Member>Type` |
+| `scalars.rs` | the value family enum and one concrete leaf per member | `<F>`, `<Member>` |
+| `casts.rs` | that family's arms of the Arrow cast planner | — |
+
+No family is a datatype without a value, or a value without a datatype. The
+eleven families:
+
+| Folder | Members | `<F>Type` | `<F>` | `Scalar` variant |
+| --- | --- | --- | --- | --- |
+| `boolean/` | `Null`, `Boolean` | — | — | `Null`, `Boolean(Boolean)` |
+| `integer/` | 8 | `IntegerType` | `Integer` | `Integer(Integer)` |
+| `floating/` | 3 | `FloatingType` | `Floating` | `Floating(Floating)` |
+| `decimal/` | 4 | `DecimalType` | `Decimal` | `Decimal(Decimal)` |
+| `temporal/` | 8 | `TemporalType` | `Temporal` | `Temporal(Temporal)` |
+| `text/` | `Utf8`, `LargeUtf8`, `Utf8View` | `TextType` | `Text` | `Text(Text)` |
+| `ascii/` | `Ascii32`, `Ascii64`, `Ascii128` | `AsciiType` | `Ascii` | `Ascii(Ascii)` |
+| `binary/` | `Binary`, `FixedSizeBinary`, `LargeBinary`, `BinaryView` | `BinaryType` | `Binary` | `Binary(Binary)` |
+| `nested/` | 11 | `NestedType` | `Nested` | `Nested(Nested)` |
+| `geospatial/` | `Geometry`, `Geography` | `GeospatialType` | `Geospatial` | `Geospatial(Geospatial)` |
+
+Three exceptions, and only three. Each is stated in its module doc:
+
+- **`boolean/` holds two families.** `Null` and `Boolean` are both
+  parameterless, so neither earns a family enum, and neither would fill a
+  folder. They share one.
+- **`Integer` has ten members where `IntegerType` has eight.** Arrow has no
+  128-bit integer, so `Int128` and `UInt128` are value-only and infer to
+  `Decimal(n, 0)`. They cost the family 16 bytes extra (32 rather than 16);
+  demote them behind a pointer only if a benchmark says the integer family's
+  size is hot.
+- **`Enum` has no datatype family.** An enum scalar is a representation choice
+  over an integer or dictionary column — like nullability, it rides on the
+  datatype the column already has. It stays a tier-1 variant with no
+  `<F>Type` counterpart.
+
+### This fixes a correctness bug
+
+`Scalar::dtype()` is lossy today. `generic/inference.rs` maps:
+
+```rust
+Self::String(_) => Ok(DataType::Utf8),                       // LargeUtf8, Utf8View lost
+Self::Bytes(_) | Self::Geospatial(_) => Ok(DataType::Binary), // width class and geospatial lost
+```
+
+A `LargeUtf8` value round-trips back as `Utf8`; a `BinaryView` value comes back
+as `Binary`; and a geometry comes back as `Binary` under a comment claiming
+*"the datatype model has no geospatial family yet"* — stale, since
+`DataType::Geometry` and `DataType::Geography` both exist.
+
+Once every member has its own leaf, `dtype()` reads the leaf and is exact for
+every value. Delete the three lossy arms; do not keep a fallback.
+
+### Symmetry is free
+
+Measured with `rustc -O`, the full eleven-family set:
+
+| Family | Bytes | | Family | Bytes |
+| --- | --- | --- | --- | --- |
+| `Boolean` | 1 | | `Temporal` | 24 |
+| `Enum` | 2 | | `Binary` | 24 |
+| `Floating` | 16 | | `Geospatial` | 24 |
+| `Integer` | 32 | | `Nested` | 24 |
+| `Decimal` | 48 | | `Text` / `Ascii` | 32 |
+
+`size_of::<Scalar>()` stays **48**. `Decimal` at 48 and align 16 already sets
+the ceiling, so `Text`, `Ascii`, and `Binary` becoming real families costs
+nothing at the root while each becomes a small value in its own right.
+
+### Consequences
+
+- `DataTypeKind`'s variants become exactly the family list: `String` is renamed
+  `Text`, `Ascii` splits out of it, and the seven nested kinds — `List`,
+  `Struct`, `Union`, `Map`, `Dictionary`, `RunEndEncoded`, `Variant` — collapse
+  into `Nested`, with `NestedType` answering which shape and `is_wrapper`
+  moving onto it.
+- `Floating` replaces today's `Float` enum, which already has the family shape
+  and only needs the folder's name. Same absorption as `Integer`.
+- `types::text::Text` and `media::text::Text<H>` are two types in two layers.
+  That is the last remaining `Text` collision — `generic::Text` is already
+  becoming `text::Structured` — and neither is re-exported bare at the crate
+  root.
+
 ## Tiers
 
 ### Tier 0 — datatype markers
@@ -145,16 +238,17 @@ value struct: `Int8Type`, `DateTime64Type`, `Utf8Type`, `Decimal128Type`.
 #[non_exhaustive]
 pub enum Scalar {
     Null,
-    Boolean(bool),
+    Boolean(Boolean),
     Integer(Integer),
-    Float(Float),
+    Floating(Floating),
     Decimal(Decimal),
-    Utf8(Utf8),
-    Binary(Binary),
     Temporal(Temporal),
+    Text(Text),
+    Ascii(Ascii),
+    Binary(Binary),
     Geospatial(Geospatial),
-    Enum(Enum),
     Nested(Nested),
+    Enum(Enum),
 }
 ```
 
@@ -171,26 +265,33 @@ where a datatype family contributes its arms, which is why the two lists differ.
 
 `types/<family>/scalars.rs`, each `#[non_exhaustive]`.
 
-| Family enum | Variants | Concrete structs |
+One variant per member of the datatype family, per the *Symmetry law*.
+
+| Family enum | Variants | Concrete leaves |
 | --- | --- | --- |
 | `Integer` | 10 | `Int8` `Int16` `Int32` `Int64` `UInt8` `UInt16` `UInt32` `UInt64` `Int128` `UInt128` |
-| `Float` | 3 | `Float16` `Float32` `Float64` |
-| `Decimal` | 2 | `Decimal128` `Decimal256` |
-| `Temporal` | 7 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` |
+| `Floating` | 3 | `Float16` `Float32` `Float64` |
+| `Decimal` | 4 | `Decimal32` `Decimal64` `Decimal128` `Decimal256` |
+| `Temporal` | 8 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` `Interval` |
+| `Text` | 3 | `Utf8` `LargeUtf8` `Utf8View` |
+| `Ascii` | 3 | `Ascii32` `Ascii64` `Ascii128` |
+| `Binary` | 4 | `Binary` `FixedSizeBinary` `LargeBinary` `BinaryView` |
 | `Geospatial` | 2 | `Geometry` `Geography` |
-| `Nested` | 3 | `Sequence` `Mapping` `Record` |
+| `Nested` | 11 | `List` `ListView` `FixedSizeList` `LargeList` `LargeListView` `Struct` `Union` `Variant` `Dictionary` `Map` `RunEndEncoded` |
 
-Two of these already exist under the right name. `Float { F16, F32, F64 }` is
-today's copyable width view and is exactly the tier-2 floating family — reuse
-it, do not add a second type. `Integer` is today a sign-and-magnitude struct;
-the family enum takes the name and absorbs `is_negative`, `magnitude`, and
-`as_i128` as methods computed from the variant, so cross-width comparison keeps
-its normalized key and one public type disappears.
+Two family names already exist in the tree and are absorbed rather than
+duplicated. `Float { F16, F32, F64 }` is today's copyable width view and is
+exactly the floating family — rename it `Floating` for the folder and reuse it.
+`Integer` is today a sign-and-magnitude struct; the family enum takes the name
+and absorbs `is_negative`, `magnitude`, and `as_i128` as methods computed from
+the variant, so cross-width comparison keeps its normalized key and one public
+type disappears.
 
-There is no text family. `Utf8` and `Ascii32/64/128` share one representation —
-a `SmolStr` — so by the earned-family test in `HIERARCHY_PROMPT.md` this is one
-leaf, not a family of two. ASCII width is a datatype property, not a value
-representation, exactly as `Scalar::String` already treats it.
+`Decimal32` and `Decimal64` values are `i32` and `i64` coefficients, not
+narrowed `i128`. `Nested`'s eleven leaves share three storage shapes —
+`Sequence`, `Mapping`, `Record` — so its leaves are newtypes over those three,
+each naming its own datatype. That is what makes `Scalar::dtype()` exact for a
+`ListView` or a `Map` instead of collapsing both to a sequence.
 
 ### Tier 3 — concrete final structs
 
@@ -300,7 +401,11 @@ half of `TemporalValue` directly. `Scalar::as_temporal` returns
 | `Scalar::I8(i8)` … and 29 siblings | `Scalar::Integer(Integer::I8(Int8))` … | the hierarchy |
 | `EnumScalar` | `Enum` | a value, so no `Scalar` suffix |
 | `Integer` (sign/magnitude struct) | `Integer` (family enum) | the enum takes the name and the methods; the struct is deleted |
-| `Float` (width view) | `Float` (family enum) | already the right shape; reuse, do not duplicate |
+| `Float` (width view) | `Floating` (family enum) | already the right shape; rename to the folder and reuse |
+| `Scalar::String(SmolStr)` | `Scalar::Text(Text)` / `Scalar::Ascii(Ascii)` | the width class stops being lost |
+| `Scalar::Bytes(Arc<[u8]>)` | `Scalar::Binary(Binary)` | four members, exact `dtype()` |
+| `DataTypeKind::String` | `DataTypeKind::Text` | the kind list becomes the family list |
+| `DataTypeKind::{List, Struct, Union, Map, Dictionary, RunEndEncoded, Variant}` | `DataTypeKind::Nested` | `NestedType` answers the shape; `is_wrapper` moves onto it |
 
 `Timezone` becomes non-optional on the datatype, exactly as it already is on
 the scalar: `Timezone::NAIVE` is the explicit spelling for a wall-clock column,
@@ -385,6 +490,8 @@ const _: () = assert!(size_of::<Timezone>() == 4);
 const _: () = assert!(size_of::<Scalar>() == 48);
 const _: () = assert!(size_of::<DateTime64>() == 16);
 const _: () = assert!(size_of::<Temporal>() == 24);
+const _: () = assert!(size_of::<Binary>() == 24);
+const _: () = assert!(size_of::<Floating>() == 16);
 const _: () = assert!(size_of::<Int32>() == 4);
 ```
 
@@ -410,6 +517,12 @@ Behavioral invariants, each with a test:
 ## Completion
 
 - `Scalar` has 11 variants, each naming a family.
+- Every family folder holds `dtypes.rs`, `fields.rs`, `scalars.rs`, and
+  `casts.rs`, and the three names agree: `<F>Type`, `<F>`, `<Member>Type`.
+- `Scalar::dtype()` is exact for every value: the three lossy arms in
+  `generic/inference.rs` are gone with no fallback, and a round trip through
+  `Scalar` preserves `LargeUtf8`, `BinaryView`, `Geometry`, and `Map`.
+- `DataTypeKind::ALL` is the family list and nothing else.
 - Every physical representation has one concrete struct implementing
   `ScalarValue` and its family trait.
 - `rg -n "Timestamp" rust/src` matches only Arrow's own foreign type and the

@@ -155,9 +155,10 @@ types/
   integer/          Int8..Int64, UInt8..UInt64
   floating/         Float16, Float32, Float64
   decimal/          Decimal32/64/128/256
-  ascii/            Ascii32/64/128, AsciiDictionary, iso.rs
-  binary/           Binary, FixedSizeBinary, LargeBinary, BinaryView, Utf8, LargeUtf8, Utf8View
   temporal/         Timestamp, Date32/64, Time32/64, Duration32/64, Interval
+  text/             Utf8, LargeUtf8, Utf8View
+  ascii/            Ascii32/64/128, AsciiDictionary, iso.rs
+  binary/           Binary, FixedSizeBinary, LargeBinary, BinaryView
   nested/           List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Variant, Dictionary, Map, RunEndEncoded
   geospatial/       Geometry, Geography, wkb.rs
 ```
@@ -175,8 +176,15 @@ family genuinely has none of that behavior.
 | `parser.rs` | family grammar, only where the family has its own spellings |
 | `tests.rs` | family unit tests |
 
-`Null` rides with `Boolean` in `types/boolean/`: both are parameterless
-truth-valued types with no width and no parameters.
+The three names in a folder always agree: `<F>Type` in `dtypes.rs`, `<F>` in
+`scalars.rs`, `<Member>Type` markers in `fields.rs`.
+
+`Null` rides with `Boolean` in `types/boolean/`: both are parameterless, so
+neither earns a family enum and neither would fill a folder. `text/` and
+`ascii/` are separate families because `Ascii32/64/128` carry a fixed width, an
+extension identity, and a dictionary that UTF-8 does not — see the *Symmetry
+law* in `SCALAR_HIERARCHY_PROMPT.md`, which requires each of these ten folders
+to own a matching datatype enum, marker set, and value enum.
 
 Fix while moving: `datatype/floating.rs` today holds the **decimal**
 constructors. They go to `types/decimal/dtypes.rs`. `types/floating/dtypes.rs`
