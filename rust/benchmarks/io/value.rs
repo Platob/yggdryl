@@ -33,7 +33,7 @@ fn handle(name: &str) -> Buffer {
 
 pub(crate) fn structured_scalar_benchmarks(criterion: &mut Criterion) {
     let value = value();
-    let decoded = yggdryl::json::into_bytes(&value).expect("the fixture encodes");
+    let decoded = yggdryl::text::json::into_bytes(&value).expect("the fixture encodes");
     let names = [
         "value.json",
         "value.json.gz",

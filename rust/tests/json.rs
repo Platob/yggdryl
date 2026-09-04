@@ -1,10 +1,11 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
+use yggdryl::text::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
     DataType, Error, Field, I256, Scalar, TimeUnit, Timezone, from_json_scalar,
-    from_json_scalar_with_field, into_json_scalar, json,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 struct OneByte<R>(R);

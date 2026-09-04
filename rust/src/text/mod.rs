@@ -8,12 +8,16 @@ mod display;
 mod format;
 mod formatting;
 mod io;
+pub mod json;
 mod limits;
 mod loading;
 mod placeholder;
 pub(crate) mod position;
+mod structured;
+pub mod toml;
 pub(crate) mod typed;
 pub(crate) mod wire;
+pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
 pub use crate::types::{Children, Scalar, TypedScalar};
@@ -32,8 +36,9 @@ pub use io::{
 pub use limits::Limits;
 pub use loading::Loading;
 pub use placeholder::Placeholders;
+pub use structured::Structured;
 
-use crate::{Error, Field, Result, json, toml, yaml};
+use crate::{Error, Field, Result};
 
 /// A lazy iterator over decoded values.
 pub struct ScalarIter<'a> {

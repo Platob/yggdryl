@@ -12,14 +12,13 @@ use crate::{MediaType, MimeType, Result, Url};
 /// nothing downstream knows the difference.
 ///
 /// ```
-/// use yggdryl::generic::Text;
-/// use yggdryl::text::TextCodec;
+/// use yggdryl::text::{Structured, TextCodec};
 /// use yggdryl::Url;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // The name decides the format, and the coding rides on the handle.
-/// let format = Text::for_url(&Url::from_str("file:///trades.yaml.gz")?)?;
-/// assert_eq!(format, Text::Yaml);
+/// let format = Structured::for_url(&Url::from_str("file:///trades.yaml.gz")?)?;
+/// assert_eq!(format, Structured::Yaml);
 ///
 /// let value = format.from_utf8("symbol: AAPL\n")?;
 /// assert_eq!(value.get_key_str("symbol").and_then(yggdryl::Scalar::as_utf8), Some("AAPL"));
@@ -27,7 +26,7 @@ use crate::{MediaType, MimeType, Result, Url};
 /// # }
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum Text {
+pub enum Structured {
     /// One JSON value per document.
     #[default]
     Json,
@@ -39,7 +38,7 @@ pub enum Text {
     Yaml,
 }
 
-impl Text {
+impl Structured {
     /// Every format in canonical order.
     pub const ALL: [Self; 4] = [Self::Json, Self::Jsonl, Self::Toml, Self::Yaml];
 
@@ -90,7 +89,7 @@ impl Text {
     }
 }
 
-impl TextCodec for Text {
+impl TextCodec for Structured {
     fn format(&self) -> Format {
         match self {
             Self::Json => Format::Json,
@@ -105,37 +104,37 @@ impl TextCodec for Text {
     }
 }
 
-impl From<Format> for Text {
+impl From<Format> for Structured {
     fn from(value: Format) -> Self {
         Self::from_format(value)
     }
 }
 
-impl From<Text> for Format {
-    fn from(value: Text) -> Self {
+impl From<Structured> for Format {
+    fn from(value: Structured) -> Self {
         value.format()
     }
 }
 
-impl From<Json> for Text {
+impl From<Json> for Structured {
     fn from(_: Json) -> Self {
         Self::Json
     }
 }
 
-impl From<Jsonl> for Text {
+impl From<Jsonl> for Structured {
     fn from(_: Jsonl) -> Self {
         Self::Jsonl
     }
 }
 
-impl From<Toml> for Text {
+impl From<Toml> for Structured {
     fn from(_: Toml) -> Self {
         Self::Toml
     }
 }
 
-impl From<Yaml> for Text {
+impl From<Yaml> for Structured {
     fn from(_: Yaml) -> Self {
         Self::Yaml
     }

@@ -297,7 +297,7 @@ where
 
     let coding = BlockCoding::from_name(&options.codec)?;
     let sync = options.sync_marker.unwrap_or_else(sync_marker);
-    let encoded_schema = crate::json::into_bytes(&schema_json)?;
+    let encoded_schema = crate::text::json::into_bytes(&schema_json)?;
 
     let mut output = Vec::with_capacity(1024);
     output.extend_from_slice(&MAGIC);

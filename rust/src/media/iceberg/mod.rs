@@ -53,7 +53,7 @@
 //! use yggdryl::media::iceberg::{schema_from_json, schema_into_json};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let document = yggdryl::json::from_utf8(
+//! let document = yggdryl::text::json::from_utf8(
 //!     r#"{"type":"struct","schema-id":0,"fields":[
 //!         {"id":1,"name":"id","required":true,"type":"long"},
 //!         {"id":2,"name":"symbol","required":false,"type":"string"}

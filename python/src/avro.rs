@@ -116,13 +116,13 @@ impl PyAvroSchema {
 
     fn __repr__(&self) -> PyResult<String> {
         let document =
-            yggdryl::json::into_utf8(&self.inner.clone().into_json()).map_err(value_error)?;
+            yggdryl::text::json::into_utf8(&self.inner.clone().into_json()).map_err(value_error)?;
         Ok(format!("AvroSchema({document:?})"))
     }
 
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
         let document =
-            yggdryl::json::into_utf8(&self.inner.clone().into_json()).map_err(value_error)?;
+            yggdryl::text::json::into_utf8(&self.inner.clone().into_json()).map_err(value_error)?;
         Ok((py.get_type::<Self>().into_any().unbind(), (document,)))
     }
 
@@ -558,15 +558,17 @@ fn schema_from_value(value: &Bound<'_, PyAny>, limits: Limits) -> PyResult<Schem
         return Schema::from_json_with_limits(&native.inner, limits).map_err(value_error);
     }
     if let Ok(text) = value.extract::<&str>() {
-        let document = yggdryl::json::from_utf8_with_limits(text, limits).map_err(value_error)?;
+        let document =
+            yggdryl::text::json::from_utf8_with_limits(text, limits).map_err(value_error)?;
         return Schema::from_json_with_limits(&document, limits).map_err(value_error);
     }
     if value.is_instance_of::<PyBytes>()
         || value.is_instance_of::<PyByteArray>()
         || value.hasattr("tobytes")?
     {
-        let document = yggdryl::json::from_bytes_with_limits(&bytes_from_value(value)?, limits)
-            .map_err(value_error)?;
+        let document =
+            yggdryl::text::json::from_bytes_with_limits(&bytes_from_value(value)?, limits)
+                .map_err(value_error)?;
         return Schema::from_json_with_limits(&document, limits).map_err(value_error);
     }
     Schema::from_json_with_limits(&from_py(value)?, limits).map_err(value_error)

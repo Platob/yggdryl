@@ -204,12 +204,12 @@ impl DataFile {
             partition: &self.partition,
             record_count: self.record_count,
             file_size_in_bytes: self.file_size_in_bytes,
-            column_sizes: crate::generic::sorted_pairs(&self.column_sizes),
-            value_counts: crate::generic::sorted_pairs(&self.value_counts),
-            null_value_counts: crate::generic::sorted_pairs(&self.null_value_counts),
-            nan_value_counts: crate::generic::sorted_pairs(&self.nan_value_counts),
-            lower_bounds: crate::generic::sorted_pairs(&self.lower_bounds),
-            upper_bounds: crate::generic::sorted_pairs(&self.upper_bounds),
+            column_sizes: crate::metadata::sorted_pairs(&self.column_sizes),
+            value_counts: crate::metadata::sorted_pairs(&self.value_counts),
+            null_value_counts: crate::metadata::sorted_pairs(&self.null_value_counts),
+            nan_value_counts: crate::metadata::sorted_pairs(&self.nan_value_counts),
+            lower_bounds: crate::metadata::sorted_pairs(&self.lower_bounds),
+            upper_bounds: crate::metadata::sorted_pairs(&self.upper_bounds),
             key_metadata: &self.key_metadata,
             split_offsets: &self.split_offsets,
             equality_ids: &self.equality_ids,
@@ -636,10 +636,12 @@ pub fn write_manifest<H: IOBase + ?Sized>(
     }
 
     let schema_json = super::schema_into_json(schema)?;
-    let schema_text = String::from_utf8_lossy(&crate::json::into_bytes(&schema_json)?).into_owned();
-    let spec_text =
-        String::from_utf8_lossy(&crate::json::into_bytes(&spec.clone().into_v1_json()?)?)
-            .into_owned();
+    let schema_text =
+        String::from_utf8_lossy(&crate::text::json::into_bytes(&schema_json)?).into_owned();
+    let spec_text = String::from_utf8_lossy(&crate::text::json::into_bytes(
+        &spec.clone().into_v1_json()?,
+    )?)
+    .into_owned();
     let spec_id = spec.spec_id.to_string();
     let format_version = version.number().to_string();
     let content = match content {
@@ -741,8 +743,10 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
                 "expected schema metadata in a UUID-partitioned manifest",
             ))
         })?;
-    let iceberg_schema = crate::json::from_utf8(encoded_schema)?;
-    *encoded_schema = SmolStr::new(crate::json::into_utf8(&uuid_as_fixed(&iceberg_schema)?)?);
+    let iceberg_schema = crate::text::json::from_utf8(encoded_schema)?;
+    *encoded_schema = SmolStr::new(crate::text::json::into_utf8(&uuid_as_fixed(
+        &iceberg_schema,
+    )?)?);
 
     let metadata_refs = metadata
         .iter()
@@ -1060,7 +1064,7 @@ fn manifest_list_version(bytes: &[u8]) -> Result<OfficialFormatVersion> {
             "expected a manifest list carrying an Avro schema",
         ))
     })?;
-    let schema = crate::json::from_bytes(schema)?;
+    let schema = crate::text::json::from_bytes(schema)?;
     let fields = schema
         .get_key_str("fields")
         .and_then(Scalar::as_sequence)
@@ -2558,9 +2562,9 @@ mod official_read_tests {
     ) {
         let schema_json = super::super::schema_into_json(field).unwrap();
         let schema_text =
-            String::from_utf8(crate::json::into_bytes(&schema_json).unwrap()).unwrap();
+            String::from_utf8(crate::text::json::into_bytes(&schema_json).unwrap()).unwrap();
         let spec_text = String::from_utf8(
-            crate::json::into_bytes(&spec.clone().into_v1_json().unwrap()).unwrap(),
+            crate::text::json::into_bytes(&spec.clone().into_v1_json().unwrap()).unwrap(),
         )
         .unwrap();
         let spec_id = spec.spec_id.to_string();
@@ -2583,9 +2587,9 @@ mod official_read_tests {
         let partition = spec.partition_field(field).unwrap();
         let avro_schema = manifest_entry_schema(version, &partition).unwrap();
         let schema = super::super::schema_into_json(field).unwrap();
-        let schema = crate::json::into_utf8(&schema).unwrap();
+        let schema = crate::text::json::into_utf8(&schema).unwrap();
         let partition_spec = spec.clone().into_v1_json().unwrap();
-        let partition_spec = crate::json::into_utf8(&partition_spec).unwrap();
+        let partition_spec = crate::text::json::into_utf8(&partition_spec).unwrap();
         (avro_schema, schema, partition_spec)
     }
 
@@ -3188,7 +3192,7 @@ mod official_read_tests {
 
     #[test]
     fn official_uuid_partition_literals_use_the_core_fixed_binary_shape() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","schema-id":0,"fields":[
                 {"id":1,"name":"id","required":true,"type":"long"},
                 {"id":2,"name":"token","required":true,"type":"uuid"}

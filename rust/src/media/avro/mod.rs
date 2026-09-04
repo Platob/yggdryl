@@ -2,7 +2,7 @@
 //!
 //! Avro is the exchange format Iceberg keeps its manifests in and one other
 //! systems hand over on its own, so it is implemented here as a first-class
-//! codec module - a sibling of [`crate::json`] on the byte side and of
+//! codec module - a sibling of [`crate::text::json`] on the byte side and of
 //! [`crate::media::ipc`] on the record side - with no Avro crate underneath, which is
 //! what keeps the table format's promise that no dependency is added for the
 //! format itself.

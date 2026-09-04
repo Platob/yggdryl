@@ -237,7 +237,7 @@ impl Schema {
     ///
     /// Returns an error when the bytes are not JSON or not a schema.
     pub fn from_slice(input: &[u8]) -> Result<Self> {
-        Self::from_json(&crate::json::from_bytes(input)?)
+        Self::from_json(&crate::text::json::from_bytes(input)?)
     }
 
     /// Return the JSON this schema round-trips as.
@@ -366,7 +366,7 @@ impl std::str::FromStr for Schema {
     type Err = crate::Error;
 
     fn from_str(input: &str) -> Result<Self> {
-        Self::from_json(&crate::json::from_utf8(input)?)
+        Self::from_json(&crate::text::json::from_utf8(input)?)
     }
 }
 

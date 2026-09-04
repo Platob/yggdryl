@@ -2,7 +2,7 @@
 //!
 //! [`ArrowCast`] answers "make this array fit that field" for any
 //! field, and returns an [`ArrayRef`] because any field could be any datatype.
-//! A [`TypedField`] already knows its variant, so it can answer with the array
+//! A [`TypedField`](crate::TypedField) already knows its variant, so it can answer with the array
 //! type itself: [`Int64Field`](crate::types::Int64Field) casts to an
 //! [`Int64Array`](arrow_array::Int64Array), and the caller reads values without
 //! a downcast of its own.
@@ -74,7 +74,7 @@ pub use typed::ArrowFieldType;
 pub trait ArrowCast {
     /// Casts an Arrow array to this exact physical datatype.
     ///
-    /// `safe` is passed directly to Arrow's [`CastOptions`]. With Arrow 59,
+    /// `safe` is passed directly to Arrow's [`CastOptions`](arrow_cast::CastOptions). With Arrow 59,
     /// supported conversion failures become null when it is true and are
     /// errors when it is false. A non-nullable target Field replaces resulting
     /// nulls with its canonical default; a nullable Field retains them.

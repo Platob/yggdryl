@@ -20,9 +20,9 @@ fn rows_are_sequences_and_objects_are_records() {
 
     let object =
         Scalar::from_record([("id", Scalar::I64(7)), ("venue", Scalar::from("XNAS"))]).unwrap();
-    let json = String::from_utf8(yggdryl::json::into_bytes(&object).unwrap()).unwrap();
+    let json = String::from_utf8(yggdryl::text::json::into_bytes(&object).unwrap()).unwrap();
     assert_eq!(json, "{\"id\":7,\"venue\":\"XNAS\"}");
-    assert_eq!(yggdryl::json::from_utf8(&json).unwrap(), object);
+    assert_eq!(yggdryl::text::json::from_utf8(&json).unwrap(), object);
 }
 
 #[test]
@@ -86,7 +86,7 @@ mod arrow_bridge {
         );
         assert_eq!(rows[1].as_sequence().unwrap()[1], Scalar::Null);
 
-        let json = String::from_utf8(yggdryl::json::into_bytes(&value).unwrap()).unwrap();
+        let json = String::from_utf8(yggdryl::text::json::into_bytes(&value).unwrap()).unwrap();
         assert_eq!(json, "[[1,\"XNAS\"],[2,null]]");
     }
 

@@ -252,14 +252,14 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
         .into_json()
         .expect("the synthetic metadata projects to JSON");
     let text = String::from_utf8(
-        yggdryl::json::into_bytes(&document).expect("the synthetic document encodes"),
+        yggdryl::text::json::into_bytes(&document).expect("the synthetic document encodes"),
     )
     .expect("the encoded document is UTF-8");
 
     // Proven once outside the timer: the text really carries the shape the
     // benchmark claims to parse.
     let parsed =
-        TableMetadata::from_json(&yggdryl::json::from_utf8(&text).expect("the text parses"))
+        TableMetadata::from_json(&yggdryl::text::json::from_utf8(&text).expect("the text parses"))
             .expect("the document reads back");
     assert_eq!(parsed.snapshots().len(), 100);
     assert_eq!(parsed.schemas().len(), 3);
@@ -268,7 +268,7 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Bytes(text.len() as u64));
     group.bench_function("parse_json", |bencher| {
         bencher.iter(|| {
-            let value = yggdryl::json::from_utf8(black_box(text.as_str()))
+            let value = yggdryl::text::json::from_utf8(black_box(text.as_str()))
                 .expect("the serialized document parses");
             TableMetadata::from_json(&value).expect("the parsed document reads")
         });

@@ -568,22 +568,22 @@ impl TableMetadata {
             last_sequence_number: self.last_sequence_number,
             last_updated_ms: self.last_updated_ms,
             last_column_id: self.last_column_id,
-            schemas: crate::generic::sorted_values(&self.schemas),
+            schemas: crate::metadata::sorted_values(&self.schemas),
             current_schema_id: self.current_schema_id,
-            partition_specs: crate::generic::sorted_values(&self.partition_specs),
+            partition_specs: crate::metadata::sorted_values(&self.partition_specs),
             default_spec_id: self.default_spec_id,
             last_partition_id: self.last_partition_id,
-            sort_orders: crate::generic::sorted_values(&self.sort_orders),
+            sort_orders: crate::metadata::sorted_values(&self.sort_orders),
             default_sort_order_id: self.default_sort_order_id,
-            properties: crate::generic::sorted_pairs(&self.properties),
+            properties: crate::metadata::sorted_pairs(&self.properties),
             current_snapshot_id: self.current_snapshot_id,
-            snapshots: crate::generic::sorted_values(&self.snapshots),
+            snapshots: crate::metadata::sorted_values(&self.snapshots),
             snapshot_log: &self.snapshot_log,
             metadata_log: &self.metadata_log,
-            refs: crate::generic::sorted_pairs(&self.refs),
-            statistics: crate::generic::sorted_values(&self.statistics),
-            partition_statistics: crate::generic::sorted_values(&self.partition_statistics),
-            encryption_keys: crate::generic::sorted_values(&self.encryption_keys),
+            refs: crate::metadata::sorted_pairs(&self.refs),
+            statistics: crate::metadata::sorted_values(&self.statistics),
+            partition_statistics: crate::metadata::sorted_values(&self.partition_statistics),
+            encryption_keys: crate::metadata::sorted_values(&self.encryption_keys),
             next_row_id: self.next_row_id,
         }
     }
@@ -2341,7 +2341,7 @@ fn field_schema_id(schema: &Field) -> i32 {
 
 fn official_schema(schema: &Field) -> Result<OfficialSchema> {
     let document = schema_into_json(schema)?;
-    let bytes = crate::json::into_bytes(&document)?;
+    let bytes = crate::text::json::into_bytes(&document)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -2353,7 +2353,7 @@ fn official_schemas_same(left: &OfficialSchema, right: &OfficialSchema) -> bool 
 }
 
 fn official_from_scalar<T: serde::de::DeserializeOwned>(value: &Scalar) -> Result<T> {
-    let bytes = crate::json::into_bytes(value)?;
+    let bytes = crate::text::json::into_bytes(value)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -2396,7 +2396,7 @@ fn partition_specs_compatible(left: &PartitionSpec, right: &PartitionSpec) -> bo
 
 fn official_sort_order(order: &SortOrder) -> Result<OfficialSortOrder> {
     let document = order.clone().into_json()?;
-    let bytes = crate::json::into_bytes(&document)?;
+    let bytes = crate::text::json::into_bytes(&document)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -2900,7 +2900,7 @@ mod strict_metadata_tests {
     fn normalization_cannot_hide_duplicate_statistics_or_key_ids() {
         for collection in ["statistics", "partition-statistics"] {
             let duplicates =
-                crate::json::from_utf8(r#"[{"snapshot-id":7},{"snapshot-id":7}]"#).unwrap();
+                crate::text::json::from_utf8(r#"[{"snapshot-id":7},{"snapshot-id":7}]"#).unwrap();
             let candidate = document(FormatVersion::V2)
                 .with_key(collection, duplicates)
                 .unwrap();
@@ -2911,7 +2911,8 @@ mod strict_metadata_tests {
             assert!(message.contains("more than once"), "{message}");
         }
 
-        let duplicates = crate::json::from_utf8(r#"[{"key-id":"k"},{"key-id":"k"}]"#).unwrap();
+        let duplicates =
+            crate::text::json::from_utf8(r#"[{"key-id":"k"},{"key-id":"k"}]"#).unwrap();
         let candidate = document(FormatVersion::V3)
             .with_key("encryption-keys", duplicates)
             .unwrap();
@@ -2962,7 +2963,7 @@ mod strict_metadata_tests {
 
         let empty = document
             .clone()
-            .with_key("refs", crate::json::from_utf8("{}").unwrap())
+            .with_key("refs", crate::text::json::from_utf8("{}").unwrap())
             .unwrap();
         assert!(TableMetadata::from_json(&empty).is_ok());
 
@@ -2994,7 +2995,7 @@ mod strict_metadata_tests {
             r#"{"order-id":1,"fields":[{"source-id":2147483648,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
             r#"{"order-id":0,"fields":[{"source-id":1,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
         ] {
-            let value = crate::json::from_utf8(text).unwrap();
+            let value = crate::text::json::from_utf8(text).unwrap();
             assert!(SortOrder::from_json(&value).is_err(), "{text}");
         }
     }
@@ -3009,7 +3010,7 @@ mod strict_metadata_tests {
             .cloned()
             .collect();
         specs.push(
-            crate::json::from_utf8(
+            crate::text::json::from_utf8(
                 r#"{"spec-id":1,"fields":[{"source-id":999,"field-id":1000,"name":"missing","transform":"identity"}]}"#,
             )
             .unwrap(),
@@ -3031,7 +3032,7 @@ mod strict_metadata_tests {
             .cloned()
             .collect();
         orders.push(
-            crate::json::from_utf8(
+            crate::text::json::from_utf8(
                 r#"{"order-id":1,"fields":[{"source-id":999,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
             )
             .unwrap(),

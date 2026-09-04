@@ -2,7 +2,8 @@ use std::hint::black_box;
 use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::{from_json_scalar, from_json_scalar_with_field, into_json_scalar, json};
+use yggdryl::text::json;
+use yggdryl::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 
 use crate::fixtures::{nested, representative, typed};
 

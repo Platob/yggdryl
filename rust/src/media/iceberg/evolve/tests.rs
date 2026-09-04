@@ -538,7 +538,7 @@ mod metadata_updates {
         metadata
             .set_current_snapshot(snapshot(3, metadata.last_updated_ms + 1))
             .unwrap();
-        let statistics = crate::json::from_utf8(
+        let statistics = crate::text::json::from_utf8(
             r#"{"snapshot-id":3,"statistics-path":"s3://a/stats.puffin",
                 "file-size-in-bytes":413,"file-footer-size-in-bytes":42,
                 "blob-metadata":[]}"#,
@@ -549,7 +549,7 @@ mod metadata_updates {
         assert_eq!(metadata.remove_statistics(3).unwrap(), Some(statistics));
         assert!(metadata.statistics().is_empty());
 
-        let partition_statistics = crate::json::from_utf8(
+        let partition_statistics = crate::text::json::from_utf8(
             r#"{"snapshot-id":3,"statistics-path":"s3://a/partition.parquet",
                 "file-size-in-bytes":43}"#,
         )
@@ -566,7 +566,7 @@ mod metadata_updates {
         );
 
         metadata.upgrade_format_version(FormatVersion::V3).unwrap();
-        let key = crate::json::from_utf8(
+        let key = crate::text::json::from_utf8(
             r#"{"key-id":"key-1","encrypted-key-metadata":"aWNlYmVyZw==",
                 "encrypted-by-id":"kms"}"#,
         )
@@ -775,7 +775,7 @@ mod metadata_updates {
         metadata.remove_snapshot_ref("audit").unwrap();
         metadata
             .set_statistics(
-                crate::json::from_utf8(
+                crate::text::json::from_utf8(
                     r#"{"snapshot-id":1,"statistics-path":"s3://a/1.puffin",
                         "file-size-in-bytes":10,"file-footer-size-in-bytes":1,
                         "blob-metadata":[]}"#,
@@ -785,7 +785,7 @@ mod metadata_updates {
             .unwrap();
         metadata
             .set_partition_statistics(
-                crate::json::from_utf8(
+                crate::text::json::from_utf8(
                     r#"{"snapshot-id":1,"statistics-path":"s3://a/1.parquet",
                         "file-size-in-bytes":10}"#,
                 )

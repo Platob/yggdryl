@@ -22,7 +22,6 @@ mod edge_algorithm;
 mod error;
 pub mod expression;
 pub mod fix;
-pub mod generic;
 pub mod holder;
 mod i256;
 mod iobase;
@@ -33,7 +32,6 @@ mod iokind;
 mod iomedia;
 mod iomode;
 mod iopath;
-pub mod json;
 mod listing;
 pub mod media;
 mod media_type;
@@ -44,7 +42,6 @@ mod scheme;
 pub mod text;
 mod time_unit;
 mod timezone;
-pub mod toml;
 pub mod types;
 mod union_mode;
 mod uri;
@@ -52,7 +49,6 @@ mod uri;
 // dependency, so the module is unconditional like the Avro value codec; only
 // `xxhash/arrow.rs` is gated.
 pub mod xxhash;
-pub mod yaml;
 
 pub use bytestream::ByteStream;
 pub use codec::{Codec, Encoder, Level};
@@ -74,17 +70,18 @@ pub use iokind::IOKind;
 pub use iomedia::IOMedia;
 pub use iomode::IOMode;
 pub use iopath::IOPath;
-pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use listing::Listing;
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use mime_type::MimeType;
 pub use scheme::Scheme;
-pub use text::{Format, Limits, ScalarIter};
+pub use text::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
+pub use text::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
+pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
+pub use text::{Format, Limits, ScalarIter, Structured};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
-pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 #[cfg(feature = "arrow")]
 pub use types::cast::{ArrowCast, ArrowFieldType};
 pub use types::floating::scalars::{Float16, Float32, Float64};
@@ -110,7 +107,6 @@ pub use union_mode::UnionMode;
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
 };
-pub use yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 
 #[cfg(test)]
 mod tests {

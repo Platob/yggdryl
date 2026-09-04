@@ -191,7 +191,7 @@ impl Placeholders {
 
     fn identity(&self) -> PlaceholdersIdentity<'_> {
         PlaceholdersIdentity {
-            variables: crate::generic::sorted_pairs(&self.variables),
+            variables: crate::metadata::sorted_pairs(&self.variables),
             environment: self.environment,
         }
     }
@@ -447,7 +447,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Scalar> {
         })?;
     // One literal syntax, and it is one the workspace already parses: a JSON
     // scalar, so a default carries its own type rather than always being text.
-    let value = crate::json::from_utf8(literal.trim()).map_err(|error| {
+    let value = crate::text::json::from_utf8(literal.trim()).map_err(|error| {
         refusal(
             path,
             at,

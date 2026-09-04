@@ -18,14 +18,14 @@
 //! let value = Scalar::from_record([("id", Scalar::U64(1))])?;
 //!
 //! // The zero-configuration path is unchanged output.
-//! assert_eq!(yggdryl::json::into_bytes(&value)?, br#"{"id":1}"#);
+//! assert_eq!(yggdryl::text::json::into_bytes(&value)?, br#"{"id":1}"#);
 //!
 //! // Indented on request.
-//! let pretty = yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2))?;
+//! let pretty = yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(2))?;
 //! assert_eq!(pretty, b"{\n  \"id\": 1\n}");
 //!
 //! // And parsing either spelling gives the same value back.
-//! assert_eq!(yggdryl::json::from_utf8("{\n  \"id\": 1\n}")?, value);
+//! assert_eq!(yggdryl::text::json::from_utf8("{\n  \"id\": 1\n}")?, value);
 //! # Ok(())
 //! # }
 //! ```

@@ -552,9 +552,9 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
-/// assert_eq!(yggdryl::json::into_bytes(&value)?, br#"{"id":1}"#);
+/// assert_eq!(yggdryl::text::json::into_bytes(&value)?, br#"{"id":1}"#);
 /// assert_eq!(
-///     yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2))?,
+///     yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(2))?,
 ///     b"{\n  \"id\": 1\n}",
 /// );
 /// # Ok(())

@@ -44,7 +44,7 @@ pub(super) const NULL_TEXT: &str = crate::media::partition::NULL_PARTITION;
 /// contains one, because a partition value is a scalar.
 pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
     crate::media::partition::partition_text(value).unwrap_or_else(|_| {
-        crate::json::into_bytes(value)
+        crate::text::json::into_bytes(value)
             .ok()
             .and_then(|encoded| String::from_utf8(encoded).ok())
             .map_or_else(|| SmolStr::new_static(NULL_TEXT), SmolStr::new)

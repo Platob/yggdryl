@@ -3,8 +3,8 @@
 //! A [`Scalar`] is any native value: null, a boolean, a signed or unsigned
 //! integer at every width from 8 to 128 bits, a float at 16, 32, or 64 bits,
 //! an exact decimal, text, bytes, width-typed temporals, an ordered sequence,
-//! an arbitrary-key mapping, or a name-sorted record. It is what [`crate::json`], [`crate::yaml`], and
-//! [`crate::toml`] parse into and write from, what a [`crate::Field`] validates
+//! an arbitrary-key mapping, or a name-sorted record. It is what [`crate::text::json`], [`crate::text::yaml`], and
+//! [`crate::text::toml`] parse into and write from, what a [`crate::Field`] validates
 //! and canonicalizes, and what the language bindings convert their own objects
 //! into - so a value crosses every boundary in the project without being
 //! re-modelled on the way.
@@ -831,12 +831,12 @@ impl Scalar {
 
     /// Encode this value as compact JSON bytes.
     pub fn as_json_bytes(&self) -> Result<Vec<u8>> {
-        crate::json::into_bytes(self)
+        crate::text::json::into_bytes(self)
     }
 
     /// Encode this value as compact JSON UTF-8.
     pub fn as_json_utf8(&self) -> Result<String> {
-        crate::json::into_utf8(self)
+        crate::text::json::into_utf8(self)
     }
 
     /// Return the Well-Known Binary payload without allocating.

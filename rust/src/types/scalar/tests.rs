@@ -325,7 +325,7 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let json_bytes = record.as_json_bytes().unwrap();
     let json_utf8 = record.as_json_utf8().unwrap();
     assert_eq!(json_bytes, json_utf8.as_bytes());
-    assert_eq!(crate::json::from_bytes(&json_bytes).unwrap(), record);
+    assert_eq!(crate::text::json::from_bytes(&json_bytes).unwrap(), record);
 }
 
 #[test]

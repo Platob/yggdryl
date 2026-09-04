@@ -732,7 +732,7 @@ pub(crate) fn codec_encode_path(
     let value = from_py(value)?;
 
     if format == Format::Toml {
-        yggdryl::toml::validate_for_write(&value).map_err(value_error)?;
+        yggdryl::text::toml::validate_for_write(&value).map_err(value_error)?;
     }
 
     // Delegate path interpretation and OSError construction to Python while
@@ -953,9 +953,11 @@ pub(crate) fn codec_decode_iter(
     let reader_error = Rc::new(RefCell::new(None));
     let reader = OwnedPythonReader::new(source.clone().unbind(), method, Rc::clone(&reader_error));
     let inner: Box<dyn Iterator<Item = yggdryl::Result<Scalar>>> = match format {
-        Format::Json => Box::new(yggdryl::json::Reader::with_limits(reader, limits)),
-        Format::JsonLines => Box::new(yggdryl::json::LinesReader::with_limits(reader, limits)),
-        Format::Yaml => Box::new(yggdryl::yaml::Reader::with_limits(reader, limits)),
+        Format::Json => Box::new(yggdryl::text::json::Reader::with_limits(reader, limits)),
+        Format::JsonLines => Box::new(yggdryl::text::json::LinesReader::with_limits(
+            reader, limits,
+        )),
+        Format::Yaml => Box::new(yggdryl::text::yaml::Reader::with_limits(reader, limits)),
         Format::Toml => unreachable!("TOML was rejected before reader construction"),
     };
     Ok(PyCodecScalarIterator {
@@ -1044,8 +1046,12 @@ pub(crate) fn codec_encode_all_writer(
                     Ok(())
                 }
                 .and_then(|()| {
-                    yggdryl::yaml::into_writer_with_formatting(&value, &mut buffered, formatting)
-                        .map_err(value_error)
+                    yggdryl::text::yaml::into_writer_with_formatting(
+                        &value,
+                        &mut buffered,
+                        formatting,
+                    )
+                    .map_err(value_error)
                 }),
                 Format::Json | Format::JsonLines => yggdryl::text::into_writer_with_formatting(
                     &value,

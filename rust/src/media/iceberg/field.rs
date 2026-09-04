@@ -139,7 +139,7 @@ impl<'field> IcebergField<'field> {
 
     /// Decode one property holding a value that travels as encoded JSON.
     fn decoded(&self, name: &str) -> Result<Option<Scalar>> {
-        self.get(name).map(crate::json::from_utf8).transpose()
+        self.get(name).map(crate::text::json::from_utf8).transpose()
     }
 
     /// Name the full key a stored value failed under, and what it should be.
@@ -192,7 +192,7 @@ impl IcebergFieldMut<'_> {
     /// Returns an error when the value has no JSON representation, or when the
     /// property write fails. Both default writes fail the same way.
     pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(INITIAL_DEFAULT, crate::json::into_utf8(value)?)
+        self.store(INITIAL_DEFAULT, crate::text::json::into_utf8(value)?)
     }
 
     /// Records a v3 `write-default` as encoded JSON.
@@ -201,7 +201,7 @@ impl IcebergFieldMut<'_> {
     ///
     /// [`Self::set_initial_default`] carries the rule.
     pub fn set_write_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(WRITE_DEFAULT, crate::json::into_utf8(value)?)
+        self.store(WRITE_DEFAULT, crate::text::json::into_utf8(value)?)
     }
 
     /// Records the identifier of the spec a partition tuple belongs to.

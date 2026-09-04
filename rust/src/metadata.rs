@@ -15,6 +15,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{AsciiEnum, Error, Result, Scheme, Url, stable_hash_display};
 
+mod pairs;
+
+pub(crate) use pairs::sorted_pairs;
+#[cfg(feature = "iceberg")]
+pub(crate) use pairs::sorted_values;
+
 pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
 pub(crate) const DISPLAY_KEY: &str = "display";

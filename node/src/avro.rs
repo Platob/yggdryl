@@ -81,7 +81,8 @@ impl JsAvroSchema {
     #[napi(factory, js_name = "_fromUtf8Native", skip_typescript)]
     pub fn from_utf8_native(value: String, limits: Option<AvroDecodeLimitsInput>) -> Result<Self> {
         let limits = decode_limits(limits)?;
-        let document = yggdryl::json::from_utf8_with_limits(&value, limits).map_err(napi_error)?;
+        let document =
+            yggdryl::text::json::from_utf8_with_limits(&value, limits).map_err(napi_error)?;
         Schema::from_json_with_limits(&document, limits)
             .map(Self::from_core)
             .map_err(napi_error)
@@ -91,7 +92,8 @@ impl JsAvroSchema {
     #[napi(factory, js_name = "_fromBytesNative", skip_typescript)]
     pub fn from_bytes_native(value: Buffer, limits: Option<AvroDecodeLimitsInput>) -> Result<Self> {
         let limits = decode_limits(limits)?;
-        let document = yggdryl::json::from_bytes_with_limits(&value, limits).map_err(napi_error)?;
+        let document =
+            yggdryl::text::json::from_bytes_with_limits(&value, limits).map_err(napi_error)?;
         Schema::from_json_with_limits(&document, limits)
             .map(Self::from_core)
             .map_err(napi_error)

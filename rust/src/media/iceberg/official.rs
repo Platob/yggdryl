@@ -49,7 +49,7 @@ pub(super) fn parse_table_metadata(
     document: &Scalar,
 ) -> Result<(OfficialTableMetadata, V1SnapshotManifests)> {
     let (bridged, v1_manifests) = bridge_v1_manifests(document)?;
-    let bytes = crate::json::into_bytes(&bridged)?;
+    let bytes = crate::text::json::into_bytes(&bridged)?;
     let metadata = serde_json::from_slice(&bytes)?;
     Ok((metadata, v1_manifests))
 }
@@ -60,7 +60,7 @@ pub(super) fn table_metadata_document(
     metadata: &OfficialTableMetadata,
     v1_manifests: &V1SnapshotManifests,
 ) -> Result<Scalar> {
-    let document = crate::json::from_bytes(&serde_json::to_vec(metadata)?)?;
+    let document = crate::text::json::from_bytes(&serde_json::to_vec(metadata)?)?;
     restore_v1_manifests(&document, v1_manifests)
 }
 
@@ -181,12 +181,12 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
 /// Parse, normalize, and serialize one schema document with the official
 /// implementation.
 pub(super) fn normalize_schema(document: &Scalar) -> Result<Scalar> {
-    let bytes = crate::json::into_bytes(document)?;
+    let bytes = crate::text::json::into_bytes(document)?;
     let schema: OfficialSchema = serde_json::from_slice(&bytes)?;
     let mut identifier_ids: Vec<i32> = schema.identifier_field_ids().collect();
     identifier_ids.sort_unstable();
 
-    let normalized = crate::json::from_bytes(&serde_json::to_vec(&schema)?)?;
+    let normalized = crate::text::json::from_bytes(&serde_json::to_vec(&schema)?)?;
     if identifier_ids.is_empty() {
         return Ok(normalized);
     }
@@ -198,7 +198,7 @@ pub(super) fn normalize_schema(document: &Scalar) -> Result<Scalar> {
 
 /// Validate one schema document with the official implementation.
 pub(super) fn validate_schema(document: &Scalar) -> Result<()> {
-    let bytes = crate::json::into_bytes(document)?;
+    let bytes = crate::text::json::into_bytes(document)?;
     let _: OfficialSchema = serde_json::from_slice(&bytes)?;
     Ok(())
 }

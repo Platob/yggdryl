@@ -61,7 +61,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     // column typed the string.
     let message = r#"{"ccy":"USD","venue":"XCME","px":"101.25","qty":"7",
         "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04","seq":9}"#;
-    let value = yggdryl::json::from_utf8_with_field(message, &row).unwrap();
+    let value = yggdryl::text::json::from_utf8_with_field(message, &row).unwrap();
     let Scalar::Sequence(columns) = &value else {
         panic!("a canonical row, got {value:?}");
     };
@@ -83,7 +83,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
 
     // A value that does not fit the resolved datatype is refused by that
     // datatype, never by the name that spelled it.
-    let refused = yggdryl::json::from_utf8_with_field(
+    let refused = yggdryl::text::json::from_utf8_with_field(
         r#"{"ccy":"EURO!","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04","seq":1}"#,
         &row,
     )

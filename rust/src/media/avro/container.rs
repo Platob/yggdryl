@@ -59,7 +59,7 @@ impl Container {
     fn identity(&self) -> ContainerIdentity<'_> {
         ContainerIdentity {
             schema: &self.schema,
-            metadata: crate::generic::sorted_pairs(&self.metadata),
+            metadata: crate::metadata::sorted_pairs(&self.metadata),
             rows: &self.rows,
         }
     }
@@ -356,7 +356,7 @@ pub(crate) fn parse_header(cursor: &mut Cursor<'_>, limits: Limits) -> Result<He
             "expected an Avro header carrying {SCHEMA_KEY:?}"
         ))
     })?;
-    let schema_json = crate::json::from_bytes_with_limits(schema_bytes, limits)?;
+    let schema_json = crate::text::json::from_bytes_with_limits(schema_bytes, limits)?;
     let schema = Schema::from_json_with_limits(&schema_json, limits)?;
     let coding = match header_entry(&entries, CODEC_KEY) {
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,
@@ -544,7 +544,7 @@ pub fn write_container<H: IOBase + ?Sized>(
     rows: &[Scalar],
 ) -> Result<()> {
     let schema = Schema::from_json(schema_json)?;
-    let encoded_schema = crate::json::into_bytes(schema_json)?;
+    let encoded_schema = crate::text::json::into_bytes(schema_json)?;
     let datum = DatumCodec {
         names: &schema.names,
         limits: Limits::default(),
@@ -947,7 +947,7 @@ fn open_blocks<'handle, H: IOBase + ?Sized>(
             "expected an Avro header carrying {SCHEMA_KEY:?}"
         ))
     })?;
-    let schema_json = crate::json::from_bytes_with_limits(schema_bytes, header_limits)?;
+    let schema_json = crate::text::json::from_bytes_with_limits(schema_bytes, header_limits)?;
     let schema = Schema::from_json_with_limits(&schema_json, header_limits)?;
     let coding = match lookup(CODEC_KEY) {
         Some(value) => BlockCoding::from_name(&String::from_utf8_lossy(value))?,

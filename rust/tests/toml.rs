@@ -1,7 +1,7 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
-use yggdryl::toml as ytoml;
+use yggdryl::text::toml as ytoml;
 use yggdryl::{
     DataType, Error, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
     from_toml_scalar_with_field, into_toml_scalar,

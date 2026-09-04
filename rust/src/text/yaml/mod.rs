@@ -358,12 +358,12 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
-/// assert_eq!(yggdryl::yaml::into_bytes(&value)?, b"id: 1\n");
+/// assert_eq!(yggdryl::text::yaml::into_bytes(&value)?, b"id: 1\n");
 ///
-/// let flow = yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact())?;
+/// let flow = yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::compact())?;
 /// assert_eq!(flow, b"{id: 1}\n");
 /// // Formatting changes bytes, never meaning.
-/// assert_eq!(yggdryl::yaml::from_utf8("{id: 1}")?, value);
+/// assert_eq!(yggdryl::text::yaml::from_utf8("{id: 1}")?, value);
 /// # Ok(())
 /// # }
 /// ```

@@ -310,7 +310,7 @@ impl FixRegistry {
             let document =
                 Scalar::from_sequence(fields.iter().map(|field| (*field).clone().into_value()));
             let bytes =
-                crate::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
+                crate::text::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
             root.child_by_path(&format!("{tree}/{branch}/{shard}.{EXTENSION}"))?
                 .write_all_bytes(&bytes)?;
         }

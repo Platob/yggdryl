@@ -979,7 +979,7 @@ mod strict_json_tests {
             r#"{"name":"day","source-id":1,"transform":"identity"}"#,
             r#"{"name":"day","source-id":1,"field-id":2147483648,"transform":"identity"}"#,
         ] {
-            let document = crate::json::from_utf8(text).unwrap();
+            let document = crate::text::json::from_utf8(text).unwrap();
             assert!(PartitionField::from_json(&document).is_err(), "{text}");
         }
         for text in [
@@ -987,16 +987,17 @@ mod strict_json_tests {
             r#"{"spec-id":2147483648,"fields":[]}"#,
             r#"{"spec-id":1,"fields":[{"name":"day","source-id":1,"transform":"identity"}]}"#,
         ] {
-            let document = crate::json::from_utf8(text).unwrap();
+            let document = crate::text::json::from_utf8(text).unwrap();
             assert!(PartitionSpec::from_json(&document).is_err(), "{text}");
         }
     }
 
     #[test]
     fn only_the_v1_array_synthesizes_field_ids() {
-        let document =
-            crate::json::from_utf8(r#"[{"name":"day","source-id":1,"transform":"identity"}]"#)
-                .unwrap();
+        let document = crate::text::json::from_utf8(
+            r#"[{"name":"day","source-id":1,"transform":"identity"}]"#,
+        )
+        .unwrap();
         let spec = PartitionSpec::from_json(&document).unwrap();
         assert_eq!(spec.spec_id, 0);
         assert_eq!(spec.fields[0].field_id, 1000);
@@ -1009,7 +1010,8 @@ mod strict_json_tests {
             r#"[{"name":"a","source-id":1,"field-id":1000,"transform":"identity"},{"name":"a","source-id":2,"field-id":1001,"transform":"identity"}]"#,
         ] {
             let document =
-                crate::json::from_utf8(&format!(r#"{{"spec-id":1,"fields":{fields}}}"#)).unwrap();
+                crate::text::json::from_utf8(&format!(r#"{{"spec-id":1,"fields":{fields}}}"#))
+                    .unwrap();
             assert!(PartitionSpec::from_json(&document).is_err(), "{fields}");
         }
     }

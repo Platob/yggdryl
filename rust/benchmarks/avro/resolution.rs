@@ -9,10 +9,11 @@
 
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
+use yggdryl::Scalar;
 use yggdryl::holder::Buffer;
 use yggdryl::media::avro;
 use yggdryl::media::avro::{Resolution, Schema};
-use yggdryl::{Scalar, json};
+use yggdryl::text::json;
 
 /// Rows in the resolution fixture.
 const ROWS: usize = crate::bench_profile::corpus(10_000, 512);

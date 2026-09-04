@@ -2,9 +2,10 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
+use yggdryl::text::yaml;
 use yggdryl::{
     DataType, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
-    from_yaml_scalar_with_field, into_yaml_scalar, yaml,
+    from_yaml_scalar_with_field, into_yaml_scalar,
 };
 
 struct OneByte<R>(R);

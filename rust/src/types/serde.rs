@@ -1075,14 +1075,14 @@ impl DataType {
     /// Serialize this value as deterministic structural JSON, laid out as asked.
     ///
     /// The companion of [`Self::into_json`]; see
-    /// [`json::into_bytes_with_formatting`](crate::json::into_bytes_with_formatting)
+    /// [`json::into_bytes_with_formatting`](crate::text::json::into_bytes_with_formatting)
     /// for what each [`Indent`](crate::text::Indent) means.
     ///
     /// # Errors
     ///
     /// Returns the encoder's failure.
     pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::json::into_bytes_with_formatting(
+        text_of(crate::text::json::into_bytes_with_formatting(
             &self.into_value(),
             formatting,
         )?)
@@ -1095,7 +1095,7 @@ impl DataType {
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_yaml(value: &str) -> Result<Self> {
-        Self::from_value(crate::yaml::from_utf8(value)?)
+        Self::from_value(crate::text::yaml::from_utf8(value)?)
     }
 
     /// Consume and serialize as YAML.
@@ -1113,7 +1113,7 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_yaml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::yaml::into_bytes_with_formatting(
+        text_of(crate::text::yaml::into_bytes_with_formatting(
             &self.into_value(),
             formatting,
         )?)
@@ -1126,7 +1126,7 @@ impl DataType {
     /// Returns the parser's failure, or the structural refusal naming the path
     /// and the expectation.
     pub fn from_toml(value: &str) -> Result<Self> {
-        Self::from_value(crate::toml::from_utf8(value)?)
+        Self::from_value(crate::text::toml::from_utf8(value)?)
     }
 
     /// Consume and serialize as TOML.
@@ -1144,7 +1144,7 @@ impl DataType {
     ///
     /// Returns the encoder's failure.
     pub fn into_toml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
-        text_of(crate::toml::into_bytes_with_formatting(
+        text_of(crate::text::toml::into_bytes_with_formatting(
             &self.into_value(),
             formatting,
         )?)

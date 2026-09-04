@@ -535,7 +535,7 @@ mod schema_documents {
 
     #[test]
     fn a_nested_schema_round_trips_through_json() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{
                 "type": "struct",
                 "schema-id": 3,
@@ -613,13 +613,13 @@ mod schema_documents {
     fn a_schema_document_that_is_not_a_struct_is_rejected() {
         let message = schema_from_json(
             "row",
-            &crate::json::from_utf8(r#"{"type":"list"}"#).unwrap(),
+            &crate::text::json::from_utf8(r#"{"type":"list"}"#).unwrap(),
         )
         .unwrap_err()
         .to_string();
         assert!(message.contains("\"struct\""), "{message}");
 
-        let message = schema_from_json("row", &crate::json::from_utf8("[1, 2]").unwrap())
+        let message = schema_from_json("row", &crate::text::json::from_utf8("[1, 2]").unwrap())
             .unwrap_err()
             .to_string();
         assert!(message.contains("got sequence"), "{message}");
@@ -627,7 +627,7 @@ mod schema_documents {
 
     #[test]
     fn a_field_missing_its_required_flag_is_rejected() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[{"id":1,"name":"id","type":"long"}]}"#,
         )
         .unwrap();
@@ -637,7 +637,7 @@ mod schema_documents {
 
     #[test]
     fn official_schema_validation_rejects_duplicate_field_ids() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[
                 {"id":1,"name":"left","required":true,"type":"long"},
                 {"id":1,"name":"right","required":true,"type":"string"}
@@ -651,7 +651,7 @@ mod schema_documents {
 
     #[test]
     fn official_schema_validation_enforces_identifier_fields() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","schema-id":4,"identifier-field-ids":[1],"fields":[
                 {"id":1,"name":"id","required":false,"type":"long"}
             ]}"#,
@@ -664,7 +664,7 @@ mod schema_documents {
 
     #[test]
     fn official_schema_normalization_supplies_the_default_schema_id() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[
                 {"id":1,"name":"id","required":true,"type":"long"}
             ]}"#,
@@ -684,7 +684,7 @@ mod schema_documents {
 
     #[test]
     fn official_schema_normalization_sorts_identifier_field_ids() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","schema-id":3,"identifier-field-ids":[2,1],"fields":[
                 {"id":1,"name":"left","required":true,"type":"long"},
                 {"id":2,"name":"right","required":true,"type":"string"}
@@ -723,7 +723,7 @@ mod schema_documents {
 
     #[test]
     fn an_iceberg_schema_projects_into_arrow_with_its_identifiers() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[{"id":7,"name":"id","required":true,"type":"long"}]}"#,
         )
         .unwrap();
@@ -743,7 +743,7 @@ mod schema_documents {
 
     #[test]
     fn the_v3_default_values_survive_a_round_trip() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[
                 {"id":1,"name":"venue","required":false,"type":"string",
                  "initial-default":"XNAS","write-default":"XNAS"}
@@ -773,7 +773,7 @@ mod schema_documents {
     #[test]
     fn a_schema_document_reads_through_the_core_json_parser() {
         // The point of the port: no second JSON value model reaches this module.
-        let document: Scalar = crate::json::from_utf8(
+        let document: Scalar = crate::text::json::from_utf8(
             r#"{"type":"struct","fields":[{"id":1,"name":"id","required":true,"type":"long"}]}"#,
         )
         .unwrap();
@@ -928,9 +928,10 @@ mod partition_specs {
 
     #[test]
     fn the_bare_v1_array_reads_as_a_spec_with_numbered_fields() {
-        let document =
-            crate::json::from_utf8(r#"[{"name":"venue","transform":"identity","source-id":3}]"#)
-                .unwrap();
+        let document = crate::text::json::from_utf8(
+            r#"[{"name":"venue","transform":"identity","source-id":3}]"#,
+        )
+        .unwrap();
         let spec = PartitionSpec::from_json(&document).unwrap();
         assert_eq!(spec.spec_id, 0);
         assert_eq!(spec.fields[0].field_id, 1000);
@@ -1218,7 +1219,7 @@ mod table_metadata {
                 .any(|order| order.order_id == order_id)
         );
 
-        let missing = crate::json::from_utf8(r#"{"fields":[]}"#).unwrap();
+        let missing = crate::text::json::from_utf8(r#"{"fields":[]}"#).unwrap();
         let message = SortOrder::from_json(&missing).unwrap_err().to_string();
         assert!(
             message.contains("order-id") && message.contains("64-bit"),
@@ -1329,7 +1330,7 @@ mod table_metadata {
 
     #[test]
     fn a_v1_document_written_by_someone_else_reads_without_the_plural_keys() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"format-version":1,"table-uuid":"0b4f7721-755e-5df5-ab6b-8a23c7905a82","location":"file:///t",
                 "last-updated-ms":1,"last-column-id":1,
                 "schema":{"type":"struct","fields":[
@@ -1462,7 +1463,7 @@ mod table_metadata {
         }
         .into_json(FormatVersion::V3)
         .unwrap();
-        let statistics = crate::json::from_utf8(
+        let statistics = crate::text::json::from_utf8(
             r#"[{"snapshot-id":7,"statistics-path":"s3://bucket/stats.puffin",
                 "file-size-in-bytes":413,"file-footer-size-in-bytes":42,
                 "key-metadata":"c3RhdHMta2V5",
@@ -1471,13 +1472,13 @@ mod table_metadata {
                     "properties":{"compression":"zstd","ndv":"2"}}]}]"#,
         )
         .unwrap();
-        let partition_statistics = crate::json::from_utf8(
+        let partition_statistics = crate::text::json::from_utf8(
             r#"[{"snapshot-id":7,
                 "statistics-path":"s3://bucket/partition-stats.parquet",
                 "file-size-in-bytes":43}]"#,
         )
         .unwrap();
-        let encryption_keys = crate::json::from_utf8(
+        let encryption_keys = crate::text::json::from_utf8(
             r#"[{"key-id":"key-1","encrypted-key-metadata":"aWNlYmVyZw==",
                 "encrypted-by-id":"kms-1",
                 "properties":{"algorithm":"AES-256","rotation":"1"}}]"#,
@@ -1901,7 +1902,11 @@ mod tables {
             .with_key("snapshots", Scalar::from_sequence(snapshots))
             .unwrap();
         let metadata_path = path.join("metadata").join(table.metadata_file_name());
-        std::fs::write(metadata_path, crate::json::into_bytes(&document).unwrap()).unwrap();
+        std::fs::write(
+            metadata_path,
+            crate::text::json::into_bytes(&document).unwrap(),
+        )
+        .unwrap();
 
         let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
         let v1 = reopened.current_snapshot().unwrap();
@@ -5549,7 +5554,7 @@ mod manifest_planning {
         // Avro named-type references are valid container syntax, but a real
         // Iceberg manifest must also carry its schema and partition metadata.
         // The official parser owns that distinction for both planning modes.
-        let schema = crate::json::from_utf8(
+        let schema = crate::text::json::from_utf8(
             r#"{"type":"record","name":"manifest_entry","fields":[
                 {"name":"status","type":"int"},
                 {"name":"snapshot_id","type":["null","long"],"default":null},
@@ -5566,7 +5571,7 @@ mod manifest_planning {
             ]}"#,
         )
         .unwrap();
-        let row = crate::json::from_utf8(
+        let row = crate::text::json::from_utf8(
             r#"{"status":1,"snapshot_id":77,"data_file":{
                 "file_path":"file:///t/data/part-0.parquet",
                 "column_sizes":[{"key":1,"value":512}],
@@ -5959,7 +5964,7 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
     // datatype of its own; the spelling now survives in the datatype, so
     // rewriting another writer's metadata cannot demote the column. Surfaced
     // by the Spark interop exchange.
-    let document = crate::json::from_bytes(
+    let document = crate::text::json::from_bytes(
         br#"{"type":"struct","schema-id":0,"fields":[
             {"id":1,"name":"id","required":true,"type":"long"},
             {"id":2,"name":"u","required":false,"type":"uuid"},
@@ -5968,7 +5973,7 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
     .unwrap();
     let root = schema_from_json("row", &document).unwrap();
     let emitted = schema_into_json(&root).unwrap();
-    let rendered = String::from_utf8(crate::json::into_bytes(&emitted).unwrap()).unwrap();
+    let rendered = String::from_utf8(crate::text::json::into_bytes(&emitted).unwrap()).unwrap();
     assert!(rendered.contains(r#""type":"uuid""#), "{rendered}");
     assert!(rendered.contains(r#""type":"fixed[16]""#), "{rendered}");
 }

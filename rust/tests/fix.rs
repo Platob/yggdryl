@@ -336,7 +336,7 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
     std::fs::create_dir_all(root.join("nested").join("standard")).unwrap();
     std::fs::write(
         root.join("nested").join("standard").join("0.json"),
-        yggdryl::json::into_bytes(&Scalar::from_sequence([tagged("Text", 58).into_value()]))
+        yggdryl::text::json::into_bytes(&Scalar::from_sequence([tagged("Text", 58).into_value()]))
             .unwrap(),
     )
     .unwrap();
@@ -375,7 +375,7 @@ fn a_malformed_shard_names_its_location() {
     let untagged = Scalar::from_sequence([DataType::Utf8.nullable_field("Symbol").into_value()]);
     std::fs::write(
         shards.join("0.json"),
-        yggdryl::json::into_bytes(&untagged).unwrap(),
+        yggdryl::text::json::into_bytes(&untagged).unwrap(),
     )
     .unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
@@ -384,7 +384,7 @@ fn a_malformed_shard_names_its_location() {
     let misplaced = Scalar::from_sequence([tagged("ExecType", 150).into_value()]);
     std::fs::write(
         shards.join("0.json"),
-        yggdryl::json::into_bytes(&misplaced).unwrap(),
+        yggdryl::text::json::into_bytes(&misplaced).unwrap(),
     )
     .unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
@@ -401,7 +401,7 @@ fn a_malformed_shard_names_its_location() {
     ]);
     std::fs::write(
         shards.join("0.json"),
-        yggdryl::json::into_bytes(&twice).unwrap(),
+        yggdryl::text::json::into_bytes(&twice).unwrap(),
     )
     .unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
@@ -424,7 +424,7 @@ fn a_malformed_shard_names_its_location() {
     std::fs::remove_file(shards.join("0.json")).unwrap();
     std::fs::write(
         root.join("primitive").join("cme").join("0.json"),
-        yggdryl::json::into_bytes(&elsewhere).unwrap(),
+        yggdryl::text::json::into_bytes(&elsewhere).unwrap(),
     )
     .unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
@@ -435,7 +435,7 @@ fn a_malformed_shard_names_its_location() {
     std::fs::remove_file(root.join("primitive").join("cme").join("0.json")).unwrap();
     std::fs::write(
         root.join("primitive").join("standard").join("50.json"),
-        yggdryl::json::into_bytes(&elsewhere).unwrap(),
+        yggdryl::text::json::into_bytes(&elsewhere).unwrap(),
     )
     .unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();

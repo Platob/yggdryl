@@ -6,7 +6,7 @@ use crate::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
 fn manifest_shaped_schema() -> Scalar {
-    crate::json::from_utf8(
+    crate::text::json::from_utf8(
         r#"{"type":"record","name":"row","fields":[
             {"name":"code","type":"int","field-id":1},
             {"name":"name","type":"string","field-id":2},
@@ -70,12 +70,12 @@ mod containers {
     #[test]
     fn a_container_round_trips_every_encoded_branch() {
         let schema = manifest_shaped_schema();
-        let row = crate::json::from_utf8(
+        let row = crate::text::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,300000],
                 "nested":{"flag":true}}"#,
         )
         .unwrap();
-        let empty = crate::json::from_utf8(
+        let empty = crate::text::json::from_utf8(
             r#"{"code":0,"name":"","score":null,"raw":null,"tags":[],
                 "nested":{"flag":false}}"#,
         )
@@ -145,7 +145,7 @@ mod containers {
             &mut handle,
             &manifest_shaped_schema(),
             &[],
-            &[crate::json::from_utf8(
+            &[crate::text::json::from_utf8(
                 r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],
                     "nested":{"flag":true}}"#,
             )
@@ -168,12 +168,12 @@ mod containers {
         let mut handle = buffer();
         avro::write_container(
             &mut handle,
-            &crate::json::from_utf8(
+            &crate::text::json::from_utf8(
                 r#"{"type":"record","name":"r","fields":[{"name":"v","type":"long"}]}"#,
             )
             .unwrap(),
             &[],
-            &[crate::json::from_utf8(r#"{"v":1}"#).unwrap()],
+            &[crate::text::json::from_utf8(r#"{"v":1}"#).unwrap()],
         )
         .unwrap();
         let mut bytes = handle.read_all_bytes().unwrap();
@@ -215,7 +215,7 @@ mod containers {
 
     #[test]
     fn a_row_budget_is_applied_after_the_mandatory_header() {
-        let schema = crate::json::from_utf8(r#""long""#).unwrap();
+        let schema = crate::text::json::from_utf8(r#""long""#).unwrap();
         let rows = [Scalar::I64(1), Scalar::I64(2)];
         let mut handle = buffer();
         avro::write_container(&mut handle, &schema, &[], &rows).unwrap();
@@ -318,7 +318,7 @@ mod schemas {
         assert_eq!(date.stable_hash(), native.stable_hash());
 
         let reparsed =
-            Schema::from_str(&crate::json::into_utf8(&native.clone().into_json()).unwrap())
+            Schema::from_str(&crate::text::json::into_utf8(&native.clone().into_json()).unwrap())
                 .unwrap();
         assert_eq!(native, reparsed);
 
@@ -402,7 +402,7 @@ mod schemas {
 
     #[test]
     fn the_source_json_round_trips_verbatim() {
-        let document = crate::json::from_utf8(
+        let document = crate::text::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[{"name":"id","type":"int","field-id":42}]}"#,
         )
         .unwrap();
@@ -410,7 +410,7 @@ mod schemas {
         assert_eq!(schema.clone().into_json(), document);
         // The unmodeled attribute is still in the JSON the schema writes.
         let text =
-            String::from_utf8(crate::json::into_bytes(&schema.into_json()).unwrap()).unwrap();
+            String::from_utf8(crate::text::json::into_bytes(&schema.into_json()).unwrap()).unwrap();
         assert!(text.contains("field-id"), "{text}");
     }
 
@@ -444,14 +444,14 @@ mod schemas {
 
     #[test]
     fn a_recursive_schema_parses_and_round_trips_data() {
-        let schema_json = crate::json::from_utf8(
+        let schema_json = crate::text::json::from_utf8(
             r#"{"type":"record","name":"node","fields":[
                 {"name":"value","type":"long"},
                 {"name":"next","type":["null","node"],"default":null}
             ]}"#,
         )
         .unwrap();
-        let list = crate::json::from_utf8(
+        let list = crate::text::json::from_utf8(
             r#"{"value":1,"next":{"value":2,"next":{"value":3,"next":null}}}"#,
         )
         .unwrap();
@@ -480,7 +480,7 @@ mod schemas {
         for _ in 0..20 {
             document = format!(r#"{{"type":"array","items":{document}}}"#);
         }
-        let parsed = crate::json::from_utf8(&document).unwrap();
+        let parsed = crate::text::json::from_utf8(&document).unwrap();
         let limits = crate::Limits::new(8, 1 << 20, 1 << 20, 8);
         let message = Schema::from_json_with_limits(&parsed, limits)
             .unwrap_err()
@@ -534,7 +534,7 @@ mod logical {
 
     /// Round-trip one value through a single-field record container.
     fn round_trip(field_type: &str, value: Scalar) -> Scalar {
-        let schema = crate::json::from_utf8(&format!(
+        let schema = crate::text::json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{{"name":"v","type":{field_type}}}]}}"#
         ))
         .unwrap();
@@ -615,7 +615,7 @@ mod logical {
 
     #[test]
     fn a_lossy_unit_conversion_is_refused_naming_both_units() {
-        let schema = crate::json::from_utf8(
+        let schema = crate::text::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"long","logicalType":"time-micros"}}
             ]}"#,
@@ -665,7 +665,7 @@ mod logical {
 
     #[test]
     fn an_overflowing_decimal_is_refused_naming_the_precision() {
-        let schema = crate::json::from_utf8(
+        let schema = crate::text::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"bytes","logicalType":"decimal","precision":4,"scale":0}}
             ]}"#,
@@ -740,11 +740,11 @@ mod resolution {
 
     /// Write rows with the writer schema, read them back with the reader.
     fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Scalar> {
-        let writer_json = crate::json::from_utf8(writer).unwrap();
+        let writer_json = crate::text::json::from_utf8(writer).unwrap();
         let mut handle = super::buffer();
         let rows: Vec<Scalar> = rows
             .iter()
-            .map(|row| crate::json::from_utf8(row).unwrap())
+            .map(|row| crate::text::json::from_utf8(row).unwrap())
             .collect();
         avro::write_container(&mut handle, &writer_json, &[], &rows).unwrap();
         let reader = Schema::from_str(reader).unwrap();
@@ -930,13 +930,13 @@ mod resolution {
         );
         assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(9));
 
-        let writer_json = crate::json::from_utf8(&writer).unwrap();
+        let writer_json = crate::text::json::from_utf8(&writer).unwrap();
         let mut handle = super::buffer();
         avro::write_container(
             &mut handle,
             &writer_json,
             &[],
-            &[crate::json::from_utf8(r#"{"v":null}"#).unwrap()],
+            &[crate::text::json::from_utf8(r#"{"v":null}"#).unwrap()],
         )
         .unwrap();
         let reader = Schema::from_str(&record(r#"{"name":"v","type":"long"}"#)).unwrap();
@@ -999,7 +999,7 @@ mod resolution {
     fn resolving_to_the_writer_schema_is_the_identity() {
         let schema = super::manifest_shaped_schema();
         let parsed = Schema::from_json(&schema).unwrap();
-        let row = crate::json::from_utf8(
+        let row = crate::text::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -1151,7 +1151,7 @@ mod streaming {
     #[test]
     fn a_written_container_streams_back_the_same_rows() {
         let schema = super::manifest_shaped_schema();
-        let row = crate::json::from_utf8(
+        let row = crate::text::json::from_utf8(
             r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -2097,7 +2097,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &crate::json::from_utf8(
+            &crate::text::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"v","type":["null","long","string"]}
                 ]}"#,
@@ -2120,7 +2120,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &crate::json::from_utf8(
+            &crate::text::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"gap","type":["null"]},
                     {"name":"v","type":["long"]}
@@ -2129,8 +2129,8 @@ mod records {
             .unwrap(),
             &[],
             &[
-                crate::json::from_utf8(r#"{"gap":null,"v":5}"#).unwrap(),
-                crate::json::from_utf8(r#"{"gap":null,"v":6}"#).unwrap(),
+                crate::text::json::from_utf8(r#"{"gap":null,"v":5}"#).unwrap(),
+                crate::text::json::from_utf8(r#"{"gap":null,"v":6}"#).unwrap(),
             ],
         )
         .unwrap();
@@ -2309,7 +2309,7 @@ mod matrix {
 
     /// Round-trip rows through a container and hand them back.
     fn round_trip(schema: &str, rows: &[Scalar]) -> Vec<Scalar> {
-        let schema = crate::json::from_utf8(schema).unwrap();
+        let schema = crate::text::json::from_utf8(schema).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], rows).unwrap();
         avro::read_container(&handle).unwrap().rows
@@ -2347,7 +2347,7 @@ mod matrix {
                             ]}}}}
                 ]}}}
         ]}"#;
-        let row = crate::json::from_utf8(
+        let row = crate::text::json::from_utf8(
             r#"{"outer":[{"by_name":{"legs":[{"flag":true},{"flag":false}],"none":[]}}]}"#,
         )
         .unwrap();
@@ -2375,8 +2375,8 @@ mod matrix {
                 {"type":"record","name":"point","fields":[{"name":"x","type":"long"}]}
             ]}
         ]}"#;
-        let some = crate::json::from_utf8(r#"{"v":{"x":9}}"#).unwrap();
-        let none = crate::json::from_utf8(r#"{"v":null}"#).unwrap();
+        let some = crate::text::json::from_utf8(r#"{"v":{"x":9}}"#).unwrap();
+        let none = crate::text::json::from_utf8(r#"{"v":null}"#).unwrap();
         let rows = round_trip(schema, &[some.clone(), none.clone()]);
         assert_eq!(rows, [some, none]);
     }
@@ -2439,7 +2439,7 @@ mod snapshots {
     /// only for a deliberate format change, never to quiet the test.
     #[test]
     fn a_fixed_container_encodes_to_exactly_these_bytes() {
-        let schema = crate::json::from_utf8(
+        let schema = crate::text::json::from_utf8(
             r#"{"type":"record","name":"snap","fields":[
                 {"name":"id","type":"long"},
                 {"name":"tag","type":"string"}
@@ -2447,8 +2447,8 @@ mod snapshots {
         )
         .unwrap();
         let rows = [
-            crate::json::from_utf8(r#"{"id":1,"tag":"a"}"#).unwrap(),
-            crate::json::from_utf8(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
+            crate::text::json::from_utf8(r#"{"id":1,"tag":"a"}"#).unwrap(),
+            crate::text::json::from_utf8(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
         ];
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
@@ -2531,7 +2531,7 @@ mod fuzz_lite {
     #[test]
     fn mutated_containers_never_panic() {
         let schema = super::manifest_shaped_schema();
-        let rows = [crate::json::from_utf8(
+        let rows = [crate::text::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,3],
                 "nested":{"flag":true}}"#,
         )

@@ -1408,7 +1408,7 @@ impl<H: IOBase> Table<H> {
         metadata.finalize_official(previous)?;
         let compression = metadata.metadata_compression_codec()?;
         let document = metadata.clone().into_json()?;
-        let encoded = crate::json::into_bytes(&document)?;
+        let encoded = crate::text::json::into_bytes(&document)?;
         let (suffix, encoded) = match compression {
             iceberg_official::compression::CompressionCodec::None => ("", encoded),
             iceberg_official::compression::CompressionCodec::Gzip(_) => {
@@ -3074,7 +3074,7 @@ fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
     } else {
         bytes.to_vec()
     };
-    crate::json::from_bytes(&decoded)
+    crate::text::json::from_bytes(&decoded)
 }
 
 /// Report a folder that holds no Iceberg metadata document.

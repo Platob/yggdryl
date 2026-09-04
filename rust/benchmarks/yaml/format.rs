@@ -2,7 +2,8 @@ use std::hint::black_box;
 use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar, yaml};
+use yggdryl::text::yaml;
+use yggdryl::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 
 use crate::fixtures::{nested, representative, typed};
 

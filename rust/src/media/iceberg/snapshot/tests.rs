@@ -688,12 +688,12 @@ mod expiration {
     fn expiring_snapshots_removes_both_statistics_kinds() {
         let mut metadata = chained(2, 100_000);
         for snapshot_id in [1_i64, 2] {
-            let statistics = crate::json::from_utf8(&format!(
+            let statistics = crate::text::json::from_utf8(&format!(
                 r#"{{"snapshot-id":{snapshot_id},"statistics-path":"s3://a/{snapshot_id}.puffin","file-size-in-bytes":10,"file-footer-size-in-bytes":1,"blob-metadata":[]}}"#
             ))
             .unwrap();
             metadata.set_statistics(statistics).unwrap();
-            let partition_statistics = crate::json::from_utf8(&format!(
+            let partition_statistics = crate::text::json::from_utf8(&format!(
                 r#"{{"snapshot-id":{snapshot_id},"statistics-path":"s3://a/{snapshot_id}.parquet","file-size-in-bytes":10}}"#
             ))
             .unwrap();

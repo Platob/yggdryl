@@ -358,7 +358,7 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
     let described = document
         .url()
         .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
-    let value = crate::json::from_bytes(&bytes)?;
+    let value = crate::text::json::from_bytes(&bytes)?;
     let Some(entries) = value.get_key_str("properties") else {
         return Err(invalid(format_smolstr!(
             "expected a {{\"properties\": ...}} document at {described}, got one without the key"
@@ -450,7 +450,7 @@ fn write_properties_at(document: &mut Holder, pairs: Vec<(SmolStr, SmolStr)>) ->
             .map(|(key, value)| (Scalar::from(key.as_str()), Scalar::from(value.as_str()))),
     )?;
     let body = Scalar::from_mapping([(Scalar::from("properties"), properties)])?;
-    let bytes = crate::json::into_bytes(&body)?;
+    let bytes = crate::text::json::into_bytes(&body)?;
     document.write_all_bytes(&bytes)?;
     Ok(())
 }

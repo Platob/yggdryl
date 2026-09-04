@@ -73,7 +73,7 @@ impl Snapshot {
             timestamp_ms: self.timestamp_ms,
             manifest_list: &self.manifest_list,
             manifests: &self.manifests,
-            summary: crate::generic::sorted_pairs(&self.summary),
+            summary: crate::metadata::sorted_pairs(&self.summary),
             schema_id: self.schema_id,
             encryption_key_id: &self.encryption_key_id,
             first_row_id: self.first_row_id,
@@ -685,25 +685,27 @@ mod strict_json_tests {
             r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","summary":{"operation":3}}"#,
             r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","sequence-number":-1}"#,
         ] {
-            let document = crate::json::from_utf8(text).unwrap();
+            let document = crate::text::json::from_utf8(text).unwrap();
             assert!(Snapshot::from_json(&document).is_err(), "{text}");
         }
     }
 
     #[test]
     fn snapshot_requires_one_manifest_location_shape() {
-        let missing = crate::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2}"#).unwrap();
+        let missing =
+            crate::text::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2}"#).unwrap();
         assert!(Snapshot::from_json(&missing).is_err());
 
-        let both = crate::json::from_utf8(
+        let both = crate::text::json::from_utf8(
             r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","manifests":[]}"#,
         )
         .unwrap();
         assert!(Snapshot::from_json(&both).is_err());
 
-        let v1 =
-            crate::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2,"manifests":["m.avro"]}"#)
-                .unwrap();
+        let v1 = crate::text::json::from_utf8(
+            r#"{"snapshot-id":1,"timestamp-ms":2,"manifests":["m.avro"]}"#,
+        )
+        .unwrap();
         let snapshot = Snapshot::from_json(&v1).unwrap();
         snapshot.validate_for_version(FormatVersion::V1).unwrap();
     }
@@ -718,7 +720,7 @@ mod strict_json_tests {
             r#"{"snapshot-id":1,"type":"tag","min-snapshots-to-keep":1}"#,
             r#"{"snapshot-id":1,"type":"other"}"#,
         ] {
-            let document = crate::json::from_utf8(text).unwrap();
+            let document = crate::text::json::from_utf8(text).unwrap();
             assert!(SnapshotRef::from_json(&document).is_err(), "{text}");
         }
     }

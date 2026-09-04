@@ -3,7 +3,8 @@ use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::text;
-use yggdryl::{Scalar, from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar, toml};
+use yggdryl::text::toml;
+use yggdryl::{Scalar, from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 
 use crate::fixtures::{nested, representative, typed};
 

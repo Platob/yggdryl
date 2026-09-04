@@ -22,7 +22,7 @@ fn exchange_dir() -> std::path::PathBuf {
 
 /// The writer schema both sides agree on, logical types included.
 fn schema() -> Scalar {
-    yggdryl::json::from_utf8(
+    yggdryl::text::json::from_utf8(
         r#"{"type": "record", "name": "trade", "fields": [
             {"name": "symbol", "type": "string"},
             {"name": "quantity", "type": "long"},

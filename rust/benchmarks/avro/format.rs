@@ -10,7 +10,8 @@ use std::hint::black_box;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
 use yggdryl::media::avro;
-use yggdryl::{Limits, Scalar, json};
+use yggdryl::text::json;
+use yggdryl::{Limits, Scalar};
 
 /// Rows per fixture.
 const ROWS: usize = crate::bench_profile::corpus(10_000, 512);
