@@ -1263,6 +1263,110 @@
   pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self
   pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
 
+### yggdryl::fix  [rust\src\fix\mod.rs]
+  pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry)
+  pub const STANDARD: Self
+  pub const MAX_LENGTH: usize
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub fn is_standard(&self) -> bool
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default for FixBranch
+  impl FromStr for FixBranch  (Err = Error)
+  impl AsRef<str> for FixBranch
+  impl fmt::Display for FixBranch
+  pub struct FixId
+  pub const STANDARD_TAG_LIMIT: i32
+  pub fn standard(tag: i32) -> Self
+  pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self>
+  pub fn from_str(text: &str) -> Result<Self>
+  pub const fn branch(&self) -> &FixBranch
+  pub const fn tag(&self) -> i32
+  pub fn is_standard(&self) -> bool
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is branch-major)
+  impl FromStr for FixId  (Err = Error)
+  impl fmt::Display for FixId  (always "<branch>:<tag>")
+  pub enum FixKey<'a>  (Tag(i32) | Id(&'a FixId) | Name(&'a str))
+  impl From<i32> for FixKey<'_>
+  impl<'a> From<&'a FixId> for FixKey<'a>
+  impl<'a> From<&'a str> for FixKey<'a>
+  impl<'a> From<&'a String> for FixKey<'a>
+  impl fmt::Display for FixKey<'_>
+
+### yggdryl::fix::field  [rust\src\fix\field.rs]
+  impl<'field> FixField<'field>
+  pub fn branch(&self) -> Result<FixBranch>
+  pub fn id(&self) -> Result<Option<FixId>>
+  pub fn tag(&self) -> Result<Option<i32>>
+  pub fn tags(&self) -> Result<Vec<i32>>
+  pub fn aliases(&self) -> FixAliases<'field>
+  pub fn description(&self) -> Option<&'field str>
+  impl FixFieldMut<'_>
+  pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
+  pub fn set_id(&mut self, id: &FixId) -> Result<()>
+  pub fn set_tag(&mut self, tag: i32) -> Result<()>
+  pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
+  pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
+  pub struct FixAliases<'field>
+  impl<'field> Iterator for FixAliases<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
+
+### yggdryl::fix::registry  [rust\src\fix\registry.rs]
+  pub struct FixRegistry
+  pub fn new() -> Self
+  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
+  pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field>
+  pub fn field_by_id(&self, id: &FixId) -> Result<&Field>
+  pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
+  pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
+  pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
+  pub fn field_by_name(&self, branch: &FixBranch, name: &str) -> Result<&Field>
+  pub fn get_field_by_path(&self, branch: &FixBranch, path: &str) -> Option<&Field>
+  pub fn field_by_path(&self, branch: &FixBranch, path: &str) -> Result<&Field>
+  pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
+  pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
+  pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
+  pub fn insert(&mut self, field: Field) -> Result<Option<Field>>
+  pub fn update(&mut self, field: Field) -> Result<()>
+  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
+  pub fn next_field_after(&self, after: Option<&FixId>) -> Option<&Field>
+  pub fn iter(&self) -> FixFieldIter<'_>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  impl Clone, Default, Debug, PartialEq, Eq for FixRegistry
+  impl<'registry> IntoIterator for &'registry FixRegistry  (IntoIter = FixFieldIter<'registry>)
+  pub struct FixFieldIter<'registry>
+  impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
+
+### yggdryl::fix::store  [rust\src\fix\store.rs]
+  impl FixRegistry
+  pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
+  pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
+
+### yggdryl::fix::global  [rust\src\fix\global.rs]
+  impl FixRegistry
+  pub fn global() -> Result<&'static Arc<Self>>
+  pub fn install_global(registry: Self) -> Result<()>
+
+### yggdryl::fix::msg  [rust\src\fix\msg.rs]
+  pub struct FixMsg
+  pub fn new(field: Field, value: Scalar) -> Result<Self>
+  pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>
+  pub const fn registry(&self) -> &Arc<FixRegistry>
+  pub const fn branch(&self) -> &FixBranch
+  pub const fn as_field(&self) -> &Field
+  pub const fn as_value(&self) -> &Scalar
+  pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar>
+  pub fn by_id(&self, id: &FixId) -> Result<&Scalar>
+  pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar>
+  pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
+  pub fn get_by_name(&self, name: &str) -> Option<&Scalar>
+  pub fn by_name(&self, name: &str) -> Result<&Scalar>
+  pub fn get_by_path(&self, path: &str) -> Option<&Scalar>
+  pub fn by_path(&self, path: &str) -> Result<&Scalar>
+  pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar>
+  pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
+  impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
+
 ### yggdryl::generic::coded  [rust\src\generic\coded.rs]
   pub enum Coded<H: IOBase>
   pub fn wrap(handle: H, codec: crate::Codec) -> Self
@@ -1797,6 +1901,9 @@
 
 ### yggdryl::json  [rust\src\json\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 384;
+  pub fn from_json_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_json_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub fn from_utf8(input: &str) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
   pub fn from_bytes(input: &[u8]) -> Result<Scalar>
@@ -1865,6 +1972,9 @@
   pub struct Folder
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
+  pub fn temporary() -> Result<Self>
+  pub fn home() -> Result<Self>
+  pub fn config() -> Result<Self>
   pub const fn url(&self) -> &Url
   pub fn path(&self) -> Result<PathBuf>
   pub fn exists(&self) -> bool
@@ -2230,6 +2340,9 @@
   pub fn temporal_dtype(&self) -> Option<DataType>
 
 ### yggdryl::toml  [rust\src\toml\mod.rs]
+  pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_toml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub const MAX_PARSER_DEPTH: usize = 64;
   pub fn from_utf8(input: &str) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
@@ -2430,6 +2543,9 @@
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::yaml  [rust\src\yaml\mod.rs]
+  pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_yaml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub const MAX_FLOW_DEPTH: usize = 255;
   pub const MAX_PARSER_DEPTH: usize = 384;
   pub fn from_utf8(input: &str) -> Result<Scalar>

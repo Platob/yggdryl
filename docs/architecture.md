@@ -151,6 +151,7 @@ recursive parsing, validation, comparison, hashing, and conversion never happen 
 | --- | --- |
 | `datatype` | [The logical type tree](datatype.md) |
 | `field` | [Names, nullability, metadata, borrowed protocol views, partition marks, validation, casting](field.md) |
+| `fix` | [The `fix:` vocabulary, the tag-and-name registry, its shards, the process default, and the message value](fix.md) |
 | `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
 | `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
 | `expression` | [The one filter and projection tree, its grammar, its bind, and its three tiers](expression.md) |

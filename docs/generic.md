@@ -141,12 +141,13 @@ the optimized view without stacking wrappers.
 
 ```rust
 use yggdryl::generic::Holder;
+use yggdryl::local::Folder;
 
 // Generic construction records the location without probing its role.
-let directory = Holder::local(std::env::temp_dir())?;
+let directory = Holder::local(Folder::temporary()?.path()?)?;
 assert!(matches!(directory, Holder::Path(_)));
 
-let missing = Holder::local(std::env::temp_dir().join("yggdryl-generic-doc.bin"))?;
+let missing = Holder::local(Folder::temporary()?.path()?.join("yggdryl-generic-doc.bin"))?;
 assert!(matches!(missing, Holder::Path(_)));
 ```
 
@@ -165,8 +166,9 @@ Walking a tree stays in one type, because every hierarchy accessor returns `Hold
 ```rust
 use yggdryl::generic::Holder;
 use yggdryl::io::IOBase;
+use yggdryl::local::Folder;
 
-let root = Holder::folder(std::env::temp_dir())?;
+let root = Holder::folder(Folder::temporary()?.path()?)?;
 assert!(root.is_container());
 
 // A child need not exist. Naming one yields a leaf handle, and nothing is created.

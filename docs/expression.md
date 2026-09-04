@@ -193,7 +193,7 @@ attribute whose price depends on the backend is classified by its worst case.
     use yggdryl::local::Folder;
     use yggdryl::Expression;
 
-    let lake = Folder::new(std::env::temp_dir().join("yggdryl-docs-lake"))?;
+    let lake = Folder::new(Folder::temporary()?.path()?.join("yggdryl-docs-lake"))?;
     std::fs::create_dir_all(lake.path()?.join("year=2024"))?;
     std::fs::write(lake.path()?.join("year=2024").join("part-0.parquet"), b"")?;
     std::fs::create_dir_all(lake.path()?.join("year=2025"))?;

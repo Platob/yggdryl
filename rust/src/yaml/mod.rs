@@ -1,4 +1,14 @@
 //! Natural YAML values, comments, and document streams.
+//!
+//! The explicit representation forms carry the implementation: `from_utf8`,
+//! `from_bytes` and `from_reader` with their `_all`, `_with_field` and
+//! `_with_limits` modifiers, and `into_utf8`, `into_bytes` and `into_writer`
+//! with `_with_formatting`. [`from_yaml_scalar`], [`from_yaml_scalar_with_field`]
+//! and [`into_yaml_scalar`] are the one inferring boundary over them, not
+//! aliases: each names the `Scalar` it answers, coerces any byte-like input at
+//! the boundary and redirects to its explicit form, holding no parsing,
+//! rendering, validation or limits logic of its own. Deleting them as
+//! duplicates would remove the only entry point that names the `Scalar`.
 
 use std::io::{Read, Write};
 
@@ -25,6 +35,66 @@ pub const MAX_FLOW_DEPTH: usize = 255;
 /// Caller limits may choose any smaller depth. This implementation ceiling
 /// keeps deeply nested block syntax from exhausting the conversion stack.
 pub const MAX_PARSER_DEPTH: usize = 384;
+
+/// Decode exactly one YAML document from byte-like content into the shared
+/// `Scalar`.
+///
+/// This is the inferring entry point over [`from_bytes`]: `input` may be
+/// `&str`, `String`, `&[u8]`, `Vec<u8>` or any other byte-like value, and its
+/// bytes are decoded there under default [`Limits`]. Inference is
+/// deterministic - the input is always content, never a path - so text that
+/// happens to name an existing file is the plain scalar spelling that name,
+/// never the file. A caller who needs explicit limits calls
+/// [`from_bytes_with_limits`].
+///
+/// ```
+/// use yggdryl::{Scalar, from_yaml_scalar, into_yaml_scalar};
+///
+/// let value = from_yaml_scalar("id: 1\n")?;
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
+    from_bytes(input.as_ref())
+}
+
+/// Decode YAML content and interpret the natural value under `field`,
+/// answering the shared `Scalar`.
+///
+/// This is the inferring entry point over [`from_bytes_with_field`]: it
+/// coerces `input` exactly as [`from_yaml_scalar`] does - content, never a
+/// path - and redirects, so `field` types natural strings, orders records and
+/// validates there under default [`Limits`]. Explicit limits go through
+/// [`from_bytes_with_field_and_limits`].
+///
+/// ```
+/// use yggdryl::{DataType, Field, Scalar, from_yaml_scalar_with_field};
+///
+/// let field = Field::new("amount", DataType::decimal128(10, 2)?, false);
+/// let value = from_yaml_scalar_with_field("'12.50'\n", &field)?;
+/// assert_eq!(value, Scalar::d128(1250, 2));
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar> {
+    from_bytes_with_field(input.as_ref(), field)
+}
+
+/// Encode one value as YAML UTF-8, naming the shared `Scalar` it takes.
+///
+/// This is the named entry point over [`into_utf8`], which it redirects to
+/// unchanged; another layout goes through [`into_utf8_with_formatting`].
+///
+/// ```
+/// use yggdryl::{Scalar, into_yaml_scalar};
+///
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn into_yaml_scalar(value: &Scalar) -> Result<String> {
+    into_utf8(value)
+}
 
 /// Decode exactly one YAML document from borrowed UTF-8 text.
 ///

@@ -441,6 +441,17 @@ Rust names the transport in `from_utf8`, `from_bytes`, `from_reader`,
 Lines, and YAML documents. `Json`, `JsonLines`, `Yaml`, and `Toml` implement the
 same `TextCodec` contract.
 
+Each format also has exactly one inferring entry point that names the `Scalar`
+it answers - `from_json_scalar`, `from_json_scalar_with_field` and
+`into_json_scalar`, with the YAML and TOML twins - re-exported at the crate root
+beside `Scalar`. It coerces at the boundary and redirects to the explicit form:
+`&str`, `String`, `&[u8]`, `Vec<u8>` or any other byte-like value is content,
+never a path, so text that names an existing file is parsed rather than read,
+and a caller who needs `_with_limits` or `_with_formatting` calls the explicit
+form. Python `loads(..., cls=Scalar)` with `dumps` and JavaScript
+`loads(..., { scalar: true })` with `dumps` are the bindings' one inferring
+entry point already.
+
 Python and JavaScript retain the formats' familiar `loads` / `dumps` names.
 Python `dump(value)` returns bytes, `dump(value, utf8=True)` returns text, and
 `dump(value, destination)` writes directly. JavaScript returns `Buffer` or

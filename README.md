@@ -52,6 +52,7 @@ rust/                    The core crate
   src/datatype/          Categorized datatype implementation
   src/field/             Field state, protocol views, Arrow projection, casting, parsing
   src/field/protocol/    A field borrowed as one protocol, and each protocol's vocabulary
+  src/fix/               FIX vocabulary, the tag-and-name registry, its shards, the process default
   src/metadata.rs        Immutable shared metadata value
   src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
   src/io/                The IOBase storage trait, Buffer, and Coded

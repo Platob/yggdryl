@@ -73,7 +73,10 @@ pub(crate) fn memory() -> Arc<MemoryFileSystem> {
 
 /// One local filesystem mapping, and the temporary root it works under.
 pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
-    let mut root = std::env::temp_dir();
+    let mut root = yggdryl::local::Folder::temporary()
+        .expect("the temporary directory")
+        .path()
+        .expect("a platform path");
     root.push(format!("yggdryl-arrowfs-bench-{}", std::process::id()));
     std::fs::create_dir_all(&root).expect("a writable temporary root");
     (Arc::new(LocalFileSystem::new()), root)

@@ -817,6 +817,22 @@ impl DataType {
         }
     }
 
+    /// Returns the item field of a list-shaped datatype.
+    ///
+    /// The five list layouts hold exactly one child, and a dotted path treats
+    /// that child as a step it need not spell; this is the one place they are
+    /// recognized as such.
+    fn list_item(&self) -> Option<&Field> {
+        match self {
+            Self::List(field)
+            | Self::ListView(field)
+            | Self::FixedSizeList(field, _)
+            | Self::LargeList(field)
+            | Self::LargeListView(field) => Some(field),
+            _ => None,
+        }
+    }
+
     /// Returns a nested child by path, preferring an exact name at every step.
     ///
     /// A child carrying the whole string as its own name wins outright, so a
@@ -825,6 +841,13 @@ impl DataType {
     /// right, and a head that names a child is descended into. A descent that
     /// finds nothing falls back to the next boundary, so `"a.b.c"` resolves
     /// even when `a.b` is one child carrying `c`.
+    ///
+    /// A list-shaped datatype - `List`, `LargeList`, `FixedSizeList`,
+    /// `ListView`, `LargeListView` - is transparent to a path: a segment is
+    /// matched against the item's own name first, and otherwise resolved
+    /// against the item's children, so `orders.price` reaches the price of an
+    /// `array<struct>` item the way `orders.item.price` does. A map is not
+    /// transparent; its one child is the entries field, addressed by name.
     ///
     /// ```
     /// use yggdryl::DataType;
@@ -839,6 +862,11 @@ impl DataType {
     /// // The whole string first: a dotted name is a name, not a path.
     /// let dotted = DataType::from_fields([DataType::Int64.required_field("a.b")])?;
     /// assert_eq!(dotted.get_field_by_path("a.b").unwrap().name(), "a.b");
+    ///
+    /// // A list is transparent: its item is a step the path need not spell.
+    /// let orders = DataType::from_str("struct<orders:array<struct<price:double>>>")?;
+    /// assert_eq!(orders.get_field_by_path("orders.price").unwrap().name(), "price");
+    /// assert_eq!(orders.get_field_by_path("orders.item.price").unwrap().name(), "price");
     /// # Ok(())
     /// # }
     /// ```
@@ -856,7 +884,10 @@ impl DataType {
             }
             offset = boundary + 1;
         }
-        None
+        // Nothing here carries the path, so a list hands it to its item: the
+        // item's own name was already tried above, and this is the rest of it.
+        self.list_item()
+            .and_then(|item| item.get_field_by_path(path))
     }
 
     /// Returns a nested child by position or by path.
@@ -969,6 +1000,12 @@ impl DataType {
     /// nothing appends one child under that name - which is how a struct gets
     /// built up - so a path whose parents do not exist appends a single child
     /// rather than conjuring the chain.
+    ///
+    /// The one difference from the reader is deliberate: a list is not
+    /// transparent to a write. Reading `orders.price` may reach into a list's
+    /// item, but replacing or removing a child is a change to the node that
+    /// holds it, so a write addresses the item by its own name -
+    /// `orders.item.price` - and a list never grows a second child.
     ///
     /// The child is stored under the name the path ends in, whatever it calls
     /// itself.

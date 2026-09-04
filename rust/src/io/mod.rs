@@ -703,7 +703,7 @@ pub trait IOBase: Send + IOMedia {
     /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
     ///
     /// for entry in lake.ls(true, false).take(3) {
     ///     let _ = entry?;
@@ -730,7 +730,7 @@ pub trait IOBase: Send + IOMedia {
     /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
     ///
     /// for part in lake.glob("year=2024/**/*.parquet", false)? {
     ///     println!("{}", part?.url().expect("a located child"));
@@ -809,7 +809,7 @@ pub trait IOBase: Send + IOMedia {
     /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
     ///
     /// let filter = "&holder.partition['year'] = '2024' and &holder.extension = 'parquet'"
     ///     .parse()?;
@@ -878,7 +878,7 @@ pub trait IOBase: Send + IOMedia {
     /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(std::env::temp_dir().join("lake"))?;
+    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
     ///
     /// for part in lake.children_where(&[("year", "2024")], false)? {
     ///     part?.clear()?;

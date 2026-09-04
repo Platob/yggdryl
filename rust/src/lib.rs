@@ -24,6 +24,7 @@ mod datatype;
 mod error;
 pub mod expression;
 pub mod field;
+pub mod fix;
 pub mod generic;
 pub mod gzip;
 #[cfg(feature = "iceberg")]
@@ -79,18 +80,22 @@ pub use field::{
     AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
+pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
 pub use generic::{
     Codec, DataTypeId, DataTypeKind, Digest, DigestAlgorithm, DigestBytes, Digester, EdgeAlgorithm,
     Encoder, EnumScalar, Float, IOKind, IOMode, Integer, Level, MediaType, MimeType, Scheme,
     TemporalFamily, TemporalRef, TimeUnit, Timezone, UnionMode,
 };
 pub use generic::{I256, Scalar};
+pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
+pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
 };
+pub use yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 
 #[cfg(test)]
 mod tests {

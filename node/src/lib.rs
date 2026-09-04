@@ -21,6 +21,7 @@ mod datatype;
 mod enums;
 mod expression;
 mod field;
+mod fix;
 mod generic;
 mod iceberg;
 mod io;
@@ -38,7 +39,7 @@ mod xxhash;
 
 use std::cmp::Ordering;
 
-use napi::bindgen_prelude::{Error, Generator};
+use napi::bindgen_prelude::{Env, Error, Generator};
 use napi_derive::napi;
 use yggdryl::OwnedDifferences;
 
@@ -62,6 +63,10 @@ pub use expression::{
     BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
 };
 pub use field::{JsField, JsProtocolField, MetadataEntry};
+pub use fix::{
+    JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry, fix_global_registry,
+    fix_install_global_registry, fix_standard_branch_native, fix_standard_tag_limit_native,
+};
 pub use generic::JsRecordOptions;
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
@@ -91,6 +96,19 @@ pub(crate) fn json_document(value: serde_json::Value) -> serde_json::Result<serd
 
 pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
+}
+
+/// Throw a real JavaScript `TypeError`, then report the pending exception.
+///
+/// An `Error` returned from a binding method always arrives as a plain
+/// `Error`, whatever status it carries, so a refusal a caller tells apart by
+/// class has to throw that class itself and report that an exception is
+/// already pending.
+pub(crate) fn napi_type_error(env: Env, reason: String) -> Error {
+    match env.throw_type_error(&reason, None) {
+        Ok(()) => Error::new(napi::Status::PendingException, reason),
+        Err(error) => error,
+    }
 }
 
 pub(crate) fn ordering_value(ordering: Ordering) -> i32 {

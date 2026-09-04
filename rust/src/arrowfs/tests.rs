@@ -1001,7 +1001,7 @@ mod records {
 
     /// A temporary root for the local reference filesystem.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = crate::local::Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-arrowfs-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();

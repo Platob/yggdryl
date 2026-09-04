@@ -189,6 +189,100 @@ fn a_path_resolves_by_name_before_it_decomposes() {
 }
 
 #[test]
+fn a_list_is_transparent_to_a_dotted_path_when_reading() {
+    let item = DataType::from_fields([
+        DataType::Float64.required_field("price"),
+        DataType::from_fields([DataType::Utf8.required_field("id")])
+            .unwrap()
+            .required_field("party"),
+    ])
+    .unwrap()
+    .required_field("item");
+    let orders = DataType::from_fields([DataType::list(item.clone()).nullable_field("orders")])
+        .unwrap()
+        .required_field("row");
+
+    // The item is a step the path need not spell, and both spellings agree.
+    assert_eq!(
+        orders.field_by_path("orders.price").unwrap().name(),
+        "price"
+    );
+    assert_eq!(
+        orders.field_by_path("orders.item.price").unwrap().name(),
+        "price"
+    );
+    assert_eq!(
+        orders.field_by_path("orders.party.id").unwrap().name(),
+        "id"
+    );
+    assert_eq!(orders["orders"]["price"].name(), "price");
+    assert_eq!(
+        orders.get_field("orders.price"),
+        orders.get_field("orders.item.price")
+    );
+
+    // The item's own name still wins outright.
+    assert_eq!(orders.field_by_path("orders.item").unwrap().name(), "item");
+
+    // A path that resolves through no child reports the path that failed.
+    let message = orders
+        .field_by_path("orders.quantity")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("orders.quantity"), "{message}");
+    assert!(orders.get_field_by_path("orders.quantity").is_none());
+
+    // Every list layout reads the same way; a map keeps its entries by name.
+    let leaf = DataType::from_fields([DataType::Int64.required_field("value")])
+        .unwrap()
+        .required_field("item");
+    for layout in [
+        DataType::list(leaf.clone()),
+        DataType::large_list(leaf.clone()),
+        DataType::list_view(leaf.clone()),
+        DataType::large_list_view(leaf.clone()),
+        DataType::fixed_size_list(leaf.clone(), 2).unwrap(),
+    ] {
+        assert_eq!(
+            layout.get_field_by_path("value").map(Field::name),
+            Some("value"),
+            "{layout}"
+        );
+        assert_eq!(
+            layout.get_field_by_path("item.value").map(Field::name),
+            Some("value"),
+            "{layout}"
+        );
+    }
+    let map = DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap();
+    assert!(map.get_field_by_path("value").is_none());
+    assert_eq!(
+        map.get_field_by_path("entries.value").map(Field::name),
+        Some("value")
+    );
+
+    // A write is not transparent: it addresses the item by its own name, and
+    // a list never grows a second child.
+    let mut written = orders.clone();
+    written
+        .set_field_by_path(
+            "orders.item.price",
+            DataType::Float32.required_field("price"),
+        )
+        .unwrap();
+    assert_eq!(written["orders"]["price"].dtype(), &DataType::Float32);
+    assert_eq!(
+        written
+            .remove_field_by_path("orders.item.party")
+            .unwrap()
+            .name(),
+        "party"
+    );
+    assert_eq!(written["orders"].dtype().field_len(), 1);
+    assert_eq!(written["orders"]["item"].field_len(), 1);
+}
+
+#[test]
 fn one_key_reaches_a_child_by_position_or_by_path() {
     let row = DataType::from_fields([DataType::from_fields([
         DataType::Float64.required_field("price")

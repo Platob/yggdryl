@@ -72,6 +72,58 @@ Record. Python `cls=Scalar` and JavaScript `{ scalar: true }` expose that exact
 tree; omitting the selector returns natural mappings. Deterministic order makes
 repeated writes byte-identical.
 
+### One inferring entry point
+
+`yggdryl::from_toml_scalar`, `from_toml_scalar_with_field` and
+`into_toml_scalar` are TOML's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`; the answer is a
+`Record` because a TOML root is a table. Text that names an existing file is
+parsed as TOML, so a bare file name fails as the bare word it is.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{from_toml_scalar, into_toml_scalar, Scalar};
+
+    let value = from_toml_scalar(
+        "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n"
+    )?;
+    let encoded = into_toml_scalar(&value)?;
+
+    assert_eq!(from_toml_scalar(encoded.as_bytes())?, value);
+    assert_eq!(
+        value.get_key_str("title").and_then(Scalar::as_utf8),
+        Some("yggdryl")
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, toml
+
+    source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
+    value = toml.loads(source, cls=Scalar)
+    encoded = toml.dumps(value)
+
+    assert toml.loads(encoded, cls=Scalar) == value
+    assert value.as_py()["title"] == "yggdryl"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { toml } = require('yggdryl')
+
+    const source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
+    const value = toml.loads(source, { scalar: true })
+    const encoded = toml.dumps(value)
+
+    assert.ok(toml.loads(encoded, { scalar: true }).equals(value))
+    assert.equal(value.asJs().title, 'yggdryl')
+    ```
+
 ## Natural values and exact Fields
 
 TOML proves strings, signed 64-bit integers, 64-bit floats, booleans, arrays,

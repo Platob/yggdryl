@@ -62,12 +62,14 @@ import type {
   Xxh32,
   Xxh64,
 } from './index'
-// The Iceberg values are reached through the `iceberg` namespace, so they are
-// imported here as values to type it and re-exported as types only.
+// The Iceberg and FIX values are reached through their namespaces, so they are
+// imported here as values to type those and re-exported as types only.
 import {
   Catalog,
   Compaction,
   DataFile,
+  FixMsg,
+  FixRegistry,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -89,6 +91,8 @@ export type {
   Catalog,
   Compaction,
   DataFile,
+  FixMsg,
+  FixRegistry,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -413,6 +417,16 @@ declare module './index' {
     defaultJSHint(): JSValueHint
     defaultArrowScalar(): unknown
     intoSchemeCompat(target: CompatibilityScheme): DataType
+  }
+
+  interface FixRegistry {
+    /** Walk the fields in ascending canonical-identifier order, lazily. */
+    [Symbol.iterator](): Generator<Field>
+  }
+
+  interface FixMsg {
+    /** Walk the root's `[name, value]` pairs in the order it declares. */
+    [Symbol.iterator](): Generator<[string, Scalar]>
   }
 
   interface Field {
@@ -1999,6 +2013,56 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/**
+ * A message value: the native scalar, or the row `Scalar.fromJs` reads.
+ *
+ * A plain object is the obvious JavaScript spelling of a named row, and the
+ * declared root Struct field is what orders, types and validates it - in the
+ * core, as every other row is.
+ */
+export type FixValueInput = Scalar | Record<string, unknown> | readonly unknown[]
+
+/**
+ * The public `FixMsg` constructor, which widens the value the native class
+ * takes: `Scalar.fromJs` lives in the loader, so it runs here.
+ */
+export interface FixMsgConstructor {
+  /** Build a message, linking the process default when none is named. */
+  new (
+    field: Field,
+    value: FixValueInput,
+    registry?: FixRegistry | null,
+  ): FixMsg
+  readonly prototype: FixMsg
+}
+
+/** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
+export interface Fix {
+  /**
+   * The FIX specification's own dictionary, and what an absent `fix:branch`
+   * means: the branch every bare tag and every bare name resolves in.
+   */
+  readonly STANDARD_BRANCH: string
+  /**
+   * The first tag the FIX specification does not assign itself. Below it a tag
+   * forces `STANDARD_BRANCH`, so no other dictionary may claim one.
+   */
+  readonly STANDARD_TAG_LIMIT: number
+  /**
+   * FIX field definitions resolved by identifier, by tag, by name, or by
+   * dotted path.
+   */
+  readonly FixRegistry: typeof FixRegistry
+  /** A FIX message: a value plus the registry that types it. */
+  readonly FixMsg: FixMsgConstructor
+  /** The process-wide registry, loading it on the first call. */
+  globalRegistry(): FixRegistry
+  /** Install the process-wide registry before anything resolves it. */
+  installGlobalRegistry(registry: FixRegistry): void
+}
+
+export declare const fix: Fix
 
 /** What an Arrow file system reports one path to be. */
 export type ArrowFileKind = 'file' | 'directory' | 'unknown' | 'not-found'

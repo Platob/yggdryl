@@ -24,6 +24,7 @@ from . import (
     codec as codec,
     enums as enums,
     fields as fields,
+    fix as fix,
     gzip as gzip,
     iceberg as iceberg,
     json as json,

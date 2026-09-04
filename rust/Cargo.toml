@@ -101,6 +101,14 @@ name = "field"
 path = "benchmarks/field.rs"
 harness = false
 
+# The FIX registry: tiered resolution against a plain map, mutation over a
+# realistic dictionary, and shard loading against shard count. The module is
+# unconditional, so the target compiles in a default build.
+[[bench]]
+name = "fix"
+path = "benchmarks/fix.rs"
+harness = false
+
 [[bench]]
 name = "enums"
 path = "benchmarks/enums.rs"

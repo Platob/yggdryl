@@ -18,6 +18,7 @@ use crate::datatype::{
     arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
+use crate::fix::{FixTag, branch_from_py, id_from_py};
 use crate::media::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
@@ -1942,6 +1943,21 @@ impl PyProtocolField {
         field.require_mutable()?;
         Ok(field)
     }
+
+    /// Refuse a typed FIX property on a view of another protocol.
+    ///
+    /// The typed vocabulary belongs to one protocol, so it is answered only
+    /// by the view `field.fix` returns; every other scheme reads and writes
+    /// its own properties through the mapping protocol above.
+    fn require_fix(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::FIX {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a fix property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
 }
 
 #[pymethods]
@@ -2084,6 +2100,161 @@ impl PyProtocolField {
             .protocol(&self.scheme)
             .display()
             .map(str::to_owned))
+    }
+
+    /// The dictionary this field belongs to, on the `fix` view.
+    ///
+    /// A branch crosses as text: `"standard"` is the FIX specification's own
+    /// dictionary and what an absent `fix:branch` means, and assigning it
+    /// removes the key rather than storing it. A spelling that is not a branch
+    /// is a `ValueError` carrying the native parse failure, and a refusal -
+    /// a tag the specification assigns cannot move to another dictionary -
+    /// leaves the field unchanged.
+    #[getter]
+    fn branch(&self, py: Python<'_>) -> PyResult<String> {
+        self.require_fix("branch")?;
+        let field = self.borrow_field(py)?;
+        field
+            .inner
+            .as_fix()
+            .branch()
+            .map(|branch| branch.as_str().to_owned())
+            .map_err(value_error)
+    }
+
+    #[setter]
+    fn set_branch(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("branch")?;
+        let branch = branch_from_py(&value.extract::<String>()?)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_branch(&branch)
+            .map_err(value_error)
+    }
+
+    /// This field's identity, `branch:tag`, on the `fix` view.
+    ///
+    /// Derived from the branch and the canonical tag on every read and never
+    /// stored, so it is `None` exactly when `fix:tag` is absent. Assigning one
+    /// moves both halves at once, which is the only ordering-safe way to move
+    /// a field between dictionaries.
+    #[getter]
+    fn id(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("id")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .id()
+            .map_err(value_error)?
+            .map(|id| id.to_string()))
+    }
+
+    #[setter]
+    fn set_id(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("id")?;
+        let id = id_from_py(&value.extract::<String>()?)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field.inner.as_fix_mut().set_id(&id).map_err(value_error)
+    }
+
+    /// The canonical FIX tag, on the `fix` view.
+    ///
+    /// Reads and writes `fix:tag` through the core's own typed accessors, so
+    /// the property name is never spelled at a call site. `del view["tag"]`
+    /// removes it, the way every other property is removed. A tag below
+    /// `STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
+    /// another branch cannot claim it.
+    #[getter]
+    fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("tag")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_fix().tag().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_tag(&self, tag: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("tag")?;
+        let value = tag.extract::<FixTag>()?;
+        let mut field = self.borrow_field_mut(tag.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_tag(value.0)
+            .map_err(value_error)
+    }
+
+    /// The alternate tags, highest priority first.
+    ///
+    /// An absent property is an empty list, and assigning an empty iterable
+    /// removes it: a field states alternate tags only when it has them.
+    #[getter]
+    fn tags(&self, py: Python<'_>) -> PyResult<Vec<i32>> {
+        self.require_fix("tags")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_fix().tags().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_tags(&self, tags: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("tags")?;
+        let mut parsed = Vec::new();
+        for value in tags.try_iter()? {
+            parsed.push(value?.extract::<FixTag>()?.0);
+        }
+        let mut field = self.borrow_field_mut(tags.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_tags(&parsed)
+            .map_err(value_error)
+    }
+
+    /// The alternate names, highest priority first.
+    ///
+    /// Assigning an empty iterable removes the property.
+    #[getter]
+    fn aliases(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("aliases")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().aliases().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_aliases(&self, aliases: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("aliases")?;
+        let mut parsed = Vec::new();
+        for value in aliases.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(aliases.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_aliases(parsed)
+            .map_err(value_error)
+    }
+
+    /// The specification's own wording for this field.
+    #[getter]
+    fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("description")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().description().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_description(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("description")?;
+        let text = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_description(text)
+            .map_err(value_error)
     }
 
     /// Merges another protocol view's properties into this one, in place.

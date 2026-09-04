@@ -23,9 +23,10 @@ use crate::local::File;
 /// ```
 /// use yggdryl::generic::Holder;
 /// use yggdryl::io::IOBase;
+/// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Holder::folder(std::env::temp_dir())?;
+/// let root = Holder::folder(Folder::temporary()?.path()?)?;
 /// assert!(root.is_container());
 ///
 /// // A leaf is a mapped file, and it need not exist yet.

@@ -24,7 +24,7 @@
 //! use yggdryl::local::Folder;
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let root = Folder::new(std::env::temp_dir())?;
+//! let root = Folder::temporary()?;
 //!
 //! // Children resolve by name, and a listing is stable in sort order.
 //! let mut leaf = root.child_by_path("trades.arrows")?;

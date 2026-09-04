@@ -1,4 +1,14 @@
 //! Natural TOML values with bounded single-document I/O.
+//!
+//! The explicit representation forms carry the implementation: `from_utf8`,
+//! `from_bytes` and `from_reader` with their `_all`, `_with_field` and
+//! `_with_limits` modifiers, and `into_utf8`, `into_bytes` and `into_writer`
+//! with `_with_formatting`. [`from_toml_scalar`], [`from_toml_scalar_with_field`]
+//! and [`into_toml_scalar`] are the one inferring boundary over them, not
+//! aliases: each names the `Scalar` it answers, coerces any byte-like input at
+//! the boundary and redirects to its explicit form, holding no parsing,
+//! rendering, validation or limits logic of its own. Deleting them as
+//! duplicates would remove the only entry point that names the `Scalar`.
 
 use std::borrow::Borrow;
 use std::io::{Read, Write};
@@ -11,6 +21,68 @@ use crate::{Error, Field, Result};
 
 /// Maximum structural nesting accepted by the TOML parser.
 pub const MAX_PARSER_DEPTH: usize = 64;
+
+/// Decode one TOML document from byte-like content into the shared `Scalar`,
+/// a `Record` because a TOML root is a table.
+///
+/// This is the inferring entry point over [`from_bytes`]: `input` may be
+/// `&str`, `String`, `&[u8]`, `Vec<u8>` or any other byte-like value, and its
+/// bytes are decoded there under default [`Limits`]. Inference is
+/// deterministic - the input is always content, never a path - so text that
+/// happens to name an existing file fails as the bare word it is rather than
+/// being read. A caller who needs explicit limits calls
+/// [`from_bytes_with_limits`].
+///
+/// ```
+/// use yggdryl::{Scalar, from_toml_scalar, into_toml_scalar};
+///
+/// let value = from_toml_scalar("id = 1\n")?;
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(from_toml_scalar(into_toml_scalar(&value)?)?, value);
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
+    from_bytes(input.as_ref())
+}
+
+/// Decode TOML content and interpret the natural value under `field`,
+/// answering the shared `Scalar`.
+///
+/// This is the inferring entry point over [`from_bytes_with_field`]: it
+/// coerces `input` exactly as [`from_toml_scalar`] does - content, never a
+/// path - and redirects, so `field` types natural strings, orders the root
+/// table and validates there under default [`Limits`]. Explicit limits go
+/// through [`from_bytes_with_field_and_limits`].
+///
+/// ```
+/// use yggdryl::{DataType, Field, Scalar, from_toml_scalar_with_field};
+///
+/// let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
+/// let field = Field::new("row", DataType::from_fields([amount])?, false);
+/// let value = from_toml_scalar_with_field("amount = \"12.50\"\n", &field)?;
+/// assert_eq!(value, Scalar::from_sequence([Scalar::d128(1250, 2)]));
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar> {
+    from_bytes_with_field(input.as_ref(), field)
+}
+
+/// Encode one table-rooted value as TOML UTF-8, naming the shared `Scalar` it
+/// takes.
+///
+/// This is the named entry point over [`into_utf8`], which it redirects to
+/// unchanged; another layout goes through [`into_utf8_with_formatting`].
+///
+/// ```
+/// use yggdryl::{Scalar, into_toml_scalar};
+///
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// assert_eq!(into_toml_scalar(&value)?, "\"id\" = 1\n");
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn into_toml_scalar(value: &Scalar) -> Result<String> {
+    into_utf8(value)
+}
 
 /// Decode one TOML document from UTF-8.
 pub fn from_utf8(input: &str) -> Result<Scalar> {

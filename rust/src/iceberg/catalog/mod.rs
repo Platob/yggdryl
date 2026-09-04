@@ -41,7 +41,7 @@
 //! use yggdryl::local::Folder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let catalog = Catalog::new(Folder::new(std::env::temp_dir().join("warehouse"))?);
+//! let catalog = Catalog::new(Folder::new(Folder::temporary()?.path()?.join("warehouse"))?);
 //!
 //! let schema = DataType::from_fields([
 //!     DataType::Int64.required_field("id"),

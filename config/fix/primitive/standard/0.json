@@ -1,0 +1,321 @@
+[
+  {
+    "name": "Account",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:description": "Account mnemonic as agreed between buy and sell sides.",
+      "fix:tag": "1"
+    }
+  },
+  {
+    "name": "AvgPx",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Average price",
+      "fix:description": "Calculated average price of all fills on this order.",
+      "fix:tag": "6"
+    }
+  },
+  {
+    "name": "BeginString",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Identifies the beginning of a new message and the protocol version; always the first field in a message.",
+      "fix:tag": "8"
+    }
+  },
+  {
+    "name": "BodyLength",
+    "dtype": {
+      "type": "int64"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Message length, in bytes, forward to the CheckSum field; always the second field in a message.",
+      "fix:tag": "9"
+    }
+  },
+  {
+    "name": "CheckSum",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Three-byte, simple checksum; always the last field in a message.",
+      "fix:tag": "10"
+    }
+  },
+  {
+    "name": "ClOrdID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Client order ID",
+      "fix:aliases": "ClientOrderID",
+      "fix:description": "Unique identifier for the order as assigned by the institution.",
+      "fix:tag": "11"
+    }
+  },
+  {
+    "name": "CumQty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Cumulative quantity",
+      "fix:description": "Total quantity filled.",
+      "fix:tag": "14"
+    }
+  },
+  {
+    "name": "ExecID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:description": "Unique identifier of the execution message as assigned by the sell side.",
+      "fix:tag": "17"
+    }
+  },
+  {
+    "name": "LastPx",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Last price",
+      "fix:description": "Price of this (last) fill.",
+      "fix:tag": "31"
+    }
+  },
+  {
+    "name": "LastQty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Last quantity",
+      "fix:description": "Quantity bought or sold on this (last) fill.",
+      "fix:tag": "32"
+    }
+  },
+  {
+    "name": "MsgSeqNum",
+    "dtype": {
+      "type": "int64"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Integer message sequence number.",
+      "fix:tag": "34"
+    }
+  },
+  {
+    "name": "MsgType",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": false,
+    "metadata": {
+      "display": "Message type",
+      "fix:aliases": "MessageType",
+      "fix:description": "Defines the message type; always the third field in a message.",
+      "fix:tag": "35"
+    }
+  },
+  {
+    "name": "OrderID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:description": "Unique identifier for the order as assigned by the sell side.",
+      "fix:tag": "37"
+    }
+  },
+  {
+    "name": "OrderQty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Order quantity",
+      "fix:aliases": "Qty",
+      "fix:description": "Quantity ordered.",
+      "fix:tag": "38"
+    }
+  },
+  {
+    "name": "OrdStatus",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Order status",
+      "fix:description": "Identifies the current status of the order.",
+      "fix:tag": "39"
+    }
+  },
+  {
+    "name": "OrdType",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Order type",
+      "fix:description": "Order type.",
+      "fix:tag": "40"
+    }
+  },
+  {
+    "name": "Price",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:aliases": "Px",
+      "fix:description": "Price per unit of quantity.",
+      "fix:tag": "44"
+    }
+  },
+  {
+    "name": "SenderCompID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Assigned value used to identify the firm sending the message.",
+      "fix:tag": "49"
+    }
+  },
+  {
+    "name": "SendingTime",
+    "dtype": {
+      "type": "timestamp",
+      "unit": "microsecond",
+      "timezone": "UTC"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Time of message transmission, always expressed in UTC.",
+      "fix:tag": "52"
+    }
+  },
+  {
+    "name": "Side",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:description": "Side of the order.",
+      "fix:tag": "54"
+    }
+  },
+  {
+    "name": "Symbol",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:aliases": "Ticker",
+      "fix:description": "Ticker symbol; the common, human understood representation of the security.",
+      "fix:tag": "55"
+    }
+  },
+  {
+    "name": "TargetCompID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": false,
+    "metadata": {
+      "fix:description": "Assigned value used to identify the receiving firm.",
+      "fix:tag": "56"
+    }
+  },
+  {
+    "name": "Text",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "fix:description": "Free-format text string.",
+      "fix:tag": "58"
+    }
+  },
+  {
+    "name": "TimeInForce",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Time in force",
+      "fix:description": "Specifies how long the order remains in effect.",
+      "fix:tag": "59"
+    }
+  },
+  {
+    "name": "TransactTime",
+    "dtype": {
+      "type": "timestamp",
+      "unit": "microsecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Transaction time",
+      "fix:description": "Time of execution or order creation, expressed in UTC.",
+      "fix:tag": "60"
+    }
+  },
+  {
+    "name": "EncryptMethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": false,
+    "metadata": {
+      "display": "Encryption method",
+      "fix:description": "Method of encryption.",
+      "fix:tag": "98"
+    }
+  }
+]

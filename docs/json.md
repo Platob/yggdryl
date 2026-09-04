@@ -69,6 +69,51 @@ Duplicate object names are rejected. Python `cls=Scalar` and JavaScript
 `{ scalar: true }` return that exact native tree directly; omitting the selector
 keeps the existing natural Python/JavaScript result.
 
+### One inferring entry point
+
+`yggdryl::from_json_scalar`, `from_json_scalar_with_field` and
+`into_json_scalar` are JSON's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`. Text that names an
+existing file is parsed as JSON, so a bare file name fails as invalid syntax
+rather than being read.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{from_json_scalar, into_json_scalar};
+
+    let value = from_json_scalar(r#"{"symbol":"AAPL","quantity":100}"#)?;
+    let encoded = into_json_scalar(&value)?;
+
+    assert_eq!(encoded, r#"{"quantity":100,"symbol":"AAPL"}"#);
+    assert_eq!(from_json_scalar(encoded.as_bytes())?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, json
+
+    value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
+    encoded = json.dumps(value)
+
+    assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
+    assert json.loads(encoded, cls=Scalar) == value
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { json } = require('yggdryl')
+
+    const value = json.loads('{"symbol":"AAPL","quantity":100}', { scalar: true })
+    const encoded = json.dumps(value)
+
+    assert.equal(encoded.toString(), '{"quantity":100,"symbol":"AAPL"}')
+    assert.ok(json.loads(encoded, { scalar: true }).equals(value))
+    ```
+
 ## Natural values and exact Fields
 
 JSON has syntax for null, booleans, finite numbers, strings, arrays, and

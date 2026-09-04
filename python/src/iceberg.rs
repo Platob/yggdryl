@@ -238,7 +238,7 @@ fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
 /// [`PyTable::create`]'s `root` runs through - and a string, path-like, or URL
 /// describes one. Per the laziness contract, naming a folder that does not
 /// exist yet touches nothing and is not an error.
-fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
+pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Holder> {
     if let Ok(handle) = value.extract::<PyRef<'_, PyIOBase>>() {
         return handle.folder_holder();
     }

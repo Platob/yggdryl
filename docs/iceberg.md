@@ -26,7 +26,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](io.md) handle.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-lead");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-lead");
     let _ = std::fs::remove_dir_all(&path);
 
     // A table is created in a folder, and a folder is all it ever touches.
@@ -187,7 +187,7 @@ contracts.
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-layout");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-layout");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
         Folder::new(&path)?,
@@ -449,7 +449,7 @@ zero rows.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-manifests");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-manifests");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec.clone())?;
@@ -738,7 +738,7 @@ value:
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-null-partition");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-null-partition");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -837,7 +837,7 @@ value:
     ])?
     .required_field("row");
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-pushdown");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-pushdown");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
         Folder::new(&path)?,
@@ -976,7 +976,7 @@ cheap; the cast is what makes a table whose schema evolved readable as one shape
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-plan");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-plan");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -1082,7 +1082,7 @@ Reading one is an ordinary scan with the snapshot named:
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-time-travel");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-time-travel");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -1251,7 +1251,7 @@ over the snapshot a branch or tag names.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-filtered-writes");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-filtered-writes");
     let _ = std::fs::remove_dir_all(&root);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -1514,7 +1514,7 @@ have replaced, so both raise and leave the caller to re-plan.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-records");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-records");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
     Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -1695,7 +1695,7 @@ let mut schema = DataType::from_fields([
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
 
-let path = std::env::temp_dir().join("yggdryl-docs-iceberg-table-handle");
+let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-table-handle");
 let _ = std::fs::remove_dir_all(&path);
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -1767,7 +1767,7 @@ let mut schema = DataType::from_fields([
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
 
-let path = std::env::temp_dir().join("yggdryl-docs-iceberg-partition");
+let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-partition");
 let _ = std::fs::remove_dir_all(&path);
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
@@ -1817,7 +1817,7 @@ everywhere else; the bindings ask the questions rather than name the kinds.)
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let warehouse = std::env::temp_dir().join("yggdryl-doc-warehouse");
+    let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
     let _ = std::fs::remove_dir_all(&warehouse);
     let catalog = Catalog::new(Folder::new(&warehouse)?);
 
@@ -2017,7 +2017,7 @@ for now).
     use yggdryl::iceberg::Catalog;
     use yggdryl::local::Folder;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-views");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-views");
     let _ = std::fs::remove_dir_all(&root);
     let catalog = Catalog::new(Folder::new(&root)?);
 
@@ -2160,7 +2160,7 @@ rather than at it - and a table that has accumulated small files rewrites them:
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let warehouse = std::env::temp_dir().join("yggdryl-doc-compaction");
+    let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-compaction");
     let _ = std::fs::remove_dir_all(&warehouse);
     let catalog = Catalog::new(Folder::new(&warehouse)?);
 
@@ -2302,7 +2302,7 @@ too:
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-options");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-options");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2453,7 +2453,7 @@ authoritative, so mixed Parquet/Avro snapshots scan as one table.
     use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
-    let root = std::env::temp_dir().join("yggdryl-doc-data-format");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-data-format");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2596,7 +2596,7 @@ history:
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-concurrency");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-concurrency");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2675,7 +2675,7 @@ scan, and every ref keeps the snapshot it names retained past any expiry:
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-branching");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-branching");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2866,7 +2866,7 @@ is the host's own parallelism, clamped to 1..=8. The order is the plan's order e
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-parallel-read");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-parallel-read");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2930,7 +2930,7 @@ use yggdryl::iceberg::Table;
 use yggdryl::local::Folder;
 use yggdryl::DataType;
 
-let root = std::env::temp_dir().join("yggdryl-doc-nyc-taxis");
+let root = Folder::temporary()?.path()?.join("yggdryl-doc-nyc-taxis");
 let _ = std::fs::remove_dir_all(&root);
 let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
 
@@ -3061,7 +3061,7 @@ commit writes is ever mutated in place.
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
         .required_field("row");
 
-    let path = std::env::temp_dir().join("yggdryl-docs-iceberg-evolution");
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolution");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
         Folder::new(&path)?,
@@ -3322,7 +3322,7 @@ accepted, so a change that would reinterpret stored values is refused naming bot
     use yggdryl::local::Folder;
     use yggdryl::DataType;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-evolution");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-evolution");
     let _ = std::fs::remove_dir_all(&root);
     let schema = DataType::from_fields([
         DataType::Int32.required_field("id"),

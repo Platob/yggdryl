@@ -3039,6 +3039,79 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
   })
 }
 
+// `yggdryl::fix` is a module in the core, so it is one here too: the
+// dictionary, the message it types and the process default are one name rather
+// than four top-level classes.
+//
+// A message value is whatever `Scalar.fromJs` reads, and that conversion lives
+// in this loader, so the public constructor is the one widening gate and hands
+// the native class the value it already understands.
+const NativeFixMsg = binding.FixMsg
+function FixMsg(field, value, registry) {
+  if (new.target === undefined) {
+    throw new TypeError("Class constructor FixMsg cannot be invoked without 'new'")
+  }
+  return new NativeFixMsg(
+    field,
+    value instanceof Scalar ? value : Scalar.fromJs(value),
+    registry,
+  )
+}
+FixMsg.prototype = NativeFixMsg.prototype
+Object.defineProperty(FixMsg.prototype, 'constructor', {
+  configurable: true,
+  value: FixMsg,
+  writable: true,
+})
+
+// Both FIX collections are lazy native iterators, so the loader supplies only
+// the protocol Node-API cannot spell: iterating a registry walks its fields in
+// canonical-identifier order and iterating a message walks its `[name, value]`
+// pairs.
+Object.defineProperty(binding.FixRegistry.prototype, Symbol.iterator, {
+  configurable: true,
+  value: function fields() {
+    return this.keys()[Symbol.iterator]()
+  },
+})
+Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
+  configurable: true,
+  value: function pairs() {
+    return this.entries()[Symbol.iterator]()
+  },
+})
+
+// The two FIX facts a caller spells rather than derives - what an absent
+// `fix:branch` means, and where the FIX specification's own tag range ends -
+// come from the core's own constants, so neither can drift from it.
+const fix = Object.freeze({
+  STANDARD_BRANCH: binding._fixStandardBranchNative(),
+  STANDARD_TAG_LIMIT: binding._fixStandardTagLimitNative(),
+  FixRegistry: binding.FixRegistry,
+  FixMsg,
+  globalRegistry: binding.fixGlobalRegistryNative,
+  installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
+})
+
+// The FIX values are reached through the namespace and nowhere else, so a
+// dictionary has exactly one spelling here, as it does in the core.
+for (const name of [
+  'FixFieldIterator',
+  'FixMsg',
+  'FixMsgEntries',
+  'FixRegistry',
+  'JsFixFieldIterator',
+  'JsFixMsg',
+  'JsFixMsgEntries',
+  'JsFixRegistry',
+  '_fixStandardBranchNative',
+  '_fixStandardTagLimitNative',
+  'fixGlobalRegistryNative',
+  'fixInstallGlobalRegistryNative',
+]) {
+  delete binding[name]
+}
+
 // The three byte codings, grouped the way the documentation names them. The
 // native halves carry a leading underscore so only these namespaces are the
 // public spelling.
@@ -3138,6 +3211,7 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
 binding.codec = codec
 binding.avro = avro
 binding.fields = fields
+binding.fix = fix
 binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml

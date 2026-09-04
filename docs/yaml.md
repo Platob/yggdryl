@@ -64,6 +64,51 @@ other keys remain `Mapping` and preserve insertion order. Duplicate keys are
 rejected. Python `cls=Scalar` and JavaScript `{ scalar: true }` return the exact
 native tree; omitting the selector keeps natural language objects.
 
+### One inferring entry point
+
+`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field` and
+`into_yaml_scalar` are YAML's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`. Text that names an
+existing file is parsed as YAML, so a bare file name is that plain string
+scalar rather than the file's content.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{from_yaml_scalar, into_yaml_scalar};
+
+    let value = from_yaml_scalar("symbol: AAPL\nquantity: 2\n")?;
+    let encoded = into_yaml_scalar(&value)?;
+
+    assert_eq!(encoded, "quantity: 2\nsymbol: AAPL\n");
+    assert_eq!(from_yaml_scalar(encoded.as_bytes())?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, yaml
+
+    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
+    encoded = yaml.dumps(value)
+
+    assert encoded == b"quantity: 2\nsymbol: AAPL\n"
+    assert yaml.loads(encoded, cls=Scalar) == value
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { yaml } = require('yggdryl')
+
+    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { scalar: true })
+    const encoded = yaml.dumps(value)
+
+    assert.equal(encoded.toString(), 'quantity: 2\nsymbol: AAPL\n')
+    assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
+    ```
+
 ## Natural values and exact Fields
 
 Schemaless reads preserve only types proven by YAML syntax: null, boolean,

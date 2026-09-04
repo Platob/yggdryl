@@ -9,9 +9,9 @@ The file system as three [`IOBase`](io.md) handles: a generic location, a direct
 
     ```rust
     use yggdryl::io::IOBase;
-    use yggdryl::local::File;
+    use yggdryl::local::{File, Folder};
 
-    let path = std::env::temp_dir().join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
 
     let mut file = File::create(&path)?;
     file.write_all_bytes(b"AAPL")?;
@@ -32,7 +32,7 @@ The file system as three [`IOBase`](io.md) handles: a generic location, a direct
     use yggdryl::local::{File, Folder, Path};
     use yggdryl::IOKind;
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-roles-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-roles-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("nested"))?;
     std::fs::write(root.join("a.bin"), b"a")?;
@@ -64,6 +64,34 @@ writes, a leaf lists nothing and resolves no children, a location reports its
 [`IOKind`](generic.md) by testing the path. A backend supplies each role's few required members -
 four for a container, two for a leaf, three for a location - and inherits the rest.
 
+## Well-known roots
+
+`Folder` names the three directories a program may assume. `Folder::temporary()` is the platform
+temporary directory. `Folder::home()` is the current user's home, read from the environment the
+same way on every platform: `HOME` first, then `USERPROFILE`, an unset or empty variable being
+skipped. `Folder::config()` is that home joined with `.config`. Each answers a handle and creates
+nothing; as everywhere here, a directory comes into being when something is written into it. With
+neither variable set, `home` and `config` fail with a typed absence naming both, for which
+`Error::is_absent` is true, so a caller that wants "no home" reads the error instead of guessing a
+path.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::IOBase;
+    use yggdryl::local::Folder;
+
+    let temporary = Folder::temporary()?;
+    assert!(temporary.is_container());
+    assert!(temporary.url().to_string().starts_with("file:"));
+
+    // When a home resolves, the configuration directory is that home joined with `.config`.
+    match Folder::home() {
+        Ok(home) => assert_eq!(Folder::config()?.path()?, home.path()?.join(".config")),
+        Err(error) => assert!(error.is_absent()),
+    }
+    ```
+
 ## Laziness
 
 === "Rust"
@@ -72,7 +100,7 @@ four for a container, two for a leaf, three for a location - and inherits the re
     use yggdryl::io::IOBase;
     use yggdryl::local::{File, Folder};
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-lazy-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lazy-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
     // Constructing touches nothing.
@@ -111,10 +139,10 @@ stored path and a stored URL can never disagree.
 
     ```rust
     use yggdryl::io::IOBase;
-    use yggdryl::local::Path;
+    use yggdryl::local::{Folder, Path};
     use yggdryl::IOKind;
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-decide-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-decide-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
 
@@ -153,7 +181,7 @@ is an error, because a container has no bytes to resize.
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-walk-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
     let folder = Folder::new(&root)?;
@@ -208,9 +236,9 @@ name with separators in it is a nested child rather than an error.
 
     ```rust
     use yggdryl::io::IOBase;
-    use yggdryl::local::File;
+    use yggdryl::local::{File, Folder};
 
-    let path = std::env::temp_dir().join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
 
     let mut file = File::create(&path)?;
     file.pwrite(0, b"trade")?;
@@ -243,9 +271,9 @@ Offsets are absolute and a write may start past the end:
 
     ```rust
     use yggdryl::io::IOBase;
-    use yggdryl::local::File;
+    use yggdryl::local::{File, Folder};
 
-    let path = std::env::temp_dir().join(format!("yggdryl-doc-gap-{}.bin", std::process::id()));
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-gap-{}.bin", std::process::id()));
 
     let mut file = File::create(&path)?;
     file.pwrite(0, b"ab")?;
@@ -271,9 +299,9 @@ When the file may change underneath you, take the bytes into memory and work on 
 
     ```rust
     use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::local::File;
+    use yggdryl::local::{File, Folder};
 
-    let path = std::env::temp_dir().join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
     std::fs::write(&path, b"trade")?;
 
     // The handle - and its mapping - is gone by the time the copy returns.
@@ -297,13 +325,13 @@ written against [`IOBase`](io.md) does not learn which one it got:
 
     ```rust
     use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::local::File;
+    use yggdryl::local::{File, Folder};
 
     fn head(handle: &dyn IOBase) -> yggdryl::Result<Vec<u8>> {
         handle.read_range_bytes(0, 4)
     }
 
-    let path = std::env::temp_dir().join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));
 
     let mut file = File::create(&path)?;
     file.write_all_bytes(b"AAPL,100")?;
@@ -330,7 +358,7 @@ use yggdryl::io::IOBase;
 use yggdryl::local::Folder;
 use yggdryl::Url;
 
-let root = std::env::temp_dir().join("yggdryl-doc-private");
+let root = Folder::temporary()?.path()?.join("yggdryl-doc-private");
 std::fs::create_dir_all(root.join(".git"))?;
 std::fs::write(root.join("trades.arrows"), b"x")?;
 

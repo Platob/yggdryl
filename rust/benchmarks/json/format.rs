@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::json;
+use yggdryl::{from_json_scalar, from_json_scalar_with_field, into_json_scalar, json};
 
 use crate::fixtures::{nested, representative, typed};
 
@@ -14,6 +14,12 @@ pub fn json_benchmarks(criterion: &mut Criterion) {
     group.bench_function("encode_representative", |bencher| {
         bencher.iter(|| json::into_bytes(black_box(&value)).unwrap());
     });
+    group.bench_function("encode_utf8_representative", |bencher| {
+        bencher.iter(|| json::into_utf8(black_box(&value)).unwrap());
+    });
+    group.bench_function("encode_scalar_entry", |bencher| {
+        bencher.iter(|| into_json_scalar(black_box(&value)).unwrap());
+    });
     let mut writer_output = Vec::with_capacity(encoded.len());
     group.bench_function("write_representative", |bencher| {
         bencher.iter(|| {
@@ -24,6 +30,9 @@ pub fn json_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("decode_representative", |bencher| {
         bencher.iter(|| json::from_bytes(black_box(&encoded)).unwrap());
+    });
+    group.bench_function("decode_scalar_entry", |bencher| {
+        bencher.iter(|| from_json_scalar(black_box(&encoded)).unwrap());
     });
     let encoded_text = std::str::from_utf8(&encoded).unwrap();
     group.bench_function("decode_borrowed_str", |bencher| {
@@ -46,6 +55,11 @@ pub fn json_benchmarks(criterion: &mut Criterion) {
     group.bench_function("decode_typed_natural_with_field", |bencher| {
         bencher.iter(|| {
             json::from_bytes_with_field(black_box(&typed_encoded), black_box(&field)).unwrap()
+        });
+    });
+    group.bench_function("decode_scalar_entry_with_field", |bencher| {
+        bencher.iter(|| {
+            from_json_scalar_with_field(black_box(&typed_encoded), black_box(&field)).unwrap()
         });
     });
 
