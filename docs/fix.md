@@ -418,35 +418,58 @@ seed of 34 fields unless a name says otherwise:
 cargo bench -p yggdryl --bench fix -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10
 ```
 
-| operation | estimate |
+| resolution | estimate |
 | --- | ---: |
 | `get_field_by_tag` hit | 4.5 ns |
-| `get_field_by_tag` alternate-tag hit | 9.3 ns |
-| `get_field_by_tag` miss | 8.0 ns |
-| `get_field_by_name` hit | 64.9 ns |
-| `get_field_by_name` hit, query differently cased | 65.9 ns |
-| `get_field_by_name` alias hit | 111.6 ns |
-| `get_field_by_name` miss | 94.4 ns |
-| `get_field(FixKey::Tag)` generic tag hit | 12.8 ns |
-| `get_field("Symbol")` generic name hit | 60.1 ns |
-| `field(55)` failing-half tag hit | 6.6 ns |
-| `get_field_by_path`, one segment | 62.4 ns |
-| `get_field_by_path`, two segments (`NoPartyIDs.PartyID`) | 190.0 ns |
-| `get_field_by_path`, three segments (`NoPartyIDs.item.PartyRole`) | 212.6 ns |
-| baseline `HashMap<i32, Field>` tag hit | 17.7 ns |
-| baseline `HashMap<String, Field>` hit after lowercasing the query | 96.3 ns |
-| tag hit over 4034 fields | 29.0 ns |
-| name hit over 4034 fields | 79.0 ns |
-| alias hit over 4034 fields | 107.9 ns |
-| `from_handle`, 1 shard of 10 fields | 632 us |
-| `from_handle`, 10 shards of 10 fields | 4.56 ms |
-| `from_handle`, 100 shards of 10 fields | 57.4 ms |
-| `from_handle`, the seed (3 shards, 34 fields) | 1.67 ms |
-| `write_into`, 100 shards | 300 ms |
-| explicit-location autoload of the seed (URL parse, folder, load) | 1.75 ms |
+| `get_field_by_tag` alternate-tag hit | 9.4 ns |
+| `get_field_by_tag` miss | 8.1 ns |
+| `get_field_by_name` hit | 64.7 ns |
+| `get_field_by_name` hit, query differently cased | 65.5 ns |
+| `get_field_by_name` alias hit | 107.2 ns |
+| `get_field_by_name` miss | 96.1 ns |
+| `get_field(FixKey::Tag)` generic tag hit | 12.7 ns |
+| `get_field("Symbol")` generic name hit | 61.9 ns |
+| `field(55)` failing-half tag hit | 6.5 ns |
+| `get_field_by_path`, one segment | 63.0 ns |
+| `get_field_by_path`, two segments (`NoPartyIDs.PartyID`) | 193.2 ns |
+| `get_field_by_path`, three segments (`NoPartyIDs.item.PartyRole`) | 210.6 ns |
+| baseline `HashMap<i32, Field>` tag hit | 18.1 ns |
+| baseline `HashMap<String, Field>` hit after lowercasing the query | 97.0 ns |
+| tag hit over 4034 fields | 29.4 ns |
+| name hit over 4034 fields | 77.0 ns |
+| alias hit over 4034 fields | 105.1 ns |
 
-The specialized accessor and the generic one it redirects to cost the same: the `FixKey` match is
-one branch. A folded name hit costs what the plain `HashMap<String, Field>` baseline costs *before*
-that baseline lowercases its query - the fold happens inside the hash, so no folded copy is built.
-`from_handle` scales with the number of shards, because every shard is read on open; the seed
-loads in the time a single shard folder of ten fields does.
+Mutation clones the dictionary in the batch setup and hands it back as the
+routine's output, so neither the clone nor the drop is inside the timer:
+
+| mutation | estimate |
+| --- | ---: |
+| `insert` into the seed | 3.89 us |
+| `insert` into 4034 fields | 103 us |
+| `from_fields` over 4034 fields | 7.54 ms |
+| `update` merging an alias and an alternate tag into the seed | 7.65 us |
+| the same `update` over 4034 fields | 12.6 us |
+| `remove` from 4034 fields | 5.51 us |
+
+| storage | estimate |
+| --- | ---: |
+| `from_handle`, 1 shard of 10 fields | 621 us |
+| `from_handle`, 10 shards of 10 fields | 4.55 ms |
+| `from_handle`, 100 shards of 10 fields | 46.1 ms |
+| `from_handle`, the seed (3 shards, 34 fields) | 1.65 ms |
+| `write_into`, 100 shards | 294 ms |
+| explicit-location autoload of the seed (URL parse, folder, load) | 1.76 ms |
+
+The generic accessor costs the specialized one plus its dispatch, and on a tag that dispatch is
+most of the call: 12.7 ns against 4.5 ns. This is the measurement the specialized pair exists for -
+a caller that already knows it holds a tag should not pay to be asked. On a name the difference
+disappears into the fold and the hash.
+
+A folded name hit costs what the plain `HashMap<String, Field>` baseline costs *before* that
+baseline lowercases its query - the fold happens inside the hash, so no folded copy is built. Tags
+stay ahead of the `HashMap<i32, Field>` baseline because a `BTreeMap` probe over small integer keys
+beats hashing them.
+
+`from_handle` scales with the number of shards rather than with the fields in them: a shard costs
+roughly half a millisecond to open, read and parse, so the seed's three shards cost about three
+times one shard and a hundred shards cost about a hundred times one.

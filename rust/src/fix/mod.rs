@@ -93,9 +93,10 @@ pub use registry::{FixFieldIter, FixRegistry};
 
 /// Either of the two ways a caller names one FIX field.
 ///
-/// [`From`] carries every spelling a caller reaches for, exactly as
-/// [`FieldKey`](crate::field::FieldKey) does, so `registry.field(35)` and
-/// `registry.field("MsgType")` are one call rather than two.
+/// [`From`] carries every spelling a caller reaches for, exactly as the key
+/// of [`Field::get_field`](crate::Field::get_field) does, so
+/// `registry.field(35)` and `registry.field("MsgType")` are one call rather
+/// than two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FixKey<'a> {
     /// A canonical or alternate tag.
