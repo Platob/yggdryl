@@ -568,3 +568,9 @@ pub(crate) fn low_64(value: u128) -> u64 {
     u64::try_from(value & u128::from(u64::MAX))
         .unwrap_or_else(|_| unreachable!("a masked u128 always fits a u64"))
 }
+
+/// Return the low 32 bits of a 64-bit seed without an unchecked cast.
+pub(crate) fn low_32(value: u64) -> u32 {
+    u32::try_from(value & u64::from(u32::MAX))
+        .unwrap_or_else(|_| unreachable!("a masked u64 always fits a u32"))
+}

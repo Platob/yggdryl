@@ -20,11 +20,8 @@ pub(crate) fn read_digest<H: IOBase + ?Sized>(
     handle: &H,
     algorithm: DigestAlgorithm,
 ) -> Result<Digest> {
-    reject_container(handle)?;
     let mut digester = algorithm.digester();
-    for chunk in handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)? {
-        digester.write_bytes(&chunk?);
-    }
+    feed_handle(handle, &mut digester)?;
     Ok(digester.as_digest())
 }
 
@@ -57,12 +54,28 @@ pub(crate) fn read_range_digest<H: IOBase + ?Sized>(
     Ok(digester.as_digest())
 }
 
+/// Feed a whole handle into `digester`, returning the bytes consumed.
+///
+/// This is the one place a handle becomes digest input, so the streaming
+/// contract - one bounded window, no whole-value read, a container refused by
+/// kind - is stated once and inherited by everything that hashes a handle.
+pub(crate) fn feed_handle<H: IOBase + ?Sized>(handle: &H, digester: &mut Digester) -> Result<u64> {
+    reject_container(handle)?;
+    let mut consumed = 0_u64;
+    for chunk in handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)? {
+        let chunk = chunk?;
+        digester.write_bytes(&chunk);
+        consumed += chunk.len() as u64;
+    }
+    Ok(consumed)
+}
+
 /// Refuse a resource that holds no bytes of its own.
 ///
 /// Folder and recursive digests are a different question - which files, in
 /// what order, under which name - and answering one here would invent a
 /// convention no format specifies.
-fn reject_container<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
+pub(crate) fn reject_container<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
     if !handle.is_container() {
         return Ok(());
     }

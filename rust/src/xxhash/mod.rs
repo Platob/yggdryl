@@ -44,15 +44,17 @@
 //! other reader would find them. [`crate::iceberg`] never calls this module for
 //! partitioning.
 
+mod handle;
 mod secret;
 mod state;
 pub(crate) mod stream;
 
+pub use handle::Hashed;
 pub use secret::SECRET_MINIMUM_LENGTH;
 pub use state::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
 pub use stream::{DigestReader, DigestWriter};
 
-pub(crate) use state::low_64;
+pub(crate) use state::{low_32, low_64};
 
 use crate::{Digest, DigestAlgorithm, Result};
 

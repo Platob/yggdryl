@@ -139,6 +139,29 @@ impl DigestAlgorithm {
         })
     }
 
+    /// Build a streaming state seeded with `seed`.
+    ///
+    /// The seed is a `u64` because the dispatcher answers one shape for four
+    /// algorithms; XXH32, whose seed is 32 bits wide, uses its low half. A
+    /// caller who knows the algorithm at compile time uses that state's own
+    /// `with_seed` and passes the exact width.
+    ///
+    /// ```
+    /// use yggdryl::{DigestAlgorithm, xxhash};
+    ///
+    /// let mut digester = DigestAlgorithm::Xxh32.digester_with_seed(0x1_0000_002a);
+    /// digester.write_bytes(b"abc");
+    /// assert_eq!(digester.as_digest().as_u32(), Some(xxhash::xxh32_with_seed(b"abc", 42)));
+    /// ```
+    pub fn digester_with_seed(self, seed: u64) -> Digester {
+        Digester(match self {
+            Self::Xxh32 => DigesterKind::Xxh32(Xxh32::with_seed(crate::xxhash::low_32(seed))),
+            Self::Xxh64 => DigesterKind::Xxh64(Xxh64::with_seed(seed)),
+            Self::Xxh3_64 => DigesterKind::Xxh3_64(Xxh3_64::with_seed(seed)),
+            Self::Xxh3_128 => DigesterKind::Xxh3_128(Xxh3_128::with_seed(seed)),
+        })
+    }
+
     /// Digest a complete buffer.
     ///
     /// ```
