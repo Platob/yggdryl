@@ -198,7 +198,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     use yggdryl::io::IOBase;
     use yggdryl::{IOKind, local};
 
-    let path = std::env::temp_dir().join("yggdryl-docs-io-lazy.csv");
+    let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-lazy.csv");
     let _ = std::fs::remove_file(&path);
 
     // Constructing touches nothing: no file is created, opened, or mapped.
@@ -292,12 +292,12 @@ bytes change.
     assert_eq!(Buffer::new().kind(), IOKind::Memory);
     assert!(IOKind::Memory.is_leaf());
 
-    let folder = local::Folder::new(std::env::temp_dir())?;
+    let folder = local::Folder::temporary()?;
     assert_eq!(folder.kind(), IOKind::Directory);
     assert!(folder.is_container());
 
     // Nothing is there, so nothing has decided; a write settles it.
-    let absent = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-absent.bin"))?;
+    let absent = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-absent.bin"))?;
     assert_eq!(absent.kind(), IOKind::Unknown);
     assert!(!absent.kind().is_known());
     ```
@@ -369,13 +369,13 @@ and `is_file`.
     assert!(!notes.is_tabular());
 
     // The name is enough: nothing has been written to this location yet.
-    let trades = local::File::new(std::env::temp_dir().join("yggdryl-docs-shape.parquet"))?;
+    let trades = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-shape.parquet"))?;
     assert!(trades.is_tabular());
     assert!(!trades.is_atomic());
 
     // A container is neither one whole byte value nor - with nothing under
     // it - a table.
-    let folder = local::Folder::new(std::env::temp_dir())?;
+    let folder = local::Folder::temporary()?;
     assert!(!folder.is_atomic());
     ```
 
@@ -1041,7 +1041,7 @@ than silently recursed into.
     use yggdryl::io::{Buffer, IOBase};
     use yggdryl::local::Folder;
 
-    let root = std::env::temp_dir().join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
     let mut folder = Folder::new(&root)?;
     folder.truncate(0)?;
     folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
@@ -1260,7 +1260,7 @@ page.
 use yggdryl::io::IOBase;
 use yggdryl::{IOKind, MimeType, local};
 
-let path = std::env::temp_dir().join("yggdryl-docs-io-folder");
+let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-folder");
 let _ = std::fs::remove_dir_all(&path);
 let mut folder = local::Folder::new(&path)?;
 
@@ -1301,15 +1301,15 @@ use yggdryl::io::IOBase;
 use yggdryl::{IOKind, local};
 
 // A location that arrived from outside answers by looking at what is there.
-let existing = local::Path::new(std::env::temp_dir())?;
+let existing = local::Path::new(local::Folder::temporary()?.path()?)?;
 assert_eq!(existing.kind(), IOKind::Directory);
 
-let undecided = local::Path::new(std::env::temp_dir().join("yggdryl-docs-io-undecided"))?;
+let undecided = local::Path::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-undecided"))?;
 assert_eq!(undecided.kind(), IOKind::Unknown);
 assert!(undecided.read_all_bytes()?.is_empty());
 
 // A leaf is not a container: it lists nothing and resolves no child.
-let leaf = local::File::new(std::env::temp_dir().join("yggdryl-docs-io-leaf.arrows"))?;
+let leaf = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-leaf.arrows"))?;
 assert_eq!(leaf.ls(true, false).count(), 0);
 assert!(leaf.child_by_path("nested").is_err());
 ```
@@ -2443,7 +2443,7 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
     use yggdryl::io::IOBase;
     use yggdryl::local::Folder;
 
-    let root = std::env::temp_dir().join("yggdryl-doc-lake");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-lake");
     let _ = std::fs::remove_dir_all(&root);
     for year in ["2024", "2025"] {
         let leaf = root.join(format!("year={year}")).join("month=01");
@@ -2672,9 +2672,10 @@ each row of a write to the leaf its values name.
     ```rust
     use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
     use yggdryl::io::{IOBase, IOMedia};
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
-    let root = std::env::temp_dir().join("yggdryl-doc-partitioned");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-partitioned");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("year=2024").join("month=01"))?;
 
@@ -2817,9 +2818,10 @@ and let the first write lay the directories out.
     ```rust
     use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
     use yggdryl::io::{IOBase, IOMedia};
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
-    let root = std::env::temp_dir().join("yggdryl-doc-declared-layout");
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-declared-layout");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
 

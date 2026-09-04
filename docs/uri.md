@@ -739,6 +739,7 @@ hierarchy to walk.
 === "Rust"
 
     ```rust
+    use yggdryl::local::Folder;
     use yggdryl::{MimeType, Uri, Url};
 
     // The port belongs to the scheme, not to the authority text.
@@ -746,7 +747,7 @@ hierarchy to walk.
     assert_eq!(Uri::from_str("postgres://host/db")?.default_port(), Some(5432));
     assert_eq!(Uri::from_str("s3://bucket/key")?.default_port(), None);
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-uri-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-uri-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
     std::fs::write(root.join("ticks.csv"), b"symbol\n")?;

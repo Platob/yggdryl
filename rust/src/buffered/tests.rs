@@ -665,11 +665,15 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     // A located leaf, because that is the case the projection gets wrong: it
     // reopens a handle's *location*, which for a coding view holds the
     // compressed form rather than the bytes the view presents.
-    let root = std::env::temp_dir().join(format!(
-        "yggdryl-buffered-coded-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
+    let root = crate::local::Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!(
+            "yggdryl-buffered-coded-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("app.log.gz");

@@ -48,7 +48,7 @@ use yggdryl::arrowfs::{ArrowFileSystem, File as ArrowFile, LocalFileSystem, Memo
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::gzip::Gzip;
 use yggdryl::io::{Buffer, IOBase};
-use yggdryl::local::File;
+use yggdryl::local::{File, Folder};
 
 /// The fixture's size: twice the default byte budget, so a full scan evicts.
 const FIXTURE: u64 = 16 * 1024 * 1024;
@@ -155,8 +155,11 @@ fn pinning_holds_both_ends(payload: &[u8]) -> (usize, usize) {
 }
 
 pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
-    let path =
-        std::env::temp_dir().join(format!("yggdryl-bench-buffered-{}.bin", std::process::id()));
+    let path = Folder::temporary()
+        .expect("the temporary directory")
+        .path()
+        .expect("a platform path")
+        .join(format!("yggdryl-bench-buffered-{}.bin", std::process::id()));
     let payload = fixture();
     std::fs::write(&path, &payload).expect("the fixture must be written");
 

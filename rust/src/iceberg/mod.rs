@@ -28,7 +28,7 @@
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //!
-//! let folder = Folder::new(std::env::temp_dir().join("yggdryl-trades"))?;
+//! let folder = Folder::new(Folder::temporary()?.path()?.join("yggdryl-trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
 //! let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec)?;
 //!

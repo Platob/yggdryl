@@ -5,7 +5,7 @@ mod mapped {
     use crate::local::{File, Folder};
 
     fn path(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-mmap-{label}-{}.bin", std::process::id()));
         // Teardown through the abstraction: absence is a no-op success.
         File::new(&path)
@@ -75,7 +75,7 @@ mod mapped {
 
     #[test]
     fn the_first_write_creates_the_file_and_its_parent() {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-mmap-create-{}", std::process::id()));
         Folder::new(&path)
             .expect("a local container")
@@ -100,7 +100,7 @@ mod mapped {
     fn a_write_into_a_missing_ancestry_creates_it_from_the_write_itself() {
         // No `mkdir` step runs first: the open fails with the typed absence,
         // the ancestry is repaired once, and the same open is retried once.
-        let mut root = std::env::temp_dir();
+        let mut root = Folder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-ancestry-{}", std::process::id()));
         crate::local::Folder::new(&root)
             .expect("a local folder")
@@ -200,7 +200,7 @@ mod hierarchy {
     use crate::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-tree-{label}-{}", std::process::id()));
         Folder::new(&path)
             .expect("a local container")
@@ -362,7 +362,7 @@ mod generic_path {
     use crate::{IOKind, MediaType, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-path-{label}-{}", std::process::id()));
         Folder::new(&path)
             .expect("a local container")
@@ -534,7 +534,7 @@ mod roles {
     use crate::{IOKind, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-roles-{label}-{}", std::process::id()));
         Folder::new(&path)
             .expect("a local container")
@@ -624,7 +624,7 @@ mod privacy {
     use crate::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = Folder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-private-{label}-{}", std::process::id()));
         Folder::new(&path)
             .expect("a local container")
@@ -704,7 +704,7 @@ mod globbing {
 
     /// Build a small lake: two years, two months each, one part per month.
     fn lake(label: &str) -> std::path::PathBuf {
-        let mut root = std::env::temp_dir();
+        let mut root = Folder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-glob-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for year in ["2024", "2025"] {
@@ -893,5 +893,82 @@ mod globbing {
         assert_eq!(folder.children_where(&[], false).unwrap().count(), 8);
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// The well-known roots: handles over what the platform and the environment
+/// report, none of which creates anything.
+mod roots {
+    use std::ffi::OsString;
+
+    use crate::io::IOBase;
+    use crate::local::Folder;
+
+    fn set(text: &str) -> Option<OsString> {
+        Some(OsString::from(text))
+    }
+
+    /// Two distinct candidate homes under the temporary root, so a wrong pick
+    /// is visible and neither is the developer's real home.
+    fn candidates() -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = Folder::temporary().unwrap().path().unwrap();
+        (root.join("yggdryl-home"), root.join("yggdryl-profile"))
+    }
+
+    #[test]
+    fn the_temporary_root_is_a_local_container() {
+        let temporary = Folder::temporary().unwrap();
+        assert!(temporary.is_container());
+        assert!(temporary.url().is_local());
+        // The platform's own directory is there; nothing here made it.
+        assert!(temporary.exists());
+    }
+
+    #[test]
+    fn home_prefers_home_over_userprofile() {
+        let (home, profile) = candidates();
+        let resolved =
+            Folder::home_from(set(home.to_str().unwrap()), set(profile.to_str().unwrap())).unwrap();
+        assert_eq!(resolved.url(), Folder::new(&home).unwrap().url());
+    }
+
+    #[test]
+    fn home_alone_resolves() {
+        let (home, _) = candidates();
+        let resolved = Folder::home_from(set(home.to_str().unwrap()), None).unwrap();
+        assert_eq!(resolved.url(), Folder::new(&home).unwrap().url());
+    }
+
+    #[test]
+    fn userprofile_alone_resolves() {
+        let (_, profile) = candidates();
+        let resolved = Folder::home_from(None, set(profile.to_str().unwrap())).unwrap();
+        assert_eq!(resolved.url(), Folder::new(&profile).unwrap().url());
+    }
+
+    #[test]
+    fn an_empty_value_counts_as_unset() {
+        let (_, profile) = candidates();
+        let resolved = Folder::home_from(set(""), set(profile.to_str().unwrap())).unwrap();
+        assert_eq!(resolved.url(), Folder::new(&profile).unwrap().url());
+        assert!(Folder::home_from(set(""), set("")).unwrap_err().is_absent());
+    }
+
+    #[test]
+    fn neither_variable_is_a_typed_absence_naming_both() {
+        let error = Folder::home_from(None, None).unwrap_err();
+        assert!(error.is_absent());
+        let message = error.to_string();
+        assert!(message.contains("HOME"), "{message}");
+        assert!(message.contains("USERPROFILE"), "{message}");
+    }
+
+    #[test]
+    fn a_resolved_home_creates_nothing() {
+        let (home, _) = candidates();
+        let _ = std::fs::remove_dir_all(&home);
+        let resolved = Folder::home_from(set(home.to_str().unwrap()), None).unwrap();
+        assert!(!resolved.exists());
+        assert!(!home.exists());
     }
 }

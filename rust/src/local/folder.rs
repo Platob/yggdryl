@@ -1,5 +1,6 @@
 //! A local directory as a container [`IOBase`].
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::{Error, MediaType, Result, Url};
@@ -27,7 +28,7 @@ use crate::io::{IOBase, IOFolder, Listing};
 /// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Folder::new(std::env::temp_dir())?;
+/// let root = Folder::temporary()?;
 /// assert!(root.is_container());
 /// assert_eq!(root.size(), 0);
 /// assert_eq!(root.media_type().base(), &yggdryl::MimeType::DIRECTORY);
@@ -67,6 +68,98 @@ impl Folder {
         // URL no later call could ever resolve.
         url.clone().into_path()?;
         Ok(Self { url })
+    }
+
+    /// The platform temporary directory.
+    ///
+    /// Wraps the directory [`std::env`](mod@std::env) reports as temporary,
+    /// and is the one place the crate asks for it. The handle is constructed
+    /// and nothing is created or probed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the reported path cannot be expressed as a
+    /// canonical `file:` URL.
+    ///
+    /// ```
+    /// use yggdryl::io::IOBase;
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let temporary = Folder::temporary()?;
+    /// assert!(temporary.is_container());
+    /// assert!(temporary.url().is_local());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn temporary() -> Result<Self> {
+        Self::new(std::env::temp_dir())
+    }
+
+    /// The current user's home directory.
+    ///
+    /// Resolved from the environment the same way on every platform: `HOME`
+    /// first, then `USERPROFILE`, read once through [`std::env::var_os`]. A
+    /// variable that is unset or empty is skipped. The handle is constructed
+    /// and nothing is created or probed.
+    ///
+    /// # Errors
+    ///
+    /// With neither variable set, returns a typed absence naming both, for
+    /// which [`Error::is_absent`] is true: a caller that treats that as "no
+    /// home" checks the result rather than guessing a path. Also fails when
+    /// the value cannot be expressed as a canonical `file:` URL.
+    ///
+    /// ```no_run
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let home = Folder::home()?;
+    /// assert!(home.url().is_local());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn home() -> Result<Self> {
+        Self::home_from(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
+    }
+
+    /// Resolve the home directory from the two variables' values, in order.
+    ///
+    /// Kept apart from [`Self::home`] so the rule is tested with explicit
+    /// inputs and never through the process-wide environment.
+    pub(super) fn home_from(home: Option<OsString>, profile: Option<OsString>) -> Result<Self> {
+        match [home, profile]
+            .into_iter()
+            .flatten()
+            .find(|value| !value.is_empty())
+        {
+            Some(value) => Self::new(value),
+            None => Err(Error::absent("home directory", "HOME or USERPROFILE")),
+        }
+    }
+
+    /// The current user's configuration directory, `~/.config`.
+    ///
+    /// [`Self::home`] joined with `.config`, so the home rule and its failure
+    /// live in one place: this fails exactly when `home` does. Nothing is
+    /// created or probed.
+    ///
+    /// ```
+    /// use yggdryl::local::Folder;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// match Folder::config() {
+    ///     Ok(config) => assert_eq!(
+    ///         config.path()?.file_name(),
+    ///         Some(std::ffi::OsStr::new(".config"))
+    ///     ),
+    ///     Err(error) => assert!(error.is_absent()),
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn config() -> Result<Self> {
+        Self::new(Self::home()?.path()?.join(".config"))
     }
 
     /// Borrow the described location.

@@ -22,15 +22,15 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 ///
 /// ```no_run
 /// use yggdryl::io::IOBase;
-/// use yggdryl::local::Path;
+/// use yggdryl::local::{Folder, Path};
 /// use yggdryl::IOKind;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let path = Path::new(std::env::temp_dir())?;
+/// let path = Path::new(Folder::temporary()?.path()?)?;
 /// assert_eq!(path.kind(), IOKind::Directory);
 ///
 /// // The same type addresses a leaf, and reading a missing one is empty.
-/// let leaf = Path::new(std::env::temp_dir().join("yggdryl-absent.arrows"))?;
+/// let leaf = Path::new(Folder::temporary()?.path()?.join("yggdryl-absent.arrows"))?;
 /// assert_eq!(leaf.kind(), IOKind::Unknown);
 /// assert!(leaf.read_all_bytes()?.is_empty());
 /// # Ok(())

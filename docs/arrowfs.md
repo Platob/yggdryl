@@ -556,8 +556,9 @@ replaces [`local`](local.md)**, whose memory-mapped `File` remains the local bac
 
     use yggdryl::arrowfs::{File, LocalFileSystem};
     use yggdryl::io::IOBase;
+    use yggdryl::local::Folder;
 
-    let root = std::env::temp_dir().join(format!("yggdryl-doc-arrowfs-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-arrowfs-{}", std::process::id()));
     std::fs::create_dir_all(&root)?;
     let location = root.join("trades.bin").to_string_lossy().replace('\\', "/");
 

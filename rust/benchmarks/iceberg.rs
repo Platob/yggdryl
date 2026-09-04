@@ -49,7 +49,10 @@ fn venue(index: usize) -> String {
 
 /// Build a scratch directory unique to this benchmark run.
 fn scratch(label: &str) -> PathBuf {
-    let mut path = std::env::temp_dir();
+    let mut path = Folder::temporary()
+        .expect("the temporary directory")
+        .path()
+        .expect("a platform path");
     path.push(format!(
         "yggdryl-bench-iceberg-{label}-{}",
         std::process::id()

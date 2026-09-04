@@ -2531,11 +2531,15 @@ mod buffered_handle {
 
     #[test]
     fn a_buffered_file_reads_from_pages_and_writes_through() {
-        let path = std::env::temp_dir().join(format!(
-            "yggdryl-buffered-file-{}-{:?}.bin",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let path = crate::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!(
+                "yggdryl-buffered-file-{}-{:?}.bin",
+                std::process::id(),
+                std::thread::current().id()
+            ));
         let _ = std::fs::remove_file(&path);
         let payload: Vec<u8> = (0..5_000_u32).map(|index| index as u8).collect();
         std::fs::write(&path, &payload).unwrap();
@@ -2594,7 +2598,7 @@ mod conformance {
     /// one per backend; `IOBase` is implemented for the box, so the byte half
     /// of the contract forwards unchanged.
     fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
-        let mut root = std::env::temp_dir();
+        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
@@ -2634,7 +2638,7 @@ mod conformance {
 
     /// Remove whatever the local backend left behind.
     fn cleanup(label: &str) {
-        let mut root = std::env::temp_dir();
+        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
@@ -2700,7 +2704,7 @@ mod conformance {
         // The laziness contract: absence is emptiness on the read path, so a
         // caller probes a location without an existence check first.
         let memory = Arc::new(crate::arrowfs::MemoryFileSystem::new());
-        let mut root = std::env::temp_dir();
+        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-conformance-absent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
 
@@ -2960,7 +2964,10 @@ mod lifecycle {
 
     /// A temp root nothing else in this file uses.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut root = std::env::temp_dir();
+        let mut root = Folder::temporary()
+            .expect("the temporary directory")
+            .path()
+            .expect("a platform path");
         root.push(format!("yggdryl-lifecycle-{label}-{}", std::process::id()));
         let mut folder = Folder::new(&root).expect("a local container");
         folder.remove(true).expect("a removable tree");
@@ -3281,7 +3288,10 @@ mod shape {
 
     /// A writable temporary root of this test's own.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
+        let mut path = crate::local::Folder::temporary()
+            .expect("the temporary directory")
+            .path()
+            .expect("a platform path");
         path.push(format!("yggdryl-shape-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).expect("a writable temporary root");
@@ -3661,7 +3671,11 @@ mod laziness {
 
     #[test]
     fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
-        let root = std::env::temp_dir().join(format!("yggdryl-order-{}", std::process::id()));
+        let root = crate::local::Folder::temporary()
+            .expect("the temporary directory")
+            .path()
+            .expect("a platform path")
+            .join(format!("yggdryl-order-{}", std::process::id()));
         let mut folder = crate::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         for name in ["c.bin", "a.bin", "b.bin"] {
@@ -3690,7 +3704,11 @@ mod laziness {
 
     #[test]
     fn a_glob_whose_fixed_prefix_loses_lists_nothing_beneath_it() {
-        let root = std::env::temp_dir().join(format!("yggdryl-prefix-{}", std::process::id()));
+        let root = crate::local::Folder::temporary()
+            .expect("the temporary directory")
+            .path()
+            .expect("a platform path")
+            .join(format!("yggdryl-prefix-{}", std::process::id()));
         let mut folder = crate::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         let mut leaf = folder
@@ -3730,7 +3748,11 @@ mod laziness {
         // one leaf. The walk yields an entry before the subtree under it, and
         // what it retains is one level's cursor per *open* level - the
         // frontier - never the thirty-two entries it will eventually yield.
-        let root = std::env::temp_dir().join(format!("yggdryl-deep-{}", std::process::id()));
+        let root = crate::local::Folder::temporary()
+            .expect("the temporary directory")
+            .path()
+            .expect("a platform path")
+            .join(format!("yggdryl-deep-{}", std::process::id()));
         let mut folder = crate::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         let mut path = String::new();

@@ -333,9 +333,9 @@ just go through the pages.
 ```rust
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::io::IOBase;
-use yggdryl::local::File;
+use yggdryl::local::{File, Folder};
 
-let path = std::env::temp_dir().join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
+let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
 std::fs::write(&path, vec![9_u8; 4_096])?;
 
 let handle = File::new(&path)?.buffered(BufferedOptions::default().with_page_size(1_024));

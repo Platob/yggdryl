@@ -451,7 +451,7 @@ impl crate::arrowfs::ArrowFileSystem for SameVersionWinner {
 
 /// Build a scratch directory unique to this test and this process.
 fn root(label: &str) -> std::path::PathBuf {
-    let mut path = std::env::temp_dir();
+    let mut path = Folder::temporary().unwrap().path().unwrap();
     path.push(format!("yggdryl-iceberg-{label}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     path

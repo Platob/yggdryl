@@ -282,7 +282,7 @@ impl Attributes for Url {
 /// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let folder = Folder::new(std::env::temp_dir())?;
+/// let folder = Folder::temporary()?;
 /// let name = Handle(&folder).attribute(&Selector::Name)?;
 /// # let _ = name;
 /// # Ok(())

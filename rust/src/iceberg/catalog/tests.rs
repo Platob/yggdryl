@@ -12,7 +12,7 @@ use crate::{DataType, Field, IOKind};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
 fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
-    let mut path = std::env::temp_dir();
+    let mut path = Folder::temporary().unwrap().path().unwrap();
     path.push(format!(
         "yggdryl-iceberg-catalog-{label}-{}",
         std::process::id()
@@ -542,7 +542,7 @@ fn an_empty_namespace_is_durable_and_survives_a_reopen() {
 
 #[test]
 fn properties_round_trip_at_all_three_levels() {
-    let mut root = std::env::temp_dir();
+    let mut root = Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-iceberg-catalogs-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 

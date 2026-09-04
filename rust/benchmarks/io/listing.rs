@@ -17,7 +17,11 @@ const WIDTHS: [usize; 3] = [10, 1_000, 100_000];
 
 /// Build a folder of `width` leaves, and return it with its root path.
 fn wide(width: usize) -> (std::path::PathBuf, Folder) {
-    let root = std::env::temp_dir().join(format!("yggdryl-bench-listing-{width}"));
+    let root = Folder::temporary()
+        .expect("the temporary directory")
+        .path()
+        .expect("a platform path")
+        .join(format!("yggdryl-bench-listing-{width}"));
     let mut folder = Folder::new(&root).expect("a valid path");
     folder.remove(true).ok();
     folder.create().expect("a creatable folder");
@@ -32,7 +36,11 @@ fn wide(width: usize) -> (std::path::PathBuf, Folder) {
 
 /// Build a folder of `width` leaves split across ten subdirectories.
 fn deep(width: usize) -> (std::path::PathBuf, Folder) {
-    let root = std::env::temp_dir().join(format!("yggdryl-bench-listing-deep-{width}"));
+    let root = Folder::temporary()
+        .expect("the temporary directory")
+        .path()
+        .expect("a platform path")
+        .join(format!("yggdryl-bench-listing-deep-{width}"));
     let mut folder = Folder::new(&root).expect("a valid path");
     folder.remove(true).ok();
     folder.create().expect("a creatable folder");

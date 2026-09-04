@@ -344,7 +344,7 @@ impl TemporaryFile {
     fn new() -> Result<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
 
-        let directory = std::env::temp_dir();
+        let directory = crate::local::Folder::temporary()?.path()?;
         for _ in 0..100 {
             let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
             let path = directory.join(format!(
