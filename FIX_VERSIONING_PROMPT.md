@@ -1,6 +1,6 @@
 # FIX versioning, code sets, and the registry that carries them
 
-Six phases in dependency order. Each is complete work on its own and each
+Seven phases in dependency order. Each is complete work on its own and each
 states its own contract, files, tests, benchmark and docs. Follow
 `AGENTS.md`: Rust core first, no backward compatibility, one fact in one
 place. No new binding surface anywhere here - the only binding work in the
@@ -658,6 +658,47 @@ input, generated and committed, and the crate only ever reads
 - Repeating groups become the nested tree exactly as they do today: a List
   of a non-null `item` Struct whose `fix:tag` is the counter's.
 
+### The standard header and trailer
+
+`FixMsg` lays a message out flat (Phase 7), so the two components the
+specification wraps every message in are carried here as **order**, not as
+nesting.
+
+FIX Latest's `StandardHeader` is 28 fields plus the `HopGrp` group, in this
+order: 8 BeginString, 9 BodyLength, 35 MsgType, 1128 ApplVerID, 1156
+ApplExtID, 1129 CstmApplVerID, 49 SenderCompID, 56 TargetCompID, 115
+OnBehalfOfCompID, 128 DeliverToCompID, 34 MsgSeqNum, 50 SenderSubID, 142
+SenderLocationID, 57 TargetSubID, 143 TargetLocationID, 116 OnBehalfOfSubID,
+144 OnBehalfOfLocationID, 129 DeliverToSubID, 145 DeliverToLocationID, 43
+PossDupFlag, 97 PossResend, 52 SendingTime, 122 OrigSendingTime, 212
+XmlDataLen, 213 XmlData, 347 MessageEncoding, 369 LastMsgSeqNumProcessed.
+`StandardTrailer` (component id 1025) is 10 CheckSum alone in FIX Latest -
+but 4.2 and 4.4 put 93 SignatureLength and 89 Signature ahead of it, so the
+**cross-version trailer is those three in that order** and each field's own
+lineage says which versions it existed in. The same rule covers the header:
+the constant is the union across every scraped version, in canonical order,
+and `defined_at` decides what a given version may carry.
+
+Both land as generated `const` tag lists in `rust/src/fix/header.rs`:
+
+```rust
+pub const STANDARD_HEADER_TAGS:  &[i32] = &[8, 9, 35, 1128, /* … */ 369];
+pub const STANDARD_TRAILER_TAGS: &[i32] = &[93, 89, 10];
+```
+
+with `FixRegistry::standard_header_tags()` and `standard_trailer_tags()`
+reading them. They are **not registry entries**: a component has no tag and
+`insert` admits only a field carrying one (`registry.rs:494`), and inventing
+a synthetic tag to smuggle a component in would put a fiction in the
+identity space. The component names `StandardHeader` and `StandardTrailer`
+and their ids are dropped, and the module docs name that loss. Every field
+*in* them is an ordinary registry entry by its own tag, which is all a flat
+layout needs.
+
+The generator writes the constants and their source EP in the same run that
+writes the shards, and a test asserts every tag in both constants resolves
+in the generated `config/fix`.
+
 ### The worked case
 
 Tag 32, end to end, and the test that proves the whole brief:
@@ -677,6 +718,179 @@ together.
 
 Document the provenance, the version coverage, the FIXT omission and the
 regeneration command on `docs/fix.md`.
+
+---
+
+## Phase 7 - the halves made explicit, `FixEntry`, and `FixMsg::from_pairs`
+
+Needs Phase 2 for the identifier, Phase 3 for the version, and Phase 6 for a
+dictionary to resolve against.
+
+### The registry's two halves become public
+
+`position_by_id` (`registry.rs:703`) and `position_by_name`
+(`registry.rs:715`) each hard-code the same four-way probe: primitive
+canonical, nested canonical, primitive alternate, nested alternate. The
+chain is written twice and no caller can ask for one half.
+
+Expose the halves and compose the generic accessor out of them:
+
+```rust
+pub fn get_primitive_field<'k>(&self, key: impl Into<FixKey<'k>>) -> Option<&Field>;
+pub fn primitive_field<'k>(&self, key: impl Into<FixKey<'k>>) -> Result<&Field>;
+pub fn get_nested_field<'k>(&self, key: impl Into<FixKey<'k>>) -> Option<&Field>;
+pub fn nested_field<'k>(&self, key: impl Into<FixKey<'k>>) -> Result<&Field>;
+```
+
+Each probes exactly one half through both tiers - canonical first, alternate
+only on a miss - and `get_field` becomes
+`get_primitive_field(key).or_else(|| get_nested_field(key))`, so the
+half-order rule lives in one line instead of being retyped in two private
+chains. `get_field_by_tag`, `get_field_by_id`, `get_field_by_name` and
+`get_field_by_path` redirect the same way; none of them keeps a probe chain
+of its own.
+
+This is not tidying. A transcriber resolving a wire tag wants a scalar and
+nothing else, and today an unknown tag pays all four probes: the published
+numbers are 32.3 ns for a primitive hit against 72.2 ns for a miss, so the
+nested half is most of what a miss costs. `from_pairs` below asks only for
+`get_primitive_field`, and an unknown tag costs one probe.
+
+Tests: each accessor answers only from its half over a registry holding a
+scalar and a group that would both match a key; `get_field` answers exactly
+what it answered before over every existing case; the miss cost drops in the
+`resolve` bench group, and `docs/fix.md`'s table gains the two half-probe
+rows.
+
+### `FixEntry`: one wire pair, resolved
+
+`rust/src/fix/entry.rs`:
+
+```rust
+pub struct FixEntry<'a> {
+    /// The decimal FIX tag.
+    pub tag: i32,
+    /// `xxh32` of the branch name, or `None` for the standard branch.
+    pub branch: Option<i32>,
+    /// The value exactly as it arrived. Never absent - an absent field is an
+    /// entry that does not exist.
+    pub value: &'a str,
+}
+```
+
+- The digest is the same `xxh32` Phase 2's `FixBranch` already caches,
+  reinterpreted to `i32`; `FixEntry::id()` folds it into a `FixId` with one
+  shift-or, so an entry addresses the registry without hashing anything.
+- `None` is the standard branch *and* "not resolved yet", which is what
+  makes the type usable before `from_pairs` has decided a branch. That is
+  the whole reason it is not simply a `FixId`.
+- 32 bytes: `Option<i32>` costs 8, not 4, because `0` is a legal digest and
+  the niche is therefore unavailable. A bare `i32` defaulting to the
+  standard digest would be 24 and lose the unresolved state; the extra word
+  buys that state and is worth it here.
+- The value stays `&'a str` and is never typed inside the entry. Typing
+  happens once, in `from_pairs`, through `Field::scalar` - the one value
+  contract - so no FIX value parser is written twice.
+
+### `FixMsg::from_pairs`
+
+```rust
+pub fn from_pairs<'a, I>(
+    registry: Arc<FixRegistry>,
+    entries: I,
+    branch: Option<&FixBranch>,
+    version: Option<Version>,
+) -> Result<Self>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>;
+```
+
+A key is a tag or a name and the two are told apart without guessing: all
+ASCII digits is a tag, through the strict `parse_tag` that already exists
+(`fix/field.rs:44`, which refuses `+35` and `3x`); anything else is a name,
+resolved to its tag through `get_primitive_field` in the chosen branch. An
+unresolvable **name** is a typed error naming it - a name exists only
+because a dictionary spelled it, so a miss is genuinely wrong. An
+unresolvable **tag** is kept under its rendered decimal name as a nullable
+`utf8` field, which is the rule `FixMsg` already documents for unknown tags.
+
+**Inferring the version**, when the caller names none, in this order, and
+each step is a FIX rule rather than a heuristic:
+
+1. tag **1128 `ApplVerID`**, the application version, whose code set is
+   exactly `0`=FIX27, `1`=FIX30, `2`=FIX40, `3`=FIX41, `4`=FIX42, `5`=FIX43,
+   `6`=FIX44, `7`=FIX50, `8`=FIX50SP1, `9`=FIX50SP2, `10`=FIXLatest. It wins
+   because under FIXT.1.1 the session version says nothing about the
+   application version. The symbolic spelling (`FIX44`) is accepted too,
+   through Phase 4's `code_by_name`.
+2. tag **8 `BeginString`**: `FIX.4.0` … `FIX.4.4` give `4.0` … `4.4`.
+   `FIXT.1.1` is a session version and names no application version, so it
+   falls through rather than being taken literally.
+3. otherwise `Version::MAX` - FIX Latest, which is what a dictionary with no
+   version marker means.
+
+**Inferring the branch**, when the caller names none:
+
+1. resolve every entry in `FixBranch::STANDARD`. Nothing missed means the
+   branch is standard and there is no second pass - the common case costs
+   one probe per entry.
+2. otherwise retry only the *missed* tags against each branch the registry
+   holds (`FixRegistry::branches()`, free from Phase 2's digest table) and
+   take the branch resolving the most of them; a tie goes to the lowest
+   branch name so the answer is deterministic; a branch resolving none is
+   never chosen and its tags stay unknown.
+
+A caller who passes a branch gets that branch and no guessing happens at
+all.
+
+**Building the message**, one pass over the resolved entries:
+
+- the field is the registry's, cloned, with `name_at(version)` and
+  `dtype_at(version)` when a lineage exists and the field's own name and
+  datatype when it does not;
+- it is non-null in this message's schema, because the value is present;
+- the value is `field.scalar(Scalar::from(entry.value))?` and nothing
+  re-checks what `scalar` already answered;
+- order is `STANDARD_HEADER_TAGS`, then the body in entry order, then
+  `STANDARD_TRAILER_TAGS` - flat, no `StandardHeader` Struct, which is what
+  Phase 6 generates those constants for;
+- `FixMsg::with_registry` finishes it, so the existing validation and
+  canonicalization are not bypassed.
+
+**Repeating groups are out of scope here.** Rebuilding a group from a flat
+tag stream needs the message type's grammar to know where a group's members
+end, and that grammar is the `.cfb` phase's. A counter tag and its members
+are emitted flat, in entry order, and the module docs state the limitation.
+
+### Optimization the phase is judged on
+
+- One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each reserved
+  from the iterator's `size_hint` before the walk. No per-entry `String`, no
+  per-entry map.
+- A tag-keyed entry allocates nothing before the value is typed.
+- Only `get_primitive_field` is probed for scalars; the nested half is
+  reached only for a counter tag.
+- Header ordering reads a precomputed tag-to-position table, not a scan of
+  `STANDARD_HEADER_TAGS` per entry.
+
+### Tests, benchmark, docs
+
+Cases: tag-keyed and name-keyed pairs producing the identical message;
+`ApplVerID` beating `BeginString`; `BeginString="FIXT.1.1"` falling through
+to Latest; an explicit `version` overriding both markers; branch inference
+picking the vendor dictionary that resolves the misses, and the tie rule;
+an explicit branch suppressing inference; an unknown tag kept as `utf8`
+under its decimal name; an unknown name refused; tag 32 keyed as
+`LastShares` in a `4.2` message and as `LastQty` in a Latest one, both
+answering the same value; header and trailer ordering with a body field
+interleaved in the input.
+
+New bench group in `rust/benchmarks/fix/`: a NewOrderSingle of ~15 pairs, an
+ExecutionReport of ~30, and a 300-pair message; tag-keyed against
+name-keyed; branch and version given against inferred. Report per-message
+and per-pair cost and put the table on `docs/fix.md`. Add a case to
+`rust/tests/allocations.rs` bounding the allocations of a 30-pair tag-keyed
+build to the three reserved vectors plus what the values themselves cost.
 
 ---
 
