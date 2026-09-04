@@ -672,6 +672,29 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
         (&registry).into_iter().map(Field::name).collect::<Vec<_>>(),
         ["Account", "Symbol", "Text"]
     );
+    // The cursor form walks the same order, and a binding advancing it with
+    // only the last tag it saw sees every field exactly once.
+    let mut walked = Vec::new();
+    let mut cursor = None;
+    while let Some(field) = registry.next_field_after(cursor) {
+        walked.push(field.name());
+        cursor = field.as_fix().tag().unwrap();
+    }
+    assert_eq!(walked, ["Account", "Symbol", "Text"]);
+    assert!(registry.next_field_after(Some(i32::MAX)).is_none());
+    assert!(FixRegistry::new().next_field_after(None).is_none());
+    // An alternate tag is an index entry, never a cursor stop.
+    let mut aliased = tagged("MsgType", 35);
+    aliased.as_fix_mut().set_tags(&[2]).unwrap();
+    let with_alternate = FixRegistry::from_fields([aliased, tagged("Account", 1)]).unwrap();
+    assert_eq!(
+        with_alternate
+            .next_field_after(Some(1))
+            .map(Field::name)
+            .unwrap(),
+        "MsgType"
+    );
+
     assert_eq!(registry, other);
     assert_ne!(registry, FixRegistry::new());
     assert_eq!(FixRegistry::new(), FixRegistry::default());

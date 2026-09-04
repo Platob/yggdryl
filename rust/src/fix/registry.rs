@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap, btree_map};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FusedIterator;
+use std::ops::Bound;
 
 use smol_str::format_smolstr;
 
@@ -399,6 +400,43 @@ impl FixRegistry {
             self.index(position);
         }
         Some(removed)
+    }
+
+    /// Returns the first field after `after_tag`, or the first for `None`.
+    ///
+    /// This is the cursor form an owning FFI iterator advances with, the way
+    /// [`ProtocolField::next_entry`](crate::ProtocolField::next_entry) is: a
+    /// binding holds the registry and one `i32`, so lazy iteration crosses the
+    /// boundary without cloning the dictionary or borrowing across it. The
+    /// order is [`Self::iter`]'s, ascending canonical tag.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut price = DataType::Float64.required_field("Price");
+    /// price.as_fix_mut().set_tag(44)?;
+    /// let mut symbol = DataType::Utf8.required_field("Symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let registry = FixRegistry::from_fields([price, symbol])?;
+    ///
+    /// let first = registry.next_field_after(None).expect("a first field");
+    /// assert_eq!(first.name(), "Price");
+    /// let second = registry.next_field_after(first.as_fix().tag()?);
+    /// assert_eq!(second.map(yggdryl::Field::name), Some("Symbol"));
+    /// assert!(registry.next_field_after(Some(55)).is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn next_field_after(&self, after_tag: Option<i32>) -> Option<&Field> {
+        let entry = match after_tag {
+            Some(tag) => self
+                .tags
+                .range((Bound::Excluded(tag), Bound::Unbounded))
+                .next(),
+            None => self.tags.iter().next(),
+        };
+        self.fields.get(*entry?.1)
     }
 
     /// Iterates the fields in ascending canonical-tag order.
