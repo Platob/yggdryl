@@ -95,6 +95,7 @@ const nullRegistry: FixMsg = new fix.FixMsg(field, input, null)
 const linked: FixRegistry = message.registry
 const schema: Field = message.field
 const row: Scalar = message.value
+const valueCount: number = message.size
 const valueByTag: Scalar | null = message.getByTag(55)
 const requiredValueByTag: Scalar = message.byTag(55)
 const valueByName: Scalar | null = message.getByName('Symbol')

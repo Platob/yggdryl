@@ -1007,6 +1007,13 @@ export declare class FixMsg {
   get field(): Field
   /** The ordered row value. */
   get value(): Scalar
+  /**
+   * How many values the root declares, which is what `entries` yields.
+   *
+   * Counts are JavaScript numbers, exact to 2^53, as everywhere else at
+   * this boundary; Python spells the same answer `len(message)`.
+   */
+  get size(): number
   /** The value of the root child a tag names, or `null`. */
   getByTag(tag: number): Scalar | null
   /** The value of the root child a tag names. */

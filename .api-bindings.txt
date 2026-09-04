@@ -36,7 +36,7 @@
     keys: an int tag (never bool, must fit i32) or a str name/dotted path; locations take IOBase | Url | str | PathLike
     protocol: mutable, so unhashable; equality by fields; __len__/__bool__/__contains__/__getitem__/__iter__ over Field, lazily; insert/update/remove refuse while a message or the process default shares it
   fix.FixMsg
-    instance: by_name, by_path, by_tag, field, get, get_by_name, get_by_path, get_by_tag, registry, stable_hash, value
+    instance: __len__, by_name, by_path, by_tag, field, get, get_by_name, get_by_path, get_by_tag, registry, stable_hash, value
     protocol: immutable value - stable equality/hash, copy, and pickle carrying the schema, value and registry documents; __iter__ yields (name, Scalar) pairs in root order
   iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static field()
@@ -175,7 +175,7 @@
     keys: a number tag (must be an exact i32) or a string name/dotted path; locations take IOBase | Url | string
     protocol: mutable; equality by fields; `keys()` is a lazy Generator<Field> and `Symbol.iterator` walks it; insert/update/remove refuse while a message, the process default, or an unfinished walk shares it
   fix.FixMsg
-    instance: at, byName, byPath, byTag, clone, entries, equals, field, get, getByName, getByPath, getByTag, registry, stableHash, toJSON, toString, value, Symbol.iterator
+    instance: at, byName, byPath, byTag, clone, entries, equals, field, get, getByName, getByPath, getByTag, registry, size, stableHash, toJSON, toString, value, Symbol.iterator
     protocol: immutable value - stable equality, stableHash, clone, `toJSON` as {field, value}; `entries()` is a lazy Generator<[string, Scalar]> and `Symbol.iterator` walks it; the constructor widens its value through Scalar.fromJs
   iceberg
     statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson

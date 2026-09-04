@@ -338,6 +338,9 @@ test('a message resolves through the registry it carries', () => {
   assert.ok(message.field.equals(root))
   assert.ok(message.registry.equals(registry))
   assert.equal([...message].length, 4)
+  // `size` is what Python spells `len(message)`, and it agrees with the walk.
+  assert.equal(message.size, 4)
+  assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byName('ticker').asJs(), 'AAPL')
   assert.equal(message.byTag(38).toString(), '"100"')

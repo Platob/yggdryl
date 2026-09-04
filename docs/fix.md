@@ -8,9 +8,9 @@ resolves a tag or a name to the canonical field, the shards it persists to throu
     The `fix:` vocabulary reaches every runtime through the protocol view a field already
     answers - `field.as_fix()` in Rust, `field.fix` in Python and JavaScript - so there is no
     second field class anywhere. Python reaches the registry, the message and the process
-    default through [`yggdryl.fix`](extensions/python.md#fix-registry-at-the-boundary);
-    JavaScript reaches the same surface under its own `fix` namespace, whose examples land with
-    that binding.
+    default through [`yggdryl.fix`](extensions/python.md#fix-registry-at-the-boundary), and
+    JavaScript reaches the same surface under its own
+    [`fix` namespace](extensions/javascript.md#fix-is-a-namespace).
 
 ## The vocabulary is metadata
 

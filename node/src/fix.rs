@@ -425,6 +425,16 @@ impl JsFixMsg {
         JsScalar::from_core(self.inner.as_value().clone())
     }
 
+    /// How many values the root declares, which is what `entries` yields.
+    ///
+    /// Counts are JavaScript numbers, exact to 2^53, as everywhere else at
+    /// this boundary; Python spells the same answer `len(message)`.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn size(&self) -> f64 {
+        self.inner.as_field().fields().len() as f64
+    }
+
     /// The value of the root child a tag names, or `null`.
     #[napi]
     pub fn get_by_tag(&self, tag: f64) -> Result<Option<JsScalar>> {
