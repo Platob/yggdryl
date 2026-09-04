@@ -3,7 +3,8 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput};
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::io::Buffer;
 use yggdryl::{Scalar, Url};
 
 const ROWS: usize = 16_384;

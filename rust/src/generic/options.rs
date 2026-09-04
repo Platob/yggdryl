@@ -19,7 +19,7 @@
 //! so one declaration has one spelling.
 //!
 //! An encoding is never guessed: [`RecordOptions::for_media_type`] derives it
-//! from the handle's media type, which is what [`crate::io::IOBase`]'s record
+//! from the handle's media type, which is what [`crate::IOBase`]'s record
 //! methods use when a caller does not supply options of their own.
 //!
 //! ```
@@ -231,7 +231,7 @@ pub trait IORecordOptions: Sized {
     /// Borrow the column names whose values form an explicit merge's match key.
     ///
     /// A non-empty list is required by
-    /// [`merge_arrow_reader`](crate::io::IOMedia::merge_arrow_reader): a row
+    /// [`merge_arrow_reader`](crate::IOMedia::merge_arrow_reader): a row
     /// whose key is already stored updates it, and a row whose key is not
     /// appends. The option never selects an operation; overwrite and append
     /// reject it, and merge rejects an empty list.

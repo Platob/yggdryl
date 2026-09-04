@@ -44,10 +44,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use criterion::{Criterion, Throughput};
+use yggdryl::IOBase;
 use yggdryl::arrowfs::{ArrowFileSystem, File as ArrowFile, LocalFileSystem, MemoryFileSystem};
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::gzip::Gzip;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::Buffer;
 use yggdryl::local::{File, Folder};
 
 /// The fixture's size: twice the default byte budget, so a full scan evicts.
@@ -88,7 +89,7 @@ struct Counting {
     reads: AtomicUsize,
 }
 
-impl yggdryl::io::IOMedia for Counting {
+impl yggdryl::IOMedia for Counting {
     yggdryl::delegate_iomedia!(handle);
 }
 

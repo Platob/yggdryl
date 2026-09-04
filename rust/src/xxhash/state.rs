@@ -11,7 +11,7 @@ use std::hash::{BuildHasher, Hasher};
 use std::io::Read;
 use std::sync::Arc;
 
-use crate::io::DEFAULT_STREAM_BATCH_SIZE;
+use crate::DEFAULT_STREAM_BATCH_SIZE;
 use crate::{Digest, DigestAlgorithm, Result};
 
 use super::secret;

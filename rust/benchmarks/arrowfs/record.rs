@@ -11,7 +11,7 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 use yggdryl::arrowfs::File as ArrowFile;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia};
 
 use super::{ROWS, batch, buffer, memory, store, wide};
 

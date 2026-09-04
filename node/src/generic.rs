@@ -43,7 +43,7 @@ impl JsRecordOptions {
         value: Option<&Self>,
         handle: &yggdryl::generic::Holder,
     ) -> Result<CoreRecordOptions> {
-        use yggdryl::io::IOMedia as _;
+        use yggdryl::IOMedia as _;
 
         match value {
             Some(options) => Ok(options.inner.clone()),

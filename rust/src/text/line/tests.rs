@@ -1,9 +1,10 @@
 use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray};
 
 use crate::generic::{IORecordOptions as _, RecordOptions};
-use crate::io::{Buffer, IOBase as _, IOMedia as _};
+use crate::io::Buffer;
 use crate::text::{LineSep, Text, TextOptions};
 use crate::{DataType, Timezone};
+use crate::{IOBase as _, IOMedia as _};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
     Buffer::from_bytes(bytes.to_vec()).with_media_type(

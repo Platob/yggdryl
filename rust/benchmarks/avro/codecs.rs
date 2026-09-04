@@ -11,9 +11,10 @@ use std::sync::Arc;
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
+use yggdryl::IOBase;
 use yggdryl::avro::AvroOptions;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::Buffer;
 use yggdryl::{DataType, Url, avro};
 
 /// Rows in the sweep fixture.

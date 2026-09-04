@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use yggdryl::io::IOBase;
+use yggdryl::IOBase;
 use yggdryl::local::Folder;
 use yggdryl::{
     DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field,

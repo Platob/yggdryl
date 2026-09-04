@@ -1,7 +1,8 @@
 //! `{{ }}` placeholders: the closed grammar, the two typing rules, and the
 //! security switches that keep the environment out unless asked for.
 
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::io::Buffer;
 use yggdryl::text::{self, Format, Limits, Loading, Placeholders};
 use yggdryl::{Scalar, Url};
 

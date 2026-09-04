@@ -7,7 +7,7 @@ use super::{
     NAMESPACE_DOCUMENT, Names, Occupant, Tables, classify, invalid, read_properties, resolve,
     update_properties, write_properties,
 };
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::metadata::Metadata;
 use crate::{IOKind, Result};
 

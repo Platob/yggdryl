@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOPath, Listing};
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{IOBase, IOPath, Listing};
 
 use super::system::{ArrowFileSystem, filesystem_location};
 use super::{File, Folder, location_url};
@@ -214,7 +214,7 @@ impl IOPath for Path {
     }
 }
 
-impl crate::io::IOMedia for Path {
+impl crate::IOMedia for Path {
     crate::impl_default_iomedia!();
 }
 

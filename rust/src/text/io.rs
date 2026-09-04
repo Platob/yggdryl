@@ -2,9 +2,9 @@
 
 use std::io::{Cursor, Read};
 
-use crate::io::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::text::{Format, Formatting, Limits, Loading, Scalar};
 use crate::{Codec, Error, Field, Level, MediaType, MimeType, Result};
+use crate::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
 
 /// The structured format and content coding used by a handle.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -238,7 +238,8 @@ mod tests {
     use std::hash::Hash;
 
     use super::{Plan, from_io, from_io_all, into_io, into_io_all};
-    use crate::io::{Buffer, IOBase};
+    use crate::IOBase;
+    use crate::io::Buffer;
     use crate::text::Format;
     use crate::{Codec, Scalar, Url};
 
@@ -330,7 +331,7 @@ mod tests {
 
         for (format, extension) in cases {
             let plain = crate::text::into_bytes(&value, format).unwrap();
-            assert!(plain.len() > crate::io::DEFAULT_STREAM_BATCH_SIZE);
+            assert!(plain.len() > crate::DEFAULT_STREAM_BATCH_SIZE);
             for (codec, suffix) in codings {
                 // Deliberately declare only the structured format: the bounded
                 // replay prefix must still preserve magic-based coding
@@ -338,7 +339,7 @@ mod tests {
                 let mut source = handle(&format!("large.{extension}"));
                 let encoded = codec.dump(&plain).unwrap();
                 assert!(
-                    encoded.len() > crate::io::DEFAULT_STREAM_BATCH_SIZE,
+                    encoded.len() > crate::DEFAULT_STREAM_BATCH_SIZE,
                     "{format}/{codec}"
                 );
                 source.write_all_bytes(&encoded).unwrap();

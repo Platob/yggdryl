@@ -2,7 +2,7 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::{Digest, DigestAlgorithm, Digester, Result};
 
 /// A byte handle that hashes what is written through it.
@@ -141,7 +141,7 @@ impl<H: IOBase> std::fmt::Debug for Hashed<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Hashed<H> {
+impl<H: IOBase> crate::IOMedia for Hashed<H> {
     crate::delegate_iomedia!(handle);
 }
 

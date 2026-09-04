@@ -14,8 +14,8 @@ use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _, RecordOptions};
-use yggdryl::io::{IOBase as _, IOMedia as _};
 use yggdryl::{Codec, IOMode, Level};
+use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
 use crate::field::{PyField, core_field_from_value};
@@ -1849,7 +1849,7 @@ impl PyIOBase {
 /// which the iterator is exhausted.
 #[pyclass(name = "Listing", module = "yggdryl._native")]
 pub(crate) struct PyIOBaseIterator {
-    entries: yggdryl::io::Listing,
+    entries: yggdryl::Listing,
 }
 
 #[pymethods]

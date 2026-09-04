@@ -10,8 +10,9 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::BatchReader;
 use crate::generic::{Holder, IORecordOptions, iso};
-use crate::io::{Buffer, Cursor, IOBase};
+use crate::io::Buffer;
 use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{Cursor, IOBase};
 
 use super::options::TextOptions;
 use super::reader::Lines;
@@ -88,7 +89,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<u64> {
     let codings = handle.media_type().encodings().to_vec();
     let mut source: Box<dyn Read + '_> =
-        Box::new(handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?);
+        Box::new(handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?);
     for coding in codings.iter().rev() {
         source = Codec::from_mime_type(coding).reader(source);
     }
@@ -524,9 +525,9 @@ pub(crate) fn append_arrow_reader(
         let mut encoder = codec.writer_with_level(&mut encoded, options.level());
         let mut suffix = Vec::new();
         if !handle.is_empty() {
-            let source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+            let source = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
             let mut decoder = codec.reader(source);
-            let mut chunk = vec![0; crate::io::DEFAULT_STREAM_BATCH_SIZE];
+            let mut chunk = vec![0; crate::DEFAULT_STREAM_BATCH_SIZE];
             loop {
                 let read = decoder.read(&mut chunk)?;
                 if read == 0 {
@@ -567,7 +568,7 @@ fn render_batches(
 ) -> Result<()> {
     let body = BodyColumn::resolve(batches.schema().as_ref())?;
     let terminator = options.output_linesep();
-    let mut rendered = Vec::with_capacity(crate::io::DEFAULT_STREAM_BATCH_SIZE);
+    let mut rendered = Vec::with_capacity(crate::DEFAULT_STREAM_BATCH_SIZE);
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
         rendered.clear();

@@ -20,13 +20,20 @@ pub mod avro;
 // The page cache over any handle. It is a wrapping handle like the codings,
 // so it lives beside them rather than inside `io`, and it needs no Arrow.
 pub mod buffered;
+mod bytestream;
+mod codec;
 mod datatype;
+mod datatype_id;
+mod datatype_kind;
+mod digest;
+mod edge_algorithm;
 mod error;
 pub mod expression;
 pub mod field;
 pub mod fix;
 pub mod generic;
 pub mod gzip;
+mod i256;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
 // The line handler consults the Iceberg type vocabulary even when the table
@@ -40,16 +47,29 @@ pub mod iceberg;
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
 pub mod io;
+mod iobase;
+mod iocursor;
+mod iokind;
+mod iomedia;
+mod iomode;
 #[cfg(feature = "arrow")]
 pub mod ipc;
 pub mod json;
+mod listing;
 pub mod local;
+mod media_type;
 mod metadata;
+mod mime_type;
 #[cfg(feature = "parquet")]
 pub mod parquet;
 mod path;
+mod roles;
+mod scheme;
 pub mod text;
+mod time_unit;
+mod timezone;
 pub mod toml;
+mod union_mode;
 mod uri;
 // The digest vocabulary's implementation. The value codec has no Arrow
 // dependency, so the module is unconditional like the Avro value codec; only
@@ -59,10 +79,16 @@ pub mod yaml;
 pub mod zlib;
 pub mod zstd;
 
+pub use bytestream::ByteStream;
+pub use codec::{Codec, Encoder, Level};
 pub use datatype::{
     AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,
     UnionFields,
 };
+pub use datatype_id::DataTypeId;
+pub use datatype_kind::DataTypeKind;
+pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
+pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 #[cfg(feature = "arrow")]
@@ -81,17 +107,29 @@ pub use field::{
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
 pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
-pub use generic::{
-    Codec, DataTypeId, DataTypeKind, Digest, DigestAlgorithm, DigestBytes, Digester, EdgeAlgorithm,
-    Encoder, EnumScalar, Float, IOKind, IOMode, Integer, Level, MediaType, MimeType, Scheme,
-    TemporalFamily, TemporalRef, TimeUnit, Timezone, UnionMode,
+pub use generic::{EnumScalar, Float, Integer, Scalar, TemporalFamily, TemporalRef};
+pub use i256::I256;
+pub use iobase::{
+    ArrowWriteSession, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
+    overwrite_arrow_reader_default, skip_absent,
 };
-pub use generic::{I256, Scalar};
+pub use iocursor::{Cursor, IOCursor};
+pub use iokind::IOKind;
+pub use iomedia::IOMedia;
+pub use iomode::IOMode;
 pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
+pub use listing::Listing;
+pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
+pub use mime_type::MimeType;
+pub use roles::{IOFile, IOFolder, IOPath};
+pub use scheme::Scheme;
 pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
+pub use time_unit::TimeUnit;
+pub use timezone::Timezone;
 pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
+pub use union_mode::UnionMode;
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
 };

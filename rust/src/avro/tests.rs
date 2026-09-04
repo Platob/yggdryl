@@ -1,6 +1,7 @@
 //! Unit tests for the Avro codec module.
 
-use crate::io::{Buffer, IOBase};
+use crate::IOBase;
+use crate::io::Buffer;
 use crate::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
@@ -62,7 +63,7 @@ fn handmade_container_with_header(entries: &[(&str, &[u8])], blocks: &[(i64, Vec
 
 mod containers {
     use super::{buffer, manifest_shaped_schema};
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::{Scalar, avro};
 
     #[test]
@@ -526,7 +527,7 @@ mod schemas {
 mod logical {
     use std::sync::Arc;
 
-    use crate::generic::TimeUnit;
+    use crate::TimeUnit;
     use crate::{Scalar, Timezone, avro};
 
     /// Round-trip one value through a single-field record container.
@@ -1394,8 +1395,9 @@ mod records {
 
     use crate::avro::{Avro, AvroOptions};
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOBase, IOMedia};
+    use crate::io::Buffer;
     use crate::{DataType, Field, MediaType, Url, avro};
+    use crate::{IOBase, IOMedia};
 
     /// One canonical batch with a nullable column and a list column.
     fn batch() -> (Field, RecordBatch) {
@@ -1472,7 +1474,7 @@ mod records {
         }
     }
 
-    impl crate::io::IOMedia for Shared {
+    impl crate::IOMedia for Shared {
         crate::impl_default_iomedia!();
     }
 
@@ -1546,7 +1548,7 @@ mod records {
         }
     }
 
-    impl crate::io::IOMedia for Counting {
+    impl crate::IOMedia for Counting {
         crate::impl_default_iomedia!();
     }
 
@@ -1843,17 +1845,17 @@ mod records {
                 options.set_merge_by_names(vec!["id".into()]);
             }
             let result = match operation {
-                "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+                "overwrite" => crate::IOMedia::overwrite_arrow_reader(
                     &mut media,
                     counted_reader(Arc::clone(&pulls)),
                     &options,
                 ),
-                "append" => crate::io::IOMedia::append_arrow_reader(
+                "append" => crate::IOMedia::append_arrow_reader(
                     &mut media,
                     counted_reader(Arc::clone(&pulls)),
                     &options,
                 ),
-                "merge" => crate::io::IOMedia::merge_arrow_reader(
+                "merge" => crate::IOMedia::merge_arrow_reader(
                     &mut media,
                     counted_reader(Arc::clone(&pulls)),
                     &options,
@@ -2182,7 +2184,7 @@ mod records {
         let schema = Field::new(
             "row",
             DataType::from_fields([
-                DataType::Interval(crate::generic::TimeUnit::MonthDayNano).required_field("span")
+                DataType::Interval(crate::TimeUnit::MonthDayNano).required_field("span")
             ])
             .unwrap(),
             false,
@@ -2234,11 +2236,8 @@ mod records {
             "row",
             DataType::from_fields([
                 DataType::Date32.required_field("day"),
-                DataType::Timestamp(
-                    crate::generic::TimeUnit::Microsecond,
-                    Some(crate::Timezone::UTC),
-                )
-                .nullable_field("at"),
+                DataType::Timestamp(crate::TimeUnit::Microsecond, Some(crate::Timezone::UTC))
+                    .nullable_field("at"),
                 DataType::decimal128(10, 2).unwrap().required_field("cost"),
             ])
             .unwrap(),
@@ -2297,7 +2296,7 @@ mod records {
 }
 
 mod matrix {
-    use crate::generic::TimeUnit;
+    use crate::TimeUnit;
     use crate::{Scalar, avro};
 
     /// Round-trip rows through a container and hand them back.
@@ -2420,7 +2419,7 @@ mod matrix {
 }
 
 mod snapshots {
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::{Scalar, avro};
 
     /// The byte snapshot of one fixed schema and data pair.
@@ -2488,7 +2487,7 @@ mod fuzz_lite {
     //! `AVRO_FUZZ_ITERATIONS`, matching how the repository gates its slow
     //! legs outside the default test run.
 
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::{Limits, avro};
 
     /// A deterministic pseudo-random byte source.
@@ -2595,8 +2594,9 @@ mod limits {
 
     use arrow_array::RecordBatchReader;
 
+    use crate::IOMedia;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOMedia};
+    use crate::io::Buffer;
     use crate::{DataType, Field, Url};
 
     /// A struct field is the schema of the batches it describes.

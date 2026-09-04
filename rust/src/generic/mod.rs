@@ -1,55 +1,31 @@
 //! Shared scalar, dispatch, I/O vocabulary, and runtime wrappers.
 
 mod arithmetic;
-pub(crate) mod codec;
 mod coded;
-mod datatype_id;
-mod datatype_kind;
 pub(crate) mod decimal;
-mod digest;
-mod edge_algorithm;
 mod enum_scalar;
 mod holder;
-mod i256;
 mod inference;
-mod io_kind;
-mod io_mode;
 pub(crate) mod iso;
 mod magic;
 #[cfg(feature = "arrow")]
 mod media;
-mod media_type;
-mod mime_type;
 #[cfg(feature = "arrow")]
 mod options;
 mod pairs;
 pub mod scalar;
-mod scheme;
 pub(crate) mod temporal;
 mod text;
-mod time_unit;
-pub(crate) mod timezone;
 mod typed;
-mod union_mode;
 pub mod wkb;
 
 pub(crate) use arithmetic::Arithmetic;
-pub use codec::{Codec, Encoder, Level};
 pub use coded::Coded;
-pub use datatype_id::DataTypeId;
-pub use datatype_kind::DataTypeKind;
-pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
-pub use edge_algorithm::EdgeAlgorithm;
 pub use enum_scalar::EnumScalar;
 pub use holder::Holder;
-pub use i256::I256;
-pub use io_kind::IOKind;
-pub use io_mode::IOMode;
 pub use magic::MAGIC_PROBE_LEN;
 #[cfg(feature = "arrow")]
 pub use media::Media;
-pub use media_type::MediaType;
-pub use mime_type::MimeType;
 #[cfg(feature = "arrow")]
 pub(crate) use options::{CommitBuffer, WriteLimitState};
 #[cfg(feature = "arrow")]
@@ -65,11 +41,8 @@ pub(crate) use pairs::sorted_pairs;
 #[cfg(feature = "iceberg")]
 pub(crate) use pairs::sorted_values;
 pub use scalar::{Children, Float, Float16, Float32, Float64, Integer, Scalar};
-pub use scheme::Scheme;
 pub use temporal::{TemporalFamily, TemporalRef};
 pub use text::Text;
-pub use time_unit::TimeUnit;
-pub use timezone::Timezone;
 pub use typed::{
     AsciiScalar, BinaryScalar, BinaryViewScalar, BooleanScalar, CfiScalar, CountryScalar,
     CurrencyScalar, Date32Scalar, Date64Scalar, Decimal32Scalar, Decimal64Scalar, Decimal128Scalar,
@@ -82,4 +55,3 @@ pub use typed::{
     UInt16Scalar, UInt32Scalar, UInt64Scalar, UnionScalar, Utf8Scalar, Utf8ViewScalar,
     VariantScalar,
 };
-pub use union_mode::UnionMode;

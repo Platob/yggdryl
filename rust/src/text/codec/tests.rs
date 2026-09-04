@@ -1,5 +1,6 @@
 use super::{Json, Jsonl, TextCodec, Toml, Yaml};
-use crate::io::{Buffer, IOBase};
+use crate::IOBase;
+use crate::io::Buffer;
 use crate::{MimeType, Scalar, Url};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -71,7 +72,7 @@ struct Measured {
     reads: AtomicUsize,
 }
 
-impl crate::io::IOMedia for Measured {
+impl crate::IOMedia for Measured {
     crate::delegate_iomedia!(inner);
 }
 

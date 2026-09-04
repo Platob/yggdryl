@@ -9,7 +9,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::TimeUnit;
+use crate::TimeUnit;
 use crate::{DataType, Field, Result, Scalar, Timezone};
 
 use super::datum::invalid;

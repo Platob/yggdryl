@@ -1,6 +1,6 @@
 //! One value naming every structured text format.
 
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::text::{Format, Json, Jsonl, Limits, TextCodec, Toml, Yaml};
 use crate::{MediaType, MimeType, Result, Url};
 

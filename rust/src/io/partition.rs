@@ -13,7 +13,7 @@
 //! The module also owns the other half of the convention: a handle that
 //! addresses the *folder* rather than one file reads across the leaves beneath
 //! it and routes each row of a write to the leaf its partition values name.
-//! [`crate::io::IOBase`]'s three write intents call in here whenever the handle
+//! [`crate::IOBase`]'s three write intents call in here whenever the handle
 //! is a container, which is what lets a caller address a lake and one file with
 //! the same call.
 
@@ -27,8 +27,8 @@ use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, S
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::field::cast::cast_field_array;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::{IOBase, IOMedia, Listing};
 use crate::{ArrowCast, DataType, Error, Field, Result, Url};
+use crate::{IOBase, IOMedia, Listing};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
@@ -669,8 +669,8 @@ fn derived_field(
     while let Some(part) = parts.next() {
         let part = part?;
         let stored = match options {
-            RecordOptions::Text(_) => Some(super::leaf_field(&part, options)?),
-            _ => super::stored_field(&part, options)?,
+            RecordOptions::Text(_) => Some(crate::iobase::leaf_field(&part, options)?),
+            _ => crate::iobase::stored_field(&part, options)?,
         };
         let Some(stored) = stored else {
             continue;
@@ -759,7 +759,7 @@ fn part_reader(
         let columns: Vec<&str> = pairs.iter().map(|(column, _)| column.as_str()).collect();
         leaf.set_field(field.without_fields(&columns)?);
     }
-    let reader = super::leaf_reader(part, &leaf)?;
+    let reader = crate::iobase::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
     Ok(crate::arrow::cast_reader(restored, field, options.safe())?)
 }
@@ -844,7 +844,7 @@ impl FolderWriter {
         batches: BatchReader,
     ) -> Result<()> {
         let schema = batches.schema();
-        match super::non_empty_arrow_reader(batches)? {
+        match crate::iobase::non_empty_arrow_reader(batches)? {
             Some(batches) => self.write(folder, batches, false),
             None => self.overwrite_empty(folder, schema),
         }

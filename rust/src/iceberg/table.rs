@@ -90,8 +90,8 @@ use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::{IOBase, IOMedia};
 use crate::{DataType, Error, Field, IOKind, MimeType, Result, Scalar};
+use crate::{IOBase, IOMedia};
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";
@@ -449,7 +449,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// The predicate is the crate's one filter type, so the same text prunes a
     /// table here, a lake through
-    /// [`IOBase::children_matching`](crate::io::IOBase::children_matching), and
+    /// [`IOBase::children_matching`](crate::IOBase::children_matching), and
     /// a batch through [`Bound::filter`](crate::expression::Bound::filter).
     /// Each level of the metadata chain answers it from the statistics it
     /// carries: a manifest-list summary, then a manifest entry's partition
@@ -853,7 +853,7 @@ impl<H: IOBase> Table<H> {
 
     /// Read the rows matching `filters`, keeping the columns `field` names.
     ///
-    /// Each data file is read through [`crate::io::IOMedia::read_arrow_reader`] with
+    /// Each data file is read through [`crate::IOMedia::read_arrow_reader`] with
     /// the scan root as its declared schema, so a projected scan skips the
     /// column chunks it does not want rather than reading and discarding them.
     /// What each file yields is then cast to the scan's own root, which is what
@@ -1950,7 +1950,7 @@ impl<H: IOBase> Table<H> {
 /// A plain container handle addressing the table's folder answers the same
 /// contract - the three record methods, one commit per write - by probing the
 /// location for a table on every call. Holding the [`Table`] skips the probe:
-/// no metadata document is re-read, [`crate::io::IOMedia::read_arrow_field`] is
+/// no metadata document is re-read, [`crate::IOMedia::read_arrow_field`] is
 /// [`Table::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
 /// [`filter_partitions`](IORecordOptions::filter_partitions) pair prunes data
@@ -2055,7 +2055,7 @@ impl<H: IOBase> IOBase for Table<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Table<H> {
+impl<H: IOBase> crate::IOMedia for Table<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
     }
@@ -2128,7 +2128,7 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
         let reader = self.scan_where(&pairs, options.field().as_ref())?;
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied scan stops decoding data files.
-        options.limit_arrow_reader(crate::io::select_reader(reader, options)?)
+        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
     }
 
     /// One overwrite commit scoped to the selected partitions.
@@ -2140,7 +2140,8 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
         options.require_write_mode(crate::IOMode::Overwrite)?;
         let commit_row_size = options.require_commit_row_size()?;
         let stored = self.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
         let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
@@ -2177,12 +2178,13 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
         if options.write_limit_is_zero() {
             return Ok(());
         }
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let stored = self.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         if commit_row_size.is_none() {
@@ -2199,12 +2201,13 @@ impl<H: IOBase> crate::io::IOMedia for Table<H> {
         options.require_write_mode(crate::IOMode::Merge)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let stored = self.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let filters: Vec<(String, String)> = options.filter_partitions().to_vec();

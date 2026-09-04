@@ -15,14 +15,15 @@ use std::sync::Arc;
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use smol_str::SmolStr;
+use yggdryl::IOBase;
 use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
+use yggdryl::io::Buffer;
 use yggdryl::io::partition::partition_text;
-use yggdryl::io::{Buffer, IOBase};
 use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 

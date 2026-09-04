@@ -3,7 +3,8 @@
 use crate::buffered::{Buffered, BufferedOptions};
 use crate::{MediaType, Result, Url};
 
-use crate::io::{Buffer, IOBase};
+use crate::IOBase;
+use crate::io::Buffer;
 use crate::local::Folder;
 
 use crate::local::File;
@@ -22,7 +23,7 @@ use crate::local::File;
 ///
 /// ```
 /// use yggdryl::generic::Holder;
-/// use yggdryl::io::IOBase;
+/// use yggdryl::IOBase;
 /// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -287,7 +288,7 @@ impl Holder {
 
     /// Borrow the held implementation through its media contract.
     #[cfg(feature = "arrow")]
-    fn as_media(&self) -> &dyn crate::io::IOMedia {
+    fn as_media(&self) -> &dyn crate::IOMedia {
         match self {
             Self::Buffer(inner) => inner,
             Self::Folder(inner) => inner,
@@ -305,7 +306,7 @@ impl Holder {
 
     /// Mutably borrow the held implementation through its media contract.
     #[cfg(feature = "arrow")]
-    fn as_media_mut(&mut self) -> &mut dyn crate::io::IOMedia {
+    fn as_media_mut(&mut self) -> &mut dyn crate::IOMedia {
         match self {
             Self::Buffer(inner) => inner,
             Self::Folder(inner) => inner,
@@ -322,7 +323,7 @@ impl Holder {
     }
 }
 
-impl crate::io::IOMedia for Holder {
+impl crate::IOMedia for Holder {
     fn as_io_base(&self) -> &dyn IOBase {
         self.as_io()
     }
@@ -333,22 +334,22 @@ impl crate::io::IOMedia for Holder {
 
     #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
-        crate::io::IOMedia::row_size(self.as_media())
+        crate::IOMedia::row_size(self.as_media())
     }
 
     #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
-        crate::io::IOMedia::column_size(self.as_media())
+        crate::IOMedia::column_size(self.as_media())
     }
 
     #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::generic::RecordOptions> {
-        crate::io::IOMedia::record_options(self.as_media())
+        crate::IOMedia::record_options(self.as_media())
     }
 
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::io::IOMedia::read_parquet_statistics(self.as_media())
+        crate::IOMedia::read_parquet_statistics(self.as_media())
     }
 
     #[cfg(feature = "parquet")]
@@ -356,12 +357,12 @@ impl crate::io::IOMedia for Holder {
         &self,
         column: &str,
     ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+        crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
     }
 
     #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
-        crate::io::IOMedia::read_arrow_field(self.as_media(), options)
+        crate::IOMedia::read_arrow_field(self.as_media(), options)
     }
 
     #[cfg(feature = "arrow")]
@@ -369,7 +370,7 @@ impl crate::io::IOMedia for Holder {
         &self,
         options: &crate::generic::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        crate::io::IOMedia::read_arrow_reader(self.as_media(), options)
+        crate::IOMedia::read_arrow_reader(self.as_media(), options)
     }
 
     #[cfg(feature = "arrow")]
@@ -378,7 +379,7 @@ impl crate::io::IOMedia for Holder {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -387,7 +388,7 @@ impl crate::io::IOMedia for Holder {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -396,7 +397,7 @@ impl crate::io::IOMedia for Holder {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -405,7 +406,7 @@ impl crate::io::IOMedia for Holder {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -414,7 +415,7 @@ impl crate::io::IOMedia for Holder {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -423,7 +424,7 @@ impl crate::io::IOMedia for Holder {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -432,7 +433,7 @@ impl crate::io::IOMedia for Holder {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }
 
@@ -441,7 +442,7 @@ impl IOBase for Holder {
         self.as_io().pread(offset, buffer)
     }
 
-    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::io::ByteStream<'_>> {
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         self.as_io().pstream_bytes(position, batch_size)
     }
 
@@ -517,7 +518,7 @@ impl IOBase for Holder {
         self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         self.as_io().ls(recursive, include_private)
     }
 

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::local::Folder;
 use crate::{DataType, Field, Scalar};
 
@@ -1584,8 +1584,8 @@ mod tables {
         Folder, FormatVersion, IOBase, IcebergOptions, PartitionField, PartitionSpec, Table,
         Transform, assign_field_ids, collect, root, trade_schema, trades,
     };
+    use crate::IOMedia;
     use crate::generic::IORecordOptions;
-    use crate::io::IOMedia;
     use crate::{DataType, Scalar, TimeUnit};
 
     #[test]
@@ -2985,8 +2985,9 @@ mod handles {
         FormatVersion, IOBase, PartitionSpec, Table, assign_field_ids, collect, root, trade_schema,
         trades,
     };
+    use crate::IOMedia;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOMedia};
+    use crate::io::Buffer;
     use crate::local::Folder;
     use crate::{DataType, MimeType};
 
@@ -3283,7 +3284,7 @@ mod handles {
         // The record surface is answered before a single data file exists:
         // the encoding from what this module writes, the schema from the
         // metadata - field identifiers included - never off decoded batches.
-        let options = crate::io::IOMedia::record_options(&table).unwrap();
+        let options = crate::IOMedia::record_options(&table).unwrap();
         assert_eq!(options.mime_type(), crate::MimeType::PARQUET);
         let field = table.read_arrow_field(&options).unwrap();
         assert_eq!(field.name(), options.name());
@@ -3358,7 +3359,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
             Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
-        let options = crate::io::IOMedia::record_options(&table).unwrap();
+        let options = crate::IOMedia::record_options(&table).unwrap();
 
         let batch = trades(
             &[1, 2],
@@ -3425,7 +3426,7 @@ mod handles {
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table =
             Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
-        let options = crate::io::IOMedia::record_options(&table).unwrap();
+        let options = crate::IOMedia::record_options(&table).unwrap();
 
         // A limited write truncates data the caller offered, so only the
         // first row of the two lands in the commit.
@@ -3475,7 +3476,7 @@ mod handles {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let options = crate::io::IOMedia::record_options(&table)
+        let options = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema);
 
@@ -3522,7 +3523,7 @@ mod handles {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let declared_table = crate::io::IOMedia::record_options(&table)
+        let declared_table = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_field(stored.clone());
         table
@@ -3548,7 +3549,7 @@ mod handles {
             vec![Arc::new(StringArray::from(vec![Some("not-an-integer")]))],
         )
         .unwrap();
-        let untyped_table = crate::io::IOMedia::record_options(&table)
+        let untyped_table = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_commit_row_size(1);
         table
@@ -3590,7 +3591,7 @@ mod handles {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let options = crate::io::IOMedia::record_options(&table)
+        let options = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
             .with_commit_row_size(1);
@@ -3674,7 +3675,7 @@ mod handles {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let options = crate::io::IOMedia::record_options(&table)
+        let options = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
             .with_commit_row_size(1);
@@ -3718,7 +3719,7 @@ mod handles {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let options = crate::io::IOMedia::record_options(&table)
+        let options = crate::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema.clone());
         let arrow = crate::arrow::arrow_schema_from_field(&schema).unwrap();
@@ -5352,9 +5353,10 @@ mod line_projection {
     use arrow_array::{BinaryArray, Int64Array, StringArray};
 
     use super::*;
+    use crate::IOMedia;
     use crate::Url;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOMedia};
+    use crate::io::Buffer;
     use crate::text::TextOptions;
 
     const HEADER: &str = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+)\s*";
@@ -5444,8 +5446,9 @@ mod manifest_planning {
         DataFile, FormatVersion, ManifestEntry, PartitionSpec, read_manifest, write_manifest,
     };
     use super::trade_schema;
+    use crate::IOBase;
     use crate::Scalar;
-    use crate::io::{Buffer, IOBase};
+    use crate::io::Buffer;
 
     /// One entry carrying every statistic a manifest can record.
     fn full_entry(index: i64) -> ManifestEntry {

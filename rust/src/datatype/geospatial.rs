@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::generic::EdgeAlgorithm;
+use crate::EdgeAlgorithm;
 use crate::{DataType, Error, Result};
 
 /// The coordinate reference system both formats fill when none is given.

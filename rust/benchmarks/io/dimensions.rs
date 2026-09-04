@@ -11,9 +11,10 @@ use criterion::{BenchmarkGroup, Criterion};
 use yggdryl::DataType;
 use yggdryl::avro::Avro;
 use yggdryl::generic::RecordOptions;
-use yggdryl::io::{Buffer, IOBase, IOMedia};
+use yggdryl::io::Buffer;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
+use yggdryl::{IOBase, IOMedia};
 
 use super::{ROWS, batch, handle, stored_with};
 

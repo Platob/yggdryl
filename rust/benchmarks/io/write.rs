@@ -18,10 +18,10 @@ use arrow_array::{
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use criterion::measurement::WallTime;
 use criterion::{BatchSize, BenchmarkGroup, Criterion, Throughput};
+use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
 use yggdryl::avro::Avro;
 use yggdryl::generic::{Holder, IORecordOptions, Media};
-use yggdryl::io::IOMedia;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
 use yggdryl::{DataType, Field, IOMode, Scalar};

@@ -1,4 +1,4 @@
-//! Foreign Arrow filesystems as [`IOBase`](crate::io::IOBase) handles.
+//! Foreign Arrow filesystems as [`IOBase`](crate::IOBase) handles.
 //!
 //! [`ArrowFileSystem`] is a small synchronous vtable modeled on Arrow's
 //! `FileSystem` API - the contract `pyarrow.fs`, Arrow C++, and Arrow Java
@@ -6,7 +6,7 @@
 //! crate's one storage abstraction:
 //!
 //! - [`Path`] is the generic location. It answers
-//!   [`IOBase::kind`](crate::io::IOBase::kind) by asking the filesystem what
+//!   [`IOBase::kind`](crate::IOBase::kind) by asking the filesystem what
 //!   is actually there, and runs every operation through the specialized
 //!   implementation that fits.
 //! - [`Folder`] is the container: it lists and resolves children. On an
@@ -33,7 +33,7 @@
 //! use std::sync::Arc;
 //!
 //! use yggdryl::arrowfs::{Folder, MemoryFileSystem};
-//! use yggdryl::io::IOBase;
+//! use yggdryl::IOBase;
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let filesystem = Arc::new(MemoryFileSystem::new());

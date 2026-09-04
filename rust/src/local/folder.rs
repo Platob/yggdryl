@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::{Error, MediaType, Result, Url};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFolder, Listing};
+use crate::{IOBase, IOFolder, Listing};
 
 /// A local directory addressed as a container rather than as bytes.
 ///
@@ -24,7 +24,7 @@ use crate::io::{IOBase, IOFolder, Listing};
 /// [`IOBase::truncate`] or a write to a child creates the directory on demand.
 ///
 /// ```
-/// use yggdryl::io::IOBase;
+/// use yggdryl::IOBase;
 /// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -82,7 +82,7 @@ impl Folder {
     /// canonical `file:` URL.
     ///
     /// ```
-    /// use yggdryl::io::IOBase;
+    /// use yggdryl::IOBase;
     /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -285,7 +285,7 @@ impl IOFolder for Folder {
     /// `DirectoryNotEmpty` is what [`IOFolder::folder_remove`] turns into the
     /// refusal naming the location. Nothing is listed or stat-ed first.
     fn delete_folder(&mut self) -> Result<()> {
-        crate::io::skip_absent(std::fs::remove_dir(self.url.clone().into_path()?))
+        crate::iobase::skip_absent(std::fs::remove_dir(self.url.clone().into_path()?))
     }
 
     /// Empty the directory in one call, keeping the directory itself.
@@ -307,20 +307,22 @@ impl IOFolder for Folder {
     /// removal never issues one delete per entry from here.
     fn folder_remove(&mut self, recursive: bool) -> Result<()> {
         if recursive {
-            return crate::io::skip_absent(std::fs::remove_dir_all(self.url.clone().into_path()?));
+            return crate::iobase::skip_absent(std::fs::remove_dir_all(
+                self.url.clone().into_path()?,
+            ));
         }
         match self.delete_folder() {
             Err(crate::Error::Io(error))
                 if error.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
             {
-                Err(crate::io::not_empty(&self.url))
+                Err(crate::iobase::not_empty(&self.url))
             }
             other => other,
         }
     }
 }
 
-impl crate::io::IOMedia for Folder {
+impl crate::IOMedia for Folder {
     crate::impl_default_iomedia!();
 }
 

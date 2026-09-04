@@ -3,10 +3,11 @@
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 
-use super::{
-    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, IOKind, IOMode, Scalar, TimeUnit, UnionMode,
+use super::Scalar;
+use crate::{
+    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Error, IOKind, IOMode, Result, TimeUnit,
+    UnionMode,
 };
-use crate::{Error, Result};
 
 /// One member of a shared static enum.
 ///

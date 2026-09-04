@@ -16,13 +16,13 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
+use yggdryl::IOBase as _;
 use yggdryl::generic::{DEFAULT_ROOT_NAME, Holder, IORecordOptions as _};
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
     assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
-use yggdryl::io::IOBase as _;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 
 use crate::datatype::core_dtype_from_value;

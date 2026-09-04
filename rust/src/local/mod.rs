@@ -1,10 +1,10 @@
-//! Local file system resources as [`IOBase`](crate::io::IOBase) handles.
+//! Local file system resources as [`IOBase`](crate::IOBase) handles.
 //!
 //! Three implementations cover a local tree, and every file system backend is
 //! expected to supply the same three roles:
 //!
 //! - [`Path`] is the generic location. It answers
-//!   [`IOBase::kind`](crate::io::IOBase::kind) by looking at what is actually
+//!   [`IOBase::kind`](crate::IOBase::kind) by looking at what is actually
 //!   there, and runs every operation through the specialized implementation
 //!   that fits, so a caller who does not yet know what a location is can still
 //!   use it.
@@ -20,7 +20,7 @@
 //! three roles rather than a change to anything here.
 //!
 //! ```no_run
-//! use yggdryl::io::IOBase;
+//! use yggdryl::IOBase;
 //! use yggdryl::local::Folder;
 //!
 //! # fn main() -> yggdryl::Result<()> {

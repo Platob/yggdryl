@@ -22,7 +22,7 @@ use memmap2::MmapMut;
 use crate::{Error, MediaType, MimeType, Result, Url};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFile};
+use crate::{IOBase, IOFile};
 
 /// Growth is geometric so repeated appends do not remap on every write.
 const MINIMUM_GROWTH: u64 = 64 * 1024;
@@ -277,7 +277,7 @@ impl IOFile for File {
     /// must never outlive the length it was taken over.
     fn clear_file(&mut self) -> Result<()> {
         self.release()?;
-        crate::io::skip_absent(
+        crate::iobase::skip_absent(
             OpenOptions::new()
                 .write(true)
                 .truncate(true)
@@ -295,11 +295,11 @@ impl IOFile for File {
     /// `NotFound` is the success answer.
     fn delete_file(&mut self) -> Result<()> {
         self.release()?;
-        crate::io::skip_absent(std::fs::remove_file(&self.path))
+        crate::iobase::skip_absent(std::fs::remove_file(&self.path))
     }
 }
 
-impl crate::io::IOMedia for File {
+impl crate::IOMedia for File {
     crate::impl_default_iomedia!();
 }
 
@@ -335,11 +335,11 @@ impl IOBase for File {
 
         let end = offset
             .checked_add(bytes.len() as u64)
-            .ok_or_else(|| crate::io::oversized(u64::MAX))?;
+            .ok_or_else(|| crate::iobase::oversized(u64::MAX))?;
         let previous = mapped.size;
         let mapping = mapped.remap(end)?;
-        let start = usize::try_from(offset).map_err(|_| crate::io::oversized(offset))?;
-        let finish = usize::try_from(end).map_err(|_| crate::io::oversized(end))?;
+        let start = usize::try_from(offset).map_err(|_| crate::iobase::oversized(offset))?;
+        let finish = usize::try_from(end).map_err(|_| crate::iobase::oversized(end))?;
         // Zero-fill any gap the offset created before writing.
         if offset > previous {
             let gap = usize::try_from(previous).unwrap_or(usize::MAX);
@@ -388,7 +388,7 @@ impl IOBase for File {
             let previous = mapped.size;
             let mapping = mapped.remap(size)?;
             let from = usize::try_from(previous).unwrap_or(usize::MAX);
-            let to = usize::try_from(size).map_err(|_| crate::io::oversized(size))?;
+            let to = usize::try_from(size).map_err(|_| crate::iobase::oversized(size))?;
             mapping[from..to].fill(0);
         }
         mapped.size = size;

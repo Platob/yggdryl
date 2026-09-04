@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
 
 use super::{partitioned_reader, with_partitions, without_partitions};
+use crate::IOBase;
 use crate::generic::RecordOptions;
-use crate::io::IOBase;
 use crate::{DataType, Field};
 
 fn schema() -> Field {
@@ -184,8 +184,8 @@ mod lazy_folder_reader {
     use super::prices;
     use crate::arrowfs::{ArrowFileSystem, File, FileInfo, FileInfos, MemoryFileSystem};
     use crate::generic::{Holder, IORecordOptions, RecordOptions};
-    use crate::io::{IOBase, Listing};
     use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
+    use crate::{IOBase, Listing};
 
     const LISTING_FAILURE: &str = "lazy folder listing failed";
     const READ_FAILURE: &str = "lazy leaf read failed";
@@ -293,7 +293,7 @@ mod lazy_folder_reader {
         }
     }
 
-    impl crate::io::IOMedia for ProbeFolder {
+    impl crate::IOMedia for ProbeFolder {
         crate::impl_default_iomedia!();
     }
 
@@ -466,8 +466,8 @@ mod lake {
     use arrow_schema::ArrowError;
 
     use crate::DataType;
+    use crate::IOMedia;
     use crate::generic::{Holder, IORecordOptions};
-    use crate::io::IOMedia;
 
     /// Build an empty `lake/` under the temp directory and hold it as a folder.
     fn lake(label: &str) -> (PathBuf, Holder) {

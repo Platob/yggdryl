@@ -2,9 +2,8 @@
 
 use std::sync::OnceLock;
 
-use crate::{MediaType, MimeType, Result, Url};
-
-use super::IOBase;
+use crate::iobase::oversized;
+use crate::{IOBase, MediaType, MimeType, Result, Url};
 
 /// A growable byte array addressed by offset.
 ///
@@ -120,7 +119,7 @@ impl Clone for Buffer {
     }
 }
 
-impl crate::io::IOMedia for Buffer {
+impl crate::IOMedia for Buffer {
     crate::impl_default_iomedia!();
 }
 
@@ -140,10 +139,10 @@ impl IOBase for Buffer {
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        let offset = usize::try_from(offset).map_err(|_| super::oversized(offset))?;
+        let offset = usize::try_from(offset).map_err(|_| oversized(offset))?;
         let end = offset
             .checked_add(bytes.len())
-            .ok_or_else(|| super::oversized(u64::MAX))?;
+            .ok_or_else(|| oversized(u64::MAX))?;
         if end > self.bytes.len() {
             // Growing zero-fills any gap the offset created.
             self.bytes.resize(end, 0);
@@ -162,7 +161,7 @@ impl IOBase for Buffer {
     }
 
     fn reserve(&mut self, capacity: u64) -> Result<()> {
-        let capacity = usize::try_from(capacity).map_err(|_| super::oversized(capacity))?;
+        let capacity = usize::try_from(capacity).map_err(|_| oversized(capacity))?;
         if capacity > self.bytes.capacity() {
             self.bytes
                 .try_reserve_exact(capacity - self.bytes.len())
@@ -176,7 +175,7 @@ impl IOBase for Buffer {
     }
 
     fn truncate(&mut self, size: u64) -> Result<()> {
-        let size = usize::try_from(size).map_err(|_| super::oversized(size))?;
+        let size = usize::try_from(size).map_err(|_| oversized(size))?;
         if size <= self.bytes.len() {
             self.bytes.truncate(size);
         } else {

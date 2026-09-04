@@ -10,8 +10,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
+use yggdryl::IOBase;
 use yggdryl::arrowfs::File as ArrowFile;
-use yggdryl::io::IOBase;
 
 use super::{PAYLOAD, buffer, local, local_location, memory, payload};
 

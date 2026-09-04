@@ -2,13 +2,13 @@
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
 //! [`overwrite_arrow_reader`] - that take any [`IOBase`] handle and one
-//! [`IpcOptions`]. That is what [`crate::io::IOMedia::read_arrow_reader`] and its
+//! [`IpcOptions`]. That is what [`crate::IOMedia::read_arrow_reader`] and its
 //! three write siblings call, so reading an IPC stream needs nothing but a handle whose
 //! media type says `arrow.stream`. Streaming is the only shape here: a read
 //! returns a [`BatchReader`] and a write consumes one, never a collected
 //! vector. These functions are the encoding and nothing more - the `field` they
 //! take is a column pushdown, and the casting, merging, and partition routing a
-//! caller sees belong to [`crate::io::IOMedia`]'s record methods above them.
+//! caller sees belong to [`crate::IOMedia`]'s record methods above them.
 //!
 //! [`Ipc`] is the stateful form of the same thing: it owns the handle and the
 //! options, and caches the stream's schema and dimensions between calls.
@@ -60,13 +60,13 @@ use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema};
 
+use crate::IOBase;
 use crate::Level;
 use crate::arrow::{
     BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema, from_reader_error,
     projection_indices,
 };
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::IOBase;
 use crate::{DataType, Field, Metadata};
 use smol_str::SmolStr;
 
@@ -182,7 +182,7 @@ enum MetadataScan {
 /// inspect an IPC schema would make a metadata query populate state nobody
 /// asked to retain.
 fn read_schema<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Schema>> {
-    let mut source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+    let mut source = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
     if handle.codec().is_identity() {
         return Ok(read_metadata_from(StreamInput::new(source), MetadataScan::SchemaOnly)?.schema);
     }
@@ -197,7 +197,7 @@ fn read_schema<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Schema>> {
         handle
             .codec()
             .reader(std::io::Cursor::new(prefix).chain(BufReader::with_capacity(
-                crate::io::DEFAULT_STREAM_BATCH_SIZE,
+                crate::DEFAULT_STREAM_BATCH_SIZE,
                 source,
             )));
     Ok(read_metadata_from(StreamInput::new(decoded), MetadataScan::SchemaOnly)?.schema)
@@ -208,13 +208,13 @@ fn read_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<IpcMetadata> {
     if handle.codec().is_identity() {
         return read_metadata_from(HandleInput::new(handle), MetadataScan::All);
     }
-    let mut source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+    let mut source = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
     let Some(prefix) = source.next().transpose()? else {
         return Ok(IpcMetadata::default());
     };
     read_metadata_from(
         StreamInput::new(handle.codec().reader(std::io::Cursor::new(prefix).chain(
-            BufReader::with_capacity(crate::io::DEFAULT_STREAM_BATCH_SIZE, source),
+            BufReader::with_capacity(crate::DEFAULT_STREAM_BATCH_SIZE, source),
         ))),
         MetadataScan::All,
     )
@@ -492,7 +492,7 @@ pub(crate) fn read_owned_batch_reader<H: IOBase + 'static>(
         return empty_batch_reader(field, options);
     }
     let codec = handle.codec();
-    let source = decoded_prefix_reader(codec, crate::io::Cursor::new(handle))?;
+    let source = decoded_prefix_reader(codec, crate::Cursor::new(handle))?;
     finish_batch_reader(source, stored, field, options)
 }
 
@@ -599,16 +599,16 @@ fn owned_decoded_reader<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn
             if let Some(name) = handle.url().and_then(crate::Url::file_name) {
                 let mut child = parent.child_by_path(name)?;
                 child.set_media_type(handle.media_type().clone());
-                return decoded_prefix_reader(codec, crate::io::Cursor::new(child));
+                return decoded_prefix_reader(codec, crate::Cursor::new(child));
             }
         }
     }
     let mut encoded = Vec::new();
-    let mut source = handle.pstream_bytes(0, crate::io::DEFAULT_STREAM_BATCH_SIZE)?;
+    let mut source = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
     loop {
         let start = encoded.len();
         let end = start
-            .checked_add(crate::io::DEFAULT_STREAM_BATCH_SIZE)
+            .checked_add(crate::DEFAULT_STREAM_BATCH_SIZE)
             .ok_or_else(|| ipc_metadata_error("IPC stream snapshot exceeds addressable memory"))?;
         encoded.try_reserve_exact(end - start).map_err(|source| {
             crate::arrow::Error::allocation("IPC stream snapshot", end - start, source)
@@ -667,7 +667,7 @@ impl<R: Read + Send + 'static> EmptySafeDecoder<R> {
         Self {
             codec,
             source: Some(BufReader::with_capacity(
-                crate::io::DEFAULT_STREAM_BATCH_SIZE,
+                crate::DEFAULT_STREAM_BATCH_SIZE,
                 source,
             )),
             decoder: None,
@@ -840,7 +840,7 @@ impl<H: IOBase> Ipc<H> {
 ///
 /// [`IOBase::open`] additionally caches the stream's schema and dimensions;
 /// [`IOBase::close`] releases them.
-impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
+impl<H: IOBase> crate::IOMedia for Ipc<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
     }
@@ -875,7 +875,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
             0
         } else {
             let options = RecordOptions::Ipc(self.options.clone());
-            crate::io::IOMedia::read_arrow_field(self, &options)?.field_len()
+            crate::IOMedia::read_arrow_field(self, &options)?.field_len()
         };
         if self.opened {
             let _ = self.cached_column_size.set(columns);
@@ -918,7 +918,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
         let opened = self.opened;
-        match crate::io::overwrite_arrow_reader_default_with_field(self, batches, options) {
+        match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
             Ok(published) => {
                 // Closed media never begin caching as a side effect of a
                 // write. An already-open one keeps its cache coherent with the
@@ -958,7 +958,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
         } else {
             None
         };
-        match crate::io::leaf_writer(self, batches, options) {
+        match crate::iobase::leaf_writer(self, batches, options) {
             Ok(()) => {
                 self.invalidate_cached_metadata();
                 if let Some(published) = published {
@@ -979,7 +979,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::append_arrow_reader_default(self, batches, options)
+        crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
     fn merge_arrow_reader(
@@ -988,7 +988,7 @@ impl<H: IOBase> crate::io::IOMedia for Ipc<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::merge_arrow_reader_default(self, batches, options)
+        crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
 }
 

@@ -9,8 +9,9 @@ use arrow_schema::ArrowError;
 use super::Ipc;
 use crate::buffered::{Buffered, BufferedOptions};
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
 use crate::{Codec, DataType, Field, Url};
+use crate::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
@@ -178,17 +179,17 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
             options.set_merge_by_names(vec!["id".into()]);
         }
         let result = match operation {
-            "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+            "overwrite" => crate::IOMedia::overwrite_arrow_reader(
                 &mut media,
                 counted_reader(Arc::clone(&pulls)),
                 &options,
             ),
-            "append" => crate::io::IOMedia::append_arrow_reader(
+            "append" => crate::IOMedia::append_arrow_reader(
                 &mut media,
                 counted_reader(Arc::clone(&pulls)),
                 &options,
             ),
-            "merge" => crate::io::IOMedia::merge_arrow_reader(
+            "merge" => crate::IOMedia::merge_arrow_reader(
                 &mut media,
                 counted_reader(Arc::clone(&pulls)),
                 &options,
@@ -344,7 +345,7 @@ fn an_open_cache_tracks_selection_and_completion_on_overwrite() {
     media.open().unwrap();
 
     let options = media.record_options().unwrap().with_select_by_names(["id"]);
-    crate::io::IOMedia::overwrite_arrow_reader(&mut media, reader(), &options).unwrap();
+    crate::IOMedia::overwrite_arrow_reader(&mut media, reader(), &options).unwrap();
 
     // Selection narrows the incoming stream first, then completion onto the
     // stored shape restores `symbol`; the open cache must describe that final
@@ -625,7 +626,7 @@ fn compressed_schema_reads_stop_before_the_encoded_batch_body() {
         .unwrap();
     let encoded = Codec::Gzip.dump(writer.handle().as_slice()).unwrap();
     let total = encoded.len();
-    assert!(total > crate::io::DEFAULT_STREAM_BATCH_SIZE);
+    assert!(total > crate::DEFAULT_STREAM_BATCH_SIZE);
 
     let source = Buffer::from_bytes(encoded).with_media_type(
         Url::from_str("file:///large.arrows.gz")
@@ -716,7 +717,7 @@ fn an_unprojected_reader_uses_one_normal_transport_stream() {
     assert_eq!(batches.schema().fields().len(), 2);
     assert_eq!(
         media.handle().first_request(),
-        crate::io::DEFAULT_STREAM_BATCH_SIZE,
+        crate::DEFAULT_STREAM_BATCH_SIZE,
         "absence detection must not issue a one-byte positional read"
     );
     assert_eq!(
@@ -734,8 +735,8 @@ mod pushdown {
     use super::{Ipc, handle, reader, schema};
     use crate::DataType;
     use crate::Field;
+    use crate::IOMedia;
     use crate::generic::IORecordOptions;
-    use crate::io::IOMedia;
 
     /// One of the two stored columns.
     fn narrow() -> Field {
@@ -789,8 +790,8 @@ mod limits {
 
     use super::{Buffer, handle, reader, schema};
     use crate::DataType;
+    use crate::IOMedia;
     use crate::generic::IORecordOptions;
-    use crate::io::IOMedia;
 
     /// Four stored rows whose symbols alternate, so a filter has rows to skip.
     fn stored() -> Buffer {

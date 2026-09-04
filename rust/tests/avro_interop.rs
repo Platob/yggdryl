@@ -6,7 +6,7 @@
 //! the external file is absent - the driver fails on that word - so a skipped
 //! half can never read as a pass.
 
-use yggdryl::generic::TimeUnit;
+use yggdryl::TimeUnit;
 use yggdryl::local::File;
 use yggdryl::{Scalar, Timezone, avro};
 

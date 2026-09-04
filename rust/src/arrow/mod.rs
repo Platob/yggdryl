@@ -243,7 +243,7 @@ impl From<crate::Error> for Error {
 /// Widening an Arrow interop failure back into a core error.
 ///
 /// The two error types wrap each other by design: an Arrow operation can fail
-/// on a core value, and a core operation - such as [`crate::io::IOBase::open`]
+/// on a core value, and a core operation - such as [`crate::IOBase::open`]
 /// on a media type - can fail on Arrow interop. A `Core` failure unwraps to
 /// itself and an `Arrow` failure keeps its `ArrowError`; anything else is
 /// carried whole as the source, so no detail is lost on the way through.

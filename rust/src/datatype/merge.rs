@@ -35,8 +35,8 @@
 
 use smol_str::format_smolstr;
 
-use crate::generic::{TimeUnit, UnionMode};
 use crate::{DataType, Error, Field, Result};
+use crate::{TimeUnit, UnionMode};
 
 use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
 

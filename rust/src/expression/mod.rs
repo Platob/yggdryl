@@ -4,7 +4,7 @@
 //! this workspace uses to say which rows to keep and which values to compute.
 //! Before it existed the same question was asked five times in the weakest
 //! possible language - a `(column, value)` text pair, on
-//! [`IOBase::children_where`](crate::io::IOBase::children_where), on
+//! [`IOBase::children_where`](crate::IOBase::children_where), on
 //! `IORecordOptions::filter_partitions`, and on three `Table` methods - and
 //! none of those spellings could express a range, a null test, a nested path,
 //! or a question about the file rather than the rows. The pairs survive as

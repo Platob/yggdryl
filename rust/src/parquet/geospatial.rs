@@ -33,12 +33,12 @@ use parquet::geospatial::statistics::GeospatialStatistics as ParquetGeospatialSt
 use parquet::schema::types::{ColumnDescPtr, SchemaDescriptor, Type, TypePtr};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::EdgeAlgorithm;
 use crate::GeospatialType;
+use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::datatype::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-use crate::generic::EdgeAlgorithm;
 use crate::generic::wkb;
-use crate::io::IOBase;
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.
 ///

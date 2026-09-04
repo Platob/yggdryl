@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
 use super::{Catalog, Catalogs};
+use crate::IOBase;
 use crate::iceberg::Transform;
-use crate::io::IOBase;
 use crate::local::Folder;
 use crate::{DataType, Field, IOKind};
 

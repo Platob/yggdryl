@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionMode};
-use crate::generic::EdgeAlgorithm;
+use crate::EdgeAlgorithm;
 
 impl DataType {
     /// Maximum nesting accepted by the recursive string parser.

@@ -18,7 +18,7 @@ use napi_derive::napi;
 use yggdryl::IOMode;
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::generic::{Holder, IORecordOptions as _};
-use yggdryl::io::{IOBase as _, IOMedia as _};
+use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::arrow::JsBatchReader;
 use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
@@ -44,7 +44,7 @@ fn digest_algorithm(value: Option<&str>) -> Result<yggdryl::DigestAlgorithm> {
 }
 
 /// Default byte-stream window, shared with the Rust core.
-const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
+const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
 const JS_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -158,7 +158,7 @@ pub struct JsIOBase {
 /// private `IOBase` bridges below can construct or advance it.
 #[napi(js_name = "ArrowWriteSession")]
 pub struct JsArrowWriteSession {
-    inner: yggdryl::io::ArrowWriteSession,
+    inner: yggdryl::ArrowWriteSession,
 }
 
 impl JsIOBase {
@@ -1121,7 +1121,7 @@ impl JsIOBase {
         options: &JsRecordOptions,
     ) -> Result<JsArrowWriteSession> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
-        yggdryl::io::ArrowWriteSession::new(mode, &options.inner)
+        yggdryl::ArrowWriteSession::new(mode, &options.inner)
             .map(|inner| JsArrowWriteSession { inner })
             .map_err(napi_error)
     }
@@ -1185,7 +1185,7 @@ impl JsIOBase {
 /// listing is exhausted.
 #[napi(js_name = "Listing")]
 pub struct JsListing {
-    inner: yggdryl::io::Listing,
+    inner: yggdryl::Listing,
 }
 
 #[napi]

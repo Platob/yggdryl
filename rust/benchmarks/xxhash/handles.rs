@@ -4,7 +4,8 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::DigestAlgorithm;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::io::Buffer;
 use yggdryl::xxhash::{self, Hashed};
 
 use super::payload;

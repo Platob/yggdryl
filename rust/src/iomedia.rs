@@ -5,7 +5,7 @@
 //! hidden escape hatches, while encoding wrappers override only the operations
 //! their representation implements specially.
 
-use super::IOBase;
+use crate::IOBase;
 #[cfg(feature = "arrow")]
 use crate::Result;
 #[cfg(feature = "arrow")]
@@ -55,11 +55,11 @@ pub trait IOMedia: Send {
                 if child.media_type().base() != &encoding {
                     continue;
                 }
-                rows = add_rows(rows, super::leaf_row_size(&child, &options)?)?;
+                rows = add_rows(rows, crate::iobase::leaf_row_size(&child, &options)?)?;
             }
             return Ok(rows);
         }
-        super::leaf_row_size(handle, &options)
+        crate::iobase::leaf_row_size(handle, &options)
     }
 
     /// Return the number of columns in the media's canonical Struct field.
@@ -95,7 +95,7 @@ pub trait IOMedia: Send {
         if handle.is_empty() {
             return Ok(0);
         }
-        Ok(super::leaf_field(handle, &options)?.fields().len())
+        Ok(crate::iobase::leaf_field(handle, &options)?.fields().len())
     }
 
     /// Return the record options this resource's encoding names.
@@ -250,15 +250,17 @@ pub trait IOMedia: Send {
         let reader = if handle.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::iceberg::located(handle)? {
-                let filtered = super::partition::filtered_reader(table.read(options)?, options)?;
-                return options.limit_arrow_reader(super::select_reader(filtered, options)?);
+                let filtered =
+                    crate::io::partition::filtered_reader(table.read(options)?, options)?;
+                return options
+                    .limit_arrow_reader(crate::iobase::select_reader(filtered, options)?);
             }
-            super::partition::folder_reader(handle, options)?
+            crate::io::partition::folder_reader(handle, options)?
         } else {
-            super::leaf_reader(handle, options)?
+            crate::iobase::leaf_reader(handle, options)?
         };
-        let reader = super::partition::filtered_reader(reader, options)?;
-        options.limit_arrow_reader(super::select_reader(reader, options)?)
+        let reader = crate::io::partition::filtered_reader(reader, options)?;
+        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
     }
 
     /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).
@@ -355,7 +357,7 @@ pub trait IOMedia: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        super::leaf_writer(self.as_io_base_mut(), batches, options)
+        crate::iobase::leaf_writer(self.as_io_base_mut(), batches, options)
     }
 
     /// Replace this resource with one Arrow record batch.
@@ -448,7 +450,7 @@ pub trait IOMedia: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        super::append_arrow_reader_default(self.as_io_base_mut(), batches, options)
+        crate::iobase::append_arrow_reader_default(self.as_io_base_mut(), batches, options)
     }
 
     /// Append one Arrow record batch to this resource.
@@ -491,7 +493,7 @@ pub trait IOMedia: Send {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        super::merge_arrow_reader_default(self.as_io_base_mut(), batches, options)
+        crate::iobase::merge_arrow_reader_default(self.as_io_base_mut(), batches, options)
     }
 
     /// Merge one Arrow record batch into this resource by explicit keys.
@@ -763,11 +765,11 @@ fn parquet_leaf<M: IOMedia + ?Sized>(media: &M) -> Result<&dyn IOBase> {
 #[macro_export]
 macro_rules! impl_default_iomedia {
     () => {
-        fn as_io_base(&self) -> &dyn $crate::io::IOBase {
+        fn as_io_base(&self) -> &dyn $crate::IOBase {
             self
         }
 
-        fn as_io_base_mut(&mut self) -> &mut dyn $crate::io::IOBase {
+        fn as_io_base_mut(&mut self) -> &mut dyn $crate::IOBase {
             self
         }
 
@@ -776,7 +778,7 @@ macro_rules! impl_default_iomedia {
             batches: $crate::arrow::BatchReader,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::overwrite_arrow_reader_default(self, batches, options)
+            $crate::iobase::overwrite_arrow_reader_default(self, batches, options)
         }
     };
 }
@@ -786,11 +788,11 @@ macro_rules! impl_default_iomedia {
 #[macro_export]
 macro_rules! impl_default_iomedia {
     () => {
-        fn as_io_base(&self) -> &dyn $crate::io::IOBase {
+        fn as_io_base(&self) -> &dyn $crate::IOBase {
             self
         }
 
-        fn as_io_base_mut(&mut self) -> &mut dyn $crate::io::IOBase {
+        fn as_io_base_mut(&mut self) -> &mut dyn $crate::IOBase {
             self
         }
     };
@@ -803,29 +805,29 @@ macro_rules! impl_default_iomedia {
 macro_rules! __delegate_iomedia_arrow {
     ($handle:ident) => {
         fn row_size(&self) -> $crate::Result<u64> {
-            $crate::io::IOMedia::row_size(&self.$handle)
+            $crate::IOMedia::row_size(&self.$handle)
         }
 
         fn column_size(&self) -> $crate::Result<usize> {
-            $crate::io::IOMedia::column_size(&self.$handle)
+            $crate::IOMedia::column_size(&self.$handle)
         }
 
         fn record_options(&self) -> $crate::Result<$crate::generic::RecordOptions> {
-            $crate::io::IOMedia::record_options(&self.$handle)
+            $crate::IOMedia::record_options(&self.$handle)
         }
 
         fn read_arrow_field(
             &self,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<$crate::Field> {
-            $crate::io::IOMedia::read_arrow_field(&self.$handle, options)
+            $crate::IOMedia::read_arrow_field(&self.$handle, options)
         }
 
         fn read_arrow_reader(
             &self,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<$crate::arrow::BatchReader> {
-            $crate::io::IOMedia::read_arrow_reader(&self.$handle, options)
+            $crate::IOMedia::read_arrow_reader(&self.$handle, options)
         }
 
         fn overwrite_arrow_reader(
@@ -833,7 +835,7 @@ macro_rules! __delegate_iomedia_arrow {
             batches: $crate::arrow::BatchReader,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::overwrite_arrow_reader(&mut self.$handle, batches, options)
+            $crate::IOMedia::overwrite_arrow_reader(&mut self.$handle, batches, options)
         }
 
         fn overwrite_prepared_arrow_reader(
@@ -841,11 +843,7 @@ macro_rules! __delegate_iomedia_arrow {
             batches: $crate::arrow::BatchReader,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::overwrite_prepared_arrow_reader(
-                &mut self.$handle,
-                batches,
-                options,
-            )
+            $crate::IOMedia::overwrite_prepared_arrow_reader(&mut self.$handle, batches, options)
         }
 
         fn overwrite_arrow_batch(
@@ -853,7 +851,7 @@ macro_rules! __delegate_iomedia_arrow {
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::overwrite_arrow_batch(&mut self.$handle, batch, options)
+            $crate::IOMedia::overwrite_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn append_arrow_reader(
@@ -861,7 +859,7 @@ macro_rules! __delegate_iomedia_arrow {
             batches: $crate::arrow::BatchReader,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::append_arrow_reader(&mut self.$handle, batches, options)
+            $crate::IOMedia::append_arrow_reader(&mut self.$handle, batches, options)
         }
 
         fn append_arrow_batch(
@@ -869,7 +867,7 @@ macro_rules! __delegate_iomedia_arrow {
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::append_arrow_batch(&mut self.$handle, batch, options)
+            $crate::IOMedia::append_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn merge_arrow_reader(
@@ -877,7 +875,7 @@ macro_rules! __delegate_iomedia_arrow {
             batches: $crate::arrow::BatchReader,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::merge_arrow_reader(&mut self.$handle, batches, options)
+            $crate::IOMedia::merge_arrow_reader(&mut self.$handle, batches, options)
         }
 
         fn merge_arrow_batch(
@@ -885,7 +883,7 @@ macro_rules! __delegate_iomedia_arrow {
             batch: arrow_array::RecordBatch,
             options: &$crate::generic::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::io::IOMedia::merge_arrow_batch(&mut self.$handle, batch, options)
+            $crate::IOMedia::merge_arrow_batch(&mut self.$handle, batch, options)
         }
 
         fn overwrite_records<I, R>(
@@ -900,7 +898,7 @@ macro_rules! __delegate_iomedia_arrow {
             R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
-            $crate::io::IOMedia::overwrite_records(&mut self.$handle, records, options)
+            $crate::IOMedia::overwrite_records(&mut self.$handle, records, options)
         }
 
         fn append_records<I, R>(
@@ -915,7 +913,7 @@ macro_rules! __delegate_iomedia_arrow {
             R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
-            $crate::io::IOMedia::append_records(&mut self.$handle, records, options)
+            $crate::IOMedia::append_records(&mut self.$handle, records, options)
         }
 
         fn merge_records<I, R>(
@@ -930,7 +928,7 @@ macro_rules! __delegate_iomedia_arrow {
             R: TryInto<$crate::Scalar>,
             R::Error: Into<$crate::Error>,
         {
-            $crate::io::IOMedia::merge_records(&mut self.$handle, records, options)
+            $crate::IOMedia::merge_records(&mut self.$handle, records, options)
         }
     };
 }
@@ -950,14 +948,14 @@ macro_rules! __delegate_iomedia_arrow {
 macro_rules! __delegate_iomedia_parquet {
     ($handle:ident) => {
         fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
-            $crate::io::IOMedia::read_parquet_statistics(&self.$handle)
+            $crate::IOMedia::read_parquet_statistics(&self.$handle)
         }
 
         fn read_parquet_geospatial_statistics(
             &self,
             column: &str,
         ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
-            $crate::io::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
+            $crate::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
         }
     };
 }
@@ -977,12 +975,12 @@ macro_rules! __delegate_iomedia_parquet {
 #[macro_export]
 macro_rules! delegate_iomedia {
     ($handle:ident) => {
-        fn as_io_base(&self) -> &dyn $crate::io::IOBase {
-            $crate::io::IOMedia::as_io_base(&self.$handle)
+        fn as_io_base(&self) -> &dyn $crate::IOBase {
+            $crate::IOMedia::as_io_base(&self.$handle)
         }
 
-        fn as_io_base_mut(&mut self) -> &mut dyn $crate::io::IOBase {
-            $crate::io::IOMedia::as_io_base_mut(&mut self.$handle)
+        fn as_io_base_mut(&mut self) -> &mut dyn $crate::IOBase {
+            $crate::IOMedia::as_io_base_mut(&mut self.$handle)
         }
 
         $crate::__delegate_iomedia_arrow!($handle);

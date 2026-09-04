@@ -10,7 +10,7 @@
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
 //! [`overwrite_arrow_reader`] - over any [`IOBase`] handle, which is what
-//! [`crate::io::IOMedia::read_arrow_reader`] and its two siblings call. They are the
+//! [`crate::IOMedia::read_arrow_reader`] and its two siblings call. They are the
 //! encoding and nothing more: the `field` they take is a column pushdown, and
 //! the casting, merging, and partition routing a caller sees belong to
 //! [`IOBase`]'s three record methods above them.
@@ -89,12 +89,12 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use parquet::file::properties::WriterProperties;
 
+use crate::IOBase;
 use crate::arrow::arrow_schema_from_field;
 use crate::arrow::{
     BatchReader, Error, Result, field_from_arrow_schema, from_reader_error, projection_indices,
 };
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::IOBase;
 use crate::{Error as CoreError, Field};
 
 mod geospatial;
@@ -896,7 +896,7 @@ impl<H: IOBase> Parquet<H> {
 ///
 /// [`IOBase::open`] additionally caches the footer and [`IOBase::close`]
 /// releases it, which is what a scoped context binds to.
-impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
+impl<H: IOBase> crate::IOMedia for Parquet<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
     }
@@ -963,7 +963,7 @@ impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        let result = crate::io::overwrite_arrow_reader_default(self, batches, options);
+        let result = crate::iobase::overwrite_arrow_reader_default(self, batches, options);
         // Publication may have changed the visible file before a later source
         // or storage failure. Never retain a footer from before the attempt.
         if let Err(error) = result {
@@ -980,7 +980,7 @@ impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        let result = crate::io::leaf_writer(self, batches, options);
+        let result = crate::iobase::leaf_writer(self, batches, options);
         if let Err(error) = result {
             self.refresh_metadata_after_error();
             return Err(error);
@@ -995,7 +995,7 @@ impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::append_arrow_reader_default(self, batches, options)
+        crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
     fn merge_arrow_reader(
@@ -1004,7 +1004,7 @@ impl<H: IOBase> crate::io::IOMedia for Parquet<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::merge_arrow_reader_default(self, batches, options)
+        crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
 }
 

@@ -86,7 +86,7 @@ pub trait ArrowFileSystem: Send + Sync {
 
 /// The entries of one foreign-filesystem listing, yielded one at a time.
 ///
-/// The [`crate::io::Listing`] of the storage layer, one level down: the same
+/// The [`crate::Listing`] of the storage layer, one level down: the same
 /// rules - lazy, `Result` per item, fused after the first failure - stated at
 /// the seam where a foreign filesystem answers, so a backend never has to build
 /// the listing it is describing. One named type, because there is one item kind.

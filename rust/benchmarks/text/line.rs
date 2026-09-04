@@ -3,9 +3,10 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
+use yggdryl::IOMedia;
 use yggdryl::Url;
 use yggdryl::generic::RecordOptions;
-use yggdryl::io::{Buffer, IOMedia};
+use yggdryl::io::Buffer;
 use yggdryl::text::TextOptions;
 
 const ROWS: usize = 50_000;

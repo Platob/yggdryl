@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFile, Listing};
 use crate::{Error, MediaType, MimeType, Result, Url};
+use crate::{IOBase, IOFile, Listing};
 
 use super::system::{ArrowFileSystem, filesystem_location};
 use super::{Folder, location_url};
@@ -63,7 +63,7 @@ fn poisoned() -> Error {
 /// because `resize` aborts the process when the allocation fails - and the
 /// size here comes from a caller's offset or a foreign filesystem's reported
 /// length, so an over-budget value has to be a typed refusal rather than a
-/// crash. [`crate::io::oversized`] is the shared spelling of that refusal.
+/// crash. [`crate::iobase::oversized`] is the shared spelling of that refusal.
 fn resize_stage(bytes: &mut Vec<u8>, size: usize) -> Result<()> {
     if size <= bytes.len() {
         bytes.truncate(size);
@@ -71,7 +71,7 @@ fn resize_stage(bytes: &mut Vec<u8>, size: usize) -> Result<()> {
     }
     bytes
         .try_reserve(size - bytes.len())
-        .map_err(|_| crate::io::oversized(size as u64))?;
+        .map_err(|_| crate::iobase::oversized(size as u64))?;
     bytes.resize(size, 0);
     Ok(())
 }
@@ -145,7 +145,7 @@ impl File {
             let info = self.filesystem.file_info(&self.location)?;
             let bytes = if info.kind == crate::IOKind::File && info.size > 0 {
                 let size =
-                    usize::try_from(info.size).map_err(|_| crate::io::oversized(info.size))?;
+                    usize::try_from(info.size).map_err(|_| crate::iobase::oversized(info.size))?;
                 // The reported length is the foreign filesystem's, so a value
                 // too large for this process is refused rather than attempted.
                 let mut bytes = Vec::new();
@@ -220,7 +220,7 @@ impl IOFile for File {
     /// unconditionally and the backend's own not-found answer is the success.
     fn delete_file(&mut self) -> Result<()> {
         self.discard()?;
-        crate::io::skip_absent(
+        crate::iobase::skip_absent(
             self.filesystem
                 .delete_file(&self.location)
                 .map_err(std::io::Error::other),
@@ -228,7 +228,7 @@ impl IOFile for File {
     }
 }
 
-impl crate::io::IOMedia for File {
+impl crate::IOMedia for File {
     crate::impl_default_iomedia!();
 }
 
@@ -255,10 +255,10 @@ impl IOBase for File {
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         let mut stage = self.materialize()?;
         let stage = stage.as_mut().ok_or_else(poisoned)?;
-        let offset = usize::try_from(offset).map_err(|_| crate::io::oversized(offset))?;
+        let offset = usize::try_from(offset).map_err(|_| crate::iobase::oversized(offset))?;
         let end = offset
             .checked_add(bytes.len())
-            .ok_or_else(|| crate::io::oversized(u64::MAX))?;
+            .ok_or_else(|| crate::iobase::oversized(u64::MAX))?;
         if end > stage.bytes.len() {
             // Growing zero-fills any gap the offset created.
             resize_stage(&mut stage.bytes, end)?;
@@ -292,7 +292,7 @@ impl IOBase for File {
     fn reserve(&mut self, capacity: u64) -> Result<()> {
         let mut stage = self.materialize()?;
         let stage = stage.as_mut().ok_or_else(poisoned)?;
-        let capacity = usize::try_from(capacity).map_err(|_| crate::io::oversized(capacity))?;
+        let capacity = usize::try_from(capacity).map_err(|_| crate::iobase::oversized(capacity))?;
         if capacity > stage.bytes.capacity() {
             stage
                 .bytes
@@ -311,7 +311,7 @@ impl IOBase for File {
     fn truncate(&mut self, size: u64) -> Result<()> {
         let mut stage = self.materialize()?;
         let stage = stage.as_mut().ok_or_else(poisoned)?;
-        let size = usize::try_from(size).map_err(|_| crate::io::oversized(size))?;
+        let size = usize::try_from(size).map_err(|_| crate::iobase::oversized(size))?;
         // Extending zero-fills rather than leaving stale bytes visible, and
         // refuses loudly rather than aborting on an over-budget length.
         resize_stage(&mut stage.bytes, size)?;

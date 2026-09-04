@@ -450,7 +450,8 @@ mod handles {
     use std::io::{Read as _, Write as _};
 
     use super::super::{reader, writer, xxh3_64};
-    use crate::io::{Buffer, IOBase};
+    use crate::IOBase;
+    use crate::io::Buffer;
     use crate::{DigestAlgorithm, Error};
 
     /// A temporary root, named so parallel tests never share one.
@@ -653,7 +654,7 @@ mod handles {
             handle: Buffer,
         }
 
-        impl crate::io::IOMedia for Failing {
+        impl crate::IOMedia for Failing {
             crate::delegate_iomedia!(handle);
         }
 
@@ -726,7 +727,8 @@ mod handles {
 
 mod hashed {
     use super::super::{Hashed, xxh3_64, xxh3_64_with_seed};
-    use crate::io::{Buffer, IOBase};
+    use crate::IOBase;
+    use crate::io::Buffer;
     use crate::{DigestAlgorithm, Error};
 
     /// A handle that counts the reads reaching the one it wraps, so "answered
@@ -750,7 +752,7 @@ mod hashed {
         }
     }
 
-    impl crate::io::IOMedia for Counted {
+    impl crate::IOMedia for Counted {
         crate::delegate_iomedia!(handle);
     }
 

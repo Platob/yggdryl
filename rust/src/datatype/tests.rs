@@ -510,7 +510,7 @@ fn public_field_collections_validate_children_without_clone_helpers() {
 /// The three v3-era datatypes: variant, geometry, and geography.
 mod semi_structured_and_geospatial {
     use super::super::{DataType, GeospatialType};
-    use crate::generic::{DataTypeId, DataTypeKind, EdgeAlgorithm};
+    use crate::{DataTypeId, DataTypeKind, EdgeAlgorithm};
     use crate::{Field, Scalar};
 
     #[test]
@@ -782,7 +782,7 @@ mod ascii {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::super::DataType;
-    use crate::generic::{DataTypeId, DataTypeKind};
+    use crate::{DataTypeId, DataTypeKind};
     use crate::{Error, Field, Scalar, Scheme};
 
     fn hash_of(value: &DataType) -> u64 {
@@ -1188,7 +1188,7 @@ mod guid {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::super::DataType;
-    use crate::generic::{DataTypeId, DataTypeKind};
+    use crate::{DataTypeId, DataTypeKind};
     use crate::{Field, Scalar};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";

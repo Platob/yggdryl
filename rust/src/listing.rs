@@ -14,8 +14,7 @@
 use std::collections::VecDeque;
 
 use crate::generic::Holder;
-use crate::io::IOBase;
-use crate::{Error, Result};
+use crate::{Error, IOBase, Result};
 
 /// The entries of one listing, yielded one at a time.
 ///

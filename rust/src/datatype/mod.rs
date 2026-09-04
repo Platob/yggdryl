@@ -39,7 +39,7 @@ pub(crate) use coded::{
 };
 pub(crate) use guid::{GUID_EXTENSION_NAME, guid_bytes, guid_parse, guid_text};
 
-pub use crate::generic::{TimeUnit, UnionMode};
+pub use crate::{TimeUnit, UnionMode};
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };

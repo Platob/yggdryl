@@ -1,8 +1,9 @@
 //! A coded handle presents the decoded bytes and stores the encoded ones.
 
 use super::Coded;
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
 use crate::{Codec, Level, MimeType, Url};
+use crate::{IOBase, IOMedia};
 
 #[derive(Debug)]
 struct SharedReads {
@@ -23,7 +24,7 @@ impl SharedReads {
     }
 }
 
-impl crate::io::IOMedia for SharedReads {
+impl crate::IOMedia for SharedReads {
     crate::impl_default_iomedia!();
 }
 

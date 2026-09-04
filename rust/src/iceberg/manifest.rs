@@ -1,7 +1,7 @@
 //! Manifest lists, manifests, and the data files they describe.
 //!
 //! Official Iceberg 0.10.1 owns metadata/schema builders and, after bounded
-//! input checks, manifest/list readers. Yggdryl owns [`crate::io::IOBase`]
+//! input checks, manifest/list readers. Yggdryl owns [`crate::IOBase`]
 //! publication, the public Arrow 59 boundary, data-file writes, and
 //! deterministic manifest/list writers.
 //!
@@ -41,7 +41,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::FormatVersion;
 use super::partition::{PartitionField, PartitionSpec, Transform};
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::{Error, Field, MimeType, Result, Scalar, TimeUnit, Timezone};
 
 /// What a manifest's entries describe.
@@ -2407,7 +2407,8 @@ mod official_read_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::DataType;
-    use crate::io::{Buffer, IOBase};
+    use crate::IOBase;
+    use crate::io::Buffer;
 
     struct OversizedHandle {
         handle: Buffer,
@@ -2420,7 +2421,7 @@ mod official_read_tests {
         bytes_read: AtomicUsize,
     }
 
-    impl crate::io::IOMedia for OversizedHandle {
+    impl crate::IOMedia for OversizedHandle {
         crate::impl_default_iomedia!();
     }
 
@@ -2438,7 +2439,7 @@ mod official_read_tests {
         }
     }
 
-    impl crate::io::IOMedia for CountingHandle {
+    impl crate::IOMedia for CountingHandle {
         crate::impl_default_iomedia!();
     }
 

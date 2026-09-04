@@ -27,7 +27,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::{DataType, Error, Field, Result, Scalar, Url};
 
 /// What answering one attribute costs.

@@ -1,7 +1,7 @@
 //! One value naming every transparent content-coding handle.
 
+use crate::IOBase;
 use crate::gzip::Gzip;
-use crate::io::IOBase;
 use crate::zlib::Zlib;
 use crate::zstd::Zstd;
 use crate::{Error, Level, MediaType, Result, Url};
@@ -128,7 +128,7 @@ impl<H: IOBase> Coded<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Coded<H> {
+impl<H: IOBase> crate::IOMedia for Coded<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self.as_io()
     }
@@ -139,22 +139,22 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
 
     #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
-        crate::io::IOMedia::row_size(self.as_io())
+        crate::IOMedia::row_size(self.as_io())
     }
 
     #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
-        crate::io::IOMedia::column_size(self.as_io())
+        crate::IOMedia::column_size(self.as_io())
     }
 
     #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::generic::RecordOptions> {
-        crate::io::IOMedia::record_options(self.as_io())
+        crate::IOMedia::record_options(self.as_io())
     }
 
     #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
-        crate::io::IOMedia::read_arrow_field(self.as_io(), options)
+        crate::IOMedia::read_arrow_field(self.as_io(), options)
     }
 
     #[cfg(feature = "arrow")]
@@ -162,7 +162,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         &self,
         options: &crate::generic::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        crate::io::IOMedia::read_arrow_reader(self.as_io(), options)
+        crate::IOMedia::read_arrow_reader(self.as_io(), options)
     }
 
     #[cfg(feature = "arrow")]
@@ -171,7 +171,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_reader(self.as_io_mut(), batches, options)
+        crate::IOMedia::overwrite_arrow_reader(self.as_io_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -180,7 +180,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_io_mut(), batches, options)
+        crate::IOMedia::overwrite_prepared_arrow_reader(self.as_io_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -189,7 +189,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::overwrite_arrow_batch(self.as_io_mut(), batch, options)
+        crate::IOMedia::overwrite_arrow_batch(self.as_io_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -198,7 +198,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_reader(self.as_io_mut(), batches, options)
+        crate::IOMedia::append_arrow_reader(self.as_io_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -207,7 +207,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::append_arrow_batch(self.as_io_mut(), batch, options)
+        crate::IOMedia::append_arrow_batch(self.as_io_mut(), batch, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -216,7 +216,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_reader(self.as_io_mut(), batches, options)
+        crate::IOMedia::merge_arrow_reader(self.as_io_mut(), batches, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -225,12 +225,12 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> Result<()> {
-        crate::io::IOMedia::merge_arrow_batch(self.as_io_mut(), batch, options)
+        crate::IOMedia::merge_arrow_batch(self.as_io_mut(), batch, options)
     }
 
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::io::IOMedia::read_parquet_statistics(self.as_io())
+        crate::IOMedia::read_parquet_statistics(self.as_io())
     }
 
     #[cfg(feature = "parquet")]
@@ -238,7 +238,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
         &self,
         column: &str,
     ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
+        crate::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
     }
 }
 
@@ -248,7 +248,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.as_io().pread(offset, buffer)
     }
 
-    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::io::ByteStream<'_>> {
+    fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         self.as_io().pstream_bytes(position, batch_size)
     }
 
@@ -336,7 +336,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         self.as_io().ls(recursive, include_private)
     }
 }

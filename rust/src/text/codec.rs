@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 
 use super::{Format, Formatting, Limits, Scalar};
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::{Field, Level, MimeType, Result};
 
 /// The read and write surface shared by JSON, JSON Lines, YAML, and TOML.

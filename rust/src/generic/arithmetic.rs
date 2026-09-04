@@ -6,8 +6,8 @@ use std::ops::{
 
 use smol_str::SmolStr;
 
-use super::{Float16, Float32, Float64, I256, Scalar, TemporalFamily};
-use crate::{DataType, Error, Result, TimeUnit, Timezone};
+use super::{Float16, Float32, Float64, Scalar, TemporalFamily};
+use crate::{DataType, Error, I256, Result, TimeUnit, Timezone};
 
 #[derive(Clone, Copy)]
 pub(crate) enum Arithmetic {

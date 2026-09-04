@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::generic::Holder;
-use crate::io::{IOBase, IOFolder, Listing};
+use crate::{IOBase, IOFolder, Listing};
 use crate::{IOKind, MediaType, Result, Url};
 
 use super::system::{ArrowFileSystem, encoded_relative, filesystem_location};
@@ -166,7 +166,7 @@ impl IOFolder for Folder {
     /// answer is the no-op success. An object store that keeps no marker
     /// reports absence, which is the same success.
     fn delete_folder(&mut self) -> Result<()> {
-        crate::io::skip_absent(
+        crate::iobase::skip_absent(
             self.filesystem
                 .delete_file(&self.location)
                 .map_err(std::io::Error::other),
@@ -184,13 +184,13 @@ impl IOFolder for Folder {
             self.folder_clear()?;
         } else if let Some(entry) = self.list_folder(false, true).next() {
             entry?;
-            return Err(crate::io::not_empty(&self.url));
+            return Err(crate::iobase::not_empty(&self.url));
         }
         self.delete_folder()
     }
 }
 
-impl crate::io::IOMedia for Folder {
+impl crate::IOMedia for Folder {
     crate::impl_default_iomedia!();
 }
 

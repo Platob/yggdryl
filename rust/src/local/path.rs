@@ -5,8 +5,8 @@ use std::sync::{Mutex, OnceLock};
 use super::File;
 use super::Folder;
 use crate::generic::Holder;
-use crate::io::{IOBase, IOPath, Listing};
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{IOBase, IOPath, Listing};
 
 /// A local location that resolves to the implementation it turns out to need.
 ///
@@ -21,7 +21,7 @@ use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 /// Use [`Self::as_directory`] when the location must become a container.
 ///
 /// ```no_run
-/// use yggdryl::io::IOBase;
+/// use yggdryl::IOBase;
 /// use yggdryl::local::{Folder, Path};
 /// use yggdryl::IOKind;
 ///
@@ -212,7 +212,7 @@ impl IOPath for Path {
     }
 }
 
-impl crate::io::IOMedia for Path {
+impl crate::IOMedia for Path {
     crate::impl_default_iomedia!();
 }
 

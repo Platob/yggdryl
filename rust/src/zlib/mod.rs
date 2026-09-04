@@ -12,8 +12,9 @@ use flate2::write::{DeflateEncoder, ZlibEncoder};
 
 use crate::Result;
 
-use crate::generic::codec::{Encoder, EncoderKind, FlateFinish};
-use crate::io::{Coded, IOBase};
+use crate::IOBase;
+use crate::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::io::Coded;
 use crate::{Codec, Level};
 
 /// Decode a complete zlib-framed stream.
@@ -207,7 +208,7 @@ impl<H: IOBase> Zlib<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Zlib<H> {
+impl<H: IOBase> crate::IOMedia for Zlib<H> {
     crate::delegate_iomedia!(coded);
 }
 

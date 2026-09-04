@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::TimeUnit;
+use crate::TimeUnit;
 use crate::{Limits, Result, Scalar, Timezone};
 
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid};

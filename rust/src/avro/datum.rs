@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::TimeUnit;
+use crate::TimeUnit;
 use crate::{Error, Limits, Result, Scalar, Timezone};
 
 use super::schema::{Node, RecordType};

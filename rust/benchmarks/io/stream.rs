@@ -11,9 +11,10 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
+use yggdryl::IOBase;
 use yggdryl::buffered::BufferedOptions;
 use yggdryl::gzip::Gzip;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::io::Buffer;
 use yggdryl::zlib::Zlib;
 use yggdryl::zstd::Zstd;
 

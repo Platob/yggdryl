@@ -6,9 +6,10 @@ use std::sync::Arc;
 use super::Media;
 use crate::buffered::BufferedOptions;
 use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
 use crate::text::TextOptions;
 use crate::{DataType, Field, MediaType, MimeType, Url};
+use crate::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {

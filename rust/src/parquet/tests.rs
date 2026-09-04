@@ -11,8 +11,9 @@ use parquet::basic::Compression;
 use super::{Parquet, ParquetOptions};
 use crate::arrow::arrow_schema_from_field;
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
 use crate::{DataType, Field, MediaType, Url};
+use crate::{IOBase, IOMedia};
 
 #[test]
 fn statistics_snapshots_have_total_value_traits() {
@@ -49,7 +50,7 @@ impl Shared {
     }
 }
 
-impl crate::io::IOMedia for Shared {
+impl crate::IOMedia for Shared {
     crate::impl_default_iomedia!();
 }
 
@@ -307,17 +308,17 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
             options.set_merge_by_names(vec!["id".into()]);
         }
         let result = match operation {
-            "overwrite" => crate::io::IOMedia::overwrite_arrow_reader(
+            "overwrite" => crate::IOMedia::overwrite_arrow_reader(
                 &mut media,
                 counted_reader(&field, Arc::clone(&pulls)),
                 &options,
             ),
-            "append" => crate::io::IOMedia::append_arrow_reader(
+            "append" => crate::IOMedia::append_arrow_reader(
                 &mut media,
                 counted_reader(&field, Arc::clone(&pulls)),
                 &options,
             ),
-            "merge" => crate::io::IOMedia::merge_arrow_reader(
+            "merge" => crate::IOMedia::merge_arrow_reader(
                 &mut media,
                 counted_reader(&field, Arc::clone(&pulls)),
                 &options,
@@ -346,7 +347,7 @@ fn an_open_footer_tracks_selection_and_completion_on_overwrite() {
     media.open().unwrap();
 
     let options = media.record_options().unwrap().with_select_by_names(["id"]);
-    crate::io::IOMedia::overwrite_arrow_reader(
+    crate::IOMedia::overwrite_arrow_reader(
         &mut media,
         reader(
             &field,
@@ -728,9 +729,9 @@ mod pushdown {
     };
 
     use super::{Parquet, handle};
+    use crate::IOMedia;
     use crate::arrow::arrow_schema_from_field;
     use crate::generic::IORecordOptions;
-    use crate::io::IOMedia;
     use crate::{DataType, Field};
 
     /// Four columns, so a two-column read is a genuine subset.
@@ -895,7 +896,8 @@ mod limits {
 
     use super::{Parquet, ParquetOptions, batch, handle, reader, root};
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{Buffer, IOBase, IOMedia};
+    use crate::io::Buffer;
+    use crate::{IOBase, IOMedia};
 
     /// The total rows a handle yields under `options`.
     fn rows<H: IOBase + ?Sized>(handle: &H, options: &RecordOptions) -> usize {
@@ -989,7 +991,7 @@ mod limits {
         }
     }
 
-    impl crate::io::IOMedia for Counting {
+    impl crate::IOMedia for Counting {
         crate::impl_default_iomedia!();
     }
 
@@ -1081,7 +1083,8 @@ mod geospatial {
 
     use super::{Parquet, handle};
     use crate::ArrowCast;
-    use crate::io::{Buffer, IOBase, IOMedia};
+    use crate::io::Buffer;
+    use crate::{IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.
     fn wkb_point(x: f64, y: f64) -> Vec<u8> {
@@ -1531,7 +1534,7 @@ mod geospatial {
             crate::DataType::geometry(Some("EPSG:3857"))
                 .unwrap()
                 .nullable_field("shape"),
-            crate::DataType::geography(None, Some(crate::generic::EdgeAlgorithm::Vincenty))
+            crate::DataType::geography(None, Some(crate::EdgeAlgorithm::Vincenty))
                 .unwrap()
                 .nullable_field("route"),
             crate::DataType::variant().nullable_field("payload"),

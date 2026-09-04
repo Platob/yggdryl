@@ -6,7 +6,7 @@
 
 use std::ffi::OsString;
 
-use yggdryl::io::IOBase;
+use yggdryl::IOBase;
 use yggdryl::local::Folder;
 
 #[test]

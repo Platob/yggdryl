@@ -45,8 +45,8 @@
 //! ```
 
 use super::Holder;
+use crate::IOBase;
 use crate::arrow::{Error, Result};
-use crate::io::IOBase;
 use crate::ipc::Ipc;
 use crate::{Field, MimeType};
 
@@ -174,7 +174,7 @@ impl Media {
     /// has `IOMedia` as a supertrait, but dispatching through the exact media
     /// trait object makes it explicit that a variant's optimized schema,
     /// dimension, projection, and write overrides are retained.
-    fn as_media(&self) -> &dyn crate::io::IOMedia {
+    fn as_media(&self) -> &dyn crate::IOMedia {
         match self {
             Self::Ipc(ipc) => ipc,
             #[cfg(feature = "parquet")]
@@ -185,7 +185,7 @@ impl Media {
     }
 
     /// Mutably borrow the selected implementation through its media contract.
-    fn as_media_mut(&mut self) -> &mut dyn crate::io::IOMedia {
+    fn as_media_mut(&mut self) -> &mut dyn crate::IOMedia {
         match self {
             Self::Ipc(ipc) => ipc,
             #[cfg(feature = "parquet")]
@@ -196,7 +196,7 @@ impl Media {
     }
 }
 
-impl crate::io::IOMedia for Media {
+impl crate::IOMedia for Media {
     fn as_io_base(&self) -> &dyn IOBase {
         self.as_io()
     }
@@ -206,20 +206,20 @@ impl crate::io::IOMedia for Media {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        crate::io::IOMedia::row_size(self.as_media())
+        crate::IOMedia::row_size(self.as_media())
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        crate::io::IOMedia::column_size(self.as_media())
+        crate::IOMedia::column_size(self.as_media())
     }
 
     fn record_options(&self) -> crate::Result<crate::generic::RecordOptions> {
-        crate::io::IOMedia::record_options(self.as_media())
+        crate::IOMedia::record_options(self.as_media())
     }
 
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> crate::Result<crate::parquet::FileStatistics> {
-        crate::io::IOMedia::read_parquet_statistics(self.as_media())
+        crate::IOMedia::read_parquet_statistics(self.as_media())
     }
 
     #[cfg(feature = "parquet")]
@@ -227,21 +227,21 @@ impl crate::io::IOMedia for Media {
         &self,
         column: &str,
     ) -> crate::Result<crate::parquet::GeospatialStatistics> {
-        crate::io::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+        crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
     }
 
     fn read_arrow_field(
         &self,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<crate::Field> {
-        crate::io::IOMedia::read_arrow_field(self.as_media(), options)
+        crate::IOMedia::read_arrow_field(self.as_media(), options)
     }
 
     fn read_arrow_reader(
         &self,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<crate::arrow::BatchReader> {
-        crate::io::IOMedia::read_arrow_reader(self.as_media(), options)
+        crate::IOMedia::read_arrow_reader(self.as_media(), options)
     }
 
     fn overwrite_arrow_reader(
@@ -249,7 +249,7 @@ impl crate::io::IOMedia for Media {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     fn overwrite_prepared_arrow_reader(
@@ -257,7 +257,7 @@ impl crate::io::IOMedia for Media {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     fn overwrite_arrow_batch(
@@ -265,7 +265,7 @@ impl crate::io::IOMedia for Media {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     fn append_arrow_reader(
@@ -273,7 +273,7 @@ impl crate::io::IOMedia for Media {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     fn append_arrow_batch(
@@ -281,7 +281,7 @@ impl crate::io::IOMedia for Media {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
     fn merge_arrow_reader(
@@ -289,7 +289,7 @@ impl crate::io::IOMedia for Media {
         batches: crate::arrow::BatchReader,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
+        crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
     fn merge_arrow_batch(
@@ -297,7 +297,7 @@ impl crate::io::IOMedia for Media {
         batch: arrow_array::RecordBatch,
         options: &crate::generic::RecordOptions,
     ) -> crate::Result<()> {
-        crate::io::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
+        crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }
 
@@ -312,7 +312,7 @@ impl IOBase for Media {
         &self,
         position: u64,
         batch_size: usize,
-    ) -> crate::Result<crate::io::ByteStream<'_>> {
+    ) -> crate::Result<crate::ByteStream<'_>> {
         self.as_io().pstream_bytes(position, batch_size)
     }
 
@@ -388,7 +388,7 @@ impl IOBase for Media {
         self.as_io().child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         self.as_io().ls(recursive, include_private)
     }
 

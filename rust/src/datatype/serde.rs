@@ -167,7 +167,7 @@ enum DataTypeRef<'a> {
     },
     Geography {
         crs: &'a str,
-        algorithm: crate::generic::EdgeAlgorithm,
+        algorithm: crate::EdgeAlgorithm,
     },
 }
 
@@ -407,7 +407,7 @@ enum DataTypeValue {
     Geography {
         crs: SmolStr,
         #[serde(default)]
-        algorithm: Option<crate::generic::EdgeAlgorithm>,
+        algorithm: Option<crate::EdgeAlgorithm>,
     },
 }
 

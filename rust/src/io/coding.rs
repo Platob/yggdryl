@@ -13,7 +13,8 @@
 
 use std::io::Read;
 
-use crate::io::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, Holder, IOBase};
+use crate::generic::Holder;
+use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::{Codec, Level, MediaType, Result, Url};
 
 /// A transparent compression buffer over one handle.
@@ -174,7 +175,7 @@ impl<H: IOBase> Coded<H> {
             self.handle
                 .media_type()
                 .clone()
-                .try_with_encodings(super::coding_mime(self.codec))?
+                .try_with_encodings(crate::iobase::coding_mime(self.codec))?
         };
         if let Some(parent) = self.handle.parent() {
             if let Some(name) = self.handle.url().and_then(crate::Url::file_name) {
@@ -203,7 +204,7 @@ impl<H: IOBase> Coded<H> {
             None => reader,
         };
         let reader = crate::io::partition::filtered_reader(reader, options)?;
-        options.limit_arrow_reader(crate::io::select_reader(reader, options)?)
+        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
     }
 }
 
@@ -241,7 +242,7 @@ fn decoded_media_type(media_type: &MediaType, codec: Codec) -> MediaType {
         .unwrap_or_else(|_| MediaType::new(media_type.base().clone()))
 }
 
-impl<H: IOBase> crate::io::IOMedia for Coded<H> {
+impl<H: IOBase> crate::IOMedia for Coded<H> {
     crate::impl_default_iomedia!();
 
     /// Keep an owning Arrow reader on the decoded view without caching it.
@@ -259,7 +260,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
 
         let owned = self.owned_presented_handle()?;
         if owned.is_container() {
-            return crate::io::IOMedia::read_arrow_reader(&owned, options);
+            return crate::IOMedia::read_arrow_reader(&owned, options);
         }
         let reader = match options {
             crate::generic::RecordOptions::Ipc(ipc) => {
@@ -268,7 +269,7 @@ impl<H: IOBase> crate::io::IOMedia for Coded<H> {
             crate::generic::RecordOptions::Text(text) => {
                 crate::text::line::arrow::read_owned_arrow_reader(owned, text)?
             }
-            _ => return crate::io::IOMedia::read_arrow_reader(&owned, options),
+            _ => return crate::IOMedia::read_arrow_reader(&owned, options),
         };
         Self::shape_owned_arrow_reader(reader, options)
     }
@@ -454,7 +455,7 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.handle.child_by_path(name)
     }
 
-    fn ls(&self, recursive: bool, include_private: bool) -> crate::io::Listing {
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         self.handle.ls(recursive, include_private)
     }
 

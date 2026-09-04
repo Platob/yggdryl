@@ -6,7 +6,7 @@ use crate::{Error, Result};
 
 use super::sep::{LineSep, next_break};
 
-const WINDOW_SIZE: usize = crate::io::DEFAULT_STREAM_BATCH_SIZE;
+const WINDOW_SIZE: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 
 /// A bounded streaming line splitter.
 pub(crate) struct Lines<R> {

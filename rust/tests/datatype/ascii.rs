@@ -5,8 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::batch_reader;
 use yggdryl::generic::RecordOptions;
-use yggdryl::io::{Buffer, IOBase, IOMedia};
+use yggdryl::io::Buffer;
 use yggdryl::{DataType, Expression, Field, Scalar, TypedScalar, Url};
+use yggdryl::{IOBase, IOMedia};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)

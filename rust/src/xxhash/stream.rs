@@ -3,12 +3,12 @@
 //! Three shapes share one rule: the payload is never held whole. A
 //! [`DigestReader`] hashes what a caller is already reading, a
 //! [`DigestWriter`] hashes what a caller is already writing, and
-//! [`crate::io::IOBase::read_digest`] hashes a stored object through
-//! [`crate::io::IOBase::pstream_bytes`], so a 64 GiB file costs one window.
+//! [`crate::IOBase::read_digest`] hashes a stored object through
+//! [`crate::IOBase::pstream_bytes`], so a 64 GiB file costs one window.
 
 use std::io::{Read, Write};
 
-use crate::io::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
+use crate::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::{Digest, DigestAlgorithm, Digester, Error, Result};
 
 /// Digest a whole handle without holding it in memory.
@@ -27,7 +27,7 @@ pub(crate) fn read_digest<H: IOBase + ?Sized>(
 
 /// Digest `length` bytes of a handle starting at `offset`.
 ///
-/// The window is clamped the way [`crate::io::IOBase::read_range_bytes`]
+/// The window is clamped the way [`crate::IOBase::read_range_bytes`]
 /// clamps: a range starting or ending past the value digests only the bytes
 /// that are there, and a range wholly past it digests nothing.
 pub(crate) fn read_range_digest<H: IOBase + ?Sized>(

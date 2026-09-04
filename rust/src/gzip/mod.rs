@@ -8,8 +8,9 @@ use flate2::write::GzEncoder;
 
 use crate::Result;
 
-use crate::generic::codec::{Encoder, EncoderKind, FlateFinish};
-use crate::io::{Coded, IOBase};
+use crate::IOBase;
+use crate::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::io::Coded;
 use crate::{Codec, Level};
 
 /// Decode a complete gzip member.
@@ -138,7 +139,7 @@ impl<H: IOBase> Gzip<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Gzip<H> {
+impl<H: IOBase> crate::IOMedia for Gzip<H> {
     crate::delegate_iomedia!(coded);
 }
 

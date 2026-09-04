@@ -1,7 +1,8 @@
 //! One enum over every coding, wrapping any handle.
 
 use super::Coded as CodedHandle;
-use crate::io::{Buffer, IOBase};
+use crate::IOBase;
+use crate::io::Buffer;
 use crate::{Codec, Level, Url};
 
 const PAYLOAD: &[u8] = b"symbol,price\nAAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\n\

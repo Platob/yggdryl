@@ -97,8 +97,8 @@ pub use tables::Tables;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::Table;
+use crate::IOBase;
 use crate::generic::Holder;
-use crate::io::IOBase;
 use crate::metadata::Metadata;
 use crate::{Error, Result, Scalar};
 

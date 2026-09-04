@@ -10,7 +10,8 @@ pub(crate) mod write;
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
-use yggdryl::io::{Buffer, IOMedia};
+use yggdryl::IOMedia;
+use yggdryl::io::Buffer;
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per fixture, chosen so a column chunk is worth skipping.

@@ -13,7 +13,7 @@ use std::io::Read;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::io::IOBase;
+use crate::IOBase;
 use crate::{Codec, Level, Limits, Result, Scalar};
 
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};

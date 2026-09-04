@@ -23,8 +23,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::registry::{canonical_id, is_nested};
 use super::{FixBranch, FixRegistry};
+use crate::IOBase;
 use crate::generic::Holder;
-use crate::io::IOBase;
 use crate::text::Formatting;
 use crate::{Error, Field, Result, Scalar, Url};
 

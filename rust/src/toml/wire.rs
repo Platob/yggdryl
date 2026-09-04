@@ -4,7 +4,7 @@ use std::io::Write;
 
 use base64::Engine as _;
 
-use crate::generic::timezone::{civil_from_days, days_from_civil};
+use crate::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, TimeUnit, Timezone};
 
 const SECONDS_PER_DAY: i64 = 86_400;

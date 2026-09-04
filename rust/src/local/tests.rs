@@ -1,7 +1,7 @@
 //! Local directories and mapped files, exercised against a real temp tree.
 
 mod mapped {
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::local::{File, Folder};
 
     fn path(label: &str) -> std::path::PathBuf {
@@ -195,8 +195,8 @@ mod mapped {
 }
 
 mod hierarchy {
+    use crate::IOBase;
     use crate::generic::Holder;
-    use crate::io::IOBase;
     use crate::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -356,8 +356,8 @@ mod hierarchy {
 
 /// One generic location resolves to the implementation it turns out to need.
 mod generic_path {
+    use crate::IOBase;
     use crate::generic::Holder;
-    use crate::io::IOBase;
     use crate::local::{Folder, Path};
     use crate::{IOKind, MediaType, MimeType};
 
@@ -529,8 +529,8 @@ mod generic_path {
 
 /// The three roles are what a backend implements; `local` is the reference.
 mod roles {
-    use crate::io::{IOBase, IOFile, IOFolder, IOPath};
     use crate::local::{File, Folder, Path};
+    use crate::{IOBase, IOFile, IOFolder, IOPath};
     use crate::{IOKind, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -619,8 +619,8 @@ mod roles {
 
 /// A listing skips private names unless a caller asks for them.
 mod privacy {
+    use crate::IOBase;
     use crate::Url;
-    use crate::io::IOBase;
     use crate::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -698,7 +698,7 @@ mod privacy {
 
 /// A pattern is a location, so listing one expands it.
 mod globbing {
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::local::{Folder, Path};
     use crate::{IOKind, Url};
 
@@ -901,7 +901,7 @@ mod globbing {
 mod roots {
     use std::ffi::OsString;
 
-    use crate::io::IOBase;
+    use crate::IOBase;
     use crate::local::Folder;
 
     fn set(text: &str) -> Option<OsString> {

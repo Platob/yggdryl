@@ -9,7 +9,7 @@ use std::cell::OnceCell;
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::io::IOBase;
+use yggdryl::IOBase;
 use yggdryl::local::Folder;
 
 /// The folder widths the two legs are measured at.

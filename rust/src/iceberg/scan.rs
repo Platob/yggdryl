@@ -17,7 +17,7 @@
 //!   statistics cannot hold the value is skipped without being opened.
 //!
 //! A filter is an [`Expression`], the same one that filters a lake through
-//! [`IOBase::children_matching`](crate::io::IOBase::children_matching) and a
+//! [`IOBase::children_matching`](crate::IOBase::children_matching) and a
 //! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
 //! level of the chain answers it from the statistics it carries, expressed as
 //! the [`Bounds`] every other container in this crate expresses them as: a
@@ -521,8 +521,8 @@ impl Refine {
     /// here would fill them with nulls and hide the manifest values
     /// [`restore_partitions`] is about to put back.
     fn file_options(&self, part: &ScanPart) -> Result<crate::generic::RecordOptions> {
+        use crate::IOMedia;
         use crate::generic::IORecordOptions;
-        use crate::io::IOMedia;
 
         let options = part.handle.record_options()?;
         if self.target.is_none() {
@@ -549,7 +549,7 @@ impl Refine {
     /// Open one planned file with its resolved options.
     fn open(&self, part: &ScanPart) -> Result<BatchReader> {
         let options = self.file_options(part)?;
-        crate::io::IOMedia::read_arrow_reader(&part.handle, &options)
+        crate::IOMedia::read_arrow_reader(&part.handle, &options)
     }
 
     /// Restore, align, cast, filter, and project one decoded batch.
@@ -896,7 +896,7 @@ fn file_projection(
     options: &crate::generic::RecordOptions,
     wanted: &Field,
 ) -> Field {
-    let Ok(file_root) = crate::io::IOMedia::read_arrow_field(handle, options) else {
+    let Ok(file_root) = crate::IOMedia::read_arrow_field(handle, options) else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());

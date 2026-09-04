@@ -19,8 +19,7 @@
 //! different transport.
 
 use crate::generic::Holder;
-use crate::io::{IOBase, Listing};
-use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{Error, IOBase, IOKind, Listing, MediaType, MimeType, Result, Url};
 
 /// The media type every container reports.
 static DIRECTORY_MEDIA_TYPE: std::sync::LazyLock<MediaType> =
@@ -63,7 +62,7 @@ pub trait IOFolder: IOBase {
     /// it. Two rules bind the implementation, both from [`IOBase::remove`]:
     ///
     /// - **Absence is success.** Issue the delete and map the store's own
-    ///   not-found answer to `Ok(())` through [`skip_absent`](crate::io::skip_absent). Never probe
+    ///   not-found answer to `Ok(())` through [`skip_absent`](crate::iobase::skip_absent). Never probe
     ///   first to decide whether to proceed.
     /// - **A non-empty container is refused, not recursed.** Return the store's
     ///   own "directory not empty" failure; the role turns it into an error
@@ -105,7 +104,7 @@ pub trait IOFolder: IOBase {
             // Only the store's own "still has children" answer is translated;
             // every other failure stays the typed error it is.
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
-                Err(crate::io::not_empty(self.folder_url()))
+                Err(crate::iobase::not_empty(self.folder_url()))
             }
             other => other,
         }
@@ -203,7 +202,7 @@ pub trait IOFolder: IOBase {
     /// first - that this is a container - so the probe starts at the listing
     /// instead of at a kind that is already settled.
     fn folder_is_tabular(&self) -> bool {
-        crate::io::container_is_tabular(self)
+        crate::iobase::container_is_tabular(self)
     }
 }
 
@@ -224,7 +223,7 @@ pub trait IOFile: IOBase {
     /// A separate mechanic from `truncate(0)` because a truncation *writes*,
     /// and per [`IOBase::clear`] emptying a resource that does not exist must
     /// do nothing rather than bring it into being. Map the store's own
-    /// not-found answer to `Ok(())` through [`skip_absent`](crate::io::skip_absent); never probe first.
+    /// not-found answer to `Ok(())` through [`skip_absent`](crate::iobase::skip_absent); never probe first.
     ///
     /// # Errors
     ///
@@ -237,7 +236,7 @@ pub trait IOFile: IOBase {
     /// holds over them - a live mapping, a staged write - so an implementation
     /// releases those first and a later flush cannot recreate what was deleted.
     /// Map the store's own not-found answer to `Ok(())` through
-    /// [`skip_absent`](crate::io::skip_absent); never probe first.
+    /// [`skip_absent`](crate::iobase::skip_absent); never probe first.
     ///
     /// # Errors
     ///
@@ -358,7 +357,7 @@ pub trait IOPath: IOBase {
     fn path_is_tabular(&self) -> bool {
         let media_type = self.media_type();
         if media_type.base() == &MimeType::DIRECTORY {
-            return crate::io::container_is_tabular(self);
+            return crate::iobase::container_is_tabular(self);
         }
         media_type.is_tabular()
     }

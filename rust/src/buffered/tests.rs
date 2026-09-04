@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use super::{Buffered, BufferedOptions};
 use crate::generic::Holder;
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
+use crate::{IOBase, IOMedia};
 use crate::{MediaType, MimeType, Url};
 
 /// A handle that mirrors a [`Buffer`] and counts what reaches it.
@@ -58,7 +59,7 @@ impl Counting {
     }
 }
 
-impl crate::io::IOMedia for Counting {
+impl crate::IOMedia for Counting {
     crate::impl_default_iomedia!();
 }
 

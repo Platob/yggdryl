@@ -149,8 +149,8 @@ use std::time::Instant;
 pub use options::BufferedOptions;
 use page::{PageTable, Pinned};
 
+use crate::IOBase;
 use crate::Result;
-use crate::io::IOBase;
 
 /// A page cache over one handle.
 ///
@@ -375,27 +375,27 @@ fn slot(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)
 }
 
-impl<H: IOBase> crate::io::IOMedia for Buffered<H> {
+impl<H: IOBase> crate::IOMedia for Buffered<H> {
     crate::impl_default_iomedia!();
 
     #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
-        crate::io::IOMedia::row_size(&self.handle)
+        crate::IOMedia::row_size(&self.handle)
     }
 
     #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
-        crate::io::IOMedia::column_size(&self.handle)
+        crate::IOMedia::column_size(&self.handle)
     }
 
     #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::generic::RecordOptions> {
-        crate::io::IOMedia::record_options(&self.handle)
+        crate::IOMedia::record_options(&self.handle)
     }
 
     #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
-        crate::io::IOMedia::read_arrow_field(&self.handle, options)
+        crate::IOMedia::read_arrow_field(&self.handle, options)
     }
 
     #[cfg(feature = "arrow")]
@@ -403,12 +403,12 @@ impl<H: IOBase> crate::io::IOMedia for Buffered<H> {
         &self,
         options: &crate::generic::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        crate::io::IOMedia::read_arrow_reader(&self.handle, options)
+        crate::IOMedia::read_arrow_reader(&self.handle, options)
     }
 
     #[cfg(feature = "parquet")]
     fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::io::IOMedia::read_parquet_statistics(&self.handle)
+        crate::IOMedia::read_parquet_statistics(&self.handle)
     }
 
     #[cfg(feature = "parquet")]
@@ -416,7 +416,7 @@ impl<H: IOBase> crate::io::IOMedia for Buffered<H> {
         &self,
         column: &str,
     ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::io::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
+        crate::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
     }
 }
 

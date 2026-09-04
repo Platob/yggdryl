@@ -4,8 +4,9 @@ use std::io::{Read, Write};
 
 use crate::Result;
 
-use crate::generic::codec::{Encoder, EncoderKind, FlateFinish};
-use crate::io::{Coded, IOBase};
+use crate::IOBase;
+use crate::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::io::Coded;
 use crate::{Codec, Level};
 
 /// Decode a complete Zstandard frame.
@@ -174,7 +175,7 @@ impl<H: IOBase> Zstd<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Zstd<H> {
+impl<H: IOBase> crate::IOMedia for Zstd<H> {
     crate::delegate_iomedia!(coded);
 }
 

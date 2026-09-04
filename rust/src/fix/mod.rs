@@ -62,7 +62,7 @@
 //!
 //! # Storage
 //!
-//! A registry reads and writes through one [`IOBase`](crate::io::IOBase)
+//! A registry reads and writes through one [`IOBase`](crate::IOBase)
 //! folder handle, into two trees:
 //!
 //! ```text

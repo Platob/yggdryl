@@ -153,7 +153,7 @@ impl<H: IOBase> Cursor<H> {
     }
 }
 
-impl<H: IOBase> crate::io::IOMedia for Cursor<H> {
+impl<H: IOBase> crate::IOMedia for Cursor<H> {
     crate::delegate_iomedia!(handle);
 }
 
@@ -213,8 +213,8 @@ impl<H: IOBase> std::io::Seek for Cursor<H> {
 mod tests {
     use std::io::{Read, Seek, SeekFrom, Write};
 
-    use super::super::Buffer;
     use super::*;
+    use crate::io::Buffer;
 
     #[test]
     fn a_cursor_advances_and_seeks_over_any_handle() {

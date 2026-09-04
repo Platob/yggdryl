@@ -17,8 +17,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
+use yggdryl::IOMedia;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::IOMedia;
 
 use super::{materialized, narrow, stored};
 

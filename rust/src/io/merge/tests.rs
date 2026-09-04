@@ -7,8 +7,9 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::BatchReader;
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::{Buffer, IOBase, IOMedia};
+use crate::io::Buffer;
 use crate::{DataType, Field, Url};
+use crate::{IOBase, IOMedia};
 
 /// Two columns: one key and one payload, so an update is visible.
 fn schema() -> Field {

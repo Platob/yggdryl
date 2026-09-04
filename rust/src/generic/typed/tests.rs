@@ -165,7 +165,7 @@ fn the_newest_markers_narrow_their_pairings_like_every_other() {
     let shape =
         GeometryScalar::try_from_parts(DataType::geometry(None).unwrap(), Scalar::from(point))
             .unwrap();
-    assert_eq!(shape.dtype().id(), crate::generic::DataTypeId::Geometry);
+    assert_eq!(shape.dtype().id(), crate::DataTypeId::Geometry);
     assert!(
         GeometryScalar::try_from_parts(DataType::geometry(None).unwrap(), Scalar::from("no wkb"))
             .is_err()

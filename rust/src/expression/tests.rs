@@ -479,11 +479,11 @@ impl Counting {
     }
 }
 
-impl crate::io::IOMedia for Counting {
+impl crate::IOMedia for Counting {
     crate::impl_default_iomedia!();
 }
 
-impl crate::io::IOBase for Counting {
+impl crate::IOBase for Counting {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         Ok(0)
     }

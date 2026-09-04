@@ -5,8 +5,8 @@ use super::{
     CATALOG_DOCUMENT, Names, Namespace, Namespaces, Occupant, Tables, classify, invalid, resolve,
     write_properties,
 };
+use crate::IOBase;
 use crate::generic::Holder;
-use crate::io::IOBase;
 use crate::metadata::Metadata;
 use crate::{IOKind, Result};
 
@@ -153,7 +153,7 @@ impl<H: IOBase> Catalogs<H> {
 /// a level of ten thousand classifies three. Leaves and the reserved
 /// `metadata` folder are skipped; a container is a table when
 /// [`Table::locate`] finds a current document and a namespace otherwise.
-pub(super) fn level_names(level: crate::io::Listing, tables: bool) -> Names {
+pub(super) fn level_names(level: crate::Listing, tables: bool) -> Names {
     Names::new(level.filter_map(move |entry| {
         let entry = match entry {
             Ok(entry) => entry,

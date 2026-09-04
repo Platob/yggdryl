@@ -5,9 +5,9 @@ use smol_str::SmolStr;
 
 #[cfg(feature = "arrow")]
 use crate::generic::{IORecordOptions as _, RecordOptions};
-use crate::io::{IOBase, IOMedia};
 #[cfg(feature = "arrow")]
 use crate::{Field, Result};
+use crate::{IOBase, IOMedia};
 
 use super::TextOptions;
 

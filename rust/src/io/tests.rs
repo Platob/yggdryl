@@ -2,8 +2,9 @@
 
 use std::io::{Read, Write};
 
-use super::{Buffer, IOBase};
+use super::IOBase;
 use crate::Codec;
+use crate::io::Buffer;
 use crate::{Field, MediaType, MimeType, Scalar, Url};
 
 #[test]
@@ -277,8 +278,8 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use crate::generic::Holder;
-    use crate::io::{IOMedia, Listing};
     use crate::{IOKind, Result};
+    use crate::{IOMedia, Listing};
 
     struct Probe {
         bytes: Buffer,
@@ -328,7 +329,7 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     }
 
     let state = Arc::new(AtomicBool::new(false));
-    let mut handle: Box<dyn IOBase> = Box::new(crate::io::Cursor::new(Probe {
+    let mut handle: Box<dyn IOBase> = Box::new(crate::Cursor::new(Probe {
         bytes: Buffer::new(),
         opened: Arc::clone(&state),
     }));
@@ -379,7 +380,8 @@ mod records {
 
     use crate::arrow::BatchReader;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::{ArrowWriteSession, Buffer, IOBase, IOMedia};
+    use crate::io::Buffer;
+    use crate::{ArrowWriteSession, IOBase, IOMedia};
     use crate::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
     fn schema() -> Field {
@@ -472,7 +474,7 @@ mod records {
         }
     }
 
-    impl crate::io::IOMedia for PublicationProbe {
+    impl crate::IOMedia for PublicationProbe {
         crate::impl_default_iomedia!();
     }
 
@@ -2302,7 +2304,7 @@ mod records {
 
         use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 
-        use crate::io::IOMedia;
+        use crate::IOMedia;
 
         /// Four columns, so a two-column read is a genuine subset.
         fn wide() -> Field {
@@ -2451,9 +2453,9 @@ mod buffered_handle {
     use std::io::{Read, Seek, SeekFrom, Write};
 
     use super::{Buffer, IOBase};
+    use crate::IOCursor;
     use crate::buffered::BufferedOptions;
     use crate::buffered::tests::Counting;
-    use crate::io::IOCursor;
 
     /// Small pages, so a modest fixture crosses several of them.
     const PAGE: usize = 64;
@@ -2959,7 +2961,7 @@ mod conformance {
 mod lifecycle {
     use super::*;
     #[cfg(feature = "arrow")]
-    use crate::io::IOMedia;
+    use crate::IOMedia;
     use crate::local::{File, Folder, Path};
 
     /// A temp root nothing else in this file uses.
@@ -2994,7 +2996,7 @@ mod lifecycle {
     // would supply is one this double has to count. The counters are
     // per-handle and never shared across threads; `IOBase` requires `Send`,
     // and `Cell` is `Send` when its contents are.
-    impl crate::io::IOMedia for Counted {
+    impl crate::IOMedia for Counted {
         crate::impl_default_iomedia!();
     }
 
@@ -3041,9 +3043,9 @@ mod lifecycle {
             self.bytes.size()
         }
 
-        fn ls(&self, _recursive: bool, _include_private: bool) -> crate::io::Listing {
+        fn ls(&self, _recursive: bool, _include_private: bool) -> crate::Listing {
             self.listings.set(self.listings.get() + 1);
-            crate::io::Listing::empty()
+            crate::Listing::empty()
         }
 
         fn clear(&mut self) -> crate::Result<()> {
@@ -3469,7 +3471,7 @@ mod shape {
 
         use arrow_array::{Int64Array, RecordBatch};
 
-        use crate::io::IOMedia as _;
+        use crate::IOMedia as _;
 
         fn rows(values: &[i64]) -> RecordBatch {
             let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
@@ -3558,7 +3560,7 @@ mod laziness {
         }
     }
 
-    impl crate::io::IOMedia for Wide {
+    impl crate::IOMedia for Wide {
         crate::impl_default_iomedia!();
     }
 

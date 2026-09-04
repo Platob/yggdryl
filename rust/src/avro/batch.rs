@@ -2,7 +2,7 @@
 //!
 //! The encoding lives in free functions - [`read_field`], [`read_batch_reader`],
 //! [`overwrite_arrow_reader`] - that take any [`IOBase`] handle and one
-//! [`AvroOptions`]. That is what [`crate::io::IOMedia::read_arrow_reader`] and its
+//! [`AvroOptions`]. That is what [`crate::IOMedia::read_arrow_reader`] and its
 //! two siblings call, so reading a container needs nothing but a handle whose
 //! media type says `avro`. These functions are the encoding and nothing more -
 //! the `field` they take is a column pushdown, and the casting, merging, and
@@ -39,9 +39,9 @@ use arrow_buffer::{IntervalMonthDayNano, NullBufferBuilder, OffsetBuffer, Scalar
 use arrow_schema::{ArrowError, DataType as ArrowDataType, FieldRef, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::IOBase;
 use crate::{DataType, Field, Level, Limits, Metadata};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
@@ -1531,7 +1531,7 @@ impl<H: IOBase> Avro<H> {
 ///
 /// [`IOBase::open`] additionally caches the container's schema and
 /// [`IOBase::close`] releases it.
-impl<H: IOBase> crate::io::IOMedia for Avro<H> {
+impl<H: IOBase> crate::IOMedia for Avro<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
     }
@@ -1584,7 +1584,7 @@ impl<H: IOBase> crate::io::IOMedia for Avro<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        match crate::io::overwrite_arrow_reader_default_with_field(self, batches, options) {
+        match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
             Ok(_published) => {
                 self.refresh_dimensions()?;
                 Ok(())
@@ -1606,7 +1606,7 @@ impl<H: IOBase> crate::io::IOMedia for Avro<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        match crate::io::leaf_writer(self, batches, options) {
+        match crate::iobase::leaf_writer(self, batches, options) {
             Ok(()) => {
                 self.refresh_dimensions()?;
                 Ok(())
@@ -1624,7 +1624,7 @@ impl<H: IOBase> crate::io::IOMedia for Avro<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::append_arrow_reader_default(self, batches, options)
+        crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
     fn merge_arrow_reader(
@@ -1633,7 +1633,7 @@ impl<H: IOBase> crate::io::IOMedia for Avro<H> {
         options: &RecordOptions,
     ) -> crate::Result<()> {
         self.require_record_options(options)?;
-        crate::io::merge_arrow_reader_default(self, batches, options)
+        crate::iobase::merge_arrow_reader_default(self, batches, options)
     }
 }
 

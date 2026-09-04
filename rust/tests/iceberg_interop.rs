@@ -16,9 +16,9 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+use yggdryl::IOMedia;
 use yggdryl::generic::IORecordOptions;
 use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::io::IOMedia;
 use yggdryl::local::Folder;
 use yggdryl::{DataType, Field};
 

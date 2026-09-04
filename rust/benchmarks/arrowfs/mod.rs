@@ -13,9 +13,9 @@ pub(crate) mod record;
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
+use yggdryl::IOBase;
 use yggdryl::arrowfs::{ArrowFileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::IOBase;
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per record fixture, large enough that encoding dominates setup.

@@ -12,7 +12,7 @@
 //!
 //! A table is one container: `metadata/` holds metadata and manifests, and
 //! `data/` holds record files. [`Table`] reaches both through its supplied
-//! handle and implements [`IOBase`], so [`crate::io::IOMedia`] operations use
+//! handle and implements [`IOBase`], so [`crate::IOMedia`] operations use
 //! the same storage path.
 //!
 //! ```no_run
@@ -115,8 +115,8 @@ pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
 use crate::generic::{Holder, RecordOptions};
-use crate::io::{IOBase, IOMedia};
 use crate::{Error, Result};
+use crate::{IOBase, IOMedia};
 
 /// The directory an Iceberg table keeps its data files under.
 const DATA_DIR: &str = "data";
@@ -254,7 +254,8 @@ impl Located {
         options.require_write_mode(crate::IOMode::Overwrite)?;
         let commit_row_size = options.require_commit_row_size()?;
         let stored = self.table.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
         let filters: Vec<(String, String)> = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
@@ -301,12 +302,13 @@ impl Located {
         if options.write_limit_is_zero() {
             return Ok(());
         }
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let stored = self.table.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         if commit_row_size.is_none() {
@@ -333,12 +335,13 @@ impl Located {
         options.require_write_mode(crate::IOMode::Merge)?;
         let commit_row_size = options.require_commit_row_size()?;
         options.require_write_limits()?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let stored = self.table.schema()?.clone();
-        let (batches, _, _) = crate::io::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::io::non_empty_arrow_reader(batches)? else {
+        let (batches, _, _) =
+            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
         let filters: Vec<(String, String)> = self.filters.clone();
@@ -411,7 +414,7 @@ impl Located {
 
     /// Return the encoding this table's data files are written in.
     ///
-    /// Answered by the table's own [`crate::io::IOMedia::record_options`], so the one
+    /// Answered by the table's own [`crate::IOMedia::record_options`], so the one
     /// place that knows what an Iceberg table's rows are is the table.
     pub(crate) fn record_options(&self) -> Result<RecordOptions> {
         self.table.record_options()

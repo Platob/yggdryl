@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::arrowfs::{ArrowFileSystem, File, FileInfo, Folder, MemoryFileSystem, Path};
-use crate::io::{IOBase, IOMedia};
+use crate::{IOBase, IOMedia};
 use crate::{IOKind, MediaType, MimeType, Result};
 
 #[test]
@@ -1193,8 +1193,8 @@ mod listing_cost {
     use std::sync::Arc;
 
     use super::{Counting, Result};
+    use crate::IOBase;
     use crate::arrowfs::{ArrowFileSystem, Folder};
-    use crate::io::IOBase;
 
     /// A tree `depth` levels deep, `width` leaves per level.
     fn tree(filesystem: &Counting, depth: usize, width: usize) {
