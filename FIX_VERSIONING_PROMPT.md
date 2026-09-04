@@ -2,8 +2,10 @@
 
 Six phases in dependency order. Each is complete work on its own and each
 states its own contract, files, tests, benchmark and docs. Follow
-`AGENTS.md`: Rust core first, no bindings in this brief, no backward
-compatibility, one fact in one place.
+`AGENTS.md`: Rust core first, no backward compatibility, one fact in one
+place. No new binding surface anywhere here - the only binding work in the
+whole brief is the two mechanical call sites Phase 2's `Copy` identifier
+forces, and it is named there.
 
 ## What is landed
 
@@ -16,7 +18,7 @@ compatibility, one fact in one place.
 | `AsciiEnum`, the `field:enum` document | `rust/src/datatype/ascii.rs`, `rust/src/field/mod.rs:895` |
 | `DataType`, `DataTypeId` (wire ids), `LOGICAL_NAMES` | `rust/src/datatype/`, `rust/src/generic/datatype_id.rs` |
 | `Scalar` | `rust/src/generic/scalar.rs:751` |
-| `xxh3_64`, `xxh3_64_with_seed`, streaming state | `rust/src/xxhash/mod.rs:134`, `rust/src/xxhash/state.rs` |
+| `xxh32`, `xxh3_64`, the streaming state | `rust/src/xxhash/mod.rs:111`, `mod.rs:134`, `rust/src/xxhash/state.rs` |
 | the counting allocator, one target for the process | `rust/tests/allocations.rs` |
 | the seed dictionary | `config/fix/{primitive,nested}/standard/*.json` |
 | published resolution numbers to beat | `docs/fix.md`, "Measured resolution cost" |
@@ -127,77 +129,171 @@ Document the value on `docs/generic.md` and the datatype row on
 
 ---
 
-## Phase 2 - `FixId` resolution on xxh3
+## Phase 2 - `FixId` is one `i64`
 
 Independent of every other phase; do it first if two people are working.
 
-### What is there now
+### The representation
 
-`Half` (`registry.rs:225`) holds four indexes per nestedness:
-`ids: BTreeMap<FixId, usize>`, `alternate_ids: BTreeMap<FixId, usize>`,
-`names: HashMap<BranchedKey, usize>`, `aliases: HashMap<BranchedKey, usize>`.
-An identifier probe is `O(log n)` comparisons, each comparing a branch
-`SmolStr` before the tag. A name probe is SipHash over branch plus folded
-name. Lookups already allocate nothing
-(`rust/tests/allocations.rs::a_fix_registry_lookup_allocates_nothing`), so
-this phase buys compare and hash cost, not allocations. The numbers to beat
-are published in `docs/fix.md`: 32.3 ns primitive tag hit, 93.1 ns nested tag
-hit, 65.8 ns alternate tag hit, 72.2 ns miss, 128.1 ns vendor identifier hit
-over 1034 fields, 81.8 ns name hit.
-
-### The change
-
-Key every index by a 64-bit digest and store it in a `HashMap` whose hasher
-passes the digest through unchanged, because xxh3 already avalanches and
-re-hashing an avalanched key with SipHash is pure waste:
+`FixId` stops being a branch and a tag side by side and becomes the packed
+key itself: the tag in the high 32 bits, an `xxh32` of the branch text in
+the low 32.
 
 ```rust
-ids:            HashMap<u64, usize, BuildHasherDefault<PassThrough>>
-alternate_ids:  HashMap<u64, usize, BuildHasherDefault<PassThrough>>
-names:          HashMap<u64, usize, BuildHasherDefault<PassThrough>>
-aliases:        HashMap<u64, usize, BuildHasherDefault<PassThrough>>
-positions_by_id: Vec<usize>   // ordered by canonical FixId, iteration only
+pub struct FixId(i64);   // ((tag as i64) << 32) | i64::from(xxh32(branch))
 ```
 
-- **The identifier digest is one call, no rendering and no buffer:**
-  `xxh3_64_with_seed(branch.as_bytes(), tag as u64)`. The tag rides in the
-  seed, the branch is already a contiguous `&[u8]` inside `SmolStr`'s inline
-  buffer, and nothing is formatted. One code path for the standard branch
-  and a vendor one; no special case, no `branch:tag` text built on the hot
-  path. (`FixId`'s rendered form stays `branch:tag` - that is the display
-  contract and it is untouched.)
-- **The name digest folds while it feeds.** ASCII-fold the query into the
-  streaming xxh3 state from `rust/src/xxhash/state.rs` in stack-sized chunks
-  so no length allocates, seeded with the branch's own digest so a name can
-  never be found under another branch. A distinct constant seed per index
-  keeps one crafted key from landing in all four.
+- `i64` and not `u64` because a tag is an `i32` in `0..=i32::MAX`, so bit 63
+  is never set, every identifier is positive, and `Ord` on the `i64` is the
+  natural order of the packed pair. The digest is zero-extended, so the low
+  half compares unsigned.
+- `Copy`, 8 bytes, `Hash` and `Ord` without touching the heap. `FixKey::Id`
+  stops borrowing (`FixKey::Id(FixId)`), and `next_field_after` takes
+  `Option<FixId>` by value.
+- `FixId::standard(tag)` becomes a `const fn` - the doc comment that
+  currently apologises for `SmolStr`'s `Drop` goes away with the field.
+- **Nothing on disk changes.** `FixId` is derived from `fix:branch` and
+  `fix:tag` on every read and never stored (`fix/mod.rs`), so no shard, no
+  metadata key and no serialized shape moves. The change is entirely
+  in-memory representation.
+
+### `FixBranch` carries its own digest
+
+`xxh32` (`rust/src/xxhash/mod.rs:111`) runs once, where the branch is built,
+not once per identifier:
+
+```rust
+pub struct FixBranch { text: SmolStr, digest: u32 }   // text first
+```
+
+`text` is declared first so the derived `Eq` and `Ord` stay text-based; the
+digest is a function of the text, so it can only ever agree. `FixBranch::from_str`
+is the only constructor and computes it there. `FixBranch::STANDARD` is a
+`const`, so its digest is a literal pinned by a test asserting
+`xxh32(b"standard")` equals it - the same shape as any other constant the
+code cannot compute at compile time. `MAX_LENGTH` stays 23: the digest is
+beside `SmolStr`, not inside it.
+
+`FixId::from_parts(branch, tag)` is then a shift and an or, and it keeps the
+standard-tag rule it already owns, plus one new refusal: a non-standard
+branch whose digest equals the standard branch's is rejected there, so
+`FixId::is_standard()` - which is `digest == STANDARD_BRANCH_DIGEST` - stays
+total.
+
+### What the branch text costs
+
+The digest is one-way, so **a bare `FixId` can no longer name its branch**.
+This is the price of the representation and it is paid explicitly, not
+papered over:
+
+- `FixId::branch()` is deleted. Its eight callers
+  (`fix/field.rs:195`, `fix/registry.rs:496,499,566,740`,
+  `fix/store.rs:261,266,305`) all have the owning field in hand and read
+  `fix:branch` from it, which is where the text actually lives.
+  `FixId::branch_digest()` replaces it where only identity matters.
+- `Display` renders `standard:35` for the standard branch and
+  `#7f3a1c02:5001` - the digest in lowercase hex - for any other. The
+  doctest in `fix/mod.rs` asserting `FixId::from_str("CME:5001")?.to_string()`
+  is `"cme:5001"` changes with it. `from_str` still accepts `cme:5001`: it
+  has the text and hashes it.
+- `FixRegistry` keeps `branches: HashMap<u32, FixBranch>`, filled on insert,
+  and `branch_of(&FixId) -> Option<&FixBranch>` recovers the spelling, so
+  every refusal the registry raises still names `cme:5001` and only an
+  identifier from outside any registry renders as hex. Two branches whose
+  digests collide are a typed conflict at insert naming both spellings and
+  the digest - a 32-bit space over a handful of branches, but a stated
+  failure rather than a silent aliasing of two dictionaries.
+- Rejected alternative: a process-wide branch intern table, so a bare
+  `FixId` could render itself. It buys prettier `Debug` for a global lock or
+  a leak on the hot path, and the registry already knows every branch it
+  holds.
+
+### The indexes
+
+`Half` (`registry.rs:225`) holds four indexes per nestedness. Today an
+identifier probe is `O(log n)` through a `BTreeMap<FixId, usize>`, each
+comparison touching a branch `SmolStr` before the tag, and a name probe is
+SipHash over branch plus folded name. With the packed identifier there is
+nothing left to hash on an identifier lookup - the key *is* the id:
+
+```rust
+ids:            HashMap<FixId, usize, BuildHasherDefault<Mix>>
+alternate_ids:  HashMap<FixId, usize, BuildHasherDefault<Mix>>
+names:          HashMap<u64, usize,   BuildHasherDefault<Mix>>
+aliases:        HashMap<u64, usize,   BuildHasherDefault<Mix>>
+positions_by_id: Vec<usize>   // ordered by FixId, iteration only
+```
+
+- **`Mix` is a finalizer, not a pass-through.** The packed value's high bits
+  are the tag, which is under 65536 for nearly every FIX field, so the top
+  bytes are constant - and hashbrown takes its control byte from the top
+  bits. Passing the raw `i64` through would put every standard field in one
+  control-byte class. `Mix` applies one multiply-xor-shift finalizer, which
+  is a few cycles and spreads both the bucket index and the control byte.
+  Pin it with a test asserting the control-byte spread over the
+  `config/fix` dictionary, not just that lookups answer.
+- **Name and alias keys** stay text and are hashed per probe: ASCII-fold
+  into the streaming xxh3 state (`rust/src/xxhash/state.rs`) in stack-sized
+  chunks so no length allocates, seeded with the branch's own `xxh32` digest
+  so a name can never be found under another branch, and with a distinct
+  constant seed per index so one crafted key cannot land in both.
 - **A digest collision is a loud refusal, never a wrong answer.** Two
-  distinct keys mapping to one `u64` would silently overwrite in a
-  `HashMap<u64, _>`, so `insert` verifies: on an occupied digest whose
-  stored field does not hold that key, return a typed conflict naming both
-  fields and both keys. Reads verify too - a hit re-checks the field at that
-  position actually holds the key - so a collision degrades to a miss on the
-  read path and to a refusal on the write path. Over ten thousand fields the
-  probability is about 2.7e-15; the point is that the failure mode is
-  stated, not that it happens.
+  distinct names mapping to one `u64` would silently overwrite in a
+  `HashMap<u64, _>`: `insert` verifies the field at an occupied key really
+  holds it and returns a typed conflict naming both fields and the key
+  otherwise, and reads re-check the same way, so a collision degrades to a
+  miss on the read path. Identifier keys need no such check - a `FixId` is
+  the whole key, and its only collision is the branch-digest one the branch
+  table already refuses.
 - **Ordered iteration keeps its own structure.** `next_field_after`,
-  `FixFieldIter`, `Debug`, `PartialEq` and `store::write_into` all depend on
-  ascending canonical-identifier order, which a digest map cannot give.
-  `positions_by_id` is a `Vec<usize>` kept sorted by binary-search insert:
-  `O(n)` per insert on a dictionary built once and read forever, against
-  `O(log n)` node chasing on every read. It exists for iteration only and
-  the doc comment says so.
+  `FixFieldIter`, `Debug`, `PartialEq` and `store::write_into` depend on an
+  ordered walk that a hash map cannot give. `positions_by_id` is a
+  `Vec<usize>` kept sorted by binary-search insert: `O(n)` per insert on a
+  dictionary built once and read forever, against `O(log n)` node chasing on
+  every read.
+
+### The order changes, and only across branches
+
+Packed tag-major, `FixId`'s order is now tag then branch digest, where it
+was branch then tag. Within one branch it is unchanged, so
+**`store::write_into` produces byte-identical shards**: a shard folder is
+one branch and a shard file is one `tag / 100` bucket, ordered by tag either
+way. What moves is the cross-branch walk - `next_field_after`, `iter`,
+`Debug`, `PartialEq` interleave vendor fields among standard ones by tag
+instead of listing each dictionary in turn. Update the sentence in
+`fix/mod.rs` that says an identifier "orders branch-major", the
+`next_field_after` doc that says "ascending canonical identifier", and the
+`FixFieldIter` docs, and assert the new order in a test rather than leaving
+it to whichever map iterates first.
+
+### The bindings
+
+`python/src/fix.rs` and `node/src/fix.rs` only parse an id from text and
+hold one as an iterator cursor (`after: Option<CoreFixId>`, passed as
+`.as_ref()`); neither renders one back. `FixId` becoming `Copy` turns those
+two call sites into by-value, and `STANDARD_TAG_LIMIT` is untouched. That is
+the whole binding impact and it is mechanical - no new binding surface, no
+`FixId` class on either side.
 
 ### Tests, benchmark, docs
 
-Every existing registry test must pass unchanged - the observable contract
-does not move. Add: a digest-collision refusal (construct it by stubbing the
-digest function in a test-only path, or by asserting the verification branch
-directly); iteration order identical to the previous implementation over a
-shuffled insert order; `write_into` byte-identical to a shard written before
-the change. Re-run `cargo bench -p yggdryl --bench fix` and **replace** the
-table in `docs/fix.md`; a phase that does not beat those numbers is reported
-with the measurement, not merged silently. Keep the allocation case green.
+Every existing registry test must pass unchanged except the two facts that
+genuinely moved - `Display` for a vendor branch, and cross-branch iteration
+order. Add: the packing round trip (`from_parts` then `tag()` and
+`branch_digest()`) over the tag bounds `0`, `STANDARD_TAG_LIMIT`,
+`i32::MAX`; `standard(tag)` in a `const` context; the pinned
+`xxh32(b"standard")` constant; a branch-digest collision refused at insert
+with both spellings named; a name-digest collision refused; ordering across
+tags and branches; `write_into` byte-identical to a shard written before the
+change. Keep `rust/tests/allocations.rs` green - lookups allocate nothing
+today and must still.
+
+Re-run `cargo bench -p yggdryl --bench fix` and **replace** the table in
+`docs/fix.md`. The numbers to beat are the ones published there: 32.3 ns
+primitive tag hit, 93.1 ns nested tag hit, 65.8 ns alternate tag hit, 72.2 ns
+miss, 128.1 ns vendor identifier hit over 1034 fields, 81.8 ns name hit. A
+phase that does not beat them is reported with the measurement, not merged
+quietly.
 
 ---
 
@@ -591,4 +687,5 @@ Clippy, workspace tests with default features and `parquet iceberg`, Rust
 1.85 default and `--no-default-features --lib`, rustdoc with warnings
 denied, the `fix` and `datatype` benches, `scripts/check_docs_examples.py`,
 and `python -m mkdocs build --strict`. Report exact results and exact
-skipped checks. Rust-only: no Python or Node binding work in this brief.
+skipped checks. Only Phase 2 touches the bindings, and only to keep them
+compiling; every other phase is Rust-only.
