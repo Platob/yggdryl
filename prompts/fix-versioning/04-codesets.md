@@ -108,6 +108,11 @@ values:
 - **P4-R9. Version-scoped.** `code_value_at` / `code_name_at` skip a code
   whose `since` is later, or whose `deprecated` is at or before, the version
   asked for. A 4.2 message cannot resolve a name added in 4.4.
+- **P4-R9b. A code's pedigree is the same pair Phase 3 uses** - a `Version`
+  and an optional extension pack - and it is stored as real numbers. Many
+  codes are dated by EP alone against the version in force: `BasisPoints`
+  is "Added EP208", not "added in Latest". Never write a moving label into a
+  stored pedigree (`P3-R1b`).
 - **P4-R10. JSON, not a separator-delimited record text,** because metadata
   values may not contain control characters (the metadata layer refuses them).
 

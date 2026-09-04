@@ -107,6 +107,13 @@ which is why the script reads all of them.
   diff is unreviewable.
 - **P6-R2. `--source`** takes a local directory or a URL base so a run is
   reproducible offline; the default is the pinned set.
+- **P6-R2b. Record the real version label, never "Latest".** The Orchestra
+  file announces its own - `version="FIX.5.0SP2_EP309"` - and that is what
+  the provenance manifest stores and what every pedigree in the generated
+  dictionary is dated against: version `5.0SP2`, EP `309`. Nothing in the
+  output says "Latest", because the label moves and the dictionary does not
+  (P3-R1b). A regeneration against a later extension pack changes those
+  numbers, which is exactly the diff a reviewer wants to see.
 - **P6-R3. Output is exactly the shard layout `from_handle` reads:**
   a `primitive` and a `nested` tree, a folder per branch, one shard per
   `tag / 100` bucket, each a JSON array

@@ -159,15 +159,20 @@ impl FixMsg {
   not a heuristic.
   1. **Tag 1128 `ApplVerID`** - the application version. Code set:
      `0`=FIX27, `1`=FIX30, `2`=FIX40, `3`=FIX41, `4`=FIX42, `5`=FIX43,
-     `6`=FIX44, `7`=FIX50, `8`=FIX50SP1, `9`=FIX50SP2, `10`=FIXLatest. It
+     `6`=FIX44, `7`=FIX50, `8`=FIX50SP1, `9`=FIX50SP2, `10`=FIXLatest -
+     and `FIXLatest` resolves to the dictionary's `newest()` pair, the real
+     version and EP, never a sentinel (`P3-R1b`). It
      wins because under FIXT.1.1 the session version says nothing about the
      application version. The symbolic spelling (`FIX44`) is accepted
      through P4's `code_by_name`.
   2. **Tag 8 `BeginString`** - `FIX.4.0` … `FIX.4.4` give `4.0` … `4.4`.
      `FIXT.1.1` is a session version and names no application version, so it
      **falls through** rather than being taken literally.
-  3. Otherwise `Version::MAX` - FIX Latest, which is what no version marker
-     means.
+  3. Otherwise the dictionary's `newest()` - the real newest version and
+     extension pack it holds, which is what a message carrying no version
+     marker means. Never `Version::MAX`: a sentinel compares wrongly against
+     a field genuinely dated at the newest version, and is wrong again the
+     next time an extension pack lands.
 - **P7-R16. Branch, when the caller names none.** Resolve every entry in
   `FixBranch::STANDARD`; nothing missed means standard and there is no
   second pass - the common case costs one probe per entry. Otherwise retry

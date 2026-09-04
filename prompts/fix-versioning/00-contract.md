@@ -70,12 +70,20 @@ reports the measurement; it does not drop the promise quietly.
 
 ## What is landed
 
-Reuse these unchanged. Find them by symbol - the tree has been refactored
-since this brief was written, so no path here would survive.
+Reuse these unchanged, and find them **by symbol**: the tree has been
+refactored since this brief was written, so no path would survive and none
+is given.
+
+The one part that did **not** move is the datatype layer - the grammar, the
+logical-name table, the identity discriminant and the value contract. Its
+shape is settled, so Phase 1 states what a datatype must answer as
+invariants rather than as a list of places to edit. Everything else here is
+named by what it does, not where it lives.
 
 | notion | what it is |
 | --- | --- |
 | `FixBranch`, `FixId`, `FixKey` | the identity of one FIX field, and the three ways a caller names one |
+| the standard-tag rule | one place decides which branch may claim a tag; Phase 2 replaces its single limit with a range (`P2-R6b`) |
 | `FixField` / `FixFieldMut`, `FixAliases` | the borrowed views that read and write the `fix:` namespace |
 | `FixRegistry` | resolution in tiers over two halves - primitive and nested - with `insert`, `update`, and a private merge helper |
 | its store | `from_handle` / `write_into` over one folder handle: a `primitive` and a `nested` tree, a folder per branch, one shard per `tag / 100` bucket |

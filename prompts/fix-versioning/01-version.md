@@ -69,22 +69,58 @@ impl Version {
 - **P1-R7. No allocation** on parse, compare or render for a qualifier
   inside `SmolStr`'s inline buffer - which every FIX and semver qualifier
   is.
-- **P1-R8. Datatype.** `DataType::Version` beside `Guid`.
-  `DataTypeId::Version` **appended last** (L2); `ALL` becomes `[Self; 55]`;
-  `as_str` is `"version"`; `kind` is `DataTypeKind::String`;
-  `fixed_byte_width` is `None`. Parser spelling `version`, no alias.
+- **P1-R8. Datatype.** `DataType::Version`, placed beside the other
+  parameter-free scalars. `DataTypeId::Version` **appended last** (L2);
+  `ALL` grows by one; `as_str` is `"version"`; `kind` is the string family;
+  `fixed_byte_width` is `None`. Grammar spelling `version`, no alias, and
+  the word is not one the Arrow/SQL grammar already owns.
 - **P1-R9. Arrow representation is `Utf8`,** the canonical text.
-- **P1-R10. Variant sweep.** Find every place an existing parameter-free
-  variant is matched - grep for `Cfi`, which is the closest analogue - and
-  add the new arm to each. Skip the ASCII-width and coded-vocabulary
-  modules: a version is neither. The Iceberg and Avro layers reject it the
-  way they reject other types they cannot represent.
-- **P1-R11. Value contract.** `DataType::scalar` accepts a `Scalar::String`
+
+### The datatype layer's invariants
+
+The datatype layer is the part of this repository that has **not** moved and
+will not: its shape is settled, and what a datatype must answer is settled
+with it. So this phase is not a sweep over files - it is a list of
+invariants the layer already guarantees for every variant, which `Version`
+must uphold too.
+
+- **P1-R10. The compiler will not find the sites for you.** `DataType` and
+  `DataTypeId` are both `#[non_exhaustive]`, and the datatype layer alone
+  carries on the order of sixty `_ =>` wildcard arms. A new variant
+  therefore **compiles clean while behaving wrongly**: it falls into a
+  wildcard and silently answers whatever the fallback answers. Treat a green
+  build as no evidence at all. Find the sites by reading every wildcard arm
+  in the datatype, generic-value, field, Arrow and expression layers and
+  deciding, for each, whether it should now name `Version`. The closest
+  existing analogue to imitate is a parameter-free coded scalar such as
+  `Cfi`.
+- **P1-R11. Each invariant below is proven by a test, not by a match arm.**
+  A test is what a wildcard cannot satisfy by accident.
+
+  | invariant | what must hold |
+  | --- | --- |
+  | naming | one canonical spelling; grammar and `Display` round-trip; the folded spelling resolves |
+  | identity | `id()` answers the new `DataTypeId`; `as_str`, `kind`, `fixed_byte_width` and `ALL` all account for it; `as_u8` keeps its wire contract (L2) |
+  | Arrow | maps to exactly one Arrow type and back, losslessly, through a `Field` |
+  | serde | the serialized shape is the canonical spelling, and it round-trips |
+  | value | the value contract checks *and rewrites* into the declared representation (P1-R12) |
+  | default | it answers a default value rather than falling through to one |
+  | merge and compatibility | merging with itself is itself; against a foreign datatype it refuses with expected and actual |
+  | casts | declared in both directions or refused explicitly - never a silent identity (P1-R13) |
+  | nestedness | not nested, so a registry places it in the primitive half |
+  | rejection | the layers that cannot represent it - the table formats, the row codecs - refuse it **by name**, with the message they give any other type they cannot carry |
+
+- **P1-R12. Value contract.** `DataType::scalar` accepts a `Scalar::String`
   that parses and **rewrites** it to `Scalar::Version`, accepts
-  `Scalar::Version` unchanged, refuses everything else with expected/actual.
-  Nothing re-checks what `scalar` answered.
-- **P1-R12. Casts.** `Version → Utf8` renders, `Utf8 → Version` parses,
+  `Scalar::Version` unchanged, and refuses everything else with expected and
+  actual. `Field::scalar` is that plus nullability and name. Nothing
+  re-checks what `scalar` answered.
+- **P1-R13. Casts.** `Version → Utf8` renders, `Utf8 → Version` parses,
   `Version → Version` is identity. No numeric casts.
+- **P1-R14. Skip what it is not.** A version is neither an ASCII width nor a
+  coded vocabulary, so the ASCII-packing and code-vocabulary paths gain no
+  arm. Saying so is part of the work: a reviewer must be able to see the
+  omission was decided, not missed.
 
 ### Decided
 
@@ -105,8 +141,9 @@ impl Version {
 4. Four spellings of one version parsing equal: `5.0SP1`, `5.0.SP1`,
    `FIX.5.0SP1` (through P3's prefix strip), `FIX50SP1` (through the
    `ApplVerID` code set).
-5. serde round trip; Arrow round trip through `Field`.
-6. `DataType::scalar` rewriting a `Scalar::String`.
+5. One case per row of the P1-R11 invariant table - ten tests, each of which
+   a wildcard arm cannot pass by accident.
+6. `DataType::scalar` rewriting a `Scalar::String` (P1-R12).
 7. Allocation case: parse, compare and render allocate nothing.
 
 **Bench.** Parse and compare, in the datatype benchmark target.
@@ -119,9 +156,10 @@ the datatype page.
 
 Phases 3, 4 and 6 all take `Version` from here. What they rely on:
 
-- `Version::MIN` / `Version::MAX`, and `MAX` meaning "newer than anything
-  named" - Phase 3 maps `FIX.Latest` onto it (`P3-R1`).
+- `Version::MIN` / `Version::MAX` as bounds of the value space (`P1-R6`).
+  Phase 3 does *not* map "FIX Latest" onto `MAX`: it resolves that label to
+  the real version and extension pack the dictionary carries (`P3-R1b`).
 - `FromStr` accepting all three qualifier forms (`P1-R2`), because the FIX
   layer strips a `FIX.` prefix and hands the rest straight in.
-- `Ord` being the only ordering contract (`P1-R9`), which every version
+- `Ord` being the only ordering contract (`P1-R5`), which every version
   filter in Phases 3, 4 and 7 leans on.

@@ -62,10 +62,32 @@ impl FixRegistry {
   `MAX_LENGTH` stays 23 - the digest sits beside `SmolStr`, not inside it.
 - **P2-R5. `FixBranch::STANDARD`'s digest is a literal**, pinned by a test
   asserting `xxh32(b"standard")` equals it.
-- **P2-R6. `from_parts` is a shift and an or,** keeping the standard-tag
-  rule it already owns plus one new refusal: a non-standard branch whose
-  digest equals the standard branch's is rejected there, so `is_standard()`
-  stays total.
+- **P2-R6. `from_parts` is a shift and an or,** and it stays the one place
+  the admissibility rule lives, plus one new refusal: a non-standard branch
+  whose digest equals the standard branch's is rejected there, so
+  `is_standard()` stays total.
+- **P2-R6b. The user-defined tag range is `[5000, 40000)`.** The landed rule
+  is one `STANDARD_TAG_LIMIT` of 5000 with everything above it treated as
+  claimable, and that is wrong at the top: the specification has resumed
+  assigning tags at and above 40000, so a vendor branch claiming one would
+  collide with the standard dictionary. Replace the single limit with the
+  half-open range:
+
+  | tag | whose |
+  | --- | --- |
+  | `0 ..= 4999` | the specification's - forced to the standard branch |
+  | `5000 ..= 39999` | user-defined - any branch may claim it |
+  | `40000 ..` | the specification's again - forced to the standard branch |
+
+  So admissibility is `branch.is_standard() || (5000..40_000).contains(&tag)`.
+  Two constants replace the one, named for the range they bound, and the
+  refusal names both of them and the offending tag.
+- **P2-R6c. This is a surface change, not an internal one.** The single
+  limit is public, is asserted in the FIX tests, is re-exported by both
+  bindings as a module constant, and is quoted in four places on the FIX
+  documentation page - including runnable Python and JavaScript examples
+  that assert it equals 5000. Replace all of them in this phase; leaving the
+  old constant beside the new bounds is exactly the second path N3 forbids.
 - **P2-R7. `FixId::branch()` is deleted.** Its eight callers
   all hold the owning field and read `fix:branch` from it, which is where
   the text lives. `branch_digest()` replaces it where only identity matters.
@@ -121,11 +143,13 @@ impl FixRegistry {
   Update the "orders branch-major" sentence in the FIX module docs, the
   `next_field_after` doc, and the `FixFieldIter` docs; assert the new order
   in a test rather than leaving it to whichever map iterates first.
-- **P2-R17. Binding impact is two call sites and mechanical.**
-  the Python and Node FIX bindings only parse an id from text and
-  hold one as a cursor (`after: Option<CoreFixId>`, passed `.as_ref()`);
-  neither renders one back. `Copy` makes those by-value.
-  `STANDARD_TAG_LIMIT` is untouched. No new binding surface.
+- **P2-R17. Binding impact is small and mechanical.** The Python and Node
+  FIX bindings only parse an id from text and hold one as a cursor (passed
+  by reference); neither renders one back, so `Copy` simply makes those
+  by-value. The one real change is P2-R6c: both bindings re-export the tag
+  limit as a module constant, and both must re-export the two bounds
+  instead. No new binding *surface* beyond that swap - no `FixId` class on
+  either side.
 
 ### Decided
 
@@ -138,7 +162,10 @@ impl FixRegistry {
 ### Tests
 
 1. Packing round trip (`from_parts` → `tag()`, `branch_digest()`) at tag
-   bounds `0`, `STANDARD_TAG_LIMIT`, `i32::MAX`.
+   bounds `0`, `4999`, `5000`, `39999`, `40000`, `i32::MAX`.
+1b. Admissibility across the whole range (P2-R6b): a vendor branch is
+    refused at `4999` and at `40000`, admitted at `5000` and `39999`; the
+    standard branch is admitted everywhere. The refusal names both bounds.
 2. `standard(tag)` in a `const` context.
 3. The pinned `xxh32(b"standard")` constant.
 4. A branch-digest collision refused at insert, both spellings named.
