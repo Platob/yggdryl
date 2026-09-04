@@ -1174,5 +1174,4 @@ pub trait IOBase: Send + IOMedia {
 }
 
 #[cfg(test)]
-#[path = "io/tests.rs"]
 mod tests;
