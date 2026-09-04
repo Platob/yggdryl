@@ -5,8 +5,12 @@ resolves a tag or a name to the canonical field, the shards it persists to throu
 [`IOBase`](io.md) handle, the process-wide default, and the message value typed against one.
 
 !!! note "Bindings"
-    The Python and JavaScript surfaces land in the next change. Every example on this page is
-    Rust for now.
+    The `fix:` vocabulary reaches every runtime through the protocol view a field already
+    answers - `field.as_fix()` in Rust, `field.fix` in Python and JavaScript - so there is no
+    second field class anywhere. Python reaches the registry, the message and the process
+    default through [`yggdryl.fix`](extensions/python.md#fix-registry-at-the-boundary);
+    JavaScript reaches the same surface under its own `fix` namespace, whose examples land with
+    that binding.
 
 ## The vocabulary is metadata
 
@@ -56,6 +60,48 @@ stored text, so reading aliases allocates nothing; `tags()` parses integers and 
     assert_eq!(field.as_fix().tag()?, Some(38));
     ```
 
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import Field
+
+    field = Field("OrderQty", "decimal128(20, 8)")
+    field.fix.tag = 38
+    field.fix.aliases = ["Qty", "Quantity"]
+    field.fix.description = "Quantity ordered."
+    field.set_display("Order quantity")
+
+    assert field.fix.tag == 38
+    assert field.fix.tags == []
+    assert field.fix.aliases == ["Qty", "Quantity"]
+    assert field.fix.description == "Quantity ordered."
+    # Stored as ordinary namespaced text, in the one metadata map.
+    assert field.metadata["fix:aliases"] == "Qty,Quantity"
+    assert len(field.fix) == 3
+
+    # A refusal names the full key and leaves the field unchanged.
+    with pytest.raises(ValueError, match="fix:tags"):
+        field.fix.tags = [152, 152]
+    assert "fix:tags" not in field.metadata
+    with pytest.raises(ValueError, match="fix:tag"):
+        field.fix.tag = -1
+    assert field.fix.tag == 38
+
+    # A bool is never a tag, and one outside i32 is never narrowed.
+    with pytest.raises(TypeError, match="not bool"):
+        field.fix.tag = True
+    with pytest.raises(OverflowError):
+        field.fix.tag = 2**31
+
+    # An empty list removes a list property; `del` removes any of them.
+    field.fix.aliases = []
+    assert field.fix.aliases == []
+    del field.fix["tag"]
+    assert field.fix.tag is None
+    ```
+
 ## Nesting needs no second type
 
 A component is a Struct field whose children are its members; a repeating group is a List field
@@ -83,6 +129,28 @@ path, and `NoPartyIDs.item.PartyID` spells the same route.
     assert_eq!(registry.field_by_path("NoPartyIDs.item.PartyRole")?.name(), "PartyRole");
     // A member is reached through its group, not registered on its own.
     assert!(registry.get_field_by_name("PartyID").is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field, fields
+    from yggdryl.fix import FixRegistry
+
+    party_id = Field("PartyID", "utf8")
+    party_id.fix.tag = 448
+    role = Field("PartyRole", "int32")
+    role.fix.tag = 452
+    item = Field("item", DataType.from_fields([party_id, role]), nullable=False)
+    group = fields.list("NoPartyIDs", item)
+    group.fix.tag = 453
+
+    registry = FixRegistry.from_fields([group])
+    assert registry.field_by_path("NoPartyIDs").fix.tag == 453
+    assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
+    assert registry.field_by_path("NoPartyIDs.item.PartyRole").name == "PartyRole"
+    # A member is reached through its group, not registered on its own.
+    assert registry.get_field_by_name("PartyID") is None
     ```
 
 ## The registry resolves in tiers
@@ -176,6 +244,61 @@ and answers the field.
     assert!(registry.get_field_by_tag(65).is_none());
     ```
 
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, Field
+    from yggdryl.fix import FixRegistry
+
+
+    def fix_field(name: str, dtype: str, tag: int, *aliases: str) -> Field:
+        field = Field(name, dtype)
+        field.fix.tag = tag
+        if aliases:
+            field.fix.aliases = aliases
+        return field
+
+
+    registry = FixRegistry.from_fields(
+        [
+            fix_field("Symbol", "utf8", 55, "Ticker"),
+            fix_field("Price", "decimal128(20, 8)", 44, "Px"),
+        ]
+    )
+
+    # Any spelling of a name or alias answers the canonical field.
+    assert registry.field_by_name("TICKER").name == "Symbol"
+    assert registry.field("px").name == "Price"
+    assert registry.get_field(55) == registry.get_field("symbol")
+    assert 44 in registry
+    assert "44" not in registry, "a tag query never consults names"
+    with pytest.raises(KeyError, match="tag 35"):
+        registry.field_by_tag(35)
+
+    # A key another field holds is a conflict naming both; nothing changes.
+    with pytest.raises(ValueError, match="held by Symbol"):
+        registry.insert(fix_field("SymbolSfx", "utf8", 65, "ticker"))
+    assert len(registry) == 2
+
+    # A merge keeps what only the stored field declared and adds the rest.
+    incoming = fix_field("SYMBOL", "utf8", 55, "Sym")
+    incoming.fix.tags = [65]
+    registry.update(incoming)
+    merged = registry.field_by_tag(65)
+    assert merged.name == "SYMBOL"
+    assert merged.fix.aliases == ["Sym", "Ticker"]
+    # A datatype disagreement is refused, never widened.
+    with pytest.raises(ValueError):
+        registry.update(fix_field("Symbol", "large_utf8", 55))
+    assert registry.field_by_tag(55).dtype == DataType("utf8")
+
+    assert [field.name for field in registry] == ["Price", "SYMBOL"]
+    assert registry.remove("sym").name == "SYMBOL"
+    assert registry.get_field_by_tag(65) is None
+    ```
+
 ## Storage is shards under one handle
 
 A registry reads and writes through one [`IOBase`](io.md) folder handle and nothing else. Shards
@@ -241,6 +364,51 @@ then removes any `<n>.json` no field populates, so a reload cannot resurrect a r
     let _ = std::fs::remove_dir_all(&root);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import shutil
+    import tempfile
+
+    from yggdryl import Field
+    from yggdryl.fix import FixRegistry
+
+    workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-"))
+    root = workspace / "dictionary"
+
+    fields = []
+    for tag, name in ((35, "MsgType"), (99, "StopPx"), (100, "NoAllocs"), (150, "ExecType")):
+        field = Field(name, "utf8")
+        field.fix.tag = tag
+        fields.append(field)
+    fields[3].fix.tags = [20]
+    registry = FixRegistry.from_fields(fields)
+    registry.write_into(root)
+
+    # The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
+    shards = sorted(path.name for path in (root / "records").iterdir())
+    assert shards == ["0.json", "1.json"]
+
+    reloaded = FixRegistry.from_handle(root)
+    assert reloaded == registry
+    assert reloaded.field_by_tag(20).name == "ExecType"
+
+    # Removing the only fields of a shard removes the shard on the next write.
+    registry.remove(100)
+    registry.remove(150)
+    registry.write_into(root)
+    assert not (root / "records" / "1.json").exists()
+    assert len(FixRegistry.from_handle(root)) == 2
+
+    # A folder that is not there loads as empty and is not created.
+    absent = root / "absent"
+    assert not FixRegistry.from_handle(absent)
+    assert not absent.exists()
+
+    shutil.rmtree(workspace)
+    ```
+
 The repository ships a seed dictionary at `config/fix/records/<shard>.json`, written by `write_into`
 itself: a small FIX 4.4 subset - the standard header and trailer, the order and execution fields,
 the `Parties` component as a repeating group - with the specification's wording as each
@@ -264,6 +432,25 @@ resolution order.
     assert_eq!(registry.field_by_path("NoPartyIDs.PartyID")?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID")?.display(), Some("Client order ID"));
     assert!(registry.len() < 40);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+
+    from yggdryl.fix import FixRegistry
+
+    # The seed this repository tracks, named from the repository root.
+    seed = pathlib.Path("config/fix").resolve()
+    registry = FixRegistry.from_handle(seed)
+
+    assert registry.field_by_tag(55).name == "Symbol"
+    assert registry.field_by_name("ticker").name == "Symbol"
+    assert registry.field_by_tag(20).name == "ExecType"
+    assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
+    assert registry.field_by_name("ClOrdID").display == "Client order ID"
+    assert len(registry) < 40
     ```
 
 ## One default registry per process
@@ -311,6 +498,33 @@ directory, because behaviour must not depend on where a process was started.
 
     // Once resolved, the default is fixed.
     assert!(FixRegistry::install_global(FixRegistry::new()).unwrap_err().is_conflict());
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+
+    import pytest
+
+    from yggdryl import DataType, Field
+    from yggdryl.fix import FixMsg, FixRegistry, global_registry, install_global_registry
+
+    # Install the tracked seed as this process's default before anything asks for it.
+    seed = FixRegistry.from_handle(pathlib.Path("config/fix").resolve())
+    install_global_registry(seed)
+
+    default = global_registry()
+    assert default.field_by_tag(55).name == "Symbol"
+    assert default == global_registry(), "resolved once"
+
+    # A message built without a registry links that same dictionary.
+    root = Field("row", DataType.from_fields([default.field_by_tag(55)]), nullable=False)
+    assert FixMsg(root, {"Symbol": "AAPL"}).registry == default
+
+    # Once resolved, the default is fixed.
+    with pytest.raises(ValueError, match="already resolved"):
+        install_global_registry(FixRegistry())
     ```
 
 ## A message carries its registry
@@ -383,6 +597,60 @@ ordered and canonicalized against the same root.
     let read = from_json_scalar_with_field(&text, &root)?;
     assert_eq!(&read, msg.as_value());
     assert_eq!(FixMsg::with_registry(registry, root, read)?, msg);
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, Field, fields
+    from yggdryl.fix import FixMsg, FixRegistry
+
+    symbol = Field("Symbol", "utf8", nullable=False)
+    symbol.fix.tag = 55
+    symbol.fix.aliases = ["Ticker"]
+    qty = Field("OrderQty", "int64", nullable=False)
+    qty.fix.tag = 38
+    party_id = Field("PartyID", "utf8")
+    party_id.fix.tag = 448
+    item = Field("item", DataType.from_fields([party_id]), nullable=False)
+    parties = fields.list("NoPartyIDs", item)
+    parties.fix.tag = 453
+    registry = FixRegistry.from_fields([symbol, qty, parties])
+
+    # The root carries a tag no dictionary explains, under its rendered name.
+    root = Field(
+        "NewOrderSingle",
+        DataType.from_fields([qty, symbol, parties, Field("9999", "utf8")]),
+        nullable=False,
+    )
+    message = FixMsg(
+        root,
+        {
+            "Symbol": "AAPL",
+            "OrderQty": 100,
+            "NoPartyIDs": [{"PartyID": "BROKER"}],
+            "9999": "custom",
+        },
+        registry,
+    )
+
+    # The mapping became the ordered row the root declares.
+    assert len(message) == 4
+    assert message.by_tag(38).as_py() == 100
+    assert message.by_name("ticker").as_py() == "AAPL"
+    assert message.by_path("NoPartyIDs.0.PartyID").as_py() == "BROKER"
+    assert message.by_tag(9999).as_py() == "custom", "an unknown tag is retained"
+    assert message[55] == message.get_by_tag(55)
+    with pytest.raises(KeyError):
+        message.by_path("NoPartyIDs.PartyID")  # a group member needs its index
+    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "9999"]
+
+    # The schema serializes through the path every field already has, and the
+    # value the message holds names the same row.
+    assert '"fix:tag":"55"' in root.into_json()
+    assert FixMsg(root, message.value, registry) == message
     ```
 
 ## Edge cases
@@ -473,3 +741,41 @@ beats hashing them.
 `from_handle` scales with the number of shards rather than with the fields in them: a shard costs
 roughly half a millisecond to open, read and parse, so the seed's three shards cost about three
 times one shard and a hundred shards cost about a hundred times one.
+
+### The Python boundary
+
+```console
+cd python && .venv/Scripts/python benchmarks/fix.py --iterations 2000
+```
+
+One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12,
+median time per call over the same tracked seed of 34 fields. The sub-microsecond rows move by a
+third between runs on this machine, so read them as one order of magnitude rather than as a
+ranking of one against another:
+
+| Python operation | estimate |
+| --- | ---: |
+| `get_field_by_tag(55)` hit | 254 ns |
+| `get_field_by_tag(20)` alternate-tag hit | 256 ns |
+| `get_field_by_name("Symbol")` hit | 239 ns |
+| `get_field_by_name("symbol")` hit, folded query | 240 ns |
+| `get_field_by_name("ticker")` alias hit | 282 ns |
+| `get_field_by_tag(9999)` miss | 171 ns |
+| `get_field_by_name("Nope")` miss | 183 ns |
+| `get_field(55)` generic tag hit | 183 ns |
+| `field_by_path`, one segment | 239 ns |
+| `field_by_path`, two segments (`NoPartyIDs.PartyID`) | 375 ns |
+| `FixMsg.get_by_tag(55)` | 188 ns |
+| `FixMsg.get_by_name("ticker")` | 271 ns |
+| `FixMsg.get_by_path("NoPartyIDs.0.PartyID")` | 462 ns |
+| `from_handle`, the seed (3 shards, 34 fields) | 1.70 ms |
+| `from_handle`, 1000 generated fields (11 shards) | 13.8 ms |
+
+A hit costs the native lookup plus one crossing: the key is read once at the boundary and the
+answer is wrapped as a `Field` or a `Scalar`, which clones the stored value rather than borrowing
+it. That wrapping is what the numbers are almost entirely made of - the native tag hit is 4.5 ns,
+two orders of magnitude below the crossing - which is why the tiers the Rust table separates are
+indistinguishable here, and why a caller resolving the same field repeatedly should hold the
+answer rather than ask again. A miss is the one case that is reliably cheaper, because nothing is
+wrapped. `from_handle` stays within a fifth of the native load: the shards are listed, read and
+parsed natively, and only the finished registry crosses.

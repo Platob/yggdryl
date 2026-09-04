@@ -29,6 +29,7 @@ mod codings;
 mod datatype;
 mod expression;
 mod field;
+mod fix;
 mod iceberg;
 mod io;
 mod media;
@@ -289,6 +290,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<fix::PyFixRegistry>()?;
+    module.add_class::<fix::PyFixFieldIterator>()?;
+    module.add_class::<fix::PyFixMsg>()?;
+    module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -333,6 +338,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(codings::zlib_dumps_raw, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zstd_loads, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zstd_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_assign_field_ids, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_can_promote, module)?)?;
     module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_from_json, module)?)?;

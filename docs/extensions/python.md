@@ -877,3 +877,96 @@ shutil.rmtree(warehouse.parent)
 
 The folder is the table and the walk is the same everywhere: the [iceberg](../iceberg.md)
 page shows each of these steps beside its Rust and JavaScript form.
+
+## FIX registry at the boundary
+
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()` and
+`install_global_registry()`; the `fix:` vocabulary itself is four typed properties on the
+`field.fix` protocol view - `tag`, `tags`, `aliases`, `description` - and reading one on any other
+protocol's view is a `TypeError` naming that view's scheme. Resolution, folding, merging, sharding
+and validation are the core's, documented on the [fix](../fix.md) page. What follows is only what
+the crossing adds.
+
+**Keys.** A tag is an `int` and a name or a dotted path is a `str`, coerced once per call.
+`bool` is an `int` in Python and never a tag, so it is refused by name rather than read as 0 or 1;
+a value outside `i32` raises `OverflowError` from the extraction rather than being narrowed to a
+different tag. Anything else is a `TypeError` naming what was given. `registry[key]`,
+`registry.get(key, default)`, `key in registry` and `FixMsg[key]` all take the same pair.
+
+**Locations.** `FixRegistry.from_handle` and `registry.write_into` take what every folder-shaped
+entry point takes - an `IOBase` handle, a `Url`, a `str` URL or absolute path, a `PathLike` - and
+run it through the same coercion `Catalog(warehouse)` uses. Naming a folder that is not there is
+not an error: it loads as the empty registry and creates nothing, and a write creates the folder
+and its parents.
+
+**Exceptions.** Absence is a `KeyError` whose argument is the native message unchanged, so
+`field_by_tag`, `field_by_name`, `field_by_path`, `field` and every `FixMsg` failing half raise it
+while their `get_` twins answer `None`. Every other core refusal - a conflicting insert, a datatype
+disagreement in a merge, a malformed `fix:` property, a shard that does not parse, an unresolved
+process default - is a `ValueError` carrying the native message.
+
+**Mutation.** The registry is mutable, so it is unhashable and compares by the fields it holds.
+`insert`, `update` and `remove` need it unshared: once a `FixMsg` links it or it is installed as the
+process default, a mutation raises `ValueError` rather than changing a dictionary underneath a
+message that already resolved against it. Build a new registry, or reload it, and mutate that.
+
+**Values.** `FixMsg` is immutable and behaves like one: stable equality against schema, value and
+dictionary, a `hash()` over schema and value, `copy`/`deepcopy`, and a pickle that carries the
+schema document, the value document and the dictionary's fields, so the message that comes back
+compares equal - registry included. Its `value` accessors answer a native `Scalar`, its `field` a
+native `Field`, and iterating it yields `(name, Scalar)` pairs in the root's declared order.
+
+```python
+import copy
+import pathlib
+import pickle
+
+import pytest
+
+from yggdryl import DataType, Field, IOBase, Url
+from yggdryl.fix import FixMsg, FixRegistry
+
+seed = pathlib.Path("config/fix").resolve()
+
+# One folder, named however Python names one - the coercion `Catalog` uses.
+for location in (seed, str(seed), seed.as_uri(), Url(seed), IOBase(seed)):
+    assert len(FixRegistry.from_handle(location)) == 34
+registry = FixRegistry.from_handle(seed)
+
+# A key is an int tag or a str name; a bool is neither, and a tag that would
+# not fit i32 raises rather than narrowing.
+assert registry[55] == registry["symbol"] == registry.field_by_tag(55)
+with pytest.raises(TypeError, match="not bool"):
+    registry[True]
+with pytest.raises(OverflowError):
+    registry.field_by_tag(2**31)
+with pytest.raises(TypeError, match="int tag or a str name"):
+    registry[3.5]
+
+# Absence is a KeyError carrying the native message; a refusal is a ValueError.
+with pytest.raises(KeyError) as absent:
+    registry.field_by_name("Nope")
+assert absent.value.args[0] == 'expected a fix field at "name \\"Nope\\"", got nothing'
+assert registry.get_field_by_name("Nope") is None
+with pytest.raises(ValueError, match="fix:tag"):
+    registry.insert(Field("Untagged", "utf8"))
+
+# A message shares the dictionary it resolved against, so mutating it refuses.
+root = Field("row", DataType.from_fields([registry.field_by_tag(55)]), nullable=False)
+message = FixMsg(root, {"Symbol": "AAPL"}, registry)
+with pytest.raises(ValueError, match="shared with a message"):
+    registry.remove(55)
+
+# The message is a value: it hashes, copies and pickles, registry included.
+assert copy.deepcopy(message) == message
+assert pickle.loads(pickle.dumps(message)) == message
+assert pickle.loads(pickle.dumps(message)).registry == registry
+assert hash(message) == hash(FixMsg(root, message.value, registry))
+```
+
+A `dict` is the obvious Python spelling of a named row, and the declared root is what says so: the
+scalar boundary reads a `dict` as a mapping, because a mapping's keys are values while a row's keys
+are names, so `FixMsg` reads one as the record its Struct field declares - at every depth, through
+a repeating group's item as well. A `Map` field keeps its mapping, a native `Scalar` and a sequence
+in the root's own order cross untouched, and the core alone types, orders and validates whatever
+arrives.
