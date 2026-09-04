@@ -2,7 +2,7 @@
 //!
 //! The variant *is* the encoding, so a record call takes `RecordOptions` and no
 //! separate format argument. The encoding is never guessed: it is derived from a
-//! media type, which is what [`crate::io::JsIOBase::record_options`] reads off
+//! media type, which is what [`crate::iobase::JsIOBase::record_options`] reads off
 //! the handle.
 
 use napi::bindgen_prelude::{Buffer, Result};
@@ -12,14 +12,14 @@ use yggdryl::media::{
 };
 use yggdryl::{IOMode, Level, Metadata};
 
-use crate::datatype::{DataTypeInput, JsDataType, dtype_from_input};
-use crate::exact_u8;
-use crate::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
-use crate::media::{
+use crate::enums::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
 };
+use crate::exact_u8;
 use crate::napi_error;
-use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
+use crate::types::datatype::{DataTypeInput, JsDataType, dtype_from_input};
+use crate::types::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
+use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// The settings one record read or write takes.
 #[napi(js_name = "RecordOptions")]

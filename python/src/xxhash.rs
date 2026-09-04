@@ -19,7 +19,7 @@ use pyo3::types::{PyBytes, PyString, PyType};
 use yggdryl::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
 use yggdryl::{Digest, DigestAlgorithm};
 
-use crate::scalar::PyScalar;
+use crate::types::scalar::PyScalar;
 use crate::value_error;
 
 /// Register this module's classes and functions on the native module.

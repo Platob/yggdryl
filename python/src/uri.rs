@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString, PyTuple};
 use yggdryl::{Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
 
-use crate::media::{
+use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
     strings_from_iterable,
 };

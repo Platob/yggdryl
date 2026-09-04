@@ -6,13 +6,13 @@ use yggdryl::media::IORecordOptions;
 use yggdryl::media::text::TextOptions as CoreTextOptions;
 use yggdryl::{Level, Metadata, MimeType};
 
-use crate::datatype::{DataTypeInput, JsDataType, dtype_from_input};
+use crate::enums::JsMimeType;
 use crate::exact_u8;
-use crate::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
-use crate::generic::JsRecordOptions;
-use crate::media::JsMimeType;
+use crate::media::options::JsRecordOptions;
 use crate::napi_error;
-use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
+use crate::types::datatype::{DataTypeInput, JsDataType, dtype_from_input};
+use crate::types::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
+use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// Flat settings for physical-line `text/plain` records.
 #[napi(js_name = "TextOptions")]

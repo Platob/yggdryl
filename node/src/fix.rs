@@ -24,9 +24,9 @@ use yggdryl::{
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
 };
 
-use crate::codec::JsScalar;
-use crate::field::JsField;
-use crate::io::{LocationInput, folder_from_input};
+use crate::iobase::{LocationInput, folder_from_input};
+use crate::text::codec::JsScalar;
+use crate::types::field::JsField;
 use crate::{exact_i32, napi_error, napi_type_error};
 
 /// What a mutation says when something else still holds the dictionary.

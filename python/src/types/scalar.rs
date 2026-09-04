@@ -27,10 +27,10 @@ use yggdryl::{
     Float16, Float32, Float64, I256, Scalar, TemporalFamily, TemporalRef, TimeUnit, Timezone,
 };
 
-use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::field::{PyField, core_field_from_value};
-use crate::record::core_root_field_from_value;
-use crate::timezone::core_timezone_from_value;
+use crate::iomedia::core_root_field_from_value;
+use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::types::field::{PyField, core_field_from_value};
+use crate::types::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};
 

@@ -9,26 +9,19 @@
     clippy::return_self_not_must_use
 )]
 
-mod arrow;
-mod arrowfs;
-mod avro;
-mod codec;
-pub mod codings;
-mod datatype;
+pub mod coding;
 // Discovered through NAPI's generated registration inventory rather than
 // ordinary Rust call sites, like `uri` below.
 #[allow(dead_code)]
 mod enums;
 mod expression;
-mod field;
 mod fix;
-mod generic;
-mod iceberg;
-mod io;
+mod holder;
+mod iobase;
+mod iomedia;
 mod media;
-mod record;
 mod text;
-mod timezone;
+mod types;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
 #[allow(dead_code)]
@@ -43,13 +36,31 @@ use napi::bindgen_prelude::{Env, Error, Generator};
 use napi_derive::napi;
 use yggdryl::OwnedDifferences;
 
-pub use arrow::JsBatchReader;
-pub use arrowfs::ArrowFileInfo;
-pub use avro::{
+pub use enums::{JsMediaType, JsMimeType};
+pub use expression::{
+    BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
+};
+pub use fix::{
+    JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry, fix_global_registry,
+    fix_install_global_registry, fix_standard_branch_native, fix_standard_tag_limit_native,
+};
+pub use holder::arrowfs::ArrowFileInfo;
+pub use iobase::JsIOBase;
+pub use iomedia::JsBatchReader;
+pub use media::avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
     avro_dumps_native, avro_loads_native,
 };
-pub use codec::{
+pub use media::iceberg::{
+    FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
+    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
+    JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
+    iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
+    iceberg_schema_into_json,
+};
+pub use media::options::JsRecordOptions;
+pub use media::text::JsTextOptions;
+pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
     json_lines_dump_path_native, json_lines_load_path_native, json_lines_loads_native,
@@ -58,27 +69,9 @@ pub use codec::{
     yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
     yaml_loads_all_native, yaml_loads_native,
 };
-pub use datatype::JsDataType;
-pub use expression::{
-    BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
-};
-pub use field::{JsField, JsProtocolField, MetadataEntry};
-pub use fix::{
-    JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry, fix_global_registry,
-    fix_install_global_registry, fix_standard_branch_native, fix_standard_tag_limit_native,
-};
-pub use generic::JsRecordOptions;
-pub use iceberg::{
-    FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
-    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
-    JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
-    iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
-    iceberg_schema_into_json,
-};
-pub use io::JsIOBase;
-pub use media::{JsMediaType, JsMimeType};
-pub use text::JsTextOptions;
-pub use timezone::{JsTimezone, TimezoneAlias};
+pub use types::datatype::JsDataType;
+pub use types::field::{JsField, JsProtocolField, MetadataEntry};
+pub use types::timezone::{JsTimezone, TimezoneAlias};
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
 
 /// Read a structural JSON document from the object or the text a caller holds.

@@ -4,7 +4,7 @@ use napi::bindgen_prelude::{ClassInstance, Either4, Error, Result};
 use napi_derive::napi;
 use yggdryl::{Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
 
-use crate::media::{
+use crate::enums::{
     JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
     mime_type_from_input,
 };

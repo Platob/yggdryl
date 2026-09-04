@@ -17,8 +17,8 @@ use yggdryl::media::avro::{
 };
 use yggdryl::text::Limits;
 
-use crate::record::string_pairs_from_value;
-use crate::scalar::{PyScalar, as_py, from_py};
+use crate::iomedia::string_pairs_from_value;
+use crate::types::scalar::{PyScalar, as_py, from_py};
 use crate::value_error;
 
 /// A parsed native Apache Avro schema.
@@ -162,7 +162,7 @@ impl PyAvroContainer {
             .inner
             .rows
             .iter()
-            .map(|row| crate::scalar::scalar_pickle_state(py, row))
+            .map(|row| crate::types::scalar::scalar_pickle_state(py, row))
             .collect::<PyResult<Vec<_>>>()?;
         state.set_item("rows", PyList::new(py, rows)?)?;
         Ok(state)
@@ -188,7 +188,7 @@ impl PyAvroContainer {
             .get_item("rows")?
             .ok_or_else(|| PyTypeError::new_err("AvroContainer pickle state needs rows"))?
             .try_iter()?
-            .map(|row| crate::scalar::scalar_from_pickle_state(&row?, 0))
+            .map(|row| crate::types::scalar::scalar_from_pickle_state(&row?, 0))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(Self {
             inner: Container {

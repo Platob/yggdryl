@@ -18,8 +18,8 @@ use yggdryl::{
     Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
-use crate::field::PyField;
-use crate::scalar::{arrow_scalar_into_array, from_py};
+use crate::types::field::PyField;
+use crate::types::scalar::{arrow_scalar_into_array, from_py};
 use crate::{
     FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
@@ -451,7 +451,7 @@ impl PyDataType {
         // the core canonicalizes whichever it is, so two spellings of one zone
         // produce one datatype.
         let timezone = timezone
-            .map(crate::timezone::core_timezone_from_value)
+            .map(crate::types::timezone::core_timezone_from_value)
             .transpose()?;
         let unit = CoreTimeUnit::from_str(unit).map_err(value_error)?;
         let inner = match kind {
@@ -782,7 +782,7 @@ impl PyDataType {
                 .map(Self::from_inner)
                 .map_err(value_error);
         }
-        CoreDataType::from_value(crate::scalar::from_py(value)?)
+        CoreDataType::from_value(crate::types::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -972,7 +972,7 @@ impl PyDataType {
     /// document a caller already builds.
     #[allow(clippy::wrong_self_convention)]
     fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::scalar::as_py(py, &self.inner.clone().into_value())
+        crate::types::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
@@ -980,7 +980,7 @@ impl PyDataType {
     /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreDataType::from_value(crate::scalar::from_py(value)?)
+        CoreDataType::from_value(crate::types::scalar::from_py(value)?)
             .map_err(value_error)
             .and_then(Self::from_validated)
     }
@@ -1071,11 +1071,11 @@ impl PyDataType {
     /// A naive timestamp - one with no zone at all - answers `None`, which is
     /// how the absence of a zone is spelled everywhere in the project.
     #[getter]
-    fn timezone(&self) -> Option<crate::timezone::PyTimezone> {
+    fn timezone(&self) -> Option<crate::types::timezone::PyTimezone> {
         match &self.inner {
-            CoreDataType::Timestamp(_, timezone) => {
-                timezone.clone().map(crate::timezone::PyTimezone::from_core)
-            }
+            CoreDataType::Timestamp(_, timezone) => timezone
+                .clone()
+                .map(crate::types::timezone::PyTimezone::from_core),
             _ => None,
         }
     }
@@ -1155,7 +1155,7 @@ impl PyDataType {
     /// key or a set member can never move.
     fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        let child = crate::field::core_field_from_value(value)?;
+        let child = crate::types::field::core_field_from_value(value)?;
         match FieldKey::from_py(key)? {
             FieldKey::Path(path) => self
                 .inner
@@ -1309,7 +1309,7 @@ impl PyDataType {
     /// Replaces the nested child at `index`.
     fn set_field_at(&mut self, index: isize, child: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        let child = crate::field::core_field_from_value(child)?;
+        let child = crate::types::field::core_field_from_value(child)?;
         let position = normalize_index(index, self.inner.field_len())
             .ok_or_else(|| PyIndexError::new_err(index))?;
         self.inner
@@ -1321,7 +1321,7 @@ impl PyDataType {
     /// name under it.
     fn set_field_by_path(&mut self, path: &str, child: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        let child = crate::field::core_field_from_value(child)?;
+        let child = crate::types::field::core_field_from_value(child)?;
         self.inner
             .set_field_by_path(path, child)
             .map_err(value_error)

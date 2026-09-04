@@ -2,7 +2,7 @@
 //!
 //! Everything here is plumbing: bytes in, bytes out, and the stream adapters
 //! that let the core read from and write to a caller-owned Python file object.
-//! The value conversion itself belongs to [`crate::scalar`], so a document is
+//! The value conversion itself belongs to [`crate::types::scalar`], so a document is
 //! read and written through exactly one pair of functions.
 
 use std::cell::RefCell;
@@ -16,8 +16,8 @@ use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyIterator, PyMemoryView,
 use yggdryl::Field as CoreField;
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 
-use crate::field::core_field_from_value;
-use crate::scalar::{PyScalar, as_py, as_py_with_field, from_py};
+use crate::types::field::core_field_from_value;
+use crate::types::scalar::{PyScalar, as_py, as_py_with_field, from_py};
 use crate::value_error;
 
 /// How many documents one multi-document call may encode.

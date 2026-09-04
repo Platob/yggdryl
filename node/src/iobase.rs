@@ -21,14 +21,14 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::arrow::JsBatchReader;
-use crate::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
-use crate::codec::{
+use crate::holder::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
+use crate::iomedia::JsBatchReader;
+use crate::media::options::JsRecordOptions;
+use crate::media::text::JsTextOptions;
+use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
-use crate::field::JsField;
-use crate::generic::JsRecordOptions;
-use crate::text::JsTextOptions;
+use crate::types::field::JsField;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
@@ -325,8 +325,8 @@ impl JsIOBase {
 
     /// The media type of the bytes here.
     #[napi(getter)]
-    pub fn media_type(&self) -> crate::media::JsMediaType {
-        crate::media::JsMediaType::from_core(self.inner.media_type().clone())
+    pub fn media_type(&self) -> crate::enums::JsMediaType {
+        crate::enums::JsMediaType::from_core(self.inner.media_type().clone())
     }
 
     /// Declare what the bytes here are.
@@ -335,9 +335,9 @@ impl JsIOBase {
     /// in-memory one uses to say which record encoding it holds: the record
     /// methods read the encoding off the handle rather than taking a format.
     #[napi(setter)]
-    pub fn set_media_type(&mut self, value: crate::media::MediaTypeInput<'_>) -> Result<()> {
+    pub fn set_media_type(&mut self, value: crate::enums::MediaTypeInput<'_>) -> Result<()> {
         self.inner
-            .set_media_type(crate::media::media_type_from_input(value)?);
+            .set_media_type(crate::enums::media_type_from_input(value)?);
         Ok(())
     }
 

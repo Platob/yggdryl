@@ -24,13 +24,13 @@ use yggdryl::media::iceberg::{
 };
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
-use crate::arrow::JsBatchReader;
-use crate::codec::JsScalar;
-use crate::datatype::{DataTypeInput, dtype_from_input};
-use crate::field::{JsField, MetadataEntry};
-use crate::io::{JsIOBase, LocationInput, folder_from_input};
-use crate::media::{JsMimeType, MimeTypeInput, mime_type_from_input};
+use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};
+use crate::iobase::{JsIOBase, LocationInput, folder_from_input};
+use crate::iomedia::JsBatchReader;
 use crate::napi_error;
+use crate::text::codec::JsScalar;
+use crate::types::datatype::{DataTypeInput, dtype_from_input};
+use crate::types::field::{JsField, MetadataEntry};
 use crate::uri::PartitionEntry;
 
 /// A partition spec, or the column names one would be built from.
@@ -1074,7 +1074,7 @@ impl JsScanPlan {
 /// One live data file of the current snapshot, with the spec that placed it.
 ///
 /// This is a class rather than a plain object because a partition value crosses
-/// as the native [`Scalar`](crate::codec::JsScalar) the manifest recorded.
+/// as the native [`Scalar`](crate::text::codec::JsScalar) the manifest recorded.
 /// Rendering it as text here would have to spell a null `null`, which is exactly
 /// what makes a directory name unable to answer the question.
 #[napi(js_name = "DataFile")]
@@ -1487,7 +1487,7 @@ impl JsTable {
     /// file system, not the local path its URL happens to spell.
     #[napi(getter)]
     pub fn root(&self) -> Result<JsIOBase> {
-        if let Some(holder) = crate::io::arrow_folder_holder(self.inner.root()) {
+        if let Some(holder) = crate::iobase::arrow_folder_holder(self.inner.root()) {
             return Ok(JsIOBase::from_core(holder));
         }
         JsIOBase::folder_at(&self.location())

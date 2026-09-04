@@ -19,11 +19,11 @@ use yggdryl::expression::{
 };
 use yggdryl::{Expression as CoreExpression, Scalar};
 
-use crate::field::core_field_from_value;
-use crate::record::{
+use crate::iomedia::{
     batch_reader_from_arrow_reader, batch_reader_from_arrow_table, batch_reader_to_pyarrow,
     record_batch_from_value,
 };
+use crate::types::field::core_field_from_value;
 use crate::value_error;
 
 /// Read late-bound values once, before either expression or statement binding.
@@ -31,7 +31,12 @@ fn supplied_parameters(parameters: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(
     match parameters {
         Some(parameters) => parameters
             .iter()
-            .map(|(name, value)| Ok((name.extract::<String>()?, crate::scalar::from_py(&value)?)))
+            .map(|(name, value)| {
+                Ok((
+                    name.extract::<String>()?,
+                    crate::types::scalar::from_py(&value)?,
+                ))
+            })
             .collect(),
         None => Ok(Vec::new()),
     }
@@ -87,7 +92,9 @@ fn arithmetic_expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
             .parse::<CoreExpression>()
             .map_err(value_error);
     }
-    Ok(CoreExpression::literal(crate::scalar::from_py(value)?))
+    Ok(CoreExpression::literal(crate::types::scalar::from_py(
+        value,
+    )?))
 }
 
 /// A recursive, typed filter and projection tree.
@@ -144,7 +151,7 @@ impl PyExpression {
     #[staticmethod]
     fn literal(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self {
-            inner: CoreExpression::literal(crate::scalar::from_py(value)?),
+            inner: CoreExpression::literal(crate::types::scalar::from_py(value)?),
         })
     }
 
@@ -255,9 +262,9 @@ impl PyExpression {
     }
 
     /// The output field this expression produces against a schema.
-    fn field(&self, schema: &Bound<'_, PyAny>) -> PyResult<crate::field::PyField> {
+    fn field(&self, schema: &Bound<'_, PyAny>) -> PyResult<crate::types::field::PyField> {
         let schema = core_field_from_value(schema)?;
-        Ok(crate::field::PyField::from_inner(
+        Ok(crate::types::field::PyField::from_inner(
             self.inner.field(&schema).map_err(value_error)?,
         ))
     }
@@ -446,8 +453,8 @@ impl PyBound {
 
     /// The output field this expression produces.
     #[getter]
-    fn field(&self) -> crate::field::PyField {
-        crate::field::PyField::from_inner(self.inner.field().clone())
+    fn field(&self) -> crate::types::field::PyField {
+        crate::types::field::PyField::from_inner(self.inner.field().clone())
     }
 
     /// Return whether this expression answers a boolean.
@@ -477,7 +484,7 @@ impl PyBound {
             .inner
             .eval(&self.row_value(row)?)
             .map_err(value_error)?;
-        crate::scalar::as_py(py, &value)
+        crate::types::scalar::as_py(py, &value)
     }
 
     /// Answer this predicate for one row, reading unknown as "no".
@@ -513,14 +520,14 @@ impl PyBound {
             for field in self.inner.schema().fields() {
                 let held = mapping.get_item(field.name())?;
                 values.push(match held {
-                    Some(held) => crate::scalar::from_py(&held)?,
+                    Some(held) => crate::types::scalar::from_py(&held)?,
                     None => Scalar::Null,
                 });
             }
             return Ok(Scalar::from_sequence(values));
         }
         if row.is_instance_of::<PyList>() || row.is_instance_of::<PyTuple>() {
-            return crate::scalar::from_py(row);
+            return crate::types::scalar::from_py(row);
         }
         Err(value_error(
             "expected a sequence of column values in schema order, or a mapping of column to value",
@@ -684,14 +691,14 @@ impl PyBoundStatement {
 
     /// The struct root the statement reads.
     #[getter]
-    fn schema(&self) -> crate::field::PyField {
-        crate::field::PyField::from_inner(self.inner.schema().clone())
+    fn schema(&self) -> crate::types::field::PyField {
+        crate::types::field::PyField::from_inner(self.inner.schema().clone())
     }
 
     /// The struct root the statement publishes.
     #[getter]
-    fn output(&self) -> crate::field::PyField {
-        crate::field::PyField::from_inner(self.inner.output().clone())
+    fn output(&self) -> crate::types::field::PyField {
+        crate::types::field::PyField::from_inner(self.inner.output().clone())
     }
 
     /// The bound projections, in output order. Empty means every column.

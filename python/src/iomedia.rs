@@ -52,10 +52,10 @@ use yggdryl::media::text::TextOptions as CoreTextOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
-use crate::datatype::{PyDataType, core_dtype_from_value};
-use crate::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
-use crate::media::{PyMimeType, core_media_type_from_value};
-use crate::timezone::{PyTimezone, core_timezone_from_value};
+use crate::enums::{PyMimeType, core_media_type_from_value};
+use crate::types::datatype::{PyDataType, core_dtype_from_value};
+use crate::types::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
+use crate::types::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 
 /// Read a core root Field out of anything Python describes rows with.

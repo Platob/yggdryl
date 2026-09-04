@@ -13,14 +13,14 @@ use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
-use crate::datatype::{
+use crate::enums::{
+    PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
+};
+use crate::fix::{FixTag, branch_from_py, id_from_py};
+use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
-};
-use crate::fix::{FixTag, branch_from_py, id_from_py};
-use crate::media::{
-    PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, compare, value_error};
@@ -243,7 +243,7 @@ impl PyField {
                 let frame = args.get_item(0)?;
                 let py = frame.py();
                 let this = Self::from_inner(field.clone());
-                let table = crate::record::polars_to_arrow(&frame)?;
+                let table = crate::iomedia::polars_to_arrow(&frame)?;
                 let cast = this.cast_arrow(py, &table, safe)?;
                 Ok(py
                     .import("polars")?
@@ -410,7 +410,7 @@ impl PyField {
                 .map(Self::from_inner)
                 .map_err(value_error);
         }
-        CoreField::from_value(crate::scalar::from_py(value)?)
+        CoreField::from_value(crate::types::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -573,11 +573,11 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        use crate::record::declared_by;
+        use crate::iomedia::declared_by;
 
         // polars: the frame comes back a frame, the lazy frame stays lazy.
         if declared_by(value, "polars", "DataFrame") {
-            let table = crate::record::polars_to_arrow(value)?;
+            let table = crate::iomedia::polars_to_arrow(value)?;
             let cast = self.cast_arrow(py, &table, safe)?;
             return py.import("polars")?.call_method1("from_arrow", (cast,));
         }
@@ -629,13 +629,13 @@ impl PyField {
         }
         // Everything that streams - a RecordBatchReader, a Dataset, a
         // Scanner, anything exporting the C stream - casts batch by batch.
-        let reader = crate::record::batch_reader_from_any(
+        let reader = crate::iomedia::batch_reader_from_any(
             value,
             &yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
                 .map_err(value_error)?,
         )?;
         let cast = yggdryl::arrow::cast_reader(reader, &self.inner, safe).map_err(value_error)?;
-        crate::record::batch_reader_to_pyarrow(py, cast)
+        crate::iomedia::batch_reader_to_pyarrow(py, cast)
     }
 
     /// The generic cast: [`cast_arrow`](Self::cast_arrow) for anything
@@ -647,7 +647,7 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        use crate::record::declared_by;
+        use crate::iomedia::declared_by;
 
         let module_root = value
             .get_type()
@@ -759,7 +759,7 @@ impl PyField {
     /// document a caller already builds.
     #[allow(clippy::wrong_self_convention)]
     fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::scalar::as_py(py, &self.inner.clone().into_value())
+        crate::types::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
@@ -767,7 +767,7 @@ impl PyField {
     /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreField::from_value(crate::scalar::from_py(value)?)
+        CoreField::from_value(crate::types::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }

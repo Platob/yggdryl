@@ -11,16 +11,16 @@ use yggdryl::{Field as CoreField, ProtocolField as CoreProtocolField, Scheme as 
 
 use crate::{
     JsDifferenceIterator,
-    datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
-    exact_i32,
-    fix::{branch_from_js, id_from_js},
-    media::{
+    enums::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
         mime_type_from_input,
     },
+    exact_i32,
+    fix::{branch_from_js, id_from_js},
     napi_error, napi_type_error, ordering_value,
-    record::arrow_scalar_to_ipc,
-    record::field_value_to_js,
+    types::datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
+    types::value::arrow_scalar_to_ipc,
+    types::value::field_value_to_js,
     uri::{JsUri, JsUrl, JsUrn, url_from_input},
 };
 
@@ -171,10 +171,10 @@ impl JsField {
     /// it lets an empty record iterable publish a declared schema without a
     /// second datatype-to-Arrow implementation in JavaScript.
     #[napi(js_name = "_emptyArrowReaderNative", skip_typescript)]
-    pub fn empty_arrow_reader(&self) -> Result<crate::arrow::JsBatchReader> {
+    pub fn empty_arrow_reader(&self) -> Result<crate::iomedia::JsBatchReader> {
         let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
         let reader = yggdryl::arrow::batch_reader(schema, []);
-        Ok(crate::arrow::JsBatchReader::from_core(
+        Ok(crate::iomedia::JsBatchReader::from_core(
             reader,
             self.inner.name(),
         ))

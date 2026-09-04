@@ -18,15 +18,15 @@ use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::field::{PyField, core_field_from_value};
-use crate::record::{
+use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
     core_record_options_from_value, core_root_field_from_value, frame_batch_reader,
     frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
-use crate::scalar::{PyScalar, from_py};
+use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
+use crate::types::field::{PyField, core_field_from_value};
+use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::value_error;
 
@@ -125,7 +125,7 @@ impl PyIOBase {
     fn over_arrow_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
         let location = crate::uri::path_string_from_value(path)?;
         let backend: std::sync::Arc<dyn yggdryl::holder::arrowfs::ArrowFileSystem> =
-            std::sync::Arc::new(crate::arrowfs::PyArrowFileSystem::new(filesystem));
+            std::sync::Arc::new(crate::holder::arrowfs::PyArrowFileSystem::new(filesystem));
         let url = yggdryl::holder::arrowfs::location_url(backend.as_ref(), &location)
             .map_err(value_error)?;
         Ok(Self::from_core(yggdryl::holder::arrowfs::located(
@@ -252,7 +252,7 @@ impl PyIOBase {
     #[new]
     #[pyo3(signature = (value, path = None))]
     fn new(value: &Bound<'_, PyAny>, path: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        if crate::arrowfs::is_arrow_filesystem(value) {
+        if crate::holder::arrowfs::is_arrow_filesystem(value) {
             let path = path.ok_or_else(|| {
                 PyValueError::new_err(
                     "expected a path on the filesystem as the second argument, got none",
@@ -334,7 +334,7 @@ impl PyIOBase {
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
     ) -> PyResult<Self> {
-        if !crate::arrowfs::is_arrow_filesystem(filesystem) {
+        if !crate::holder::arrowfs::is_arrow_filesystem(filesystem) {
             return Err(PyValueError::new_err(format!(
                 "expected a pyarrow.fs.FileSystem, got {}",
                 filesystem.get_type().name()?,
@@ -370,8 +370,8 @@ impl PyIOBase {
 
     /// The media type of the bytes here.
     #[getter]
-    fn media_type(&self) -> crate::media::PyMediaType {
-        crate::media::PyMediaType::from_core(self.inner.media_type().clone())
+    fn media_type(&self) -> crate::enums::PyMediaType {
+        crate::enums::PyMediaType::from_core(self.inner.media_type().clone())
     }
 
     /// Declare what the bytes here are, as a media type, MIME type, or string.
@@ -381,7 +381,7 @@ impl PyIOBase {
     #[setter]
     fn set_media_type(&mut self, media_type: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
-            .set_media_type(crate::media::core_media_type_from_value(media_type)?);
+            .set_media_type(crate::enums::core_media_type_from_value(media_type)?);
         Ok(())
     }
 
@@ -1911,7 +1911,7 @@ impl PyRecordIterator {
         loop {
             if let Some(row) = self.rows.as_sequence().and_then(|rows| rows.get(self.next)) {
                 self.next += 1;
-                let record = crate::scalar::as_py_with_field(py, row, &self.field)?;
+                let record = crate::types::scalar::as_py_with_field(py, row, &self.field)?;
                 return match &self.from_dict {
                     Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
                     None => Ok(Some(record)),

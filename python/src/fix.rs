@@ -4,7 +4,7 @@
 //! one [`Arc`] over the core [`FixRegistry`], and every accessor coerces its
 //! key once at the boundary and redirects to the most specific native method.
 //! The typed `fix:` vocabulary is not here either - it lives on the protocol
-//! view class [`crate::field::PyProtocolField`], which is what `field.fix`
+//! view class [`crate::types::field::PyProtocolField`], which is what `field.fix`
 //! already answers.
 //!
 //! A branch and an identifier cross as `str` and are parsed once here through
@@ -25,9 +25,9 @@ use yggdryl::{
     from_json_scalar_with_field, into_json_scalar,
 };
 
-use crate::field::{PyField, core_field_from_value};
-use crate::iceberg::folder_holder_from_value;
-use crate::scalar::{PyScalar, from_py};
+use crate::media::iceberg::folder_holder_from_value;
+use crate::types::field::{PyField, core_field_from_value};
+use crate::types::scalar::{PyScalar, from_py};
 use crate::value_error;
 
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.

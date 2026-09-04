@@ -17,10 +17,10 @@ use yggdryl::expression::{
 };
 use yggdryl::{Expression as CoreExpression, Scalar};
 
-use crate::arrow::JsBatchReader;
-use crate::codec::JsScalar;
-use crate::field::JsField;
+use crate::iomedia::JsBatchReader;
 use crate::napi_error;
+use crate::text::codec::JsScalar;
+use crate::types::field::JsField;
 
 /// The stable binding spelling of one ordering direction.
 const fn direction_name(direction: Direction) -> &'static str {

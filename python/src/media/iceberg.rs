@@ -1,7 +1,7 @@
 //! An Apache Iceberg table, over the same `IOBase` handle Python already has.
 //!
 //! A table is a folder and nothing else, so this binding takes the handle a
-//! caller already built with [`crate::io::PyIOBase`] and hands it to the core
+//! caller already built with [`crate::iobase::PyIOBase`] and hands it to the core
 //! [`Table`]. Rows cross the boundary the way they do everywhere else here -
 //! as a `pyarrow.RecordBatchReader` over the Arrow C Stream interface - so a
 //! scan is lazy on both sides and a commit copies nothing.
@@ -26,14 +26,14 @@ use yggdryl::media::iceberg::{
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 
-use crate::datatype::core_dtype_from_value;
-use crate::field::{PyField, core_field_from_value};
-use crate::io::PyIOBase;
-use crate::media::{PyMimeType, core_mime_type_from_value};
-use crate::record::{
+use crate::enums::{PyMimeType, core_mime_type_from_value};
+use crate::iobase::PyIOBase;
+use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
     core_root_field_from_value, string_pairs_from_value,
 };
+use crate::types::datatype::core_dtype_from_value;
+use crate::types::field::{PyField, core_field_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
@@ -79,7 +79,7 @@ pub(crate) fn iceberg_schema_from_json(
     name: &str,
     document: &Bound<'_, PyAny>,
 ) -> PyResult<PyField> {
-    let document = crate::scalar::from_py(document)?;
+    let document = crate::types::scalar::from_py(document)?;
     schema_from_json(name, &document)
         .map(PyField::from_inner)
         .map_err(value_error)
@@ -98,7 +98,7 @@ pub(crate) fn iceberg_schema_into_json(
 ) -> PyResult<Py<PyAny>> {
     let root = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
     let document = schema_into_json(&root).map_err(value_error)?;
-    crate::scalar::as_py(py, &document)
+    crate::types::scalar::as_py(py, &document)
 }
 
 /// Check one type change against the promotions Iceberg allows.
@@ -139,7 +139,7 @@ fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Par
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
     }
-    let columns = crate::media::strings_from_iterable(value, "partition_by")?;
+    let columns = crate::enums::strings_from_iterable(value, "partition_by")?;
     let borrowed: Vec<&str> = columns.iter().map(String::as_str).collect();
     PartitionSpec::identity(0, schema, &borrowed).map_err(value_error)
 }
@@ -148,7 +148,7 @@ fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Par
 fn partition_values<'py>(py: Python<'py>, values: &[Scalar]) -> PyResult<Bound<'py, PyTuple>> {
     let projected: Vec<Py<PyAny>> = values
         .iter()
-        .map(|value| crate::scalar::as_py(py, value))
+        .map(|value| crate::types::scalar::as_py(py, value))
         .collect::<PyResult<_>>()?;
     PyTuple::new(py, projected)
 }
@@ -329,7 +329,7 @@ fn core_iceberg_options_from_value(value: &Bound<'_, PyAny>) -> PyResult<Iceberg
         return Ok(options.inner.clone());
     }
     if value
-        .extract::<PyRef<'_, crate::record::PyRecordOptions>>()
+        .extract::<PyRef<'_, crate::iomedia::PyRecordOptions>>()
         .is_ok()
     {
         return Err(PyTypeError::new_err(
@@ -724,7 +724,7 @@ impl PyCatalog {
 
     /// Describe a catalog over a warehouse folder, touching nothing.
     ///
-    /// `warehouse` accepts an [`IOBase`][crate::io::PyIOBase] handle or
+    /// `warehouse` accepts an [`IOBase`][crate::iobase::PyIOBase] handle or
     /// anything that names a folder location: a string, a path-like, a
     /// [`Url`][crate::uri::PyUrl].
     #[new]
@@ -871,7 +871,7 @@ impl PyCatalog {
             None => Vec::new(),
         };
         let removes = match removes {
-            Some(value) => crate::media::strings_from_iterable(value, "removes")?,
+            Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
             None => Vec::new(),
         };
         if updates.is_empty() && removes.is_empty() {
@@ -985,7 +985,7 @@ impl PyTable {
     #[getter]
     fn root(&self) -> PyResult<PyIOBase> {
         let root = self.inner.root();
-        if let Some(holder) = crate::io::arrow_folder_holder(root) {
+        if let Some(holder) = crate::iobase::arrow_folder_holder(root) {
             return Ok(PyIOBase::from_core(holder));
         }
         Ok(PyIOBase::from_core(
@@ -1375,7 +1375,7 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
-        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let names = crate::enums::strings_from_iterable(merge_by_names, "merge_by_names")?;
         let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
@@ -1403,7 +1403,7 @@ impl PyTable {
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let names = crate::media::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let names = crate::enums::strings_from_iterable(merge_by_names, "merge_by_names")?;
         let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
@@ -1644,7 +1644,7 @@ impl PyTable {
             None => Vec::new(),
         };
         let removes = match removes {
-            Some(value) => crate::media::strings_from_iterable(value, "removes")?,
+            Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
             None => Vec::new(),
         };
         if updates.is_empty() && removes.is_empty() {
@@ -2228,7 +2228,7 @@ impl PyPartitionField {
     /// Read one native partition-field JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::scalar::from_py(document)?;
+        let document = crate::types::scalar::from_py(document)?;
         PartitionField::from_json(&document)
             .map(|inner| Self { inner })
             .map_err(value_error)
@@ -2261,7 +2261,7 @@ impl PyPartitionField {
     /// Return the native partition-field JSON value as natural Python data.
     fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let document = self.inner.clone().into_json().map_err(value_error)?;
-        crate::scalar::as_py(py, &document)
+        crate::types::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2331,7 +2331,7 @@ impl PyPartitionSpec {
     /// Read one native partition-spec JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::scalar::from_py(document)?;
+        let document = crate::types::scalar::from_py(document)?;
         PartitionSpec::from_json(&document)
             .map(Self::from_core)
             .map_err(value_error)
@@ -2356,7 +2356,7 @@ impl PyPartitionSpec {
         spec_id: i32,
     ) -> PyResult<Self> {
         let schema = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
-        let names = crate::media::strings_from_iterable(columns, "columns")?;
+        let names = crate::enums::strings_from_iterable(columns, "columns")?;
         let borrowed: Vec<&str> = names.iter().map(String::as_str).collect();
         PartitionSpec::identity(spec_id, &schema, &borrowed)
             .map(Self::from_core)
@@ -2392,7 +2392,7 @@ impl PyPartitionSpec {
     /// Return the native partition-spec JSON value as natural Python data.
     fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let document = self.inner.clone().into_json().map_err(value_error)?;
-        crate::scalar::as_py(py, &document)
+        crate::types::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2462,7 +2462,7 @@ impl PySnapshot {
     /// Read one native snapshot JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::scalar::from_py(document)?;
+        let document = crate::types::scalar::from_py(document)?;
         Snapshot::from_json(&document)
             .map(Self::from_core)
             .map_err(value_error)
@@ -2553,7 +2553,7 @@ impl PySnapshot {
     fn into_json(&self, py: Python<'_>, version: i64) -> PyResult<Py<PyAny>> {
         let version = FormatVersion::from_number(version).map_err(value_error)?;
         let document = self.inner.clone().into_json(version).map_err(value_error)?;
-        crate::scalar::as_py(py, &document)
+        crate::types::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2898,7 +2898,7 @@ impl PyDataFile {
             .inner
             .partition
             .iter()
-            .map(|value| crate::scalar::scalar_pickle_state(py, value))
+            .map(|value| crate::types::scalar::scalar_pickle_state(py, value))
             .collect::<PyResult<Vec<_>>>()?;
         state.set_item("partition", PyTuple::new(py, partition)?)?;
         state.set_item("record_count", self.inner.record_count)?;
@@ -2934,7 +2934,7 @@ impl PyDataFile {
     fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
         let partition = required_pickle_item(state, "partition")?
             .try_iter()?
-            .map(|value| crate::scalar::scalar_from_pickle_state(&value?, 0))
+            .map(|value| crate::types::scalar::scalar_from_pickle_state(&value?, 0))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(Self::from_core(DataFile {
             content: required_pickle_item(state, "content")?.extract()?,
@@ -3221,7 +3221,7 @@ impl PyNamespace {
             None => Vec::new(),
         };
         let removes = match removes {
-            Some(value) => crate::media::strings_from_iterable(value, "removes")?,
+            Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
             None => Vec::new(),
         };
         if updates.is_empty() && removes.is_empty() {

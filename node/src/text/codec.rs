@@ -26,7 +26,7 @@ use yggdryl::{
     Fields as CoreFields, I256, MapType as CoreMapType, TemporalFamily, TimeUnit, Timezone,
 };
 
-use crate::timezone::{TimezoneInput, timezone_from_input};
+use crate::types::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, napi_error};
 
 /// Preserve the core's typed arithmetic failures as JavaScript error classes.

@@ -16,8 +16,8 @@ use napi_derive::napi;
 use yggdryl::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
 use yggdryl::{Digest, DigestAlgorithm};
 
-use crate::codec::JsScalar;
 use crate::napi_error;
+use crate::text::codec::JsScalar;
 
 /// Anything JavaScript can hand a digest.
 ///
