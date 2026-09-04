@@ -1098,3 +1098,66 @@ mod lake {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+#[test]
+fn every_temporal_family_survives_the_directory_name_it_spells() {
+    use crate::{Scalar, TimeUnit, Timezone};
+
+    // A partition name is written by one renderer and read by the field cast,
+    // so every temporal family has to make the round trip - a zoned instant
+    // included, which Arrow's own formatter refuses to spell at all.
+    let paris = Timezone::from_str("Europe/Paris").unwrap();
+    for (dtype, value) in [
+        (DataType::Date32, Scalar::date32(20_682)),
+        (DataType::Date64, Scalar::date64(1_786_924_800_000)),
+        (
+            DataType::time32(TimeUnit::Second).unwrap(),
+            Scalar::time32(37_425, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        ),
+        (
+            DataType::time64(TimeUnit::Nanosecond).unwrap(),
+            Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+        ),
+        (
+            DataType::Timestamp(TimeUnit::Second, None),
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        ),
+        (
+            DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::UTC).unwrap(),
+        ),
+        (
+            DataType::Timestamp(TimeUnit::Second, Some(paris.clone())),
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris.clone()).unwrap(),
+        ),
+        (
+            DataType::duration64(TimeUnit::Second).unwrap(),
+            Scalar::duration64(90, TimeUnit::Second).unwrap(),
+        ),
+    ] {
+        let spelled = super::partition_text(&value)
+            .unwrap_or_else(|error| panic!("{dtype} has no partition name: {error}"));
+        let schema = DataType::from_fields([
+            DataType::Int64.required_field("price"),
+            Field::new("at", dtype.clone(), false),
+        ])
+        .unwrap()
+        .required_field("row");
+        let restored = with_partitions(
+            &prices(),
+            &[("at".to_owned(), spelled.to_string())],
+            Some(&schema),
+        )
+        .unwrap_or_else(|error| panic!("{dtype} did not read {spelled:?}: {error}"));
+        let read = crate::arrow::value::value_from_array(
+            &dtype,
+            restored.column_by_name("at").unwrap().as_ref(),
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            read, value,
+            "{dtype} did not round trip through {spelled:?}"
+        );
+    }
+}

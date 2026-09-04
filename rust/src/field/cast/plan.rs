@@ -453,17 +453,12 @@ impl ArrayCastPlan {
             // A temporal reads text with this crate's spellings rather than
             // Arrow's: a grouped fraction, an hour past the end of the day, a
             // bracketed zone name, and a duration in either spelling all read
-            // here, and Arrow reads nothing into a duration at all.
-            (
-                DataType::Date32
-                | DataType::Date64
-                | DataType::Time32(_)
-                | DataType::Time64(_)
-                | DataType::Timestamp(..)
-                | DataType::Duration32(_)
-                | DataType::Duration64(_),
-                source,
-            ) if holds_text(source) => ArrayCastKind::TemporalIngest,
+            // here, and Arrow reads nothing into a duration at all. An
+            // encoded column reads its values the same way and is encoded
+            // afterwards, because the encoding is a layout, not a reading.
+            (target, source) if holds_temporal(target) && holds_text(source) => {
+                ArrayCastKind::TemporalIngest
+            }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
@@ -1390,15 +1385,17 @@ fn ingest_ascii_array(
 /// The interval layouts are temporal too and have no such spelling, so they
 /// keep Arrow's rendering.
 fn is_temporal_arrow(source: &ArrowDataType) -> bool {
-    matches!(
-        source,
+    match source {
         ArrowDataType::Date32
-            | ArrowDataType::Date64
-            | ArrowDataType::Time32(_)
-            | ArrowDataType::Time64(_)
-            | ArrowDataType::Timestamp(..)
-            | ArrowDataType::Duration(_)
-    )
+        | ArrowDataType::Date64
+        | ArrowDataType::Time32(_)
+        | ArrowDataType::Time64(_)
+        | ArrowDataType::Timestamp(..)
+        | ArrowDataType::Duration(_) => true,
+        ArrowDataType::Dictionary(_, values) => is_temporal_arrow(values),
+        ArrowDataType::RunEndEncoded(_, values) => is_temporal_arrow(values.data_type()),
+        _ => false,
+    }
 }
 
 /// Renders a temporal column as the classic text this crate spells.
@@ -1417,6 +1414,7 @@ fn render_temporal_text(
     let source_type = DataType::from_arrow(array.data_type())?;
     let rows = array.len();
     budget.add_array(field.dtype(), rows)?;
+    reserve_vec_bytes::<Option<smol_str::SmolStr>>(budget, rows)?;
     let mut spelled = Vec::with_capacity(rows);
     let mut ours = BooleanBufferBuilder::new(rows);
     let mut unspelled = false;
@@ -1432,6 +1430,9 @@ fn render_temporal_text(
         unspelled |= !absent && text.is_none();
         spelled.push(text);
     }
+    // The reservation above charges the offsets a text array carries; the
+    // spellings themselves are the payload this loop built.
+    budget.add_bytes(spelled.iter().flatten().map(smol_str::SmolStr::len).sum())?;
     let mask = BooleanArray::new(ours.finish(), None);
     let read_here: ArrayRef = Arc::new(StringArray::from_iter(
         spelled
@@ -1442,17 +1443,21 @@ fn render_temporal_text(
         return Ok(read_here);
     }
     // Arrow's formatter keeps the readings this crate has no spelling for,
-    // such as a date outside four-digit years.
+    // such as a date outside four-digit years; where it has none either, this
+    // crate's nulls stand.
     let cast = if can_cast_types(array.data_type(), &ArrowDataType::Utf8) {
-        let arrow = arrow_cast_exposed(
+        let rendered = arrow_cast_exposed(
             array,
             &ArrowDataType::Utf8,
             true,
             exposure,
             &Field::new(field.name(), DataType::Utf8, true),
             budget,
-        )?;
-        zip(&mask, &read_here.as_ref(), &arrow.as_ref())?
+        );
+        match rendered {
+            Ok(arrow) => zip(&mask, &read_here.as_ref(), &arrow.as_ref())?,
+            Err(_) => read_here,
+        }
     } else {
         read_here
     };
@@ -1467,6 +1472,31 @@ fn render_temporal_text(
         }
     }
     Ok(cast)
+}
+
+/// Whether a target datatype holds temporals, however it encodes them.
+fn holds_temporal(target: &DataType) -> bool {
+    match target {
+        DataType::Date32
+        | DataType::Date64
+        | DataType::Time32(_)
+        | DataType::Time64(_)
+        | DataType::Timestamp(..)
+        | DataType::Duration32(_)
+        | DataType::Duration64(_) => true,
+        DataType::Dictionary(dictionary) => holds_temporal(dictionary.value()),
+        DataType::RunEndEncoded(encoded) => holds_temporal(encoded.values().dtype()),
+        _ => false,
+    }
+}
+
+/// The temporal a target holds, past whatever layout encodes it.
+fn temporal_of(target: &DataType) -> &DataType {
+    match target {
+        DataType::Dictionary(dictionary) => temporal_of(dictionary.value()),
+        DataType::RunEndEncoded(encoded) => temporal_of(encoded.values().dtype()),
+        other => other,
+    }
 }
 
 /// Whether a source layout holds text values, however it wraps them.
@@ -1512,15 +1542,20 @@ fn ingest_temporal_text(
     };
     let source = downcast::<StringArray>(text.as_ref())?;
     let rows = source.len();
-    let read = Field::new(field.name(), field.dtype().clone(), true);
-    budget.add_array(field.dtype(), rows)?;
+    // The encoding is a layout: the values read as the temporal they hold and
+    // the tail encodes them, so a dictionary column reads like a plain one.
+    let dtype = temporal_of(field.dtype());
+    let read = Field::new(field.name(), dtype.clone(), true);
+    budget.add_array(dtype, rows)?;
+    reserve_vec_bytes::<Scalar>(budget, rows)?;
+    reserve_vec_bytes::<&Scalar>(budget, rows)?;
     let mut values = Vec::with_capacity(rows);
     let mut ours = BooleanBufferBuilder::new(rows);
     let mut refused = false;
     for index in 0..rows {
         let cell = (is_exposed(exposure, index) && source.is_valid(index))
             .then(|| source.value(index))
-            .map(|text| Scalar::from_temporal_text(field.dtype(), text));
+            .map(|text| Scalar::from_temporal_text(dtype, text));
         match cell {
             // An absent value is this reading's own: nothing else reads it.
             None => {
@@ -1548,8 +1583,13 @@ fn ingest_temporal_text(
     let cast = if refused && can_cast_types(source.data_type(), expected) {
         // Arrow reads what this crate could not at its own risk: a value
         // neither reading takes stays null, and strict mode reports it below.
-        let arrow = arrow_cast_exposed(&text, expected, true, exposure, &read, budget)?;
-        zip(&mask, &read_here.as_ref(), &arrow.as_ref())?
+        // Arrow refuses a whole column whose target zone it cannot name, so
+        // its failure leaves this crate's reading standing rather than
+        // sinking it.
+        match arrow_cast_exposed(&text, expected, true, exposure, &read, budget) {
+            Ok(arrow) => zip(&mask, &read_here.as_ref(), &arrow.as_ref())?,
+            Err(_) => read_here,
+        }
     } else {
         read_here
     };
@@ -1560,15 +1600,14 @@ fn ingest_temporal_text(
                 continue;
             }
             let cell = source.value(index);
-            let reason = match Scalar::from_temporal_text(field.dtype(), cell) {
+            let reason = match Scalar::from_temporal_text(dtype, cell) {
                 Err(crate::Error::InvalidRecord { reason, .. }) => reason.to_string(),
                 Err(other) => other.to_string(),
                 Ok(_) => String::new(),
             };
             return Err(Error::IncompatibleSchema(format!(
-                "field {:?} row {index}: {cell:?} does not read as {}: {reason}",
+                "field {:?} row {index}: {cell:?} does not read as {dtype}: {reason}",
                 field.name(),
-                field.dtype(),
             )));
         }
     }

@@ -350,6 +350,71 @@ fn a_reading_this_crate_refuses_is_never_arrows_rounded_one() {
 }
 
 #[test]
+fn an_encoded_temporal_column_reads_and_spells_like_a_plain_one() {
+    // A dictionary is a layout, not a reading: the values read through this
+    // crate's spellings and are encoded afterwards.
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["25:30:00", "10:00:00.000_001"]));
+    let encoded = DataType::dictionary(
+        DataType::Int32,
+        DataType::time64(TimeUnit::Microsecond).unwrap(),
+    )
+    .unwrap();
+    let read = cast(&encoded.nullable_field("clock"), text).unwrap();
+    let read = read
+        .as_any()
+        .downcast_ref::<DictionaryArray<arrow_array::types::Int32Type>>()
+        .unwrap();
+    assert_eq!(
+        read.values()
+            .as_any()
+            .downcast_ref::<Time64MicrosecondArray>()
+            .unwrap()
+            .values(),
+        &[5_400_000_000, 36_000_000_001]
+    );
+
+    // The spelling direction unwraps the same layouts.
+    let keys = Int32Array::from(vec![0, 0]);
+    let values: ArrayRef =
+        Arc::new(TimestampSecondArray::from(vec![1_700_000_000]).with_timezone("Europe/Paris"));
+    let instants: ArrayRef = Arc::new(DictionaryArray::new(keys, values));
+    let text = cast(&DataType::Utf8.nullable_field("at"), instants).unwrap();
+    assert_eq!(
+        text.as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .value(1),
+        "2023-11-14T23:13:20+01:00[Europe/Paris]"
+    );
+}
+
+#[test]
+fn a_zone_arrow_cannot_name_never_sinks_this_crates_reading() {
+    // Arrow parses a target zone once for the whole column and refuses a named
+    // one, so its failure must leave the values this crate read standing.
+    let paris = DataType::Timestamp(
+        TimeUnit::Second,
+        Some(Timezone::from_str("Europe/Paris").unwrap()),
+    );
+    let mixed: ArrayRef = Arc::new(StringArray::from(vec![
+        "2026-08-17T10:00:00+02:00",
+        "not an instant",
+    ]));
+    let read = paris
+        .nullable_field("at")
+        .cast_arrow_array(mixed, true)
+        .unwrap();
+    assert_eq!(
+        read.as_any()
+            .downcast_ref::<TimestampSecondArray>()
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        [Some(1_786_953_600), None]
+    );
+}
+
+#[test]
 fn temporals_render_the_spelling_this_crate_prints() {
     // A zoned instant renders its offset and its zone name, which Arrow's own
     // formatter cannot spell without a timezone database.
