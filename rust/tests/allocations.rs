@@ -180,11 +180,22 @@ fn venue() -> FixBranch {
 }
 
 /// A FIX registry of `extra` generated fields around two fully keyed fields,
-/// one in the standard branch and one in a venue's.
+/// one in the standard branch and one in a venue's, plus one repeating group
+/// in the nested half.
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
-/// ones are what every hit lands on.
+/// ones are what every hit lands on. The group is there so a nested hit is
+/// measured through the second half rather than only the first.
 fn fix_registry(extra: usize) -> FixRegistry {
+    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
+        .expect("a struct item")
+        .required_field("item");
+    let mut parties = DataType::list(item).nullable_field("NoPartyIDs");
+    parties.as_fix_mut().set_tag(453).expect("a static tag");
+    parties
+        .as_fix_mut()
+        .set_aliases(["Parties"])
+        .expect("a static alias");
     let mut symbol = DataType::Utf8.nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     symbol
@@ -214,7 +225,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
             .expect("a generated alias");
         field
     });
-    FixRegistry::from_fields([symbol, trade].into_iter().chain(generated))
+    FixRegistry::from_fields([symbol, trade, parties].into_iter().chain(generated))
         .expect("the generated dictionary has no conflict")
 }
 
@@ -226,8 +237,19 @@ fn a_fix_registry_lookup_allocates_nothing() {
     let venue = venue();
     let vendor = FixId::from_parts(venue.clone(), 5_001).expect("a vendor identifier");
 
-    free("get_field_by_tag hit", || {
+    // The primitive half is probed first and the nested half only on a miss,
+    // so a nested hit costs one more map probe - and no allocation either.
+    free("get_field_by_tag primitive hit", || {
         let _ = black_box(registry.get_field_by_tag(55));
+    });
+    free("get_field_by_tag nested hit", || {
+        let _ = black_box(registry.get_field_by_tag(453));
+    });
+    free("get_field_by_name nested hit", || {
+        let _ = black_box(registry.get_field_by_name(&standard, "nopartyids"));
+    });
+    free("get_field_by_name nested alias hit", || {
+        let _ = black_box(registry.get_field_by_name(&standard, "PARTIES"));
     });
     free("get_field_by_tag alternate hit", || {
         let _ = black_box(registry.get_field_by_tag(65));

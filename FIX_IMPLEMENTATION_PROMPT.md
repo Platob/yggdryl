@@ -22,7 +22,7 @@ the next session.
   caller that already knows which key it holds calls the specialized accessor and
   pays no dispatch.
 - The registry persists through `IOBase` into JSON shards of 100 tags each,
-  under one folder per branch.
+  under one folder per branch, in a `primitive` and a `nested` tree.
 - One process-wide registry autoloads once and is the default every other type
   resolves against, from `~/.config/fix` on a real machine. The repository tracks
   its seed dictionary at `config/fix`.
@@ -377,6 +377,12 @@ Resolution order is fixed and documented, and never leaves one branch:
 1. canonical identifier, then alternate identifiers in stored order;
 2. canonical name folded, then aliases in stored order.
 
+Each of those indexes is split into a primitive and a nested half by the same
+`is_nested` predicate the storage uses, and each tier reads the primitive half
+before the nested one. That is locality only: the identity space is one, every
+write checks both halves, and the split is a partition of each index rather
+than a fifth tier above them.
+
 A tag query never consults names and a name query never consults tags. Either
 answers the canonical field. A bare tag and a bare name are the standard
 branch, stated rather than resolved by walking whichever dictionaries happen
@@ -458,14 +464,19 @@ failure.
 
 The registry reads and writes through `IOBase` alone; no direct filesystem.
 
-- Root is a folder handle. Shards live at
-  `<root>/records/<branch>/<shard>.json`: the branch level sits above the
-  shard level because a shard index is only unique inside one dictionary. The
-  root already names FIX, so no `fix` segment is repeated inside it. The record
-  is authoritative and the folder is layout; a field whose `fix:branch`
-  contradicts its folder is a typed error naming both, and a leaf directly under
-  `records/` is the stale flat layout and a typed error rather than a folder
-  skipped into an empty load.
+- Root is a folder handle. Shards live in two trees,
+  `<root>/primitive/<branch>/<shard>.json` and
+  `<root>/nested/<branch>/<shard>.json`: `primitive` holds the fields whose
+  datatype is one scalar value and `nested` the components and repeating
+  groups, decided by `field.dtype().is_nested()` and nothing FIX-specific. The
+  branch level sits above the shard level because a shard index is only unique
+  inside one dictionary. The root already names FIX, so no `fix` segment is
+  repeated inside it. Both trees are optional: a dictionary of only scalars
+  writes no `nested/`, and a root with neither loads as the empty registry. The
+  record is authoritative and the folder is layout; a field whose `fix:branch`
+  contradicts its folder, or whose datatype contradicts its tree, is a typed
+  error naming both, and a leaf directly under a tree root is a typed error
+  rather than a folder skipped into an empty load.
 - Two roots are conventional, and they are different things:
   - `config/fix/` in this repository, tracked in git. This is the seed
     dictionary: the field definitions the project ships, and what the tests,
@@ -683,7 +694,8 @@ Cover:
   a temporary directory rather than touching the developer's real one.
 - the tracked `config/fix` seed loads: open it with `from_handle`, resolve a tag,
   a name and an alias, and assert the shard layout is exactly
-  `config/fix/records/standard/<shard>.json`.
+  `config/fix/primitive/standard/<shard>.json` beside
+  `config/fix/nested/standard/4.json`, which holds the one repeating group.
 - `FixMsg` links the global registry by default, keeps an explicitly supplied one,
   retains an unknown tag, and rejects a value its field refuses;
 - isolation: a check that nothing under `rust/src/fix/` is referenced from

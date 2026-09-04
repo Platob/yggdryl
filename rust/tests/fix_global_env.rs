@@ -23,9 +23,9 @@ fn a_malformed_location_errors_and_a_valid_one_settles_the_default() {
 
     // A folder holding a shard that does not parse, under its branch.
     let bad = root.join("bad");
-    std::fs::create_dir_all(bad.join("records").join("standard")).expect("a fresh folder");
+    std::fs::create_dir_all(bad.join("primitive").join("standard")).expect("a fresh folder");
     std::fs::write(
-        bad.join("records").join("standard").join("0.json"),
+        bad.join("primitive").join("standard").join("0.json"),
         b"not json",
     )
     .expect("a malformed shard");

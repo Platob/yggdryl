@@ -1,4 +1,5 @@
-//! The registry: one vector of fields and four indexes over it.
+//! The registry: one vector of fields and four indexes over it, each index
+//! split into a primitive and a nested half.
 //!
 //! Every index holds a position into the vector, so a lookup is one map
 //! probe plus one slice index; the two identifier indexes are ordered maps
@@ -6,6 +7,13 @@
 //! beside ASCII-case-folded text that is folded once, at insert. A rejected
 //! insert or merge touches neither the vector nor any index: every key the
 //! change would claim is checked free before anything is written.
+//!
+//! Each index is partitioned by [`Field::dtype`]'s own
+//! [`is_nested`](crate::DataType::is_nested), and every probe reads the
+//! primitive half first. The partition is locality, not meaning: the identity
+//! space is one, [`FixRegistry::check_free`] consults both halves before
+//! anything is written, and a key therefore resolves to the same field it
+//! would in one undivided map.
 
 use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, HashMap, btree_map};
@@ -201,6 +209,52 @@ fn alternate_ids(field: &Field, branch: &FixBranch) -> Result<Vec<FixId>> {
         .collect()
 }
 
+/// Whether a field carries a nested subtree rather than one scalar value.
+///
+/// [`DataType::is_nested`](crate::DataType::is_nested) is the whole
+/// definition, and this module states no second one: it already unwraps a
+/// dictionary to its value type and a run-end encoding to its values, so a
+/// dictionary-encoded Struct is nested and a dictionary-encoded Utf8 is not.
+/// In FIX terms the nested fields are the components - a Struct whose
+/// children are its members - and the repeating groups - a List of that
+/// Struct; every price, quantity, timestamp and character code is primitive.
+pub(super) fn is_nested(field: &Field) -> bool {
+    field.dtype().is_nested()
+}
+
+/// The four indexes over the fields of one nestedness.
+///
+/// A registry holds two of these, and every lookup probes the primitive one
+/// first. They are the same four maps a single undivided index would be, so
+/// the split costs a lookup one extra probe on a miss and buys the hot
+/// primitive probe a map that holds only the fields a transcriber resolves
+/// per wire tag.
+#[derive(Clone, Default)]
+struct Half {
+    /// Canonical identifier to position.
+    ids: BTreeMap<FixId, usize>,
+    /// Alternate identifier to position.
+    alternate_ids: BTreeMap<FixId, usize>,
+    /// Branch and folded canonical name to position.
+    names: HashMap<BranchedKey, usize>,
+    /// Branch and folded alias to position.
+    aliases: HashMap<BranchedKey, usize>,
+}
+
+impl Half {
+    /// The first canonical-identifier entry after `after`, or the first of
+    /// all for `None`.
+    fn following(&self, after: Option<&FixId>) -> Option<Entry<'_>> {
+        match after {
+            Some(id) => self
+                .ids
+                .range((Bound::Excluded(id), Bound::Unbounded))
+                .next(),
+            None => self.ids.iter().next(),
+        }
+    }
+}
+
 /// FIX field definitions resolved by identifier or by name.
 ///
 /// Fields live in one vector at positions the four indexes point at:
@@ -210,6 +264,15 @@ fn alternate_ids(field: &Field, branch: &FixBranch) -> Result<Vec<FixId>> {
 /// an alias can never take a name away from a field that claims it
 /// canonically, and either answers the canonical field itself - never the
 /// spelling the query used.
+///
+/// Each of those four indexes is split into a primitive and a nested half by
+/// [`DataType::is_nested`](crate::DataType::is_nested), and each tier reads
+/// the primitive half before the nested
+/// one. The identity space is *not* split: a nested field can never claim a
+/// primitive field's identifier, name, alternate identifier or alias, because
+/// every write checks both halves. Which field a key resolves to is therefore
+/// exactly what one undivided index would answer; only the number of entries
+/// the hot probe walks changes.
 ///
 /// Identity is the [`FixId`] and, separately, the pair of branch and
 /// folded canonical name. Two fields may share neither, nor an alternate
@@ -249,16 +312,12 @@ fn alternate_ids(field: &Field, branch: &FixBranch) -> Result<Vec<FixId>> {
 /// ```
 #[derive(Clone, Default)]
 pub struct FixRegistry {
-    /// Every field, at the position the indexes point at.
+    /// Every field of both halves, at the position the indexes point at.
     fields: Vec<Field>,
-    /// Canonical identifier to position.
-    ids: BTreeMap<FixId, usize>,
-    /// Alternate identifier to position.
-    alternate_ids: BTreeMap<FixId, usize>,
-    /// Branch and folded canonical name to position.
-    names: HashMap<BranchedKey, usize>,
-    /// Branch and folded alias to position.
-    aliases: HashMap<BranchedKey, usize>,
+    /// The indexes over the scalar fields: the half every probe reads first.
+    primitive: Half,
+    /// The indexes over the components and repeating groups.
+    nested: Half,
 }
 
 impl FixRegistry {
@@ -416,7 +475,14 @@ impl FixRegistry {
     /// canonically, an alternate identifier another field lists, or an alias
     /// another field declares in the same branch. Overlap across tiers, and
     /// any overlap across branches, is not a conflict; the tier order
-    /// decides the first and nothing crosses the second.
+    /// decides the first and nothing crosses the second. A conflict is looked
+    /// for in both halves, so a nested field and a primitive one can no more
+    /// share a key than two primitives can.
+    ///
+    /// The field is placed in the half
+    /// [`DataType::is_nested`](crate::DataType::is_nested) names, and a
+    /// replacement whose datatype changed nestedness moves halves - and, on
+    /// the next [`Self::write_into`], file.
     ///
     /// # Errors
     ///
@@ -429,11 +495,10 @@ impl FixRegistry {
         let id = canonical_id(&field)?;
         let alternate = alternate_ids(&field, id.branch())?;
         let replacing = match (
-            self.ids.get(&id),
-            self.names
-                .get(&BranchedName::probe(id.branch(), field.name())),
+            self.canonical_position_by_id(&id),
+            self.canonical_position_by_name(id.branch(), field.name()),
         ) {
-            (Some(by_id), Some(by_name)) if by_id == by_name => Some(*by_id),
+            (Some(by_id), Some(by_name)) if by_id == by_name => Some(by_id),
             _ => None,
         };
         self.check_free(&field, &id, &alternate, replacing)?;
@@ -460,8 +525,10 @@ impl FixRegistry {
     /// metadata key both declare; the stored field keeps the keys only it
     /// declares; `fix:tags` and `fix:aliases` concatenate, incoming first,
     /// deduplicated with aliases folded, order kept. The merged field is
-    /// built first and every key it would newly claim checked free, so a
-    /// refusal leaves the vector and all four indexes as they were.
+    /// built first and every key it would newly claim checked free in both
+    /// halves, so a refusal leaves the vector and all eight indexes as they
+    /// were. The merged field is re-placed by its own nestedness, so a
+    /// datatype that changed halves lands in the right one.
     ///
     /// # Errors
     ///
@@ -473,7 +540,7 @@ impl FixRegistry {
     /// identifier or alias is another field's.
     pub fn update(&mut self, field: Field) -> Result<()> {
         let id = canonical_id(&field)?;
-        let Some(&position) = self.ids.get(&id) else {
+        let Some(position) = self.canonical_position_by_id(&id) else {
             return Err(absent(FixKey::Id(&id)));
         };
         let stored = &self.fields[position];
@@ -534,7 +601,10 @@ impl FixRegistry {
     /// [`ProtocolField::next_entry`](crate::ProtocolField::next_entry) is: a
     /// binding holds the registry and one [`FixId`], so lazy iteration crosses
     /// the boundary without cloning the dictionary or borrowing across it. The
-    /// order is [`Self::iter`]'s, ascending canonical identifier.
+    /// order is [`Self::iter`]'s, ascending canonical identifier across both
+    /// halves: the two ordered indexes are consulted and the smaller answer
+    /// wins, so a nested field takes its place among the primitives rather
+    /// than after them.
     ///
     /// ```
     /// use yggdryl::{DataType, FixId, FixRegistry};
@@ -555,54 +625,111 @@ impl FixRegistry {
     /// # }
     /// ```
     pub fn next_field_after(&self, after: Option<&FixId>) -> Option<&Field> {
-        let entry = match after {
-            Some(id) => self
-                .ids
-                .range((Bound::Excluded(id), Bound::Unbounded))
-                .next(),
-            None => self.ids.iter().next(),
+        let entry = match (
+            self.primitive.following(after),
+            self.nested.following(after),
+        ) {
+            (Some(primitive), Some(nested)) if nested.0 < primitive.0 => nested,
+            (Some(primitive), _) => primitive,
+            (None, nested) => nested?,
         };
-        self.fields.get(*entry?.1)
+        self.fields.get(*entry.1)
     }
 
     /// Iterates the fields in ascending canonical-identifier order, which is
     /// branch-major and then by tag.
+    ///
+    /// The two halves' ordered indexes are merged as they are walked, so the
+    /// order is the one a single index would give and the split is invisible
+    /// here.
     pub fn iter(&self) -> FixFieldIter<'_> {
         FixFieldIter {
-            positions: self.ids.values(),
+            entries: Merged::over(self),
             fields: &self.fields,
         }
     }
 
-    /// Returns how many fields are registered.
+    /// Returns how many fields are registered, in both halves.
     pub fn len(&self) -> usize {
         self.fields.len()
     }
 
-    /// Returns whether no field is registered.
+    /// Returns whether no field is registered, in either half.
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
 
-    /// The canonical tier first, the alternate tier only on a miss.
-    fn position_by_id(&self, id: &FixId) -> Option<usize> {
-        self.ids
+    /// Whether the field a canonical identifier names is indexed in the
+    /// nested half, or `None` when no field holds that identifier.
+    ///
+    /// Routing is otherwise only observable through the tree
+    /// [`Self::write_into`] puts a field in; this lets the unit tests assert
+    /// it without a filesystem.
+    #[cfg(test)]
+    pub(super) fn indexed_as_nested(&self, id: &FixId) -> Option<bool> {
+        if self.primitive.ids.contains_key(id) {
+            Some(false)
+        } else if self.nested.ids.contains_key(id) {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// The canonical tier alone, the primitive half first.
+    fn canonical_position_by_id(&self, id: &FixId) -> Option<usize> {
+        self.primitive
+            .ids
             .get(id)
-            .or_else(|| self.alternate_ids.get(id))
+            .or_else(|| self.nested.ids.get(id))
             .copied()
     }
 
-    /// The canonical tier first, the alternate tier only on a miss.
+    /// The canonical tier alone, the primitive half first.
+    fn canonical_position_by_name(&self, branch: &FixBranch, name: &str) -> Option<usize> {
+        let probe = BranchedName::probe(branch, name);
+        self.primitive
+            .names
+            .get(&probe)
+            .or_else(|| self.nested.names.get(&probe))
+            .copied()
+    }
+
+    /// The canonical tier first, the alternate tier only on a miss, and the
+    /// primitive half before the nested one inside each.
+    ///
+    /// A hit in the first probe stops there, so the split costs a primitive
+    /// canonical hit nothing and a miss three further map probes.
+    fn position_by_id(&self, id: &FixId) -> Option<usize> {
+        self.primitive
+            .ids
+            .get(id)
+            .or_else(|| self.nested.ids.get(id))
+            .or_else(|| self.primitive.alternate_ids.get(id))
+            .or_else(|| self.nested.alternate_ids.get(id))
+            .copied()
+    }
+
+    /// The canonical tier first, the alias tier only on a miss, and the
+    /// primitive half before the nested one inside each.
     fn position_by_name(&self, branch: &FixBranch, name: &str) -> Option<usize> {
         let probe = BranchedName::probe(branch, name);
-        self.names
+        self.primitive
+            .names
             .get(&probe)
-            .or_else(|| self.aliases.get(&probe))
+            .or_else(|| self.nested.names.get(&probe))
+            .or_else(|| self.primitive.aliases.get(&probe))
+            .or_else(|| self.nested.aliases.get(&probe))
             .copied()
     }
 
     /// Refuse `field` when any key it claims is held by a position other than
     /// `owner`.
+    ///
+    /// Every tier reads both halves before it passes, which is what keeps the
+    /// identity space one: a nested field claiming a primitive field's
+    /// identifier, name, alternate identifier or alias is refused exactly as
+    /// two primitives claiming it are, and the refusal names both fields.
     fn check_free(
         &self,
         field: &Field,
@@ -611,51 +738,55 @@ impl FixRegistry {
         owner: Option<usize>,
     ) -> Result<()> {
         let branch = id.branch();
+        let halves = [&self.primitive, &self.nested];
         let other = |position: &usize| Some(*position) != owner;
-        if let Some(holder) = self.ids.get(id).filter(|position| other(position)) {
-            return Err(conflict(Held::Id(id.clone()), field, &self.fields[*holder]));
+        for half in halves {
+            if let Some(holder) = half.ids.get(id).filter(|position| other(position)) {
+                return Err(conflict(Held::Id(id.clone()), field, &self.fields[*holder]));
+            }
         }
-        if let Some(holder) = self
-            .names
-            .get(&BranchedName::probe(branch, field.name()))
-            .filter(|position| other(position))
-        {
-            return Err(conflict(
-                Held::Name(branch, field.name()),
-                field,
-                &self.fields[*holder],
-            ));
-        }
-        for alternate in alternate {
-            if let Some(holder) = self
-                .alternate_ids
-                .get(alternate)
-                .filter(|position| other(position))
-            {
+        let name = BranchedName::probe(branch, field.name());
+        for half in halves {
+            if let Some(holder) = half.names.get(&name).filter(|position| other(position)) {
                 return Err(conflict(
-                    Held::AlternateId(alternate.clone()),
+                    Held::Name(branch, field.name()),
                     field,
                     &self.fields[*holder],
                 ));
             }
         }
+        for alternate in alternate {
+            for half in halves {
+                if let Some(holder) = half
+                    .alternate_ids
+                    .get(alternate)
+                    .filter(|position| other(position))
+                {
+                    return Err(conflict(
+                        Held::AlternateId(alternate.clone()),
+                        field,
+                        &self.fields[*holder],
+                    ));
+                }
+            }
+        }
         for alias in field.as_fix().aliases() {
-            if let Some(holder) = self
-                .aliases
-                .get(&BranchedName::probe(branch, alias))
-                .filter(|position| other(position))
-            {
-                return Err(conflict(
-                    Held::Alias(branch, alias),
-                    field,
-                    &self.fields[*holder],
-                ));
+            let probe = BranchedName::probe(branch, alias);
+            for half in halves {
+                if let Some(holder) = half.aliases.get(&probe).filter(|position| other(position)) {
+                    return Err(conflict(
+                        Held::Alias(branch, alias),
+                        field,
+                        &self.fields[*holder],
+                    ));
+                }
             }
         }
         Ok(())
     }
 
-    /// Point every key of the field at `position` at that position.
+    /// Point every key of the field at `position` at that position, in the
+    /// half its datatype names.
     ///
     /// The keys were parsed and validated when the field entered, and a
     /// stored field is handed out by shared reference only, so the parses
@@ -664,20 +795,25 @@ impl FixRegistry {
         let field = &self.fields[position];
         let view = field.as_fix();
         let branch = view.branch().unwrap_or_default();
+        let half = if is_nested(field) {
+            &mut self.nested
+        } else {
+            &mut self.primitive
+        };
         if let Ok(Some(id)) = view.id() {
-            self.ids.insert(id, position);
+            half.ids.insert(id, position);
         }
         for tag in view.tags().unwrap_or_default() {
             if let Ok(id) = FixId::from_parts(branch.clone(), tag) {
-                self.alternate_ids.insert(id, position);
+                half.alternate_ids.insert(id, position);
             }
         }
-        self.names.insert(
+        half.names.insert(
             BranchedKey(BranchedName::owned(branch.clone(), field.name())),
             position,
         );
         for alias in view.aliases() {
-            self.aliases.insert(
+            half.aliases.insert(
                 BranchedKey(BranchedName::owned(branch.clone(), alias)),
                 position,
             );
@@ -686,31 +822,40 @@ impl FixRegistry {
 
     /// Drop every entry of the field at `position` that still points at
     /// `pointing_at`, leaving another field's entries under the same key alone.
+    ///
+    /// The field at hand names its own half, so a field that changed
+    /// nestedness is unindexed from the half it was in and indexed into the
+    /// one it now belongs to.
     fn unindex(&mut self, position: usize, pointing_at: usize) {
         let field = &self.fields[position];
         let view = field.as_fix();
         let branch = view.branch().unwrap_or_default();
+        let half = if is_nested(field) {
+            &mut self.nested
+        } else {
+            &mut self.primitive
+        };
         if let Ok(Some(id)) = view.id() {
-            if self.ids.get(&id) == Some(&pointing_at) {
-                self.ids.remove(&id);
+            if half.ids.get(&id) == Some(&pointing_at) {
+                half.ids.remove(&id);
             }
         }
         for tag in view.tags().unwrap_or_default() {
             let Ok(id) = FixId::from_parts(branch.clone(), tag) else {
                 continue;
             };
-            if self.alternate_ids.get(&id) == Some(&pointing_at) {
-                self.alternate_ids.remove(&id);
+            if half.alternate_ids.get(&id) == Some(&pointing_at) {
+                half.alternate_ids.remove(&id);
             }
         }
         let name = BranchedName::probe(&branch, field.name());
-        if self.names.get(&name) == Some(&pointing_at) {
-            self.names.remove(&name);
+        if half.names.get(&name) == Some(&pointing_at) {
+            half.names.remove(&name);
         }
         for alias in view.aliases() {
             let alias = BranchedName::probe(&branch, alias);
-            if self.aliases.get(&alias) == Some(&pointing_at) {
-                self.aliases.remove(&alias);
+            if half.aliases.get(&alias) == Some(&pointing_at) {
+                half.aliases.remove(&alias);
             }
         }
     }
@@ -745,17 +890,15 @@ fn merge(stored: &Field, incoming: &Field) -> Result<Field> {
 }
 
 impl fmt::Debug for FixRegistry {
-    /// Renders every field under its canonical identifier, in identifier
-    /// order.
+    /// Renders every field of both halves under its canonical identifier, in
+    /// identifier order.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_map()
-            .entries(
-                self.ids
-                    .iter()
-                    .map(|(id, position)| (id.to_string(), &self.fields[*position])),
-            )
-            .finish()
+        let mut entries = Merged::over(self);
+        let mut map = formatter.debug_map();
+        while let Some((id, position)) = entries.next() {
+            map.entry(&id.to_string(), &self.fields[*position]);
+        }
+        map.finish()
     }
 }
 
@@ -778,14 +921,119 @@ impl<'registry> IntoIterator for &'registry FixRegistry {
     }
 }
 
+/// One entry of a canonical-identifier index: the identity and the position.
+type Entry<'registry> = (&'registry FixId, &'registry usize);
+
+/// One half's canonical-identifier index, walked from either end.
+///
+/// It is [`std::iter::Peekable`] plus a back end: a merge has to compare the
+/// next entry of each side before it takes one, and [`FixFieldIter`] merges
+/// from both ends. An exhausted inner iterator falls back to whatever the
+/// other end buffered, so one entry is never yielded twice and never lost
+/// between the two ends.
+#[derive(Clone, Debug)]
+struct Side<'registry> {
+    entries: btree_map::Iter<'registry, FixId, usize>,
+    front: Option<Entry<'registry>>,
+    back: Option<Entry<'registry>>,
+}
+
+impl<'registry> Side<'registry> {
+    /// Walk one half's canonical-identifier index.
+    fn over(ids: &'registry BTreeMap<FixId, usize>) -> Self {
+        Self {
+            entries: ids.iter(),
+            front: None,
+            back: None,
+        }
+    }
+
+    /// The next entry from the front, left in place.
+    fn peek_front(&mut self) -> Option<Entry<'registry>> {
+        if self.front.is_none() {
+            self.front = self.entries.next().or_else(|| self.back.take());
+        }
+        self.front
+    }
+
+    /// The next entry from the back, left in place.
+    fn peek_back(&mut self) -> Option<Entry<'registry>> {
+        if self.back.is_none() {
+            self.back = self.entries.next_back().or_else(|| self.front.take());
+        }
+        self.back
+    }
+
+    /// Take the entry [`Self::peek_front`] answers.
+    fn take_front(&mut self) -> Option<Entry<'registry>> {
+        self.peek_front();
+        self.front.take()
+    }
+
+    /// Take the entry [`Self::peek_back`] answers.
+    fn take_back(&mut self) -> Option<Entry<'registry>> {
+        self.peek_back();
+        self.back.take()
+    }
+
+    /// How many entries are still to be yielded, buffered ends included.
+    fn len(&self) -> usize {
+        self.entries.len() + usize::from(self.front.is_some()) + usize::from(self.back.is_some())
+    }
+}
+
+/// The two halves' canonical-identifier indexes, merged in identifier order.
+///
+/// No identifier is in both halves - the identity space is one - so the merge
+/// is a strict interleave and the order is exactly one undivided index's.
+#[derive(Clone, Debug)]
+struct Merged<'registry> {
+    primitive: Side<'registry>,
+    nested: Side<'registry>,
+}
+
+impl<'registry> Merged<'registry> {
+    /// Merge the canonical-identifier indexes of `registry`.
+    fn over(registry: &'registry FixRegistry) -> Self {
+        Self {
+            primitive: Side::over(&registry.primitive.ids),
+            nested: Side::over(&registry.nested.ids),
+        }
+    }
+
+    /// The smallest identifier not yet taken from either end.
+    fn next(&mut self) -> Option<Entry<'registry>> {
+        match (self.primitive.peek_front(), self.nested.peek_front()) {
+            (Some(primitive), Some(nested)) if nested.0 < primitive.0 => self.nested.take_front(),
+            (Some(_), _) => self.primitive.take_front(),
+            (None, _) => self.nested.take_front(),
+        }
+    }
+
+    /// The largest identifier not yet taken from either end.
+    fn next_back(&mut self) -> Option<Entry<'registry>> {
+        match (self.primitive.peek_back(), self.nested.peek_back()) {
+            (Some(primitive), Some(nested)) if nested.0 > primitive.0 => self.nested.take_back(),
+            (Some(_), _) => self.primitive.take_back(),
+            (None, _) => self.nested.take_back(),
+        }
+    }
+
+    /// How many entries are still to be yielded.
+    fn len(&self) -> usize {
+        self.primitive.len() + self.nested.len()
+    }
+}
+
 /// The fields of a registry in ascending canonical-identifier order.
 ///
-/// Answered by [`FixRegistry::iter`]. It walks the canonical-identifier
-/// index, which is branch-major and then by tag, so the order is
-/// deterministic whatever order the fields entered in.
+/// Answered by [`FixRegistry::iter`]. It merges the two halves'
+/// canonical-identifier indexes, each branch-major and then by tag, so the
+/// order is deterministic whatever order the fields entered in and whichever
+/// half each landed in.
 #[derive(Clone, Debug)]
 pub struct FixFieldIter<'registry> {
-    positions: btree_map::Values<'registry, FixId, usize>,
+    entries: Merged<'registry>,
     fields: &'registry [Field],
 }
 
@@ -793,21 +1041,22 @@ impl<'registry> Iterator for FixFieldIter<'registry> {
     type Item = &'registry Field;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.positions
+        self.entries
             .next()
-            .map(|position| &self.fields[*position])
+            .map(|(_, position)| &self.fields[*position])
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.positions.size_hint()
+        let len = self.entries.len();
+        (len, Some(len))
     }
 }
 
 impl DoubleEndedIterator for FixFieldIter<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.positions
+        self.entries
             .next_back()
-            .map(|position| &self.fields[*position])
+            .map(|(_, position)| &self.fields[*position])
     }
 }
 

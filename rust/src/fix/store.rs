@@ -6,25 +6,36 @@
 //! the one thing this module composes, and it is rendered indented so the
 //! tracked seed reads in a diff.
 //!
-//! The layout is `<root>/records/<branch>/<shard>.json`, because a shard
-//! index is only unique inside one dictionary. The record is authoritative
-//! and the folder is layout: a field whose `fix:branch` contradicts the
-//! folder it was read from is a typed error naming both.
+//! The layout is `<root>/primitive/<branch>/<shard>.json` and
+//! `<root>/nested/<branch>/<shard>.json`: a shard index is only unique inside
+//! one dictionary, and the two trees separate the scalar fields a transcriber
+//! resolves per wire tag from the components and repeating groups that carry a
+//! whole subtree. Either tree may be absent - a dictionary of only scalars
+//! writes no `nested/`, and a root with neither loads as the empty registry.
+//! The record is authoritative and the folder is layout: a field whose
+//! `fix:branch` contradicts the branch folder it was read from, or whose
+//! datatype contradicts the tree, is a typed error naming both.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::registry::canonical_id;
+use super::registry::{canonical_id, is_nested};
 use super::{FixBranch, FixRegistry};
 use crate::generic::Holder;
 use crate::io::IOBase;
 use crate::text::Formatting;
 use crate::{Error, Field, Result, Scalar, Url};
 
-/// The folder under a registry root that holds its branch folders.
-const RECORDS: &str = "records";
+/// The tree under a registry root holding the branch folders of the fields
+/// whose datatype is one scalar value.
+const PRIMITIVE: &str = "primitive";
+/// The tree holding the branch folders of the components and repeating
+/// groups.
+const NESTED: &str = "nested";
+/// Both trees, in the order a load walks them and a write cleans them.
+const TREES: [&str; 2] = [PRIMITIVE, NESTED];
 /// How many consecutive tags one shard holds.
 const SHARD_WIDTH: i32 = 100;
 /// The extension every shard carries.
@@ -60,9 +71,17 @@ fn shard_index(entry: &Holder) -> Option<i32> {
     stem.parse().ok()
 }
 
-/// The branch a folder under `records/` names.
+/// The branch a folder under a tree root names.
 fn branch_of(entry: &Holder) -> Result<FixBranch> {
     FixBranch::from_str(entry.url().and_then(Url::file_name).unwrap_or_default())
+}
+
+/// The tree a field's definition belongs in.
+///
+/// One predicate decides both the registry half and the file, so a field
+/// cannot be indexed as one thing and written as another.
+fn tree_of(field: &Field) -> &'static str {
+    if is_nested(field) { NESTED } else { PRIMITIVE }
 }
 
 /// Where something was read from, for the failure that names it.
@@ -128,56 +147,67 @@ fn in_shard(error: Error, at: At<'_>) -> Error {
 }
 
 impl FixRegistry {
-    /// Loads every shard under `<handle>/records`.
+    /// Loads every shard under `<handle>/primitive` and `<handle>/nested`.
     ///
-    /// The one loader: the process default resolves through it too. A folder
-    /// that does not exist lists nothing and answers the empty registry,
-    /// which is every handle's laziness contract rather than a failure.
+    /// The one loader: the process default resolves through it too. A tree
+    /// that does not exist lists nothing, so a dictionary of only scalars and
+    /// a root with neither tree both load without a failure - every handle's
+    /// laziness contract. Both trees are read whole, because a name has no
+    /// numeric structure to pick a shard with; what the split buys the loader
+    /// is that the nested definitions are a contiguous, skippable half.
     ///
     /// # Errors
     ///
-    /// Returns a typed error naming the URL when `records/` holds a leaf
-    /// rather than only branch folders, when a folder's name is not a
-    /// branch, or when a shard is not a JSON array of field documents,
-    /// holds a field without a `fix:tag`, with a tag another shard owns, with
-    /// a branch its folder contradicts, or that the registry refuses.
+    /// Returns a typed error naming the URL when a tree holds a leaf rather
+    /// than only branch folders, when a folder's name is not a branch, or
+    /// when a shard is not a JSON array of field documents, holds a field
+    /// without a `fix:tag`, with a tag another shard owns, with a branch its
+    /// folder contradicts, with a datatype its tree contradicts, or that the
+    /// registry refuses.
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
         let mut registry = Self::new();
-        let records = handle.child_by_path(RECORDS)?;
-        for folder in records.ls(false, false) {
-            let folder = folder?;
-            if !folder.is_container() {
-                return Err(Error::InvalidRecord {
-                    path: records.url().map_or_else(
-                        || SmolStr::new_static(RECORDS),
-                        |url| format_smolstr!("{url}"),
-                    ),
-                    reason: crate::text::expected_got(
-                        "only branch folders",
-                        format_args!(
-                            "the leaf {:?}",
-                            folder.url().and_then(Url::file_name).unwrap_or_default()
+        for tree in TREES {
+            let root = handle.child_by_path(tree)?;
+            for folder in root.ls(false, false) {
+                let folder = folder?;
+                if !folder.is_container() {
+                    return Err(Error::InvalidRecord {
+                        path: root
+                            .url()
+                            .map_or_else(|| SmolStr::new(tree), |url| format_smolstr!("{url}")),
+                        reason: crate::text::expected_got(
+                            "only branch folders",
+                            format_args!(
+                                "the leaf {:?}",
+                                folder.url().and_then(Url::file_name).unwrap_or_default()
+                            ),
                         ),
-                    ),
-                });
-            }
-            let branch =
-                branch_of(&folder).map_err(|error| in_shard(error, At("folder", folder.url())))?;
-            for entry in folder.ls(false, false) {
-                let entry = entry?;
-                let Some(shard) = shard_index(&entry) else {
-                    continue;
-                };
-                registry
-                    .load_shard(&entry, &branch, shard)
-                    .map_err(|error| in_shard(error, At("shard", entry.url())))?;
+                    });
+                }
+                let branch = branch_of(&folder)
+                    .map_err(|error| in_shard(error, At("folder", folder.url())))?;
+                for entry in folder.ls(false, false) {
+                    let entry = entry?;
+                    let Some(shard) = shard_index(&entry) else {
+                        continue;
+                    };
+                    registry
+                        .load_shard(&entry, tree, &branch, shard)
+                        .map_err(|error| in_shard(error, At("shard", entry.url())))?;
+                }
             }
         }
         Ok(registry)
     }
 
     /// Read one shard's fields into this registry.
-    fn load_shard(&mut self, entry: &Holder, branch: &FixBranch, shard: i32) -> Result<()> {
+    fn load_shard(
+        &mut self,
+        entry: &Holder,
+        tree: &'static str,
+        branch: &FixBranch,
+        shard: i32,
+    ) -> Result<()> {
         let document = crate::from_json_scalar(entry.read_all_bytes()?)?;
         let Some(fields) = document.as_sequence() else {
             return Err(Error::Codec {
@@ -214,62 +244,90 @@ impl FixRegistry {
                     ),
                 });
             }
+            if tree_of(&field) != tree {
+                return Err(Error::InvalidRecord {
+                    path: field.name().into(),
+                    reason: crate::text::expected_got(
+                        format_args!("a datatype of the {tree} tree it was read from"),
+                        format_args!("{}", field.dtype()),
+                    ),
+                });
+            }
             self.insert(field)?;
         }
         Ok(())
     }
 
-    /// Writes every populated shard under `<root>/records/<branch>` and
-    /// removes the shards and branch folders no field populates any more.
+    /// Writes every populated shard under `<root>/<tree>/<branch>` and removes
+    /// the shards, branch folders and whole trees no field populates any more.
     ///
-    /// Each shard is written whole through the handle's ordinary byte write,
-    /// creating the file and its parents, so a failed write leaves the prior
-    /// shard intact. The cleanup afterwards is what keeps a reload from
-    /// resurrecting a removed field.
+    /// Each field is routed to its tree by the one predicate the registry
+    /// indexes it with, so a field whose datatype changed from scalar to
+    /// nested is written to its new tree and the file it left is removed by
+    /// the same cleanup that removes an emptied shard. Each shard is written
+    /// whole through the handle's ordinary byte write, creating the file and
+    /// its parents, so a failed write leaves the prior shard intact. The
+    /// cleanup afterwards is what keeps a reload from resurrecting a removed
+    /// field.
     ///
     /// # Errors
     ///
     /// Returns the handle's write, listing or removal failure, the parse
     /// failure when a stored `fix:` property is malformed, or the encoder's.
     pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()> {
-        let mut shards: BTreeMap<(FixBranch, i32), Vec<&Field>> = BTreeMap::new();
+        let mut shards: BTreeMap<(&'static str, FixBranch, i32), Vec<&Field>> = BTreeMap::new();
         for field in self {
             let id = canonical_id(field)?;
             shards
-                .entry((id.branch().clone(), shard_of(id.tag())))
+                .entry((tree_of(field), id.branch().clone(), shard_of(id.tag())))
                 .or_default()
                 .push(field);
         }
-        for ((branch, shard), fields) in &shards {
+        for ((tree, branch, shard), fields) in &shards {
             let document =
                 Scalar::from_sequence(fields.iter().map(|field| (*field).clone().into_value()));
             let bytes =
                 crate::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
-            root.child_by_path(&format!("{RECORDS}/{branch}/{shard}.{EXTENSION}"))?
+            root.child_by_path(&format!("{tree}/{branch}/{shard}.{EXTENSION}"))?
                 .write_all_bytes(&bytes)?;
         }
-        let held: BTreeSet<&FixBranch> = shards.keys().map(|(branch, _)| branch).collect();
-        for folder in root.child_by_path(RECORDS)?.ls(false, false) {
-            let mut folder = folder?;
-            // A leaf here is what `from_handle` refuses, and a folder whose
-            // name is not a branch is nothing this registry wrote: the
-            // writer neither owns either nor deletes them.
-            if !folder.is_container() {
+        for tree in TREES {
+            let held: BTreeSet<&FixBranch> = shards
+                .keys()
+                .filter(|(populated, _, _)| *populated == tree)
+                .map(|(_, branch, _)| branch)
+                .collect();
+            let mut root = root.child_by_path(tree)?;
+            if held.is_empty() {
+                // A tree no field populates goes whole, so a dictionary of
+                // only scalars leaves no empty `nested/` behind. Absence is
+                // never a removal failure, so an unwritten tree needs no
+                // separate check.
+                root.remove(true)?;
                 continue;
             }
-            let Ok(branch) = branch_of(&folder) else {
-                continue;
-            };
-            if !held.contains(&branch) {
-                folder.remove(true)?;
-                continue;
-            }
-            for entry in folder.ls(false, false) {
-                let mut entry = entry?;
-                if shard_index(&entry)
-                    .is_some_and(|shard| !shards.contains_key(&(branch.clone(), shard)))
-                {
-                    entry.remove(false)?;
+            for folder in root.ls(false, false) {
+                let mut folder = folder?;
+                // A leaf here is what `from_handle` refuses, and a folder whose
+                // name is not a branch is nothing this registry wrote: the
+                // writer neither owns either nor deletes them.
+                if !folder.is_container() {
+                    continue;
+                }
+                let Ok(branch) = branch_of(&folder) else {
+                    continue;
+                };
+                if !held.contains(&branch) {
+                    folder.remove(true)?;
+                    continue;
+                }
+                for entry in folder.ls(false, false) {
+                    let mut entry = entry?;
+                    if shard_index(&entry)
+                        .is_some_and(|shard| !shards.contains_key(&(tree, branch.clone(), shard)))
+                    {
+                        entry.remove(false)?;
+                    }
                 }
             }
         }

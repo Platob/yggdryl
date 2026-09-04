@@ -40,6 +40,26 @@ fn full(name: &str, tag: i32, tags: &[i32], aliases: &[&str]) -> Field {
     field
 }
 
+/// A nullable Struct component - a FIX component - carrying one canonical tag.
+fn component(name: &str, tag: i32) -> Field {
+    let mut field = DataType::from_fields([tagged("Member", 9_001)])
+        .unwrap()
+        .nullable_field(name);
+    field.as_fix_mut().set_tag(tag).unwrap();
+    field
+}
+
+/// A nullable List of Struct - a FIX repeating group - carrying one canonical
+/// tag.
+fn group(name: &str, tag: i32) -> Field {
+    let item = DataType::from_fields([tagged("Member", 9_002)])
+        .unwrap()
+        .required_field("item");
+    let mut field = DataType::list(item).nullable_field(name);
+    field.as_fix_mut().set_tag(tag).unwrap();
+    field
+}
+
 /// A fresh directory of this test's own under the platform temporary root.
 fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary()
@@ -1262,6 +1282,231 @@ fn iteration_and_the_cursor_are_branch_major() {
 }
 
 #[test]
+fn nestedness_routes_a_field_by_the_core_predicate_alone() {
+    // `DataType::is_nested` is the whole rule, and it already unwraps a
+    // dictionary to its value type: a dictionary-encoded Struct is nested and
+    // a dictionary-encoded Utf8 is not.
+    let encoded_text = {
+        let mut field = DataType::dictionary(DataType::Int32, DataType::Utf8)
+            .unwrap()
+            .nullable_field("Coded");
+        field.as_fix_mut().set_tag(60).unwrap();
+        field
+    };
+    let encoded_struct = {
+        let inner = DataType::from_fields([tagged("Member", 9_003)]).unwrap();
+        let mut field = DataType::dictionary(DataType::Int32, inner)
+            .unwrap()
+            .nullable_field("Boxed");
+        field.as_fix_mut().set_tag(61).unwrap();
+        field
+    };
+    let fields = [
+        (tagged("Symbol", 55), false),
+        (encoded_text, false),
+        (component("Instrument", 1_000), true),
+        (group("NoPartyIDs", 453), true),
+        (encoded_struct, true),
+    ];
+    let registry = FixRegistry::from_fields(fields.iter().map(|(field, _)| field.clone())).unwrap();
+    for (field, nested) in &fields {
+        let id = field.as_fix().id().unwrap().unwrap();
+        assert_eq!(
+            field.dtype().is_nested(),
+            *nested,
+            "{} is the core predicate's answer",
+            field.name()
+        );
+        assert_eq!(
+            registry.indexed_as_nested(&id),
+            Some(*nested),
+            "{} landed in the wrong half",
+            field.name()
+        );
+    }
+    assert_eq!(registry.len(), 5);
+}
+
+#[test]
+fn the_primitive_half_is_read_first_without_reordering_the_tiers() {
+    // The split partitions each index; it is not a fifth tier above them. A
+    // canonical key of one half therefore still beats an alternate key of the
+    // other, in both directions.
+    let mut shadowing = tagged("Shadow", 5);
+    shadowing.as_fix_mut().set_tags(&[453]).unwrap();
+    shadowing.as_fix_mut().set_aliases(["Parties"]).unwrap();
+    let mut parties = group("Parties", 453);
+    parties.as_fix_mut().set_aliases(["Group"]).unwrap();
+    let registry = FixRegistry::from_fields([shadowing.clone(), parties.clone()]).unwrap();
+    // The nested field holds 453 and the name "Parties" canonically; the
+    // primitive one holds them as an alternate tag and an alias.
+    assert_eq!(
+        registry.get_field_by_tag(453).map(Field::name),
+        Some("Parties")
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name(&FixBranch::STANDARD, "parties")
+            .map(Field::name),
+        Some("Parties")
+    );
+    assert_eq!(
+        registry.get_field_by_tag(5).map(Field::name),
+        Some("Shadow")
+    );
+
+    // The mirror: the primitive field holds them canonically and the nested
+    // one as an alternate tag and an alias.
+    let mut price = tagged("Price", 44);
+    price.as_fix_mut().set_aliases(["Rate"]).unwrap();
+    let mut legs = group("NoLegs", 555);
+    legs.as_fix_mut().set_tags(&[44]).unwrap();
+    legs.as_fix_mut().set_aliases(["Price"]).unwrap();
+    let registry = FixRegistry::from_fields([legs.clone(), price.clone()]).unwrap();
+    assert_eq!(
+        registry.get_field_by_tag(44).map(Field::name),
+        Some("Price")
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name(&FixBranch::STANDARD, "PRICE")
+            .map(Field::name),
+        Some("Price")
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name(&FixBranch::STANDARD, "rate")
+            .map(Field::name),
+        Some("Price"),
+        "an alias the nested half does not hold still resolves"
+    );
+    assert_eq!(
+        registry.get_field_by_tag(555).map(Field::name),
+        Some("NoLegs")
+    );
+}
+
+#[test]
+fn a_nested_field_can_never_claim_a_primitive_field_key() {
+    // The identity space is not split, so every conflict a pair of primitives
+    // would raise, a primitive and a nested field raise too - naming both.
+    let stored = full("Symbol", 55, &[65], &["Ticker"]);
+    let registry = FixRegistry::from_fields([stored]).unwrap();
+    let mut same_alternate = component("Legs", 5_556);
+    same_alternate.as_fix_mut().set_tags(&[65]).unwrap();
+    let mut same_alias = component("Legs", 5_557);
+    same_alias.as_fix_mut().set_aliases(["ticker"]).unwrap();
+    let cases = [
+        (group("Parties", 55), "identifier standard:55"),
+        (
+            group("symbol", 5_555),
+            "name \"symbol\" in branch \"standard\"",
+        ),
+        (same_alternate, "alternate identifier standard:65"),
+        (same_alias, "alias \"ticker\" in branch \"standard\""),
+    ];
+    for (claimant, key) in cases {
+        let claiming = claimant.name().to_owned();
+        let mut probed = registry.clone();
+        let error = probed.insert(claimant).unwrap_err();
+        let Error::Conflict { path, .. } = &error else {
+            panic!("{key}: {error}");
+        };
+        assert!(path.contains(key), "{path}");
+        assert!(path.contains(&claiming), "{path}");
+        assert!(path.ends_with(", held by Symbol"), "{path}");
+        // Nothing was written: the registry still holds the one field.
+        assert_eq!(probed, registry, "{key}: a refusal changes nothing");
+        assert_eq!(probed.len(), 1);
+    }
+
+    // And the other direction: a primitive claiming a nested field's key.
+    let mut registry = FixRegistry::from_fields([group("NoPartyIDs", 453)]).unwrap();
+    let error = registry.insert(tagged("Parties", 453)).unwrap_err();
+    let Error::Conflict { path, .. } = &error else {
+        panic!("{error}");
+    };
+    assert!(path.contains("identifier standard:453"), "{path}");
+    assert!(path.ends_with(", held by NoPartyIDs"), "{path}");
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
+fn iteration_and_the_cursor_merge_both_halves_in_identifier_order() {
+    let registry = FixRegistry::from_fields([
+        tagged("Account", 1),
+        group("NoPartyIDs", 453),
+        tagged("Symbol", 55),
+        component("Instrument", 1_000),
+        tagged("Text", 58),
+    ])
+    .unwrap();
+    let expected = ["Account", "Symbol", "Text", "NoPartyIDs", "Instrument"];
+    assert_eq!(
+        registry.iter().map(Field::name).collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(registry.iter().len(), 5);
+    assert_eq!(registry.len(), 5);
+    assert!(!registry.is_empty());
+
+    // The same order from the back, and the two ends meet without yielding an
+    // entry twice or losing one between them.
+    let mut backwards: Vec<&str> = registry.iter().rev().map(Field::name).collect();
+    backwards.reverse();
+    assert_eq!(backwards, expected);
+    let mut iter = registry.iter();
+    let mut ends = Vec::new();
+    while let Some(front) = iter.next() {
+        ends.push(front.name());
+        if let Some(back) = iter.next_back() {
+            ends.push(back.name());
+        }
+    }
+    ends.sort_unstable();
+    let mut sorted = expected;
+    sorted.sort_unstable();
+    assert_eq!(ends, sorted);
+
+    // The cursor a binding advances walks the merge too.
+    let mut walked = Vec::new();
+    let mut cursor = None;
+    while let Some(field) = registry.next_field_after(cursor.as_ref()) {
+        walked.push(field.name());
+        cursor = field.as_fix().id().unwrap();
+    }
+    assert_eq!(walked, expected);
+
+    // Equality and Debug span both halves.
+    let mut reversed: Vec<Field> = registry.iter().cloned().collect();
+    reversed.reverse();
+    assert_eq!(registry, FixRegistry::from_fields(reversed).unwrap());
+    let rendered = format!("{registry:?}");
+    assert!(rendered.starts_with("{\"standard:1\": "), "{rendered}");
+    assert!(
+        rendered.find("\"standard:453\"").unwrap() < rendered.find("\"standard:1000\"").unwrap(),
+        "{rendered}"
+    );
+
+    // One half alone still iterates whole.
+    let nested_only =
+        FixRegistry::from_fields([group("NoPartyIDs", 453), component("Instrument", 1_000)])
+            .unwrap();
+    assert_eq!(
+        nested_only.iter().map(Field::name).collect::<Vec<_>>(),
+        ["NoPartyIDs", "Instrument"]
+    );
+    assert_eq!(
+        nested_only
+            .iter()
+            .rev()
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        ["Instrument", "NoPartyIDs"]
+    );
+}
+
+#[test]
 fn shard_arithmetic_picks_the_one_shard_that_holds_a_tag() {
     assert_eq!(shard_of(0), 0);
     assert_eq!(shard_of(99), 0);
@@ -1320,14 +1565,14 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
 
     // A malformed shard anywhere is an error naming the shard.
     std::fs::write(
-        location.join("records").join("standard").join("0.json"),
+        location.join("primitive").join("standard").join("0.json"),
         b"not json",
     )
     .unwrap();
     let error = autoload(Some(&location.to_string_lossy()), None).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("0.json"), "{message}");
-    std::fs::write(home.join(".config/fix/records/standard/0.json"), b"[1]").unwrap();
+    std::fs::write(home.join(".config/fix/primitive/standard/0.json"), b"[1]").unwrap();
     let error = autoload(None, Some(config)).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("0.json"), "{message}");

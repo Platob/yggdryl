@@ -4,7 +4,7 @@ use std::hint::black_box;
 use criterion::Criterion;
 use yggdryl::{Field, FixBranch, FixId, FixKey, FixRegistry};
 
-use super::{generated, seed, two_branches, venue};
+use super::{generated, mixed_nestedness, seed, two_branches, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
@@ -14,6 +14,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The four outcomes a lookup has, over the tracked seed.
     group.bench_function("tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
+    });
+    // The same hit named by the half it lands in, beside the nested one it
+    // does not: `Symbol` is a scalar and `NoPartyIDs` a repeating group, so a
+    // nested hit is the primitive probe missing and the nested one hitting.
+    group.bench_function("primitive_tag_hit", |bencher| {
+        bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
+    });
+    group.bench_function("nested_tag_hit", |bencher| {
+        bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(453)));
     });
     group.bench_function("alternate_tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(20)));
@@ -136,6 +145,19 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(&large).get_field_by_name(&standard, black_box("GENERATEDALIAS02000"))
         });
+    });
+
+    // The realistic shape: a few thousand fields of which one in fifty is a
+    // repeating group, so the primitive half holds nearly all of them. Tag
+    // 7000 is one of the groups and 7001 the scalar beside it.
+    let realistic =
+        FixRegistry::from_fields(registry.iter().cloned().chain(mixed_nestedness(4_000)))
+            .expect("the generated dictionary has no conflict");
+    group.bench_function("primitive_tag_hit_4000", |bencher| {
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(7_001)));
+    });
+    group.bench_function("nested_tag_hit_4000", |bencher| {
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(7_000)));
     });
     group.finish();
 }

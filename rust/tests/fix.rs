@@ -43,9 +43,9 @@ fn seed_root() -> PathBuf {
         .join("fix")
 }
 
-/// The sorted names under `root/records/<branch>`.
-fn shard_files(root: &Path, branch: &str) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(root.join("records").join(branch))
+/// The sorted names under `root/<tree>/<branch>`.
+fn shard_files(root: &Path, tree: &str, branch: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))
         .map(|entries| {
             entries
                 .map(|entry| {
@@ -101,9 +101,11 @@ fn shards_round_trip_through_a_temporary_folder() {
     .unwrap();
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "standard"),
+        shard_files(&root, "primitive", "standard"),
         ["0.json", "1.json", "100.json"]
     );
+    // Every field here is a scalar, so no `nested/` tree is written at all.
+    assert!(!root.join("nested").exists());
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
@@ -131,11 +133,11 @@ fn shards_round_trip_through_a_temporary_folder() {
     registry.insert(exec_type).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "standard"),
+        shard_files(&root, "primitive", "standard"),
         ["0.json", "1.json", "100.json"]
     );
     let zero =
-        std::fs::read_to_string(root.join("records").join("standard").join("0.json")).unwrap();
+        std::fs::read_to_string(root.join("primitive").join("standard").join("0.json")).unwrap();
     assert!(!zero.contains("ExecType"), "{zero}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded.field_by_tag(20).unwrap().name(), "ExecType");
@@ -145,32 +147,32 @@ fn shards_round_trip_through_a_temporary_folder() {
     // reload cannot resurrect it; a leaf that is not a shard is left alone
     // inside a branch folder.
     std::fs::write(
-        root.join("records").join("standard").join("README.md"),
+        root.join("primitive").join("standard").join("README.md"),
         b"notes",
     )
     .unwrap();
     assert_eq!(registry.remove(10_000).unwrap().name(), "TenThousand");
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "standard"),
+        shard_files(&root, "primitive", "standard"),
         ["0.json", "1.json", "README.md"]
     );
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert!(reloaded.get_field_by_tag(10_000).is_none());
     assert_eq!(reloaded, registry);
 
-    // A leaf directly under `records/` is the stale pre-branch layout, and
+    // A leaf directly under a tree root is the stale pre-branch layout, and
     // it is a typed error rather than a folder skipped into an empty load.
-    std::fs::write(root.join("records").join("0.json"), b"[]").unwrap();
+    std::fs::write(root.join("primitive").join("0.json"), b"[]").unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("only branch folders"), "{message}");
     assert!(message.contains("the leaf \"0.json\""), "{message}");
-    std::fs::remove_file(root.join("records").join("0.json")).unwrap();
+    std::fs::remove_file(root.join("primitive").join("0.json")).unwrap();
 
     // A folder whose name is no branch keeps its typed parse failure and
     // its byte position, with the folder named.
-    std::fs::create_dir_all(root.join("records").join("2bad")).unwrap();
+    std::fs::create_dir_all(root.join("primitive").join("2bad")).unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
     assert!(
         matches!(
@@ -184,7 +186,7 @@ fn shards_round_trip_through_a_temporary_folder() {
         "{error}"
     );
     assert!(error.to_string().contains("2bad"), "{error}");
-    std::fs::remove_dir_all(root.join("records").join("2bad")).unwrap();
+    std::fs::remove_dir_all(root.join("primitive").join("2bad")).unwrap();
 
     // An absent folder loads as the empty registry.
     let absent = Folder::new(root.join("absent")).unwrap();
@@ -201,7 +203,13 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     let (group, instrument) = nested();
     let registry = FixRegistry::from_fields([group.clone(), instrument.clone()]).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root, "standard"), ["10.json", "4.json"]);
+    // Both a component and a repeating group are nested, so the primitive
+    // tree is never written at all.
+    assert_eq!(
+        shard_files(&root, "nested", "standard"),
+        ["10.json", "4.json"]
+    );
+    assert!(!root.join("primitive").exists());
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
@@ -235,19 +243,114 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
 }
 
 #[test]
+fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
+    let root = scratch("trees");
+    let mut folder = Folder::new(&root).unwrap();
+    let (group, instrument) = nested();
+    let mut registry = FixRegistry::from_fields([
+        tagged("Symbol", 55),
+        tagged("Price", 44),
+        group.clone(),
+        instrument.clone(),
+    ])
+    .unwrap();
+    registry.write_into(&mut folder).unwrap();
+
+    // Each field is written to the tree its datatype names, and the shard
+    // arithmetic inside a tree is the one it always was.
+    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(
+        shard_files(&root, "nested", "standard"),
+        ["10.json", "4.json"]
+    );
+    let reloaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(reloaded, registry);
+    assert_eq!(reloaded.len(), 4);
+    assert_eq!(
+        reloaded.iter().map(Field::name).collect::<Vec<_>>(),
+        ["Price", "Symbol", "NoPartyIDs", "Instrument"]
+    );
+
+    // A field whose datatype turns nested moves tree, and the file it left
+    // must not keep the stale definition.
+    let mut widened = DataType::from_fields([tagged("Root", 9_100)])
+        .unwrap()
+        .nullable_field("Symbol");
+    widened.as_fix_mut().set_tag(55).unwrap();
+    assert_eq!(
+        registry.insert(widened.clone()).unwrap().unwrap().name(),
+        "Symbol"
+    );
+    registry.write_into(&mut folder).unwrap();
+    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(
+        shard_files(&root, "nested", "standard"),
+        ["0.json", "10.json", "4.json"]
+    );
+    let stale =
+        std::fs::read_to_string(root.join("primitive").join("standard").join("0.json")).unwrap();
+    assert!(!stale.contains("Symbol"), "{stale}");
+    let moved =
+        std::fs::read_to_string(root.join("nested").join("standard").join("0.json")).unwrap();
+    assert!(moved.contains("Symbol"), "{moved}");
+    let reloaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(reloaded, registry);
+    assert_eq!(reloaded.field_by_tag(55).unwrap(), &widened);
+
+    // Emptying one tree removes it whole, so a reload cannot resurrect it.
+    for tag in [453, 1000, 55] {
+        assert!(registry.remove(tag).is_some(), "{tag}");
+    }
+    registry.write_into(&mut folder).unwrap();
+    assert!(!root.join("nested").exists());
+    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+
+    // A leaf directly under either tree root is a typed error naming it,
+    // never a folder skipped into a silently short load.
+    for tree in ["primitive", "nested"] {
+        std::fs::create_dir_all(root.join(tree)).unwrap();
+        std::fs::write(root.join(tree).join("0.json"), b"[]").unwrap();
+        let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+        assert!(message.contains("only branch folders"), "{tree}: {message}");
+        assert!(message.contains("the leaf \"0.json\""), "{tree}: {message}");
+        assert!(message.contains(tree), "{tree}: {message}");
+        std::fs::remove_file(root.join(tree).join("0.json")).unwrap();
+    }
+
+    // The record is authoritative and the tree is layout: a scalar filed
+    // under `nested/` names its datatype and the tree it was read from.
+    std::fs::create_dir_all(root.join("nested").join("standard")).unwrap();
+    std::fs::write(
+        root.join("nested").join("standard").join("0.json"),
+        yggdryl::json::into_bytes(&Scalar::from_sequence([tagged("Text", 58).into_value()]))
+            .unwrap(),
+    )
+    .unwrap();
+    let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+    assert!(
+        message.contains("a datatype of the nested tree it was read from"),
+        "{message}"
+    );
+    assert!(message.contains("utf8"), "{message}");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_malformed_shard_names_its_location() {
     let root = scratch("malformed");
-    let records = root.join("records").join("standard");
-    std::fs::create_dir_all(&records).unwrap();
+    let shards = root.join("primitive").join("standard");
+    std::fs::create_dir_all(&shards).unwrap();
     let folder = Folder::new(&root).unwrap();
 
     // Not JSON at all.
-    std::fs::write(records.join("0.json"), b"not json").unwrap();
+    std::fs::write(shards.join("0.json"), b"not json").unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
     assert!(message.contains("0.json"), "{message}");
 
     // JSON, but not an array of fields.
-    std::fs::write(records.join("0.json"), b"{}").unwrap();
+    std::fs::write(shards.join("0.json"), b"{}").unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
     assert!(
         message.contains("a JSON array of field documents"),
@@ -258,7 +361,7 @@ fn a_malformed_shard_names_its_location() {
     // A field without a tag, then a tag another shard owns.
     let untagged = Scalar::from_sequence([DataType::Utf8.nullable_field("Symbol").into_value()]);
     std::fs::write(
-        records.join("0.json"),
+        shards.join("0.json"),
         yggdryl::json::into_bytes(&untagged).unwrap(),
     )
     .unwrap();
@@ -267,7 +370,7 @@ fn a_malformed_shard_names_its_location() {
     assert!(error.to_string().contains("0.json"), "{error}");
     let misplaced = Scalar::from_sequence([tagged("ExecType", 150).into_value()]);
     std::fs::write(
-        records.join("0.json"),
+        shards.join("0.json"),
         yggdryl::json::into_bytes(&misplaced).unwrap(),
     )
     .unwrap();
@@ -284,7 +387,7 @@ fn a_malformed_shard_names_its_location() {
         tagged("Ticker", 55).into_value(),
     ]);
     std::fs::write(
-        records.join("0.json"),
+        shards.join("0.json"),
         yggdryl::json::into_bytes(&twice).unwrap(),
     )
     .unwrap();
@@ -304,10 +407,10 @@ fn a_malformed_shard_names_its_location() {
         .set_id(&FixId::from_parts(cme(), 5001).unwrap())
         .unwrap();
     let elsewhere = Scalar::from_sequence([venue.clone().into_value()]);
-    std::fs::create_dir_all(root.join("records").join("cme")).unwrap();
-    std::fs::remove_file(records.join("0.json")).unwrap();
+    std::fs::create_dir_all(root.join("primitive").join("cme")).unwrap();
+    std::fs::remove_file(shards.join("0.json")).unwrap();
     std::fs::write(
-        root.join("records").join("cme").join("0.json"),
+        root.join("primitive").join("cme").join("0.json"),
         yggdryl::json::into_bytes(&elsewhere).unwrap(),
     )
     .unwrap();
@@ -316,9 +419,9 @@ fn a_malformed_shard_names_its_location() {
         message.contains("a tag of shard 0, from 0 to 99"),
         "{message}"
     );
-    std::fs::remove_file(root.join("records").join("cme").join("0.json")).unwrap();
+    std::fs::remove_file(root.join("primitive").join("cme").join("0.json")).unwrap();
     std::fs::write(
-        root.join("records").join("standard").join("50.json"),
+        root.join("primitive").join("standard").join("50.json"),
         yggdryl::json::into_bytes(&elsewhere).unwrap(),
     )
     .unwrap();
@@ -355,8 +458,11 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
 
     // Each branch owns its own shard arithmetic: 5001 is shard 50 and
     // 9000 is shard 90 inside `cme`, and 55 is shard 0 inside `standard`.
-    assert_eq!(shard_files(&root, "standard"), ["0.json"]);
-    assert_eq!(shard_files(&root, "cme"), ["50.json", "90.json"]);
+    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(
+        shard_files(&root, "primitive", "cme"),
+        ["50.json", "90.json"]
+    );
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
@@ -384,7 +490,7 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
         "TradeID"
     );
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root, "cme"), ["90.json"]);
+    assert_eq!(shard_files(&root, "primitive", "cme"), ["90.json"]);
     assert_eq!(
         registry
             .remove(&FixId::from_parts(cme, 9000).unwrap())
@@ -393,8 +499,8 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
         "VenueID"
     );
     registry.write_into(&mut folder).unwrap();
-    assert!(!root.join("records").join("cme").exists());
-    assert_eq!(shard_files(&root, "standard"), ["0.json"]);
+    assert!(!root.join("primitive").join("cme").exists());
+    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.len(), 1);
@@ -474,7 +580,9 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
         &DataType::decimal128(20, 8).unwrap()
     );
 
-    // The layout is exactly `records/<branch>/<shard>.json`, nothing else.
+    // The layout is exactly `<tree>/<branch>/<shard>.json`, nothing else: the
+    // 33 scalar fields in the primitive tree and the one repeating group,
+    // `NoPartyIDs`, alone in the nested one.
     let mut entries: Vec<String> = folder
         .ls(true, true)
         .map(|entry| {
@@ -491,11 +599,14 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     assert_eq!(
         entries,
         [
-            "records",
-            "records/standard",
-            "records/standard/0.json",
-            "records/standard/1.json",
-            "records/standard/4.json"
+            "nested",
+            "nested/standard",
+            "nested/standard/4.json",
+            "primitive",
+            "primitive/standard",
+            "primitive/standard/0.json",
+            "primitive/standard/1.json",
+            "primitive/standard/4.json"
         ]
     );
 
@@ -504,15 +615,24 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     let mut target = Folder::new(&copy).unwrap();
     registry.write_into(&mut target).unwrap();
     assert_eq!(
-        shard_files(&copy, "standard"),
+        shard_files(&copy, "primitive", "standard"),
         ["0.json", "1.json", "4.json"]
     );
-    for name in ["0.json", "1.json", "4.json"] {
-        let tracked = std::fs::read(root.join("records").join("standard").join(name)).unwrap();
-        let emitted = std::fs::read(copy.join("records").join("standard").join(name)).unwrap();
+    assert_eq!(shard_files(&copy, "nested", "standard"), ["4.json"]);
+    for (tree, name) in [
+        ("primitive", "0.json"),
+        ("primitive", "1.json"),
+        ("primitive", "4.json"),
+        ("nested", "4.json"),
+    ] {
+        let tracked = std::fs::read(root.join(tree).join("standard").join(name)).unwrap();
+        let emitted = std::fs::read(copy.join(tree).join("standard").join(name)).unwrap();
         // The checkout may carry CRLF; the emitted document never does.
         let tracked: Vec<u8> = tracked.into_iter().filter(|byte| *byte != b'\r').collect();
-        assert_eq!(tracked, emitted, "{name} differs from what the store emits");
+        assert_eq!(
+            tracked, emitted,
+            "{tree}/{name} differs from what the store emits"
+        );
     }
     let _ = std::fs::remove_dir_all(&copy);
 }

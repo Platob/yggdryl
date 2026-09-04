@@ -65,6 +65,40 @@ pub(crate) fn generated(count: usize) -> Vec<Field> {
         .collect()
 }
 
+/// One in fifty generated fields is a repeating group.
+///
+/// A dictionary's components and repeating groups are a small minority of it,
+/// and that ratio is what the primitive/nested split is measured against: the
+/// hot half stays nearly the whole dictionary and the cold one stays small.
+const NESTED_EVERY: usize = 50;
+
+/// `count` generated fields with tags from 5000 up, one in
+/// [`NESTED_EVERY`] of them a repeating group.
+///
+/// The nested tags are exactly `5000 + NESTED_EVERY * k`, so a benchmark
+/// names a primitive hit and a nested hit by arithmetic.
+pub(crate) fn mixed_nestedness(count: usize) -> Vec<Field> {
+    (0..count)
+        .map(|index| {
+            let tag = i32::try_from(5_000 + index).expect("a small tag");
+            let mut field = if index % NESTED_EVERY == 0 {
+                let item = DataType::from_fields([DataType::Utf8.nullable_field("Member")])
+                    .expect("a struct item")
+                    .required_field("item");
+                DataType::list(item).nullable_field(format!("NoGroup{index:05}"))
+            } else {
+                DataType::Int64.nullable_field(format!("Generated{index:05}"))
+            };
+            field.as_fix_mut().set_tag(tag).expect("a generated tag");
+            field
+                .as_fix_mut()
+                .set_aliases([format!("MixedAlias{index:05}")])
+                .expect("a generated alias");
+            field
+        })
+        .collect()
+}
+
 /// A fresh directory of this benchmark's own under the platform temporary root.
 pub(crate) fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary()

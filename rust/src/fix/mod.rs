@@ -41,6 +41,14 @@
 //! 1. canonical identifier, then alternate identifiers;
 //! 2. canonical name folded, then aliases folded.
 //!
+//! Each of those four indexes is split in two by the field's own
+//! [`DataType::is_nested`](crate::DataType::is_nested), and every tier reads
+//! the primitive half before the nested one - primitive identifier, nested
+//! identifier, primitive alternate identifier, nested alternate identifier,
+//! and the same for names and aliases. The split is locality and nothing
+//! else: the identity space is one, every write checks both halves, and a key
+//! therefore resolves to exactly the field one undivided index would answer.
+//!
 //! Names fold ASCII case once, on the way in, so a query spelled in any case
 //! finds the field and the answer is always the canonical spelling. A tag
 //! query never consults names and a name query never consults tags, an alias
@@ -55,18 +63,34 @@
 //! # Storage
 //!
 //! A registry reads and writes through one [`IOBase`](crate::io::IOBase)
-//! folder handle. Shards live at `<root>/records/<branch>/<shard>.json`
-//! with `shard = tag / 100`, each a JSON array of the core field document
-//! ordered by canonical identifier, so a tag reaches exactly one shard by
-//! arithmetic and an alternate tag never fans a field across shards. Every
-//! shard is loaded on open: [`FixRegistry::from_handle`] lists `records/`,
-//! reads each branch folder and inserts every shard's fields, because a
-//! name has no numeric structure to pick a shard with, and a dictionary is
-//! small enough that loading it whole costs less than the machinery of
-//! loading it lazily. A folder that does not exist loads as the empty
-//! registry, which is the laziness contract of every handle; a leaf directly
-//! under `records/`, a folder whose name is not a branch, and a shard that
-//! exists but does not parse are all typed errors naming their URL.
+//! folder handle, into two trees:
+//!
+//! ```text
+//! <root>/primitive/<branch>/<shard>.json
+//! <root>/nested/<branch>/<shard>.json
+//! ```
+//!
+//! `primitive` holds the fields whose datatype is one scalar value and
+//! `nested` the ones whose datatype carries a subtree - in FIX terms a
+//! component, which is a Struct, and a repeating group, which is a List of
+//! that Struct. Isolating them means the lookup a transcriber performs per
+//! wire tag touches only the small, hot half, and that a dictionary's nested
+//! definitions can be read, written and skipped as a unit. `shard = tag / 100`
+//! is unchanged inside each tree, each shard a JSON array of the core field
+//! document ordered by canonical identifier, so a tag reaches exactly one
+//! shard by arithmetic and an alternate tag never fans a field across shards.
+//!
+//! Every shard of both trees is loaded on open:
+//! [`FixRegistry::from_handle`] lists each tree, reads each branch folder and
+//! inserts every shard's fields, because a name has no numeric structure to
+//! pick a shard with, and a dictionary is small enough that loading it whole
+//! costs less than the machinery of loading it lazily. Both trees are
+//! optional: a dictionary of only scalars writes no `nested/` at all and a
+//! root holding neither loads as the empty registry, which is the laziness
+//! contract of every handle. A leaf directly under a tree root, a folder
+//! whose name is not a branch, a field whose datatype contradicts its tree,
+//! and a shard that exists but does not parse are all typed errors naming
+//! their URL.
 //!
 //! # The process default
 //!

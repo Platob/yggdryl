@@ -288,6 +288,11 @@ carries its own tag, and the one path resolver every [`Field`](field.md) has rea
 `NoPartyIDs.PartyID` descends through the list's item because a list is transparent to a dotted
 path, and `NoPartyIDs.item.PartyID` spells the same route.
 
+Those two shapes are exactly what `field.dtype().is_nested()` answers `true` for, and that one
+core predicate is what puts a field in the registry's nested index half and in the `nested/`
+storage tree - see [the registry](#the-registry-resolves-in-tiers) and
+[storage](#storage-is-two-trees-of-shards-under-one-handle).
+
 === "Rust"
 
     ```rust
@@ -358,17 +363,37 @@ path, and `NoPartyIDs.item.PartyID` spells the same route.
 
 `FixRegistry` holds its fields in one vector and four indexes of positions over it: canonical and
 alternate `FixId`s in two ordered maps, canonical names and aliases in two maps keyed by a
-branch beside ASCII-case-folded text. A lookup consults a later tier only when every earlier one
-missed, **inside one branch**:
+branch beside ASCII-case-folded text. Each of the four is kept in two halves, one for the
+primitive fields and one for the nested ones. A lookup consults a later tier only when every
+earlier one missed, **inside one branch**:
 
 1. canonical identifier, then alternate identifiers;
 2. canonical name folded, then aliases folded.
+
+Each of those four indexes is **split into a primitive and a nested half**, by the same
+`field.dtype().is_nested()` that decides [which tree a field is stored in](#storage-is-two-trees-of-shards-under-one-handle),
+and each tier reads the primitive half before the nested one:
+
+1. primitive canonical identifier, then nested canonical identifier;
+2. primitive alternate identifier, then nested alternate identifier;
+3. primitive canonical name folded, then nested canonical name folded;
+4. primitive alias folded, then nested alias folded.
+
+**The split is a locality optimization and cannot change which field a key resolves to.** The
+identity space is not split: a nested field can never claim a primitive field's identifier, name,
+alternate identifier or alias, because every insert and merge checks *both* halves before anything
+is written, and the conflict it raises names both fields exactly as a conflict between two
+primitives does. The split is also a partition of each index rather than a fifth tier above them,
+so a canonical key of the nested half still beats an alternate key of the primitive one. What
+changes is only how many entries the hot probe walks: components and repeating groups are a small
+minority of a dictionary, so the primitive half a transcriber probes per wire tag stays nearly the
+whole of it and the cold half stays small.
 
 A tag query never consults names and a name query never consults tags. Either answers the canonical
 field - its own `name()`, never the spelling the query used - and an alias can never take a name
 away from a field that claims it canonically. Folding happens once, at insert; a probe hashes the
 caller's text folded as it reads it and carries an inline branch beside it, so a hit allocates
-nothing.
+nothing, in either half.
 
 No lookup ever crosses a branch. **A bare tag and a bare name are the standard branch** -
 never whichever dictionaries happen to be loaded, which would make an answer depend on a process's
@@ -392,8 +417,10 @@ raises a typed absence naming the key (`tag 35`, `identifier cme:5001`, `name "M
 
 `FixKey` is built from an `i32`, a `&FixId`, a `&str` or a `&String`, exactly as `FieldKey` is, so
 `registry.field(35)` and `registry.field("MsgType")` are one call. `contains` takes the same key,
-`iter` walks the fields in ascending identifier order - branch-major, then by tag - and
-`len` / `is_empty` count them.
+`iter` walks the fields in ascending identifier order - branch-major, then by tag - merging the two
+halves as it goes, so a nested field takes its place among the primitives rather than after them
+and the order is exactly what one undivided index would give. `next_field_after`, the cursor a
+binding advances with, walks the same merge, and `len` / `is_empty` count both halves.
 
 Identity is the `FixId` and, separately, the pair of branch and folded canonical name. Two
 fields may share neither, nor an alternate identifier, nor an alias. **Two branches may define
@@ -408,7 +435,7 @@ the identity: the incoming field wins the name spelling, nullability and every m
 declare; the stored field keeps the keys only it declares; `tags` and `aliases` concatenate,
 incoming first, deduplicated, order kept; a datatype disagreement is a typed error naming both,
 never a silent widening. Both build the result first and check every key it would claim, so a
-refusal leaves the vector and all four indexes untouched. `remove` takes a tag, an identifier or a
+refusal leaves the vector and both halves of all four indexes untouched. `remove` takes a tag, an identifier or a
 name and answers the field.
 
 === "Rust"
@@ -589,11 +616,29 @@ name and answers the field.
     assert.equal(registry.getFieldByTag(65), null)
     ```
 
-## Storage is shards under one handle
+## Storage is two trees of shards under one handle
 
-A registry reads and writes through one [`IOBase`](io.md) folder handle and nothing else. Shards
-live at `<root>/records/<branch>/<shard>.json` with `shard = tag / 100`, so `standard:55` is
-`records/standard/0.json` and `cme:5001` is `records/cme/50.json`: the branch level sits above
+A registry reads and writes through one [`IOBase`](io.md) folder handle and nothing else, into two
+trees:
+
+```text
+<root>/primitive/<branch>/<shard>.json
+<root>/nested/<branch>/<shard>.json
+```
+
+**`primitive` holds the fields whose datatype is one scalar value and `nested` the ones whose
+datatype carries a subtree.** What counts as nested is `field.dtype().is_nested()`, the core
+predicate and the only one: it already unwraps a dictionary to its value type and a run-end
+encoding to its values, so a dictionary-encoded Struct is nested and a dictionary-encoded Utf8 is
+not. In FIX terms the nested fields are exactly the components - a Struct whose children are its
+members - and the repeating groups - a List of that Struct; every price, quantity, timestamp and
+character code is primitive. Components and groups are a small minority of any dictionary but they
+carry a whole subtree each, so isolating them means the lookup a transcriber performs thousands of
+times per message touches only the small, hot half, and a dictionary's nested definitions can be
+read, written and skipped as a unit.
+
+`shard = tag / 100` is unchanged inside each tree, so `standard:55` is
+`primitive/standard/0.json` and `cme:5001` is `primitive/cme/50.json`: the branch level sits above
 the shard level because a shard index is only unique inside one dictionary, a tag then reaches
 exactly one shard by arithmetic, and an alternate tag is an index entry that never fans a field
 across shards. Each shard is a JSON array of the core field document - what `Field::into_value`
@@ -603,26 +648,36 @@ else is composed: no envelope, no version marker. The branch segment is the cano
 text, whose grammar - a leading letter, no separators, no `.` or `..` - makes it a safe single path
 segment.
 
+**Both trees are optional.** A dictionary of only scalars writes no `nested/` folder at all, a
+dictionary of only components and groups writes no `primitive/`, and a root holding neither loads
+as the empty registry.
+
 **The record is authoritative and the folder is layout.** A field's own `fix:branch` decides
-which dictionary it belongs to; a field whose branch contradicts the folder it was read from is
-a typed error naming both. A standard field states nothing, so it costs no key.
+which dictionary it belongs to and its own datatype decides which tree it belongs to; a field whose
+branch contradicts the folder, or whose datatype contradicts the tree, is a typed error naming
+both. A standard field states nothing, so it costs no key.
 
-`from_handle` is the one loader. It lists `records/` and expects **branch folders only**: a leaf
-directly under `records/` is a typed error naming it, and a folder whose name is not a branch
-keeps `FixBranch::from_str`'s typed parse failure and its byte position with the folder URL
-attached. Inside a branch folder it reads every `<n>.json` leaf and inserts its fields, leaving
-anything else alone; every shard is loaded on open, because a name has no numeric structure to pick
-a shard with and a dictionary is small enough that loading it whole costs less than lazy machinery.
-A folder that does not exist lists nothing and answers the empty registry, as every handle's
-laziness contract says; a shard that exists but does not parse, holds a field without a tag or with
-a tag another shard owns, or holds a field the registry refuses, is a typed error naming the
-shard's URL. `write_into` writes every populated shard whole - creation is a write consequence -
-then removes any `<n>.json` no field populates and any branch folder the registry holds no field
-for, so a reload cannot resurrect a removed field or a dropped dictionary.
+`from_handle` is the one loader. It lists each tree and expects **branch folders only**: a leaf
+directly under `primitive/` or `nested/` is a typed error naming it, and a folder whose name is not
+a branch keeps `FixBranch::from_str`'s typed parse failure and its byte position with the folder
+URL attached. Inside a branch folder it reads every `<n>.json` leaf and inserts its fields, leaving
+anything else alone; every shard of both trees is loaded on open, because a name has no numeric
+structure to pick a shard with and a dictionary is small enough that loading it whole costs less
+than lazy machinery. A folder that does not exist lists nothing and answers the empty registry, as
+every handle's laziness contract says; a shard that exists but does not parse, holds a field
+without a tag or with a tag another shard owns, or holds a field the registry refuses, is a typed
+error naming the shard's URL. `write_into` routes each field to its tree and writes every populated
+shard whole - creation is a write consequence - then removes any `<n>.json` no field populates, any
+branch folder the registry holds no field for, and any tree that ends up empty, so a reload cannot
+resurrect a removed field, a dropped dictionary, or a definition that moved trees when its datatype
+changed.
 
-Nothing recognizes the flat `<root>/records/<shard>.json` layout: a dictionary written by an
-earlier version is a load error rather than a silently empty registry, because a default that
-quietly loaded nothing would turn every later lookup into a wrong answer.
+Nothing reads a `records/` folder any more, and nothing reads the flat
+`<root>/records/<shard>.json` that came before it. The project keeps no backward compatibility, so
+neither layout is migrated and neither is detected: a root holding only `records/` has neither tree
+and therefore loads as the empty registry, exactly as an untouched machine does. Re-writing such a
+root through `write_into` produces the two trees and leaves the stale `records/` folder alone,
+because the writer owns only what it wrote.
 
 === "Rust"
 
@@ -647,41 +702,54 @@ quietly loaded nothing would turn every later lookup into a wrong answer.
     let mut trade = DataType::Utf8.nullable_field("TradeID");
     trade.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5001)?)?;
     fields.push(trade);
+    // One repeating group, which is the only field of the nested tree.
+    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])?
+        .required_field("item");
+    let mut parties = DataType::list(item).nullable_field("NoPartyIDs");
+    parties.as_fix_mut().set_tag(453)?;
+    fields.push(parties);
     let mut registry = FixRegistry::from_fields(fields)?;
     registry.write_into(&mut folder)?;
 
-    let shards = |branch: &str| -> yggdryl::Result<Vec<String>> {
-        let mut names: Vec<String> = std::fs::read_dir(root.join("records").join(branch))?
+    let shards = |tree: &str, branch: &str| -> yggdryl::Result<Vec<String>> {
+        let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))?
             .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
             .collect::<Result<_, _>>()?;
         names.sort();
         Ok(names)
     };
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert_eq!(shards("standard")?, ["0.json", "1.json"]);
+    assert_eq!(shards("primitive", "standard")?, ["0.json", "1.json"]);
     // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert_eq!(shards("cme")?, ["50.json"]);
+    assert_eq!(shards("primitive", "cme")?, ["50.json"]);
+    // The group is nested, so it is the nested tree's only shard: 453 / 100.
+    assert_eq!(shards("nested", "standard")?, ["4.json"]);
 
     let reloaded = FixRegistry::from_handle(&folder)?;
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.field_by_tag(20)?.name(), "ExecType");
+    assert_eq!(reloaded.field_by_tag(453)?.name(), "NoPartyIDs");
     assert_eq!(reloaded.field_by_id(&FixId::from_str("cme:5001")?)?.name(), "TradeID");
 
     // Removing the only field of a shard removes the shard on the next write,
-    // and emptying a branch removes its folder whole.
+    // emptying a branch removes its folder whole, and emptying a tree removes
+    // the tree.
     registry.remove(100);
     registry.remove(150);
+    registry.remove(453);
     registry.remove(&FixId::from_str("cme:5001")?);
     registry.write_into(&mut folder)?;
-    assert!(!root.join("records").join("standard").join("1.json").exists());
-    assert!(!root.join("records").join("cme").exists());
+    assert!(!root.join("primitive").join("standard").join("1.json").exists());
+    assert!(!root.join("primitive").join("cme").exists());
+    assert!(!root.join("nested").exists());
     assert_eq!(FixRegistry::from_handle(&folder)?.len(), 2);
 
-    // The flat pre-branch layout is a typed error, never a silent empty load.
-    std::fs::write(root.join("records").join("0.json"), b"[]")?;
+    // A leaf directly under a tree root is a typed error, never a silent
+    // empty load.
+    std::fs::write(root.join("primitive").join("0.json"), b"[]")?;
     let error = FixRegistry::from_handle(&folder).unwrap_err();
     assert!(error.to_string().contains("only branch folders"), "{error}");
-    std::fs::remove_file(root.join("records").join("0.json"))?;
+    std::fs::remove_file(root.join("primitive").join("0.json"))?;
 
     // A folder that is not there loads as empty and is not created.
     let absent = Folder::new(root.join("absent"))?;
@@ -780,8 +848,9 @@ quietly loaded nothing would turn every later lookup into a wrong answer.
     fs.rmSync(workspace, { recursive: true, force: true })
     ```
 
-The repository ships a seed dictionary at `config/fix/records/standard/<shard>.json`, written by
-`write_into` itself: a small FIX 4.4 subset - the standard header and trailer, the order and execution fields,
+The repository ships a seed dictionary at `config/fix/primitive/standard/<shard>.json` and
+`config/fix/nested/standard/4.json`, written by `write_into` itself: a small FIX 4.4 subset - the
+standard header and trailer, the order and execution fields,
 the `Parties` component as a repeating group - with the specification's wording as each
 description, a display name where FIX has one, declared aliases such as `Ticker` for `Symbol`, and
 one alternate tag (`20` for `ExecType`, the pre-4.3 `ExecTransType` whose role it absorbed). It is
@@ -1162,11 +1231,15 @@ ordered and canonicalized against the same root.
   `FixId::from_parts` wherever an identity is built: a setter, a read, an insert, or a shard load.
 - `remove` takes a tag, an identifier or a name, never a path: a component's member is not a
   registry entry. A bare tag or name means the standard branch here too.
-- `from_handle` admits only branch folders directly under `records/`; a leaf there is the stale
-  flat layout and a typed error, never a folder skipped into an empty load. Inside a branch
+- `from_handle` admits only branch folders directly under `primitive/` and `nested/`; a leaf there
+  is a typed error, never a folder skipped into an empty load. Inside a branch
   folder it reads only leaves named `<n>.json` with a decimal `n`; a README beside them is ignored
-  and left alone by `write_into`'s cleanup. A field stored in the wrong shard, or in a folder its
-  own `fix:branch` contradicts, is refused with both sides named.
+  and left alone by `write_into`'s cleanup. A field stored in the wrong shard, in a folder its
+  own `fix:branch` contradicts, or in the tree its own datatype contradicts, is refused with both
+  sides named.
+- The primitive and nested halves partition every index but not the identity space. A conflict is
+  looked for in both halves before anything is written, so a repeating group can no more take a
+  scalar's tag, name, alternate tag or alias than another scalar can.
 - `YGGDRYL_FIX_REGISTRY` must name an existing directory: a configured location that is not there
   is a misconfiguration, not a first run, so it is an error where `~/.config/fix` would be empty.
 - `FixMsg::get_by_tag` renders an unknown tag on the stack, so a miss allocates nothing. The
@@ -1185,80 +1258,109 @@ cargo bench -p yggdryl --bench fix -- --warm-up-time 0.2 --measurement-time 0.5 
 
 | resolution | estimate |
 | --- | ---: |
-| `get_field_by_tag` hit | 27.4 ns |
-| `get_field_by_tag` alternate-tag hit | 54.2 ns |
-| `get_field_by_tag` miss | 48.4 ns |
-| `get_field_by_id` vendor hit, over 1034 fields in two branches | 127.0 ns |
-| `get_field_by_name` hit | 79.4 ns |
-| `get_field_by_name` hit, query differently cased | 80.7 ns |
-| `get_field_by_name` alias hit | 136.5 ns |
-| `get_field_by_name` miss | 121.2 ns |
-| `get_field_by_name` vendor-branch hit, over 1034 fields | 84.2 ns |
-| `get_field_by_name` vendor-branch alias hit, over 1034 fields | 123.4 ns |
-| `get_field_by_tag` cross-branch miss, over 1034 fields | 175.6 ns |
-| `get_field_by_tag` standard hit, over 1034 fields in two branches | 118.3 ns |
-| `get_field(FixKey::Tag)` generic tag hit | 28.2 ns |
-| `get_field("Symbol")` generic name hit | 90.6 ns |
-| `field(55)` failing-half tag hit | 27.7 ns |
-| `get_field_by_path`, one segment | 86.5 ns |
-| `get_field_by_path`, two segments (`NoPartyIDs.PartyID`) | 255.3 ns |
-| `get_field_by_path`, three segments (`NoPartyIDs.item.PartyRole`) | 280.1 ns |
-| `FixId::to_string` | 205.6 ns |
-| `FixId::from_str("cme:5001")` | 142.8 ns |
-| baseline `HashMap<FixId, Field>` hit | 39.0 ns |
-| baseline `HashMap<i32, Field>` tag hit | 19.5 ns |
-| baseline `HashMap<String, Field>` hit after lowercasing the query | 96.6 ns |
-| tag hit over 4034 fields | 175.3 ns |
-| name hit over 4034 fields | 104.8 ns |
-| alias hit over 4034 fields | 139.4 ns |
+| `get_field_by_tag` primitive hit | 32.3 ns |
+| `get_field_by_tag` nested hit (`NoPartyIDs`, tag 453) | 93.1 ns |
+| `get_field_by_tag` alternate-tag hit | 65.8 ns |
+| `get_field_by_tag` miss | 72.2 ns |
+| `get_field_by_id` vendor hit, over 1034 fields in two branches | 128.1 ns |
+| `get_field_by_name` hit | 81.8 ns |
+| `get_field_by_name` hit, query differently cased | 81.2 ns |
+| `get_field_by_name` alias hit | 191.5 ns |
+| `get_field_by_name` miss | 175.4 ns |
+| `get_field_by_name` vendor-branch hit, over 1034 fields | 89.7 ns |
+| `get_field_by_name` vendor-branch alias hit, over 1034 fields | 175.2 ns |
+| `get_field_by_tag` cross-branch miss, over 1034 fields | 222.1 ns |
+| `get_field_by_tag` standard hit, over 1034 fields in two branches | 137.8 ns |
+| `get_field(FixKey::Tag)` generic tag hit | 32.4 ns |
+| `get_field("Symbol")` generic name hit | 89.2 ns |
+| `field(55)` failing-half tag hit | 31.4 ns |
+| `get_field_by_path`, one segment | 142.6 ns |
+| `get_field_by_path`, two segments (`NoPartyIDs.PartyID`) | 389.4 ns |
+| `get_field_by_path`, three segments (`NoPartyIDs.item.PartyRole`) | 389.2 ns |
+| `FixId::to_string` | 197.6 ns |
+| `FixId::from_str("cme:5001")` | 143.1 ns |
+| baseline `HashMap<FixId, Field>` hit | 39.4 ns |
+| baseline `HashMap<i32, Field>` tag hit | 19.3 ns |
+| baseline `HashMap<String, Field>` hit after lowercasing the query | 97.0 ns |
+| tag hit over 4034 fields, all primitive | 179.5 ns |
+| name hit over 4034 fields, all primitive | 106.4 ns |
+| alias hit over 4034 fields, all primitive | 188.0 ns |
+| primitive tag hit over 4034 fields, one in fifty nested | 201.3 ns |
+| nested tag hit over 4034 fields, one in fifty nested | 268.2 ns |
 
 Mutation clones the dictionary in the batch setup and hands it back as the
 routine's output, so neither the clone nor the drop is inside the timer:
 
 | mutation | estimate |
 | --- | ---: |
-| `insert` into the seed | 5.30 us |
-| `insert` into 4034 fields | 117 us |
-| `from_fields` over 4034 fields | 14.0 ms |
-| `update` merging an alias and an alternate tag into the seed | 9.51 us |
-| the same `update` over 4034 fields | 15.6 us |
-| `remove` from 4034 fields | 11.6 us |
-| `set_branch` on a field whose tags allow it | 822 ns |
-| `set_id` moving a field into a vendor branch | 1.00 us |
+| `insert` into the seed | 5.13 us |
+| `insert` into 4034 fields | 115 us |
+| `from_fields` over 4034 fields | 14.1 ms |
+| `update` merging an alias and an alternate tag into the seed | 9.93 us |
+| the same `update` over 4034 fields | 17.9 us |
+| `remove` from 4034 fields | 10.6 us |
+| `set_branch` on a field whose tags allow it | 816 ns |
+| `set_id` moving a field into a vendor branch | 1.05 us |
 | `set_id` back to the standard branch | 569 ns |
-| `set_branch` refused for a specification tag | 667 ns |
+| `set_branch` refused for a specification tag | 654 ns |
 
 | storage | estimate |
 | --- | ---: |
-| `from_handle`, 1 shard of 10 fields | 861 us |
-| `from_handle`, 10 shards of 10 fields | 5.24 ms |
-| `from_handle`, 100 shards of 10 fields | 48.2 ms |
-| `from_handle`, the seed (3 shards, 34 fields) | 2.06 ms |
-| `from_handle`, two branches (1034 fields, 14 shards) | 17.8 ms |
+| `from_handle`, 1 shard of 10 fields | 962 us |
+| `from_handle`, 10 shards of 10 fields | 5.55 ms |
+| `from_handle`, 100 shards of 10 fields | 62.1 ms |
+| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.87 ms |
+| `from_handle`, two branches (1034 fields, 14 shards) | 19.8 ms |
 | `write_into`, 100 shards | 324 ms |
-| `write_into`, two branches (1034 fields, 14 shards) | 169 ms |
-| explicit-location autoload of the seed (URL parse, folder, load) | 2.12 ms |
+| `write_into`, two branches (1034 fields, 14 shards) | 150 ms |
+| explicit-location autoload of the seed (URL parse, folder, load) | 2.82 ms |
 
-The generic accessor costs the specialized one plus its dispatch, which on a tag is now within the
-noise of the lookup itself: 28.2 ns against 27.4 ns. The specialized pair still exists so a caller
+The generic accessor costs the specialized one plus its dispatch, which on a tag is within the
+noise of the lookup itself: 32.4 ns against 32.3 ns. The specialized pair still exists so a caller
 that already knows which key it holds pays no dispatch, but the dispatch is no longer most of the
 call the way it was when a tag probe was four nanoseconds.
 
 A folded name hit costs what the plain `HashMap<String, Field>` baseline costs *before* that
 baseline lowercases its query - the fold happens inside the hash, so no folded copy is built.
 
-The tag hit is the one number this change moved: it was 4.5 ns against an 18.1 ns
-`HashMap<i32, Field>`, and it is now 27.4 ns against 19.5 ns. Every level of the identifier index
+**What the primitive/nested split cost and did not buy.** The point of the split is locality: the
+hot half a transcriber probes per wire tag holds only the scalars. On this dictionary shape the
+numbers do not show that as a win, and the honest reading is that they show a small loss:
+
+- the primitive tag hit over the seed is 32.3 ns, where the single index measured 27.4 ns. The
+  seed's nested half holds one field of 34, so the primitive map is one entry smaller than the
+  undivided one was - far too little to change a B-tree's depth, and the extra structure costs
+  more than the one entry saves;
+- the primitive tag hit over 4034 fields with one in fifty nested is 201.3 ns, against 179.5 ns for
+  the same hit over 4034 all-primitive fields in the undivided shape. Again: 2% fewer entries in
+  the hot map buys nothing measurable;
+- what clearly did get slower is every probe that misses its first map. A tag miss went from
+  48.4 ns to 72.2 ns, an alias hit from 136.5 ns to 191.5 ns, and a one-segment path from 86.5 ns
+  to 142.6 ns, because each tier now reads two maps instead of one. A nested hit pays that too:
+  93.1 ns over the seed, against 32.3 ns for a primitive one;
+- `from_handle` of the seed went from 2.06 ms to 2.87 ms, because a load now lists two trees where
+  it listed one, and reads four shards where it read three.
+
+So the split earns its place on the layout, not on the lookup: the nested definitions are a
+contiguous half that can be read, written and skipped as a unit, and a field's tree is decided by
+the same predicate that decides its index half. **A dictionary whose nested share is a minority
+does not get a faster primitive hit out of it, and this page does not claim one.** A dictionary
+whose nested half were a large fraction would be the case that pays, and none is measured here.
+
+The tag hit itself is still the number the `FixId` key moved: it was 4.5 ns against an 18.1 ns
+`HashMap<i32, Field>`, and it is 32.3 ns against 19.3 ns. Every level of the identifier index
 compares an inline branch string before an `i32`, and a `FixId` key is 32 bytes where an `i32`
 was 4, so a node spans six cache lines rather than one. Against the baseline that answers the same
-question - `HashMap<FixId, Field>`, 39.0 ns - the ordered index is still 1.4x faster, and it is the
+question - `HashMap<FixId, Field>`, 39.4 ns - the ordered index is still faster, and it is the
 only one of the two that can answer `next_field_after`, `iter` and the store's branch-major
 grouping at all. `HashMap<i32, Field>` is faster only because it cannot hold two branches: it
-answers the ambiguous question this change exists to remove.
+answers the ambiguous question the identity carries.
 
 `from_handle` scales with the number of shards rather than with the fields in them: a shard costs
-roughly half a millisecond to open, read and parse, so the seed's three shards cost about three
-times one shard and a hundred shards cost about a hundred times one.
+roughly half a millisecond to open, read and parse, so the seed's four shards cost about four
+times one shard and a hundred shards cost about a hundred times one. The storage rows are
+filesystem-bound and the wider ones move by tens of percent between runs; read them as orders of
+magnitude rather than as a ranking.
 
 ### The Python boundary
 
@@ -1291,7 +1393,7 @@ ranking of one against another:
 
 A hit costs the native lookup plus one crossing: the key is read once at the boundary and the
 answer is wrapped as a `Field` or a `Scalar`, which clones the stored value rather than borrowing
-it. That wrapping is what the numbers are almost entirely made of - the native tag hit is 27.4 ns,
+it. That wrapping is what the numbers are almost entirely made of - the native tag hit is 32.3 ns,
 an order of magnitude below the crossing - which is why the tiers the Rust table separates are
 indistinguishable here, and why a caller resolving the same field repeatedly should hold the
 answer rather than ask again. A miss is the one case that is reliably cheaper, because nothing is
@@ -1331,7 +1433,7 @@ A miss is the honest price of the crossing itself: 649 ns for the key coercion, 
 and `null` back. Every hit adds the wrapper the answer is put in, and that wrapper is what the rest
 of the numbers are made of - `field.clone()` on an already-held native `Field` costs 3.0 us on this
 machine, so a hit at 3.4 us is a 649 ns lookup plus one `Field` materialization. The native tag hit
-is 27.4 ns, two orders of magnitude below the crossing, which is why the tiers the Rust table
+is 32.3 ns, two orders of magnitude below the crossing, which is why the tiers the Rust table
 separates are indistinguishable here and why a caller resolving the same field repeatedly should
 hold the answer rather than ask again. `FixMsg`'s accessors wrap a `Scalar` instead and cost the
 same shape. `fromHandle` stays close to the native load - the shards are listed, read and parsed
