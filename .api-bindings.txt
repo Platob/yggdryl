@@ -32,7 +32,7 @@
   fix: STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixMsg, FixRegistry, global_registry, install_global_registry
   fix.FixRegistry
     statics: from_fields, from_handle
-    instance: field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, remove, update, write_into
+    instance: field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, remove, remove_by_id, update, write_into
     keys: an int tag (never bool, must fit i32) or a str name/dotted path, both meaning the standard branch - a colon-bearing str is a name, never an identifier; a branch and an identifier are str parsed at the boundary, so field_by_name/field_by_path take the branch first and field_by_id takes "branch:tag"; a malformed one is ValueError, a non-str TypeError; locations take IOBase | Url | str | PathLike
     protocol: mutable, so unhashable; equality by fields; __len__/__bool__/__contains__/__getitem__/__iter__ over Field, lazily in ascending identifier order (branch-major, then tag); insert/update/remove refuse while a message or the process default shares it
   fix.FixMsg

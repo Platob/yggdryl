@@ -333,6 +333,17 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
+    /// Remove the field a canonical or alternate identifier names, answering
+    /// it.
+    ///
+    /// The generic `remove` reaches the standard branch only, because a
+    /// colon-bearing string there is a name; this is how a vendor field
+    /// leaves the dictionary.
+    fn remove_by_id(&mut self, id: &str) -> PyResult<Option<PyField>> {
+        let id = id_from_py(id)?;
+        Ok(self.inner_mut()?.remove(&id).map(PyField::from_inner))
+    }
+
     /// The field a tag or a name reaches; absence is a `KeyError`.
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
         self.field(key)

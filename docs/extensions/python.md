@@ -927,8 +927,8 @@ process default - is a `ValueError` carrying the native message.
 process default, a mutation raises `ValueError` rather than changing a dictionary underneath a
 message that already resolved against it. Build a new registry, or reload it, and mutate that.
 `remove` takes the same key the other three generic entry points take, so it reaches the standard
-branch only; a vendor field leaves by rebuilding the dictionary from the fields that stay - the
-Rust `remove(&FixId)` has no Python spelling.
+branch only; `remove_by_id` is how a vendor field leaves, because a colon-bearing string is a name
+everywhere else and an identifier needs a spelling that says so.
 
 **Values.** `FixMsg` is immutable and behaves like one: stable equality against schema, value and
 dictionary, a `hash()` over schema and value, `copy`/`deepcopy`, and a pickle that carries the

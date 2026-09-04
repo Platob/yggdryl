@@ -998,6 +998,7 @@ fix_default: object = fix_registry_from_fields.get("nope", None)
 fix_replaced: Field | None = fix_registry.insert(fix_field)
 fix_registry.update(fix_field)
 fix_removed: Field | None = fix_registry.remove(38)
+fix_removed_by_id: Field | None = fix_registry.remove_by_id("cme:5001")
 fix_size: int = len(fix_registry_from_fields)
 fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
@@ -1041,6 +1042,7 @@ assert fix_by_path and fix_maybe_by_path and fix_generic and fix_maybe_generic
 assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert fix_removed is None or fix_removed
+assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has
 assert fix_names == [] or fix_names
 assert fix_message_registry and fix_message_field and fix_message_value

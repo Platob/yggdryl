@@ -303,6 +303,15 @@ def test_no_lookup_ever_crosses_a_branch() -> None:
     assert registry.remove("cme:5055") is None
     assert len(registry) == 3
 
+    # A vendor field leaves by its identifier, which is the only spelling that
+    # names one: the generic remove reaches the standard branch only.
+    assert registry.remove_by_id("cme:9999") is None
+    removed = registry.remove_by_id("cme:5055")
+    assert removed is not None and removed.fix.id == "cme:5055"
+    assert len(registry) == 2
+    assert registry.get_field_by_id("cme:5055") is None
+    assert registry.get_field_by_tag(55).fix.id == "standard:55"
+
 
 def test_registry_absence_is_a_key_error_carrying_the_core_message(
     seed: FixRegistry,
