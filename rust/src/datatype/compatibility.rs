@@ -354,7 +354,14 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Ascii32
         | D::Ascii64
         | D::Ascii96
-        | D::Ascii128 => Ok((D::Utf8, true)),
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi => Ok((D::Utf8, true)),
+        // Only Iceberg names an identifier type; everywhere else a GUID
+        // rewrites to the hyphenated spelling it renders as.
+        D::Guid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -450,7 +457,14 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Ascii32
         | D::Ascii64
         | D::Ascii96
-        | D::Ascii128 => Ok((D::Utf8, true)),
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi => Ok((D::Utf8, true)),
+        // Only Iceberg names an identifier type; everywhere else a GUID
+        // rewrites to the hyphenated spelling it renders as.
+        D::Guid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -536,7 +550,14 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Ascii32
         | D::Ascii64
         | D::Ascii96
-        | D::Ascii128 => Ok((D::Utf8, true)),
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi => Ok((D::Utf8, true)),
+        // Only Iceberg names an identifier type; everywhere else a GUID
+        // rewrites to the hyphenated spelling it renders as.
+        D::Guid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -585,7 +606,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Binary
         | D::Utf8
         // `fixed[n]`, which is also how `uuid` is stored.
-        | D::FixedSizeBinary(_) => Ok((dtype.clone(), false)),
+        | D::FixedSizeBinary(_)
+        // Iceberg is the one target that names an identifier type.
+        | D::Guid => Ok((dtype.clone(), false)),
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
@@ -620,7 +643,18 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
         // Iceberg has `string` and `fixed[n]`; an ASCII column is text, so
         // every Iceberg reader must see `USD`, never the padded bytes.
-        D::LargeUtf8 | D::Utf8View | D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => Ok((D::Utf8, true)),
+        D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

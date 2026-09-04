@@ -457,7 +457,9 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = if self.inner.dtype().ascii_width().is_some() {
+        let scalar = if self.inner.dtype().ascii_width().is_some()
+            || matches!(self.inner.dtype(), CoreDataType::Guid)
+        {
             ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
         } else {
             // Project the complete Field so registered extension metadata can

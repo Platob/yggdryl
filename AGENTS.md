@@ -181,9 +181,9 @@ bindings redirect through stable inherent methods.
 Canonical core spellings:
 
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
-  `from_logical_name`, `into_arrow`, `into_json`, `as_fields`,
+  `into_arrow`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `into_scheme_compat`, `dense_union`,
-  `decimal`, `time`, `ascii`, `ascii_width`.
+  `decimal`, `time`, `ascii`, `ascii_width`, `code_name`.
 - `Field`: `from_parts`, `from_str`, `from_arrow`, `from_arrow_ref`,
   `from_json`, `into_arrow`, `into_arrow_ref`, `into_json`, `default_value`,
   `into_scheme_compat`. Use `field`, never `schema`, in options and accessors.

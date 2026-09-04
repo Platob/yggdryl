@@ -1,0 +1,2104 @@
+TAP version 13
+# Subtest: a handler-backed handle is an ordinary handle
+ok 1 - a handler-backed handle is an ordinary handle
+  ---
+  duration_ms: 2.30382
+  type: 'test'
+  ...
+# Subtest: the constructor infers a file system first argument
+ok 2 - the constructor infers a file system first argument
+  ---
+  duration_ms: 1.06825
+  type: 'test'
+  ...
+# Subtest: a handler missing a method is refused by that method
+ok 3 - a handler missing a method is refused by that method
+  ---
+  duration_ms: 0.284417
+  type: 'test'
+  ...
+# Subtest: bytes round trip, and a write publishes when the handle is flushed
+ok 4 - bytes round trip, and a write publishes when the handle is flushed
+  ---
+  duration_ms: 0.909115
+  type: 'test'
+  ...
+# Subtest: a size crosses as a bigint and as an exact number
+ok 5 - a size crosses as a bigint and as an exact number
+  ---
+  duration_ms: 2.320164
+  type: 'test'
+  ...
+# Subtest: folders list, glob, and carry the file system
+ok 6 - folders list, glob, and carry the file system
+  ---
+  duration_ms: 5.361078
+  type: 'test'
+  ...
+# Subtest: a missing location reads empty rather than throwing
+ok 7 - a missing location reads empty rather than throwing
+  ---
+  duration_ms: 2.074746
+  type: 'test'
+  ...
+# Subtest: records round trip through the wrapper, in both encodings
+ok 8 - records round trip through the wrapper, in both encodings
+  ---
+  duration_ms: 33.373534
+  type: 'test'
+  ...
+# Subtest: records round trip over storage that is only a Map
+ok 9 - records round trip over storage that is only a Map
+  ---
+  duration_ms: 5.733
+  type: 'test'
+  ...
+# Subtest: a handler that throws surfaces its own message
+ok 10 - a handler that throws surfaces its own message
+  ---
+  duration_ms: 1.123491
+  type: 'test'
+  ...
+# Subtest: an Iceberg table lives on a file system a caller wrote
+ok 11 - an Iceberg table lives on a file system a caller wrote
+  ---
+  duration_ms: 28.855161
+  type: 'test'
+  ...
+# Subtest: a scope publishes the staged value it wrote
+ok 12 - a scope publishes the staged value it wrote
+  ---
+  duration_ms: 0.503928
+  type: 'test'
+  ...
+# Subtest: open and close bracket the staged state without creating anything
+ok 13 - open and close bracket the staged state without creating anything
+  ---
+  duration_ms: 0.401894
+  type: 'test'
+  ...
+# Subtest: mkdir creates the container on the same file system
+ok 14 - mkdir creates the container on the same file system
+  ---
+  duration_ms: 0.341863
+  type: 'test'
+  ...
+# Subtest: a table hands back a root on its own file system
+ok 15 - a table hands back a root on its own file system
+  ---
+  duration_ms: 21.76457
+  type: 'test'
+  ...
+# Subtest: AvroSchema accepts natural values, native Scalars, JSON text, and bytes
+ok 16 - AvroSchema accepts natural values, native Scalars, JSON text, and bytes
+  ---
+  duration_ms: 3.954774
+  type: 'test'
+  ...
+# Subtest: Avro object containers round-trip writer schema, metadata, and rows
+ok 17 - Avro object containers round-trip writer schema, metadata, and rows
+  ---
+  duration_ms: 4.157072
+  type: 'test'
+  ...
+# Subtest: a reader schema applies aliases, promotions, and defaults natively
+ok 18 - a reader schema applies aliases, promotions, and defaults natively
+  ---
+  duration_ms: 1.968395
+  type: 'test'
+  ...
+# Subtest: all Avro decode paths honor one validated native limits shape
+ok 19 - all Avro decode paths honor one validated native limits shape
+  ---
+  duration_ms: 4.499613
+  type: 'test'
+  ...
+# Subtest: Avro blocks stay compressed and lazy until each block is requested
+ok 20 - Avro blocks stay compressed and lazy until each block is requested
+  ---
+  duration_ms: 2.789594
+  type: 'test'
+  ...
+# Subtest: Avro block resolution compiles once and block limits apply on demand
+ok 21 - Avro block resolution compiles once and block limits apply on demand
+  ---
+  duration_ms: 3.310126
+  type: 'test'
+  ...
+# Subtest: single-object framing uses and verifies the schema fingerprint
+ok 22 - single-object framing uses and verifies the schema fingerprint
+  ---
+  duration_ms: 1.722685
+  type: 'test'
+  ...
+# Subtest: Avro invalid inputs retain native diagnostics and boundary types
+ok 23 - Avro invalid inputs retain native diagnostics and boundary types
+  ---
+  duration_ms: 1.115396
+  type: 'test'
+  ...
+# Subtest: YAML lowers extended JavaScript values to natural shapes
+ok 24 - YAML lowers extended JavaScript values to natural shapes
+  ---
+  duration_ms: 5.580706
+  type: 'test'
+  ...
+# Subtest: a bigint beyond the exact 128-bit range is refused, not rounded
+ok 25 - a bigint beyond the exact 128-bit range is refused, not rounded
+  ---
+  duration_ms: 0.641575
+  type: 'test'
+  ...
+# Subtest: Map and Set carry explicit undefined entries as null
+ok 26 - Map and Set carry explicit undefined entries as null
+  ---
+  duration_ms: 0.659229
+  type: 'test'
+  ...
+# Subtest: two JavaScript Map keys that are one native key are refused
+ok 27 - two JavaScript Map keys that are one native key are refused
+  ---
+  duration_ms: 0.383464
+  type: 'test'
+  ...
+# Subtest: schema wrappers cross structurally and locations cross as text
+ok 28 - schema wrappers cross structurally and locations cross as text
+  ---
+  duration_ms: 3.171226
+  type: 'test'
+  ...
+# Subtest: native wrapper encoding reads native state instead of replaceable methods
+ok 29 - native wrapper encoding reads native state instead of replaceable methods
+  ---
+  duration_ms: 0.968338
+  type: 'test'
+  ...
+# Subtest: a URL and a Date read their state from the prototype, not the instance
+ok 30 - a URL and a Date read their state from the prototype, not the instance
+  ---
+  duration_ms: 0.471103
+  type: 'test'
+  ...
+# Subtest: temporal values cross as classic ISO strings; a decimal stays typed
+ok 31 - temporal values cross as classic ISO strings; a decimal stays typed
+  ---
+  duration_ms: 1.471384
+  type: 'test'
+  ...
+# Subtest: temporal families select one exact width and non-null timezone
+ok 32 - temporal families select one exact width and non-null timezone
+  ---
+  duration_ms: 1.178945
+  type: 'test'
+  ...
+# Subtest: Scalar family factories keep selected widths, hashes, and natural accessors
+ok 33 - Scalar family factories keep selected widths, hashes, and natural accessors
+  ---
+  duration_ms: 3.319625
+  type: 'test'
+  ...
+# Subtest: Scalar traversal and persistent updates stay entirely native
+ok 34 - Scalar traversal and persistent updates stay entirely native
+  ---
+  duration_ms: 2.394211
+  type: 'test'
+  ...
+# Subtest: Scalar arithmetic infers JavaScript operands once and stays native
+ok 35 - Scalar arithmetic infers JavaScript operands once and stays native
+  ---
+  duration_ms: 3.134916
+  type: 'test'
+  ...
+# Subtest: Field-directed natural JSON keeps exact typed values
+ok 36 - Field-directed natural JSON keeps exact typed values
+  ---
+  duration_ms: 1.788925
+  type: 'test'
+  ...
+# Subtest: Scalar Arrow scalar and array interop uses standard IPC
+ok 37 - Scalar Arrow scalar and array interop uses standard IPC
+  ---
+  duration_ms: 18.110767
+  type: 'test'
+  ...
+# Subtest: Scalar Field accessors redirect to core inference
+ok 38 - Scalar Field accessors redirect to core inference
+  ---
+  duration_ms: 0.891741
+  type: 'test'
+  ...
+# Subtest: Scalar Arrow record and table interop uses the native schema engine
+ok 39 - Scalar Arrow record and table interop uses the native schema engine
+  ---
+  duration_ms: 6.065523
+  type: 'test'
+  ...
+# Subtest: a Date is the JavaScript spelling of a UTC millisecond datetime64
+ok 40 - a Date is the JavaScript spelling of a UTC millisecond datetime64
+  ---
+  duration_ms: 0.567642
+  type: 'test'
+  ...
+# Subtest: null crosses everywhere a value goes
+ok 41 - null crosses everywhere a value goes
+  ---
+  duration_ms: 0.619933
+  type: 'test'
+  ...
+# Subtest: fromJs and asJs are the conversion every codec entry point crosses
+ok 42 - fromJs and asJs are the conversion every codec entry point crosses
+  ---
+  duration_ms: 1.27102
+  type: 'test'
+  ...
+# Subtest: same-named native wrapper subclasses cannot lose application state
+ok 43 - same-named native wrapper subclasses cannot lose application state
+  ---
+  duration_ms: 1.080759
+  type: 'test'
+  ...
+# Subtest: a class instance crosses as its own properties and nothing else
+ok 44 - a class instance crosses as its own properties and nothing else
+  ---
+  duration_ms: 0.568856
+  type: 'test'
+  ...
+# Subtest: decoded object keys never reach the prototype chain
+ok 45 - decoded object keys never reach the prototype chain
+  ---
+  duration_ms: 0.759383
+  type: 'test'
+  ...
+# Subtest: built-in brands cannot be spoofed by constructor names
+ok 46 - built-in brands cannot be spoofed by constructor names
+  ---
+  duration_ms: 0.883071
+  type: 'test'
+  ...
+# Subtest: built-in subclasses fail explicitly instead of losing application state
+ok 47 - built-in subclasses fail explicitly instead of losing application state
+  ---
+  duration_ms: 0.535837
+  type: 'test'
+  ...
+# Subtest: cross-realm slot-based built-ins fail instead of losing their contents
+ok 48 - cross-realm slot-based built-ins fail instead of losing their contents
+  ---
+  duration_ms: 3.131633
+  type: 'test'
+  ...
+# Subtest: reserved transport keys and non-string map keys do not collide
+ok 49 - reserved transport keys and non-string map keys do not collide
+  ---
+  duration_ms: 2.980758
+  type: 'test'
+  ...
+# Subtest: source intent is type-driven without existence probes
+ok 50 - source intent is type-driven without existence probes
+  ---
+  duration_ms: 6.926219
+  type: 'test'
+  ...
+# Subtest: string and byte-view content preserve exact source boundaries
+ok 51 - string and byte-view content preserve exact source boundaries
+  ---
+  duration_ms: 0.502701
+  type: 'test'
+  ...
+# Subtest: native path readers and writers bypass JavaScript whole-file buffers
+ok 52 - native path readers and writers bypass JavaScript whole-file buffers
+  ---
+  duration_ms: 1.000819
+  type: 'test'
+  ...
+# Subtest: file descriptors remain caller-owned after synchronous codec I/O
+ok 53 - file descriptors remain caller-owned after synchronous codec I/O
+  ---
+  duration_ms: 1.119622
+  type: 'test'
+  ...
+# Subtest: load and dump redirect Node and WHATWG streams with sound async behavior
+ok 54 - load and dump redirect Node and WHATWG streams with sound async behavior
+  ---
+  duration_ms: 8.456035
+  type: 'test'
+  ...
+# Subtest: redirected stream writes preserve errors and document backpressure
+ok 55 - redirected stream writes preserve errors and document backpressure
+  ---
+  duration_ms: 32.611111
+  type: 'test'
+  ...
+# Subtest: generic stream inference consumes anonymous sources exactly once
+ok 56 - generic stream inference consumes anonymous sources exactly once
+  ---
+  duration_ms: 1.57014
+  type: 'test'
+  ...
+# Subtest: string stream chunks preserve split Unicode surrogate pairs centrally
+ok 57 - string stream chunks preserve split Unicode surrogate pairs centrally
+  ---
+  duration_ms: 13.393997
+  type: 'test'
+  ...
+# Subtest: path and single-value stream reads enforce limits before unbounded allocation
+ok 58 - path and single-value stream reads enforce limits before unbounded allocation
+  ---
+  duration_ms: 5.522124
+  type: 'test'
+  ...
+# Subtest: buffered JSON Lines and YAML document collections round-trip
+ok 59 - buffered JSON Lines and YAML document collections round-trip
+  ---
+  duration_ms: 1.041907
+  type: 'test'
+  ...
+# Subtest: buffered collection encoders stop before unbounded materialization
+ok 60 - buffered collection encoders stop before unbounded materialization
+  ---
+  duration_ms: 0.494571
+  type: 'test'
+  ...
+# Subtest: generic JSON Lines operations treat the value as a row collection
+ok 61 - generic JSON Lines operations treat the value as a row collection
+  ---
+  duration_ms: 14.515278
+  type: 'test'
+  ...
+# Subtest: JSON Lines streams decode incrementally across arbitrary chunks
+ok 62 - JSON Lines streams decode incrementally across arbitrary chunks
+  ---
+  duration_ms: 0.517283
+  type: 'test'
+  ...
+# Subtest: one-byte stream chunks do not require repeated whole-line copies
+ok 63 - one-byte stream chunks do not require repeated whole-line copies
+  ---
+  duration_ms: 383.372327
+  type: 'test'
+  ...
+# Subtest: YAML streams preserve block content and decode one document at a time
+ok 64 - YAML streams preserve block content and decode one document at a time
+  ---
+  duration_ms: 1.972095
+  type: 'test'
+  ...
+# Subtest: YAML streams preserve explicit null documents at every position
+ok 65 - YAML streams preserve explicit null documents at every position
+  ---
+  duration_ms: 1.070259
+  type: 'test'
+  ...
+# Subtest: YAML stream framing matches core marker separation rules
+ok 66 - YAML stream framing matches core marker separation rules
+  ---
+  duration_ms: 0.751707
+  type: 'test'
+  ...
+# Subtest: YAML streams frame LF, CRLF, and lone CR across chunk boundaries
+ok 67 - YAML streams frame LF, CRLF, and lone CR across chunk boundaries
+  ---
+  duration_ms: 1.22091
+  type: 'test'
+  ...
+# Subtest: YAML stream preamble classification uses exact YAML bytes
+ok 68 - YAML stream preamble classification uses exact YAML bytes
+  ---
+  duration_ms: 4.351483
+  type: 'test'
+  ...
+# Subtest: YAML stream document splits preserve block-scalar end context
+ok 69 - YAML stream document splits preserve block-scalar end context
+  ---
+  duration_ms: 8.632791
+  type: 'test'
+  ...
+# Subtest: streamed writers frame and flush each value separately
+ok 70 - streamed writers frame and flush each value separately
+  ---
+  duration_ms: 2.268868
+  type: 'test'
+  ...
+# Subtest: stream errors report cumulative byte offsets
+ok 71 - stream errors report cumulative byte offsets
+  ---
+  duration_ms: 1.338703
+  type: 'test'
+  ...
+# Subtest: structured codec formatting redirects to the core for every destination
+ok 72 - structured codec formatting redirects to the core for every destination
+  ---
+  duration_ms: 6.526363
+  type: 'test'
+  ...
+# Subtest: nullable parser limits reach byte, inferred, collection, path, and stream decoders
+ok 73 - nullable parser limits reach byte, inferred, collection, path, and stream decoders
+  ---
+  duration_ms: 3.147889
+  type: 'test'
+  ...
+# Subtest: depth limits reject adversarial nested input without recursion overflow
+ok 74 - depth limits reject adversarial nested input without recursion overflow
+  ---
+  duration_ms: 2.162889
+  type: 'test'
+  ...
+# Subtest: malformed streams and cyclic objects fail deterministically
+ok 75 - malformed streams and cyclic objects fail deterministically
+  ---
+  duration_ms: 3.444932
+  type: 'test'
+  ...
+# Subtest: the byte codings round-trip and read node:zlib output
+ok 76 - the byte codings round-trip and read node:zlib output
+  ---
+  duration_ms: 49.940879
+  type: 'test'
+  ...
+# Subtest: raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib
+ok 77 - raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib
+  ---
+  duration_ms: 3.294681
+  type: 'test'
+  ...
+# Subtest: datatype values infer inputs and round-trip canonical strings
+ok 78 - datatype values infer inputs and round-trip canonical strings
+  ---
+  duration_ms: 1.419785
+  type: 'test'
+  ...
+# Subtest: generic time selects its physical width through native unit parsing
+ok 79 - generic time selects its physical width through native unit parsing
+  ---
+  duration_ms: 1.029915
+  type: 'test'
+  ...
+# Subtest: bare variant is the self-describing datatype, not the union sugar
+ok 80 - bare variant is the self-describing datatype, not the union sugar
+  ---
+  duration_ms: 0.379923
+  type: 'test'
+  ...
+# Subtest: geometry and geography fill and display their shared defaults
+ok 81 - geometry and geography fill and display their shared defaults
+  ---
+  duration_ms: 0.660526
+  type: 'test'
+  ...
+# Subtest: ASCII widths select their storage once
+ok 82 - ASCII widths select their storage once
+  ---
+  duration_ms: 0.652562
+  type: 'test'
+  ...
+# Subtest: a registered code is its own datatype over its standard width
+ok 83 - a registered code is its own datatype over its standard width
+  ---
+  duration_ms: 0.56884
+  type: 'test'
+  ...
+# Subtest: the guid is sixteen bytes spelled as one identifier
+ok 84 - the guid is sixteen bytes spelled as one identifier
+  ---
+  duration_ms: 1.529392
+  type: 'test'
+  ...
+# Subtest: recursive datatypes expose fields as a collection
+ok 85 - recursive datatypes expose fields as a collection
+  ---
+  duration_ms: 2.09083
+  type: 'test'
+  ...
+# Subtest: datatype JSON remains structural and native-owned
+ok 86 - datatype JSON remains structural and native-owned
+  ---
+  duration_ms: 1.332069
+  type: 'test'
+  ...
+# Subtest: datatype Arrow-compatible input delegates through the native parser
+ok 87 - datatype Arrow-compatible input delegates through the native parser
+  ---
+  duration_ms: 1.003122
+  type: 'test'
+  ...
+# Subtest: datatype direct structural JSON rejects invalid parameter states
+ok 88 - datatype direct structural JSON rejects invalid parameter states
+  ---
+  duration_ms: 0.640204
+  type: 'test'
+  ...
+# Subtest: malformed recursive datatypes never use a permissive fallback
+ok 89 - malformed recursive datatypes never use a permissive fallback
+  ---
+  duration_ms: 0.294856
+  type: 'test'
+  ...
+# Subtest: the ASCII vocabulary registers as it encodes and keeps first codes
+ok 90 - the ASCII vocabulary registers as it encodes and keeps first codes
+  ---
+  duration_ms: 0.707233
+  type: 'test'
+  ...
+# Subtest: a seeded ASCII vocabulary is a value carried by its holder
+ok 91 - a seeded ASCII vocabulary is a value carried by its holder
+  ---
+  duration_ms: 0.492178
+  type: 'test'
+  ...
+# Subtest: the generated enum names each value by the integer it packs into
+ok 92 - the generated enum names each value by the integer it packs into
+  ---
+  duration_ms: 0.710986
+  type: 'test'
+  ...
+# Subtest: an ASCII value packs into the integer its storage reads as
+ok 93 - an ASCII value packs into the integer its storage reads as
+  ---
+  duration_ms: 0.368306
+  type: 'test'
+  ...
+# Subtest: an enum declares itself onto the field its values name
+ok 94 - an enum declares itself onto the field its values name
+  ---
+  duration_ms: 1.26926
+  type: 'test'
+  ...
+# Subtest: an ASCII vocabulary encodes Arrow columns whose codes continue
+ok 95 - an ASCII vocabulary encodes Arrow columns whose codes continue
+  ---
+  duration_ms: 20.395897
+  type: 'test'
+  ...
+# Subtest: all 42 datatypes use canonical schema-directed JavaScript defaults
+ok 96 - all 42 datatypes use canonical schema-directed JavaScript defaults
+  ---
+  duration_ms: 5.099255
+  type: 'test'
+  ...
+# Subtest: every native hint category matches its schema-directed default projection
+ok 97 - every native hint category matches its schema-directed default projection
+  ---
+  duration_ms: 2.385724
+  type: 'test'
+  ...
+# Subtest: hint-only calls skip default value projection
+ok 98 - hint-only calls skip default value projection
+  ---
+  duration_ms: 74.015696
+  type: 'test'
+  ...
+# Subtest: Field nullability governs every schema-directed default slot
+ok 99 - Field nullability governs every schema-directed default slot
+  ---
+  duration_ms: 1.700406
+  type: 'test'
+  ...
+# Subtest: Union and run-end nullable defaults preserve the core logical-null layout
+ok 100 - Union and run-end nullable defaults preserve the core logical-null layout
+  ---
+  duration_ms: 0.387508
+  type: 'test'
+  ...
+# Subtest: nullable Struct Arrow defaults mask uninhabited hidden children
+ok 101 - nullable Struct Arrow defaults mask uninhabited hidden children
+  ---
+  duration_ms: 81.202507
+  type: 'test'
+  ...
+# Subtest: deep Struct defaults remain bounded nested positional sequences
+ok 102 - deep Struct defaults remain bounded nested positional sequences
+  ---
+  duration_ms: 1.45394
+  type: 'test'
+  ...
+# Subtest: deep collection defaults project every nested Struct slot
+ok 103 - deep collection defaults project every nested Struct slot
+  ---
+  duration_ms: 0.533005
+  type: 'test'
+  ...
+# Subtest: mutable default containers are fresh on every projection
+ok 104 - mutable default containers are fresh on every projection
+  ---
+  duration_ms: 0.857544
+  type: 'test'
+  ...
+# Subtest: defaultJSHint is frozen, cached, metadata-independent, and mutation-aware
+ok 105 - defaultJSHint is frozen, cached, metadata-independent, and mutation-aware
+  ---
+  duration_ms: 0.99212
+  type: 'test'
+  ...
+# Subtest: nested Field metadata never changes a cached Struct default hint
+ok 106 - nested Field metadata never changes a cached Struct default hint
+  ---
+  duration_ms: 0.747756
+  type: 'test'
+  ...
+# Subtest: Struct hint caches never contaminate exact Field default projections
+ok 107 - Struct hint caches never contaminate exact Field default projections
+  ---
+  duration_ms: 0.845286
+  type: 'test'
+  ...
+# Subtest: default Arrow scalar materialization is typed and rejects Arrow-JS gaps
+ok 108 - default Arrow scalar materialization is typed and rejects Arrow-JS gaps
+  ---
+  duration_ms: 16.76669
+  type: 'test'
+  ...
+# Subtest: compatibility normalization mirrors core Arrow and conservative Spark policy
+ok 109 - compatibility normalization mirrors core Arrow and conservative Spark policy
+  ---
+  duration_ms: 1.309996
+  type: 'test'
+  ...
+# Subtest: public defaults expose no private native bridge names
+ok 110 - public defaults expose no private native bridge names
+  ---
+  duration_ms: 0.17548
+  type: 'test'
+  ...
+# Subtest: reader, table, and record-batch entry points preserve explicit intent
+ok 111 - reader, table, and record-batch entry points preserve explicit intent
+  ---
+  duration_ms: 225.980857
+  type: 'test'
+  ...
+# Subtest: generic write entry points dispatch every representation by mode
+ok 112 - generic write entry points dispatch every representation by mode
+  ---
+  duration_ms: 35.237342
+  type: 'test'
+  ...
+# Subtest: generic write mode is required and validated before input inspection
+ok 113 - generic write mode is required and validated before input inspection
+  ---
+  duration_ms: 4.754797
+  type: 'test'
+  ...
+# Subtest: commit cadence has parity across every synchronous representation and intent
+ok 114 - commit cadence has parity across every synchronous representation and intent
+  ---
+  duration_ms: 314.422781
+  type: 'test'
+  ...
+# Subtest: write intent is authoritative and mergeByNames only supplies keys
+ok 115 - write intent is authoritative and mergeByNames only supplies keys
+  ---
+  duration_ms: 5.807859
+  type: 'test'
+  ...
+# Subtest: invalid intent does not convert or consume any adapter input
+ok 116 - invalid intent does not convert or consume any adapter input
+  ---
+  duration_ms: 4.56683
+  type: 'test'
+  ...
+# Subtest: zero write limits never inspect any representation source
+ok 117 - zero write limits never inspect any representation source
+  ---
+  duration_ms: 28.36912
+  type: 'test'
+  ...
+# Subtest: zero commit cadence is rejected without inspecting any source
+ok 118 - zero commit cadence is rejected without inspecting any source
+  ---
+  duration_ms: 1.639014
+  type: 'test'
+  ...
+# Subtest: representation-specific methods reject a different representation
+ok 119 - representation-specific methods reject a different representation
+  ---
+  duration_ms: 1.384417
+  type: 'test'
+  ...
+# Subtest: plain records infer a field and support all three intents
+ok 120 - plain records infer a field and support all three intents
+  ---
+  duration_ms: 8.327506
+  type: 'test'
+  ...
+# Subtest: field-class records infer and cache intoStructField
+ok 121 - field-class records infer and cache intoStructField
+  ---
+  duration_ms: 7.743639
+  type: 'test'
+  ...
+# Subtest: empty records require options.field and then form a typed no-op
+ok 122 - empty records require options.field and then form a typed no-op
+  ---
+  duration_ms: 1.941758
+  type: 'test'
+  ...
+# Subtest: a record generator crosses in bounded chunks under one atomic write
+ok 123 - a record generator crosses in bounded chunks under one atomic write
+  ---
+  duration_ms: 42.9548
+  type: 'test'
+  ...
+# Subtest: an async record sequence returns a promise and uses the same adapter
+ok 124 - an async record sequence returns a promise and uses the same adapter
+  ---
+  duration_ms: 6.973141
+  type: 'test'
+  ...
+# Subtest: unset async cadence keeps every intent unpublished through a source failure
+ok 125 - unset async cadence keeps every intent unpublished through a source failure
+  ---
+  duration_ms: 21.86364
+  type: 'test'
+  ...
+# Subtest: bounded async records publish a non-dividing prefix for every intent
+ok 126 - bounded async records publish a non-dividing prefix for every intent
+  ---
+  duration_ms: 22.315803
+  type: 'test'
+  ...
+# Subtest: generic writeRecords retains each completed async cadence by mode
+ok 127 - generic writeRecords retains each completed async cadence by mode
+  ---
+  duration_ms: 21.077702
+  type: 'test'
+  ...
+# Subtest: bounded async row and byte limits stop without another source pull
+ok 128 - bounded async row and byte limits stop without another source pull
+  ---
+  duration_ms: 14.6595
+  type: 'test'
+  ...
+# Subtest: async record spools are removed on success, source failure, and invalid intent
+ok 129 - async record spools are removed on success, source failure, and invalid intent
+  ---
+  duration_ms: 10.692789
+  type: 'test'
+  ...
+# Subtest: readRecords accepts one options value, not two
+ok 130 - readRecords accepts one options value, not two
+  ---
+  duration_ms: 0.245544
+  type: 'test'
+  ...
+# Subtest: every vocabulary is a frozen non-empty array of strings
+ok 131 - every vocabulary is a frozen non-empty array of strings
+  ---
+  duration_ms: 1.016204
+  type: 'test'
+  ...
+# Subtest: the spellings are the ones the parsers accept
+ok 132 - the spellings are the ones the parsers accept
+  ---
+  duration_ms: 1.54508
+  type: 'test'
+  ...
+# Subtest: the level scale names its points
+ok 133 - the level scale names its points
+  ---
+  duration_ms: 0.129455
+  type: 'test'
+  ...
+# Subtest: text parses and round-trips through the canonical form
+ok 134 - text parses and round-trips through the canonical form
+  ---
+  duration_ms: 3.648377
+  type: 'test'
+  ...
+# Subtest: text is never taken as a string literal
+ok 135 - text is never taken as a string literal
+  ---
+  duration_ms: 0.550961
+  type: 'test'
+  ...
+# Subtest: a document round-trips
+ok 136 - a document round-trips
+  ---
+  duration_ms: 0.522136
+  type: 'test'
+  ...
+# Subtest: the tree is built from either spelling
+ok 137 - the tree is built from either spelling
+  ---
+  duration_ms: 0.480047
+  type: 'test'
+  ...
+# Subtest: arithmetic builders stay lazy expression nodes
+ok 138 - arithmetic builders stay lazy expression nodes
+  ---
+  duration_ms: 1.183402
+  type: 'test'
+  ...
+# Subtest: binding resolves the columns and folds the literals
+ok 139 - binding resolves the columns and folds the literals
+  ---
+  duration_ms: 0.51225
+  type: 'test'
+  ...
+# Subtest: a row answers, and unknown is not true
+ok 140 - a row answers, and unknown is not true
+  ---
+  duration_ms: 0.608839
+  type: 'test'
+  ...
+# Subtest: a holder attribute is its own question
+ok 141 - a holder attribute is its own question
+  ---
+  duration_ms: 0.292598
+  type: 'test'
+  ...
+# Subtest: a statement carries the whole read
+ok 142 - a statement carries the whole read
+  ---
+  duration_ms: 1.189623
+  type: 'test'
+  ...
+# Subtest: statement ordering, binding, and all are native views
+ok 143 - statement ordering, binding, and all are native views
+  ---
+  duration_ms: 1.483004
+  type: 'test'
+  ...
+# Subtest: bound statement projection preserves each Arrow holder
+ok 144 - bound statement projection preserves each Arrow holder
+  ---
+  duration_ms: 22.601267
+  type: 'test'
+  ...
+# Subtest: bound statement sorts one materialized batch
+ok 145 - bound statement sorts one materialized batch
+  ---
+  duration_ms: 2.270451
+  type: 'test'
+  ...
+# Subtest: a lake is filtered by the same predicate the rows are
+ok 146 - a lake is filtered by the same predicate the rows are
+  ---
+  duration_ms: 2.789728
+  type: 'test'
+  ...
+# Subtest: an expression prunes manifests before a byte is read
+ok 147 - an expression prunes manifests before a byte is read
+  ---
+  duration_ms: 202.184979
+  type: 'test'
+  ...
+# Subtest: intoField memoizes one class-level struct field and renames by cloning
+ok 148 - intoField memoizes one class-level struct field and renames by cloning
+  ---
+  duration_ms: 2.287752
+  type: 'test'
+  ...
+# Subtest: intoField requires a static getter and validates class roots
+ok 149 - intoField requires a static getter and validates class roots
+  ---
+  duration_ms: 1.059134
+  type: 'test'
+  ...
+# Subtest: field values infer native datatypes and round-trip canonically
+ok 150 - field values infer native datatypes and round-trip canonically
+  ---
+  duration_ms: 0.842459
+  type: 'test'
+  ...
+# Subtest: field JSON remains structural and native-owned
+ok 151 - field JSON remains structural and native-owned
+  ---
+  duration_ms: 1.672829
+  type: 'test'
+  ...
+# Subtest: field Arrow-compatible input delegates through the native parser
+ok 152 - field Arrow-compatible input delegates through the native parser
+  ---
+  duration_ms: 0.638689
+  type: 'test'
+  ...
+# Subtest: field metadata provides deterministic Map-like operations
+ok 153 - field metadata provides deterministic Map-like operations
+  ---
+  duration_ms: 2.018637
+  type: 'test'
+  ...
+# Subtest: field clones are independent and invalid updates are atomic
+ok 154 - field clones are independent and invalid updates are atomic
+  ---
+  duration_ms: 0.438118
+  type: 'test'
+  ...
+# Subtest: field HTTP metadata is canonical, typed, and HTTPS-compatible
+ok 155 - field HTTP metadata is canonical, typed, and HTTPS-compatible
+  ---
+  duration_ms: 1.75872
+  type: 'test'
+  ...
+# Subtest: field raw HTTP vocabulary validates values and exact u64 lengths
+ok 156 - field raw HTTP vocabulary validates values and exact u64 lengths
+  ---
+  duration_ms: 1.492463
+  type: 'test'
+  ...
+# Subtest: field typed media pair updates and malformed removal are atomic
+ok 157 - field typed media pair updates and malformed removal are atomic
+  ---
+  duration_ms: 0.965016
+  type: 'test'
+  ...
+# Subtest: typed names, locations, and protocol properties share Arrow metadata
+ok 158 - typed names, locations, and protocol properties share Arrow metadata
+  ---
+  duration_ms: 0.893721
+  type: 'test'
+  ...
+# Subtest: field ID uses canonical signed int32 Arrow metadata
+ok 159 - field ID uses canonical signed int32 Arrow metadata
+  ---
+  duration_ms: 0.686266
+  type: 'test'
+  ...
+# Subtest: typed metadata rejects invalid updates atomically
+ok 160 - typed metadata rejects invalid updates atomically
+  ---
+  duration_ms: 0.573889
+  type: 'test'
+  ...
+# Subtest: dictionary field options remain native value state
+ok 161 - dictionary field options remain native value state
+  ---
+  duration_ms: 0.582778
+  type: 'test'
+  ...
+# Subtest: malformed fields never use a permissive fallback
+ok 162 - malformed fields never use a permissive fallback
+  ---
+  duration_ms: 0.176234
+  type: 'test'
+  ...
+# Subtest: a protocol view is a Map over one namespace of bare names
+ok 163 - a protocol view is a Map over one namespace of bare names
+  ---
+  duration_ms: 1.055744
+  type: 'test'
+  ...
+# Subtest: a protocol view stays live on the field it was taken from
+ok 164 - a protocol view stays live on the field it was taken from
+  ---
+  duration_ms: 0.370971
+  type: 'test'
+  ...
+# Subtest: the HTTP protocol view covers HTTPS and is ASCII case-insensitive
+ok 165 - the HTTP protocol view covers HTTPS and is ASCII case-insensitive
+  ---
+  duration_ms: 0.40443
+  type: 'test'
+  ...
+# Subtest: every well-known protocol has its own live field accessor
+ok 166 - every well-known protocol has its own live field accessor
+  ---
+  duration_ms: 1.337302
+  type: 'test'
+  ...
+# Subtest: partition markers name the columns a path spells out
+ok 167 - partition markers name the columns a path spells out
+  ---
+  duration_ms: 0.856796
+  type: 'test'
+  ...
+# Subtest: two schemas merge by widening and unioning their columns
+ok 168 - two schemas merge by widening and unioning their columns
+  ---
+  duration_ms: 0.624947
+  type: 'test'
+  ...
+# Subtest: merging fields carries nullability and unions metadata
+ok 169 - merging fields carries nullability and unions metadata
+  ---
+  duration_ms: 0.290968
+  type: 'test'
+  ...
+# Subtest: a protocol view merges in place and only adds
+ok 170 - a protocol view merges in place and only adds
+  ---
+  duration_ms: 0.275514
+  type: 'test'
+  ...
+# Subtest: JSON reads every shape and writes bytes
+ok 171 - JSON reads every shape and writes bytes
+  ---
+  duration_ms: 1.109584
+  type: 'test'
+  ...
+# Subtest: every format carries the same nested shape
+ok 172 - every format carries the same nested shape
+  ---
+  duration_ms: 1.068677
+  type: 'test'
+  ...
+# Subtest: unnesting flattens structs and exploding reaches inside collections
+ok 173 - unnesting flattens structs and exploding reaches inside collections
+  ---
+  duration_ms: 0.637853
+  type: 'test'
+  ...
+# Subtest: internal typed-factory bridges stay outside the public package surface
+ok 174 - internal typed-factory bridges stay outside the public package surface
+  ---
+  duration_ms: 1.307813
+  type: 'test'
+  ...
+# Subtest: DataType.fromFields is the iterable-aware native Struct builder
+ok 175 - DataType.fromFields is the iterable-aware native Struct builder
+  ---
+  duration_ms: 1.241091
+  type: 'test'
+  ...
+# Subtest: Variant assigns deterministic dense Union IDs through one native builder
+ok 176 - Variant assigns deterministic dense Union IDs through one native builder
+  ---
+  duration_ms: 3.512598
+  type: 'test'
+  ...
+# Subtest: typed field factories cover every native datatype variant
+ok 177 - typed field factories cover every native datatype variant
+  ---
+  duration_ms: 3.4462
+  type: 'test'
+  ...
+# Subtest: the ascii factory selects the width through the native constructor
+ok 178 - the ascii factory selects the width through the native constructor
+  ---
+  duration_ms: 3.198836
+  type: 'test'
+  ...
+# Subtest: the registered codes build their own datatype at their own width
+ok 179 - the registered codes build their own datatype at their own width
+  ---
+  duration_ms: 0.696223
+  type: 'test'
+  ...
+# Subtest: nested factories preserve exact child metadata and dictionary state
+ok 180 - nested factories preserve exact child metadata and dictionary state
+  ---
+  duration_ms: 0.501189
+  type: 'test'
+  ...
+# Subtest: metadata entry overlays use last-write-wins without coercion
+ok 181 - metadata entry overlays use last-write-wins without coercion
+  ---
+  duration_ms: 0.546328
+  type: 'test'
+  ...
+# Subtest: typed factory parameters delegate native validation
+ok 182 - typed factory parameters delegate native validation
+  ---
+  duration_ms: 0.934802
+  type: 'test'
+  ...
+# Subtest: defaulted temporal and decimal overloads share exact option handling
+ok 183 - defaulted temporal and decimal overloads share exact option handling
+  ---
+  duration_ms: 1.331615
+  type: 'test'
+  ...
+# Subtest: schema equality and difference iterators handle recursive metadata
+ok 184 - schema equality and difference iterators handle recursive metadata
+  ---
+  duration_ms: 0.734612
+  type: 'test'
+  ...
+# Subtest: wide difference iterators advance after their source wrappers are dropped
+ok 185 - wide difference iterators advance after their source wrappers are dropped
+  ---
+  duration_ms: 19.211475
+  type: 'test'
+  ...
+# Subtest: difference output retains physical layout checks without metadata
+ok 186 - difference output retains physical layout checks without metadata
+  ---
+  duration_ms: 0.376461
+  type: 'test'
+  ...
+# Subtest: numbering a schema is a copy, and the numbers are Arrow field ids
+ok 187 - numbering a schema is a copy, and the numbers are Arrow field ids
+  ---
+  duration_ms: 2.11546
+  type: 'test'
+  ...
+# Subtest: creating a table numbers a plain schema itself, partitioning included
+ok 188 - creating a table numbers a plain schema itself, partitioning included
+  ---
+  duration_ms: 68.684194
+  type: 'test'
+  ...
+# Subtest: a commit takes the rows the record surface takes
+ok 189 - a commit takes the rows the record surface takes
+  ---
+  duration_ms: 127.275712
+  type: 'test'
+  ...
+# Subtest: a create-on-write commit lets the rows name the schema
+ok 190 - a create-on-write commit lets the rows name the schema
+  ---
+  duration_ms: 105.654851
+  type: 'test'
+  ...
+# Subtest: a table is a folder, and a new one has no current snapshot
+ok 191 - a table is a folder, and a new one has no current snapshot
+  ---
+  duration_ms: 10.045848
+  type: 'test'
+  ...
+# Subtest: an append commits a snapshot, one data file per partition
+ok 192 - an append commits a snapshot, one data file per partition
+  ---
+  duration_ms: 55.347814
+  type: 'test'
+  ...
+# Subtest: v3 snapshot lineage stays exact at the JavaScript boundary
+ok 193 - v3 snapshot lineage stays exact at the JavaScript boundary
+  ---
+  duration_ms: 28.331069
+  type: 'test'
+  ...
+# Subtest: a scan pushes columns down and casts what each file gives back
+ok 194 - a scan pushes columns down and casts what each file gives back
+  ---
+  duration_ms: 40.882019
+  type: 'test'
+  ...
+# Subtest: an overwrite keeps the previous snapshot readable
+ok 195 - an overwrite keeps the previous snapshot readable
+  ---
+  duration_ms: 56.312298
+  type: 'test'
+  ...
+# Subtest: a schema evolves, and files written before a column read null for it
+ok 196 - a schema evolves, and files written before a column read null for it
+  ---
+  duration_ms: 49.940015
+  type: 'test'
+  ...
+# Subtest: a table is found again with no catalog in between
+ok 197 - a table is found again with no catalog in between
+  ---
+  duration_ms: 40.392909
+  type: 'test'
+  ...
+# Subtest: a transform that cannot place a row is refused by name
+ok 198 - a transform that cannot place a row is refused by name
+  ---
+  duration_ms: 1.977959
+  type: 'test'
+  ...
+# Subtest: a catalog maps a dotted name onto folders and creates on first write
+ok 199 - a catalog maps a dotted name onto folders and creates on first write
+  ---
+  duration_ms: 172.27289
+  type: 'test'
+  ...
+# Subtest: scanAt reads a retained snapshot after an overwrite
+ok 200 - scanAt reads a retained snapshot after an overwrite
+  ---
+  duration_ms: 74.856895
+  type: 'test'
+  ...
+# Subtest: a v1 direct-manifest snapshot scans and stays available for time travel
+ok 201 - a v1 direct-manifest snapshot scans and stays available for time travel
+  ---
+  duration_ms: 82.890663
+  type: 'test'
+  ...
+# Subtest: a schema evolves through one recorded chain, committed once
+ok 202 - a schema evolves through one recorded chain, committed once
+  ---
+  duration_ms: 47.278757
+  type: 'test'
+  ...
+# Subtest: updateProperties commits once, and nothing when there is nothing
+ok 203 - updateProperties commits once, and nothing when there is nothing
+  ---
+  duration_ms: 30.42683
+  type: 'test'
+  ...
+# Subtest: compact merges undersized files and reports what it rewrote
+ok 204 - compact merges undersized files and reports what it rewrote
+  ---
+  duration_ms: 120.303785
+  type: 'test'
+  ...
+# Subtest: canPromote answers the promotion list in both directions
+ok 205 - canPromote answers the promotion list in both directions
+  ---
+  duration_ms: 0.757963
+  type: 'test'
+  ...
+# Subtest: a ref names a snapshot, and a missing one names the refs the table has
+ok 206 - a ref names a snapshot, and a missing one names the refs the table has
+  ---
+  duration_ms: 25.816288
+  type: 'test'
+  ...
+# Subtest: a schema is a document in both directions
+ok 207 - a schema is a document in both directions
+  ---
+  duration_ms: 3.0689
+  type: 'test'
+  ...
+# Subtest: a namespace is a resource whose collections carry the verbs
+ok 208 - a namespace is a resource whose collections carry the verbs
+  ---
+  duration_ms: 51.991312
+  type: 'test'
+  ...
+# Subtest: an options value answers the fields it was given and defaults the rest
+ok 209 - an options value answers the fields it was given and defaults the rest
+  ---
+  duration_ms: 0.865767
+  type: 'test'
+  ...
+# Subtest: property-derived option integers never round at the JavaScript boundary
+ok 210 - property-derived option integers never round at the JavaScript boundary
+  ---
+  duration_ms: 14.59769
+  type: 'test'
+  ...
+# Subtest: a data MIME type accepts native/parser input and rejects unsupported types
+ok 211 - a data MIME type accepts native/parser input and rejects unsupported types
+  ---
+  duration_ms: 10.4096
+  type: 'test'
+  ...
+# Subtest: a zero file size and a zero read parallelism are refused by property name
+ok 212 - a zero file size and a zero read parallelism are refused by property name
+  ---
+  duration_ms: 0.521996
+  type: 'test'
+  ...
+# Subtest: a per-call data MIME type writes AVRO files beside the PARQUET ones
+ok 213 - a per-call data MIME type writes AVRO files beside the PARQUET ones
+  ---
+  duration_ms: 60.225686
+  type: 'test'
+  ...
+# Subtest: setOptions is what later calls resolve, and a per-call option outlives only its call
+ok 214 - setOptions is what later calls resolve, and a per-call option outlives only its call
+  ---
+  duration_ms: 53.279705
+  type: 'test'
+  ...
+# Subtest: every write that takes a per-call data MIME type actually writes it
+ok 215 - every write that takes a per-call data MIME type actually writes it
+  ---
+  duration_ms: 222.993825
+  type: 'test'
+  ...
+# Subtest: the catalog write shorthands honour a per-call data format
+ok 216 - the catalog write shorthands honour a per-call data format
+  ---
+  duration_ms: 110.705465
+  type: 'test'
+  ...
+# Subtest: the filtered reads take the per-call options the plain scan does
+ok 217 - the filtered reads take the per-call options the plain scan does
+  ---
+  duration_ms: 53.184213
+  type: 'test'
+  ...
+# Subtest: a tag and a branch name a snapshot, and removing one reports what it held
+ok 218 - a tag and a branch name a snapshot, and removing one reports what it held
+  ---
+  duration_ms: 100.531005
+  type: 'test'
+  ...
+# Subtest: fastForward moves a branch onto a descendant and refuses to walk back
+ok 219 - fastForward moves a branch onto a descendant and refuses to walk back
+  ---
+  duration_ms: 78.040223
+  type: 'test'
+  ...
+# Subtest: a plan counts what a scan would read without reading any of it
+ok 220 - a plan counts what a scan would read without reading any of it
+  ---
+  duration_ms: 153.827449
+  type: 'test'
+  ...
+# Subtest: manifestsAt answers for a retained snapshot what manifests answers for now
+ok 221 - manifestsAt answers for a retained snapshot what manifests answers for now
+  ---
+  duration_ms: 40.123459
+  type: 'test'
+  ...
+# Subtest: scanWhere reads only the partition it names and projects as scan does
+ok 222 - scanWhere reads only the partition it names and projects as scan does
+  ---
+  duration_ms: 49.443564
+  type: 'test'
+  ...
+# Subtest: overwriteWhere replaces one partition and carries the others as they were
+ok 223 - overwriteWhere replaces one partition and carries the others as they were
+  ---
+  duration_ms: 82.768649
+  type: 'test'
+  ...
+# Subtest: merge updates the rows whose key is stored and appends the rest
+ok 224 - merge updates the rows whose key is stored and appends the rest
+  ---
+  duration_ms: 84.047168
+  type: 'test'
+  ...
+# Subtest: mergeWhere narrows a merge to the files its filters admit
+ok 225 - mergeWhere narrows a merge to the files its filters admit
+  ---
+  duration_ms: 81.943385
+  type: 'test'
+  ...
+# Subtest: expireSnapshots supports defaults, retain overrides, and explicit ids
+ok 226 - expireSnapshots supports defaults, retain overrides, and explicit ids
+  ---
+  duration_ms: 59.171834
+  type: 'test'
+  ...
+# Subtest: the collection views do no I/O until a question is asked of them
+ok 227 - the collection views do no I/O until a question is asked of them
+  ---
+  duration_ms: 40.195167
+  type: 'test'
+  ...
+# Subtest: the tables view creates on first write and takes the same per-call options
+ok 228 - the tables view creates on first write and takes the same per-call options
+  ---
+  duration_ms: 118.482817
+  type: 'test'
+  ...
+# Subtest: a dotted create into an empty warehouse is one call
+ok 229 - a dotted create into an empty warehouse is one call
+  ---
+  duration_ms: 15.529376
+  type: 'test'
+  ...
+# Subtest: the views speak the whole Map vocabulary, lazily
+ok 230 - the views speak the whole Map vocabulary, lazily
+  ---
+  duration_ms: 49.67365
+  type: 'test'
+  ...
+# Subtest: a catalog and a namespace carry properties, transactionally
+ok 231 - a catalog and a namespace carry properties, transactionally
+  ---
+  duration_ms: 6.94614
+  type: 'test'
+  ...
+# Subtest: a handle reports what is there and is inferred from every spelling
+ok 232 - a handle reports what is there and is inferred from every spelling
+  ---
+  duration_ms: 5.191169
+  type: 'test'
+  ...
+# Subtest: a missing location is empty rather than an error
+ok 233 - a missing location is empty rather than an error
+  ---
+  duration_ms: 0.86816
+  type: 'test'
+  ...
+# Subtest: buffered adds one reconfigurable native cache without changing identity
+ok 234 - buffered adds one reconfigurable native cache without changing identity
+  ---
+  duration_ms: 14.500568
+  type: 'test'
+  ...
+# Subtest: open promotes record handles and retains media metadata until close
+ok 235 - open promotes record handles and retains media metadata until close
+  ---
+  duration_ms: 12.593056
+  type: 'test'
+  ...
+# Subtest: a handle says whether it holds bytes or rows
+ok 236 - a handle says whether it holds bytes or rows
+  ---
+  duration_ms: 2.081819
+  type: 'test'
+  ...
+# Subtest: structured values use the inferred format, field, and content coding
+ok 237 - structured values use the inferred format, field, and content coding
+  ---
+  duration_ms: 6.64682
+  type: 'test'
+  ...
+# Subtest: I/O capability and logical dimensions come from core media metadata
+ok 238 - I/O capability and logical dimensions come from core media metadata
+  ---
+  duration_ms: 16.460459
+  type: 'test'
+  ...
+# Subtest: children are resolved the way path segments are
+ok 239 - children are resolved the way path segments are
+  ---
+  duration_ms: 1.961776
+  type: 'test'
+  ...
+# Subtest: iterdir skips private entries by default
+ok 240 - iterdir skips private entries by default
+  ---
+  duration_ms: 2.121806
+  type: 'test'
+  ...
+# Subtest: ls descends only when it is asked to
+ok 241 - ls descends only when it is asked to
+  ---
+  duration_ms: 2.747855
+  type: 'test'
+  ...
+# Subtest: glob and rglob select the same leaves
+ok 242 - glob and rglob select the same leaves
+  ---
+  duration_ms: 3.469207
+  type: 'test'
+  ...
+# Subtest: a write creates and a read returns it
+ok 243 - a write creates and a read returns it
+  ---
+  duration_ms: 2.328613
+  type: 'test'
+  ...
+# Subtest: positional access needs no mode and rejects impossible offsets
+ok 244 - positional access needs no mode and rejects impossible offsets
+  ---
+  duration_ms: 2.799811
+  type: 'test'
+  ...
+# Subtest: positioned byte streams are lazy bounded iterators
+ok 245 - positioned byte streams are lazy bounded iterators
+  ---
+  duration_ms: 1.727752
+  type: 'test'
+  ...
+# Subtest: a byte stream throws once and then stays fused
+ok 246 - a byte stream throws once and then stays fused
+  ---
+  duration_ms: 0.514268
+  type: 'test'
+  ...
+# Subtest: mkdir and touch bring a location into being
+ok 247 - mkdir and touch bring a location into being
+  ---
+  duration_ms: 1.982597
+  type: 'test'
+  ...
+# Subtest: bytes move between two handles without a temporary copy
+ok 248 - bytes move between two handles without a temporary copy
+  ---
+  duration_ms: 1.123248
+  type: 'test'
+  ...
+# Subtest: a memory handle needs no location
+ok 249 - a memory handle needs no location
+  ---
+  duration_ms: 0.397896
+  type: 'test'
+  ...
+# Subtest: a leaf knows the partitions above it
+ok 250 - a leaf knows the partitions above it
+  ---
+  duration_ms: 1.580255
+  type: 'test'
+  ...
+# Subtest: childrenWhere selects the parts to rewrite
+ok 251 - childrenWhere selects the parts to rewrite
+  ---
+  duration_ms: 7.202588
+  type: 'test'
+  ...
+# Subtest: plain text uses flat record options and ordinary record reads
+ok 252 - plain text uses flat record options and ordinary record reads
+  ---
+  duration_ms: 9.819884
+  type: 'test'
+  ...
+# Subtest: text-only settings are flat native TextOptions value state
+ok 253 - text-only settings are flat native TextOptions value state
+  ---
+  duration_ms: 4.380556
+  type: 'test'
+  ...
+# Subtest: retained text options parse the real execution row
+ok 254 - retained text options parse the real execution row
+  ---
+  duration_ms: 10.593252
+  type: 'test'
+  ...
+# Subtest: generic record writes encode only the binary text body
+ok 255 - generic record writes encode only the binary text body
+  ---
+  duration_ms: 10.936135
+  type: 'test'
+  ...
+# Subtest: text folders decode coded leaves through the same record path
+ok 256 - text folders decode coded leaves through the same record path
+  ---
+  duration_ms: 11.500313
+  type: 'test'
+  ...
+# Subtest: a cursor shares the handle and owns its position
+ok 257 - a cursor shares the handle and owns its position
+  ---
+  duration_ms: 0.605544
+  type: 'test'
+  ...
+# Subtest: cursor byte streams advance only as chunks are yielded
+ok 258 - cursor byte streams advance only as chunks are yielded
+  ---
+  duration_ms: 0.537607
+  type: 'test'
+  ...
+# Subtest: a handle reports the content coding its own name declares
+ok 259 - a handle reports the content coding its own name declares
+  ---
+  duration_ms: 0.849115
+  type: 'test'
+  ...
+# Subtest: compressInto and decompressInto round-trip through a real .gz
+ok 260 - compressInto and decompressInto round-trip through a real .gz
+  ---
+  duration_ms: 4.264081
+  type: 'test'
+  ...
+# Subtest: MimeType exposes the complete immutable known vocabulary and default
+ok 261 - MimeType exposes the complete immutable known vocabulary and default
+  ---
+  duration_ms: 2.388827
+  type: 'test'
+  ...
+# Subtest: MimeType parsing, views, JSON, ordering, and hashes stay native-owned
+ok 262 - MimeType parsing, views, JSON, ordering, and hashes stay native-owned
+  ---
+  duration_ms: 1.070348
+  type: 'test'
+  ...
+# Subtest: MIME and media I/O identity comes from the unencoded base
+ok 263 - MIME and media I/O identity comes from the unencoded base
+  ---
+  duration_ms: 0.329074
+  type: 'test'
+  ...
+# Subtest: MediaType consumes iterables once and exposes detached snapshots
+ok 264 - MediaType consumes iterables once and exposes detached snapshots
+  ---
+  duration_ms: 3.236743
+  type: 'test'
+  ...
+# Subtest: MediaType mutable updates are atomic and round-trip
+ok 265 - MediaType mutable updates are atomic and round-trip
+  ---
+  duration_ms: 1.518914
+  type: 'test'
+  ...
+# Subtest: codec loads can return the exact native Scalar
+ok 266 - codec loads can return the exact native Scalar
+  ---
+  duration_ms: 1.904847
+  type: 'test'
+  ...
+# Subtest: typed TOML keeps core struct canonicalization on the Scalar path
+ok 267 - typed TOML keeps core struct canonicalization on the Scalar path
+  ---
+  duration_ms: 2.155425
+  type: 'test'
+  ...
+# Subtest: collection, inferred, and streamed loads keep native Scalars
+ok 268 - collection, inferred, and streamed loads keep native Scalars
+  ---
+  duration_ms: 3.730594
+  type: 'test'
+  ...
+# Subtest: single path and stream loads return native Scalars
+ok 269 - single path and stream loads return native Scalars
+  ---
+  duration_ms: 3.00878
+  type: 'test'
+  ...
+# Subtest: IOBase.readScalar accepts an inferred field or explicit options
+ok 270 - IOBase.readScalar accepts an inferred field or explicit options
+  ---
+  duration_ms: 1.042662
+  type: 'test'
+  ...
+# Subtest: a whole-scalar placeholder adopts the resolved value type
+ok 271 - a whole-scalar placeholder adopts the resolved value type
+  ---
+  duration_ms: 5.142211
+  type: 'test'
+  ...
+# Subtest: an embedded placeholder is textual and stays a string
+ok 272 - an embedded placeholder is textual and stays a string
+  ---
+  duration_ms: 2.318754
+  type: 'test'
+  ...
+# Subtest: a missing variable names itself rather than resolving to nothing
+ok 273 - a missing variable names itself rather than resolving to nothing
+  ---
+  duration_ms: 0.623314
+  type: 'test'
+  ...
+# Subtest: a default makes a variable optional and carries its own type
+ok 274 - a default makes a variable optional and carries its own type
+  ---
+  duration_ms: 1.740019
+  type: 'test'
+  ...
+# Subtest: a doubled opener is a literal one
+ok 275 - a doubled opener is a literal one
+  ---
+  duration_ms: 0.85982
+  type: 'test'
+  ...
+# Subtest: substitution is off unless asked for, and the environment is its own switch
+ok 276 - substitution is off unless asked for, and the environment is its own switch
+  ---
+  duration_ms: 2.286672
+  type: 'test'
+  ...
+# Subtest: a document without placeholders parses identically either way
+ok 277 - a document without placeholders parses identically either way
+  ---
+  duration_ms: 3.551848
+  type: 'test'
+  ...
+# Subtest: JSON refuses placeholders by name at the call site
+ok 278 - JSON refuses placeholders by name at the call site
+  ---
+  duration_ms: 0.923551
+  type: 'test'
+  ...
+# Subtest: an unquoted YAML placeholder is what YAML says it is
+ok 279 - an unquoted YAML placeholder is what YAML says it is
+  ---
+  duration_ms: 0.974806
+  type: 'test'
+  ...
+# Subtest: dumping never reintroduces a placeholder
+ok 280 - dumping never reintroduces a placeholder
+  ---
+  duration_ms: 0.968235
+  type: 'test'
+  ...
+# Subtest: a handle names its own encoding and round-trips Arrow batches
+ok 281 - a handle names its own encoding and round-trips Arrow batches
+  ---
+  duration_ms: 18.905317
+  type: 'test'
+  ...
+# Subtest: a batch reader is built from whatever a caller already holds
+ok 282 - a batch reader is built from whatever a caller already holds
+  ---
+  duration_ms: 7.438835
+  type: 'test'
+  ...
+# Subtest: a declared schema selects and then casts
+ok 283 - a declared schema selects and then casts
+  ---
+  duration_ms: 4.611294
+  type: 'test'
+  ...
+# Subtest: parquet is chosen by the file name and nothing else
+ok 284 - parquet is chosen by the file name and nothing else
+  ---
+  duration_ms: 18.679036
+  type: 'test'
+  ...
+# Subtest: Parquet statistics reject another inferred encoding before parsing bytes
+ok 285 - Parquet statistics reject another inferred encoding before parsing bytes
+  ---
+  duration_ms: 0.419579
+  type: 'test'
+  ...
+# Subtest: Parquet geospatial statistics scan one projected WKB column
+ok 286 - Parquet geospatial statistics scan one projected WKB column
+  ---
+  duration_ms: 3.918029
+  type: 'test'
+  ...
+# Subtest: a declared root that a batch cannot satisfy is refused
+ok 287 - a declared root that a batch cannot satisfy is refused
+  ---
+  duration_ms: 4.740151
+  type: 'test'
+  ...
+# Subtest: a match key updates a stored row and appends a new one
+ok 288 - a match key updates a stored row and appends a new one
+  ---
+  duration_ms: 5.957062
+  type: 'test'
+  ...
+# Subtest: a zero row limit reads the schema and no batches
+ok 289 - a zero row limit reads the schema and no batches
+  ---
+  duration_ms: 2.622322
+  type: 'test'
+  ...
+# Subtest: a row limit is exact over a bigger file
+ok 290 - a row limit is exact over a bigger file
+  ---
+  duration_ms: 5.701053
+  type: 'test'
+  ...
+# Subtest: a small byte limit still yields at least one row
+ok 291 - a small byte limit still yields at least one row
+  ---
+  duration_ms: 2.24263
+  type: 'test'
+  ...
+# Subtest: a limit with a match key is refused naming both settings
+ok 292 - a limit with a match key is refused naming both settings
+  ---
+  duration_ms: 2.772922
+  type: 'test'
+  ...
+# Subtest: a folder is one table, and a write routes rows to their partition
+ok 293 - a folder is one table, and a write routes rows to their partition
+  ---
+  duration_ms: 5.110625
+  type: 'test'
+  ...
+# Subtest: record options are values, and a setting is set or carried forward
+ok 294 - record options are values, and a setting is set or carried forward
+  ---
+  duration_ms: 0.828158
+  type: 'test'
+  ...
+# Subtest: record option value protocols delegate every encoding to the core
+ok 295 - record option value protocols delegate every encoding to the core
+  ---
+  duration_ms: 0.970085
+  type: 'test'
+  ...
+# Subtest: text options value protocols include every flat text setting
+ok 296 - text options value protocols include every flat text setting
+  ---
+  duration_ms: 3.19798
+  type: 'test'
+  ...
+# Subtest: a setting one encoding has is absent on the others
+ok 297 - a setting one encoding has is absent on the others
+  ---
+  duration_ms: 72.838087
+  type: 'test'
+  ...
+# Subtest: Avro record options expose validated block settings
+ok 298 - Avro record options expose validated block settings
+  ---
+  duration_ms: 0.811404
+  type: 'test'
+  ...
+# Subtest: native record conversion uses the shared core batch default
+ok 299 - native record conversion uses the shared core batch default
+  ---
+  duration_ms: 0.239105
+  type: 'test'
+  ...
+# Subtest: a resource that is not there holds no batches
+ok 300 - a resource that is not there holds no batches
+  ---
+  duration_ms: 1.04345
+  type: 'test'
+  ...
+# Subtest: content coding belongs to the handle rather than to the encoding
+ok 301 - content coding belongs to the handle rather than to the encoding
+  ---
+  duration_ms: 4.429812
+  type: 'test'
+  ...
+# Subtest: rows read back as records, plain or through a runtime class
+ok 302 - rows read back as records, plain or through a runtime class
+  ---
+  duration_ms: 20.275251
+  type: 'test'
+  ...
+# Subtest: a field casts whatever Arrow JS holds, batch by batch
+ok 303 - a field casts whatever Arrow JS holds, batch by batch
+  ---
+  duration_ms: 2.693686
+  type: 'test'
+  ...
+# Subtest: an ASCII column pads on the way in and trims on the way out
+ok 304 - an ASCII column pads on the way in and trims on the way out
+  ---
+  duration_ms: 5.358297
+  type: 'test'
+  ...
+# Subtest: a batch size of zero is refused rather than stored as a read of nothing
+ok 305 - a batch size of zero is refused rather than stored as a read of nothing
+  ---
+  duration_ms: 0.356028
+  type: 'test'
+  ...
+# Subtest: the declared root is three parts, and field is built from them
+ok 306 - the declared root is three parts, and field is built from them
+  ---
+  duration_ms: 1.70918
+  type: 'test'
+  ...
+# Subtest: a root declared through a field or a datatype is the same value
+ok 307 - a root declared through a field or a datatype is the same value
+  ---
+  duration_ms: 0.850672
+  type: 'test'
+  ...
+# Subtest: root metadata takes entries, a plain object, a Map, or a Field
+ok 308 - root metadata takes entries, a plain object, a Map, or a Field
+  ---
+  duration_ms: 1.363244
+  type: 'test'
+  ...
+# Subtest: a declared name roots the schema inferred from plain records
+ok 309 - a declared name roots the schema inferred from plain records
+  ---
+  duration_ms: 11.07716
+  type: 'test'
+  ...
+# Subtest: a name, an alias, and a fixed offset all arrive at one value
+ok 310 - a name, an alias, and a fixed offset all arrive at one value
+  ---
+  duration_ms: 20.295471
+  type: 'test'
+  ...
+# Subtest: every spelling of UTC is UTC
+ok 311 - every spelling of UTC is UTC
+  ---
+  duration_ms: 0.568653
+  type: 'test'
+  ...
+# Subtest: a bad name is refused rather than kept
+ok 312 - a bad name is refused rather than kept
+  ---
+  duration_ms: 0.453244
+  type: 'test'
+  ...
+# Subtest: a northern zone switches in March and November
+ok 313 - a northern zone switches in March and November
+  ---
+  duration_ms: 0.504241
+  type: 'test'
+  ...
+# Subtest: a southern zone is saving across the new year
+ok 314 - a southern zone is saving across the new year
+  ---
+  duration_ms: 0.228644
+  type: 'test'
+  ...
+# Subtest: the offsets agree with the runtime time zone database
+ok 315 - the offsets agree with the runtime time zone database
+  ---
+  duration_ms: 5.056842
+  type: 'test'
+  ...
+# Subtest: local and UTC readings convert in both directions
+ok 316 - local and UTC readings convert in both directions
+  ---
+  duration_ms: 0.718738
+  type: 'test'
+  ...
+# Subtest: a zone without rules declines to answer
+ok 317 - a zone without rules declines to answer
+  ---
+  duration_ms: 0.325993
+  type: 'test'
+  ...
+# Subtest: the registry needs no files, environment, or network
+ok 318 - the registry needs no files, environment, or network
+  ---
+  duration_ms: 2.701689
+  type: 'test'
+  ...
+# Subtest: a zone behaves like the rest of the native value types
+ok 319 - a zone behaves like the rest of the native value types
+  ---
+  duration_ms: 1.958795
+  type: 'test'
+  ...
+# Subtest: TOML is a byte-first single-document facade
+ok 320 - TOML is a byte-first single-document facade
+  ---
+  duration_ms: 3.657286
+  type: 'test'
+  ...
+# Subtest: TOML uses natural shapes and refuses values TOML cannot spell
+ok 321 - TOML uses natural shapes and refuses values TOML cannot spell
+  ---
+  duration_ms: 3.045403
+  type: 'test'
+  ...
+# Subtest: TOML writes natural temporals and field-directed exact decimals
+ok 322 - TOML writes natural temporals and field-directed exact decimals
+  ---
+  duration_ms: 3.401664
+  type: 'test'
+  ...
+# Subtest: TOML emission applies requested depth to the natural value
+ok 323 - TOML emission applies requested depth to the natural value
+  ---
+  duration_ms: 3.845521
+  type: 'test'
+  ...
+# Subtest: native TOML date-times arrive as temporal values and write back exactly
+ok 324 - native TOML date-times arrive as temporal values and write back exactly
+  ---
+  duration_ms: 0.677521
+  type: 'test'
+  ...
+# Subtest: a class instance crosses TOML as its own properties
+ok 325 - a class instance crosses TOML as its own properties
+  ---
+  duration_ms: 0.542121
+  type: 'test'
+  ...
+# Subtest: TOML content accepts strings and exact byte views
+ok 326 - TOML content accepts strings and exact byte views
+  ---
+  duration_ms: 0.484838
+  type: 'test'
+  ...
+# Subtest: generic content inference delegates ambiguous syntax to the core
+ok 327 - generic content inference delegates ambiguous syntax to the core
+  ---
+  duration_ms: 1.170394
+  type: 'test'
+  ...
+# Subtest: TOML file URLs use native readers while string destinations stay paths
+ok 328 - TOML file URLs use native readers while string destinations stay paths
+  ---
+  duration_ms: 2.748403
+  type: 'test'
+  ...
+# Subtest: TOML file descriptors stay caller-owned
+ok 329 - TOML file descriptors stay caller-owned
+  ---
+  duration_ms: 1.503629
+  type: 'test'
+  ...
+# Subtest: TOML async readers preserve split strings and bounded single-document semantics
+ok 330 - TOML async readers preserve split strings and bounded single-document semantics
+  ---
+  duration_ms: 4.351004
+  type: 'test'
+  ...
+# Subtest: TOML Node and WHATWG writers honor errors, backpressure, and no-close ownership
+ok 331 - TOML Node and WHATWG writers honor errors, backpressure, and no-close ownership
+  ---
+  duration_ms: 13.133281
+  type: 'test'
+  ...
+# Subtest: TOML errors and limits stay native and path conversion is non-destructive
+ok 332 - TOML errors and limits stay native and path conversion is non-destructive
+  ---
+  duration_ms: 2.942872
+  type: 'test'
+  ...
+# Subtest: URI values expose canonical components and path collections
+ok 333 - URI values expose canonical components and path collections
+  ---
+  duration_ms: 3.442534
+  type: 'test'
+  ...
+# Subtest: generic URI path joining is variadic, normalized, and immutable
+ok 334 - generic URI path joining is variadic, normalized, and immutable
+  ---
+  duration_ms: 0.721372
+  type: 'test'
+  ...
+# Subtest: credentials and S3 locations are parsed by the native core
+ok 335 - credentials and S3 locations are parsed by the native core
+  ---
+  duration_ms: 0.400713
+  type: 'test'
+  ...
+# Subtest: fromPath normalizes Windows drives and UNC shares as file URIs
+ok 336 - fromPath normalizes Windows drives and UNC shares as file URIs
+  ---
+  duration_ms: 0.999498
+  type: 'test'
+  ...
+# Subtest: URL conversion is validated by the native URI core
+ok 337 - URL conversion is validated by the native URI core
+  ---
+  duration_ms: 0.977902
+  type: 'test'
+  ...
+# Subtest: URN values expose namespace and namespace-specific string
+ok 338 - URN values expose namespace and namespace-specific string
+  ---
+  duration_ms: 0.910794
+  type: 'test'
+  ...
+# Subtest: scheme-less input parses as a file URI instead of failing
+ok 339 - scheme-less input parses as a file URI instead of failing
+  ---
+  duration_ms: 0.284392
+  type: 'test'
+  ...
+# Subtest: URI parsing rejects malformed schemes, authorities, and escapes
+ok 340 - URI parsing rejects malformed schemes, authorities, and escapes
+  ---
+  duration_ms: 0.469896
+  type: 'test'
+  ...
+# Subtest: filename mutations stay native, atomic, and preserve URI components
+ok 341 - filename mutations stay native, atomic, and preserve URI components
+  ---
+  duration_ms: 1.721121
+  type: 'test'
+  ...
+# Subtest: URI MIME and media inference uses native compound suffix tables
+ok 342 - URI MIME and media inference uses native compound suffix tables
+  ---
+  duration_ms: 1.288208
+  type: 'test'
+  ...
+# Subtest: a URL answers the naming questions a path answers
+ok 343 - a URL answers the naming questions a path answers
+  ---
+  duration_ms: 0.382874
+  type: 'test'
+  ...
+# Subtest: joining and climbing a URL preserve every other component
+ok 344 - joining and climbing a URL preserve every other component
+  ---
+  duration_ms: 0.47407
+  type: 'test'
+  ...
+# Subtest: renaming a URL rewrites only the final component
+ok 345 - renaming a URL rewrites only the final component
+  ---
+  duration_ms: 0.335927
+  type: 'test'
+  ...
+# Subtest: matching a URL follows the gitignore rule
+ok 346 - matching a URL follows the gitignore rule
+  ---
+  duration_ms: 0.320631
+  type: 'test'
+  ...
+# Subtest: a URL says what it is relative to
+ok 347 - a URL says what it is relative to
+  ---
+  duration_ms: 0.313599
+  type: 'test'
+  ...
+# Subtest: the file system predicates answer for a local URL only
+ok 348 - the file system predicates answer for a local URL only
+  ---
+  duration_ms: 1.144246
+  type: 'test'
+  ...
+# Subtest: Hive partitions are read off the URL path
+ok 349 - Hive partitions are read off the URL path
+  ---
+  duration_ms: 0.406776
+  type: 'test'
+  ...
+1..349
+# tests 349
+# suites 0
+# pass 349
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4027.480486

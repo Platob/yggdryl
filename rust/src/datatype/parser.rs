@@ -82,6 +82,11 @@ impl fmt::Display for DataType {
             D::Ascii64 => formatter.write_str("ascii64"),
             D::Ascii96 => formatter.write_str("ascii96"),
             D::Ascii128 => formatter.write_str("ascii128"),
+            D::Country => formatter.write_str("country"),
+            D::Currency => formatter.write_str("currency"),
+            D::Mic => formatter.write_str("mic"),
+            D::Cfi => formatter.write_str("cfi"),
+            D::Guid => formatter.write_str("guid"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -356,6 +361,15 @@ impl<'a> Parser<'a> {
             "ascii64" => DataType::Ascii64,
             "ascii96" => DataType::Ascii96,
             "ascii128" => DataType::Ascii128,
+            // `uuid` is what every other system calls it, and there is no
+            // parenthesized form to disambiguate, so both spellings parse.
+            "guid" | "uuid" => DataType::Guid,
+            // A registered code is a datatype, not an alias: it parses to
+            // itself and displays as its own name.
+            "country" => DataType::Country,
+            "currency" => DataType::Currency,
+            "mic" => DataType::Mic,
+            "cfi" => DataType::Cfi,
             // Bare `ascii` names no width; `ascii(N)` lets the family
             // constructor select the physical width.
             "ascii" => {
@@ -412,16 +426,11 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            // A registered logical name is one more spelling of an ASCII
-            // width, resolved through the registry and never a copied list.
-            _ => match DataType::from_logical_name(&word) {
-                Ok(dtype) => dtype,
-                Err(_) => {
-                    return Err(
-                        self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
-                    );
-                }
-            },
+            _ => {
+                return Err(
+                    self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
+                );
+            }
         };
 
         self.parse_postfix_lists(value, depth)

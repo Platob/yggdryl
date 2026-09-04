@@ -144,6 +144,14 @@ pub type Ascii64Field = TypedField<ascii::Ascii64>;
 pub type Ascii96Field = TypedField<ascii::Ascii96>;
 /// An Ascii128-typed field.
 pub type Ascii128Field = TypedField<ascii::Ascii128>;
+/// A country-typed field: ISO 3166-1 alpha-2.
+pub type CountryField = TypedField<ascii::Country>;
+/// A currency-typed field: ISO 4217.
+pub type CurrencyField = TypedField<ascii::Currency>;
+/// A MIC-typed field: ISO 10383's market identifier.
+pub type MicField = TypedField<ascii::Mic>;
+/// A CFI-typed field: ISO 10962's instrument classification.
+pub type CfiField = TypedField<ascii::Cfi>;
 /// A list-typed field.
 pub type ListField = TypedField<nested::List>;
 /// A list-view-typed field.
@@ -174,6 +182,8 @@ pub type MapField = TypedField<nested::Map>;
 pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
 /// A variant-typed field.
 pub type VariantField = TypedField<nested::Variant>;
+/// A GUID-typed field.
+pub type GuidField = TypedField<nested::Guid>;
 /// A geometry-typed field.
 pub type GeometryField = TypedField<geospatial::Geometry>;
 /// A geography-typed field.

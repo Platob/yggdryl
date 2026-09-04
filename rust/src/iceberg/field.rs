@@ -31,7 +31,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
-use super::schema::{DECLARED_TYPE, DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, WRITE_DEFAULT};
+use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, WRITE_DEFAULT};
 use crate::{Error, IcebergField, IcebergFieldMut, Result, Scalar};
 
 impl<'field> IcebergField<'field> {
@@ -97,15 +97,6 @@ impl<'field> IcebergField<'field> {
     /// [`Self::initial_default`] carries the rule.
     pub fn write_default(&self) -> Result<Option<Scalar>> {
         self.decoded(WRITE_DEFAULT)
-    }
-
-    /// Returns the Iceberg type spelling the physical datatype cannot keep.
-    ///
-    /// `uuid` and `fixed[16]` are one physical type, so a schema that said
-    /// `uuid` says it again on the next commit instead of quietly demoting the
-    /// column.
-    pub fn declared_type(&self) -> Option<&'field str> {
-        self.get(DECLARED_TYPE)
     }
 
     /// Parses the identifier of the spec a partition tuple belongs to.
@@ -211,15 +202,6 @@ impl IcebergFieldMut<'_> {
     /// [`Self::set_initial_default`] carries the rule.
     pub fn set_write_default(&mut self, value: &Scalar) -> Result<()> {
         self.store(WRITE_DEFAULT, crate::json::into_utf8(value)?)
-    }
-
-    /// Records the Iceberg type spelling the physical datatype cannot keep.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::set_schema_id`] carries the rule.
-    pub fn set_declared_type(&mut self, value: impl Into<String>) -> Result<()> {
-        self.store(DECLARED_TYPE, value)
     }
 
     /// Records the identifier of the spec a partition tuple belongs to.

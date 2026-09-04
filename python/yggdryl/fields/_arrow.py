@@ -41,6 +41,11 @@ _STRING_KINDS = frozenset(
         "ascii64",
         "ascii96",
         "ascii128",
+        "country",
+        "currency",
+        "mic",
+        "cfi",
+        "guid",
     )
 )
 _LIST_KINDS = frozenset(

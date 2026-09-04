@@ -494,6 +494,10 @@ typed_value_alias!(Ascii32Scalar, ascii::Ascii32, "ascii32");
 typed_value_alias!(Ascii64Scalar, ascii::Ascii64, "ascii64");
 typed_value_alias!(Ascii96Scalar, ascii::Ascii96, "ascii96");
 typed_value_alias!(Ascii128Scalar, ascii::Ascii128, "ascii128");
+typed_value_alias!(CountryScalar, ascii::Country, "country");
+typed_value_alias!(CurrencyScalar, ascii::Currency, "currency");
+typed_value_alias!(MicScalar, ascii::Mic, "mic");
+typed_value_alias!(CfiScalar, ascii::Cfi, "cfi");
 typed_value_alias!(ListScalar, nested::List, "list");
 typed_value_alias!(ListViewScalar, nested::ListView, "list_view");
 typed_value_alias!(
@@ -516,6 +520,7 @@ typed_value_alias!(Decimal128Scalar, decimal::Decimal128, "decimal128");
 typed_value_alias!(Decimal256Scalar, decimal::Decimal256, "decimal256");
 typed_value_alias!(MapScalar, nested::Map, "map");
 typed_value_alias!(VariantScalar, nested::Variant, "variant");
+typed_value_alias!(GuidScalar, nested::Guid, "guid");
 typed_value_alias!(GeometryScalar, geospatial::Geometry, "geometry");
 typed_value_alias!(GeographyScalar, geospatial::Geography, "geography");
 typed_value_alias!(
@@ -551,7 +556,12 @@ static_value_constructor!(ascii::Ascii32, DataType::Ascii32);
 static_value_constructor!(ascii::Ascii64, DataType::Ascii64);
 static_value_constructor!(ascii::Ascii96, DataType::Ascii96);
 static_value_constructor!(ascii::Ascii128, DataType::Ascii128);
+static_value_constructor!(ascii::Country, DataType::Country);
+static_value_constructor!(ascii::Currency, DataType::Currency);
+static_value_constructor!(ascii::Mic, DataType::Mic);
+static_value_constructor!(ascii::Cfi, DataType::Cfi);
 static_value_constructor!(nested::Variant, DataType::Variant);
+static_value_constructor!(nested::Guid, DataType::Guid);
 
 #[cfg(test)]
 mod tests;

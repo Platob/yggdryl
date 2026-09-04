@@ -12,7 +12,10 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::datatype::{ascii_bytes, ascii_text, value_is_logically_null};
+use crate::datatype::{
+    ascii_bytes, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
+    value_is_logically_null,
+};
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
@@ -331,6 +334,31 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 _ => canonicalization_failure(dtype),
             }
         }
+        // A code canonicalizes the same way, at the width its own type fixes.
+        D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
+            Some(bytes) => {
+                let text = code_cell_text(dtype, bytes)?;
+                if matches!(value, Scalar::String(current) if current == text) {
+                    Ok((value.clone(), false))
+                } else {
+                    Ok((Scalar::from(text), true))
+                }
+            }
+            None => canonicalization_failure(dtype),
+        },
+        // The canonical GUID spelling is the hyphenated text; the sixteen
+        // stored bytes and the bare-hex spelling are rewritten here.
+        D::Guid => match guid_bytes(value) {
+            Some(bytes) => {
+                let text = guid_text(&guid_parse(bytes)?);
+                if matches!(value, Scalar::String(current) if *current == text) {
+                    Ok((value.clone(), false))
+                } else {
+                    Ok((Scalar::String(text), true))
+                }
+            }
+            None => canonicalization_failure(dtype),
+        },
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -832,6 +860,16 @@ fn validate_dtype_value(
                 _ => Err(expected(dtype.name(), value)),
             }
         }
+        D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
+            Some(bytes) => code_cell_text(dtype, bytes)
+                .map(|_| ())
+                .map_err(ascii_failure),
+            None => Err(expected(dtype.name(), value)),
+        },
+        D::Guid => match guid_bytes(value).map(guid_parse) {
+            Some(Ok(_)) => Ok(()),
+            _ => Err(expected("guid", value)),
+        },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }

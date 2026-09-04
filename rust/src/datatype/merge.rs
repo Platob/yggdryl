@@ -473,12 +473,22 @@ const UTF8_RANK: u8 = 6;
 ///
 /// The ASCII widths rank below every variable layout, so widening beside
 /// variable text answers the variable text and narrowing the ASCII width.
+///
+/// A registered code ranks as the narrowest width that holds it. Two schemas
+/// that agree on a code never reach here - the merge answers an equal pair
+/// before ranking anything - so this rank decides only the pairs that
+/// disagree, and a code reconciled against anything else gives up its
+/// identity for the plain width both fit in: a currency merged with a
+/// country is `ascii24`, never one standard's code carrying the other's
+/// values.
 const fn text_rank(dtype: &DataType) -> Option<u8> {
     match dtype {
-        DataType::Ascii16 => Some(0),
-        DataType::Ascii24 => Some(1),
-        DataType::Ascii32 => Some(2),
-        DataType::Ascii64 => Some(3),
+        DataType::Ascii16 | DataType::Country => Some(0),
+        DataType::Ascii24 | DataType::Currency => Some(1),
+        DataType::Ascii32 | DataType::Mic => Some(2),
+        // Six bytes is narrower than `ascii64` but wider than `ascii32`, and
+        // `ascii64` is the narrowest width that holds a CFI code.
+        DataType::Ascii64 | DataType::Cfi => Some(3),
         DataType::Ascii96 => Some(4),
         DataType::Ascii128 => Some(5),
         DataType::Utf8 => Some(UTF8_RANK),

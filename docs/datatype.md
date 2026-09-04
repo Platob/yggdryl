@@ -44,8 +44,9 @@ type, with Arrow itself kept out of the value model.
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
 
-There are 48 variants: one per Arrow logical type, plus Variant, the geospatial pair, and the
-six ASCII widths, which cross Arrow as extension-typed storage. The parser accepts the Arrow,
+There are 56 variants: one per Arrow logical type, plus Variant, the geospatial pair, the GUID, the
+six ASCII widths, and the four registered codes, which cross Arrow as extension-typed storage.
+The parser accepts the Arrow,
 SQL, Hive, and Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`,
 `row(...)`, `double precision` - and normalizes to one canonical form, so `to_string` is a
 losslessly re-parseable value rather than a debug rendering. `into_json` is a separate, structural
@@ -533,7 +534,7 @@ none. The algorithm vocabulary is the five canonical lowercase names of
 strings.
 
 Across an Arrow boundary the three are extension-typed storage, as are the
-[ASCII widths](#ascii-widths-and-the-registered-names) below: a variant is a struct of
+[ASCII widths](#ascii-widths-and-the-registered-codes) below: a variant is a struct of
 non-nullable `metadata` and `value` binaries under the canonical `arrow.parquet.variant` extension
 name, and both geospatial types are WKB bytes under the community `geoarrow.wkb` name, whose
 GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm. The identities
@@ -543,7 +544,7 @@ community choice that may be revisited when it stabilizes. The geospatial *value
 Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
 
-## ASCII widths and the registered names
+## ASCII widths and the registered codes
 
 === "Rust"
 
@@ -566,23 +567,32 @@ and bounds by the one WKB reader documented there.
     assert_eq!(DataType::Utf8.ascii_width(), None);
     assert!(DataType::ascii(17).is_err());
 
-    // A registered name is a width, and displays as the width: ISO 3166-1's
-    // two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
-    // six `ascii64`.
-    let currency = DataType::from_logical_name("Currency")?;
-    assert_eq!(currency, DataType::Ascii24);
+    // A registered code is a datatype, not a name over a width: it stores the
+    // width its standard fixes and displays as itself.
+    let currency = DataType::currency();
     assert_eq!(DataType::from_str("currency")?, currency);
-    assert_eq!(currency.to_string(), "ascii24");
-    assert_eq!(DataType::from_str("cfi")?, DataType::Ascii64);
-    assert_eq!(DataType::from_str("country")?, DataType::Ascii16);
+    assert_eq!(currency.to_string(), "currency");
+    assert_eq!(currency.ascii_width(), Some(3));
+    assert_ne!(currency, DataType::Ascii24);
+    assert_eq!(currency.kind(), DataTypeKind::String);
     assert_eq!(
-        DataType::LOGICAL_NAMES,
+        DataType::CODES,
         &[
-            ("country", DataType::Ascii16),
-            ("currency", DataType::Ascii24),
-            ("cfi", DataType::Ascii64),
+            ("country", DataType::Country, 2),
+            ("currency", DataType::Currency, 3),
+            ("mic", DataType::Mic, 4),
+            // Six bytes: `cfi` stores what it is, not the eight the next
+            // ASCII width would pad it to.
+            ("cfi", DataType::Cfi, 6),
         ]
     );
+
+    // A code rides its own Arrow extension, so the identity survives the trip.
+    let venue = Field::new("venue", DataType::Mic, false);
+    let arrow = venue.clone().into_arrow()?;
+    assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
+    assert_eq!(Field::from_arrow(&arrow)?, venue);
 
     // Storage pads to the width; every string rendering trims the padding.
     let ccy = Field::new("ccy", DataType::Ascii32, false);
@@ -637,20 +647,24 @@ and bounds by the one WKB reader documented there.
     assert DataType("utf8").ascii_width is None
     assert fields.ascii("ccy", 3).dtype == DataType("ascii24")
 
-    # A registered name is a width, and displays as the width: ISO 3166-1's
-    # two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
-    # six `ascii64`.
-    currency = DataType.from_logical_name("Currency")
-    assert currency == DataType("ascii24")
-    assert DataType("currency") == currency
-    assert str(currency) == "ascii24"
-    assert DataType("cfi") == DataType("ascii64")
-    assert DataType("country") == DataType("ascii16")
-    assert DataType.logical_names() == {
-        "country": DataType("ascii16"),
-        "currency": DataType("ascii24"),
-        "cfi": DataType("ascii64"),
-    }
+    # A registered code is a datatype, not a name over a width: it stores the
+    # width its standard fixes and displays as itself.
+    currency = DataType("currency")
+    assert str(currency) == "currency"
+    assert currency.ascii_width == 3
+    assert currency != DataType("ascii24")
+    assert currency.kind == "string"
+    assert [(DataType(name).id, DataType(name).ascii_width) for name in
+            ("country", "currency", "mic", "cfi")] == [
+        ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)
+    ]
+
+    # A code rides its own Arrow extension, so the identity survives the trip.
+    venue = fields.mic("venue", nullable=False)
+    venue_arrow = venue.into_arrow()
+    assert venue_arrow.type == pa.binary(4)
+    assert venue_arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.mic"
+    assert Field.from_arrow(venue_arrow) == venue
 
     # Storage pads to the width; every string rendering trims the padding.
     ccy = Field("ccy", "ascii32", nullable=False)
@@ -700,16 +714,27 @@ and bounds by the one WKB reader documented there.
     assert.equal(new DataType('utf8').asciiWidth, null)
     assert.equal(fields.ascii('ccy', 3).dtype.id, 'ascii24')
 
-    // A registered name is a width, and displays as the width: ISO 3166-1's
-    // two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
-    // six `ascii64`.
-    const currency = DataType.fromLogicalName('Currency')
-    assert.equal(currency.id, 'ascii24')
-    assert.ok(DataType.from('currency').equals(currency))
-    assert.equal(currency.toString(), 'ascii24')
-    assert.equal(DataType.from('cfi').id, 'ascii64')
-    assert.equal(DataType.from('country').id, 'ascii16')
-    assert.deepEqual(Object.keys(DataType.logicalNames()), ['country', 'currency', 'cfi'])
+    // A registered code is a datatype, not a name over a width: it stores the
+    // width its standard fixes and displays as itself.
+    const currency = new DataType('currency')
+    assert.equal(currency.id, 'currency')
+    assert.equal(currency.toString(), 'currency')
+    assert.equal(currency.asciiWidth, 3)
+    assert.ok(!currency.equals(new DataType('ascii24')))
+    assert.deepEqual(
+      ['country', 'currency', 'mic', 'cfi'].map((name) => new DataType(name).asciiWidth),
+      [2, 3, 4, 6],
+    )
+
+    // A code rides its own Arrow extension, so the identity survives the trip.
+    const venue = fields.struct('row', [fields.mic('venue', { nullable: false })], {
+      nullable: false,
+    })
+    const venueArrow = venue.castArrow(
+      new arrow.Table({ venue: arrow.vectorFromArray(['XPAR'], new arrow.Utf8()) }),
+    ).schema.fields[0]
+    assert.equal(String(venueArrow.type), 'FixedSizeBinary[4]')
+    assert.equal(venueArrow.metadata.get('ARROW:extension:name'), 'yggdryl.mic')
 
     // Storage pads to the width; every string rendering trims the padding.
     const row = fields.struct('row', [fields.ascii32('ccy', { nullable: false })], {
@@ -737,21 +762,38 @@ and bounds by the one WKB reader documented there.
     assert.throws(() => DataType.ascii(17), /from 1 to 16 bytes, got 17/)
     ```
 
-`ascii32`, `ascii64`, and `ascii128` are ASCII text padded with trailing NUL to 4, 8, and 16
-bytes, named by their bit width like `int32` and `decimal128`. A value is ASCII - every byte at
-most `0x7F` - of at most the width in bytes, with no NUL byte; storage pads it to exactly the width,
-and every string rendering trims the padding, so a column reads back as the text that went in. The
-canonical scalar is the trimmed string; bytes and a string carrying trailing NULs are accepted on
-the way in under the same rule and canonicalize to it. `ascii(n)` selects the width that holds `n`
-bytes, `ascii_width` answers the storage width, and a value that is not ASCII, holds a NUL, or is
-longer than the width is refused naming the width and, in a cast, the row.
+`ascii16`, `ascii24`, `ascii32`, `ascii64`, `ascii96`, and `ascii128` are ASCII text padded with
+trailing NUL to 2, 3, 4, 8, 12, and 16 bytes, named by their bit width like `int32` and
+`decimal128`. The six are the widths the codes of the trade actually take: two bytes for a country,
+three for a currency, four for a venue, six inside eight for a CFI code, twelve for an ISIN, and
+sixteen for whatever is longer. A value is ASCII - every byte at most `0x7F` - of at most the width
+in bytes, with no NUL byte; storage pads it to exactly the width, and every string rendering trims
+the padding, so a column reads back as the text that went in. The canonical scalar is the trimmed
+string; bytes and a string carrying trailing NULs are accepted on the way in under the same rule and
+canonicalize to it. `ascii(n)` selects the narrowest width that holds `n` bytes, `ascii_width`
+answers the storage width, and a value that is not ASCII, holds a NUL, or is longer than the width
+is refused naming the width and, in a cast, the row.
 
-A registration is a name over a width, not a type: `currency` is ISO 4217's three-letter code, so
-it parses to `ascii32` and displays as `ascii32` - one canonical spelling. `LOGICAL_NAMES` is the
-registry and `from_logical_name` resolves it, ASCII case-insensitively and trimmed. Across Arrow the
-widths are `fixed_size_binary(4|8|16)` under the `yggdryl.ascii` extension name with an empty
-document, because the storage width says the width; a plain fixed binary of another width, or one
-carrying a document, imports as it is. Every other exchange sees text: Iceberg, Spark, Polars, and
+`country`, `currency`, `mic` and `cfi` are datatypes of their own, not names over a width. Each is
+one published registry - ISO 3166-1 alpha-2, ISO 4217, ISO 10383, ISO 10962 - with exactly one
+storage width: two, three, four and six bytes. `CODES` is that listing, `code_name` answers a code's
+identity, and `is_code` distinguishes the four from the widths. The value contract is unchanged: a
+code answers `ascii_width`, so `ascii_packed`, `AsciiEnum` and `AsciiDictionary` work over it with
+nothing added, and an enum member is still the integer its value packs into. What a code adds over
+the width that would hold it is identity and a constant - the identity crosses Arrow, and the width
+is known at compile time, so the ingest and render paths are monomorphized per code rather than
+reading a length out of the datatype on every row. Six bytes is the point of `cfi`: it stores what a
+CFI code is rather than padding into `ascii64`'s eight.
+
+Across Arrow a width is `fixed_size_binary(2|3|4|8|12|16)` under the `yggdryl.ascii` extension name
+with an empty document, because the storage width says the width; a code is
+`fixed_size_binary(2|3|4|6)` under its own `yggdryl.country`, `yggdryl.currency`, `yggdryl.mic` or
+`yggdryl.cfi`, because the name is what says which registry the bytes belong to. Three bytes under
+`yggdryl.currency` read back a currency and three bytes under `yggdryl.ascii` read back an
+`ascii24`; a plain fixed binary of any width, or one carrying a document, imports as it is. Two
+schemas that agree on a code keep it, and a code [merged](field.md#merging-two-schemas) with
+anything else answers the plain text both fit in - a currency beside a country is `ascii24`, never
+one standard's code carrying the other's values. Every other exchange sees text: Iceberg, Spark, Polars, and
 pandas [rewrite](#compatibility-rewriting) a width to `string`/`utf8`, Avro writes `string`, and a
 filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
 [merge](field.md#merging-two-schemas) as text. One boundary shows storage: JavaScript's
@@ -969,6 +1011,122 @@ code is the packed value under that width and one enum is one canonical text
 however it was built. Ordinary field metadata is what carries it, so the
 declaration reaches Arrow, a file, and either binding with the field, and the
 `field:` protocol view reads it beside `field:init` and `field:partition`.
+
+## The GUID
+
+=== "Rust"
+
+    ```rust
+    use arrow_array::{Array, FixedSizeBinaryArray};
+    use arrow_schema::DataType as ArrowDataType;
+    use yggdryl::arrow::{scalar_array, scalar_value};
+    use yggdryl::{DataType, DataTypeKind, Field, Scalar};
+
+    // One 128-bit identifier and no parameters. `uuid` is what every other
+    // system calls it, so both spellings parse to the one type.
+    let guid = DataType::guid();
+    assert_eq!(DataType::from_str("guid")?, guid);
+    assert_eq!(DataType::from_str("uuid")?, guid);
+    assert_eq!(guid.to_string(), "guid");
+    assert_eq!(guid.kind(), DataTypeKind::Guid);
+
+    // The identity is the sixteen bytes; every spelling is a rendering of them.
+    let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
+    let packed = 0x0191_2d68_783e_7c9a_b1f2_0123_4567_89ab_u128;
+    assert_eq!(guid.guid_packed(text.as_bytes())?, packed);
+    assert_eq!(guid.guid_packed(text.to_uppercase().as_bytes())?, packed);
+    assert_eq!(guid.guid_packed(text.replace('-', "").as_bytes())?, packed);
+    assert_eq!(guid.guid_packed(&packed.to_be_bytes())?, packed);
+    assert_eq!(guid.guid_value(packed)?, text);
+
+    // Storage is the canonical `arrow.uuid` extension over sixteen bytes, and
+    // the value reads back spelled out.
+    let id = Field::new("id", DataType::Guid, false);
+    let stored = scalar_array(&id, &Scalar::from(text))?;
+    let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
+    assert_eq!(bytes.value(0), packed.to_be_bytes());
+    assert_eq!(scalar_value(&id, stored.as_ref())?, Scalar::from(text));
+
+    let arrow = id.clone().into_arrow()?;
+    assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
+    assert_eq!(Field::from_arrow(&arrow)?, id);
+
+    assert!(guid.guid_packed(b"not-a-guid").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import uuid
+
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field
+
+    # One 128-bit identifier and no parameters. `uuid` is what every other
+    # system calls it, so both spellings parse to the one type.
+    guid = DataType("guid")
+    assert DataType("uuid") == guid
+    assert str(guid) == "guid"
+    assert guid.kind == "guid"
+
+    # The identity is the sixteen bytes; every spelling is a rendering of them.
+    text = "01912d68-783e-7c9a-b1f2-0123456789ab"
+    packed = 0x01912D68783E7C9AB1F20123456789AB
+    id = Field("id", guid, nullable=False)
+    assert id.arrow_scalar(text) == pa.scalar(packed.to_bytes(16, "big"), pa.binary(16))
+    assert id.arrow_scalar(text.upper()) == id.arrow_scalar(text)
+    assert id.arrow_scalar(packed.to_bytes(16, "big")) == id.arrow_scalar(text)
+    assert id.default_pyvalue() == "00000000-0000-0000-0000-000000000000"
+
+    # Storage is the canonical `arrow.uuid` extension, which PyArrow registers
+    # itself, so a column of them reads back as `uuid.UUID`.
+    arrow = id.into_arrow()
+    assert arrow.type == pa.uuid()
+    assert arrow.type.storage_type == pa.binary(16)
+    assert Field.from_arrow(arrow) == id
+    stored = id.cast_arrow_array(pa.array([text, text.upper()]))
+    assert stored.to_pylist() == [uuid.UUID(text)] * 2
+
+    # A recognized identifier column renders as its spelling.
+    batch = pa.record_batch([stored], schema=pa.schema([arrow]))
+    spelled = DataType.from_fields([Field("id", "utf8")])
+    assert spelled.cast_arrow_batch(batch).column(0).to_pylist() == [text, text]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field, fields } = require('yggdryl')
+
+    // One 128-bit identifier and no parameters. `uuid` is what every other
+    // system calls it, so both spellings parse to the one type.
+    const guid = new DataType('guid')
+    assert.ok(DataType.from('uuid').equals(guid))
+    assert.equal(guid.toString(), 'guid')
+    assert.equal(guid.kind, 'guid')
+
+    // The identity is the sixteen bytes; every spelling is a rendering of them.
+    const id = new Field('id', guid, false)
+    assert.equal(id.defaultJSValue(), '00000000-0000-0000-0000-000000000000')
+    assert.equal(fields.guid('id').dtype.id, 'guid')
+    assert.ok(Field.fromJSON(id.toJSON()).equals(id))
+    ```
+
+A GUID is the ASCII widths' sibling: one fixed-width value whose integer is its own storage bytes
+read big-endian, so it is the same integer in every process and is what a stable hash hashes. It is
+a `u128` rather than an `i128` because every one of the sixteen bytes carries identity. Storage is
+`FixedSizeBinary(16)` under the canonical `arrow.uuid` extension - the name Arrow itself registers,
+taken as-is rather than re-spelled - and Iceberg's `uuid` maps straight onto it, so the spelling
+survives a metadata rewrite in the datatype instead of a marker beside the column.
+
+Where an ASCII width canonicalizes toward its text, because the value *is* text and the padding is
+layout, a GUID canonicalizes toward its 36-character lowercase hyphenated spelling, because that is
+what a reader means by an identifier. The 32-digit bare-hex text, upper case, and the sixteen stored
+bytes are all accepted on the way in and rewrite to that one spelling; anything else is refused by
+the one rule that field validation, Arrow ingest, and every cast tier all call.
 
 ## Identity and family
 

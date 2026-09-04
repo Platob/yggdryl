@@ -30,8 +30,8 @@ const geographyType: DataType = DataType.geography()
 const vincentyGeography: DataType = DataType.geography('OGC:CRS84', 'vincenty')
 const asciiType: DataType = DataType.ascii(3)
 const asciiWidth: number | null = asciiType.asciiWidth
-const currencyType: DataType = DataType.fromLogicalName('currency')
-const logicalNames: Record<string, DataType> = DataType.logicalNames()
+const currencyType: DataType = new DataType('currency')
+const currencyTypeWidth: number | null = currencyType.asciiWidth
 
 void child
 void indexedChild
@@ -47,7 +47,7 @@ void geographyType
 void vincentyGeography
 void asciiWidth
 void currencyType
-void logicalNames
+void currencyTypeWidth
 
 const currencies = new AsciiDictionary('ascii32')
 const seededCurrencies: AsciiDictionary = AsciiDictionary.fromValues(
@@ -88,6 +88,8 @@ const currencyDeclarationEquals: boolean =
   currencyDeclaration.equals(currencyDeclarationParsed)
 const currencyDeclarationClone: AsciiEnum = currencyDeclaration.clone()
 const currencyDeclarationText: string = currencyDeclaration.toString()
+const guidType: DataType = new DataType('guid')
+const guidId: string = guidType.id
 const declaredField: Field = new Field('side', 'ascii32', false)
 declaredField.setAsciiEnum(currencyDeclaration)
 const declaredFieldEnum: AsciiEnum | null = declaredField.asciiEnum
@@ -126,6 +128,8 @@ void currencyDeclarationLength
 void currencyDeclarationEquals
 void currencyDeclarationClone
 void currencyDeclarationText
+void guidType
+void guidId
 void declaredField
 void declaredFieldEnum
 void declaredFieldRemoved

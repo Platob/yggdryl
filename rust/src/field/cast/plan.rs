@@ -4,7 +4,12 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::datatype::{ascii_padded, ascii_text};
+use smol_str::SmolStr;
+
+use crate::datatype::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_padded, ascii_text, code_refusal,
+    code_text, guid_parse, guid_text,
+};
 use crate::field::{RecognizedExtension, recognized_arrow_extension};
 use crate::generic::wkb;
 use crate::{DataType, Field, Scalar, UnionMode};
@@ -196,6 +201,18 @@ enum ArrayCastKind {
     AsciiIngest,
     /// A recognized ASCII source rendering as trimmed text.
     AsciiText,
+    /// Values entering a registered code: the same rule as [`Self::AsciiIngest`]
+    /// at the width the code fixes, which is a constant, so the validation
+    /// and the padding run monomorphized per code rather than reading a
+    /// width out of the datatype on every row.
+    CodeIngest,
+    /// A recognized code source rendering as trimmed text, at its own width.
+    CodeText,
+    /// Values entering a GUID: every exposed value is validated under the one
+    /// GUID rule and stored as its sixteen bytes.
+    GuidIngest,
+    /// A recognized GUID source rendering as its hyphenated spelling.
+    GuidText,
     DeferredUnsupported {
         reason: String,
     },
@@ -321,6 +338,14 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Ascii(source)) if source == field.dtype()
             ),
+            // The same rule for a code, over its own extension: a currency
+            // column written as a currency is already validated, and one
+            // written as three anonymous bytes is not.
+            DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Code(source)) if source == field.dtype()
+            ),
+            DataType::Guid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Guid)),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -434,6 +459,24 @@ impl ArrayCastPlan {
                     });
                 }
             }
+            // A code takes the same two sources as a width, and refuses the
+            // same third, at the width its own type fixes.
+            (DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi, source) => {
+                if matches!(source, ArrowDataType::FixedSizeBinary(_))
+                    || can_cast_types(source, &ArrowDataType::Utf8)
+                {
+                    ArrayCastKind::CodeIngest
+                } else {
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "expected a fixed binary or a column Arrow renders as utf8 to cast \
+                             into {}, got {source:?}",
+                            dtype.name()
+                        ),
+                    });
+                }
+            }
             (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, ArrowDataType::Binary)
                 if matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
@@ -444,6 +487,32 @@ impl ArrayCastPlan {
                 ArrowDataType::FixedSizeBinary(_),
             ) if matches!(source_extension, Some(RecognizedExtension::Ascii(_))) => {
                 ArrayCastKind::AsciiText
+            }
+            (
+                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+                ArrowDataType::FixedSizeBinary(_),
+            ) if matches!(source_extension, Some(RecognizedExtension::Code(_))) => {
+                ArrayCastKind::CodeText
+            }
+            // A GUID takes its sixteen bytes directly and every text spelling
+            // through one Utf8 temporary; the one GUID rule runs per value
+            // either way.
+            (DataType::Guid, source) => {
+                if matches!(source, ArrowDataType::FixedSizeBinary(16))
+                    || can_cast_types(source, &ArrowDataType::Utf8)
+                {
+                    ArrayCastKind::GuidIngest
+                } else {
+                    ArrayCastKind::DeferredUnsupported {
+                        reason: format!("casting {source:?} to guid is not supported"),
+                    }
+                }
+            }
+            (
+                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+                ArrowDataType::FixedSizeBinary(16),
+            ) if matches!(source_extension, Some(RecognizedExtension::Guid)) => {
+                ArrayCastKind::GuidText
             }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
@@ -744,7 +813,57 @@ impl ArrayCastPlan {
                 exposure,
                 budget,
             )?,
+            ArrayCastKind::GuidIngest => ingest_guid_array(
+                &array,
+                &self.expected,
+                self.safe,
+                &self.field,
+                exposure,
+                budget,
+            )?,
+            ArrayCastKind::GuidText => {
+                render_guid_text(&array, &self.expected, &self.field, exposure, budget)?
+            }
             ArrayCastKind::AsciiText => {
+                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
+            }
+            // One match per array selects the code's width; every row after
+            // it runs against a constant.
+            ArrayCastKind::CodeIngest => match self.field.dtype() {
+                DataType::Country => ingest_code_array::<COUNTRY_WIDTH>(
+                    &array,
+                    self.safe,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Currency => ingest_code_array::<CURRENCY_WIDTH>(
+                    &array,
+                    self.safe,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Mic => ingest_code_array::<MIC_WIDTH>(
+                    &array,
+                    self.safe,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Cfi => ingest_code_array::<CFI_WIDTH>(
+                    &array,
+                    self.safe,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                other => return Err(code_refusal(other).into()),
+            },
+            // Rendering reads bytes out and never pads, so a code shares the
+            // width's one implementation: the storage says the width, and
+            // the recognizer already agreed it is the code's own.
+            ArrayCastKind::CodeText => {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             ArrayCastKind::DeferredUnsupported { reason } => {
@@ -1144,7 +1263,10 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     };
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
-        (_, RecognizedExtension::Ascii(_)) => Ok(()),
+        (_, RecognizedExtension::Ascii(_) | RecognizedExtension::Code(_)) => Ok(()),
+        // A GUID source is sixteen bytes: a GUID target re-validates them,
+        // text renders them, and bytes keep them.
+        (_, RecognizedExtension::Guid) => Ok(()),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(
@@ -1429,6 +1551,199 @@ fn render_ascii_text(
             Arc::new(rendered.into_iter().collect::<StringViewArray>()) as ArrayRef
         }
         _ => return Err(internal_target_error("ascii text")),
+    })
+}
+
+/// Validates every exposed, non-null value entering a registered code and
+/// pads it into that code's fixed storage.
+///
+/// The same shape as [`ingest_ascii_array`] with the width a constant: a
+/// fixed binary of the code's own width is the same array once validated,
+/// another fixed width re-pads each trimmed value, and anything else first
+/// renders as Utf8 through Arrow's kernel. What the constant buys is the
+/// inner loop: the length check, the slot arithmetic and the padding copy
+/// are all fixed-size, so a currency column ingests three bytes a row with
+/// no width to read.
+fn ingest_code_array<const WIDTH: usize>(
+    array: &ArrayRef,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    if let ArrowDataType::FixedSizeBinary(source_width) = array.data_type() {
+        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        if usize::try_from(*source_width).is_ok_and(|width| width == WIDTH) {
+            for index in 0..source.len() {
+                if is_exposed(exposure, index) && source.is_valid(index) {
+                    code_cell::<WIDTH>(field, index, source.value(index))?;
+                }
+            }
+            return Ok(Arc::clone(array));
+        }
+        return padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+            source.is_valid(index).then(|| source.value(index))
+        });
+    }
+    let text = if array.data_type() == &ArrowDataType::Utf8 {
+        Arc::clone(array)
+    } else {
+        arrow_cast_exposed(
+            array,
+            &ArrowDataType::Utf8,
+            safe,
+            exposure,
+            &Field::new(field.name(), DataType::Utf8, true),
+            budget,
+        )?
+    };
+    let source = downcast::<StringArray>(text.as_ref())?;
+    padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+        source
+            .is_valid(index)
+            .then(|| source.value(index).as_bytes())
+    })
+}
+
+/// Builds the fixed storage of one registered code from one cell per row.
+fn padded_code_array<'a, const WIDTH: usize>(
+    field: &Field,
+    rows: usize,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+    cell: impl Fn(usize) -> Option<&'a [u8]>,
+) -> Result<ArrayRef> {
+    // The reservation bounds `rows * WIDTH`, so the product cannot overflow.
+    budget.add_array(field.dtype(), rows)?;
+    let mut bytes = vec![0_u8; rows * WIDTH];
+    let mut validity = BooleanBufferBuilder::new(rows);
+    for (index, slot) in bytes.chunks_exact_mut(WIDTH).enumerate() {
+        let value = cell(index).filter(|_| is_exposed(exposure, index));
+        if let Some(raw) = value {
+            let text = code_cell::<WIDTH>(field, index, raw)?;
+            slot[..text.len()].copy_from_slice(text.as_bytes());
+        }
+        validity.append(value.is_some());
+    }
+    let nulls = arrow_buffer::NullBuffer::new(validity.finish());
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        WIDTH as i32,
+        arrow_buffer::Buffer::from(bytes),
+        (nulls.null_count() != 0).then_some(nulls),
+    )?))
+}
+
+/// Validates one code cell at the code's constant width.
+fn code_cell<'a, const WIDTH: usize>(
+    field: &Field,
+    index: usize,
+    bytes: &'a [u8],
+) -> Result<&'a str> {
+    code_text::<WIDTH>(bytes).map_err(|error| {
+        Error::IncompatibleSchema(format!(
+            "row {index} of column {name}: {error}",
+            name = field.name()
+        ))
+    })
+}
+
+/// Validates every exposed, non-null value entering a GUID and stores it as
+/// its sixteen bytes.
+///
+/// Sixteen-byte storage is the same array once validated; anything else first
+/// renders as Utf8 through Arrow's kernel, exactly as an ASCII width does.
+fn ingest_guid_array(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    if !matches!(expected, ArrowDataType::FixedSizeBinary(16)) {
+        return Err(internal_target_error("guid"));
+    }
+    if let ArrowDataType::FixedSizeBinary(16) = array.data_type() {
+        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        for index in 0..source.len() {
+            if is_exposed(exposure, index) && source.is_valid(index) {
+                guid_cell(field, index, source.value(index))?;
+            }
+        }
+        return Ok(Arc::clone(array));
+    }
+    let text = if array.data_type() == &ArrowDataType::Utf8 {
+        Arc::clone(array)
+    } else {
+        arrow_cast_exposed(
+            array,
+            &ArrowDataType::Utf8,
+            safe,
+            exposure,
+            &Field::new(field.name(), DataType::Utf8, true),
+            budget,
+        )?
+    };
+    let source = downcast::<StringArray>(text.as_ref())?;
+    budget.add_array(field.dtype(), source.len())?;
+    let mut bytes = vec![0_u8; source.len() * 16];
+    let mut validity = BooleanBufferBuilder::new(source.len());
+    for index in 0..source.len() {
+        let present = is_exposed(exposure, index) && source.is_valid(index);
+        if present {
+            let stored = guid_cell(field, index, source.value(index).as_bytes())?;
+            bytes[index * 16..][..16].copy_from_slice(&stored);
+        }
+        validity.append(present);
+    }
+    let nulls = arrow_buffer::NullBuffer::new(validity.finish());
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        16,
+        arrow_buffer::Buffer::from(bytes),
+        (nulls.null_count() != 0).then_some(nulls),
+    )?))
+}
+
+/// Renders a recognized GUID column as its hyphenated spelling.
+fn render_guid_text(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+    budget.add_array(field.dtype(), source.len())?;
+    budget.add_bytes(source.len().saturating_mul(36))?;
+    reserve_vec_bytes::<Option<SmolStr>>(budget, source.len())?;
+    let mut rendered = Vec::new();
+    rendered.try_reserve_exact(source.len()).map_err(|error| {
+        Error::IncompatibleSchema(format!("GUID text output allocation failed: {error}"))
+    })?;
+    for index in 0..source.len() {
+        rendered.push(if is_exposed(exposure, index) && source.is_valid(index) {
+            Some(guid_text(&guid_cell(field, index, source.value(index))?))
+        } else {
+            None
+        });
+    }
+    let text = rendered.iter().map(|value| value.as_deref());
+    Ok(match expected {
+        ArrowDataType::Utf8 => Arc::new(text.collect::<StringArray>()) as ArrayRef,
+        ArrowDataType::LargeUtf8 => Arc::new(text.collect::<LargeStringArray>()) as ArrayRef,
+        ArrowDataType::Utf8View => Arc::new(text.collect::<StringViewArray>()) as ArrayRef,
+        _ => return Err(internal_target_error("guid text")),
+    })
+}
+
+/// Validates one cell as a GUID, naming the field and the row beside the rule.
+fn guid_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<[u8; 16]> {
+    guid_parse(bytes).map_err(|error| {
+        let reason = match error {
+            crate::Error::InvalidRecord { reason, .. } => reason.to_string(),
+            other => other.to_string(),
+        };
+        Error::IncompatibleSchema(format!("column {:?} row {index}: {reason}", field.name()))
     })
 }
 

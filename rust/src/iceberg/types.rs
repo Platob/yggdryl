@@ -111,8 +111,10 @@ impl PrimitiveType {
             // null datatype rather than a placeholder of some other width.
             Self::Unknown => DataType::Null,
             Self::String => DataType::Utf8,
-            // A UUID is a 16-byte fixed value on the wire.
-            Self::Uuid => DataType::fixed_size_binary(16)?,
+            // A UUID is a 16-byte fixed value on the wire, and the core has a
+            // datatype that is exactly that, so the spelling survives without
+            // a marker beside the column.
+            Self::Uuid => DataType::Guid,
             Self::Fixed(width) => DataType::fixed_size_binary(width)?,
             Self::Binary => DataType::Binary,
         })
@@ -172,8 +174,14 @@ impl PrimitiveType {
             | DataType::Ascii32
             | DataType::Ascii64
             | DataType::Ascii96
-            | DataType::Ascii128 => Self::String,
-            DataType::FixedSizeBinary(16) => Self::Fixed(16),
+            | DataType::Ascii128
+            // Iceberg has `string` and `fixed[n]` and nothing that carries a
+            // code's identity, so a code writes as the text it is.
+            | DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi => Self::String,
+            DataType::Guid => Self::Uuid,
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),
             DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,
             other => {

@@ -51,9 +51,14 @@ from yggdryl._native import (
 from yggdryl.enums import Ascii32, AsciiCode
 from yggdryl.fields import (
     Ascii24Field,
+    GuidField,
     Ascii32Field,
     Ascii96Field,
     AsciiField,
+    CfiField,
+    CountryField,
+    CurrencyField,
+    MicField,
     DenseUnionField,
     FixedSizeListField,
     GeographyField,
@@ -283,13 +288,24 @@ typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 ascii_dtype: DataType = DataType.ascii(3)
 ascii_width: int | None = ascii_dtype.ascii_width
-currency_dtype: DataType = DataType.from_logical_name("currency")
-logical_names: dict[str, DataType] = DataType.logical_names()
+currency_dtype: DataType = DataType("currency")
+currency_width: int | None = currency_dtype.ascii_width
 typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
 typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
 typed_ascii_narrow: Ascii24Field = fields.ascii24("ccy", nullable=False)
 typed_ascii_narrow_kind: Literal["ascii24"] = typed_ascii_narrow.dtype.id
 typed_ascii_isin: Ascii96Field = fields.ascii96("isin")
+typed_country: CountryField = fields.country("iso", nullable=False)
+typed_country_kind: Literal["country"] = typed_country.dtype.id
+typed_currency: CurrencyField = fields.currency("ccy", nullable=False)
+typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
+typed_mic: MicField = fields.mic("venue")
+typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
+typed_cfi: CfiField = fields.cfi("classification")
+typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
+typed_guid: GuidField = fields.guid("id", nullable=False)
+typed_guid_kind: Literal["guid"] = typed_guid.dtype.id
+typed_guid_value: str = typed_guid.dtype.default_pyvalue()
 typed_ascii_isin_kind: Literal["ascii96"] = typed_ascii_isin.dtype.id
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
 typed_ascii_width: AsciiField = fields.ascii("isin", 12)

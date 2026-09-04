@@ -129,12 +129,10 @@
   pub enum DataType
 
 ### yggdryl::datatype::ascii  [rust\src\datatype\ascii.rs]
-  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("country", DataType::Ascii16), ("currency", DataType::Ascii24), ("cfi", DataType::Ascii64)];
   pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
   pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>
   pub fn ascii_value(&self, packed: i128) -> Result<SmolStr>
-  pub fn from_logical_name(name: &str) -> Result<Self>
   pub struct AsciiDictionary
   pub fn new(values: DataType) -> Result<Self>
   pub fn with_key(self, key: DataType) -> Result<Self>
@@ -168,6 +166,20 @@
   pub fn iter(&self) -> impl Iterator<Item = (&str, &str)>
   pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>>
   pub fn into_dictionary(&self, width: DataType) -> Result<AsciiDictionary>
+
+### yggdryl::datatype::coded  [rust\src\datatype\coded.rs]
+  pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6)];
+  pub const fn country() -> Self
+  pub const fn currency() -> Self
+  pub const fn mic() -> Self
+  pub const fn cfi() -> Self
+  pub const fn code_name(&self) -> Option<&'static str>
+  pub const fn is_code(&self) -> bool
+
+### yggdryl::datatype::guid  [rust\src\datatype\guid.rs]
+  pub const fn guid() -> Self
+  pub fn guid_packed(&self, value: &[u8]) -> Result<u128>
+  pub fn guid_value(&self, packed: u128) -> Result<SmolStr>
 
 ### yggdryl::datatype::nested  [rust\src\datatype\nested.rs]
   pub const fn new() -> Self
@@ -248,7 +260,7 @@
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (Ascii16Scalar, Ascii24Scalar, Ascii32Scalar, Ascii64Scalar, Ascii96Scalar, Ascii128Scalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (Ascii16Scalar, Ascii24Scalar, Ascii32Scalar, Ascii64Scalar, Ascii96Scalar, Ascii128Scalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, GuidScalar included)
 
 ### yggdryl::datatype::parser  [rust\src\datatype\parser.rs]
   pub const PARSE_RECURSION_LIMIT: usize = 64;
@@ -855,6 +867,10 @@
   pub type Ascii64Field = TypedField<ascii::Ascii64>;
   pub type Ascii96Field = TypedField<ascii::Ascii96>;
   pub type Ascii128Field = TypedField<ascii::Ascii128>;
+  pub type CountryField = TypedField<ascii::Country>;
+  pub type CurrencyField = TypedField<ascii::Currency>;
+  pub type MicField = TypedField<ascii::Mic>;
+  pub type CfiField = TypedField<ascii::Cfi>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;
   pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
@@ -870,6 +886,7 @@
   pub type MapField = TypedField<nested::Map>;
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type VariantField = TypedField<nested::Variant>;
+  pub type GuidField = TypedField<nested::Guid>;
   pub type GeometryField = TypedField<geospatial::Geometry>;
   pub type GeographyField = TypedField<geospatial::Geography>;
   pub type FieldRef = Arc<ArrowField>;
@@ -1569,7 +1586,6 @@
   pub fn doc(&self) -> Option<&'field str>
   pub fn initial_default(&self) -> Result<Option<Scalar>>
   pub fn write_default(&self) -> Result<Option<Scalar>>
-  pub fn declared_type(&self) -> Option<&'field str>
   pub fn spec_id(&self) -> Result<Option<i32>>
   pub fn partition_source_id(&self) -> Result<Option<i32>>
   pub fn transform(&self) -> Result<Option<Transform>>
@@ -1579,7 +1595,6 @@
   pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()>
   pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()>
   pub fn set_write_default(&mut self, value: &Scalar) -> Result<()>
-  pub fn set_declared_type(&mut self, value: impl Into<String>) -> Result<()>
   pub fn set_spec_id(&mut self, id: i32) -> Result<()>
   pub fn set_partition_source_id(&mut self, id: i32) -> Result<()>
   pub fn set_transform(&mut self, transform: &Transform) -> Result<()>

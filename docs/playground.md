@@ -1,7 +1,7 @@
 # Playground
 
-Every ASCII width, every refusal, and the dictionary vocabulary, as the package itself answered
-them.
+Every ASCII width, every registered code, every refusal, and the dictionary vocabulary, as the
+package itself answered them.
 
 Nothing on this page is computed in your browser. The JavaScript extension is a native Node addon,
 so a browser cannot load it, and a documentation page may not reimplement what the package does. So
@@ -11,14 +11,14 @@ page fetches that manifest and renders it. A browser build would need a WebAssem
 `node` crate that does not exist, and could not carry Parquet or Iceberg, so it is not offered here.
 
 The contract these values prove is on the [datatype
-page](datatype.md#ascii-widths-and-the-registered-names); this page is the same contract with
+page](datatype.md#ascii-widths-and-the-registered-codes); this page is the same contract with
 every case laid out. To try a value of your own, add it to the corpus in the generator and rerun it:
 
 ```console
 node scripts/build_docs_playground.js
 ```
 
-## The widths
+## The widths and the codes
 
 <div class="ygg-pg" data-playground="widths" markdown="1">
 This section renders `assets/playground.json` and needs JavaScript.

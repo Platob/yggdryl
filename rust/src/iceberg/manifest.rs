@@ -1296,9 +1296,9 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
         (OfficialPrimitiveType::String, OfficialPrimitiveLiteral::String(value)) => {
             Ok(Scalar::from(value.as_str()))
         }
-        (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            Ok(Scalar::from(value.to_be_bytes().to_vec()))
-        }
+        (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => Ok(
+            Scalar::String(crate::datatype::guid_text(&value.to_be_bytes())),
+        ),
         (
             OfficialPrimitiveType::Fixed(_) | OfficialPrimitiveType::Binary,
             OfficialPrimitiveLiteral::Binary(value),
@@ -1656,13 +1656,7 @@ fn partition_record(partition: &Field, name: &str) -> Result<Scalar> {
 
 /// Render one Iceberg partition primitive as its required Avro wire schema.
 fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
-    let mut primitive = super::PrimitiveType::from_dtype(field.dtype())?;
-    if primitive == super::PrimitiveType::Fixed(16)
-        && field.as_iceberg().declared_type() == Some("uuid")
-    {
-        primitive = super::PrimitiveType::Uuid;
-    }
-    Ok(match primitive {
+    Ok(match super::PrimitiveType::from_dtype(field.dtype())? {
         super::PrimitiveType::Boolean => Scalar::from("boolean"),
         super::PrimitiveType::Int => Scalar::from("int"),
         super::PrimitiveType::Long => Scalar::from("long"),

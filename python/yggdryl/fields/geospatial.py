@@ -1,4 +1,4 @@
-"""Variant and geospatial field factories."""
+"""Variant, GUID, and geospatial field factories."""
 
 from __future__ import annotations
 
@@ -10,10 +10,14 @@ from ._typing import TypedField
 
 if TYPE_CHECKING:
     VariantField: TypeAlias = TypedField[Literal["variant"], object]
+    GuidField: TypeAlias = TypedField[Literal["guid"], str]
     GeometryField: TypeAlias = TypedField[Literal["geometry"], bytes]
     GeographyField: TypeAlias = TypedField[Literal["geography"], bytes]
 else:
-    VariantField = GeometryField = GeographyField = Field
+    VariantField = GuidField = GeometryField = GeographyField = Field
+
+
+_GUID = DataType("guid")
 
 
 def variant(
@@ -31,6 +35,21 @@ def variant(
 
     value = DataType.variant()
     return new_field(VariantField, name, value, nullable, metadata)
+
+
+def guid(
+    name: str,
+    *,
+    nullable: bool = True,
+    metadata: MetadataInput = None,
+) -> GuidField:
+    """Create a field of one 128-bit universally unique identifier.
+
+    Storage is the sixteen bytes; every value reads back as the 36-character
+    lowercase hyphenated spelling.
+    """
+
+    return new_field(GuidField, name, _GUID, nullable, metadata)
 
 
 def geometry(

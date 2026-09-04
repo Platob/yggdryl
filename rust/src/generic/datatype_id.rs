@@ -87,6 +87,16 @@ pub enum DataTypeId {
     Ascii96,
     /// ASCII text padded with trailing NUL to 16 bytes.
     Ascii128,
+    /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
+    Country,
+    /// ISO 4217: a currency code, three ASCII bytes.
+    Currency,
+    /// ISO 10383: a market identifier code, four ASCII bytes.
+    Mic,
+    /// ISO 10962: a classification of financial instruments, six ASCII bytes.
+    Cfi,
+    /// One 128-bit universally unique identifier.
+    Guid,
     /// Variable list with 32-bit offsets.
     List,
     /// Variable list-view with 32-bit offsets.
@@ -125,7 +135,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 56] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -160,6 +170,11 @@ impl DataTypeId {
         Self::Ascii64,
         Self::Ascii96,
         Self::Ascii128,
+        Self::Country,
+        Self::Currency,
+        Self::Mic,
+        Self::Cfi,
+        Self::Guid,
         Self::List,
         Self::ListView,
         Self::FixedSizeList,
@@ -230,6 +245,11 @@ impl DataTypeId {
             Self::Ascii64 => "ascii64",
             Self::Ascii96 => "ascii96",
             Self::Ascii128 => "ascii128",
+            Self::Country => "country",
+            Self::Currency => "currency",
+            Self::Mic => "mic",
+            Self::Cfi => "cfi",
+            Self::Guid => "guid",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -286,7 +306,15 @@ impl DataTypeId {
             | Self::Ascii32
             | Self::Ascii64
             | Self::Ascii96
-            | Self::Ascii128 => DataTypeKind::String,
+            | Self::Ascii128
+            // A registered code is fixed-width ASCII text with an identity,
+            // so it belongs to the family every text behaviour is uniform
+            // over: comparison, casting to a variable layout, merging.
+            | Self::Country
+            | Self::Currency
+            | Self::Mic
+            | Self::Cfi => DataTypeKind::String,
+            Self::Guid => DataTypeKind::Guid,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
@@ -413,11 +441,12 @@ impl DataTypeId {
             | Self::Timestamp
             | Self::Decimal64
             | Self::Ascii64 => Some(8),
-            Self::Duration32 => Some(4),
-            Self::Ascii16 => Some(2),
-            Self::Ascii24 => Some(3),
+            Self::Duration32 | Self::Mic => Some(4),
+            Self::Ascii16 | Self::Country => Some(2),
+            Self::Ascii24 | Self::Currency => Some(3),
+            Self::Cfi => Some(6),
             Self::Ascii96 => Some(12),
-            Self::Decimal128 | Self::Ascii128 => Some(16),
+            Self::Decimal128 | Self::Ascii128 | Self::Guid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }
@@ -501,8 +530,8 @@ mod tests {
     }
 
     #[test]
-    fn ascii_widths_are_parameter_free_text() {
-        assert_eq!(DataTypeId::ALL.len(), 51);
+    fn ascii_widths_and_codes_are_parameter_free_text() {
+        assert_eq!(DataTypeId::ALL.len(), 56);
         for id in [
             DataTypeId::Ascii16,
             DataTypeId::Ascii24,
@@ -510,6 +539,10 @@ mod tests {
             DataTypeId::Ascii64,
             DataTypeId::Ascii96,
             DataTypeId::Ascii128,
+            DataTypeId::Country,
+            DataTypeId::Currency,
+            DataTypeId::Mic,
+            DataTypeId::Cfi,
         ] {
             assert_eq!(id.kind(), DataTypeKind::String);
             assert!(id.is_string());
@@ -519,6 +552,16 @@ mod tests {
             DataTypeId::from_str("ASCII128").unwrap(),
             DataTypeId::Ascii128
         );
+        assert_eq!(
+            DataTypeId::from_str("Currency").unwrap(),
+            DataTypeId::Currency
+        );
+        // Each code stores the width its standard fixes, and `cfi` takes six
+        // bytes, which is a width no ASCII variant has.
+        assert_eq!(DataTypeId::Country.fixed_byte_width(), Some(2));
+        assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
+        assert_eq!(DataTypeId::Mic.fixed_byte_width(), Some(4));
+        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
     }
 
     #[test]

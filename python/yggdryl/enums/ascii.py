@@ -1,12 +1,19 @@
-"""Open ASCII vocabularies declared as enums over one fixed width.
+"""Open ASCII vocabularies declared as enums over one fixed-width datatype.
 
 A subclass of one of the six widths - `Ascii16`, `Ascii24`, `Ascii32`,
-`Ascii64`, `Ascii96`, `Ascii128` - declares its values as ASCII text, and a member *is*
+`Ascii64`, `Ascii96`, `Ascii128` - or of one of the four registered code
+bases - `CountryCode`, `CurrencyCode`, `MicCode`, `CfiCode` - declares its
+values as ASCII text, and a member *is*
 the integer that value packs into: the value's own storage bytes read
 big-endian. The code is therefore the same in every process,
-is exactly what an ASCII column stores, and is what a stable hash hashes -
+is exactly what the column stores, and is what a stable hash hashes -
 never a position in some column's vocabulary. The order of the integers is the
 order of the text.
+
+A width says how many bytes a value may take. A registered code says what the
+value *is*, and carries that identity across Arrow, so a vocabulary declared
+over `CurrencyCode` builds a `currency` column rather than three anonymous
+bytes.
 
 The vocabulary stays open: a valid value that was not declared reads back as a
 member under its own packed code, registered once and announced once on the
@@ -42,13 +49,17 @@ _ASCII32 = DataType("ascii32")
 _ASCII64 = DataType("ascii64")
 _ASCII96 = DataType("ascii96")
 _ASCII128 = DataType("ascii128")
+_COUNTRY = DataType("country")
+_CURRENCY = DataType("currency")
+_MIC = DataType("mic")
+_CFI = DataType("cfi")
 
 
 class AsciiCode(enum.IntEnum):
-    """The shared base of the six ASCII widths.
+    """The shared base of the six ASCII widths and the four registered codes.
 
-    Subclass one of the widths rather than this: a width names the datatype the
-    values store as, and this base has none.
+    Subclass one of those rather than this: each names the datatype the values
+    store as, and this base has none.
     """
 
     #: The ASCII value this member codes, held once at construction.
@@ -132,11 +143,12 @@ class AsciiCode(enum.IntEnum):
 
     @classmethod
     def dtype(cls) -> DataType:
-        """The ASCII width a column of these values stores as."""
+        """The datatype a column of these values stores as."""
 
         raise TypeError(
-            f"{cls.__name__} declares no ASCII width; subclass Ascii16, "
-            "Ascii24, Ascii32, Ascii64, Ascii96, or Ascii128"
+            f"{cls.__name__} declares no datatype; subclass one of the widths "
+            "Ascii16, Ascii24, Ascii32, Ascii64, Ascii96, Ascii128 or one of "
+            "the codes CountryCode, CurrencyCode, MicCode, CfiCode"
         )
 
     @classmethod
@@ -160,7 +172,7 @@ class AsciiCode(enum.IntEnum):
         nullable: bool = True,
         metadata: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
     ) -> Field:
-        """A field of this class's ASCII width, declaring this enum.
+        """A field of this class's datatype, declaring this enum.
 
         Raises:
             ValueError: when `metadata` already declares an enum of its own.
@@ -172,26 +184,28 @@ class AsciiCode(enum.IntEnum):
 
     @classmethod
     def from_field(cls, field: Field) -> type[AsciiCode]:
-        """The class one field declares, over that field's own ASCII width.
+        """The class one field declares, over that field's own datatype.
 
         Raises:
             ValueError: when the field declares no enum, or its datatype is
-                not an ASCII width.
+                neither an ASCII width nor a registered code.
         """
 
         declared = field.ascii_enum
         if declared is None:
             raise ValueError(f"the field {field.name!r} declares no enum")
-        width = _WIDTHS.get(field.dtype.ascii_width)
-        if width is None:
+        # Keyed by the datatype id, not the width: `currency` and `ascii24`
+        # are three bytes each and are not the same vocabulary base.
+        base = _BASES.get(field.dtype.id)
+        if base is None:
             raise ValueError(
-                f"expected an ASCII width to declare an enum over, "
-                f"got {field.dtype}"
+                f"expected an ASCII width or a registered code to declare an "
+                f"enum over, got {field.dtype}"
             )
         # The Enum functional API builds a class from names and values, and it
         # is spelled as a call on the base, which static typing reads as one
         # instantiation of it.
-        declare: Any = width
+        declare: Any = base
         return cast(
             "type[AsciiCode]",
             declare(
@@ -203,7 +217,7 @@ class AsciiCode(enum.IntEnum):
 
     @classmethod
     def into_dictionary(cls, key: object | None = None) -> AsciiDictionary:
-        """The vocabulary this class names, as a dictionary over its width.
+        """The vocabulary this class names, as a dictionary over its datatype.
 
         A dictionary code is a position in the column it encodes, which is a
         different thing from a member: the member is the value's own bytes.
@@ -213,10 +227,7 @@ class AsciiCode(enum.IntEnum):
 
 
 class Ascii16(AsciiCode):
-    """A vocabulary of values of at most two bytes, packed into 16 bits.
-
-    ISO 3166-1's country code is exactly this width.
-    """
+    """A vocabulary of values of at most two bytes, packed into 16 bits."""
 
     @classmethod
     def dtype(cls) -> DataType:
@@ -224,11 +235,7 @@ class Ascii16(AsciiCode):
 
 
 class Ascii24(AsciiCode):
-    """A vocabulary of values of at most three bytes, packed into 24 bits.
-
-    ISO 4217's currency code is exactly this width, so a currency stores with
-    no padding at all.
-    """
+    """A vocabulary of values of at most three bytes, packed into 24 bits."""
 
     @classmethod
     def dtype(cls) -> DataType:
@@ -272,14 +279,50 @@ class Ascii128(AsciiCode):
         return _ASCII128
 
 
-#: The width base each storage width declares its values under.
-_WIDTHS: Mapping[int | None, type[AsciiCode]] = {
-    2: Ascii16,
-    3: Ascii24,
-    4: Ascii32,
-    8: Ascii64,
-    12: Ascii96,
-    16: Ascii128,
+class CountryCode(AsciiCode):
+    """A vocabulary of ISO 3166-1 alpha-2 country codes, over `country`."""
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _COUNTRY
+
+
+class CurrencyCode(AsciiCode):
+    """A vocabulary of ISO 4217 currency codes, over `currency`."""
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _CURRENCY
+
+
+class MicCode(AsciiCode):
+    """A vocabulary of ISO 10383 market identifier codes, over `mic`."""
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _MIC
+
+
+class CfiCode(AsciiCode):
+    """A vocabulary of ISO 10962 classifications, over `cfi`."""
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _CFI
+
+
+#: The base each datatype declares its values under, keyed by datatype id.
+_BASES: Mapping[str, type[AsciiCode]] = {
+    "ascii16": Ascii16,
+    "ascii24": Ascii24,
+    "ascii32": Ascii32,
+    "ascii64": Ascii64,
+    "ascii96": Ascii96,
+    "ascii128": Ascii128,
+    "country": CountryCode,
+    "currency": CurrencyCode,
+    "mic": MicCode,
+    "cfi": CfiCode,
 }
 
 
@@ -291,4 +334,8 @@ __all__ = [
     "Ascii96",
     "Ascii128",
     "AsciiCode",
+    "CfiCode",
+    "CountryCode",
+    "CurrencyCode",
+    "MicCode",
 ]

@@ -29,6 +29,8 @@ enum DefaultPlan {
     EmptyMapping,
     /// The 21-byte `POINT EMPTY` Well-Known Binary, a present empty geometry.
     PointEmpty,
+    /// The nil identifier, sixteen zero bytes in its hyphenated spelling.
+    Guid,
 }
 
 struct Planned {
@@ -227,6 +229,11 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Ascii64
             | DataType::Ascii96
             | DataType::Ascii128
+            | DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Guid
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -301,13 +308,16 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Interval(TimeUnit::MonthDayNano) => fixed_scalar_sequence(3, path),
         D::Interval(_) => fatal(path, "invalid interval layout"),
         D::Binary | D::LargeBinary | D::BinaryView => plan_bytes(0, path),
+        // The nil identifier: sixteen zero bytes, rendered as its hyphenated
+        // spelling like every other GUID value.
+        D::Guid => scalar(DefaultPlan::Guid, false),
         D::FixedSizeBinary(width) => {
             let width = usize::try_from(*width)
                 .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
             plan_bytes(width, path)
         }
-        // An ASCII width defaults to the empty string; storage pads it to
-        // all-NUL.
+        // An ASCII width, and a code over one, defaults to the empty string;
+        // storage pads it to all-NUL.
         D::Utf8
         | D::LargeUtf8
         | D::Utf8View
@@ -316,7 +326,11 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Ascii32
         | D::Ascii64
         | D::Ascii96
-        | D::Ascii128 => scalar(DefaultPlan::String, false),
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi => scalar(DefaultPlan::String, false),
         D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }
@@ -622,6 +636,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         // as a point whose coordinates are NaN, in the canonical geospatial
         // value spelling.
         DefaultPlan::PointEmpty => Ok(Scalar::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
+        DefaultPlan::Guid => Ok(Scalar::String(crate::datatype::guid_text(&[0_u8; 16]))),
     }
 }
 
@@ -692,6 +707,9 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_mapping()
             .is_some_and(<[(Scalar, Scalar)]>::is_empty),
         DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
+        DefaultPlan::Guid => crate::datatype::guid_bytes(value)
+            .and_then(|bytes| crate::datatype::guid_parse(bytes).ok())
+            .is_some_and(|stored| stored == [0_u8; 16]),
     }
 }
 

@@ -121,14 +121,17 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    if dtype.ascii_width().is_some() {
+    // An ASCII width, a registered code and a GUID all store as fixed-width
+    // bytes `PyArrow` would refuse to build from a value of any other length,
+    // so the core that owns the width rule answers for all three.
+    if dtype.ascii_width().is_some() || matches!(dtype, CoreDataType::Guid) {
         return ascii_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
 }
 
-/// Pads one value into an ASCII width through the core scalar boundary.
+/// Stores one value into a fixed-width datatype through the core boundary.
 ///
 /// `PyArrow` builds a fixed-width binary only from exactly `width` bytes, so
 /// the core that owns the padding and the width refusal answers instead: a
@@ -429,6 +432,11 @@ impl PyDataType {
             "ascii64" => CoreDataType::Ascii64,
             "ascii96" => CoreDataType::Ascii96,
             "ascii128" => CoreDataType::Ascii128,
+            "country" => CoreDataType::Country,
+            "currency" => CoreDataType::Currency,
+            "mic" => CoreDataType::Mic,
+            "cfi" => CoreDataType::Cfi,
+            "guid" => CoreDataType::Guid,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"
@@ -622,25 +630,6 @@ impl PyDataType {
     fn ascii(width: i32) -> PyResult<Self> {
         let inner = CoreDataType::ascii(width).map_err(value_error)?;
         Self::from_validated(inner)
-    }
-
-    /// Resolves a registered logical name such as ``currency`` to its ASCII
-    /// width, case-insensitively.
-    #[staticmethod]
-    fn from_logical_name(name: &str) -> PyResult<Self> {
-        let inner = CoreDataType::from_logical_name(name).map_err(value_error)?;
-        Self::from_validated(inner)
-    }
-
-    /// The registered logical names mapped to their ASCII width, in
-    /// registration order.
-    #[staticmethod]
-    fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let names = PyDict::new(py);
-        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
-            names.set_item(name, Self::from_validated(dtype.clone())?)?;
-        }
-        Ok(names)
     }
 
     /// Internal Dictionary constructor preserving exact native datatypes.

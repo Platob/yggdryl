@@ -1,4 +1,4 @@
-"""The static enum vocabularies and the ASCII widths declared as enums."""
+"""The static enum vocabularies, and the ASCII types declared as enums."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 import pyarrow
 import pytest
 
-from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field, enums
+from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field, enums, scalar
 from yggdryl.enums import (
     Ascii16,
     Ascii24,
@@ -16,6 +16,14 @@ from yggdryl.enums import (
     Ascii96,
     Ascii128,
     AsciiCode,
+    CFI,
+    CfiCode,
+    Country,
+    CountryCode,
+    Currency,
+    CurrencyCode,
+    MIC,
+    MicCode,
 )
 
 
@@ -112,8 +120,8 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
     assert Isin.SAMPLE.into_str() == "US0378331005"
     assert int(Wide.SAMPLE).bit_length() > 96
 
-    # The base names no width, so it is not a vocabulary of its own.
-    with pytest.raises(TypeError, match="subclass Ascii16, Ascii24"):
+    # The base names no datatype, so it is not a vocabulary of its own.
+    with pytest.raises(TypeError, match="Ascii16, Ascii24"):
         AsciiCode.dtype()
 
 
@@ -225,3 +233,62 @@ def test_the_vocabulary_behind_a_class_is_an_ordinary_dictionary() -> None:
     # the value's own bytes, which is why the two are different integers.
     assert vocabulary.get_code("USD") == 1
     assert int(Currency.USD) == 0x55534400
+
+
+def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> None:
+    # Each class is the Python spelling of one registered code in the grammar,
+    # over the code's own datatype rather than an ASCII width.
+    for declared, base, spelling in (
+        (Country, CountryCode, "country"),
+        (Currency, CurrencyCode, "currency"),
+        (MIC, MicCode, "mic"),
+        (CFI, CfiCode, "cfi"),
+    ):
+        assert declared.dtype() == DataType(spelling) == base.dtype()
+        assert issubclass(declared, base)
+        assert declared.as_enum().name == declared.__name__
+        assert declared.field(spelling).dtype == declared.dtype()
+
+    # ISO 3166-1 is two bytes, ISO 4217 three and ISO 10962 six, so each packs
+    # with none of the padding a wider width would have stored.
+    assert int(Country.US) == 0x5553
+    assert int(Currency.USD) == 0x555344
+    assert int(MIC.XPAR) == DataType("ascii32").ascii_packed("XPAR")
+    assert int(CFI.ESVUFR) == 0x455356554652
+    assert str(CFI.ESVUFR) == "ESVUFR"
+
+    # The registries behind them keep moving, so every vocabulary is open.
+    assert MIC.from_str("XLIT").into_str() == "XLIT"
+    assert MIC.from_str("XLIT") is MIC("XLIT")
+    assert "XLIT" not in MIC.__members__
+
+    # A declaration reads back as the class that wrote it, over the code's
+    # datatype: `currency` and `ascii24` are both three bytes and are not the
+    # same vocabulary base.
+    recovered = AsciiCode.from_field(Field.from_arrow(Currency.field("ccy").into_arrow()))
+    assert recovered.__name__ == "Currency"
+    assert recovered.dtype() == DataType("currency")
+    assert int(recovered.USD) == int(Currency.USD)
+
+
+def test_an_annotation_infers_the_vocabulary_it_names() -> None:
+    @scalar
+    class Trade:
+        ccy: Currency
+        venue: MIC
+        home: Country
+        width: Ascii24
+
+    row = Trade.field()
+    declared = {child.name: child for child in row}
+
+    assert declared["ccy"].dtype == DataType("currency")
+    assert declared["ccy"].ascii_enum == Currency.as_enum()
+    assert declared["venue"].dtype == DataType("mic")
+    assert declared["venue"].ascii_enum == MIC.as_enum()
+    assert declared["home"].dtype == DataType("country")
+    assert declared["home"].ascii_enum == Country.as_enum()
+
+    # A bare width base names no members, so it stays a plain ASCII column.
+    assert declared["width"].dtype == DataType("ascii24")
+    assert declared["width"].ascii_enum is None

@@ -107,6 +107,11 @@ enum DataTypeRef<'a> {
     Ascii64 {},
     Ascii96 {},
     Ascii128 {},
+    Country {},
+    Currency {},
+    Mic {},
+    Cfi {},
+    Guid {},
     List {
         field: &'a Field,
     },
@@ -232,6 +237,11 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Ascii64 => Self::Ascii64 {},
             D::Ascii96 => Self::Ascii96 {},
             D::Ascii128 => Self::Ascii128 {},
+            D::Country => Self::Country {},
+            D::Currency => Self::Currency {},
+            D::Mic => Self::Mic {},
+            D::Cfi => Self::Cfi {},
+            D::Guid => Self::Guid {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -342,6 +352,11 @@ enum DataTypeValue {
     Ascii64 {},
     Ascii96 {},
     Ascii128 {},
+    Country {},
+    Currency {},
+    Mic {},
+    Cfi {},
+    Guid {},
     List {
         field: Field,
     },
@@ -451,6 +466,11 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Ascii64 {} => Self::Ascii64,
             DataTypeValue::Ascii96 {} => Self::Ascii96,
             DataTypeValue::Ascii128 {} => Self::Ascii128,
+            DataTypeValue::Country {} => Self::Country,
+            DataTypeValue::Currency {} => Self::Currency,
+            DataTypeValue::Mic {} => Self::Mic,
+            DataTypeValue::Cfi {} => Self::Cfi,
+            DataTypeValue::Guid {} => Self::Guid,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -578,6 +598,11 @@ impl DataType {
             D::Ascii64 => tag("ascii64"),
             D::Ascii96 => tag("ascii96"),
             D::Ascii128 => tag("ascii128"),
+            D::Country => tag("country"),
+            D::Currency => tag("currency"),
+            D::Mic => tag("mic"),
+            D::Cfi => tag("cfi"),
+            D::Guid => tag("guid"),
             D::Timestamp(unit, timezone) => {
                 tag("timestamp");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -808,6 +833,11 @@ impl DataType {
             "ascii64" => Self::Ascii64,
             "ascii96" => Self::Ascii96,
             "ascii128" => Self::Ascii128,
+            "country" => Self::Country,
+            "currency" => Self::Currency,
+            "mic" => Self::Mic,
+            "cfi" => Self::Cfi,
+            "guid" => Self::Guid,
             "timestamp" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

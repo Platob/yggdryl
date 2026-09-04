@@ -86,17 +86,16 @@ test('geometry and geography fill and display their shared defaults', () => {
   )
 })
 
-test('ASCII widths select their storage once and resolve registered names', () => {
-  const currency = DataType.ascii(3)
+test('ASCII widths select their storage once', () => {
+  const ascii24 = DataType.ascii(3)
 
-  assert.equal(currency.id, 'ascii24')
-  assert.equal(currency.kind, 'string')
-  assert.equal(currency.toString(), 'ascii24')
-  assert.equal(currency.asciiWidth, 3)
-  assert.ok(new DataType('ascii24').equals(currency))
-  assert.ok(DataType.from('ascii(3)').equals(currency))
-  assert.ok(DataType.from('currency').equals(currency))
-  assert.ok(DataType.fromString(currency.toString()).equals(currency))
+  assert.equal(ascii24.id, 'ascii24')
+  assert.equal(ascii24.kind, 'string')
+  assert.equal(ascii24.toString(), 'ascii24')
+  assert.equal(ascii24.asciiWidth, 3)
+  assert.ok(new DataType('ascii24').equals(ascii24))
+  assert.ok(DataType.from('ascii(3)').equals(ascii24))
+  assert.ok(DataType.fromString(ascii24.toString()).equals(ascii24))
   // The family constructor selects the width once: the storage is the id.
   assert.equal(DataType.ascii(2).id, 'ascii16')
   assert.equal(DataType.ascii(4).id, 'ascii32')
@@ -108,24 +107,68 @@ test('ASCII widths select their storage once and resolve registered names', () =
   assert.equal(new DataType('ascii128').asciiWidth, 16)
   assert.equal(new DataType('utf8').asciiWidth, null)
 
-  // A registration is a name over a width, not a type: it displays as the width.
-  assert.ok(DataType.fromLogicalName('Currency').equals(currency))
-  assert.equal(DataType.fromLogicalName(' currency ').toString(), 'ascii24')
-  assert.equal(DataType.fromLogicalName('cfi').toString(), 'ascii64')
-  assert.equal(DataType.fromLogicalName('country').toString(), 'ascii16')
-  const names = DataType.logicalNames()
-  assert.deepEqual(Object.keys(names), ['country', 'currency', 'cfi'])
-  assert.ok(names.currency instanceof DataType)
-  assert.ok(names.currency.equals(currency))
-
   assert.throws(
     () => DataType.ascii(17),
     /expected an ASCII width from 1 to 16 bytes, got 17/,
   )
   assert.throws(() => DataType.ascii(0), /got 0/)
   assert.throws(() => DataType.ascii(2.5), /width must be a signed 32-bit integer/)
-  assert.throws(() => DataType.fromLogicalName('isin'), /currency/)
   assert.throws(() => DataType.fromString('ascii'))
+})
+
+test('a registered code is its own datatype over its standard width', () => {
+  // Not a name over a width: `currency` is three bytes with an identity, and
+  // `ascii24` is three bytes without one.
+  const currency = new DataType('currency')
+
+  assert.equal(currency.id, 'currency')
+  assert.equal(currency.kind, 'string')
+  assert.equal(currency.toString(), 'currency')
+  assert.equal(currency.asciiWidth, 3)
+  assert.ok(!currency.equals(DataType.ascii(3)))
+  assert.ok(DataType.from('currency').equals(currency))
+  assert.ok(DataType.from(' CURRENCY ').equals(currency))
+
+  for (const [name, width] of [
+    ['country', 2],
+    ['currency', 3],
+    ['mic', 4],
+    // Six bytes, which is a width no ASCII variant has.
+    ['cfi', 6],
+  ]) {
+    const dtype = new DataType(name)
+    assert.equal(dtype.id, name)
+    assert.equal(dtype.asciiWidth, width, name)
+    assert.equal(dtype.kind, 'string', name)
+    assert.equal(dtype.asciiPacked('A'), BigInt('A'.charCodeAt(0)) << BigInt(8 * (width - 1)))
+  }
+
+  // The packed integer is the value's own bytes, exactly as for a width.
+  assert.equal(currency.asciiPacked('USD'), DataType.ascii(3).asciiPacked('USD'))
+  assert.equal(currency.asciiValue(0x555344n), 'USD')
+  assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
+  assert.throws(() => DataType.fromString('isin'), /unknown datatype/)
+})
+
+test('the guid is sixteen bytes spelled as one identifier', () => {
+  const guid = new DataType('guid')
+
+  assert.equal(guid.id, 'guid')
+  assert.equal(guid.kind, 'guid')
+  assert.equal(guid.toString(), 'guid')
+  assert.equal(guid.asciiWidth, null)
+  // `uuid` is what every other system calls it and parses to the same type.
+  assert.ok(DataType.from('uuid').equals(guid))
+  assert.ok(DataType.fromString(guid.toString()).equals(guid))
+
+  // The identity is the sixteen bytes; the spelling is a rendering of them.
+  const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
+  const field = new Field('id', guid, false)
+  assert.equal(field.defaultJSValue(), '00000000-0000-0000-0000-000000000000')
+  assert.ok(Field.fromJSON(field.toJSON()).equals(field))
+  assert.ok(Field.fromString(field.toString()).equals(field))
+  assert.equal(new Field('id', 'uuid', false).dtype.id, 'guid')
+  void text
 })
 
 test('recursive datatypes expose fields as a collection', () => {

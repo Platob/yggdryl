@@ -27,6 +27,7 @@ import uuid
 from typing import Any
 
 from .._native import DataType, Field, Uri, Url, Urn
+from ..enums.ascii import AsciiCode
 
 try:  # Python 3.10 gets newer annotation wrappers from typing_extensions.
     _typing_extensions: Any = importlib.import_module("typing_extensions")
@@ -50,6 +51,7 @@ _FIELD_OPTION_KEYS = frozenset(
 _OPTION_KEYS = _FIELD_OPTION_KEYS | {"arrow_type"}
 _EXTENSION_METADATA_PREFIX = "ARROW:extension:"
 _PARQUET_FIELD_ID = "PARQUET:field_id"
+_FIELD_ENUM = "field:enum"
 _I32_MIN = -(2**31)
 _I32_MAX = 2**31 - 1
 _I64_MIN = -(2**63)
@@ -362,6 +364,11 @@ class _Inference:
             imported_metadata.pop(_PARQUET_FIELD_ID, None)
         if explicit_extension:
             _validate_extension_metadata(imported_metadata, overlay, path)
+        # A declared vocabulary carries its members onto the field, so the
+        # enum an annotation names crosses Arrow with the column.
+        declared_enum = _declared_ascii_enum(base)
+        if declared_enum is not None:
+            imported_metadata.setdefault(_FIELD_ENUM, declared_enum)
         imported_metadata.update(overlay)
         result = Field(
             name,
@@ -506,6 +513,11 @@ class _Inference:
 
         if hint in (Uri, Url, Urn):
             return _native_datatype("utf8")
+        # A declared ASCII vocabulary is its width, not the integer its
+        # members happen to be: the enum is the column's meaning and the
+        # width is what the column stores.
+        if issubclass(hint, AsciiCode) and hint is not AsciiCode:
+            return hint.dtype()
         if issubclass(hint, enum.Enum):
             values = [type(member.value) for member in hint]
             return (
@@ -1309,6 +1321,17 @@ def _string_metadata(
         if not isinstance(key, str) or not isinstance(value, str):
             raise TypeError(f"metadata at {path} must map str keys to str values")
     return metadata
+
+
+def _declared_ascii_enum(hint: object) -> str | None:
+    """The `field:enum` document one annotation declares, if it declares one.
+
+    A bare width base names no members, so it stays a plain ASCII column.
+    """
+
+    if not isinstance(hint, type) or not issubclass(hint, AsciiCode):
+        return None
+    return hint.as_enum().into_json() if hint.__members__ else None
 
 
 def _class_identity_metadata(hint: object) -> dict[str, str]:

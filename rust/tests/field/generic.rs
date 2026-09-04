@@ -1281,13 +1281,11 @@ fn a_typed_read_outlives_the_view_it_was_read_through() {
     // E0716, which is what `as_field` exists to spell instead.
     let name = field.as_iceberg().as_field().name();
     let doc = field.as_iceberg().doc();
-    let declared = field.as_iceberg().declared_type();
     let property = field.as_iceberg().get("doc");
     let display = field.as_iceberg().display();
 
     assert_eq!(name, "price");
     assert_eq!(doc, Some("closing price"));
-    assert_eq!(declared, None);
     assert_eq!(property, doc);
     assert_eq!(display, Some("Closing price"));
 }

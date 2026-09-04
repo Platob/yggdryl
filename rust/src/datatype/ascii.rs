@@ -11,9 +11,17 @@
 //!
 //! The widths are 2, 3, 4, 8, 12 and 16 bytes - `ascii16`, `ascii24`,
 //! `ascii32`, `ascii64`, `ascii96` and `ascii128` - because those are the
-//! shapes the codes this type exists for actually take: a two-letter country,
-//! a three-letter currency, a four-letter MIC, a six-character CFI, a
-//! twelve-character ISIN.
+//! shapes the codes this type exists for actually take: a twelve-character
+//! ISIN, a ticker, a venue-local symbol. A width is the general form: it says
+//! how many bytes a value may take and nothing about what the value means.
+//!
+//! Four identifiers are specific enough to be types of their own - `country`,
+//! `currency`, `mic` and `cfi` - and live in [`super::coded`]. They share
+//! every rule stated here, so [`DataType::ascii_width`], [`ascii_text`],
+//! [`DataType::ascii_packed`], [`AsciiEnum`] and [`AsciiDictionary`] all
+//! answer for a code exactly as they do for a width. What they add is
+//! identity: a currency column reads back a currency, never three anonymous
+//! bytes.
 //!
 //! [`AsciiDictionary`] is the per-column vocabulary over one of those widths:
 //! an ordered set of values whose position is the code a `dictionary(key,
@@ -33,6 +41,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Result, Scalar};
 
+use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
+
 /// The Arrow extension name of the three ASCII widths.
 ///
 /// The storage is `FixedSizeBinary(4 | 8 | 16)` and the extension metadata
@@ -40,21 +50,6 @@ use crate::{DataType, Error, Result, Scalar};
 pub(crate) const ASCII_EXTENSION_NAME: &str = "yggdryl.ascii";
 
 impl DataType {
-    /// The logical names registered over an ASCII width, in registration order.
-    ///
-    /// A registration names a vocabulary that fits one width; it parses to that
-    /// width and is otherwise not a type of its own: the ASCII widths are the
-    /// whole type system, and a registration adds one spelling to the grammar.
-    /// `country` is ISO 3166-1's two-letter code, which is exactly `ascii16`;
-    /// `currency` is ISO 4217's three-letter code, which is exactly `ascii24`;
-    /// `cfi` is ISO 10962's six-character classification, which is the
-    /// narrowest width holding six bytes.
-    pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[
-        ("country", DataType::Ascii16),
-        ("currency", DataType::Ascii24),
-        ("cfi", DataType::Ascii64),
-    ];
-
     /// Creates the ASCII width that holds `width` bytes.
     ///
     /// The family constructor selects the physical width once: 1 or 2 bytes
@@ -102,6 +97,13 @@ impl DataType {
             Self::Ascii64 => Some(8),
             Self::Ascii96 => Some(12),
             Self::Ascii128 => Some(16),
+            // A registered code is the same fixed ASCII storage at the width
+            // its standard fixes, so every rule stated for a width answers
+            // for it: this is the accessor that says so.
+            Self::Country => Some(COUNTRY_WIDTH as i32),
+            Self::Currency => Some(CURRENCY_WIDTH as i32),
+            Self::Mic => Some(MIC_WIDTH as i32),
+            Self::Cfi => Some(CFI_WIDTH as i32),
             _ => None,
         }
     }
@@ -176,64 +178,12 @@ impl DataType {
         let (above, stored) = bytes.split_at(bytes.len() - slot);
         if above.iter().any(|byte| *byte != 0) {
             return Err(ascii_refusal(
-                width,
+                slot,
                 format_smolstr!("the integer {packed}, which is wider than the width"),
             ));
         }
         ascii_text(width, stored).map(SmolStr::new)
     }
-
-    /// Resolves a registered logical name, ASCII case-insensitively and trimmed.
-    ///
-    /// ```
-    /// use arrow_array::{Array, FixedSizeBinaryArray};
-    /// use yggdryl::arrow::{scalar_array, scalar_value};
-    /// use yggdryl::{DataType, Scalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let currency = DataType::from_logical_name("Currency")?;
-    /// assert_eq!(currency, DataType::Ascii24);
-    /// assert_eq!(DataType::from_str("currency")?, currency);
-    /// assert_eq!(DataType::from_logical_name("cfi")?, DataType::Ascii64);
-    /// assert_eq!(DataType::from_str("country")?, DataType::Ascii16);
-    ///
-    /// // Storage pads to the width; the scalar reads back trimmed. ISO 4217
-    /// // is exactly three bytes, so a currency stores with no padding at all.
-    /// let field = currency.required_field("ccy");
-    /// let array = scalar_array(&field, &Scalar::from("USD"))?;
-    /// let stored = array.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    /// assert_eq!(stored.value(0), b"USD");
-    /// assert_eq!(scalar_value(&field, array.as_ref())?, Scalar::from("USD"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the registered vocabulary when `name` is not
-    /// in it.
-    pub fn from_logical_name(name: &str) -> Result<Self> {
-        let name = name.trim();
-        Self::LOGICAL_NAMES
-            .iter()
-            .find(|(registered, _)| registered.eq_ignore_ascii_case(name))
-            .map(|(_, dtype)| dtype.clone())
-            .ok_or_else(|| Error::InvalidDataType {
-                kind: "ascii",
-                reason: crate::text::expected_got(
-                    format_args!("a registered logical name ({})", logical_vocabulary()),
-                    format_args!("{name:?}"),
-                ),
-            })
-    }
-}
-
-fn logical_vocabulary() -> String {
-    DataType::LOGICAL_NAMES
-        .iter()
-        .map(|(name, _)| *name)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// Validates bytes as an ASCII value of at most `width` bytes and trims the
@@ -248,6 +198,16 @@ fn logical_vocabulary() -> String {
 /// Returns an error naming the width when the trimmed bytes hold a NUL, a
 /// non-ASCII byte, or more than `width` bytes.
 pub(crate) fn ascii_text(width: i32, bytes: &[u8]) -> Result<&str> {
+    ascii_text_sized(usize::try_from(width).unwrap_or(0), bytes)
+}
+
+/// [`ascii_text`] over a width the caller already holds as a length.
+///
+/// The one body both families run: a width passes its runtime width and a
+/// [`super::coded`] code passes its constant, which lets the length checks
+/// and the padding arithmetic fold at each code's call site.
+#[inline]
+pub(crate) fn ascii_text_sized(width: usize, bytes: &[u8]) -> Result<&str> {
     let end = bytes
         .iter()
         .rposition(|byte| *byte != 0)
@@ -265,7 +225,7 @@ pub(crate) fn ascii_text(width: i32, bytes: &[u8]) -> Result<&str> {
             format_smolstr!("a non-ASCII byte 0x{:02X} at {position}", text[position]),
         ));
     }
-    if text.len() > usize::try_from(width).unwrap_or(0) {
+    if text.len() > width {
         return Err(ascii_refusal(
             width,
             format_smolstr!("{} bytes", text.len()),
@@ -295,7 +255,7 @@ pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
     }
 }
 
-fn ascii_refusal(width: i32, actual: SmolStr) -> Error {
+fn ascii_refusal(width: usize, actual: SmolStr) -> Error {
     Error::InvalidRecord {
         path: SmolStr::new_static("$"),
         reason: crate::text::expected_got(

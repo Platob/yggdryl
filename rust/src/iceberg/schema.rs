@@ -40,15 +40,6 @@ pub(super) const WRITE_DEFAULT: &str = "write-default";
 /// The Iceberg property listing the identifier field ids of a schema root.
 pub(super) const IDENTIFIER: &str = "identifier-field-ids";
 
-/// The Iceberg property preserving a declared type the physical datatype
-/// cannot distinguish.
-///
-/// `uuid` materializes as the same 16-byte fixed value `fixed[16]` does, so
-/// the declared spelling rides the field's metadata: a schema read from a
-/// table that says `uuid` writes `uuid` back, rather than quietly demoting
-/// the column to `fixed[16]` on the next metadata commit.
-pub(super) const DECLARED_TYPE: &str = "type";
-
 /// Read an Iceberg schema object into a non-null struct root field.
 ///
 /// The root takes `name`, because an Iceberg schema names its columns but not
@@ -242,13 +233,7 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
     if let Some(primitive) = type_json.as_str() {
         let parsed = PrimitiveType::from_str(primitive)?;
         let dtype = parsed.into_dtype()?;
-        let mut field = Field::new(name, dtype, nullable);
-        // `uuid` and `fixed[16]` share one physical type, so the declared
-        // spelling is kept where the writer will find it again.
-        if parsed == PrimitiveType::Uuid {
-            field.as_iceberg_mut().set_declared_type("uuid")?;
-        }
-        return Ok(field);
+        return Ok(Field::new(name, dtype, nullable));
     }
 
     if type_json.as_record().is_none() && type_json.as_mapping().is_none() {
@@ -411,17 +396,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
                 )
             }))
         }
-        other => {
-            let computed = PrimitiveType::from_dtype(other)?;
-            // The declared spelling wins only where the physical type agrees
-            // with it, so a stale marker can never misdescribe a column.
-            if computed == PrimitiveType::Fixed(16)
-                && field.as_iceberg().declared_type() == Some("uuid")
-            {
-                return Ok(Scalar::from("uuid"));
-            }
-            Ok(Scalar::from(computed.to_string()))
-        }
+        other => Ok(Scalar::from(PrimitiveType::from_dtype(other)?.to_string())),
     }
 }
 

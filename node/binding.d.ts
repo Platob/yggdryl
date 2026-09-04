@@ -189,6 +189,11 @@ export type DataTypeId =
   | 'ascii64'
   | 'ascii96'
   | 'ascii128'
+  | 'country'
+  | 'currency'
+  | 'mic'
+  | 'cfi'
+  | 'guid'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -230,6 +235,7 @@ export type DataTypeKind =
   | 'run_end_encoded'
   | 'variant'
   | 'geospatial'
+  | 'guid'
 
 interface DataTypeKindById {
   null: 'null'
@@ -266,6 +272,11 @@ interface DataTypeKindById {
   ascii64: 'string'
   ascii96: 'string'
   ascii128: 'string'
+  country: 'string'
+  currency: 'string'
+  mic: 'string'
+  cfi: 'string'
+  guid: 'guid'
   list: 'list'
   list_view: 'list'
   fixed_size_list: 'list'
@@ -521,6 +532,14 @@ export type AsciiField =
   | Ascii64Field
   | Ascii96Field
   | Ascii128Field
+/** ISO 3166-1 alpha-2, the two-letter country code, in its own two bytes. */
+export type CountryField = FieldOf<'country', string>
+/** ISO 4217, the three-letter currency code, in its own three bytes. */
+export type CurrencyField = FieldOf<'currency', string>
+/** ISO 10383, the four-character market identifier code. */
+export type MicField = FieldOf<'mic', string>
+/** ISO 10962, the six-character instrument classification. */
+export type CfiField = FieldOf<'cfi', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<'list_view', V[], string, unknown>
 export type FixedSizeListField<V = unknown> = FieldOf<'fixed_size_list', V[], string, unknown>
@@ -536,6 +555,8 @@ export type UnionField<V = UnionValue> = FieldOf<'union', V>
 export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
 /** The self-describing semi-structured Variant datatype, as one field type. */
 export type VariantField = FieldOf<'variant', unknown>
+/** One 128-bit identifier; values read back as the hyphenated spelling. */
+export type GuidField = FieldOf<'guid', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -712,6 +733,11 @@ export interface FieldsNamespace {
     options?: FieldOptions,
   ): DenseUnionField
   variant(name: string, options?: FieldOptions): VariantField
+  guid(name: string, options?: FieldOptions): GuidField
+  country(name: string, options?: FieldOptions): CountryField
+  currency(name: string, options?: FieldOptions): CurrencyField
+  mic(name: string, options?: FieldOptions): MicField
+  cfi(name: string, options?: FieldOptions): CfiField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -913,6 +939,11 @@ export interface FieldsNamespace {
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
   variant<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'variant', unknown, N, O>
+  guid<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'guid', string, N, O>
+  country<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'country', string, N, O>
+  currency<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'currency', string, N, O>
+  mic<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'mic', string, N, O>
+  cfi<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'cfi', string, N, O>
   geometry<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, options?: O): NamedField<'geometry', Uint8Array, N, O>
   geometry<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geometry', Uint8Array, N, O>
   geography<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, algorithm?: string, options?: O): NamedField<'geography', Uint8Array, N, O>

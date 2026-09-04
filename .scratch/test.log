@@ -1,0 +1,1850 @@
+   Compiling yggdryl v0.1.1 (/home/user/yggdryl/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 06s
+     Running unittests src/lib.rs (/home/user/yggdryl/target/debug/deps/yggdryl-b2d0853087a437db)
+
+running 1206 tests
+test arrow::rows::tests::empty_rows_keep_the_declared_schema_without_a_pull ... ok
+test arrow::rows::tests::empty_struct_rows_preserve_their_row_count ... ok
+test arrow::rows::tests::custom_structs_stream_in_bounded_batches ... ok
+test arrow::rows::tests::invalid_row_is_typed_and_fuses_the_reader ... ok
+test arrow::value::tests::bulk::bulk_builders_refuse_non_sequence_inputs ... ok
+test arrow::rows::tests::batches_align_to_non_divisible_commit_and_global_row_boundaries ... ok
+test arrow::rows::tests::infallible_into_value_uses_the_standard_try_into_path ... ok
+test arrow::rows::tests::zero_batch_row_size_still_makes_forward_progress ... ok
+test arrow::value::tests::restating::a_decimal_is_written_at_the_scale_its_column_declares ... ok
+test arrow::value::tests::bulk::named_records_build_one_schema_ordered_record_batch ... ok
+test arrow::value::tests::bulk::one_native_sequence_builds_one_arrow_array ... ok
+test arrow::value::tests::restating::a_temporal_is_written_at_the_unit_its_column_declares ... ok
+test arrow::value::tests::widths::a_128_bit_integer_survives_the_widest_exact_column ... ok
+test arrow::value::tests::restating::duration32_checks_its_logical_width_on_both_arrow_directions ... ok
+test arrow::value::tests::widths::a_256_bit_decimal_survives_without_narrowing ... ok
+test arrow::value::tests::widths::a_value_that_is_not_bytes_is_reported_and_not_silently_dropped ... ok
+test arrow::value::tests::widths::an_unsigned_integer_survives_its_whole_range ... ok
+test arrow::value::tests::widths::an_f32_column_keeps_every_bit_of_an_f32 ... ok
+test arrowfs::tests::file_info_is_a_totally_ordered_hashable_snapshot ... ok
+test arrow::value::tests::widths::bytes_survive_every_binary_layout ... ok
+test arrowfs::tests::hierarchy::a_child_of_a_file_is_refused_by_name ... ok
+test arrowfs::tests::hierarchy::a_directory_holds_no_bytes_and_is_created_by_truncating_to_zero ... ok
+test arrowfs::tests::hierarchy::a_folder_write_lands_on_the_leaf_it_read ... ok
+test arrowfs::tests::hierarchy::a_generic_leaf_keeps_media_inference_and_staged_identity ... ok
+test arrowfs::tests::hierarchy::a_generic_location_routes_to_the_role_it_turns_out_to_need ... ok
+test arrowfs::tests::hierarchy::a_listed_handle_resolves_back_to_itself_by_name ... ok
+test arrowfs::tests::hierarchy::a_listing_excludes_private_entries_unless_asked ... ok
+test arrowfs::tests::hierarchy::a_glob_descends_its_fixed_prefix_before_listing ... ok
+test arrowfs::tests::hierarchy::a_parent_walks_back_up_and_keeps_the_filesystem ... ok
+test arrowfs::tests::hierarchy::a_listing_is_flat_or_recursive_and_stable_in_order ... ok
+test arrowfs::tests::hierarchy::clearing_a_generic_leaf_discards_its_retained_stage ... ok
+test arrowfs::tests::identity::a_locations_url_carries_the_filesystems_own_scheme ... ok
+test arrowfs::tests::identity::a_multi_byte_path_survives_every_operation ... ok
+test arrowfs::tests::identity::a_prefix_is_a_directory_only_at_a_component_boundary ... ok
+test arrowfs::tests::identity::the_media_type_is_derived_from_the_locations_suffixes ... ok
+test arrowfs::tests::laziness::a_missing_file_reads_as_empty_without_creating_it ... ok
+test arrowfs::tests::laziness::a_write_creates_the_file_and_its_parents ... ok
+test arrowfs::tests::laziness::constructing_any_role_performs_no_filesystem_call ... ok
+test arrowfs::tests::identity::a_full_url_passes_through_unchanged ... ok
+test arrowfs::tests::laziness::opening_a_missing_file_succeeds_without_creating_it ... ok
+test arrowfs::tests::hierarchy::hive_partitions_are_read_off_the_location_and_filter_the_leaves ... ok
+test arrowfs::tests::listing_cost::a_recursive_walk_asks_the_filesystem_once_for_the_whole_prefix ... ok
+test arrowfs::tests::records::a_missing_foreign_resource_reads_as_empty_with_its_schema_answered ... ok
+test arrowfs::tests::records::a_folder_reads_as_the_partitioned_table_beneath_it ... ok
+test arrowfs::tests::staging::a_close_publishes_exactly_once ... ok
+test arrowfs::tests::staging::a_foreign_failure_crosses_with_its_own_message ... ok
+test arrowfs::tests::staging::a_positional_write_keeps_the_bytes_already_stored ... ok
+test arrowfs::tests::staging::a_range_read_at_the_end_of_the_value_is_short_rather_than_failing ... ok
+test arrowfs::tests::staging::a_staged_write_leaves_the_stored_value_untouched_until_close ... ok
+test arrowfs::tests::staging::an_over_budget_stage_is_refused_loudly_rather_than_allocated ... ok
+test arrowfs::tests::staging::dropping_a_handle_publishes_what_was_staged ... ok
+test arrowfs::tests::staging::reopening_after_close_refetches_rather_than_serving_a_stale_cache ... ok
+test arrowfs::tests::staging::a_whole_value_write_publishes_without_waiting_for_close ... ok
+test arrowfs::tests::listing_cost::one_entry_from_a_deep_wide_tree_costs_one_directory_read ... ok
+test arrowfs::tests::records::batches_round_trip_over_both_reference_filesystems ... ok
+test arrowfs::tests::wrappers::a_content_coding_round_trips_over_a_foreign_leaf ... ok
+test arrowfs::tests::wrappers::text_lines_stream_off_a_foreign_leaf_decoded ... ok
+test avro::tests::containers::a_container_round_trips_every_encoded_branch ... ok
+test avro::tests::containers::a_row_budget_is_applied_after_the_mandatory_header ... ok
+test avro::tests::containers::a_wrong_sync_marker_is_reported_after_the_block ... ok
+test avro::tests::containers::an_oversized_row_count_is_an_error_and_not_an_allocation ... ok
+test avro::tests::containers::an_unknown_codec_is_refused_by_name ... ok
+test avro::tests::containers::bytes_that_are_not_a_container_say_what_was_expected ... ok
+test avro::tests::containers::an_empty_container_is_a_header_with_no_blocks ... ok
+test avro::tests::containers::tight_limits_bound_the_container_read ... ok
+test avro::tests::fuzz_lite::mutated_schema_documents_never_panic ... ok
+test avro::tests::containers::a_truncated_container_reports_the_byte_it_ran_out_at ... ok
+test avro::tests::hardening::a_block_declaring_an_absurd_row_count_is_refused_without_reserving ... ok
+test avro::tests::hardening::a_declared_length_beyond_the_container_is_a_typed_error ... ok
+test avro::tests::hardening::a_truncated_varint_is_a_typed_error ... ok
+test avro::tests::hardening::duplicate_header_keys_are_refused_before_map_projection ... ok
+test avro::tests::hardening::recursive_data_deeper_than_the_limit_is_an_error_not_a_crash ... ok
+test avro::tests::limits::a_limited_write_truncates_what_the_caller_offered ... ok
+test avro::tests::limits::a_zero_limit_reads_the_declared_schema_and_no_batches ... ok
+test avro::tests::fuzz_lite::random_bytes_never_panic_any_entry_point ... ok
+test avro::tests::logical::a_lossy_unit_conversion_is_refused_naming_both_units ... ok
+test avro::tests::logical::an_overflowing_decimal_is_refused_naming_the_precision ... ok
+test avro::tests::logical::an_unknown_logical_type_degrades_to_the_underlying_type ... ok
+test avro::tests::logical::dates_round_trip_as_calendar_dates ... ok
+test avro::tests::fuzz_lite::mutated_containers_never_panic ... ok
+test avro::tests::logical::durations_keep_their_twelve_bytes ... ok
+test avro::tests::logical::decimals_keep_their_unscaled_integer_and_scale ... ok
+test avro::tests::logical::times_round_trip_at_their_declared_unit ... ok
+test avro::tests::logical::uuids_round_trip_in_both_encodings ... ok
+test avro::tests::logical::timestamps_are_utc_instants_and_local_timestamps_stay_naive ... ok
+test avro::tests::matrix::a_leap_day_survives_as_the_date_it_is ... ok
+test avro::tests::matrix::maps_round_trip_including_the_empty_one ... ok
+test avro::tests::matrix::trailing_bytes_after_the_declared_rows_are_an_error ... ok
+test avro::tests::matrix::time_boundaries_round_trip_exactly ... ok
+test avro::tests::matrix::four_levels_of_nesting_round_trip ... ok
+test avro::tests::records::a_null_typed_column_round_trips_without_double_wrapping ... ok
+test avro::tests::matrix::unions_of_records_choose_the_branch_by_shape_order ... ok
+test avro::tests::records::a_projection_skips_the_bytes_of_unselected_columns ... ok
+test avro::tests::records::a_wide_union_is_refused_for_the_record_surface ... ok
+test avro::tests::records::an_ascii_column_is_an_avro_string ... ok
+test avro::tests::records::an_empty_handle_reads_as_no_batches ... ok
+test avro::tests::records::a_partial_commit_keeps_an_open_avro_cache_coherent ... ok
+test avro::tests::records::an_empty_open_avro_container_has_explicit_lifecycle_and_dimensions ... ok
+test avro::tests::records::an_open_avro_cache_is_stable_until_close_then_reads_fresh ... ok
+test avro::tests::records::an_open_cache_tracks_the_final_avro_field_after_casting ... ok
+test avro::tests::records::an_out_of_range_duration_is_refused_in_both_directions ... ok
+test avro::tests::records::an_outer_content_coding_is_rejected_by_name ... ok
+test avro::tests::records::batches_round_trip_through_the_record_surface ... ok
+test avro::tests::records::dimensions_describe_all_blocks_and_ignore_read_options ... ok
+test avro::tests::records::append_and_merge_keep_an_open_avro_cache_coherent_until_close ... ok
+test avro::tests::records::mismatched_options_are_rejected_before_any_write_pulls_input ... ok
+test avro::tests::records::single_branch_unions_read_through_the_record_surface ... ok
+test avro::tests::records::logical_columns_round_trip_columnar ... ok
+test avro::tests::records::the_wrapper_owns_avro_options_over_an_unnamed_buffer ... ok
+test avro::tests::records::the_stateful_wrapper_caches_the_schema_between_open_and_close ... ok
+test arrowfs::tests::tables::an_iceberg_table_lives_on_a_foreign_filesystem ... ok
+test avro::tests::resolution::a_default_nested_past_the_default_depth_bound_is_refused ... ok
+test avro::tests::resolution::a_fixed_default_of_the_wrong_length_is_refused ... ok
+test avro::tests::resolution::a_failed_writer_union_branch_does_not_poison_later_plans ... ok
+test avro::tests::resolution::a_missing_field_without_a_default_is_refused_naming_it ... ok
+test avro::tests::records::dimensions_skip_a_large_avro_payload_without_decoding_it ... ok
+test avro::tests::resolution::a_reader_union_prefers_the_branch_naming_the_writer_exactly ... ok
+test avro::tests::resolution::a_non_union_writer_resolves_into_a_wider_reader ... ok
+test avro::tests::resolution::a_recursive_schema_resolves_against_a_projection_of_itself ... ok
+test avro::tests::resolution::an_illegal_resolution_is_refused_naming_both_sides ... ok
+test avro::tests::resolution::a_reader_field_matches_a_writer_field_by_name_before_alias ... ok
+test avro::tests::resolution::bytes_promote_to_string_when_they_are_utf8 ... ok
+test avro::tests::resolution::enums_resolve_by_symbol_with_the_reader_default_as_fallback ... ok
+test avro::tests::resolution::a_union_writer_resolves_into_a_narrower_reader ... ok
+test avro::tests::resolution::every_legal_promotion_widens_in_place ... ok
+test avro::tests::resolution::field_order_never_matters_only_names_do ... ok
+test avro::tests::resolution::extra_writer_fields_are_skipped_without_being_decoded ... ok
+test avro::tests::resolution::missing_reader_fields_fill_from_defaults ... ok
+test avro::tests::resolution::reader_aliases_match_renamed_records_and_fields ... ok
+test avro::tests::schemas::a_deep_schema_is_bounded ... ok
+test avro::tests::schemas::a_dotted_name_is_a_fullname_and_ignores_the_namespace_attribute ... ok
+test avro::tests::resolution::resolving_to_the_writer_schema_is_the_identity ... ok
+test avro::tests::resolution::unions_wider_than_two_branches_resolve_branch_by_branch ... ok
+test avro::tests::schemas::a_reference_to_an_earlier_definition_is_not_a_redefinition ... ok
+test avro::tests::schemas::a_recursive_schema_parses_and_round_trips_data ... ok
+test avro::tests::schemas::an_unknown_reference_is_an_error_naming_it ... ok
+test avro::tests::schemas::a_second_definition_of_a_named_type_is_refused_naming_it ... ok
+test avro::tests::schemas::attribute_order_and_unknown_attributes_never_change_the_fingerprint ... ok
+test avro::tests::schemas::decoded_containers_have_complete_structural_value_identity ... ok
+test avro::tests::schemas::canonical_form_and_fingerprint_match_the_reference_implementation ... ok
+test avro::tests::schemas::namespaces_qualify_names_and_nested_types_inherit_them ... ok
+test avro::tests::schemas::schema_value_traits_keep_complete_behavior_not_only_canonical_form ... ok
+test avro::tests::schemas::the_source_json_round_trips_verbatim ... ok
+test avro::tests::single_object::a_datum_round_trips_through_the_single_object_framing ... ok
+test avro::tests::single_object::a_wrong_fingerprint_is_refused_naming_both ... ok
+test avro::tests::single_object::bytes_after_the_datum_are_refused ... ok
+test avro::tests::snappy::a_corrupt_snappy_crc_is_refused ... ok
+test avro::tests::snappy::snappy_blocks_decode_and_verify_their_crc ... ok
+test avro::tests::streaming::a_lazy_block_applies_its_row_budget_after_opening_the_header ... ok
+test avro::tests::snapshots::a_fixed_container_encodes_to_exactly_these_bytes ... ok
+test avro::tests::snapshots::a_single_object_datum_encodes_to_exactly_these_bytes ... ok
+test avro::tests::streaming::owning_blocks_keep_the_stream_lazy_and_honor_limits ... ok
+test avro::tests::streaming::blocks_stream_and_skipping_costs_nothing ... ok
+test buffered::tests::a_budget_below_two_pages_is_clamped ... ok
+test buffered::tests::a_hit_asks_the_handle_for_nothing_at_all ... ok
+test buffered::tests::a_page_lives_from_its_last_access ... ok
+test buffered::tests::a_read_spanning_pages_caches_each_of_them ... ok
+test buffered::tests::a_second_read_of_the_same_range_reaches_nothing ... ok
+test buffered::tests::a_url_named_handle_keeps_its_own_identity ... ok
+test buffered::tests::a_value_smaller_than_one_page_has_one_end ... ok
+test buffered::tests::a_value_that_grew_is_seen_when_a_read_reaches_the_end ... ok
+test buffered::tests::a_write_extending_the_value_replaces_the_page_that_ended_it ... ok
+test avro::tests::streaming::a_written_container_streams_back_the_same_rows ... ok
+test buffered::tests::a_write_is_seen_by_the_next_read ... ok
+test buffered::tests::a_write_past_the_end_zero_fills_what_the_cache_shows ... ok
+test buffered::tests::a_write_that_only_grows_the_value_invalidates_the_page_that_ended_it ... ok
+test buffered::tests::an_empty_handle_reads_nothing_and_caches_nothing ... ok
+test buffered::tests::an_exactly_two_page_value_is_all_pins ... ok
+test buffered::tests::buffering_a_buffered_handle_re_wraps_it ... ok
+test buffered::tests::clearing_and_removing_drop_the_cache_before_they_reach_the_handle ... ok
+test buffered::tests::closing_drops_every_page_and_the_handle_keeps_working ... ok
+test buffered::tests::everything_but_the_reads_is_the_wrapped_handle ... ok
+test buffered::tests::eviction_takes_the_least_recently_read_page_first ... ok
+test buffered::tests::reaching_the_inner_handle_mutably_drops_the_cache ... ok
+test buffered::tests::the_end_of_the_value_reads_short_and_past_it_reads_nothing ... ok
+test buffered::tests::the_pin_follows_the_end_the_value_grows ... ok
+test buffered::tests::the_two_ends_outlive_eviction_and_expiry ... ok
+test buffered::tests::truncating_below_the_footer_page_invalidates_it ... ok
+test buffered::tests::truncation_invalidates_both_ways ... ok
+test datatype::coded::tests::a_cell_is_validated_at_the_code_width ... ok
+test datatype::coded::tests::a_code_holds_ascii_text_up_to_its_width ... ok
+test datatype::coded::tests::an_extension_name_needs_its_own_width ... ok
+test datatype::coded::tests::every_code_names_itself_and_its_width ... ok
+test datatype::merge::tests::ascii_absorbs_a_number_at_no_less_than_utf8_and_only_when_allowed ... ok
+test datatype::merge::tests::ascii_widths_meet_text_by_width_in_the_direction_asked_for ... ok
+test datatype::merge::tests::bytes_win_over_ascii_and_keep_only_an_identical_fixed_width ... ok
+test datatype::tests::arrow_import_enforces_one_shared_recursion_budget ... ok
+test datatype::tests::arrow_import_preserves_nested_field_projection_arcs ... ok
+test datatype::tests::ascii::a_code_packs_and_merges_by_the_ascii_rules ... ok
+test datatype::tests::ascii::a_registered_code_is_its_own_datatype_over_its_standard_width ... ok
+test datatype::tests::ascii::arrow_storage_is_padded_and_reads_back_trimmed ... ok
+test datatype::tests::ascii::every_spelling_parses_and_displays_as_its_datatype ... ok
+test buffered::tests::a_cache_over_a_coding_view_projects_the_decoded_bytes ... ok
+test datatype::tests::ascii::identity_kind_and_widths_answer_for_every_width ... ok
+test datatype::tests::ascii::ordering_and_hashing_are_consistent_for_every_width ... ok
+test datatype::tests::ascii::compatibility_reads_every_width_as_utf8 ... ok
+test datatype::tests::ascii::serde_and_the_structural_value_round_trip ... ok
+test datatype::tests::ascii::the_default_is_the_empty_string_stored_as_all_nul ... ok
+test datatype::tests::ascii::values_validate_and_canonicalize_under_the_one_ascii_rule ... ok
+test datatype::tests::ascii_dictionary::an_ascii_value_packs_into_the_integer_its_storage_reads_as ... ok
+test datatype::tests::ascii::widths_outside_the_family_and_a_bare_ascii_are_refused_by_name ... ok
+test datatype::tests::ascii_dictionary::an_enum_names_its_values_and_renders_one_document ... ok
+test datatype::tests::ascii_dictionary::an_enum_refuses_what_a_document_could_not_carry_back ... ok
+test datatype::tests::ascii_dictionary::equality_is_the_width_the_key_and_the_values_in_order ... ok
+test datatype::tests::ascii_dictionary::from_values_dedups_and_preserves_first_appearance_order ... ok
+test datatype::tests::ascii_dictionary::members_apply_the_name_rule_once ... ok
+test datatype::tests::ascii_dictionary::push_refuses_what_the_width_refuses_naming_the_width ... ok
+test datatype::tests::ascii_dictionary::members_refuse_a_collision_naming_both_values ... ok
+test datatype::tests::ascii_dictionary::registration_is_first_appearance_and_a_repeat_keeps_its_code ... ok
+test datatype::tests::ascii_dictionary::the_bytes_spelling_registers_as_its_trimmed_text ... ok
+test datatype::tests::canonical_display_json_and_arrow_are_lossless ... ok
+test datatype::tests::ascii_dictionary::the_datatype_is_the_dictionary_of_the_key_and_the_width ... ok
+test datatype::tests::ascii_dictionary::the_values_and_key_datatypes_are_refused_by_name ... ok
+test datatype::tests::every_arrow_variant_has_a_lossless_owned_equivalent ... ok
+test datatype::tests::guid::the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering ... ok
+test datatype::tests::guid::storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes ... ok
+test datatype::tests::guid::what_is_not_an_identifier_is_refused_by_the_one_rule ... ok
+test datatype::tests::long_timezones_share_heap_storage_across_arrow_conversions ... ok
+test datatype::tests::native_order_hash_and_child_access_are_value_based ... ok
+test datatype::tests::nested_helper_values_have_total_order_and_hash ... ok
+test datatype::tests::nested_serde_and_core_validators_keep_distinct_error_contracts ... ok
+test datatype::tests::parser_reports_positions_and_rejects_adversarial_input ... ok
+test datatype::tests::public_field_collections_validate_children_without_clone_helpers ... ok
+test datatype::tests::semi_structured_and_geospatial::compatibility_rows_answer_for_every_target ... ok
+test datatype::tests::semi_structured_and_geospatial::adversarial_geospatial_spellings_are_refused_by_name ... ok
+test datatype::tests::semi_structured_and_geospatial::bare_variant_and_the_member_sugar_parse_to_different_types ... ok
+test datatype::tests::semi_structured_and_geospatial::defaults_are_a_present_variant_null_and_a_point_empty ... ok
+test datatype::tests::semi_structured_and_geospatial::identity_kind_and_nesting_answer_for_the_new_variants ... ok
+test datatype::tests::semi_structured_and_geospatial::every_spelling_of_the_geospatial_pair_parses_and_round_trips ... ok
+test datatype::tests::semi_structured_and_geospatial::ordering_and_hashing_are_consistent_for_the_new_variants ... ok
+test datatype::tests::semi_structured_and_geospatial::rows_validate_through_the_new_columns ... ok
+test datatype::tests::semi_structured_and_geospatial::serde_and_the_structural_value_round_trip ... ok
+test datatype::tests::semi_structured_and_geospatial::the_constructors_fill_and_refuse_what_the_grammar_does ... ok
+test datatype::tests::structural_serialization_rejects_public_enum_invalid_states ... ok
+test datatype::tests::temporal_decimal_and_wrapper_forms_are_validated ... ok
+test datatype::tests::structural_json_rejects_malformed_and_duplicate_values ... ok
+test error::tests::a_backend_spelling_normalizes_into_the_typed_variant ... ok
+test error::tests::a_conflict_names_both_sides_and_where ... ok
+test error::tests::a_permission_failure_is_neither_an_absence_nor_a_conflict ... ok
+test error::tests::an_absence_names_what_was_expected_and_where ... ok
+test error::tests::an_unnormalized_backend_answer_still_branches_the_same_way ... ok
+test error::tests::official_iceberg_failures_keep_their_source_behind_the_core_error ... ok
+test expression::tests::a_column_named_twice_in_two_cases_is_ambiguous ... ok
+test expression::tests::a_constant_subtree_is_folded_by_evaluating_it ... ok
+test datatype::tests::sql_hive_spark_and_arrow_spellings_parse_recursively ... ok
+test expression::tests::a_free_attribute_answers_without_a_single_stat ... ok
+test expression::tests::a_literal_is_converted_once_into_the_column_it_meets ... ok
+test expression::tests::a_parse_failure_names_where_it_stopped ... ok
+test expression::tests::a_mask_that_keeps_everything_keeps_the_batch_itself ... ok
+test expression::tests::a_pattern_that_changes_per_row_is_refused_at_bind ... ok
+test expression::tests::a_partition_path_is_the_tightest_statistic_there_is ... ok
+test expression::tests::a_pattern_with_no_wildcard_becomes_an_equality ... ok
+test expression::tests::a_projection_reorders_without_touching_a_buffer ... ok
+test expression::tests::a_row_predicate_rules_no_holder_out ... ok
+test expression::tests::a_reader_filters_and_projects_in_one_pass ... ok
+test expression::tests::a_split_conjoins_back_to_what_it_split ... ok
+test expression::tests::a_struct_expression_produces_and_reprints_a_row_sequence ... ok
+test expression::tests::an_unknown_column_names_the_ones_there_are ... ok
+test expression::tests::an_exact_quotient_keeps_room_to_be_a_quotient ... ok
+test expression::tests::binds_and_evaluates_rows ... ok
+test expression::tests::cheapest_first_is_stable_when_costs_tie ... ok
+test expression::tests::every_selector_declares_a_cost_and_a_type ... ok
+test expression::tests::expressions_and_statements_have_core_total_order_and_stable_hash ... ok
+test expression::tests::parameters_are_supplied_at_bind_and_never_again ... ok
+test expression::tests::nesting_past_the_limit_is_refused_not_crashed ... ok
+test expression::tests::documents_round_trip ... ok
+test expression::tests::pruning_actually_prunes_what_it_can_prove ... ok
+test expression::tests::projections_agree_between_the_tiers ... ok
+test expression::tests::quoted_names_survive_every_encapsulator ... ok
+test expression::tests::pruning_never_loses_a_row ... ok
+test expression::tests::scalar_arithmetic_propagates_checked_failures ... ok
+test expression::tests::statements_round_trip ... ok
+test expression::tests::substring_takes_the_window_the_standard_names ... ok
+test expression::tests::two_operands_with_no_common_type_are_refused ... ok
+test expression::tests::scalar_and_vectorized_agree ... ok
+test expression::tests::unknown_is_not_true ... ok
+test field::arrow::tests::a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both ... ok
+test expression::tests::text_round_trips ... ok
+test field::arrow::tests::a_bare_geoarrow_document_imports_as_the_default_geometry ... ok
+test field::arrow::tests::a_geography_projection_carries_the_edge_algorithm_and_round_trips ... ok
+test field::arrow::tests::a_geometry_field_projects_the_geoarrow_extension_and_reimports_itself ... ok
+test field::arrow::tests::a_malformed_geoarrow_document_is_refused_naming_the_key ... ok
+test field::arrow::tests::a_variant_field_projects_the_canonical_struct_and_reimports_itself ... ok
+test field::arrow::tests::a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import ... ok
+test field::arrow::tests::an_ascii_extension_over_another_width_or_a_document_keeps_todays_import ... ok
+test field::arrow::tests::an_unknown_extension_name_keeps_todays_import_exactly ... ok
+test field::arrow::tests::an_ascii_field_projects_the_yggdryl_extension_and_reimports_itself ... ok
+test field::arrow::tests::our_extension_name_over_a_foreign_storage_keeps_todays_import ... ok
+test field::cast::tests::a_borrowed_typed_field_casts_the_same_way ... ok
+test field::cast::tests::a_crs_change_between_geospatial_columns_is_refused_naming_both ... ok
+test field::cast::tests::a_geometry_column_renders_wkt_into_a_utf8_target ... ok
+test field::cast::tests::a_nullable_field_keeps_the_null_a_safe_cast_produced ... ok
+test field::cast::tests::a_geometry_column_stays_lossless_into_a_binary_target ... ok
+test field::cast::tests::a_parameterized_temporal_field_casts_to_a_shared_array ... ok
+test field::cast::tests::a_matching_geospatial_pair_casts_as_the_identity ... ok
+test field::cast::tests::a_scalar_cast_requires_exactly_one_value ... ok
+test field::cast::tests::a_string_field_parses_and_formats_through_the_same_call ... ok
+test field::cast::tests::a_typed_field_returns_its_own_array_type ... ok
+test field::cast::tests::a_struct_field_casts_children_by_name ... ok
+test field::cast::tests::a_variant_casts_only_to_itself_until_the_codec_lands ... ok
+test field::cast::tests::a_variant_column_refuses_to_leave_the_type_until_the_codec_lands ... ok
+test field::cast::tests::geometry_and_geography_refuse_each_other_naming_the_edge_change ... ok
+test field::cast::tests::an_unsafe_cast_fails_and_a_safe_one_defaults ... ok
+test field::cast::tests::binary_bytes_entering_a_geometry_field_are_validated_as_wkb ... ok
+test field::cast::tests::text_into_a_geospatial_target_names_the_absent_wkt_parser ... ok
+test field::diff::tests::shared_deep_snapshots_complete_without_traversal ... ok
+test field::diff::tests::owned_cursor_outlives_source_snapshots ... ok
+test buffered::tests::positional_byte_streams_bypass_the_page_cache ... ok
+test field::protocol::tests::every_named_protocol_view_spells_its_own_scheme_prefix ... ok
+test field::tests::a_field_declares_the_enum_its_ascii_values_name ... ok
+test field::tests::arrow_display_and_dictionary_state_round_trip_after_cache_invalidation ... ok
+test field::tests::canonical_display_json_and_arrow_round_trip ... ok
+test field::tests::metadata_updates_are_sorted_atomic_and_cache_aware ... ok
+test field::tests::native_order_hash_and_stable_hash_ignore_cache ... ok
+test field::tests::sql_hive_and_wrapped_forms_parse ... ok
+test field::diff::tests::physical_first_difference_does_not_scan_equal_wide_metadata ... ok
+test field::value::tests::a_record_maps_names_to_schema_order_and_fills_field_defaults ... ok
+test field::tests::wrappers_are_bounded_and_nested_errors_use_field_offsets ... ok
+test field::value::tests::a_record_refuses_unknown_names ... ok
+test field::diff::tests::wide_slice_work_stays_bounded_before_the_first_difference ... ok
+test field::value::tests::temporal_casts_preserve_family_and_timezone ... ok
+test field::value::tests::integer_canonicalization_preserves_every_declared_width ... ok
+test field::value::tests::year_month_interval_keeps_its_signed_64_bit_component_spelling ... ok
+test generic::arithmetic::tests::durations_scale_only_by_exact_integers ... ok
+test generic::arithmetic::tests::float_arithmetic_promotes_width_and_uses_checked_zero ... ok
+test generic::arithmetic::tests::float_wrappers_keep_their_width_for_native_arithmetic ... ok
+test generic::arithmetic::tests::integer_arithmetic_preserves_width_and_promotes_without_loss ... ok
+test generic::arithmetic::tests::null_propagates_through_every_binary_operation ... ok
+test generic::arithmetic::tests::operator_traits_are_checked_and_do_not_concatenate ... ok
+test generic::arithmetic::tests::temporal_arithmetic_uses_durations_and_preserves_zone ... ok
+test generic::codec::tests::codings_are_recovered_from_filenames_and_media_types ... ok
+test generic::codec::tests::empty_input_round_trips ... ok
+test generic::codec::tests::a_corrupt_payload_is_rejected_rather_than_truncated ... ok
+test generic::arithmetic::tests::decimal_arithmetic_is_scale_exact ... ok
+test generic::codec::tests::format_modules_agree_with_the_codec_dispatch ... ok
+test generic::codec::tests::level_clamps_to_the_shared_scale ... ok
+test generic::codec::tests::only_canonical_codec_names_parse ... ok
+test generic::codec::tests::zlib_and_raw_deflate_are_distinct_framings ... ok
+test generic::codec::tests::every_codec_round_trips_a_buffer ... ok
+test generic::coded::tests::a_missing_resource_reads_as_empty_rather_than_failing ... ok
+test generic::coded::tests::an_identity_coding_writes_the_payload_unchanged ... ok
+test generic::coded::tests::a_level_reaches_the_encoder_and_the_handle_survives_it ... ok
+test generic::codec::tests::every_codec_round_trips_a_stream_without_buffering_whole ... ok
+test generic::coded::tests::raw_deflate_wraps_as_its_framed_form ... ok
+test generic::datatype_id::tests::ascii_widths_and_codes_are_parameter_free_text ... ok
+test generic::datatype_id::tests::every_kind_is_reachable ... ok
+test generic::coded::tests::every_coding_round_trips_through_the_enum ... ok
+test generic::datatype_id::tests::fixed_widths_match_their_layout ... ok
+test generic::coded::tests::the_handles_own_media_type_picks_the_coding ... ok
+test generic::datatype_id::tests::integer_predicates_partition_the_family ... ok
+test generic::datatype_id::tests::names_are_unique ... ok
+test generic::datatype_id::tests::unknown_name_reports_the_input ... ok
+test generic::datatype_kind::tests::categories_are_unique ... ok
+test generic::datatype_id::tests::names_round_trip_case_insensitively ... ok
+test generic::datatype_kind::tests::names_round_trip_case_insensitively ... ok
+test generic::datatype_kind::tests::wrappers_are_not_reported_as_nested ... ok
+test generic::decimal::tests::comparison::a_decimal_is_its_own_kind_and_never_an_integer ... ok
+test generic::decimal::tests::comparison::decimals_order_by_the_number_they_name ... ok
+test generic::decimal::tests::comparison::two_spellings_of_one_number_are_one_value ... ok
+test generic::datatype_kind::tests::unknown_name_reports_the_input_and_vocabulary ... ok
+test generic::decimal::tests::representation::a_decimal_holds_a_fraction_no_double_can_hold ... ok
+test generic::decimal::tests::representation::a_decimal_keeps_the_coefficient_and_the_scale_it_was_given ... ok
+test generic::decimal::tests::representation::generic_decimal_selects_width_and_has_one_family_view ... ok
+test generic::decimal::tests::representation::one_renderer_restores_the_exact_plain_text ... ok
+test generic::decimal::tests::restating::restating_adds_digits_freely_and_drops_none ... ok
+test generic::edge_algorithm::tests::names_round_trip_case_insensitively ... ok
+test generic::edge_algorithm::tests::spherical_is_the_default_both_formats_fill ... ok
+test generic::edge_algorithm::tests::unknown_name_reports_the_input_and_vocabulary ... ok
+test generic::enum_scalar::tests::every_static_vocabulary_round_trips_and_invalid_parts_fail ... ok
+test generic::enum_scalar::tests::identity_and_compact_ordinal_survive_scalar_conversion ... ok
+test generic::i256::tests::checked_addition_and_subtraction_cover_signs_and_carries ... ok
+test generic::i256::tests::multiplication_detects_the_full_signed_boundary ... ok
+test generic::i256::tests::ordering_is_signed ... ok
+test generic::i256::tests::signed_boundaries_round_trip ... ok
+test generic::i256::tests::division_and_remainder_recompose_every_sign_combination ... ok
+test generic::i256::tests::out_of_range_values_are_refused ... ok
+test generic::i256::tests::stable_hash_covers_all_four_limbs_deterministically ... ok
+test generic::inference::tests::containers::a_sequence_names_the_list_of_what_its_children_agree_on ... ok
+test generic::inference::tests::containers::a_mapping_names_a_map_because_its_keys_are_values ... ok
+test generic::inference::tests::fields::ambiguous_shapes_require_a_declared_field ... ok
+test generic::inference::tests::containers::record_fields_merge_nullability_by_name ... ok
+test generic::inference::tests::fields::shape_specific_fields_have_one_cross_language_name ... ok
+test generic::inference::tests::refusals::a_time_of_day_timezone_is_never_silently_discarded ... ok
+test generic::inference::tests::refusals::a_value_nested_past_the_shared_limit_is_refused_and_not_a_stack_overflow ... ok
+test generic::inference::tests::refusals::an_interval_layout_is_not_a_temporal_resolution ... ok
+test generic::inference::tests::refusals::two_numbers_meet_at_the_one_that_holds_both ... ok
+test generic::inference::tests::refusals::children_that_disagree_are_an_error_and_not_a_guess ... ok
+test generic::inference::tests::scalars::a_decimal_names_the_precision_its_digits_need ... ok
+test generic::inference::tests::scalars::a_wide_integer_becomes_the_exact_decimal_that_holds_it ... ok
+test generic::inference::tests::scalars::a_temporal_names_its_unit_and_its_zone ... ok
+test generic::inference::tests::scalars::each_integer_width_keeps_the_column_that_holds_it ... ok
+test generic::inference::tests::scalars::each_float_keeps_its_real_width ... ok
+test generic::inference::tests::scalars::text_and_bytes_name_their_own_columns ... ok
+test generic::iso::tests::dates_round_trip_and_reject_days_that_do_not_exist ... ok
+test generic::iso::tests::durations_spell_seconds_and_read_any_decomposition ... ok
+test generic::iso::tests::fraction_separators_group_digits_without_changing_the_count ... ok
+test generic::iso::tests::malformed_fraction_separators_are_rejected_with_their_byte_position ... ok
+test generic::iso::tests::naive_datetimes_split_the_epoch_count_exactly ... ok
+test generic::iso::tests::times_print_the_fraction_at_the_unit_width ... ok
+test generic::magic::tests::a_byte_order_mark_does_not_hide_the_content ... ok
+test generic::iso::tests::zoned_instants_spell_the_local_reading_and_recover_the_instant ... ok
+test generic::magic::tests::a_coding_over_an_unknown_payload_reports_the_coding ... ok
+test generic::magic::tests::container_signatures_are_identified ... ok
+test generic::magic::tests::nothing_is_inferred_from_an_empty_or_unknown_payload ... ok
+test generic::magic::tests::offset_signatures_respect_their_offset ... ok
+test generic::magic::tests::only_the_probe_window_is_examined ... ok
+test generic::magic::tests::textual_formats_are_sniffed_structurally ... ok
+test generic::media::tests::a_compressed_handle_mirrors_the_compressed_bytes ... ok
+test generic::media::tests::a_missing_resource_reads_as_empty_rather_than_failing ... ok
+test generic::media::tests::an_unimplemented_encoding_is_named_rather_than_guessed ... ok
+test generic::media::tests::each_explicit_variant_owns_options_over_an_unnamed_buffer ... ok
+test generic::magic::tests::coding_signatures_are_identified ... ok
+test generic::media::tests::every_variant_round_trips_batches_through_the_same_calls ... ok
+test generic::media::tests::holder_media_promotion_preserves_wrapper_idempotence_and_plain_bytes ... ok
+test generic::media::tests::holder_open_retains_the_inferred_media_cache_without_nesting_it ... ok
+test generic::media::tests::media_mirrors_the_bytes_of_its_handle ... ok
+test generic::media::tests::open_and_close_carry_the_cached_schema ... ok
+test generic::media::tests::the_name_picks_the_implementation ... ok
+test generic::options::tests::a_byte_limit_landing_mid_batch_slices_a_view_of_the_last_batch ... ok
+test generic::options::tests::a_commit_larger_than_the_stream_yields_one_final_remainder ... ok
+test generic::options::tests::a_full_commit_does_not_read_ahead ... ok
+test generic::options::tests::a_limit_with_a_match_key_is_refused_naming_both_settings ... ok
+test generic::options::tests::a_nonzero_byte_limit_smaller_than_one_row_still_yields_one_row ... ok
+test generic::options::tests::a_reader_without_limits_is_returned_as_it_stands ... ok
+test generic::options::tests::a_row_limit_at_exactly_the_stored_count_keeps_every_row ... ok
+test generic::options::tests::a_row_limit_one_above_the_stored_count_changes_nothing ... ok
+test generic::options::tests::a_row_limit_one_below_the_stored_count_slices_the_last_batch ... ok
+test generic::options::tests::a_satisfied_limit_stops_pulling_the_inner_reader ... ok
+test generic::magic::tests::nested_codings_are_peeled_in_application_order ... ok
+test generic::options::tests::a_zero_byte_limit_reads_the_schema_and_no_batches ... ok
+test generic::options::tests::a_zero_row_limit_reads_the_schema_and_no_batches ... ok
+test generic::options::tests::an_empty_batch_passes_through_without_ending_the_stream ... ok
+test generic::options::tests::avro_only_options_validate_codec_and_sync_marker_in_the_core ... ok
+test generic::options::tests::avro_only_setters_reject_another_inferred_encoding ... ok
+test generic::media::tests::generic_media_preserves_commit_cadence_through_variant_redirection ... ok
+test generic::options::tests::commit_readers_slice_exact_cadences_across_batch_boundaries ... ok
+test generic::options::tests::every_concrete_options_type_carries_the_same_commit_cadence ... ok
+test generic::options::tests::native_batch_writes_stop_at_the_smaller_conversion_or_commit_bound ... ok
+test generic::options::tests::parquet_only_options_are_owned_by_the_generic_core_variant ... ok
+test generic::options::tests::parquet_only_setters_reject_another_inferred_encoding ... ok
+test generic::options::tests::record_options_preflight_each_write_intent_without_an_input_reader ... ok
+test generic::options::tests::the_declared_field_is_built_from_its_three_parts ... ok
+test generic::options::tests::the_enum_mirrors_the_limits_of_the_encoding_it_holds ... ok
+test generic::options::tests::whichever_limit_binds_first_wins ... ok
+test generic::options::tests::zero_commit_row_size_is_a_typed_preflight_error ... ok
+test generic::scalar::tests::a_dotted_path_walks_mappings_and_sequences ... ok
+test generic::scalar::tests::a_geospatial_value_is_its_own_kind_over_its_bytes ... ok
+test generic::scalar::tests::equal_cross_width_values_have_one_stable_hash ... ok
+test generic::scalar::tests::float_stable_hashes_follow_canonical_nan_and_exact_zero_bits ... ok
+test generic::scalar::tests::generic_float_selector_keeps_width_and_common_value_semantics ... ok
+test generic::scalar::tests::integer_family_view_is_logical_and_canonical ... ok
+test generic::scalar::tests::mapping_helpers_read_and_rebuild_in_order ... ok
+test generic::scalar::tests::narrowing_an_integer_refuses_to_lose_magnitude ... ok
+test generic::scalar::tests::native_and_json_accessors_have_explicit_borrowing_semantics ... ok
+test generic::scalar::tests::rebuilding_a_value_that_is_not_a_mapping_says_what_it_is ... ok
+test generic::scalar::tests::records_are_sorted_and_rebuilt_by_field_name ... ok
+test generic::scalar::tests::shape_predicates_answer_without_matching ... ok
+test generic::options::tests::record_options_have_complete_value_traits_and_stable_hashes ... ok
+test generic::scalar::tests::structural_record_deserialization_canonicalizes_and_rejects_duplicates ... ok
+test generic::scalar::tests::time_datatype_inference_refuses_zones_it_cannot_preserve ... ok
+test generic::temporal::tests::constructors_reject_illegal_width_unit_combinations ... ok
+test generic::scalar::tests::the_structural_wire_round_trips_a_geospatial_value ... ok
+test generic::temporal::tests::family_constructors_reject_invalid_parts ... ok
+test generic::temporal::tests::every_temporal_carries_a_zone ... ok
+test generic::temporal::tests::family_constructors_select_exact_widths ... ok
+test generic::temporal::tests::temporal_family_views_are_exact_and_reversible ... ok
+test generic::temporal::tests::time_of_day_refuses_a_zone_its_datatype_would_lose ... ok
+test generic::text::tests::a_name_picks_the_format ... ok
+test generic::text::tests::the_enum_and_the_format_types_agree ... ok
+test generic::text::tests::a_name_that_is_not_a_text_format_is_reported ... ok
+test generic::text::tests::the_enum_answers_the_same_calls_as_a_named_format ... ok
+test generic::timezone::tests::canonicalization::a_fixed_offset_can_be_built_from_seconds ... ok
+test generic::timezone::tests::canonicalization::a_fixed_offset_normalizes_to_one_spelling ... ok
+test generic::timezone::tests::canonicalization::an_alias_resolves_to_what_it_stands_for ... ok
+test generic::timezone::tests::canonicalization::an_impossible_name_is_refused ... ok
+test generic::timezone::tests::canonicalization::an_unregistered_name_is_kept_exactly_as_written ... ok
+test generic::timezone::tests::canonicalization::case_is_normalized_for_a_registered_name ... ok
+test generic::timezone::tests::canonicalization::every_spelling_of_utc_is_utc ... ok
+test generic::timezone::tests::conversions::a_conversion_refuses_a_zone_it_has_no_rules_for ... ok
+test generic::timezone::tests::conversions::a_local_reading_becomes_the_instant_it_names ... ok
+test generic::timezone::tests::canonicalization::the_canonical_name_survives_serde ... ok
+test generic::timezone::tests::conversions::a_utc_instant_becomes_a_local_reading ... ok
+test generic::timezone::tests::naive_is_a_canonical_non_zoned_marker ... ok
+test generic::timezone::tests::offsets::a_fixed_offset_never_observes_saving ... ok
+test generic::timezone::tests::conversions::the_registry_is_installed_without_any_environment ... ok
+test generic::timezone::tests::offsets::a_northern_zone_switches_on_its_own_rule ... ok
+test generic::timezone::tests::offsets::a_southern_zone_is_saving_across_the_new_year ... ok
+test generic::timezone::tests::offsets::a_zone_without_saving_answers_the_same_all_year ... ok
+test generic::timezone::tests::offsets::abbreviations_follow_the_saving_state ... ok
+test generic::timezone::tests::offsets::new_zealand_starts_on_the_last_sunday_in_september ... ok
+test generic::timezone::tests::offsets::the_european_rule_switches_the_whole_union_at_one_instant ... ok
+test generic::timezone::tests::offsets::the_standard_offset_ignores_saving_entirely ... ok
+test generic::timezone::tests::offsets::transitions_land_on_a_sunday_for_every_rule_and_year ... ok
+test generic::timezone::tests::the_registry::a_zone_that_observes_no_saving_declares_no_daylight_abbreviation ... ok
+test generic::timezone::tests::the_registry::aliases_are_sorted_and_never_shadow_a_real_zone ... ok
+test generic::timezone::tests::the_registry::every_offset_is_a_whole_number_of_minutes_within_a_day ... ok
+test generic::timezone::tests::the_registry::zones_are_sorted_so_the_binary_search_is_valid ... ok
+test generic::typed::tests::a_marker_narrows_a_pairing_to_one_datatype_at_compile_time ... ok
+test generic::typed::tests::a_narrow_datatype_rejects_a_value_that_does_not_fit_it ... ok
+test generic::typed::tests::a_marker_is_a_view_of_the_same_pairing_and_costs_nothing ... ok
+test generic::typed::tests::a_nested_value_is_validated_against_the_datatype_it_claims ... ok
+test generic::typed::tests::a_narrowed_pairing_serializes_as_the_two_halves_and_reads_back_checked ... ok
+test generic::typed::tests::a_null_is_accepted_by_every_datatype_because_that_is_what_a_column_stores ... ok
+test generic::typed::tests::a_pairing_holds_only_a_value_its_datatype_accepts ... ok
+test generic::typed::tests::a_value_can_name_its_own_datatype ... ok
+test generic::typed::tests::arrow::a_decode_refuses_a_foreign_array_that_is_not_one_exact_row ... ok
+test generic::typed::tests::arrow::a_pairing_round_trips_through_its_one_row_arrow_array ... ok
+test generic::typed::tests::arrow::a_null_projects_only_when_the_datatype_default_spells_it ... ok
+test generic::typed::tests::both_halves_come_back_out ... ok
+test generic::typed::tests::pairings_order_and_stably_hash_both_halves ... ok
+test generic::typed::tests::arrow::a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling ... ok
+test generic::typed::tests::serde_reads_a_pairing_back_through_the_validating_constructor ... ok
+test generic::typed::tests::arrow::the_narrowed_decode_checks_the_marker_before_the_array ... ok
+test generic::typed::tests::the_newest_markers_narrow_their_pairings_like_every_other ... ok
+test generic::wkb::tests::bounds::a_mixed_collection_bounds_every_member ... ok
+test generic::wkb::tests::bounds::a_nan_point_bounds_nothing ... ok
+test generic::wkb::tests::bounds::a_zm_linestring_bounds_its_elevation_and_measure ... ok
+test generic::wkb::tests::bounds::an_empty_geometry_yields_the_empty_box ... ok
+test generic::wkb::tests::empties::a_nan_point_reads_as_empty_rather_than_failing ... ok
+test generic::wkb::tests::empties::a_zero_count_reads_as_empty_for_every_container_type ... ok
+test generic::wkb::tests::empties::an_empty_member_stays_visible_inside_a_multipoint ... ok
+test generic::wkb::tests::empties::an_empty_point_keeps_its_dimension_marker ... ok
+test generic::wkb::tests::ewkb::an_ewkb_flagged_code_reads_like_the_iso_code ... ok
+test generic::wkb::tests::ewkb::an_ewkb_srid_is_read_past_rather_than_refused ... ok
+test generic::wkb::tests::exactness::wkt_prints_the_shortest_round_trip_decimal ... ok
+test generic::wkb::tests::exactness::extreme_coordinates_round_trip_bit_exactly ... ok
+test generic::wkb::tests::identity::public_geometry_values_have_total_float_identity ... ok
+test generic::wkb::tests::nesting::a_collection_nests_two_levels_deep ... ok
+test generic::wkb::tests::nesting::nesting_at_the_shared_limit_is_refused_and_below_it_is_not ... ok
+test generic::wkb::tests::reading::a_linestring_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::reading::a_collection_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::reading::a_multilinestring_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::reading::a_multipolygon_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::reading::a_multipoint_parses_with_each_member_carrying_its_own_byte_order ... ok
+test generic::wkb::tests::reading::a_point_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::reading::a_polygon_parses_in_every_dimensionality_and_byte_order ... ok
+test generic::wkb::tests::refusals::a_count_the_buffer_cannot_back_is_refused_before_allocating ... ok
+test generic::wkb::tests::refusals::a_mistyped_member_of_a_multi_geometry_is_refused_by_name ... ok
+test generic::wkb::tests::refusals::a_truncated_coordinate_is_refused_at_its_byte_position ... ok
+test generic::wkb::tests::refusals::an_empty_buffer_is_refused_at_byte_zero ... ok
+test generic::wkb::tests::refusals::an_unknown_byte_order_is_refused ... ok
+test generic::wkb::tests::refusals::an_unknown_geometry_type_code_is_refused_by_name ... ok
+test generic::wkb::tests::refusals::trailing_bytes_after_one_geometry_are_refused ... ok
+test generic::wkb::tests::type_ids::a_mixed_collection_reports_each_code_once_sorted ... ok
+test gzip::tests::a_handle_level_reaches_the_encoder ... ok
+test gzip::tests::a_payload_that_is_not_this_format_is_reported ... ok
+test gzip::tests::streams_round_trip_without_buffering_the_payload ... ok
+test gzip::tests::the_handle_reads_decoded_and_stores_encoded ... ok
+test gzip::tests::every_level_round_trips ... ok
+test iceberg::catalog::tests::a_bad_name_segment_is_refused_by_name ... ok
+test iceberg::catalog::tests::a_catalog_names_itself_after_its_warehouse_folder ... ok
+test gzip::tests::whole_buffers_round_trip ... ok
+test generic::codec::tests::every_level_encodes_correctly_and_compresses ... ok
+test iceberg::catalog::tests::a_malformed_properties_document_is_refused_naming_what_was_found ... ok
+test iceberg::catalog::tests::a_table_create_makes_its_namespaces_by_writing ... ok
+test iceberg::catalog::tests::absence_and_conflict_are_typed_at_every_level ... ok
+test iceberg::catalog::tests::an_absent_properties_document_answers_empty_at_every_level ... ok
+test iceberg::catalog::tests::an_empty_namespace_is_durable_and_survives_a_reopen ... ok
+test iceberg::catalog::tests::access_chains_through_the_views_and_a_missing_name_is_named ... ok
+test iceberg::catalog::tests::call_counts::a_create_into_a_missing_ancestry_never_walks_the_ancestry ... ok
+test iceberg::catalog::tests::call_counts::a_get_of_a_missing_table_stops_at_the_presence_answer ... ok
+test iceberg::catalog::tests::call_counts::a_get_of_an_existing_table_is_one_resolution_and_one_locate ... ok
+test iceberg::catalog::tests::a_table_created_through_a_dotted_name_round_trips_its_rows ... ok
+test iceberg::catalog::tests::constructing_a_catalog_touches_nothing ... ok
+test iceberg::catalog::tests::call_counts::open_or_create_costs_the_same_one_classification_on_both_branches ... ok
+test iceberg::catalog::tests::each_catalog_role_answers_the_kind_it_plays ... ok
+test iceberg::catalog::tests::append_takes_the_partition_marks_that_survived_the_arrow_round_trip ... ok
+test iceberg::catalog::tests::create_table_derives_the_spec_and_numbers_an_unnumbered_schema ... ok
+test iceberg::catalog::tests::properties_round_trip_at_all_three_levels ... ok
+test iceberg::catalog::tests::listing_sees_what_was_created_and_a_stray_folder_is_a_namespace ... ok
+test iceberg::catalog::tests::append_creates_on_first_write_and_appends_on_the_second ... ok
+test iceberg::catalog::tests::the_reserved_prefix_is_refused_at_the_catalog_level_too ... ok
+test iceberg::catalog::tests::the_cascade_and_the_dotted_name_reach_the_same_table ... ok
+test iceberg::catalog::tests::the_views_are_lazy_and_answer_from_storage_at_call_time ... ok
+test iceberg::catalog::tests::overwrite_creates_when_absent_and_replaces_when_present ... ok
+test iceberg::catalog::tests::two_creators_of_one_table_converge_or_one_gets_the_typed_conflict ... ok
+test iceberg::evolve::tests::metadata_updates::add_sort_order_preflights_the_official_identifier_increment ... ok
+test iceberg::catalog::tests::table_writes_through_the_views_create_on_first_write ... ok
+test iceberg::evolve::tests::metadata_updates::a_snapshot_ref_needs_a_retained_snapshot_and_main_follows_the_current_one ... ok
+test iceberg::evolve::tests::metadata_updates::an_empty_property_key_is_refused ... ok
+test iceberg::evolve::tests::metadata_updates::a_batch_of_updates_round_trips_through_its_document ... ok
+test iceberg::evolve::tests::metadata_updates::assign_uuid_validates_the_hyphenated_hex_shape ... ok
+test iceberg::evolve::tests::metadata_updates::add_spec_reuses_equivalent_specs_and_renumbers_new_ones ... ok
+test iceberg::evolve::tests::metadata_updates::add_sort_order_reuses_equivalent_orders_and_renumbers_new_ones ... ok
+test iceberg::evolve::tests::metadata_updates::official_property_and_location_rules_are_atomic ... ok
+test iceberg::evolve::tests::metadata_updates::metadata_compression_consults_only_its_official_property ... ok
+test iceberg::evolve::tests::metadata_updates::properties_are_canonical_and_round_trip_through_the_document ... ok
+test iceberg::evolve::tests::metadata_updates::upgrading_to_v3_initializes_next_row_id_and_a_downgrade_is_refused ... ok
+test iceberg::evolve::tests::metadata_updates::official_statistics_and_encryption_mutations_round_trip ... ok
+test iceberg::evolve::tests::promotions::an_illegal_promotion_names_both_types ... ok
+test iceberg::evolve::tests::promotions::every_iceberg_legal_promotion_passes ... ok
+test iceberg::evolve::tests::metadata_updates::validate_catches_a_duplicate_field_id_and_a_stale_last_column_id ... ok
+test iceberg::evolve::tests::schema_updates::a_missing_path_names_the_segment_and_the_available_columns ... ok
+test iceberg::evolve::tests::schema_updates::an_added_nested_struct_numbers_its_children_depth_first ... ok
+test iceberg::evolve::tests::schema_updates::a_dropped_columns_identifier_is_never_reused_by_a_later_add ... ok
+test iceberg::evolve::tests::schema_updates::descending_through_a_non_struct_column_is_refused_by_name ... ok
+test iceberg::evolve::tests::schema_updates::an_added_top_level_column_is_numbered_above_the_last_column_id ... ok
+test iceberg::evolve::tests::metadata_updates::explicit_expiration_protects_heads_and_trims_metadata ... ok
+test iceberg::evolve::tests::metadata_updates::versioned_snapshot_fields_and_refs_never_disappear_silently ... ok
+test iceberg::evolve::tests::schema_updates::make_nullable_relaxes_a_required_column ... ok
+test iceberg::evolve::tests::schema_updates::operations_apply_in_call_order ... ok
+test iceberg::evolve::tests::schema_updates::renaming_a_column_keeps_its_identifier_at_any_depth ... ok
+test iceberg::evolve::tests::schema_updates::direct_schema_add_requires_and_preserves_initial_defaults ... ok
+test iceberg::evolve::tests::schema_updates::set_current_schema_of_an_unknown_id_is_refused ... ok
+test iceberg::evolve::tests::schema_updates::schema_ids_come_from_the_official_result_and_overflow_is_atomic ... ok
+test iceberg::evolve::tests::schema_updates::update_doc_writes_the_iceberg_doc_property ... ok
+test iceberg::evolve::tests::schema_updates::direct_schema_add_refuses_retired_ids_and_illegal_type_changes ... ok
+test iceberg::evolve::tests::schema_updates::update_type_refuses_an_illegal_promotion_naming_both_sides ... ok
+test iceberg::manifest::official_read_tests::manifest_entry_inheritance_matches_official_rules ... ok
+test iceberg::evolve::tests::schema_updates::update_type_applies_a_legal_promotion_at_any_depth ... ok
+test iceberg::manifest::official_read_tests::manifest_rejects_oversized_declared_input_before_reading ... ok
+test iceberg::manifest::official_read_tests::manifest_spec_ignores_truncated_and_corrupt_bodies ... ok
+test iceberg::manifest::official_read_tests::manifest_header_defaults_preserve_official_v1_semantics ... ok
+test iceberg::evolve::tests::schema_updates::evolving_twice_keeps_last_column_id_monotone_and_schema_ids_distinct ... ok
+test iceberg::manifest::official_read_tests::manifest_spec_rejects_invalid_utf8_required_metadata ... ok
+test iceberg::manifest::official_read_tests::manifest_writer_rejects_non_iceberg_mime_types_without_writing ... ok
+test iceberg::manifest::official_read_tests::manifest_spec_rejects_missing_and_malformed_required_metadata ... ok
+test iceberg::manifest::official_read_tests::official_manifest_reads_preserve_unknown_partition_transforms ... ok
+test iceberg::manifest::official_read_tests::delete_manifest_metadata_is_official_and_mixed_content_is_refused ... ok
+test iceberg::manifest::official_read_tests::planning_reader_rejects_malformed_statistics_members ... ok
+test iceberg::manifest::official_read_tests::planning_reader_preserves_nonlexical_partition_spec_order ... ok
+test iceberg::manifest::official_read_tests::official_uuid_partition_literals_use_the_core_fixed_binary_shape ... ok
+test iceberg::manifest::official_read_tests::planning_reader_rejects_missing_required_fields ... ok
+test iceberg::manifest::official_read_tests::public_manifest_list_reads_are_official_parser_views ... ok
+test iceberg::manifest::official_read_tests::raw_manifest_preflight_rejects_invalid_split_offsets ... ok
+test iceberg::manifest::official_read_tests::raw_manifest_preflight_rejects_negative_metric_counts ... ok
+test iceberg::manifest::official_read_tests::v3_manifest_lists_assign_contiguous_row_ranges_and_header ... ok
+test iceberg::manifest::official_read_tests::v3_row_range_assignment_fails_before_writing ... ok
+test iceberg::manifest::official_read_tests::versioned_manifest_fields_are_preserved_or_rejected_before_write ... ok
+test iceberg::manifest::official_read_tests::public_manifest_reads_are_official_parser_views ... ok
+test iceberg::metadata::strict_metadata_tests::every_historical_layout_must_bind_to_a_retained_schema ... ok
+test iceberg::manifest::official_read_tests::raw_manifest_preflight_rejects_duplicate_metric_ids_before_official_maps ... ok
+test iceberg::metadata::strict_metadata_tests::sequence_counters_must_be_non_negative ... ok
+test iceberg::metadata::strict_metadata_tests::sort_order_json_has_no_implicit_fields_or_options ... ok
+test iceberg::metadata::strict_metadata_tests::normalization_cannot_hide_duplicate_statistics_or_key_ids ... ok
+test iceberg::partition::strict_json_tests::modern_partition_json_requires_exact_identifiers ... ok
+test iceberg::partition::strict_json_tests::a_spec_rejects_duplicate_field_ids_and_names ... ok
+test iceberg::partition::strict_json_tests::only_the_v1_array_synthesizes_field_ids ... ok
+test iceberg::scan::bound_tests::malformed_bounds_leave_the_filter_for_rows ... ok
+test iceberg::scan::delete_tests::data_files_inherit_contiguous_row_ids_without_moving_explicit_ids ... ok
+test iceberg::scan::bound_tests::promoted_bounds_prune_under_the_current_schema_type ... ok
+test iceberg::scan::delete_tests::delete_files_hidden_in_data_manifests_are_rejected ... ok
+test iceberg::scan::delete_tests::delete_manifests_with_unknown_counts_are_not_assumed_empty ... ok
+test iceberg::scan::delete_tests::delete_manifests_without_live_files_are_inert ... ok
+test iceberg::scan::delete_tests::live_delete_manifests_fail_before_any_file_is_read ... ok
+test iceberg::scan::delete_tests::missing_partition_specs_fail_before_pruning ... ok
+test iceberg::scan::delete_tests::partition_tuples_must_match_the_referenced_spec ... ok
+test iceberg::scan::delete_tests::row_id_overflow_fails_without_mutating_the_file_or_cursor ... ok
+test iceberg::scan::delete_tests::unknown_transforms_never_supply_pruning_bounds ... ok
+test iceberg::snapshot::strict_json_tests::reference_json_requires_type_ranges_and_positive_retention ... ok
+test iceberg::snapshot::strict_json_tests::snapshot_optional_values_are_exact_when_present ... ok
+test iceberg::snapshot::strict_json_tests::snapshot_requires_one_manifest_location_shape ... ok
+test iceberg::scan::delete_tests::data_files_keep_null_row_ids_without_a_manifest_range ... ok
+test iceberg::metadata::strict_metadata_tests::v1_accepts_only_the_derived_main_ref_emitted_by_pyiceberg ... ok
+test iceberg::snapshot::tests::branches::a_non_descendant_fast_forward_is_refused_naming_both_ids ... ok
+test iceberg::snapshot::tests::branches::an_existing_name_is_refused_naming_its_kind ... ok
+test iceberg::snapshot::tests::branches::create_branch_and_create_tag_point_at_a_retained_snapshot ... ok
+test iceberg::snapshot::tests::branches::an_unretained_snapshot_is_refused_for_both_kinds ... ok
+test iceberg::snapshot::tests::branches::fast_forward_branch_moves_a_branch_to_a_descendant ... ok
+test iceberg::snapshot::tests::branches::fast_forwarding_main_moves_the_current_snapshot_and_the_log_with_it ... ok
+test iceberg::snapshot::tests::branches::fast_forwarding_a_tag_a_missing_ref_or_to_an_unknown_snapshot_is_refused ... ok
+test iceberg::snapshot::tests::branches::rename_ref_keeps_the_reference_under_the_new_name ... ok
+test iceberg::snapshot::tests::branches::renaming_main_a_missing_ref_or_onto_an_existing_name_is_refused ... ok
+test iceberg::snapshot::tests::expiration::a_branch_with_its_own_age_limit_overrides_the_default_cutoff ... ok
+test iceberg::snapshot::tests::expiration::an_aged_ref_is_committed_even_when_no_snapshot_expires ... ok
+test iceberg::snapshot::tests::expiration::a_chain_of_five_expires_exactly_what_retention_leaves_unprotected ... ok
+test iceberg::snapshot::tests::expiration::a_recent_unreferenced_snapshot_is_retained ... ok
+test iceberg::snapshot::tests::expiration::disabled_gc_refuses_expiration_atomically ... ok
+test iceberg::snapshot::tests::expiration::expiring_a_table_with_nothing_old_is_ok_and_empty ... ok
+test iceberg::snapshot::tests::expiration::expiration_resolves_only_the_properties_its_explicit_cutoff_needs ... ok
+test iceberg::snapshot::tests::expiration::explicit_zero_retain_is_atomic_but_the_official_zero_property_is_valid ... ok
+test iceberg::snapshot::tests::expiration::expiring_snapshots_removes_both_statistics_kinds ... ok
+test iceberg::snapshot::tests::expiration::explicit_ids_union_with_age_selection_and_ignore_unknown_ids ... ok
+test iceberg::snapshot::tests::expiration::official_table_property_defaults_and_ref_overrides_drive_retention ... ok
+test iceberg::snapshot::tests::references::a_branch_and_a_tag_report_their_kind ... ok
+test iceberg::snapshot::tests::references::a_reference_round_trips_through_json_with_and_without_retention ... ok
+test iceberg::snapshot::tests::references::a_tag_refuses_the_branch_only_retention_fields_by_name ... ok
+test iceberg::snapshot::tests::expiration::the_official_default_ref_age_removes_a_stale_tag ... ok
+test iceberg::snapshot::tests::references::retention_setters_keep_their_values_and_refuse_non_positive_ones ... ok
+test iceberg::snapshot::tests::validation::validate_names_a_tag_carrying_a_branch_retention_field ... ok
+test iceberg::snapshot::tests::expiration::table_cutoff_and_action_retain_defaults_match_official_precedence ... ok
+test iceberg::snapshot::tests::references::refs_round_trip_through_the_table_document_with_and_without_retention ... ok
+test iceberg::table::key_bound_tests::malformed_external_bounds_cannot_exclude_a_merge_file ... ok
+test iceberg::table::key_bound_tests::generated_nan_merge_bounds_are_conservatively_unbounded ... ok
+test iceberg::table::key_bound_tests::partition_summaries_omit_nan_bounds ... ok
+test iceberg::statistics::tests::malformed_encoded_candidates_never_become_written_bounds ... ok
+test iceberg::table::location_tests::a_real_authority_and_a_windows_drive_are_left_alone ... ok
+test iceberg::table::location_tests::an_empty_uri_authority_is_the_same_place_spelled_shorter ... ok
+test iceberg::table::metadata_name_tests::accepts_exact_hadoop_and_official_metadata_names ... ok
+test iceberg::table::retry_tests::full_jitter_never_exceeds_its_exponential_window ... ok
+test iceberg::table::metadata_name_tests::rejects_metadata_lookalikes ... ok
+test iceberg::table::retry_tests::retry_budget_includes_its_exact_boundary_and_exhaustion_is_a_conflict ... ok
+test iceberg::manifest::official_read_tests::manifest_spec_reads_only_the_bounded_avro_header ... ok
+test iceberg::tests::a_commit_refuses_metadata_that_does_not_hold_together ... ok
+test iceberg::tests::a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none ... ok
+test iceberg::tests::a_nan_value_neither_poisons_a_bound_nor_hides_a_row ... ok
+test iceberg::tests::a_beaten_append_rebases_and_keeps_both_writers_rows ... ok
+test iceberg::tests::a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see ... ok
+test iceberg::tests::a_same_version_publication_conflict_rebases_through_the_retry_gate ... ok
+test iceberg::tests::a_truncated_manifest_is_a_typed_error_and_not_a_panic ... ok
+test iceberg::tests::a_uuid_column_keeps_its_type_through_a_round_trip ... ok
+test iceberg::tests::a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions ... ok
+test iceberg::tests::a_zero_row_append_commits_a_snapshot_that_reads_as_nothing ... ok
+test iceberg::tests::an_unparseable_option_property_is_typed_and_an_explicit_option_shadows_it ... ok
+test iceberg::tests::a_tiny_write_target_rolls_one_append_into_multiple_data_files ... ok
+test iceberg::tests::an_unparseable_write_target_is_a_typed_error_naming_the_key ... ok
+test iceberg::tests::branches_and_tags_round_trip_through_table_level_commits ... ok
+test iceberg::tests::compaction_merges_small_files_and_the_old_snapshot_still_time_travels ... ok
+test iceberg::tests::compaction_respects_partitions_and_pruning_still_prunes_after_it ... ok
+test iceberg::tests::concurrency_and_compaction::a_beaten_merge_reports_the_conflict_rather_than_rebasing ... ok
+test iceberg::tests::concurrency_and_compaction::the_cadence_compacts_after_every_n_data_commits_by_itself ... ok
+test iceberg::tests::a_wide_schema_round_trips_with_every_field_numbered ... ok
+test iceberg::tests::concurrent_metadata_commits_rebase_and_both_changes_survive ... ok
+test iceberg::tests::data_mime_type::a_table_whose_files_mix_formats_writes_and_scans_as_one_shape ... ok
+test iceberg::tests::concurrency_and_compaction::stale_threads_rebase_and_every_writer_lands ... ok
+test iceberg::tests::data_mime_type::an_avro_format_table_property_writes_avro_files_and_reads_back ... ok
+test iceberg::tests::data_mime_type::an_unparseable_format_property_is_a_typed_error_naming_the_key ... ok
+test iceberg::tests::data_mime_type::options_accept_only_iceberg_mime_types_atomically ... ok
+test iceberg::tests::data_mime_type::the_default_mime_type_is_parquet_and_the_option_layers_resolve ... ok
+test iceberg::tests::data_mime_type::metadata_only_formats_are_refused_up_front_naming_the_format ... ok
+test iceberg::tests::datatype_coverage::a_merge_updates_on_a_composite_key_of_mixed_types ... ok
+test iceberg::tests::handles::a_folder_that_is_not_a_table_still_reads_as_the_leaves_beneath_it ... ok
+test iceberg::tests::datatype_coverage::every_v2_primitive_round_trips_through_a_data_file ... ok
+test iceberg::tests::datatype_coverage::nested_and_deeply_nested_shapes_round_trip_through_data_files ... ok
+test iceberg::tests::handles::a_table_folder_answers_with_the_encoding_of_its_data_files ... ok
+test iceberg::tests::handles::a_handle_addressing_one_partition_reads_and_writes_only_that_partition ... ok
+test iceberg::tests::handles::a_table_source_failure_leaves_the_committed_prefix_visible ... ok
+test iceberg::tests::handles::a_merge_reads_only_the_files_whose_statistics_can_hold_a_key ... ok
+test iceberg::tests::handles::a_table_located_through_its_folder_keeps_the_same_commit_cadence ... ok
+test iceberg::tests::handles::empty_append_and_merge_create_no_table_commit ... ok
+test iceberg::tests::handles::table_and_leaf_complete_unconvertible_input_onto_stored_fields_the_same_way ... ok
+test iceberg::tests::handles::a_write_through_the_table_value_is_one_commit_and_history_survives ... ok
+test iceberg::tests::handles::a_write_with_a_match_key_upserts_the_table_through_the_same_surface ... ok
+test iceberg::tests::handles::table_write_limit_preflight_does_not_pull_the_source ... ok
+test iceberg::tests::a_parallel_read_yields_the_sequential_rows_in_the_sequential_order ... ok
+test iceberg::tests::handles::the_table_value_honours_the_row_limit_like_every_handle ... ok
+test iceberg::tests::immutable_reports_and_metadata_have_complete_value_traits ... ok
+test iceberg::tests::interop_regressions::a_scan_resolves_renamed_columns_by_field_id ... ok
+test iceberg::tests::interop_regressions::transformed_partition_fields_restore_no_column ... ok
+test iceberg::tests::handles::the_table_value_is_itself_a_handle_answering_from_its_metadata ... ok
+test iceberg::tests::manifest_planning::an_avro_container_without_required_iceberg_metadata_is_not_a_manifest ... ok
+test iceberg::tests::manifest_planning::an_unfiltered_plan_skips_the_statistics_maps_entirely ... ok
+test iceberg::tests::line_projection::adaptive_text_rows_stream_into_a_table_through_record_media ... ok
+test iceberg::tests::manifest_planning::writing_the_same_manifest_twice_produces_the_same_bytes ... ok
+test iceberg::tests::manifest_planning::the_planning_fast_path_agrees_on_every_field_it_decodes ... ok
+test iceberg::tests::partition_specs::a_hive_directory_is_what_a_partition_tuple_names ... ok
+test iceberg::tests::partition_specs::a_partition_column_is_nullable_even_when_its_source_is_not ... ok
+test iceberg::tests::partition_specs::a_partition_directory_is_spelled_the_way_every_other_lake_spells_it ... ok
+test iceberg::tests::partition_specs::a_spec_is_read_from_and_written_back_onto_a_field ... ok
+test iceberg::tests::partition_specs::a_spec_round_trips_through_its_v2_document ... ok
+test iceberg::tests::partition_specs::every_known_transform_is_writable_and_unknown_is_refused ... ok
+test iceberg::tests::partition_specs::scalar_transform_plan_is_total_at_date_extremes_and_truncates_binary ... ok
+test iceberg::tests::partition_specs::the_bare_v1_array_reads_as_a_spec_with_numbered_fields ... ok
+test iceberg::tests::partition_specs::transform_parameters_keep_the_official_unsigned_width_and_unknown_is_opaque ... ok
+test iceberg::tests::partition_specs::transform_result_types_and_validation_are_owned_by_apache_iceberg ... ok
+test iceberg::tests::handles::the_three_record_methods_reach_a_table_through_its_snapshots ... ok
+test iceberg::tests::options_resolve_explicitly_then_by_property_then_by_default ... ok
+test iceberg::tests::handles::table_commit_row_size_publishes_each_intent_at_the_requested_cadence ... ok
+test iceberg::tests::planning::a_filter_naming_a_column_the_schema_does_not_have_lists_the_ones_it_does ... ok
+test iceberg::tests::planning::a_filter_on_a_stored_column_prunes_by_statistics_and_then_by_row ... ok
+test iceberg::tests::planning::a_filter_column_the_read_never_asked_for_is_read_and_then_dropped ... ok
+test iceberg::tests::planning::a_manifest_list_carries_the_summaries_the_next_plan_prunes_with ... ok
+test iceberg::tests::planning::a_filtered_read_never_opens_the_files_the_metadata_excluded ... ok
+test iceberg::tests::planning::a_null_partition_value_is_addressed_by_the_text_the_layout_spells ... ok
+test iceberg::tests::planning::a_partition_filter_skips_the_manifests_its_summaries_exclude ... ok
+test iceberg::tests::planning::a_scan_root_the_caller_declares_is_what_the_reader_reports ... ok
+test iceberg::tests::scan_plan_record_count_reports_invalid_manifest_totals ... ok
+test iceberg::tests::schema_documents::a_field_missing_its_required_flag_is_rejected ... ok
+test iceberg::tests::schema_documents::a_nested_schema_round_trips_through_json ... ok
+test iceberg::tests::schema_documents::a_schema_document_reads_through_the_core_json_parser ... ok
+test iceberg::tests::schema_documents::a_schema_document_that_is_not_a_struct_is_rejected ... ok
+test iceberg::tests::schema_documents::an_iceberg_schema_projects_into_arrow_with_its_identifiers ... ok
+test iceberg::tests::schema_documents::emitted_schema_is_checked_by_the_official_model ... ok
+test iceberg::tests::planning::an_entry_inherits_the_sequence_number_its_manifest_records ... ok
+test iceberg::tests::schema_documents::identifiers_are_assigned_depth_first_and_never_reassigned ... ok
+test iceberg::tests::schema_documents::official_schema_normalization_sorts_identifier_field_ids ... ok
+test iceberg::tests::schema_documents::official_schema_normalization_supplies_the_default_schema_id ... ok
+test iceberg::tests::schema_documents::official_schema_validation_enforces_identifier_fields ... ok
+test iceberg::tests::schema_documents::official_schema_validation_rejects_duplicate_field_ids ... ok
+test iceberg::tests::schema_documents::writing_a_schema_without_identifiers_says_what_to_call ... ok
+test iceberg::tests::schema_documents::the_v3_default_values_survive_a_round_trip ... ok
+test iceberg::tests::table_metadata::a_format_version_this_build_does_not_implement_is_named ... ok
+test iceberg::tests::table_metadata::a_v1_document_carries_the_singular_schema_and_spec_keys ... ok
+test iceberg::tests::table_metadata::a_current_snapshot_of_minus_one_means_there_is_none ... ok
+test iceberg::tests::table_metadata::a_v1_document_written_by_someone_else_reads_without_the_plural_keys ... ok
+test iceberg::tests::table_metadata::a_v3_document_carries_its_row_lineage ... ok
+test iceberg::tests::table_metadata::an_evolved_schema_keeps_the_old_one_and_numbers_above_it ... ok
+test iceberg::tests::table_metadata::every_format_version_round_trips_through_its_document ... ok
+test iceberg::tests::planning::an_expression_prunes_manifests_before_a_byte_is_read ... ok
+test iceberg::tests::table_metadata::official_metadata_sections_survive_an_official_builder_update ... ok
+test iceberg::tests::table_metadata::sort_order_identifiers_keep_the_official_signed_64_bit_width ... ok
+test iceberg::tests::table_metadata::metadata_identity_normalizes_keyed_collections_but_not_history ... ok
+test iceberg::tests::table_metadata_state_is_read_only_through_complete_accessors ... ok
+test iceberg::tests::tables::a_folder_with_no_metadata_says_so_rather_than_pretending_to_be_a_table ... ok
+test iceberg::tests::table_metadata::v1_direct_manifest_paths_survive_official_metadata_updates ... ok
+test iceberg::tests::tables::a_commit_publishes_the_name_a_version_hint_resolves ... ok
+test iceberg::tests::tables::a_manifest_describes_itself_well_enough_to_be_read_alone ... ok
+test iceberg::tests::tables::a_nested_struct_partition_source_is_resolved_by_field_id ... ok
+test iceberg::tests::tables::a_manifest_naming_a_file_that_is_not_there_fails_the_scan_not_the_metadata ... ok
+test iceberg::tests::tables::a_null_partition_value_writes_its_own_directory_and_reads_back_null ... ok
+test iceberg::tests::tables::a_spec_conflicting_with_its_source_name_is_refused_at_creation ... ok
+test iceberg::tests::tables::a_scan_pushes_the_requested_columns_down_to_each_file ... ok
+test iceberg::tests::planning::one_predicate_mixes_the_file_and_the_rows ... ok
+test iceberg::tests::tables::a_partitioned_write_lays_files_out_the_hive_way ... ok
+test iceberg::tests::tables::a_v1_table_writes_and_reads_without_sequence_numbers ... ok
+test iceberg::tests::tables::a_table_whose_schema_evolved_reads_old_files_with_the_new_column_null ... ok
+test iceberg::tests::tables::an_empty_table_has_no_snapshot_and_reads_as_no_rows ... ok
+test iceberg::tests::tables::a_v3_table_tracks_row_lineage_across_commits ... ok
+test iceberg::tests::tables::a_v1_snapshot_with_direct_manifests_scans_and_time_travels ... ok
+test iceberg::tests::tables::child_locations_require_a_table_path_boundary ... ok
+test iceberg::tests::tables::an_unpartitioned_table_round_trips_its_rows ... ok
+test iceberg::tests::tables::create_keeps_the_ids_a_partly_numbered_schema_carries ... ok
+test iceberg::tests::tables::direct_create_refuses_to_replace_an_existing_table ... ok
+test iceberg::tests::tables::create_numbers_an_unnumbered_schema_itself ... ok
+test iceberg::tests::tables::metadata_compression_uses_the_official_property_and_gzip_magic ... ok
+test iceberg::tests::tables::data_writes_compute_all_supported_partition_transforms ... ok
+test iceberg::tests::tables::appending_keeps_what_is_stored_and_overwriting_replaces_it ... ok
+test iceberg::tests::tables::open_preserves_an_official_uuid_metadata_name_in_history ... ok
+test iceberg::tests::tables::the_first_v3_commit_after_upgrade_assigns_retained_rows ... ok
+test iceberg::tests::tables::v3_rewrites_are_rejected_before_reader_or_storage_mutation ... ok
+test iceberg::tests::the_inspection_tables_report_history_snapshots_and_files ... ok
+test iceberg::tests::types::a_datatype_iceberg_cannot_express_is_named_rather_than_widened ... ok
+test iceberg::tests::types::a_malformed_type_name_reports_what_was_expected ... ok
+test iceberg::tests::types::an_ascii_width_is_an_iceberg_string ... ok
+test iceberg::tests::types::every_primitive_type_round_trips_through_its_name ... ok
+test iceberg::tests::types::iceberg_temporal_types_are_microsecond_precision_unless_v3_says_otherwise ... ok
+test iceberg::tests::tables::v2_still_permits_keyed_merge_and_compaction ... ok
+test iceberg::value::tests::malformed_bounds_are_unknown_instead_of_zero ... ok
+test iceberg::value::tests::nan_is_never_encoded_or_decoded_as_a_bound ... ok
+test iceberg::value::tests::official_single_value_bytes_round_trip_supported_values ... ok
+test iceberg::value::tests::promoted_bounds_decode_under_the_current_type ... ok
+test iceberg::tests::zero_total_retry_budget_allows_a_zero_wait_rebase ... ok
+test io::coding::tests::a_coded_ipc_view_streams_through_its_owning_reader ... ok
+test io::coding::tests::a_closed_stream_is_lazy_and_never_measures_or_materializes ... ok
+test io::coding::tests::a_missing_resource_reads_as_empty_rather_than_failing ... ok
+test io::coding::tests::an_identity_coding_is_a_pass_through ... ok
+test io::coding::tests::an_open_handle_answers_reads_out_of_what_it_holds ... ok
+test iceberg::tests::time_travel_reads_a_previous_snapshot_by_id_and_by_ref ... ok
+test io::coding::tests::a_higher_level_does_not_change_what_is_read_back ... ok
+test io::coding::tests::an_open_stream_reads_only_its_decoded_snapshot ... ok
+test iceberg::tests::the_schema_root_write_target_is_honored_when_the_table_property_is_absent ... ok
+test io::coding::tests::closed_codings_stream_bounded_chunks_from_decoded_offsets ... ok
+test io::coding::tests::compressed_headers_and_trailers_may_cross_source_chunks ... ok
+test io::coding::tests::empty_and_invalid_closed_streams_have_stable_end_states ... ok
+test io::coding::tests::every_coding_round_trips_through_the_handle ... ok
+test io::coding::tests::closed_size_counts_through_a_stream_without_opening ... ok
+test io::coding::tests::boxed_coding_helpers_keep_the_native_single_stream_path ... ok
+test io::coding::tests::open_materializes_and_close_publishes ... ok
+test io::coding::tests::the_media_type_reported_is_the_decoded_one ... ok
+test io::coding::tests::positional_reads_and_writes_address_the_decoded_value ... ok
+test io::cursor::tests::a_cursor_advances_and_seeks_over_any_handle ... ok
+test io::cursor::tests::a_cursor_is_the_handle_it_wraps ... ok
+test io::coding::tests::truncation_shrinks_and_grows_the_decoded_value ... ok
+test io::cursor::tests::a_cursor_stream_bypasses_the_wrapped_page_cache ... ok
+test io::cursor::tests::the_standard_io_traits_ride_the_same_position ... ok
+test io::listing::tests::a_failing_listing_reports_once_and_ends ... ok
+test io::listing::tests::a_listing_is_fused_after_the_first_failure ... ok
+test io::listing::tests::an_empty_listing_yields_nothing ... ok
+test io::merge::tests::a_composite_key_matches_on_every_column ... ok
+test io::merge::tests::a_key_arriving_twice_lets_the_last_arrival_win ... ok
+test io::merge::tests::a_key_stored_twice_has_every_occurrence_updated ... ok
+test io::merge::tests::a_key_that_matches_nothing_is_appended ... ok
+test io::merge::tests::a_match_key_naming_an_unknown_column_is_refused_by_name ... ok
+test io::merge::tests::a_matching_key_updates_the_row_it_names ... ok
+test io::merge::tests::a_null_key_matches_another_null_key ... ok
+test io::merge::tests::a_selection_narrows_a_read_to_the_named_columns_in_their_order ... ok
+test io::merge::tests::a_selection_narrows_a_write_and_a_missing_name_is_an_error ... ok
+test io::cursor::tests::a_cursor_stream_keeps_one_compression_decoder_alive ... ok
+test io::merge::tests::an_append_naming_no_match_key_still_appends_every_row ... ok
+test io::merge::tests::an_empty_target_appends_every_row ... ok
+test io::coding::tests::one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window ... ok
+test io::merge::tests::an_incoming_schema_that_disagrees_is_cast_to_the_target_first ... ok
+test io::merge::tests::incoming_payload_batches_are_released_before_the_next_is_pulled ... ok
+test io::merge::tests::append_refuses_a_match_key_and_merge_uses_it_explicitly ... ok
+test io::merge::tests::merging_works_the_same_way_on_parquet ... ok
+test io::partition::tests::a_restored_column_is_text_when_no_schema_says_otherwise ... ok
+test io::partition::tests::a_column_the_data_already_carries_is_left_alone ... ok
+test io::partition::tests::a_value_that_does_not_fit_its_declared_type_is_an_error ... ok
+test io::partition::tests::an_ascii_partition_column_is_restored_padded_with_its_identity ... ok
+test io::partition::tests::lake::a_declared_layout_that_contradicts_the_stored_one_is_refused_by_name ... ok
+test io::partition::tests::lake::a_declared_schema_lays_an_empty_folder_out_by_its_partition_fields ... ok
+test io::partition::tests::lake::a_folder_reads_as_the_table_beneath_it ... ok
+test io::partition::tests::lake::a_folder_with_no_partition_directories_is_one_table_in_one_leaf ... ok
+test io::partition::tests::lake::a_merge_across_a_folder_updates_inside_each_partition ... ok
+test io::partition::tests::lake::a_null_partition_value_is_spelled_out_in_the_path ... ok
+test io::partition::tests::lake::a_folder_write_routes_each_row_to_the_partition_it_belongs_to ... ok
+test io::partition::tests::lake::a_partitioned_folder_keeps_only_complete_commit_prefixes ... ok
+test io::partition::tests::lake::an_ascii_partition_column_is_spelled_as_text_in_the_path ... ok
+test io::partition::tests::lake::an_append_adds_to_one_partition_and_leaves_the_others_alone ... ok
+test io::partition::tests::lake::a_partition_filter_prunes_leaves_and_filters_rows ... ok
+test io::partition::tests::lake::an_empty_partition_directory_is_enough_to_declare_the_layout ... ok
+test io::partition::tests::lake::an_empty_folder_overwrite_keeps_an_inferable_encoded_field ... ok
+test io::partition::tests::lazy_folder_reader::a_declared_schema_constructs_without_pulling_or_reading_a_leaf ... ok
+test io::partition::tests::lazy_folder_reader::a_leaf_read_failure_is_yielded_once_then_the_reader_fuses ... ok
+test io::partition::tests::lazy_folder_reader::a_listing_failure_is_yielded_once_then_the_reader_fuses ... ok
+test io::partition::tests::lazy_folder_reader::the_first_batch_opens_only_the_first_listed_leaf ... ok
+test io::partition::tests::lake::an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name ... ok
+test io::partition::tests::nothing_changes_without_partitions ... ok
+test io::partition::tests::removing_every_column_keeps_the_row_count ... ok
+test io::partition::tests::restored_columns_take_the_type_the_schema_declares ... ok
+test io::partition::tests::the_reader_reports_the_widened_schema_before_the_first_batch ... ok
+test io::stream::tests::a_byte_stream_is_a_bounded_standard_reader ... ok
+test io::stream::tests::a_cursor_stream_advances_only_as_it_is_consumed ... ok
+test io::stream::tests::a_failure_follows_its_prefix_once_then_fuses ... ok
+test io::stream::tests::positional_streaming_remains_object_safe ... ok
+test io::stream::tests::positional_streams_start_lazily_and_chunk_exactly ... ok
+test io::stream::tests::zero_batch_size_is_refused_before_reading ... ok
+test io::tests::a_buffer_reports_a_mem_identity_rather_than_a_location ... ok
+test io::tests::a_declared_media_type_overrides_inference ... ok
+test io::tests::append_reports_where_the_bytes_landed ... ok
+test io::tests::an_undeclared_media_type_is_inferred_from_content ... ok
+test io::tests::applying::the_row_target_answers_through_the_same_trait ... ok
+test io::tests::applying::a_listing_defined_outside_the_expression_module_is_a_target ... ok
+test io::tests::boxed_cursors_preserve_lifecycle_hierarchy_and_kind ... ok
+test io::tests::buffered_handle::a_buffered_file_reads_from_pages_and_writes_through ... ok
+test io::partition::tests::lake::merge_keys_that_exist_only_in_partition_paths_are_refused ... ok
+test io::tests::buffered_handle::a_cursor_over_a_buffered_handle_streams_across_pages ... ok
+test io::tests::buffered_handle::a_cursor_seeks_to_the_end_without_re_reading ... ok
+test io::tests::buffered_handle::a_cursor_writes_through_and_reads_back_what_it_wrote ... ok
+test io::tests::conformance::every_backend_appends_where_it_says_it_did ... ok
+test io::tests::conformance::every_backend_grows_and_zero_fills_a_write_gap ... ok
+test io::tests::conformance::every_backend_keeps_capacity_at_or_above_size ... ok
+test io::tests::conformance::every_backend_names_the_shortfall_of_an_exact_read ... ok
+test io::tests::conformance::every_backend_reads_a_missing_resource_as_empty ... ok
+test io::tests::conformance::every_backend_reads_positionally_without_a_shared_cursor ... ok
+test io::tests::conformance::every_backend_copies_into_every_other_one ... ok
+test io::tests::compression_round_trips_and_tracks_the_coding ... ok
+test io::tests::conformance::every_backend_replaces_the_whole_value_and_bounds_a_range_read ... ok
+test io::tests::conformance::every_backend_streams_through_the_reader_and_writer_adapters ... ok
+test io::tests::copy_into_moves_bytes_and_media_type ... ok
+test io::tests::exact_reads_name_the_shortfall ... ok
+test io::tests::conformance::every_backend_truncates_shrinking_and_extending ... ok
+test io::tests::inference_is_redone_after_the_bytes_change ... ok
+test io::tests::laziness::a_failing_entry_ends_the_listing_without_discarding_what_came_before ... ok
+test io::tests::laziness::a_glob_whose_fixed_prefix_loses_lists_nothing_beneath_it ... ok
+test io::tests::laziness::building_a_listing_touches_nothing ... ok
+test io::tests::laziness::taking_three_entries_costs_three_entries ... ok
+test io::tests::laziness::the_same_listing_over_the_same_state_yields_the_same_order_twice ... ok
+test io::tests::lifecycle::a_buffer_gives_its_allocation_back ... ok
+test io::tests::lifecycle::a_coding_handle_removes_the_encoded_resource ... ok
+test io::tests::laziness::a_recursive_walk_descends_one_level_at_a_time ... ok
+test io::tests::lifecycle::a_generic_path_routes_on_the_kind_it_already_resolved ... ok
+test io::tests::lifecycle::a_leaf_clears_empty_and_removes_gone ... ok
+test io::tests::lifecycle::a_media_handle_drops_its_cache_as_part_of_the_removal ... ok
+test io::tests::lifecycle::a_container_clears_empty_and_removes_by_recursion ... ok
+test io::tests::lifecycle::removing_an_absent_resource_issues_one_delete_and_no_probe ... ok
+test io::tests::lifecycle::a_pending_write_cannot_survive_a_removal ... ok
+test io::tests::positional_reads_do_not_share_a_cursor ... ok
+test io::tests::positional_writes_grow_and_zero_fill_the_gap ... ok
+test io::tests::read_range_is_bounded_by_the_value ... ok
+test io::tests::records::a_cast_that_cannot_be_planned_leaves_the_resource_alone ... ok
+test io::tests::records::a_missing_resource_reads_as_empty_rather_than_failing ... ok
+test io::tests::records::a_later_source_failure_leaves_each_successful_prefix_visible ... ok
+test io::tests::records::a_row_limit_bounds_a_read_at_below_and_above_the_stored_count ... ok
+test io::tests::records::a_second_publication_failure_keeps_the_first_commit_visible ... ok
+test io::tests::records::a_write_stores_the_schema_its_reader_declares ... ok
+test io::tests::records::an_empty_record_batch_overwrite_keeps_its_field_and_no_rows ... ok
+test io::tests::records::an_overwrite_keeps_the_schema_the_resource_already_stores ... ok
+test io::tests::records::appending_reads_adds_and_rewrites ... ok
+test io::tests::records::appending_casts_incoming_batches_to_the_target_shape ... ok
+test io::tests::records::bounded_empty_intents_publish_only_overwrite ... ok
+test io::tests::records::commit_row_size_controls_exact_publication_counts ... ok
+test io::tests::records::empty_append_and_merge_are_byte_for_byte_no_ops ... ok
+test io::tests::records::empty_append_and_merge_do_not_touch_the_destination ... ok
+test io::tests::records::empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops ... ok
+test io::tests::records::batches_round_trip_through_a_bare_handle ... ok
+test io::tests::records::generic_arrow_writes_remain_object_safe ... ok
+test io::tests::records::generic_write_entry_points_compose_the_three_typed_shapes ... ok
+test io::tests::records::every_write_intent_retains_its_intent_for_each_commit ... ok
+test io::tests::records::generic_writes_select_the_same_shape_for_every_mode ... ok
+test io::tests::records::generic_writes_validate_mode_before_touching_input ... ok
+test io::tests::records::held_batch_and_native_row_adapters_inherit_commit_boundaries ... ok
+test io::tests::records::generic_write_entry_points_preserve_commit_cadence ... ok
+test io::tests::records::merge_refuses_an_empty_match_key_before_pulling_the_reader ... ok
+test io::tests::records::native_row_conversion_failure_is_typed_and_does_not_publish ... ok
+test io::tests::records::native_row_methods_require_a_field_before_pulling ... ok
+test io::tests::records::native_row_methods_validate_intent_before_building_or_pulling_the_iterator ... ok
+test io::tests::conformance::every_backend_round_trips_a_content_coding ... ok
+test io::tests::records::native_rows_align_a_non_divisible_batch_before_the_next_conversion ... ok
+test io::tests::records::native_rows_stop_at_the_global_row_limit_without_one_extra_pull ... ok
+test io::tests::records::overwrite_refuses_a_match_key_and_a_limited_merge_names_both_settings ... ok
+test io::tests::records::native_row_conversion_stops_at_each_commit_for_all_intents ... ok
+test io::tests::records::pushdown::a_declared_schema_reorders_what_the_resource_stores ... ok
+test io::tests::records::native_struct_row_adapters_route_all_three_intents ... ok
+test io::tests::records::pushdown::an_absent_resource_narrows_its_declared_schema_too ... ok
+test io::tests::records::pushdown::the_projection_only_drops_columns_and_the_cast_does_the_rest ... ok
+test io::tests::records::pushdown::a_subset_schema_narrows_the_batches_every_encoding_yields ... ok
+test io::tests::records::record_batch_adapters_route_to_each_explicit_reader_primitive ... ok
+test io::tests::records::resumed_session_covers_large_cadence_multiple_commits_and_terminal_reuse ... ok
+test io::tests::records::resumed_leaf_keeps_the_target_captured_before_an_external_replacement ... ok
+test io::tests::records::resumed_session_fuses_on_schema_source_and_publication_failures ... ok
+test io::tests::records::resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder ... ok
+test io::tests::records::resumed_zero_limits_need_no_source_and_only_overwrite_publishes ... ok
+test io::tests::records::the_handles_media_type_picks_the_record_encoding ... ok
+test io::tests::records::resumed_write_keeps_global_limits_and_stops_before_another_chunk_pull ... ok
+test io::tests::records::resumed_sessions_keep_append_and_merge_intent_for_every_cadence ... ok
+test io::tests::records::zero_append_limits_and_invalid_merge_limits_do_not_pull ... ok
+test io::tests::reserve_grows_capacity_without_changing_size ... ok
+test io::tests::shape::a_content_coding_answers_for_the_representation_underneath_it ... ok
+test io::tests::shape::a_default_buffer_is_one_whole_byte_value ... ok
+test io::tests::records::zero_commit_row_size_is_rejected_before_any_input_pull ... ok
+test io::tests::shape::a_leaf_answers_from_its_representation_and_the_two_are_complements ... ok
+test io::tests::shape::a_named_location_answers_before_anything_exists ... ok
+test io::tests::shape::a_record_encoding_handle_answers_without_touching_its_bytes ... ok
+test io::tests::shape::asking_the_shape_of_a_leaf_reads_nothing ... ok
+test io::tests::shape::a_folder_reads_as_the_table_beneath_it ... ok
+test io::tests::shape::wrapping_a_handle_keeps_the_shape_it_wraps ... ok
+test io::tests::streaming_adapters_advance_their_own_offset ... ok
+test io::tests::structured_value_fields_direct_parsing_and_casting ... ok
+test io::tests::records::the_three_methods_behave_the_same_way_on_parquet ... ok
+test io::tests::truncate_shrinks_and_extends ... ok
+test io::tests::write_all_bytes_replaces_the_whole_value ... ok
+test ipc::tests::a_closed_stream_fetches_fresh_and_an_open_one_holds_what_it_cached ... ok
+test ipc::tests::a_compressed_handle_really_is_compressed ... ok
+test ipc::tests::a_missing_stream_reads_as_empty_rather_than_failing ... ok
+test ipc::tests::a_partial_commit_keeps_an_open_ipc_cache_coherent ... ok
+test ipc::tests::an_absent_compressed_stream_keeps_its_declared_empty_schema ... ok
+test ipc::tests::an_omitted_schema_is_inferred_from_the_stream ... ok
+test ipc::tests::an_open_cache_tracks_selection_and_completion_on_overwrite ... ok
+test ipc::tests::an_open_cache_tracks_the_published_field_after_a_fitting_overwrite ... ok
+test ipc::tests::an_unprojected_reader_uses_one_normal_transport_stream ... ok
+test io::tests::shape::folder_dimensions_sum_only_the_selected_record_encoding ... ok
+test ipc::tests::append_and_merge_keep_an_open_cache_coherent_until_close ... ok
+test io::tests::structured_values_follow_the_declared_format_and_content_coding ... ok
+test ipc::tests::dimensions_count_message_metadata_and_ignore_transient_read_shaping ... ok
+test ipc::tests::limits::a_limit_counts_result_rows_after_projection_and_cast ... ok
+test ipc::tests::limits::a_limit_with_a_filter_means_the_first_matching_rows ... ok
+test ipc::tests::limits::a_limited_write_truncates_what_the_caller_offered ... ok
+test ipc::tests::limits::a_zero_limit_flows_through_the_three_record_methods ... ok
+test ipc::tests::limits::a_zero_limit_reads_the_declared_schema_and_no_batches ... ok
+test ipc::tests::limits::a_zero_limit_without_a_declared_schema_reads_the_stored_one ... ok
+test ipc::tests::mismatched_options_are_rejected_before_any_write_pulls_input ... ok
+test ipc::tests::one_instance_owns_the_handle_and_the_configuration ... ok
+test ipc::tests::open_caches_the_schema_and_close_releases_it ... ok
+test ipc::tests::opening_an_empty_stream_caches_zero_dimensions_and_reads_no_batches ... ok
+test ipc::tests::pushdown::a_schema_naming_every_column_reads_the_stream_whole ... ok
+test ipc::tests::pushdown::a_subset_schema_narrows_the_reader_and_its_batches ... ok
+test ipc::tests::batches_round_trip_through_every_coding ... ok
+test ipc::tests::same_handle_byte_and_option_mutations_invalidate_open_dimensions ... ok
+test ipc::tests::row_size_skips_record_batch_bodies_without_constructing_arrays ... ok
+test ipc::tests::the_wrapper_owns_ipc_options_over_an_unnamed_buffer ... ok
+test ipc::tests::uncoded_row_size_does_not_read_record_batch_body_ranges ... ok
+test ipc::tests::schema_reads_bypass_buffer_pages_and_stop_before_the_batch_body ... ok
+test ipc::tests::writing_no_batches_still_writes_the_schema ... ok
+test local::tests::generic_path::a_directory_location_lists_and_a_leaf_location_does_not ... ok
+test local::tests::generic_path::a_location_can_be_addressed_as_a_directory_before_it_exists ... ok
+test local::tests::generic_path::a_location_reports_what_it_actually_is ... ok
+test local::tests::generic_path::a_generic_leaf_keeps_media_inference_and_declared_overrides ... ok
+test local::tests::generic_path::clearing_a_generic_leaf_discards_its_retained_mapping ... ok
+test local::tests::generic_path::holder_local_retains_the_unresolved_path_role ... ok
+test local::tests::globbing::a_fixed_prefix_is_descended_rather_than_filtered ... ok
+test local::tests::globbing::a_glob_listing_honours_the_privacy_filter ... ok
+test local::tests::globbing::a_pattern_location_lists_as_the_children_it_selects ... ok
+test local::tests::globbing::a_pattern_selects_the_leaves_it_names ... ok
+test local::tests::generic_path::a_write_decides_an_undecided_location ... ok
+test local::tests::globbing::a_pattern_without_wildcards_names_one_existing_location ... ok
+test local::tests::globbing::partition_filters_select_the_leaves_that_carry_them ... ok
+test local::tests::hierarchy::a_directory_handle_touches_nothing_until_used ... ok
+test local::tests::hierarchy::a_directory_rejects_byte_writes_with_the_reason ... ok
+test local::tests::hierarchy::a_relative_child_resolves_dot_segments ... ok
+test local::tests::hierarchy::open_and_close_bracket_cached_state ... ok
+test local::tests::hierarchy::children_resolve_to_directories_and_mapped_leaves ... ok
+test local::tests::hierarchy::parents_walk_back_up_the_tree ... ok
+test local::tests::mapped::a_handle_for_a_missing_file_touches_nothing ... ok
+test local::tests::mapped::a_complete_write_publishes_its_length_to_another_handle ... ok
+test local::tests::mapped::a_mapped_file_round_trips_and_resizes ... ok
+test local::tests::mapped::a_mapped_file_zero_fills_a_write_gap ... ok
+test local::tests::mapped::a_read_of_a_missing_file_is_empty_rather_than_an_absence ... ok
+test local::tests::mapped::closing_a_read_only_mapping_does_not_restore_replaced_bytes ... ok
+test local::tests::mapped::a_write_into_a_missing_ancestry_creates_it_from_the_write_itself ... ok
+test local::tests::mapped::the_first_write_creates_the_file_and_its_parent ... ok
+test local::tests::privacy::a_dot_prefixed_name_is_private ... ok
+test local::tests::privacy::a_listing_excludes_private_entries_by_default ... ok
+test local::tests::roles::the_file_role_supplies_the_container_half_of_the_contract ... ok
+test local::tests::roles::the_folder_role_supplies_the_byte_half_of_the_contract ... ok
+test local::tests::roles::the_path_role_answers_by_looking ... ok
+test metadata::tests::content_length_requires_ascii_digits_and_u64_range ... ok
+test metadata::tests::empty_and_cloned_metadata_share_their_backing_map ... ok
+test metadata::tests::http_keys_are_canonical_case_insensitive_and_collision_safe ... ok
+test metadata::tests::http_values_reject_injection_but_allow_horizontal_tab ... ok
+test metadata::tests::protocol_cursor_visits_every_wide_property_once ... ok
+test metadata::tests::protocol_iteration_is_exact_sorted_double_ended_and_cursor_compatible ... ok
+test metadata::tests::protocol_views_order_and_hash_the_properties_they_expose ... ok
+test metadata::tests::unique_arrow_projection_moves_string_allocations ... ok
+test parquet::metadata::tests::statistics_project_into_one_lossless_generic_value_shape ... ok
+test parquet::tests::a_coded_location_is_rejected_with_the_reason ... ok
+test parquet::tests::a_mismatched_batch_reports_which_index_disagreed ... ok
+test parquet::tests::a_partial_commit_refreshes_the_open_parquet_footer ... ok
+test parquet::tests::a_bounded_batch_row_size_splits_the_read ... ok
+test parquet::tests::an_empty_open_parquet_file_has_explicit_lifecycle_and_dimensions ... ok
+test parquet::tests::an_empty_write_still_publishes_a_readable_file ... ok
+test parquet::tests::an_open_footer_tracks_selection_and_completion_on_overwrite ... ok
+test parquet::tests::an_open_parquet_cache_is_stable_until_close_then_reads_fresh ... ok
+test parquet::tests::batches_round_trip_through_storage ... ok
+test parquet::tests::dimensions_describe_all_batches_and_ignore_read_options ... ok
+test parquet::tests::an_open_footer_is_refreshed_by_every_successful_write_mode ... ok
+test parquet::tests::field_identifiers_survive_the_round_trip ... ok
+test parquet::tests::footer_statistics_expose_row_groups_bounds_and_split_offsets ... ok
+test parquet::tests::generic_statistics_redirect_validates_the_handle_encoding ... ok
+test parquet::tests::geospatial::a_custom_crs_and_a_bare_declaration_both_survive ... ok
+test parquet::tests::geospatial::a_field_declared_schema_drives_the_logical_types_end_to_end ... ok
+test parquet::tests::geospatial::a_geography_column_carries_its_algorithm_and_writes_no_bounds ... ok
+test parquet::tests::geospatial::a_geometry_column_writes_the_logical_type_and_wkb_statistics ... ok
+test parquet::tests::geospatial::a_geometry_nested_in_a_struct_still_gets_the_logical_type ... ok
+test parquet::tests::geospatial::a_malformed_geoarrow_document_is_refused_before_any_write ... ok
+test parquet::tests::geospatial::an_ascii_field_round_trips_through_the_embedded_arrow_schema ... ok
+test parquet::tests::geospatial::reading_back_our_own_file_surfaces_the_extension_metadata ... ok
+test parquet::tests::geospatial::scanning_the_stored_wkb_recomputes_the_footer_statistics ... ok
+test parquet::tests::geospatial::the_scan_refuses_a_column_that_is_not_wkb_by_name ... ok
+test parquet::tests::geospatial::the_variant_storage_struct_publishes_the_variant_logical_type ... ok
+test parquet::tests::limits::a_limited_write_truncates_what_the_caller_offered ... ok
+test parquet::tests::every_compression_round_trips_and_changes_the_bytes ... ok
+test parquet::tests::limits::a_zero_limit_reads_the_declared_schema_and_no_batches ... ok
+test parquet::tests::mismatched_options_are_rejected_before_any_write_pulls_input ... ok
+test parquet::tests::limits::a_small_row_bound_over_many_row_groups_stops_reading_early ... ok
+test parquet::tests::pushdown::a_column_the_file_does_not_store_is_completed_after_pushdown ... ok
+test parquet::tests::pushdown::a_subset_schema_is_pushed_into_the_file_rather_than_applied_after_it ... ok
+test parquet::tests::pushdown::the_projected_read_materializes_less_than_the_whole_file ... ok
+test parquet::tests::statistics_snapshots_have_total_value_traits ... ok
+test parquet::tests::the_wrapper_owns_parquet_options_over_an_unnamed_buffer ... ok
+test path::tests::a_long_field_name_is_bounded ... ok
+test path::tests::an_explicit_root_token_replaces_the_dollar ... ok
+test path::tests::container_segments_have_stable_spellings ... ok
+test path::tests::identifiers_use_dots_and_other_names_use_quoted_brackets ... ok
+test path::tests::nested_segments_render_outermost_first ... ok
+test path::tests::root_renders_as_the_root_token ... ok
+test tests::core_schema_values_are_send_and_sync ... ok
+test text::codec::tests::formats_report_their_media_types ... ok
+test text::codec::tests::handles_apply_their_own_content_coding ... ok
+test text::codec::tests::newline_delimited_json_holds_one_value_per_line ... ok
+test text::codec::tests::text_bytes_and_readers_share_one_contract ... ok
+test text::display::tests::byte_and_display_hashing_agree ... ok
+test text::display::tests::debug_keeps_empty_and_whitespace_visible ... ok
+test text::display::tests::debug_truncation_stays_a_balanced_literal ... ok
+test text::display::tests::display_values_are_bounded_without_rendering_the_whole_value ... ok
+test text::display::tests::expected_got_uses_the_contract_sentence ... ok
+test text::display::tests::long_text_is_bounded_and_marked ... ok
+test text::display::tests::short_text_is_unchanged ... ok
+test text::display::tests::truncation_never_splits_a_character ... ok
+test text::io::tests::formats_and_codings_round_trip ... ok
+test text::io::tests::multi_document_handles_round_trip ... ok
+test text::io::tests::plans_follow_compound_filenames ... ok
+test text::io::tests::plans_have_complete_value_traits ... ok
+test text::codec::tests::text_codec_handle_reads_stream_without_measuring_the_payload ... ok
+test text::line::reader::tests::flexible_and_pinned_terminators_stream_lines ... ok
+test text::line::tests::a_real_log_row_captures_a_microsecond_timestamp_and_binary_body ... ok
+test text::line::tests::autotype_can_be_disabled_and_is_fixed_after_the_first_batch ... ok
+test text::line::tests::generic_record_writes_use_only_the_binary_body ... ok
+test text::line::tests::options_are_flat_and_validate_rowheader_names ... ok
+test text::line::tests::ordinary_record_reading_emits_base_columns_and_adaptive_captures ... ok
+test text::line::tests::repeated_text_conversion_reconfigures_one_wrapper ... ok
+test ipc::tests::compressed_schema_reads_stop_before_the_encoded_batch_body ... ok
+test text::loading::tests::field_recovers_an_exact_natural_value ... ok
+test text::loading::tests::placeholders_are_resolved_before_field_interpretation ... ok
+test text::position::tests::positions_are_bounded_byte_offsets ... ok
+test text::typed::tests::decimals_are_restated_exactly_at_the_field_scale ... ok
+test text::loading::tests::loading_and_placeholders_have_map_semantic_value_traits ... ok
+test toml::wire::tests::named_zones_and_durations_have_no_native_toml_scalar ... ok
+test toml::wire::tests::negative_counts_keep_a_positive_subsecond_fraction ... ok
+test toml::wire::tests::temporal_values_use_native_toml_when_the_shape_fits ... ok
+test uri::pattern::tests::decomposition::a_pattern_in_the_first_segment_leaves_the_bare_root ... ok
+test uri::pattern::tests::decomposition::a_plain_location_is_its_own_root ... ok
+test uri::pattern::tests::decomposition::decomposition_keeps_the_scheme_and_authority ... ok
+test uri::pattern::tests::decomposition::the_root_stops_at_the_first_pattern_segment ... ok
+test uri::pattern::tests::detection::a_glob_survives_a_round_trip_through_text ... ok
+test uri::pattern::tests::detection::a_question_mark_in_a_url_is_a_query_not_a_pattern ... ok
+test uri::pattern::tests::detection::every_pattern_character_marks_a_glob ... ok
+test uri::pattern::tests::detection::only_double_star_is_recursive ... ok
+test uri::pattern::tests::detection::plain_names_are_not_globs ... ok
+test uri::pattern::tests::detection::reserved_pattern_characters_do_not_parse_as_a_location ... ok
+test uri::pattern::tests::hive::a_leading_equals_is_not_a_pair ... ok
+test uri::pattern::tests::hive::a_partition_can_be_appended_and_read_back ... ok
+test uri::pattern::tests::hive::a_path_without_pairs_carries_no_partitions ... ok
+test uri::pattern::tests::hive::an_empty_value_is_still_a_partition ... ok
+test uri::pattern::tests::hive::extra_equals_signs_belong_to_the_value ... ok
+test uri::pattern::tests::hive::partition_directories_are_read_in_path_order ... ok
+test uri::pattern::tests::matching::a_character_class_selects_one_character ... ok
+test uri::pattern::tests::matching::a_double_star_crosses_any_number_of_segments ... ok
+test uri::pattern::tests::matching::a_location_outside_the_root_never_matches ... ok
+test uri::pattern::tests::matching::a_pattern_that_runs_out_of_path_does_not_match ... ok
+test uri::pattern::tests::matching::a_pattern_with_a_separator_is_anchored_at_the_root ... ok
+test uri::pattern::tests::matching::a_pattern_without_a_separator_matches_the_name_at_any_depth ... ok
+test uri::pattern::tests::matching::a_question_mark_matches_exactly_one_character ... ok
+test uri::pattern::tests::matching::a_relative_match_is_anchored_at_the_root_it_was_split_from ... ok
+test uri::pattern::tests::matching::a_root_is_below_itself_with_nothing_left_over ... ok
+test uri::pattern::tests::matching::a_star_matches_the_empty_string ... ok
+test uri::pattern::tests::matching::an_unterminated_class_is_matched_literally ... ok
+test uri::pattern::tests::matching::matching_is_literal_outside_the_pattern_characters ... ok
+test uri::tests::canonical_uri_round_trip ... ok
+test uri::tests::components_validate_and_serialize_as_strings ... ok
+test uri::tests::specialized_values_validate ... ok
+test zlib::tests::a_handle_level_reaches_the_encoder ... ok
+test zlib::tests::a_payload_that_is_not_this_format_is_reported ... ok
+test zlib::tests::every_level_round_trips ... ok
+test zlib::tests::streams_round_trip_without_buffering_the_payload ... ok
+test zlib::tests::the_handle_reads_decoded_and_stores_encoded ... ok
+test zlib::tests::whole_buffers_round_trip ... ok
+test zstd::tests::a_handle_level_reaches_the_encoder ... ok
+test zstd::tests::a_payload_that_is_not_this_format_is_reported ... ok
+test zstd::tests::every_level_round_trips ... ok
+test zstd::tests::streams_round_trip_without_buffering_the_payload ... ok
+test zstd::tests::the_handle_reads_decoded_and_stores_encoded ... ok
+test zstd::tests::whole_buffers_round_trip ... ok
+test toml::wire::tests::calendar_conversion_is_exact_across_tomls_range ... ok
+test text::io::tests::structured_parsers_cross_stream_batches_under_every_coding ... ok
+test io::coding::tests::closed_positional_reads_decode_only_the_requested_prefix ... ok
+
+test result: ok. 1206 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.88s
+
+     Running tests/allocations.rs (/home/user/yggdryl/target/debug/deps/allocations-28a40683d45211cb)
+
+running 5 tests
+test a_read_allocates_only_what_it_hands_back ... ok
+test an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold ... ok
+test building_a_view_and_reading_through_it_allocates_nothing ... ok
+test a_no_op_media_type_rewrite_costs_the_same_whatever_surrounds_it ... ok
+test writing_a_doc_string_costs_the_key_and_the_value_and_nothing_else ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/avro_interop.rs (/home/user/yggdryl/target/debug/deps/avro_interop-d20eff20ecaa3f8a)
+
+running 3 tests
+test reads_the_container_the_apache_avro_crate_produced ... ok
+test reads_the_container_the_external_writer_produced ... ok
+test writes_a_container_for_the_external_reader ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/batch_cast.rs (/home/user/yggdryl/target/debug/deps/batch_cast-f5a8c903b82c751d)
+
+running 5 tests
+test a_zero_column_batch_keeps_its_row_count ... ok
+test an_exact_batch_keeps_its_own_arrays ... ok
+test columns_reconcile_by_name_and_extra_columns_are_dropped ... ok
+test options_cast_is_declared_schema_then_selection_then_stored_completion ... ok
+test a_missing_column_is_filled_with_its_canonical_default ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cast_coverage.rs (/home/user/yggdryl/target/debug/deps/cast_coverage-86196cf18129df10)
+
+running 6 tests
+test structs_reconcile_by_name_inside_a_list ... ok
+test dictionaries_encode_and_decode_scalars ... ok
+test unsafe_and_safe_disagree_exactly_where_a_value_cannot_convert ... ok
+test list_wrappers_change_layout_and_cast_their_children ... ok
+test a_map_wrapper_change_stays_refused_with_the_reconciliation_reason ... ok
+test view_layouts_cast_in_and_out_of_their_plain_spellings ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/combined.rs (/home/user/yggdryl/target/debug/deps/combined-84ba32594c1c599f)
+
+running 10 tests
+test a_column_only_on_one_side_becomes_nullable_even_when_required ... ok
+test a_shared_column_that_is_required_on_one_side_widens_to_nullable ... ok
+test a_conflicting_field_id_is_refused_naming_both_sides ... ok
+test a_conflicting_datatype_is_refused_naming_both_sides ... ok
+test column_names_unite_case_insensitively ... ok
+test identical_schemas_pass_through_uncast ... ok
+test an_explicit_root_casts_both_sides ... ok
+test disjoint_columns_unite_and_absent_ones_read_null ... ok
+test combining_pulls_no_batch_until_the_result_is_iterated ... ok
+test overlapping_columns_and_a_differing_order_reconcile ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/datatype.rs (/home/user/yggdryl/target/debug/deps/datatype-f011312bc1a005fa)
+
+running 78 tests
+test arrow::duration32_projects_to_arrow_and_imports_at_arrows_native_width ... ok
+test arrow::direct_arrow_values_round_trip_through_core ... ok
+test arrow::borrowed_and_consuming_arrow_datatype_paths_are_lossless ... ok
+test arrow::every_temporal_and_interval_unit_round_trips_through_all_core_formats ... ok
+test arrow::invariant_errors_match_across_construction_validation_and_arrow_projection ... ok
+test arrow::invalid_arrow_parameters_and_nested_shapes_fail_before_projection ... ok
+test ascii::an_ascii_column_is_an_iceberg_string ... ok
+test ascii::a_filter_over_an_ascii_column_binds_and_evaluates ... ok
+test ascii::an_ascii_literal_has_a_text_form ... ok
+test ascii::dictionary::a_null_is_a_null_key_and_the_values_are_padded_storage ... ok
+test arrow::every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debug ... ok
+test ascii::dictionary::a_null_vocabulary_slot_is_refused_naming_its_position ... ok
+test ascii::dictionary::a_repeated_vocabulary_value_is_refused_naming_both_positions ... ok
+test ascii::dictionary::a_refused_column_registers_nothing ... ok
+test ascii::dictionary::a_second_column_continues_the_codes_of_the_first ... ok
+test ascii::dictionary::an_int64_key_encodes_and_reads_back_under_its_own_key_type ... ok
+test ascii::an_ascii_column_round_trips_through_avro_as_text ... ok
+test ascii::dictionary::another_layout_is_refused_by_name ... ok
+test ascii::a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows ... ok
+test ascii::dictionary::the_vocabulary_round_trips_through_the_arrow_array ... ok
+test ascii::two_ascii_columns_compare_at_both_tiers ... ok
+test compatibility::arrow_is_a_cache_preserving_validated_noop ... ok
+test compatibility::a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing ... ok
+test compatibility::compatibility_preflight_reports_its_own_operation_kind ... ok
+test compatibility::compatibility_targets_share_the_canonical_scheme_parser ... ok
+test compatibility::every_target_reports_a_path_for_a_nested_failure ... ok
+test compatibility::iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_extensions ... ok
+test compatibility::iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_list ... ok
+test compatibility::iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual ... ok
+test compatibility::iceberg_widens_everything_outside_its_closed_primitive_vocabulary ... ok
+test ascii::string_functions_read_an_ascii_column_as_text ... ok
+test compatibility::negative_decimal_scale_names_the_offending_scale ... ok
+test compatibility::polars_and_pandas_reject_maps_with_a_named_alternative ... ok
+test compatibility::polars_keeps_unsigned_integers_and_fixed_size_lists ... ok
+test compatibility::spark_applies_only_the_conservative_recursive_matrix ... ok
+test compatibility::spark_changed_fields_preserve_value_state_and_invalidate_cache_once ... ok
+test compatibility::spark_errors_are_path_aware_and_extension_rewrites_are_atomic ... ok
+test compatibility::spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families ... ok
+test compatibility::spark_recurses_through_map_dictionary_and_run_end_layouts ... ok
+test compatibility::spark_rejects_nested_extension_storage_before_rewriting ... ok
+test compatibility::spark_rejects_both_run_end_extension_children_at_exact_paths ... ok
+test compatibility::spark_temporal_decimal_and_union_boundaries_are_explicit ... ok
+test compatibility::temporal_resolution_errors_name_the_expected_and_actual_unit ... ok
+test default::default_matching_is_allocation_free_for_wide_values_and_exact_for_unions ... ok
+test default::fatal_default_limits_never_fall_back_to_nullable_nulls ... ok
+test default::defaults_reject_invalid_or_unbounded_caller_constructed_layouts ... ok
+test default::every_datatype_variant_has_a_bounded_valid_default ... ok
+test default::field_defaults_apply_physical_union_and_run_end_nulls ... ok
+test default::nested_defaults_respect_child_field_nullability ... ok
+test default::null_only_nested_layouts_obey_physical_field_constraints ... ok
+test default::opaque_nested_types_reject_malformed_construction_before_defaults ... ok
+test floating::decimal_preserves_existing_negative_scale_rules ... ok
+test floating::decimal_selects_the_smallest_wide_arrow_representation ... ok
+test floating::decimal_uses_the_selected_constructor_validation ... ok
+test floating::generic_decimal_parser_selects_and_round_trips_wide_storage ... ok
+test nested::deeply_nested_sql_hive_and_spark_types_round_trip_canonically ... ok
+test nested::variant_builder_canonicalizes_to_a_dense_sequential_union ... ok
+test nested::variant_builder_reuses_union_child_validation ... ok
+test nested::variant_builder_enforces_the_arrow_type_id_capacity ... ok
+test nested::deeply_nested_variants_round_trip_without_a_second_logical_type ... ok
+test parser::bare_interval_defaults_before_postfix_list_wrapping ... ok
+test parser::datatype_parser_rejects_time_unit_category_mismatches ... ok
+test parser::datatype_parser_reuses_unified_temporal_and_interval_aliases ... ok
+test parser::datatype_unit_errors_point_at_the_original_unit_token ... ok
+test nested::wide_struct_validation_accepts_unique_names_and_reports_a_late_duplicate ... ok
+test parser::escaped_quoted_unit_errors_map_decoded_offsets_to_original_bytes ... ok
+test parser::parser_rejects_unbalanced_trailing_and_duplicate_input ... ok
+test parser::union_layout_words_remain_available_as_unquoted_member_names ... ok
+test parser::variant_parser_alias_canonicalizes_to_dense_union ... ok
+test parser::variant_parser_rejects_sparse_or_nonsequential_layouts ... ok
+test scalar::scalar_aliases_and_balanced_outer_wrappers_normalize ... ok
+test parser::parser_recursion_limits_have_exact_public_boundaries ... ok
+test serde::structural_json_uses_tagged_objects_and_rejects_bad_shapes ... ok
+test temporal::time_delegates_to_the_selected_explicit_constructor ... ok
+test temporal::time_rejects_interval_layouts_before_physical_selection ... ok
+test temporal::generic_time_parser_selects_and_round_trips_physical_storage ... ok
+test temporal::time_selects_the_arrow_physical_width ... ok
+test parser::variant_parser_enforces_member_and_nesting_limits ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/default_scalar.rs (/home/user/yggdryl/target/debug/deps/default_scalar-706e8a86939f3058)
+
+running 6 tests
+test field_defaults_preserve_exact_identity_and_nullability ... ok
+test foreign_arrays_preflight_deep_caller_built_schemas_before_arrow_projection ... ok
+test foreign_arrays_reject_wrong_lengths_types_and_recursive_nullability ... ok
+test intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_not ... ok
+test nullable_dictionary_null_keys_decode_as_native_null ... ok
+test datatype_defaults_round_trip_through_the_public_scalar_boundary ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/docs_index.rs (/home/user/yggdryl/target/debug/deps/docs_index-8c957f12cd0bd434)
+
+running 1 test
+test the_landing_page_example_runs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/enums.rs (/home/user/yggdryl/target/debug/deps/enums-20d625a120f0e659)
+
+running 29 tests
+test every_io_kind_names_itself_canonically_and_parses_back ... ok
+test every_known_scheme_parses_to_its_static_value ... ok
+test every_io_mode_has_one_required_canonical_spelling ... ok
+test generic_reexports_the_public_vocabulary ... ok
+test every_time_unit_parses_displays_and_serializes_canonically ... ok
+test io_kind_categories_stay_disjoint_across_the_whole_vocabulary ... ok
+test mime::category_helpers_cover_known_and_structured_suffix_values ... ok
+test io_kind_parsing_names_the_whole_accepted_vocabulary ... ok
+test mime::compound_filename_inference_preserves_encoding_application_order ... ok
+test known_and_custom_schemes_share_canonical_value_semantics ... ok
+test mime::content_coding_conversion_is_strict_and_distinguishes_file_only_encodings ... ok
+test mime::content_headers_build_media_and_reject_invalid_lists ... ok
+test mime::content_type_parameters_are_validated_without_becoming_mime_state ... ok
+test mime::filename_edge_cases_and_compound_aliases_are_deterministic ... ok
+test mime::format_and_mime_tables_are_bidirectional_without_alias_drift ... ok
+test mime::extension_inference_covers_data_documents_and_media ... ok
+test mime::io_identity_is_derived_from_the_unencoded_mime_value ... ok
+test mime::known_and_custom_mime_names_are_canonical_and_round_trip ... ok
+test mime::media_construction_and_mutation_validate_before_changing_state ... ok
+test mime::mime_parser_rejects_invalid_restricted_names_with_byte_positions ... ok
+test scheme_validation_reports_the_original_byte ... ok
+test mime::mime_and_media_values_have_total_collection_semantics ... ok
+test mime::media_display_parse_and_structural_serde_are_lossless ... ok
+test shared_static_enums_have_canonical_strings_and_serde ... ok
+test time_unit_parser_accepts_arrow_names_and_common_full_aliases ... ok
+test time_unit_parser_trims_boundaries_and_reports_original_junk_offsets ... ok
+test time_unit_serde_deserialization_reuses_the_public_parser ... ok
+test time_unit_values_have_total_value_semantics_and_categories ... ok
+test time_units_interoperate_with_both_arrow_unit_families ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/field.rs (/home/user/yggdryl/target/debug/deps/field-63f122856334d769)
+
+running 128 tests
+test arrow::arrow_exchange_projection_refuses_caller_owned_sidecar_metadata ... ok
+test arrow::arrow_exchange_sidecar_rejects_malformed_missing_and_conflicting_entries ... ok
+test arrow::ascii_ffi_schemas_carry_the_extension_identity ... ok
+test arrow::core_ffi_projection_preserves_every_field_and_datatype_flag_recursively ... ok
+test arrow::datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state ... ok
+test arrow::arrow_import_rebuilds_noncanonical_http_metadata_for_every_ownership_path ... ok
+test arrow::geospatial_and_variant_ffi_schemas_carry_the_extension_identity ... ok
+test ascii::a_plain_fixed_binary_of_the_width_is_validated_and_reused ... ok
+test arrow::arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip ... ok
+test ascii::a_value_breaking_the_width_rule_is_refused_naming_the_row_and_the_width ... ok
+test ascii::a_hidden_struct_child_is_neither_validated_nor_copied ... ok
+test ascii::an_ascii_column_keeps_its_padding_into_a_binary_target ... ok
+test ascii::a_dictionary_of_text_enters_an_ascii_width ... ok
+test ascii::a_required_ascii_field_fills_nulls_with_the_all_nul_default ... ok
+test ascii::an_ascii_column_renders_as_trimmed_text ... ok
+test ascii::ascii_markers_cover_the_three_widths ... ok
+test ascii::text_entering_an_ascii_width_is_validated_and_padded ... ok
+test binary::binary_markers_cover_bytes_and_utf8_layouts ... ok
+test comparison::differences_without_metadata_do_not_render_nested_metadata_as_context ... ok
+test ascii::ascii_widths_re_pad_between_each_other ... ok
+test comparison::empty_diff_exactly_matches_equality_for_parameterized_and_nested_types ... ok
+test comparison::equals_can_ignore_only_metadata_recursively ... ok
+test comparison::return_equal_controls_what_an_equal_comparison_reports ... ok
+test comparison::return_equal_never_appears_when_values_differ ... ok
+test comparison::geospatial_and_variant_differences_render_their_canonical_display ... ok
+test comparison::show_diff_reports_deep_physical_and_metadata_changes ... ok
+test decimal::decimal_markers_cover_every_physical_width ... ok
+test comparison::union_difference_cursor_preserves_type_id_extra_and_child_order ... ok
+test generic::a_datatype_rebuilds_any_layout_from_replacement_children ... ok
+test generic::a_field_can_act_as_a_partition_column_and_a_root_reports_only_those ... ok
+test floating::floating_markers_cover_every_width ... ok
+test generic::a_protocol_view_merges_under_its_own_namespace ... ok
+test generic::a_mutable_protocol_view_merges_in_place_and_only_adds ... ok
+test generic::a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitive ... ok
+test generic::a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map ... ok
+test generic::a_protocol_write_invalidates_the_arrow_cache_exactly_once ... ok
+test generic::a_struct_field_is_usable_as_a_schema_root ... ok
+test generic::a_root_must_be_a_non_null_struct_and_says_why ... ok
+test generic::a_typed_read_outlives_the_view_it_was_read_through ... ok
+test generic::a_typed_protocol_write_invalidates_a_populated_projection_exactly_once ... ok
+test generic::arrow_cache_is_rebuilt_when_typed_metadata_is_canonicalized ... ok
+test generic::arrow_dictionary_options_survive_parsing_and_cache_invalidation ... ok
+test generic::borrowed_and_consuming_arrow_paths_are_lossless ... ok
+test generic::borrowed_arrow_import_rebuilds_parent_for_nested_canonicalization ... ok
+test generic::child_mutation_invalidates_the_arrow_cache_exactly_once ... ok
+test generic::canonical_field_preserves_unicode_quotes_commas_and_metadata ... ok
+test generic::datatype_builds_fields_in_schema_reading_order ... ok
+test generic::child_mutation_replaces_by_position_and_appends_by_unknown_name ... ok
+test generic::field_parser_validates_typed_metadata_and_round_trips_protocol_values ... ok
+test generic::http_case_collisions_and_typed_location_are_transactional ... ok
+test generic::http_metadata_is_canonical_typed_and_cache_aware ... ok
+test generic::https_properties_share_the_canonical_http_namespace ... ok
+test generic::invalid_dtype_replacement_is_transactional ... ok
+test generic::indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child ... ok
+test generic::malformed_typed_http_media_removal_is_transactional ... ok
+test generic::metadata_behaves_as_a_sorted_transactional_mapping ... ok
+test generic::metadata_is_a_deterministic_shared_native_value ... ok
+test generic::metadata_merges_as_a_union_the_receiver_wins ... ok
+test generic::no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it ... ok
+test generic::one_straight_comment_is_what_every_protocol_reads ... ok
+test generic::one_straight_display_name_is_what_every_protocol_reads ... ok
+test generic::native_order_hash_json_and_stable_hash_are_value_based ... ok
+test generic::one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree ... ok
+test generic::owned_arrow_import_rebuilds_parent_for_nested_canonicalization ... ok
+test generic::parser_accepts_flexible_sql_whitespace_and_doubled_quotes ... ok
+test generic::parser_accepts_sql_hive_and_arrow_shapes ... ok
+test generic::parser_errors_report_original_input_byte_offsets ... ok
+test generic::parser_recursion_limit_has_an_exact_public_boundary ... ok
+test generic::parser_rejects_invalid_nullability_and_duplicate_metadata ... ok
+test generic::reserved_metadata_is_transactional_and_arbitrary_arrow_keys_are_preserved ... ok
+test generic::shared_arrow_import_rebuilds_parent_for_nested_canonicalization ... ok
+test generic::structural_json_uses_tagged_dtypes_and_rejects_bad_shapes ... ok
+test generic::subscripting_a_schema_node_reaches_a_nested_child ... ok
+test comparison::wide_metadata_differences_stream_in_lexical_order_and_fuse ... ok
+test generic::the_init_flag_defaults_to_true_and_stores_only_when_false ... ok
+test generic::the_init_flag_rejects_a_non_boolean_spelling ... ok
+test generic::typed_field_id_rejects_non_i32_metadata_transactionally ... ok
+test generic::typed_field_id_uses_canonical_arrow_parquet_metadata ... ok
+test generic::typed_http_media_pair_updates_once_and_rejects_unmappable_encodings ... ok
+test generic::typed_http_media_preserves_raw_parameters_and_encoding_order ... ok
+test generic::typed_names_location_and_protocol_properties_share_one_metadata_map ... ok
+test generic::unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default ... ok
+test integer::integer_markers_cover_every_signed_and_unsigned_width ... ok
+test nested::a_datatype_replaces_removes_and_keeps_its_layout ... ok
+test nested::a_path_resolves_by_name_before_it_decomposes ... ok
+test nested::child_mutation_replaces_by_position_and_appends_by_unknown_name ... ok
+test nested::exploding_replaces_each_collection_with_what_it_holds ... ok
+test nested::merging_fields_unions_metadata_and_keeps_the_receivers_value ... ok
+test nested::merging_reaches_into_every_nested_layout ... ok
+test nested::merging_structs_takes_the_union_of_their_fields ... ok
+test nested::metadata_is_reached_through_its_own_surface_not_a_subscript ... ok
+test nested::nested_markers_cover_every_child_layout ... ok
+test nested::one_key_reaches_a_child_by_position_or_by_path ... ok
+test nested::setting_by_path_reaches_a_nested_child ... ok
+test generic::subscripting_a_scalar_datatype_panics - should panic ... ok
+test nested::subscripting_a_schema_node_reaches_a_nested_child ... ok
+test generic::subscripting_an_absent_child_panics_by_name - should panic ... ok
+test generic::subscripting_an_absent_child_panics_by_position - should panic ... ok
+test nested::two_datatypes_meet_at_the_one_that_holds_both ... ok
+test nested::subscripting_a_non_nested_datatype_panics_naming_it - should panic ... ok
+test nested::unnesting_flattens_structs_to_leaves_named_by_their_path ... ok
+test nested::subscripting_an_absent_child_panics_with_a_useful_message - should panic ... ok
+test nested::subscripting_past_the_end_panics_naming_the_arity - should panic ... ok
+test scalar::scalar_markers_cover_null_and_boolean ... ok
+test serde::a_malformed_mapping_is_refused_by_path ... ok
+test serde::a_small_dump_reads_the_way_the_docs_say ... ok
+test serde::every_shape_round_trips_through_the_value_conversion ... ok
+test serde::depth_three_indents_one_level_per_level ... ok
+test serde::indentation_reads_literally_in_every_format ... ok
+test serde::every_format_round_trips_the_same_nested_field ... ok
+test serde::metadata_entries_must_be_strings ... ok
+test serde::json_bytes_and_text_carry_the_same_nested_document ... ok
+test serde::natural_text_objects_feed_record_aware_structural_readers ... ok
+test serde::the_compact_form_is_unchanged_and_still_parses_back ... ok
+test serde::the_readable_form_indents_by_depth_and_omits_unset_attributes ... ok
+test serde::the_readable_form_is_stable_across_runs ... ok
+test serde::formatting_changes_bytes_never_meaning ... ok
+test serde::the_trait_forms_sit_beside_the_inherent_ones ... ok
+test temporal::temporal_markers_cover_clock_calendar_and_interval_types ... ok
+test typed::borrowed_typed_fields_inherit_value_traits_from_the_field ... ok
+test typed::struct_fields_have_the_return_typed_conversion_name ... ok
+test typed::the_extension_typed_markers_narrow_their_exact_variants ... ok
+test typed::typed_datatype_replacement_is_transactional_and_same_variant_only ... ok
+test typed::typed_fields_are_zero_overhead_checked_and_lossless ... ok
+test typed::typed_serde_rejects_a_wrong_or_invalid_datatype ... ok
+test serde::the_value_shape_matches_the_json_structure_exactly ... ok
+test serde::the_three_formats_parse_back_to_equal_values ... ok
+test serde::every_shape_round_trips_through_every_format ... ok
+
+test result: ok. 128 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s
+
+     Running tests/iceberg_interop.rs (/home/user/yggdryl/target/debug/deps/iceberg_interop-c760b1da4ca08f8e)
+
+running 6 tests
+test a_table_written_by_pyiceberg_reads_here ... ok
+test tables_written_by_pyiceberg_at_other_versions_read_here ... ok
+test times_the_baseline_manifest_for_the_comparison_table ... ok
+test tables_of_the_other_format_versions_are_left_for_an_external_reader ... ok
+test a_table_written_here_is_left_for_an_external_reader ... ok
+test a_large_manifest_is_left_for_baseline_readers ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+     Running tests/json.rs (/home/user/yggdryl/target/debug/deps/json-92b865d8c57f583d)
+
+running 10 tests
+test codec_errors_keep_the_format_and_byte_position ... ok
+test an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit ... ok
+test bytes_readers_writers_and_streams_are_equivalent ... ok
+test a_field_restores_exact_natural_types_and_record_order ... ok
+test json_lines_are_strict_and_dispatch_as_one_sequence ... ok
+test limits_and_invalid_inputs_fail_at_the_boundary ... ok
+test formatting_changes_layout_not_meaning ... ok
+test natural_output_is_an_ordinary_json_document ... ok
+test untyped_reads_return_only_what_json_proves ... ok
+test time_of_day_is_naive_and_zoned_text_is_refused ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/row_value.rs (/home/user/yggdryl/target/debug/deps/row_value-63e163cadd156b9b)
+
+running 4 tests
+test arrow_bridge::an_array_reads_as_the_sequence_its_values_spell ... ok
+test rows_are_sequences_and_objects_are_records ... ok
+test arrow_bridge::a_batch_reads_as_schema_ordered_row_sequences ... ok
+test struct_expressions_evaluate_to_schema_ordered_sequences ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/text.rs (/home/user/yggdryl/target/debug/deps/text-c20b5dd924c03ea7)
+
+running 29 tests
+test format::format_names_and_extensions_are_inferred ... ok
+test borrowed_text_dispatches_without_owned_utf8_staging ... ok
+test all_dispatch_paths_share_exact_document_limits ... ok
+test format::format_dispatch_uses_the_same_natural_codec ... ok
+test format::format_serde_uses_stable_tokens ... ok
+test placeholder::a_missing_variable_is_a_typed_error_naming_it_and_its_position ... ok
+test placeholder::a_document_without_placeholders_parses_identically_either_way ... ok
+test placeholder::a_default_makes_a_variable_optional_and_carries_its_own_type ... ok
+test placeholder::a_doubled_opener_is_a_literal_one_and_nothing_else_needs_escaping ... ok
+test placeholder::a_whole_scalar_placeholder_adopts_the_resolved_value_s_own_type ... ok
+test placeholder::an_embedded_geometry_renders_as_wkt_and_malformed_wkb_as_lossless_hex ... ok
+test placeholder::an_unquoted_yaml_placeholder_is_what_yaml_says_it_is ... ok
+test placeholder::an_embedded_placeholder_substitutes_textually_and_stays_a_string ... ok
+test placeholder::every_entry_point_carries_the_same_loading ... ok
+test placeholder::json_refuses_placeholders_by_name ... ok
+test value::collection_iteration_matches_python_sequence_and_mapping_semantics ... ok
+test placeholder::placeholders_reach_keys_nested_structures_and_toml_tables ... ok
+test value::empty_collections_share_process_wide_backing ... ok
+test value::equal_integer_representations_hash_and_order_equally ... ok
+test placeholder::the_environment_is_a_second_switch_and_the_mapping_wins ... ok
+test value::every_kind_has_its_own_place_in_the_total_ordering ... ok
+test value::every_accessor_tolerates_every_kind ... ok
+test value::float_widths_are_one_number_line ... ok
+test value::integer_widths_have_native_numeric_equality ... ok
+test value::null_answers_absence_everywhere_a_value_is_read ... ok
+test value::structural_serde_preserves_all_float_values ... ok
+test value::structural_serde_rejects_duplicate_mapping_keys ... ok
+test value::wide_mapping_constructor_rejects_duplicates ... ok
+test value::structural_serde_reads_back_every_variant ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/toml.rs (/home/user/yggdryl/target/debug/deps/toml-b9475dc9f0efb16f)
+
+running 8 tests
+test empty_toml_is_an_empty_record ... ok
+test native_toml_temporals_are_syntax_proven_values ... ok
+test a_field_restores_exact_types_from_natural_toml ... ok
+test exact_values_emit_natural_scalars_without_private_tags ... ok
+test natural_output_is_accepted_by_the_toml_crate ... ok
+test readers_single_document_rules_and_limits_are_explicit ... ok
+test toml_refuses_shapes_its_grammar_cannot_represent ... ok
+test time_of_day_is_naive_and_zoned_text_is_refused ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/uri.rs (/home/user/yggdryl/target/debug/deps/uri-e9b7b9342dc61890)
+
+running 29 tests
+test a_scheme_less_string_falls_back_to_the_file_scheme ... ok
+test default_port_is_reported_per_scheme ... ok
+test authority_credentials_split_only_the_first_user_information_colon ... ok
+test division_is_the_fallible_native_path_join_operator ... ok
+test encoded_drive_colons_cannot_change_file_path_structure ... ok
+test escaped_ascii_authority_syntax_cannot_change_unc_structure ... ok
+test identifier_filename_mutations_preserve_non_path_components ... ok
+test file_identifiers_round_trip_through_utf8_platform_paths ... ok
+test file_path_projection_rejects_ambiguous_or_non_utf8_escapes ... ok
+test encoded_unc_authorities_round_trip_through_all_path_conversions ... ok
+test joinpath_composes_like_a_shell_cd ... ok
+test identifiers_infer_and_apply_mime_and_encoded_media_suffixes ... ok
+test malformed_identifiers_report_parse_errors_instead_of_falling_back ... ok
+test parents_walks_up_to_the_root_without_yielding_self ... ok
+test parts_resolves_dot_and_dot_dot ... ok
+test path_stem_and_extension_mutations_are_canonical_and_atomic ... ok
+test path_suffix_rules_ignore_directories_trailing_slashes_and_dotfiles ... ok
+test slash_paths_and_backslash_relative_paths_receive_file_scheme ... ok
+test s3_locations_distinguish_buckets_from_hostnames_and_infer_regions ... ok
+test unc_server_errors_report_original_path_offsets ... ok
+test url_conversion_validates_hierarchical_network_urls ... ok
+test uri_and_url_navigation_preserve_every_other_component ... ok
+test uri_parsing_exposes_non_nullable_core_components ... ok
+test structural_json_and_native_value_traits_round_trip ... ok
+test urn_conversion_preserves_namespace_and_namespace_specific_string ... ok
+test urn_namespace_errors_report_the_offending_original_byte ... ok
+test validated_components_are_concrete_canonical_values ... ok
+test urn_filename_mutations_are_scoped_to_the_namespace_specific_string ... ok
+test windows_drive_and_unc_paths_normalize_independently_of_host_os ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/value_bounds.rs (/home/user/yggdryl/target/debug/deps/value_bounds-6675ccfe013b5ce6)
+
+running 9 tests
+test dictionary_and_run_end_wrappers_join_the_hidden_byte_budget ... ok
+test dense_union_does_not_visit_an_inactive_oversized_default ... ok
+test dense_union_remains_lazy_below_a_generated_struct_slot ... ok
+test masked_hidden_slots_do_not_require_a_logical_default ... ok
+test nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation ... ok
+test nullable_struct_aggregates_selected_dense_union_payloads ... ok
+test nullable_struct_rejects_aggregate_fixed_physical_bytes ... ok
+test every_valid_nested_datatype_can_materialize_zero_rows_without_a_default ... ok
+test sparse_union_joins_selected_and_inactive_children_into_one_budget ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/yaml.rs (/home/user/yggdryl/target/debug/deps/yaml-db17899b5d55321e)
+
+running 8 tests
+test natural_output_is_accepted_by_an_independent_yaml_parser ... ok
+test arbitrary_keys_and_standard_custom_tags_have_natural_semantics ... ok
+test a_field_restores_exact_types_from_natural_yaml ... ok
+test nonfinite_yaml_floats_use_the_core_schema_spelling ... ok
+test untyped_yaml_preserves_only_syntax_proven_types ... ok
+test time_of_day_is_naive_and_zoned_text_is_refused ... ok
+test readers_documents_and_limits_are_bounded ... ok
+test yaml_standard_binary_is_not_a_private_envelope ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yggdryl
+
+running 147 tests
+test rust/src/arrow/mod.rs - arrow::batch_reader (line 311) ... ok
+test rust/src/arrow/mod.rs - arrow::combined_as (line 403) ... ok
+test rust/src/arrowfs/mod.rs - arrowfs (line 32) ... ok
+test rust/src/arrow/mod.rs - arrow::combined (line 477) ... ok
+test rust/src/arrowfs/system.rs - arrowfs::system::MemoryFileSystem (line 386) ... ok
+test rust/src/buffered/mod.rs - buffered (line 11) ... ok
+test rust/src/buffered/mod.rs - buffered (line 127) ... ok
+test rust/src/buffered/options.rs - buffered::options::BufferedOptions (line 35) ... ok
+test rust/src/buffered/mod.rs - buffered (line 60) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary (line 286) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::dtype (line 492) ... ok
+test rust/src/buffered/mod.rs - buffered (line 94) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::member_name (line 578) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::into_arrow_array (line 918) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::push_bytes (line 416) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::into_members (line 526) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiDictionary::push (line 382) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::AsciiEnum (line 665) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::DataType::ascii (line 60) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::cfi (line 116) ... ok
+test rust/src/datatype/ascii.rs - datatype::ascii::DataType::ascii_packed (line 121) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::country (line 74) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::code_name (line 134) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::currency (line 88) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::mic (line 102) ... ok
+test rust/src/datatype/coded.rs - datatype::coded::DataType::is_code (line 153) ... ok
+test rust/src/datatype/guid.rs - datatype::guid::DataType::guid_packed (line 57) ... ok
+test rust/src/datatype/merge.rs - datatype::merge::DataType::merge_with (line 103) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType (line 179) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::explode_fields (line 1189) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType (line 154) ... ok
+test rust/src/datatype/guid.rs - datatype::guid::DataType::guid (line 40) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::get_field (line 867) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::get_field_by_path (line 829) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::set_field_at (line 931) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::set_field_by_path (line 976) ... ok
+test rust/src/datatype/scalar.rs - datatype::scalar::DataType::named_field (line 118) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::unnest_fields (line 1122) ... ok
+test rust/src/datatype/nested.rs - datatype::nested::DataType::with_fields (line 698) ... ok
+test rust/src/datatype/serde.rs - datatype::serde::DataType::into_value (line 553) ... ok
+test rust/src/expression/selector.rs - expression::selector::Handle (line 280) - compile ... ok
+test rust/src/expression/mod.rs - expression::Expression (line 522) ... ok
+test rust/src/datatype/serde.rs - datatype::serde::DataType::from_value (line 747) ... ok
+test rust/src/expression/serde.rs - expression::serde (line 16) ... ok
+test rust/src/field/cast/mod.rs - field::cast (line 13) ... ok
+test rust/src/field/mod.rs - field::Field (line 2015) ... ok
+test rust/src/field/mod.rs - field::Field::ascii_enum (line 877) ... ok
+test rust/src/field/mod.rs - field::Field (line 2050) ... ok
+test rust/src/field/mod.rs - field::Field::get_field (line 338) ... ok
+test rust/src/field/mod.rs - field::Field::field_by_parquet_field_id (line 971) ... ok
+test rust/src/field/mod.rs - field::Field::is_partition (line 548) ... ok
+test rust/src/field/mod.rs - field::Field::partition_fields (line 565) ... ok
+test rust/src/field/mod.rs - field::Field::protocol (line 1130) ... ok
+test rust/src/field/mod.rs - field::Field::protocol_mut (line 1152) ... ok
+test rust/src/field/mod.rs - field::Field::merge_with (line 409) ... ok
+test rust/src/field/mod.rs - field::Field::set_field_at (line 1215) ... ok
+test rust/src/field/mod.rs - field::Field::set_field_by_path (line 1259) ... ok
+test rust/src/field/mod.rs - field::Field::remove_field_by_path (line 1327) ... ok
+test rust/src/field/mod.rs - field::Field::without_fields (line 501) ... ok
+test rust/src/field/mod.rs - field::Field::with_partition_fields (line 645) ... ok
+test rust/src/field/mod.rs - field::Field::unnest_fields (line 466) ... ok
+test rust/src/field/pretty.rs - field::pretty (line 22) ... ok
+test rust/src/field/pretty.rs - field::pretty::DataType::pretty (line 74) ... ok
+test rust/src/field/protocol/mod.rs - field::protocol::ProtocolFieldMut (line 289) ... ok
+test rust/src/field/protocol/mod.rs - field::protocol::ProtocolField (line 54) ... ok
+test rust/src/field/serde.rs - field::serde::Field::into_value (line 184) ... ok
+test rust/src/field/serde.rs - field::serde::Field::from_value (line 232) ... ok
+test rust/src/generic/codec.rs - generic::codec (line 13) ... ok
+test rust/src/generic/coded.rs - generic::coded::Coded (line 16) ... ok
+test rust/src/generic/i256.rs - generic::i256::I256 (line 20) ... ok
+test rust/src/generic/inference.rs - generic::inference (line 22) ... ok
+test rust/src/generic/holder.rs - generic::holder::Holder (line 23) ... ok
+test rust/src/generic/io_kind.rs - generic::io_kind::IOKind (line 29) ... ok
+test rust/src/generic/decimal.rs - generic::decimal (line 6) ... ok
+test rust/src/generic/options.rs - generic::options (line 25) ... ok
+test rust/src/generic/scalar.rs - generic::scalar (line 19) ... ok
+test rust/src/generic/media.rs - generic::media (line 12) ... ok
+test rust/src/generic/scalar.rs - generic::scalar::Scalar::path (line 1761) ... ok
+test rust/src/generic/text.rs - generic::text::Text (line 14) ... ok
+test rust/src/generic/temporal.rs - generic::temporal (line 3) ... ok
+test rust/src/generic/typed.rs - generic::typed (line 19) ... ok
+test rust/src/generic/timezone.rs - generic::timezone (line 14) ... ok
+test rust/src/generic/timezone.rs - generic::timezone::Timezone::offset_at (line 164) ... ok
+test rust/src/generic/wkb.rs - generic::wkb (line 20) ... ok
+test rust/src/generic/typed.rs - generic::typed::TypedScalar<K>::into_arrow_array (line 219) ... ok
+test rust/src/iceberg/catalog/mod.rs - iceberg::catalog (line 38) - compile ... ok
+test rust/src/generic/typed.rs - generic::typed::TypedScalar::from_arrow_array (line 293) ... ok
+test rust/src/iceberg/evolve.rs - iceberg::evolve::can_promote (line 69) ... ok
+test rust/src/iceberg/field.rs - iceberg::field (line 15) ... ok
+test rust/src/iceberg/mod.rs - iceberg (line 18) - compile ... ok
+test rust/src/gzip/mod.rs - gzip::Gzip (line 85) ... ok
+test rust/src/iceberg/options.rs - iceberg::options::IcebergOptions (line 33) ... ok
+test rust/src/iceberg/evolve.rs - iceberg::evolve (line 16) ... ok
+test rust/src/iceberg/mod.rs - iceberg (line 52) ... ok
+test rust/src/iceberg/table.rs - iceberg::table (line 10) - compile ... ok
+test rust/src/iceberg/table.rs - iceberg::table::Table<H>::commit_metadata_changes (line 630) - compile ... ok
+test rust/src/iceberg/table.rs - iceberg::table::Table<H>::scan_matching (line 896) - compile ... ok
+test rust/src/iceberg/partition.rs - iceberg::partition::Transform (line 41) ... ok
+test rust/src/iceberg/types.rs - iceberg::types::PrimitiveType (line 19) ... ok
+test rust/src/io/cursor.rs - io::cursor (line 12) ... ok
+test rust/src/io/buffer.rs - io::buffer::Buffer (line 24) ... ok
+test rust/src/iceberg/metadata.rs - iceberg::metadata::TableMetadata::create_branch (line 1613) ... ok
+test rust/src/iceberg/options.rs - iceberg::options::IcebergOptions::from_metadata (line 444) ... ok
+test rust/src/io/listing.rs - io::listing::Listing (line 30) ... ok
+test rust/src/io/mod.rs - io::IOBase::children_matching (line 807) - compile ... ok
+test rust/src/io/mod.rs - io::IOBase::children_where (line 876) - compile ... ok
+test rust/src/io/mod.rs - io::IOBase::buffered (line 1474) ... ok
+test rust/src/io/mod.rs - io::IOBase::glob (line 728) - compile ... ok
+test rust/src/io/media.rs - io::media::IOMedia::overwrite_records (line 532) ... ok
+test rust/src/io/mod.rs - io (line 22) ... ok
+test rust/src/io/mod.rs - io::IOBase::ls (line 701) - compile ... ok
+test rust/src/io/mod.rs - io::IOBase::clear (line 1201) ... ok
+test rust/src/io/mod.rs - io::IOBase::opened (line 627) ... ok
+test rust/src/io/mod.rs - io::IOBase::is_atomic (line 929) ... ok
+test rust/src/io/mod.rs - io::IOBase::is_tabular (line 972) ... ok
+test rust/src/io/mod.rs - io::IOBase::read_scalar (line 1061) ... ok
+test rust/src/io/mod.rs - io::delegate_iobase (line 141) ... ok
+test rust/src/io/mod.rs - io::IOBase::remove (line 1280) ... ok
+test rust/src/io/mod.rs - io::delegate_iobase (line 176) ... ok
+test rust/src/io/mod.rs - io::delegate_iobase (line 103) ... ok
+test rust/src/io/mod.rs - io::skip_absent (line 395) ... ok
+test rust/src/io/partition.rs - io::partition::with_partitions (line 109) ... ok
+test rust/src/json/mod.rs - json::into_bytes_with_formatting (line 478) ... ok
+test rust/src/local/mod.rs - local (line 22) - compile ... ok
+test rust/src/io/partition.rs - io::partition::partition_text (line 57) ... ok
+test rust/src/local/path.rs - local::path::Path (line 23) - compile ... ok
+test rust/src/ipc/mod.rs - ipc (line 21) ... ok
+test rust/src/local/folder.rs - local::folder::Folder (line 25) ... ok
+test rust/src/metadata.rs - metadata::Metadata::protocol (line 418) ... ok
+test rust/src/metadata.rs - metadata::ProtocolMetadata (line 854) ... ok
+test rust/src/parquet/mod.rs - parquet (line 49) ... ok
+test rust/src/text/formatting.rs - text::formatting::Formatting (line 120) ... ok
+test rust/src/text/formatting.rs - text::formatting (line 13) ... ok
+test rust/src/text/display.rs - text::display::stable_hash_chunks (line 54) ... ok
+test rust/src/text/line/sep.rs - text::line::sep::LineSep (line 21) ... ok
+test rust/src/text/loading.rs - text::loading::Loading (line 17) ... ok
+test rust/src/text/placeholder.rs - text::placeholder::Placeholders (line 81) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::glob_parts (line 50) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::hive_partitions (line 180) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::hive_partitions_under (line 205) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::matches_glob (line 94) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::is_glob (line 21) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::segments_under (line 148) ... ok
+test rust/src/uri/pattern.rs - uri::pattern::Url::matches_glob_under (line 125) ... ok
+test rust/src/yaml/mod.rs - yaml::into_bytes_with_formatting (line 285) ... ok
+test rust/src/zlib/mod.rs - zlib::Zlib (line 154) ... ok
+test rust/src/zstd/mod.rs - zstd::Zstd (line 121) ... ok
+
+test result: ok. 147 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+all doctests ran in 5.10s; merged doctests compilation took 4.79s

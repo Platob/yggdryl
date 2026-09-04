@@ -191,15 +191,26 @@ fn an_ascii_literal_has_a_text_form() {
             TypedScalar::from_parts(DataType::Ascii32, Scalar::from("USD")).unwrap()
         )
     );
-    // The literal prints in its own width and re-parses; a registered name
-    // spells the literal of the width it registers over, which for ISO 4217's
-    // three letters is `ascii24`.
+    // The literal prints in its own datatype and re-parses; a registered code
+    // spells a literal of its own, which is not the literal of the width that
+    // happens to hold the same bytes.
     assert_eq!(parsed.to_string(), "ccy = ascii32 'USD'");
     assert_eq!(parsed.to_string().parse::<Expression>().unwrap(), parsed);
+    let currency = "ccy = currency 'USD'".parse::<Expression>().unwrap();
+    assert_eq!(currency.to_string(), "ccy = currency 'USD'");
     assert_eq!(
-        "ccy = currency 'USD'".parse::<Expression>().unwrap(),
+        currency.to_string().parse::<Expression>().unwrap(),
+        currency
+    );
+    assert_ne!(
+        currency,
         "ccy = ascii24 'USD'".parse::<Expression>().unwrap()
     );
+    let refused = "ccy = country 'USD'"
+        .parse::<Expression>()
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("at most 2 bytes"), "{refused}");
 
     let message = "ccy = ascii32 'EURO!'"
         .parse::<Expression>()

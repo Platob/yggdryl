@@ -132,6 +132,13 @@ typed_array!(super::ascii::Ascii32, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii64, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii96, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii128, arrow_array::FixedSizeBinaryArray);
+// A registered code stores as the fixed binary its standard fixes.
+typed_array!(super::ascii::Country, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::ascii::Currency, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::ascii::Mic, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::ascii::Cfi, arrow_array::FixedSizeBinaryArray);
+// A GUID stores as the fixed binary of its sixteen bytes.
+typed_array!(super::nested::Guid, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::nested::List, arrow_array::ListArray);
 typed_array!(super::nested::ListView, arrow_array::ListViewArray);
 typed_array!(super::nested::LargeList, arrow_array::LargeListArray);

@@ -1,0 +1,20 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.11 at /home/user/yggdryl/python/.venv/bin/python
+🔗 Found pyo3 bindings
+📡 Using build options bindings from pyproject.toml
+Ignoring typing-extensions: markers 'python_full_version < "3.11"' don't match your environment
+Ignoring mypy: markers 'extra == "test"' don't match your environment
+Ignoring pandas: markers 'extra == "test"' don't match your environment
+Ignoring polars: markers 'extra == "test"' don't match your environment
+Ignoring pytest: markers 'extra == "test"' don't match your environment
+Ignoring tzdata: markers 'extra == "test"' don't match your environment
+Requirement already satisfied: pyarrow>=18 in ./.venv/lib/python3.11/site-packages (25.0.1)
+   Compiling pyo3-ffi v0.29.2
+   Compiling yggdryl v0.1.1 (/home/user/yggdryl/rust)
+   Compiling pyo3 v0.29.2
+   Compiling arrow-pyarrow v59.2.0
+   Compiling yggdryl-python v0.1.1 (/home/user/yggdryl/python)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 46.09s
+📦 Built wheel for CPython 3.11 to /tmp/.tmpV9XAUF/yggdryl-0.1.1-cp311-cp311-linux_x86_64.whl
+✏️ Setting installed package as editable
+🛠 Installed yggdryl-0.1.1

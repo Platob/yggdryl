@@ -151,8 +151,6 @@ fn iceberg_field(extra: usize) -> Field {
     view.set_identifier_field_ids(&[1, 2, 3])
         .expect("static identifier columns");
     view.set_doc("row identifier").expect("a static doc string");
-    view.set_declared_type("uuid")
-        .expect("a static declared type");
     view.set_spec_id(7).expect("a static spec identifier");
     view.set_partition_source_id(11)
         .expect("a static source column");
@@ -270,9 +268,6 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
     // `iceberg:schema-id` and `iceberg:spec-id` fit, so those reads are free.
     free("doc", || {
         let _ = black_box(field.as_iceberg().doc());
-    });
-    free("declared_type", || {
-        let _ = black_box(field.as_iceberg().declared_type());
     });
     free("schema_id", || {
         let _ = black_box(field.as_iceberg().schema_id());

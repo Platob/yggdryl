@@ -11,11 +11,13 @@ use crate::Field;
 
 mod arrow;
 mod ascii;
+mod coded;
 mod comparison;
 mod compatibility;
 mod default;
 mod floating;
 mod geospatial;
+mod guid;
 mod integer;
 mod merge;
 mod nested;
@@ -29,6 +31,11 @@ pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_sto
 pub(crate) use ascii::ascii_padded;
 pub(crate) use ascii::{ASCII_EXTENSION_NAME, ascii_bytes, ascii_text};
 pub use ascii::{AsciiDictionary, AsciiEnum};
+pub(crate) use coded::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_cell_text, code_for_extension,
+    code_refusal, code_text,
+};
+pub(crate) use guid::{GUID_EXTENSION_NAME, guid_bytes, guid_parse, guid_text};
 
 pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{
@@ -124,6 +131,16 @@ pub enum DataType {
     Ascii96,
     /// ASCII text padded with trailing NUL to 16 bytes.
     Ascii128,
+    /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
+    Country,
+    /// ISO 4217: a currency code, three ASCII bytes.
+    Currency,
+    /// ISO 10383: a market identifier code, four ASCII bytes.
+    Mic,
+    /// ISO 10962: a classification of financial instruments, six ASCII bytes.
+    Cfi,
+    /// One 128-bit universally unique identifier.
+    Guid,
     /// Variable list with 32-bit offsets.
     List(Arc<Field>),
     /// Variable list-view with 32-bit offsets.

@@ -89,11 +89,22 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::FixedSizeBinary(_)
         | D::Geometry(_)
         | D::Geography(_) => JsValueHint::Buffer,
-        // An ASCII width reads back as its trimmed text, so it projects as
-        // the string family does.
-        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => {
-            JsValueHint::String
-        }
+        // An ASCII width reads back as its trimmed text and a GUID as its
+        // hyphenated spelling, so both project as the string family does.
+        D::Utf8
+        | D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Guid => JsValueHint::String,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
@@ -306,7 +317,20 @@ fn text_or_binary_to_js<'env>(
                 .to_vec(),
         )
         .into_unknown(env)?,
-        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => value
+        D::Utf8
+        | D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Guid => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()

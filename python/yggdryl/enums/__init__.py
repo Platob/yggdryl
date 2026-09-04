@@ -5,11 +5,16 @@ Pure enums cross the boundary as strings by convention - a datatype id is
 strings can be. Every tuple is unpacked from one native listing at import, so
 it can never drift from the Rust constants it mirrors.
 
-The vocabularies a caller declares are the other half: subclassing
-one of the six width bases - :class:`Ascii16`, :class:`Ascii24`,
-:class:`Ascii32`, :class:`Ascii64`, :class:`Ascii96`, :class:`Ascii128` - names
-one open ASCII
-vocabulary whose members are the integers their values pack into.
+The vocabularies a caller declares are the other half: subclassing one of the
+six width bases - :class:`Ascii16`, :class:`Ascii24`, :class:`Ascii32`,
+:class:`Ascii64`, :class:`Ascii96`, :class:`Ascii128` - or one of the four
+registered code bases - :class:`CountryCode`, :class:`CurrencyCode`,
+:class:`MicCode`, :class:`CfiCode` - names one open ASCII vocabulary whose
+members are the integers their values pack into.
+
+The four registered codes arrive already declared: :class:`Country`,
+:class:`Currency`, :class:`MIC`, and :class:`CFI` are those vocabularies over
+their own datatypes, open for every code they do not name.
 """
 
 from __future__ import annotations
@@ -25,7 +30,12 @@ from .ascii import (
     Ascii96,
     Ascii128,
     AsciiCode,
+    CfiCode,
+    CountryCode,
+    CurrencyCode,
+    MicCode,
 )
+from .codes import CFI, Country, Currency, MIC
 
 _LISTING = _enum_values()
 
@@ -64,6 +74,14 @@ __all__ = [
     "Ascii96",
     "Ascii128",
     "AsciiCode",
+    "CfiCode",
+    "CountryCode",
+    "CurrencyCode",
+    "MicCode",
+    "CFI",
+    "Country",
+    "Currency",
+    "MIC",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",

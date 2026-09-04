@@ -21,6 +21,7 @@ define_field_types!(Union, "union", crate::DataType::Union(..));
 // sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
 // as dense-union sugar), and its Arrow storage is a struct of two binaries.
 define_field_types!(Variant, "variant", crate::DataType::Variant);
+define_field_types!(Guid, "guid", crate::DataType::Guid);
 define_field_types!(Dictionary, "dictionary", crate::DataType::Dictionary(_));
 define_field_types!(Map, "map", crate::DataType::Map(_));
 define_field_types!(

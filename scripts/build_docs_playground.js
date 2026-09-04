@@ -23,7 +23,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { AsciiDictionary, DataType, fields } = require('../node/binding.js')
+const { AsciiDictionary, fields } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const MANIFEST = path.join(ROOT, 'docs', 'assets', 'playground.json')
@@ -34,11 +34,24 @@ const arrow = require(require.resolve('apache-arrow', {
   paths: [path.join(ROOT, 'node')],
 }))
 
-const WIDTHS = ['ascii16', 'ascii24', 'ascii32', 'ascii64', 'ascii96', 'ascii128']
+// The six widths and the four registered codes: every fixed-width ASCII
+// datatype, in the order the grammar lists them.
+const WIDTHS = [
+  'ascii16',
+  'ascii24',
+  'ascii32',
+  'ascii64',
+  'ascii96',
+  'ascii128',
+  'country',
+  'currency',
+  'mic',
+  'cfi',
+]
 
-// One case per rule the width enforces, in the width's own vocabulary:
-// currency codes, tickers, ISINs. `USD` is both the typical `ascii32` value and
-// the first of the ISO 4217 codes, so it is listed once.
+// One case per rule the datatype enforces, in its own vocabulary: currency
+// codes, tickers, ISINs. `USD` is both the typical `ascii32` value and the
+// first of the ISO 4217 codes, so it is listed once.
 const ENCODE = {
   ascii16: [
     ['typical', 'US'],
@@ -108,6 +121,42 @@ const ENCODE = {
     ['trailing NULs', 'US0378331005\u0000\u0000\u0000\u0000'],
     ['lower case', 'us0378331005'],
   ],
+  country: [
+    ['typical', 'US'],
+    ['ISO 3166-1', 'FR'],
+    ['empty', ''],
+    ['exactly the width', 'GB'],
+    ['one byte too long', 'USA'],
+    ['non-ASCII', 'FÉ'],
+    ['lower case', 'us'],
+  ],
+  currency: [
+    ['typical', 'USD'],
+    ['ISO 4217', 'EUR'],
+    ['empty', ''],
+    ['exactly the width', 'GBP'],
+    ['one byte too long', 'USDT'],
+    ['non-ASCII', 'USÉ'],
+    ['lower case', 'usd'],
+  ],
+  mic: [
+    ['typical', 'XNAS'],
+    ['ISO 10383', 'XPAR'],
+    ['empty', ''],
+    ['exactly the width', 'XLON'],
+    ['one byte too long', 'XNASD'],
+    ['non-ASCII', 'XPÄR'],
+    ['lower case', 'xnas'],
+  ],
+  cfi: [
+    ['typical', 'ESVUFR'],
+    ['ISO 10962', 'DBFTFR'],
+    ['empty', ''],
+    ['exactly the width', 'OCASPS'],
+    ['one byte too long', 'ESVUFRX'],
+    ['non-ASCII', 'ESVUFÉ'],
+    ['lower case', 'esvufr'],
+  ],
 }
 
 // The decode direction starts at storage, so its corpus is bytes.
@@ -155,6 +204,26 @@ const DECODE = {
       ],
     ],
     ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+  ],
+  country: [
+    ['exactly the width', [0x55, 0x53]],
+    ['padded', [0x55, 0x00]],
+    ['all NUL', [0x00, 0x00]],
+  ],
+  currency: [
+    ['exactly the width', [0x55, 0x53, 0x44]],
+    ['padded', [0x55, 0x53, 0x00]],
+    ['all NUL', [0x00, 0x00, 0x00]],
+  ],
+  mic: [
+    ['exactly the width', [0x58, 0x4e, 0x41, 0x53]],
+    ['padded', [0x58, 0x4e, 0x00, 0x00]],
+    ['all NUL', [0x00, 0x00, 0x00, 0x00]],
+  ],
+  cfi: [
+    ['exactly the width', [0x45, 0x53, 0x56, 0x55, 0x46, 0x52]],
+    ['padded', [0x45, 0x53, 0x56, 0x55, 0x00, 0x00]],
+    ['all NUL', [0x00, 0x00, 0x00, 0x00, 0x00, 0x00]],
   ],
 }
 
@@ -221,7 +290,7 @@ const stored = (table) => Array.from(table.getChild('ccy').get(0))
 /** The single row read back under a declared `utf8` field: the trimmed text. */
 const readBack = (table) => [...row('utf8').castArrow(table).getChild('ccy')][0]
 
-/** What the six widths are, read off a field actually projected to Arrow. */
+/** What the ten fixed ASCII types are, read off a field projected to Arrow. */
 function widths() {
   return WIDTHS.map((dtype) => {
     const declared = row(dtype)
@@ -237,16 +306,6 @@ function widths() {
       call: `${rowCall(dtype)}.castArrow(${textTableCall('A')}).schema.fields[0]`,
     }
   })
-}
-
-/** The registered names, each resolved to the width it spells. */
-function logicalNames() {
-  const registry = DataType.logicalNames()
-  const named = {}
-  for (const name of Object.keys(registry).sort()) {
-    named[name] = registry[name].toString()
-  }
-  return named
 }
 
 /** One encode case: the padded storage and the read-back text, or the refusal. */
@@ -356,7 +415,6 @@ function manifest() {
   return {
     version: VERSION,
     widths: widths(),
-    logicalNames: logicalNames(),
     encode,
     decode,
     dictionary: dictionary(),

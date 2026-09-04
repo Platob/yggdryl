@@ -8,6 +8,16 @@ from .ascii import (
     Ascii96 as Ascii96,
     Ascii128 as Ascii128,
     AsciiCode as AsciiCode,
+    CfiCode as CfiCode,
+    CountryCode as CountryCode,
+    CurrencyCode as CurrencyCode,
+    MicCode as MicCode,
+)
+from .codes import (
+    CFI as CFI,
+    Country as Country,
+    Currency as Currency,
+    MIC as MIC,
 )
 
 DATA_TYPE_IDS: tuple[str, ...]
@@ -28,6 +38,14 @@ __all__ = [
     "Ascii96",
     "Ascii128",
     "AsciiCode",
+    "CfiCode",
+    "CountryCode",
+    "CurrencyCode",
+    "MicCode",
+    "CFI",
+    "Country",
+    "Currency",
+    "MIC",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",

@@ -482,9 +482,10 @@ through annotation inference again.
 ## ASCII vocabularies as enums
 
 `yggdryl.enums` carries the core's static spellings - `DATA_TYPE_IDS`, `CODECS`, `LEVELS` and the
-rest, listed on the [generic page](../generic.md) - and the three enum bases a caller declares a
+rest, listed on the [generic page](../generic.md) - and the enum bases a caller declares a
 vocabulary with. `Ascii16`, `Ascii24`, `Ascii32`, `Ascii64`, `Ascii96`, and `Ascii128` are the
-[ASCII widths](../datatype.md#ascii-widths-and-the-registered-names); a subclass names its
+[ASCII widths](../datatype.md#ascii-widths-and-the-registered-codes), and `CountryCode`,
+`CurrencyCode`, `MicCode`, and `CfiCode` the four registered codes; a subclass names its
 values as text and a member *is* the integer that value packs into, so the code is the same in
 every process, is exactly what the column stores, and orders as the text does.
 
@@ -590,8 +591,61 @@ The declared members are the declaration and a value read back is data, so `as_e
 `field()` carry only what the class body names. `into_dictionary()` is the other direction: an
 [`AsciiDictionary`](../datatype.md#the-dictionary-vocabulary-and-its-generated-enum) over the same
 values, whose codes are positions in the column it encodes rather than the values themselves. Only
-the leaf declares members - `AsciiCode` is the base the six widths share, and nothing subclasses
-a vocabulary that already has members.
+the leaf declares members - `AsciiCode` is the base the six widths and four codes share, and
+nothing subclasses a vocabulary that already has members.
+
+### The registered vocabularies
+
+The four [registered codes](../datatype.md#ascii-widths-and-the-registered-codes) arrive already
+declared, each over its own datatype: `Country` over `CountryCode`, `Currency` over `CurrencyCode`,
+`MIC` over `MicCode`, and `CFI` over `CfiCode`. Each is an ordinary subclass of its base, no
+different from one written by hand, so a program that names the codes it trades gets real `IntEnum`
+members for them and reads the rest as they arrive. Declare your own vocabulary over the same
+datatype by subclassing the base rather than the shipped class.
+
+```python
+from yggdryl import DataType
+from yggdryl.enums import CFI, Country, Currency, MIC
+
+assert Currency.dtype() == DataType("currency")
+assert Currency.dtype() != DataType("ascii24")
+assert int(Currency.USD) == 0x555344
+assert (Country.FR, MIC.XPAR, CFI.ESVUFR) == (Country("FR"), MIC("XPAR"), CFI("ESVUFR"))
+assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"
+
+# The standards are registries that keep growing, so a code no member declares
+# is read under its own packed value rather than refused.
+assert MIC.from_str("XLON").into_str() == "XLON"
+```
+
+An annotation is enough to build the column: a `@scalar` class that types an attribute with one of
+these - or with any `AsciiCode` subclass - gets a field of that datatype carrying the class's
+members as the field's declaration, so both the type and the vocabulary cross Arrow with the schema.
+
+```python
+from yggdryl import scalar
+from yggdryl.enums import Currency, MIC
+
+@scalar
+class Fill:
+    venue: MIC
+    settlement: Currency
+
+venue, settlement = Fill.field()
+assert (venue.dtype.id, settlement.dtype.id) == ("mic", "currency")
+assert settlement.ascii_enum.name == "Currency"
+assert settlement.ascii_enum.get("USD") == "USD"
+```
+
+`yggdryl.fields` names the same four codes as factories - `fields.country`, `fields.currency`,
+`fields.mic`, and `fields.cfi` - for a field built without a class:
+
+```python
+from yggdryl import DataType, fields
+
+assert fields.mic("venue").dtype == DataType("mic")
+assert fields.currency("ccy", nullable=False).dtype == DataType("currency")
+```
 
 ## Errors
 

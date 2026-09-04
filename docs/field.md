@@ -906,10 +906,15 @@ while `GeometryField` and `GeographyField` are parameterized by CRS and edge alg
 take their datatype through `try_new`. The binding-side `VariantField`, `GeometryField`, and
 `GeographyField` aliases beside `fields.variant`, `fields.geometry`, and `fields.geography` are
 checker-level views over the one native class exactly like every alias above.
-The [ASCII widths](datatype.md#ascii-widths-and-the-registered-names) are parameterless
-too: `Ascii24Field`, `Ascii32Field`, `Ascii64Field`, `Ascii96Field`, and `Ascii128Field` get the
-static `new`, and the bindings add `fields.ascii(name, width)` over `DataType.ascii` beside the
-five per-width factories.
+The [ASCII widths](datatype.md#ascii-widths-and-the-registered-codes) are parameterless
+too: `Ascii16Field`, `Ascii24Field`, `Ascii32Field`, `Ascii64Field`, `Ascii96Field`, and
+`Ascii128Field` get the static `new`, and the bindings add `fields.ascii(name, width)` over
+`DataType.ascii` beside the six per-width factories. The four registered codes are parameterless
+too: `CountryField`, `CurrencyField`, `MicField`, and `CfiField` get the static `new` beside
+`fields.country`, `fields.currency`, `fields.mic`, and `fields.cfi`, each building the code's own
+datatype rather than the ASCII width that would hold the same bytes.
+[The GUID](datatype.md#the-guid) is parameterless in the same way: `GuidField` gets the static
+`new`, and the bindings spell it `fields.guid`.
 
 ## Converting to one native field
 

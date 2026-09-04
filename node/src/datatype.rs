@@ -116,6 +116,11 @@ impl JsDataType {
             "ascii64" => CoreDataType::Ascii64,
             "ascii96" => CoreDataType::Ascii96,
             "ascii128" => CoreDataType::Ascii128,
+            "country" => CoreDataType::Country,
+            "currency" => CoreDataType::Currency,
+            "mic" => CoreDataType::Mic,
+            "cfi" => CoreDataType::Cfi,
+            "guid" => CoreDataType::Guid,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"
@@ -192,26 +197,6 @@ impl JsDataType {
         CoreDataType::ascii(exact_i32(width, "width")?)
             .map(Self::from_core)
             .map_err(napi_error)
-    }
-
-    /// Resolves a registered logical name such as `currency`, ASCII
-    /// case-insensitively and trimmed, to the ASCII width it names.
-    #[napi(factory)]
-    pub fn from_logical_name(name: String) -> Result<Self> {
-        CoreDataType::from_logical_name(&name)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
-    /// The logical names registered over an ASCII width, keyed by name in
-    /// registration order.
-    #[napi(ts_return_type = "Record<string, DataType>")]
-    pub fn logical_names(env: &Env) -> Result<Object<'_>> {
-        let mut names = Object::new(env)?;
-        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
-            names.set(*name, Self::from_core(dtype.clone()))?;
-        }
-        Ok(names)
     }
 
     /// Internal direct exact-decimal constructor.

@@ -171,6 +171,13 @@ function createFields(DataType, Field, native) {
     ascii64: simple('ascii64'),
     ascii96: simple('ascii96'),
     ascii128: simple('ascii128'),
+    guid: simple('guid'),
+    // Each registered code is a datatype of its own, storing the width its
+    // standard fixes and carrying that identity across Arrow.
+    country: simple('country'),
+    currency: simple('currency'),
+    mic: simple('mic'),
+    cfi: simple('cfi'),
     ascii(name, width, value) {
       return field(name, DataType.ascii(width), value)
     },

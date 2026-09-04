@@ -3,7 +3,10 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::datatype::{ascii_bytes, ascii_padded, ascii_text};
+use crate::datatype::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_padded, ascii_text,
+    code_cell_text, guid_bytes, guid_parse, guid_text,
+};
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
@@ -171,6 +174,11 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Ascii64 => ascii_array(8, values)?,
         DataType::Ascii96 => ascii_array(12, values)?,
         DataType::Ascii128 => ascii_array(16, values)?,
+        DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
+        DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
+        DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
+        DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
+        DataType::Guid => guid_array(values)?,
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
                 .iter()
@@ -388,6 +396,11 @@ pub(crate) fn value_from_array(
                 .value(index)
                 .to_vec(),
         ),
+        // An identifier reads back as its canonical hyphenated spelling.
+        DataType::Guid => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::from(guid_text(&guid_parse(fixed.value(index))?))
+        }
         // Storage reads back trimmed: the padding is the layout, not the text.
         DataType::Ascii16
         | DataType::Ascii24
@@ -397,6 +410,11 @@ pub(crate) fn value_from_array(
         | DataType::Ascii128 => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::from(ascii_text(fixed.value_length(), fixed.value(index))?)
+        }
+        // A code reads back the same way, at the width its own type fixes.
+        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::from(code_cell_text(dtype, fixed.value(index))?)
         }
         DataType::LargeBinary => {
             Scalar::from(downcast::<LargeBinaryArray>(array)?.value(index).to_vec())
@@ -781,9 +799,11 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
-            | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
-            DataType::Ascii16 => self.add_fixed_rows(rows, 2)?,
-            DataType::Ascii24 => self.add_fixed_rows(rows, 3)?,
+            | DataType::Ascii32
+            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
+            DataType::Ascii16 | DataType::Country => self.add_fixed_rows(rows, 2)?,
+            DataType::Ascii24 | DataType::Currency => self.add_fixed_rows(rows, 3)?,
+            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
             DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
             DataType::Int64
             | DataType::UInt64
@@ -802,6 +822,7 @@ impl MaterializationBudget {
             | DataType::BinaryView
             | DataType::Utf8View
             | DataType::Ascii128
+            | DataType::Guid
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
             }
@@ -883,9 +904,11 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
-            | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
-            DataType::Ascii16 => self.add_fixed_rows(rows, 2)?,
-            DataType::Ascii24 => self.add_fixed_rows(rows, 3)?,
+            | DataType::Ascii32
+            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
+            DataType::Ascii16 | DataType::Country => self.add_fixed_rows(rows, 2)?,
+            DataType::Ascii24 | DataType::Currency => self.add_fixed_rows(rows, 3)?,
+            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
             DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
             DataType::Int64
             | DataType::UInt64
@@ -904,6 +927,7 @@ impl MaterializationBudget {
             | DataType::BinaryView
             | DataType::Utf8View
             | DataType::Ascii128
+            | DataType::Guid
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
@@ -1820,6 +1844,55 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
         Scalar::Bytes(bytes) => Ok(Some(bytes)),
         _ => Err(invalid_value_kind("bytes", value)),
     }
+}
+
+/// Build the sixteen-byte storage of a GUID column.
+///
+/// Every present value passes the one GUID rule and stores as its sixteen
+/// bytes, so the array is exactly what the field reads back as text.
+fn guid_array(values: &[&Scalar]) -> Result<ArrayRef> {
+    let mut bytes = vec![0_u8; values.len() * 16];
+    let mut validity = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        match guid_bytes(value) {
+            Some(raw) => {
+                bytes[index * 16..][..16].copy_from_slice(&guid_parse(raw)?);
+                validity.push(true);
+            }
+            None if matches!(value, Scalar::Null) => validity.push(false),
+            None => return Err(invalid_value_kind("a GUID", value)),
+        }
+    }
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        16,
+        Buffer::from(bytes),
+        nulls(validity),
+    )?))
+}
+
+/// Build the padded fixed-width storage of a registered code column.
+///
+/// The same rule as [`ascii_array`] with the width a constant: the slot is a
+/// compile-time length, so the per-row padding is a fixed-size copy.
+fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
+    let mut bytes = vec![0_u8; values.len() * WIDTH];
+    let mut validity = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        match ascii_bytes(value) {
+            Some(raw) => {
+                let text = code_cell_text(dtype, raw)?;
+                ascii_padded(&mut bytes[index * WIDTH..][..WIDTH], text);
+                validity.push(true);
+            }
+            None if matches!(value, Scalar::Null) => validity.push(false),
+            None => return Err(invalid_value_kind("ASCII text", value)),
+        }
+    }
+    Ok(Arc::new(FixedSizeBinaryArray::try_new(
+        WIDTH as i32,
+        Buffer::from(bytes),
+        nulls(validity),
+    )?))
 }
 
 /// Build the padded fixed-width storage of an ASCII column.

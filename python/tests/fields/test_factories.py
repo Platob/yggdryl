@@ -7,7 +7,7 @@ from collections.abc import Iterator
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, fields
+from yggdryl import DataType, Field, enums, fields
 
 
 def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
@@ -75,14 +75,21 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
             "value", run_ends, values
         ),
         "variant": fields.variant("value"),
+        "country": fields.country("value"),
+        "currency": fields.currency("value"),
+        "mic": fields.mic("value"),
+        "cfi": fields.cfi("value"),
+        "guid": fields.guid("value"),
         "geometry": fields.geometry("value"),
         "geography": fields.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 51
+    assert len(values_by_kind) == 56
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
+    # The factories cover the whole vocabulary, not a chosen part of it.
+    assert set(values_by_kind) == set(enums.DATA_TYPE_IDS)
     assert all(type(value) is Field for value in values_by_kind.values())
     assert fields.Int32Field is Field
     assert fields.TypedField is Field

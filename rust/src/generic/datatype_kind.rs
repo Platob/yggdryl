@@ -57,11 +57,19 @@ pub enum DataTypeKind {
     /// (WKB payloads, bounding-box statistics, the refusal of min/max) is the
     /// same for the pair.
     Geospatial,
+    /// One 128-bit universally unique identifier.
+    ///
+    /// It is not `Binary` wearing an extension name: no binary-family
+    /// behavior - concatenation, prefix matching, a variable width - is
+    /// correct for an identifier, and it is not `String` either, because the
+    /// hyphenated spelling is a rendering of sixteen bytes rather than the
+    /// value itself.
+    Guid,
 }
 
 impl DataTypeKind {
     /// Every category in canonical order.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Null,
         Self::Boolean,
         Self::Integer,
@@ -78,6 +86,7 @@ impl DataTypeKind {
         Self::RunEndEncoded,
         Self::Variant,
         Self::Geospatial,
+        Self::Guid,
     ];
 
     /// Parse a canonical lowercase category name.
@@ -110,6 +119,7 @@ impl DataTypeKind {
             Self::RunEndEncoded => "run_end_encoded",
             Self::Variant => "variant",
             Self::Geospatial => "geospatial",
+            Self::Guid => "guid",
         }
     }
 

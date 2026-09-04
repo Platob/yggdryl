@@ -800,7 +800,7 @@ mod ascii {
     }
 
     #[test]
-    fn every_spelling_parses_and_displays_as_its_width() {
+    fn every_spelling_parses_and_displays_as_its_datatype() {
         for (spelling, dtype) in [
             ("ascii16", DataType::Ascii16),
             ("ascii24", DataType::Ascii24),
@@ -820,17 +820,18 @@ mod ascii {
             ("ascii(12)", DataType::Ascii96),
             ("ascii(13)", DataType::Ascii128),
             ("ascii(16)", DataType::Ascii128),
-            ("country", DataType::Ascii16),
-            ("currency", DataType::Ascii24),
-            ("Currency", DataType::Ascii24),
-            ("cfi", DataType::Ascii64),
-            ("CFI", DataType::Ascii64),
+            ("country", DataType::Country),
+            ("currency", DataType::Currency),
+            ("Currency", DataType::Currency),
+            ("mic", DataType::Mic),
+            ("cfi", DataType::Cfi),
+            ("CFI", DataType::Cfi),
         ] {
             let parsed: DataType = spelling
                 .parse()
                 .unwrap_or_else(|error| panic!("{spelling} must parse: {error}"));
             assert_eq!(parsed, dtype, "{spelling}");
-            // One canonical spelling: a registration displays as its width.
+            // One canonical spelling: every alias displays as the datatype.
             assert_eq!(parsed.to_string(), dtype.name(), "{spelling}");
             assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
         }
@@ -839,7 +840,7 @@ mod ascii {
             .unwrap();
         assert_eq!(
             row.get_field_by_path("ccy").map(Field::dtype),
-            Some(&DataType::Ascii24)
+            Some(&DataType::Currency)
         );
         assert_eq!(
             row.get_field_by_path("isin").map(Field::dtype),
@@ -847,11 +848,11 @@ mod ascii {
         );
         assert_eq!(
             row.get_field_by_path("code").map(Field::dtype),
-            Some(&DataType::Ascii64)
+            Some(&DataType::Cfi)
         );
         assert_eq!(
             row.get_field_by_path("iso").map(Field::dtype),
-            Some(&DataType::Ascii16)
+            Some(&DataType::Country)
         );
     }
 
@@ -880,42 +881,86 @@ mod ascii {
     }
 
     #[test]
-    fn a_registered_logical_name_resolves_case_insensitively_and_names_its_vocabulary() {
-        assert_eq!(
-            DataType::LOGICAL_NAMES,
-            &[
-                ("country", DataType::Ascii16),
-                ("currency", DataType::Ascii24),
-                ("cfi", DataType::Ascii64),
-            ]
-        );
-        assert_eq!(
-            DataType::from_logical_name("currency").unwrap(),
-            DataType::Ascii24
-        );
-        assert_eq!(
-            DataType::from_logical_name(" CURRENCY ").unwrap(),
-            DataType::Ascii24
-        );
-        // ISO 10962 is six characters, so it registers over the narrowest
-        // width that holds six bytes.
-        assert_eq!(
-            DataType::from_logical_name("cfi").unwrap(),
-            DataType::Ascii64
-        );
-        // ISO 3166-1 alpha-2 is two letters, which is exactly `ascii16`.
-        assert_eq!(
-            DataType::from_logical_name("country").unwrap(),
-            DataType::Ascii16
-        );
+    fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
+        // A code parses to itself and displays as itself: there is no width
+        // hiding behind the name, and no second spelling of either.
+        for (name, dtype, width) in DataType::CODES {
+            assert_eq!(name.parse::<DataType>().unwrap(), *dtype);
+            assert_eq!(dtype.to_string(), *name);
+            assert_eq!(dtype.name(), *name);
+            assert_eq!(dtype.ascii_width(), Some(*width));
+            assert_eq!(dtype.kind(), DataTypeKind::String);
+            assert!(dtype.is_code());
+        }
+        assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
+        assert_ne!(DataType::Currency, DataType::Ascii24);
+        // ISO 10962 is six characters, and `cfi` stores exactly those six
+        // rather than padding into the eight the next ASCII width takes.
+        assert_eq!(DataType::Cfi.ascii_width(), Some(6));
+        assert_eq!(DataType::ascii(6).unwrap(), DataType::Ascii64);
+        assert!(!DataType::Ascii64.is_code());
 
-        let error = DataType::from_logical_name("isin").unwrap_err().to_string();
-        assert!(error.contains("currency"), "{error}");
-        assert!(error.contains("cfi"), "{error}");
-        assert!(error.contains("\"isin\""), "{error}");
-        // The grammar reports an unregistered word as unknown.
+        // A code name is a grammar keyword like every other, so the parser
+        // reads it case-insensitively and trimmed.
+        assert_eq!(
+            " CURRENCY ".parse::<DataType>().unwrap(),
+            DataType::Currency
+        );
+        // The grammar reports a word that names nothing as unknown.
         let error = "isin".parse::<DataType>().unwrap_err().to_string();
         assert!(error.contains("unknown datatype \"isin\""), "{error}");
+    }
+
+    #[test]
+    fn a_code_packs_and_merges_by_the_ascii_rules() {
+        // The packed integer is the value's own storage bytes, exactly as it
+        // is for a width: the code is a datatype, not a second encoding.
+        assert_eq!(
+            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            0x0055_5344
+        );
+        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(
+            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            DataType::Ascii24.ascii_packed(b"USD").unwrap()
+        );
+        assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
+        assert_eq!(
+            DataType::Cfi.ascii_packed(b"ESVUFR").unwrap(),
+            0x4553_5655_4652
+        );
+        let refused = DataType::Country
+            .ascii_packed(b"USD")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 2 bytes"), "{refused}");
+
+        // Two schemas that agree on a code keep it; a code reconciled with
+        // anything else answers the plain text both fit in.
+        assert_eq!(
+            DataType::Currency
+                .merge_with(&DataType::Currency, true)
+                .unwrap(),
+            DataType::Currency
+        );
+        assert_eq!(
+            DataType::Currency
+                .merge_with(&DataType::Ascii24, true)
+                .unwrap(),
+            DataType::Ascii24
+        );
+        assert_eq!(
+            DataType::Currency
+                .merge_with(&DataType::Country, true)
+                .unwrap(),
+            DataType::Ascii24
+        );
+        assert_eq!(
+            DataType::Currency
+                .merge_with(&DataType::Utf8, true)
+                .unwrap(),
+            DataType::Utf8
+        );
     }
 
     #[test]
@@ -1114,6 +1159,127 @@ mod ascii {
                 .into_scheme_compat(&Scheme::ICEBERG)
                 .unwrap(),
             DataType::Utf8
+        );
+    }
+}
+
+/// The GUID: one 128-bit identifier, stored as its sixteen bytes.
+mod guid {
+    use arrow_array::{Array, FixedSizeBinaryArray};
+    use arrow_schema::DataType as ArrowDataType;
+
+    use super::super::DataType;
+    use crate::generic::{DataTypeId, DataTypeKind};
+    use crate::{Field, Scalar};
+
+    const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
+    const PACKED: u128 = 0x0191_2d68_783e_7c9a_b1f2_0123_4567_89ab;
+
+    #[test]
+    fn the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering() {
+        let guid = DataType::guid();
+        assert_eq!(guid, DataType::Guid);
+        assert_eq!(guid.id(), DataTypeId::Guid);
+        assert_eq!(guid.kind(), DataTypeKind::Guid);
+        assert_eq!(guid.name(), "guid");
+        assert_eq!(guid.to_string(), "guid");
+        assert_eq!(DataTypeId::Guid.fixed_byte_width(), Some(16));
+        assert!(!guid.is_nested());
+        guid.validate().unwrap();
+
+        // Both spellings parse to the one type, which displays as `guid`.
+        assert_eq!("guid".parse::<DataType>().unwrap(), guid);
+        assert_eq!("uuid".parse::<DataType>().unwrap(), guid);
+        assert_eq!(guid.to_string().parse::<DataType>().unwrap(), guid);
+
+        // The packed integer is the identifier, not a code for it.
+        assert_eq!(guid.guid_packed(TEXT.as_bytes()).unwrap(), PACKED);
+        assert_eq!(
+            guid.guid_packed(TEXT.to_uppercase().as_bytes()).unwrap(),
+            PACKED
+        );
+        assert_eq!(
+            guid.guid_packed(TEXT.replace('-', "").as_bytes()).unwrap(),
+            PACKED
+        );
+        assert_eq!(guid.guid_packed(&PACKED.to_be_bytes()).unwrap(), PACKED);
+        assert_eq!(guid.guid_value(PACKED).unwrap(), TEXT);
+
+        // Every rendering is the lowercase hyphenated spelling; the bytes and
+        // the bare-hex text canonicalize to it.
+        let field = guid.clone().required_field("id");
+        let row = DataType::from_fields([field.clone()])
+            .unwrap()
+            .required_field("row");
+        let canonical = |value: Scalar| {
+            row.canonicalize_value(Scalar::from_sequence([value]))
+                .unwrap()
+        };
+        let expected = Scalar::from_sequence([Scalar::from(TEXT)]);
+        assert_eq!(canonical(Scalar::from(TEXT)), expected);
+        assert_eq!(canonical(Scalar::from(TEXT.to_uppercase())), expected);
+        assert_eq!(
+            canonical(Scalar::from(PACKED.to_be_bytes().to_vec())),
+            expected
+        );
+        assert_eq!(
+            guid.default_value().unwrap(),
+            Scalar::from("00000000-0000-0000-0000-000000000000")
+        );
+        assert!(
+            guid.is_default_value(&Scalar::from([0_u8; 16].to_vec()))
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
+        let field = Field::new("id", DataType::Guid, false);
+        let arrow = field.clone().into_arrow().unwrap();
+
+        assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
+        assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
+        assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
+        assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+
+        // The stored bytes are the identifier; the value reads back spelled.
+        let array = crate::arrow::scalar_array(&field, &Scalar::from(TEXT)).unwrap();
+        let stored = array
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .unwrap();
+        assert_eq!(stored.value(0), PACKED.to_be_bytes());
+        assert_eq!(
+            crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
+            Scalar::from(TEXT)
+        );
+    }
+
+    #[test]
+    fn what_is_not_an_identifier_is_refused_by_the_one_rule() {
+        let guid = DataType::Guid;
+        for spelling in [
+            "not-a-guid",
+            "",
+            "01912d68-783e-7c9a-b1f2-0123456789a",
+            "01912d68-783e-7c9a-b1f2-0123456789abc",
+            "01912d68783e7c9ab1f20123456789ab0",
+            "01912d68-783e-7c9a-b1f2+0123456789ab",
+            "0191_d68-783e-7c9a-b1f2-0123456789ab",
+        ] {
+            assert!(guid.guid_packed(spelling.as_bytes()).is_err(), "{spelling}");
+        }
+        let refused = guid.guid_packed(b"not-a-guid").unwrap_err().to_string();
+        assert!(refused.contains("sixteen bytes"), "{refused}");
+        assert!(refused.contains("36-character"), "{refused}");
+
+        // The type answers only for itself.
+        assert!(DataType::Utf8.guid_packed(TEXT.as_bytes()).is_err());
+        assert!(DataType::Utf8.guid_value(PACKED).is_err());
+        assert!(
+            DataType::FixedSizeBinary(16)
+                .guid_packed(TEXT.as_bytes())
+                .is_err()
         );
     }
 }

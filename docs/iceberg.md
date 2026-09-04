@@ -676,8 +676,8 @@ marker every path-borne column carries - and a schema can carry the marks itself
 
 Those `iceberg:` properties are typed on the field's Iceberg view. `field.as_iceberg()` and
 `field.as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, which parse and canonicalize
-`schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `declared_type`,
-`spec_id`, `partition_source_id` and `transform` on the way in and out. They live here rather than on
+`schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`,
+`partition_source_id` and `transform` on the way in and out. They live here rather than on
 [`Field`](field.md#one-protocol-at-a-time) because they are Iceberg's vocabulary, not a field's own
 state; the partition *mark* is a field's own state, which is why `is_partition` stays on the field
 itself. The view borrows the whole field and dereferences to it, so one value answers both.
@@ -3646,10 +3646,12 @@ let message = PrimitiveType::from_dtype(&DataType::Int8).unwrap_err().to_string(
 assert!(message.contains("int8"));
 assert!(PrimitiveType::from_dtype(&DataType::Int16).is_err());
 
-// A UUID is 16 bytes on the wire and nothing more, so it writes back as `fixed[16]`.
+// A UUID is the core's own `guid`, so the spelling survives the round trip
+// in the datatype rather than in a marker beside the column.
+assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::Guid);
 assert_eq!(
     PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
-    "fixed[16]"
+    "uuid"
 );
 ```
 

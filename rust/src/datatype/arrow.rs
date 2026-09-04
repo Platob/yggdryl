@@ -13,8 +13,10 @@ use crate::field::arrow_field_to_ffi;
 use crate::{Error, Field, Result};
 
 use super::ascii::ASCII_EXTENSION_NAME;
+use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_extension_name};
 use super::floating::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+use super::guid::GUID_EXTENSION_NAME;
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::scalar::{invalid, validate_non_negative};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
@@ -381,6 +383,11 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Ascii64 => Self::FixedSizeBinary(8),
             R::Ascii96 => Self::FixedSizeBinary(12),
             R::Ascii128 => Self::FixedSizeBinary(16),
+            R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
+            R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
+            R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
+            R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
+            R::Guid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
             R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
             R::FixedSizeList(field, length) => {
@@ -513,6 +520,11 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Ascii64 => Self::FixedSizeBinary(8),
             R::Ascii96 => Self::FixedSizeBinary(12),
             R::Ascii128 => Self::FixedSizeBinary(16),
+            R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
+            R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
+            R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
+            R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
+            R::Guid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(into_arrow_field(field)?),
             R::ListView(field) => Self::ListView(into_arrow_field(field)?),
             R::FixedSizeList(field, length) => {
@@ -681,7 +693,11 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         | DataType::Ascii64
         | DataType::Ascii96
         | DataType::Ascii128 => Some((ASCII_EXTENSION_NAME, String::new())),
-        _ => None,
+        DataType::Guid => Some((GUID_EXTENSION_NAME, String::new())),
+        // A code carries its own name, so the identity survives Arrow: three
+        // bytes under `yggdryl.currency` read back a currency, and the same
+        // three bytes under `yggdryl.ascii` read back the width.
+        code => code_extension_name(code).map(|name| (name, String::new())),
     }
 }
 
@@ -846,7 +862,12 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         | DataType::Ascii32
         | DataType::Ascii64
         | DataType::Ascii96
-        | DataType::Ascii128 => {
+        | DataType::Ascii128
+        | DataType::Country
+        | DataType::Currency
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Guid => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
             let Some((name, metadata)) = arrow_extension_parts(dtype) else {

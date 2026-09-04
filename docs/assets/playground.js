@@ -146,19 +146,11 @@
     }
     table.append(head, body)
 
-    const names = make('p', 'ygg-pg__names')
-    names.append(document.createTextNode('Registered names: '))
-    const registered = Object.entries(data.logicalNames)
-    registered.forEach(([name, dtype], index) => {
-      names.append(code(name), document.createTextNode(' → '), code(dtype))
-      if (index < registered.length - 1) names.append(document.createTextNode(', '))
-    })
-
     const calls = make('details', 'ygg-pg__calls')
     calls.append(make('summary', null, 'The calls that answered this'))
     calls.append(call(data.widths.map((width) => width.call).join('\n')))
 
-    root.append(table, names, calls)
+    root.append(table, calls)
   }
 
   /** Both value views: a width, its corpus, and the selected case. */

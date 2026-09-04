@@ -5,6 +5,7 @@ import decimal
 import enum
 import inspect
 import pickle
+import uuid
 from typing import Optional
 
 import pyarrow as pa
@@ -318,7 +319,50 @@ def test_dtype_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> No
     assert projected.field("codes").type.ordered is True
 
 
-def test_ascii_widths_select_once_and_register_currency() -> None:
+def test_the_guid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
+    guid = DataType("guid")
+
+    assert DataType("uuid") == guid
+    assert guid.id == "guid"
+    assert guid.kind == "guid"
+    assert str(guid) == "guid"
+    assert guid.ascii_width is None
+
+    # The identity is the sixteen bytes; the spelling is a rendering of them.
+    text = "01912d68-783e-7c9a-b1f2-0123456789ab"
+    packed = 0x01912D68783E7C9AB1F20123456789AB
+    field = Field("id", guid, nullable=False)
+    assert field.arrow_scalar(text) == pa.scalar(
+        packed.to_bytes(16, "big"), pa.binary(16)
+    )
+    assert field.arrow_scalar(text.upper()) == field.arrow_scalar(text)
+    assert field.arrow_scalar(text.replace("-", "")) == field.arrow_scalar(text)
+    assert field.arrow_scalar(packed.to_bytes(16, "big")) == field.arrow_scalar(text)
+    assert field.default_pyvalue() == "00000000-0000-0000-0000-000000000000"
+
+    # Storage is the canonical `arrow.uuid` extension over sixteen bytes, so
+    # PyArrow rebuilds its own registered extension type from the projection.
+    arrow = field.into_arrow()
+    assert arrow.type == pa.uuid()
+    assert arrow.type.storage_type == pa.binary(16)
+    assert Field.from_arrow(arrow) == field
+
+    # A cast into the type validates; the stored column read as text spells it.
+    stored = field.cast_arrow_array(pa.array([text, text.upper()]))
+    # PyArrow reads its own registered extension back as `uuid.UUID`.
+    assert stored.to_pylist() == [uuid.UUID(text)] * 2
+    assert stored.storage.to_pylist() == [packed.to_bytes(16, "big")] * 2
+    # A recognized identifier column renders as its spelling, exactly as a
+    # recognized ASCII column renders as its trimmed text.
+    batch = pa.record_batch([stored], schema=pa.schema([arrow]))
+    spelled = DataType.from_fields([Field("id", "utf8")])
+    assert spelled.cast_arrow_batch(batch).column(0).to_pylist() == [text, text]
+
+    with pytest.raises(ValueError, match="36-character"):
+        field.cast_arrow_array(pa.array(["not-a-guid"]))
+
+
+def test_ascii_widths_select_once() -> None:
     ascii24 = DataType("ascii24")
 
     # The family constructor selects the narrowest width that holds the bytes.
@@ -330,7 +374,6 @@ def test_ascii_widths_select_once_and_register_currency() -> None:
     assert DataType.ascii(12) == DataType("ascii96")
     assert DataType.ascii(16) == DataType("ascii128")
     assert DataType("ascii(3)") == ascii24
-    assert DataType("currency") == ascii24
     assert str(ascii24) == "ascii24"
     assert eval(repr(ascii24), {"DataType": DataType}) == ascii24
     assert ascii24.id == "ascii24"
@@ -341,26 +384,67 @@ def test_ascii_widths_select_once_and_register_currency() -> None:
     assert DataType("ascii128").ascii_width == 16
     assert DataType("utf8").ascii_width is None
 
-    # ISO 3166-1 is two letters, ISO 4217 three, and ISO 10962 six, so each
-    # registers over the narrowest width that holds it.
-    assert DataType.from_logical_name("Currency") == ascii24
-    assert DataType.from_logical_name("cfi") == DataType("ascii64")
-    assert DataType.from_logical_name("country") == DataType("ascii16")
-    assert DataType.logical_names() == {
-        "country": DataType("ascii16"),
-        "currency": ascii24,
-        "cfi": DataType("ascii64"),
-    }
-    assert list(DataType.logical_names()) == ["country", "currency", "cfi"]
-
-    with pytest.raises(ValueError, match="currency"):
-        DataType.from_logical_name("isin")
     with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
         DataType.ascii(17)
     with pytest.raises(ValueError, match="from 1 to 16 bytes, got 0"):
         DataType.ascii(0)
     with pytest.raises(ValueError):
         DataType("ascii")
+
+
+def test_a_registered_code_is_its_own_datatype() -> None:
+    # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, and ISO 10962
+    # six: each is a datatype storing exactly that, not a name over a width.
+    currency = DataType("currency")
+
+    assert currency.id == "currency"
+    assert currency.kind == "string"
+    assert str(currency) == "currency"
+    assert currency.ascii_width == 3
+    assert currency != DataType("ascii24")
+    assert DataType(" CURRENCY ") == currency
+    assert eval(repr(currency), {"DataType": DataType}) == currency
+
+    for name, width in [("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)]:
+        dtype = DataType(name)
+        assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "string")
+
+    # The packed integer is the value's own bytes, exactly as for a width.
+    assert currency.ascii_packed("USD") == DataType("ascii24").ascii_packed("USD")
+    assert currency.ascii_value(0x555344) == "USD"
+    with pytest.raises(ValueError, match="at most 2 bytes"):
+        DataType("country").ascii_packed("USD")
+    with pytest.raises(ValueError, match="unknown datatype"):
+        DataType("isin")
+
+
+def test_a_registered_code_carries_its_identity_across_arrow() -> None:
+    ccy = Field("ccy", "currency")
+    arrow_field = ccy.into_arrow()
+
+    assert arrow_field.type == pa.binary(3)
+    assert arrow_field.metadata == {
+        b"ARROW:extension:name": b"yggdryl.currency",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow_field) == ccy
+
+    # The same three bytes under the width's own name are the width, and
+    # under no name at all are a plain fixed binary.
+    assert Field.from_arrow(Field("ccy", "ascii24").into_arrow()) == Field(
+        "ccy", "ascii24"
+    )
+    assert Field.from_arrow(pa.field("ccy", pa.binary(3))) == Field(
+        "ccy", "fixed_size_binary(3)"
+    )
+
+    assert ccy.arrow_scalar("USD") == pa.scalar(b"USD", pa.binary(3))
+    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == [
+        b"USD",
+        b"EU\x00",
+    ]
+    with pytest.raises(ValueError, match="at most 3 bytes"):
+        ccy.cast_arrow_array(pa.array(["EURO"]))
 
 
 def test_ascii_widths_pad_into_arrow_storage_and_trim_out_of_it() -> None:

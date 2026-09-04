@@ -552,11 +552,6 @@ impl PartitionSpec {
             // A partition value is nullable even when its source is not: a
             // spec can retire a field, and `void` produces nothing but null.
             let mut child = Field::new(field.name.as_str(), dtype, true);
-            if child.dtype() == source.dtype() {
-                if let Some(declared) = source.as_iceberg().declared_type() {
-                    child.as_iceberg_mut().set_declared_type(declared)?;
-                }
-            }
             child.set_parquet_field_id(field.field_id);
             child.set_partition(true);
             child

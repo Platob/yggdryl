@@ -14,8 +14,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{Field, FieldRef};
 use crate::datatype::{
-    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, arrow_dtype_to_ffi,
-    arrow_extension_parts, is_variant_storage,
+    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, GUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
+    arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
 use crate::{DataType, Error, GeospatialType, Metadata, Result};
 
@@ -222,6 +222,16 @@ pub(crate) enum RecognizedExtension {
     /// The `yggdryl.ascii` extension over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)`,
     /// holding the exact width the storage names.
     Ascii(DataType),
+    /// A code's own `yggdryl.{country,currency,mic,cfi}` over the
+    /// `FixedSizeBinary` width that code fixes.
+    ///
+    /// It is separate from [`Self::Ascii`] because the identity is the point:
+    /// three bytes under `yggdryl.currency` are a currency and three bytes
+    /// under `yggdryl.ascii` are an `ascii24`, and neither imports as the
+    /// other.
+    Code(DataType),
+    /// The canonical `arrow.uuid` over `FixedSizeBinary(16)`.
+    Guid,
 }
 
 impl RecognizedExtension {
@@ -236,7 +246,8 @@ impl RecognizedExtension {
                     DataType::Geometry(Arc::new(geospatial))
                 }
             }
-            Self::Ascii(dtype) => dtype,
+            Self::Ascii(dtype) | Self::Code(dtype) => dtype,
+            Self::Guid => DataType::Guid,
         }
     }
 }
@@ -244,8 +255,10 @@ impl RecognizedExtension {
 /// Recognizes the Arrow extension spellings the first-class datatypes ride:
 /// `geoarrow.wkb` over Binary storage, the canonical `arrow.parquet.variant`
 /// over its exact storage struct with an empty extension metadata document,
-/// and `yggdryl.ascii` over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)` with an empty or
-/// absent document.
+/// `yggdryl.ascii` over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)`, each
+/// registered code's own `yggdryl.{country,currency,mic,cfi}` over the width
+/// that code fixes, and the canonical `arrow.uuid` over
+/// `FixedSizeBinary(16)`, each with an empty or absent document.
 ///
 /// Any other pairing keeps today's behavior exactly - a foreign extension
 /// name, one of ours over a storage it does not spell, a variant or an ASCII
@@ -284,6 +297,16 @@ pub(crate) fn recognized_arrow_extension(
         ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
             ArrowDataType::FixedSizeBinary(width @ (2 | 3 | 4 | 8 | 12 | 16)) => {
                 Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
+            }
+            _ => None,
+        }),
+        GUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
+                .then_some(RecognizedExtension::Guid))
+        }
+        code if document.unwrap_or("").is_empty() => Ok(match storage {
+            ArrowDataType::FixedSizeBinary(width) => {
+                code_for_extension(code, *width).map(RecognizedExtension::Code)
             }
             _ => None,
         }),

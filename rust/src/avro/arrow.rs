@@ -242,8 +242,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Int64 | DataType::UInt32 => plain("long"),
         DataType::Float16 | DataType::Float32 => plain("float"),
         DataType::Float64 => plain("double"),
-        // An ASCII width is text on the wire; the cast plan trims the
-        // padding before the encoder sees a value.
+        // An ASCII width, and a code over one, is text on the wire; the cast
+        // plan trims the padding before the encoder sees a value.
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View
@@ -252,7 +252,14 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         | DataType::Ascii32
         | DataType::Ascii64
         | DataType::Ascii96
-        | DataType::Ascii128 => plain("string"),
+        | DataType::Ascii128
+        | DataType::Country
+        | DataType::Currency
+        | DataType::Mic
+        | DataType::Cfi => plain("string"),
+        // Avro's `uuid` annotates a string with the hyphenated spelling,
+        // which is what a GUID value already is.
+        DataType::Guid => logical("string", "uuid"),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
@@ -325,6 +332,10 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                     | DataType::Ascii64
                     | DataType::Ascii96
                     | DataType::Ascii128
+                    | DataType::Country
+                    | DataType::Currency
+                    | DataType::Mic
+                    | DataType::Cfi
             ) {
                 return Err(unspellable(dtype));
             }

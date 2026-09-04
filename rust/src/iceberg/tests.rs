@@ -5918,10 +5918,11 @@ mod interop_regressions {
 }
 
 #[test]
-fn a_uuid_column_keeps_its_declared_type_through_a_round_trip() {
-    // `uuid` and `fixed[16]` share one physical type; the declared spelling
-    // must survive, or rewriting another writer's metadata demotes the
-    // column. Surfaced by the Spark interop exchange.
+fn a_uuid_column_keeps_its_type_through_a_round_trip() {
+    // `uuid` and `fixed[16]` were one physical type until `guid` became a
+    // datatype of its own; the spelling now survives in the datatype, so
+    // rewriting another writer's metadata cannot demote the column. Surfaced
+    // by the Spark interop exchange.
     let document = crate::json::from_bytes(
         br#"{"type":"struct","schema-id":0,"fields":[
             {"id":1,"name":"id","required":true,"type":"long"},

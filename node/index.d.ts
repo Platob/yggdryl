@@ -414,16 +414,6 @@ export declare class DataType {
    */
   static ascii(width: number): DataType
   /**
-   * Resolves a registered logical name such as `currency`, ASCII
-   * case-insensitively and trimmed, to the ASCII width it names.
-   */
-  static fromLogicalName(name: string): DataType
-  /**
-   * The logical names registered over an ASCII width, keyed by name in
-   * registration order.
-   */
-  static logicalNames(): Record<string, DataType>
-  /**
    * Creates a geometry datatype: planar features as Well-Known Binary.
    * Omitting `crs` fills the `OGC:CRS84` default shared with Parquet and
    * Iceberg; a geometry takes no edge algorithm.

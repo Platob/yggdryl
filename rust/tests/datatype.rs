@@ -2,6 +2,8 @@
 mod arrow;
 #[path = "datatype/ascii.rs"]
 mod ascii;
+#[path = "datatype/coded.rs"]
+mod coded;
 #[path = "datatype/compatibility.rs"]
 mod compatibility;
 #[path = "datatype/default.rs"]
