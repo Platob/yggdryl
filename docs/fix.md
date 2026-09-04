@@ -102,6 +102,50 @@ stored text, so reading aliases allocates nothing; `tags()` parses integers and 
     assert field.fix.tag is None
     ```
 
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field } = require('yggdryl')
+
+    const field = Field.from('OrderQty: decimal128(20, 8)')
+    field.fix.tag = 38
+    field.fix.aliases = ['Qty', 'Quantity']
+    field.fix.description = 'Quantity ordered.'
+    field.setDisplay('Order quantity')
+
+    assert.equal(field.fix.tag, 38)
+    assert.deepEqual(field.fix.tags, [])
+    assert.deepEqual(field.fix.aliases, ['Qty', 'Quantity'])
+    assert.equal(field.fix.description, 'Quantity ordered.')
+    // Stored as ordinary namespaced text, in the one metadata map.
+    assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
+    assert.equal(field.fix.size, 3)
+
+    // A refusal names the full key and leaves the field unchanged.
+    assert.throws(() => {
+      field.fix.tags = [152, 152]
+    }, /fix:tags/)
+    assert.equal(field.has('fix:tags'), false)
+    assert.throws(() => {
+      field.fix.tag = -1
+    }, /fix:tag/)
+    assert.equal(field.fix.tag, 38)
+
+    // A tag crosses as a number and is never narrowed, and the vocabulary is
+    // answered only by the fix view.
+    assert.throws(() => {
+      field.fix.tag = 2 ** 31
+    }, /signed 32-bit integer/)
+    assert.throws(() => field.iceberg.tag, TypeError)
+
+    // An empty array removes a list property; `delete` removes any of them.
+    field.fix.aliases = []
+    assert.deepEqual(field.fix.aliases, [])
+    field.fix.delete('tag')
+    assert.equal(field.fix.tag, null)
+    ```
+
 ## Nesting needs no second type
 
 A component is a Struct field whose children are its members; a repeating group is a List field
@@ -151,6 +195,28 @@ path, and `NoPartyIDs.item.PartyID` spells the same route.
     assert registry.field_by_path("NoPartyIDs.item.PartyRole").name == "PartyRole"
     # A member is reached through its group, not registered on its own.
     assert registry.get_field_by_name("PartyID") is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, fields, fix } = require('yggdryl')
+
+    const partyId = Field.from('PartyID: utf8')
+    partyId.fix.tag = 448
+    const role = Field.from('PartyRole: int32')
+    role.fix.tag = 452
+    const item = fields.struct('item', [partyId, role], { nullable: false })
+    const group = fields.list('NoPartyIDs', item)
+    group.fix.tag = 453
+
+    const registry = fix.FixRegistry.fromFields([group])
+    assert.equal(registry.fieldByPath('NoPartyIDs').fix.tag, 453)
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
+    assert.equal(registry.fieldByPath('NoPartyIDs.item.PartyRole').name, 'PartyRole')
+    // A member is reached through its group, not registered on its own.
+    assert.equal(registry.getFieldByName('PartyID'), null)
     ```
 
 ## The registry resolves in tiers
@@ -299,6 +365,55 @@ and answers the field.
     assert registry.get_field_by_tag(65) is None
     ```
 
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field, fix } = require('yggdryl')
+
+    function fixField(name, dtype, tag, ...aliases) {
+      const field = Field.from(`${name}: ${dtype}`)
+      field.fix.tag = tag
+      if (aliases.length !== 0) field.fix.aliases = aliases
+      return field
+    }
+
+    const registry = fix.FixRegistry.fromFields([
+      fixField('Symbol', 'utf8', 55, 'Ticker'),
+      fixField('Price', 'decimal128(20, 8)', 44, 'Px'),
+    ])
+
+    // Any spelling of a name or alias answers the canonical field.
+    assert.equal(registry.fieldByName('TICKER').name, 'Symbol')
+    assert.equal(registry.field('px').name, 'Price')
+    assert.ok(registry.getField(55).equals(registry.getField('symbol')))
+    assert.equal(registry.has(44), true)
+    assert.equal(registry.has('44'), false, 'a tag query never consults names')
+    assert.throws(() => registry.fieldByTag(35), /tag 35/)
+
+    // A key another field holds is a conflict naming both; nothing changes.
+    assert.throws(
+      () => registry.insert(fixField('SymbolSfx', 'utf8', 65, 'ticker')),
+      /held by Symbol/,
+    )
+    assert.equal(registry.size, 2)
+
+    // A merge keeps what only the stored field declared and adds the rest.
+    const incoming = fixField('SYMBOL', 'utf8', 55, 'Sym')
+    incoming.fix.tags = [65]
+    registry.update(incoming)
+    const merged = registry.fieldByTag(65)
+    assert.equal(merged.name, 'SYMBOL')
+    assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
+    // A datatype disagreement is refused, never widened.
+    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 55)))
+    assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
+
+    assert.deepEqual([...registry].map((field) => field.name), ['Price', 'SYMBOL'])
+    assert.equal(registry.remove('sym').name, 'SYMBOL')
+    assert.equal(registry.getFieldByTag(65), null)
+    ```
+
 ## Storage is shards under one handle
 
 A registry reads and writes through one [`IOBase`](io.md) folder handle and nothing else. Shards
@@ -409,6 +524,51 @@ then removes any `<n>.json` no field populates, so a reload cannot resurrect a r
     shutil.rmtree(workspace)
     ```
 
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, fix } = require('yggdryl')
+
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-fix-'))
+    const root = path.join(workspace, 'dictionary')
+
+    const declared = []
+    for (const [tag, name] of [[35, 'MsgType'], [99, 'StopPx'], [100, 'NoAllocs'], [150, 'ExecType']]) {
+      const field = Field.from(`${name}: utf8`)
+      field.fix.tag = tag
+      declared.push(field)
+    }
+    declared[3].fix.tags = [20]
+    const registry = fix.FixRegistry.fromFields(declared)
+    registry.writeInto(root)
+
+    // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
+    const shards = fs.readdirSync(path.join(root, 'records')).sort()
+    assert.deepEqual(shards, ['0.json', '1.json'])
+
+    const reloaded = fix.FixRegistry.fromHandle(root)
+    assert.ok(reloaded.equals(registry))
+    assert.equal(reloaded.fieldByTag(20).name, 'ExecType')
+
+    // Removing the only fields of a shard removes the shard on the next write.
+    registry.remove(100)
+    registry.remove(150)
+    registry.writeInto(root)
+    assert.equal(fs.existsSync(path.join(root, 'records', '1.json')), false)
+    assert.equal(fix.FixRegistry.fromHandle(root).size, 2)
+
+    // A folder that is not there loads as empty and is not created.
+    const absent = path.join(root, 'absent')
+    assert.equal(fix.FixRegistry.fromHandle(absent).size, 0)
+    assert.equal(fs.existsSync(absent), false)
+
+    fs.rmSync(workspace, { recursive: true, force: true })
+    ```
+
 The repository ships a seed dictionary at `config/fix/records/<shard>.json`, written by `write_into`
 itself: a small FIX 4.4 subset - the standard header and trailer, the order and execution fields,
 the `Parties` component as a repeating group - with the specification's wording as each
@@ -451,6 +611,24 @@ resolution order.
     assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
     assert registry.field_by_name("ClOrdID").display == "Client order ID"
     assert len(registry) < 40
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    // The seed this repository tracks, named from the repository root.
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+
+    assert.equal(registry.fieldByTag(55).name, 'Symbol')
+    assert.equal(registry.fieldByName('ticker').name, 'Symbol')
+    assert.equal(registry.fieldByTag(20).name, 'ExecType')
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
+    assert.equal(registry.fieldByName('ClOrdID').display, 'Client order ID')
+    assert.ok(registry.size < 40)
     ```
 
 ## One default registry per process
@@ -525,6 +703,29 @@ directory, because behaviour must not depend on where a process was started.
     # Once resolved, the default is fixed.
     with pytest.raises(ValueError, match="already resolved"):
         install_global_registry(FixRegistry())
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fields, fix } = require('yggdryl')
+
+    // Install the tracked seed as this process's default before anything asks for it.
+    const seed = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+    fix.installGlobalRegistry(seed)
+
+    const global = fix.globalRegistry()
+    assert.equal(global.fieldByTag(55).name, 'Symbol')
+    assert.ok(global.equals(fix.globalRegistry()), 'resolved once')
+
+    // A message built without a registry links that same dictionary.
+    const root = fields.struct('row', [global.fieldByTag(55)], { nullable: false })
+    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(global))
+
+    // Once resolved, the default is fixed.
+    assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
     ```
 
 ## A message carries its registry
@@ -653,6 +854,60 @@ ordered and canonicalized against the same root.
     assert FixMsg(root, message.value, registry) == message
     ```
 
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Scalar, fields, fix } = require('yggdryl')
+
+    const symbol = Field.from('Symbol: utf8 not null')
+    symbol.fix.tag = 55
+    symbol.fix.aliases = ['Ticker']
+    const qty = Field.from('OrderQty: int64 not null')
+    qty.fix.tag = 38
+    const partyId = Field.from('PartyID: utf8')
+    partyId.fix.tag = 448
+    const parties = fields.list('NoPartyIDs', fields.struct('item', [partyId], { nullable: false }))
+    parties.fix.tag = 453
+    const registry = fix.FixRegistry.fromFields([symbol, qty, parties])
+
+    // The root carries a tag no dictionary explains, under its rendered name.
+    const root = fields.struct(
+      'NewOrderSingle',
+      [qty, symbol, parties, Field.from('9999: utf8')],
+      { nullable: false },
+    )
+    const message = new fix.FixMsg(
+      root,
+      {
+        Symbol: 'AAPL',
+        OrderQty: 100n,
+        NoPartyIDs: [{ PartyID: 'BROKER' }],
+        9999: 'custom',
+      },
+      registry,
+    )
+
+    // The plain object became the ordered row the root declares.
+    assert.equal(message.value.kind, 'sequence')
+    assert.equal(message.byTag(38).asJs(), 100)
+    assert.equal(message.byName('ticker').asJs(), 'AAPL')
+    assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
+    assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
+    assert.ok(message.get(55).equals(message.getByTag(55)))
+    assert.throws(() => message.at('NoPartyIDs.PartyID'), /a fix value/)
+    assert.deepEqual(
+      [...message].map(([name]) => name),
+      ['OrderQty', 'Symbol', 'NoPartyIDs', '9999'],
+    )
+
+    // Schema and value serialize through the paths every field and value share.
+    const document = message.toJSON()
+    assert.equal(document.field.dtype.fields[1].metadata['fix:tag'], '55')
+    assert.deepEqual(document.value[1], 'AAPL')
+    assert.ok(new fix.FixMsg(root, message.value, registry).equals(message))
+    ```
+
 ## Edge cases
 
 - Folding is ASCII only: `Größe` and `GRÖSSE` are two names. FIX spellings are ASCII, and a
@@ -779,3 +1034,43 @@ indistinguishable here, and why a caller resolving the same field repeatedly sho
 answer rather than ask again. A miss is the one case that is reliably cheaper, because nothing is
 wrapped. `from_handle` stays within a fifth of the native load: the shards are listed, read and
 parsed natively, and only the finished registry crosses.
+
+### The JavaScript boundary
+
+```console
+npm run --prefix node bench:fix
+```
+
+One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon
+(`npm run --prefix node build`) under Node.js v24.18.0, whole-loop rate over the same tracked seed
+of 34 fields; the two loads run a thousandth of the hit count:
+
+| JavaScript operation | rate | per call |
+| --- | ---: | ---: |
+| `getFieldByTag(55)` hit | 295k/s | 3.39 us |
+| `getFieldByTag(20)` alternate-tag hit | 341k/s | 2.94 us |
+| `getFieldByName('Symbol')` hit | 273k/s | 3.66 us |
+| `getFieldByName('symbol')` hit, folded query | 311k/s | 3.22 us |
+| `getFieldByName('ticker')` alias hit | 265k/s | 3.77 us |
+| `getFieldByTag(9999)` miss | 1.54M/s | 649 ns |
+| `getFieldByName('Nope')` miss | 1.16M/s | 859 ns |
+| `getField(55)` generic tag hit | 279k/s | 3.59 us |
+| `getField('Symbol')` generic name hit | 280k/s | 3.57 us |
+| `fieldByPath`, one segment | 295k/s | 3.39 us |
+| `fieldByPath`, two segments (`NoPartyIDs.PartyID`) | 270k/s | 3.70 us |
+| `FixMsg.getByTag(55)` | 271k/s | 3.69 us |
+| `FixMsg.getByName('ticker')` | 233k/s | 4.30 us |
+| `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 276k/s | 3.62 us |
+| `fromHandle`, the seed (3 shards, 34 fields) | 534/s | 1.87 ms |
+| `fromHandle`, 1000 generated fields (11 shards) | 43/s | 23.3 ms |
+
+A miss is the honest price of the crossing itself: 649 ns for the key coercion, the native probe,
+and `null` back. Every hit adds the wrapper the answer is put in, and that wrapper is what the rest
+of the numbers are made of - `field.clone()` on an already-held native `Field` costs 3.0 us on this
+machine, so a hit at 3.4 us is a 649 ns lookup plus one `Field` materialization. The native tag hit
+is 4.5 ns, three orders of magnitude below the crossing, which is why the tiers the Rust table
+separates are indistinguishable here and why a caller resolving the same field repeatedly should
+hold the answer rather than ask again. `FixMsg`'s accessors wrap a `Scalar` instead and cost the
+same shape. `fromHandle` stays close to the native load - the shards are listed, read and parsed
+natively, and only the finished registry crosses - and scales with shard count, not with the fields
+in them.

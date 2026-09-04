@@ -17,7 +17,7 @@ use crate::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
         mime_type_from_input,
     },
-    napi_error, ordering_value,
+    napi_error, napi_type_error, ordering_value,
     record::arrow_scalar_to_ipc,
     record::field_value_to_js,
     uri::{JsUri, JsUrl, JsUrn, url_from_input},
@@ -1509,6 +1509,24 @@ impl JsProtocolField {
     fn view(&self) -> CoreProtocolField<'_> {
         self.field.inner.protocol(&self.scheme)
     }
+
+    /// Refuse a typed FIX property on a view of another protocol.
+    ///
+    /// The typed vocabulary belongs to one protocol, so it is answered only by
+    /// the view `field.fix` returns; every other scheme reads and writes its
+    /// own properties through the Map-like surface above.
+    fn require_fix(&self, env: Env, property: &str) -> Result<()> {
+        if self.scheme == CoreScheme::FIX {
+            return Ok(());
+        }
+        Err(napi_type_error(
+            env,
+            format!(
+                "{property} is a fix property, and this is a {} view",
+                self.scheme.as_str()
+            ),
+        ))
+    }
 }
 
 #[napi]
@@ -1616,6 +1634,103 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn display(&self) -> Option<String> {
         self.view().display().map(ToOwned::to_owned)
+    }
+
+    /// The canonical FIX tag, on the `fix` view.
+    ///
+    /// Reads and writes `fix:tag` through the core's own typed accessors, so
+    /// the property name is never spelled at a call site. `view.delete('tag')`
+    /// removes it, the way every other property is removed.
+    #[napi(getter)]
+    pub fn tag(&self, env: Env) -> Result<Option<i32>> {
+        self.require_fix(env, "tag")?;
+        self.field.inner.as_fix().tag().map_err(napi_error)
+    }
+
+    /// Record the canonical FIX tag, rejecting anything but an exact `i32`.
+    #[napi(setter)]
+    pub fn set_tag(&mut self, env: Env, value: f64) -> Result<()> {
+        self.require_fix(env, "tag")?;
+        let tag = exact_i32(value, "tag")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_tag(tag)
+            .map_err(napi_error)
+    }
+
+    /// The alternate tags, highest priority first.
+    ///
+    /// An absent property is an empty array, and assigning an empty one
+    /// removes it: a field states alternate tags only when it has them.
+    #[napi(getter)]
+    pub fn tags(&self, env: Env) -> Result<Vec<i32>> {
+        self.require_fix(env, "tags")?;
+        self.field.inner.as_fix().tags().map_err(napi_error)
+    }
+
+    /// Record the alternate tags; an empty array removes the property.
+    #[napi(setter)]
+    pub fn set_tags(&mut self, env: Env, values: Vec<f64>) -> Result<()> {
+        self.require_fix(env, "tags")?;
+        let tags = values
+            .into_iter()
+            .map(|value| exact_i32(value, "tags"))
+            .collect::<Result<Vec<i32>>>()?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_tags(&tags)
+            .map_err(napi_error)
+    }
+
+    /// The alternate names, highest priority first.
+    ///
+    /// Assigning an empty array removes the property.
+    #[napi(getter)]
+    pub fn aliases(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "aliases")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .aliases()
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    /// Record the aliases; an empty array removes the property.
+    #[napi(setter)]
+    pub fn set_aliases(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "aliases")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_aliases(values)
+            .map_err(napi_error)
+    }
+
+    /// The specification's own wording for this field.
+    #[napi(getter)]
+    pub fn description(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "description")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .description()
+            .map(ToOwned::to_owned))
+    }
+
+    /// Record the specification's own wording for this field.
+    #[napi(setter)]
+    pub fn set_description(&mut self, env: Env, value: String) -> Result<()> {
+        self.require_fix(env, "description")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_description(value)
+            .map_err(napi_error)
     }
 
     /// Merge another protocol view's properties into this one, in place.

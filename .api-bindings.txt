@@ -120,7 +120,8 @@
     statics: from, fromString, fromJSON, fromJSONBytes, fromArrow
     instance: accept, acceptEncoding, acceptLanguage, acceptRanges, alias, arrow, az, cacheControl, cast, castArrow, clear, clearProperties, clone, comment, compare, contentDisposition, contentEncoding, contentLanguage, contentLength, contentLocation, contentRange, contentType, defaultArrowScalar, defaultJSHint, defaultJSValue, delete, dictionaryId, dictionaryIsOrdered, display, dtype, entries, equals, etag, expires, explodeFields, field, fieldAt, fieldByPath, fieldLen, fieldProperties, file, fix, get, getField, getFieldAt, getFieldByPath, getProperty, glue, gs, has, hasPartitionFields, hasProperty, http, httpLocation, iceberg, intoSchemeCompat, isPartition, keys, lastModified, location, mediaType, mergeWith, mimeType, mysql, name, nullable, onlyPartitionFields, pandas, parquetFieldId, partitionFieldLen, partitionFieldNames, partitionFields, polars, postgres, postgresql, propertyIter, protocol, range, removeAccept, removeAcceptEncoding, removeAcceptLanguage, removeAcceptRanges, removeAlias, removeCacheControl, removeComment, removeContentDisposition, removeContentEncoding, removeContentLanguage, removeContentLength, removeContentLocation, removeContentRange, removeContentType, removeDisplay, removeEtag, removeExpires, removeField, removeFieldAt, removeFieldByPath, removeHttpLocation, removeLastModified, removeLocation, removeMediaType, removeMimeType, removeParquetFieldId, removeProperty, removeRange, removeVary, s3, set, setAccept, setAcceptEncoding, setAcceptLanguage, setAcceptRanges, setAlias, setCacheControl, setComment, setContentDisposition, setContentEncoding, setContentLanguage, setContentLength, setContentLocation, setContentRange, setContentType, setDictionaryOptions, setDisplay, setDtype, setEtag, setExpires, setField, setFieldAt, setFieldByPath, setHttpLocation, setLastModified, setLocation, setMediaType, setMimeType, setName, setNullable, setParquetFieldId, setPartition, setProperty, setRange, setVary, showDiff, showDiffs, size, spark, sql, stableHash, toJSON, toJSONBytes, toString, unnestFields, update, urn, values, vary, withoutPartitionFields, withPartition, withPartitionFields
   ProtocolField
-    instance: clear, comment, delete, display, entries, get, has, key, keys, mergeWith, prefix, scheme, set, size, toJSON, toString, update, values
+    instance: aliases, clear, comment, delete, description, display, entries, get, has, key, keys, mergeWith, prefix, scheme, set, size, tag, tags, toJSON, toString, update, values
+    typed fix vocabulary: tag, tags, aliases, description are accessor pairs answered only by the `fix` view; every other scheme throws a TypeError naming its own scheme
   MimeType
     statics: from, fromContentCoding, fromContentType, fromExtension, fromPath, fromString, fromJSON, OCTET_STREAM, JSON, JSON_LINES, YAML, TOML, CSV, TSV, PARQUET, ARROW_FILE, ARROW_STREAM, AVRO, ORC, PUFFIN, PLAIN_TEXT, MARKDOWN, HTML, CSS, JAVASCRIPT, XML, PDF, CBOR, MESSAGE_PACK, PROTOBUF, SQLITE3, PNG, JPEG, GIF, WEBP, SVG, MP3, WAV, OGG, FLAC, MP4, WEBM, WOFF, WOFF2, TTF, OTF, XLS, XLSX, ODS, DOC, DOCX, GZIP, ZSTD, BROTLI, ZLIB, COMPRESS, BZIP2, XZ, LZ4, SNAPPY, ZIP, SEVEN_ZIP, RAR, TAR
     instance: clone, compare, contentCoding, equals, extension, format, isApplication, isArchive, isAudio, isBinary, isEncoding, isFont, isHaptics, isImage, isIo, isKnown, isMessage, isModel, isMultipart, isStructured, isTabular, isText, isTextual, isVideo, stableHash, structuredSuffix, subtype, toJSON, toString, topLevel
@@ -166,6 +167,16 @@
   avro
     statics: Schema, blocks, dumps, dumpsSingle, loads, loadsSingle
     decode limits: maxDepth, maxInputBytes, maxNodes; blocks is a fused lazy iterator
+  fix
+    statics: FixRegistry, FixMsg, globalRegistry, installGlobalRegistry
+  fix.FixRegistry
+    statics: fromFields, fromHandle
+    instance: clone, equals, field, fieldByName, fieldByPath, fieldByTag, get, getField, getFieldByName, getFieldByPath, getFieldByTag, has, insert, keys, remove, size, stableHash, toJSON, toString, update, writeInto, Symbol.iterator
+    keys: a number tag (must be an exact i32) or a string name/dotted path; locations take IOBase | Url | string
+    protocol: mutable; equality by fields; `keys()` is a lazy Generator<Field> and `Symbol.iterator` walks it; insert/update/remove refuse while a message, the process default, or an unfinished walk shares it
+  fix.FixMsg
+    instance: at, byName, byPath, byTag, clone, entries, equals, field, get, getByName, getByPath, getByTag, registry, stableHash, toJSON, toString, value, Symbol.iterator
+    protocol: immutable value - stable equality, stableHash, clone, `toJSON` as {field, value}; `entries()` is a lazy Generator<[string, Scalar]> and `Symbol.iterator` walks it; the constructor widens its value through Scalar.fromJs
   iceberg
     statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
   iceberg.IcebergOptions

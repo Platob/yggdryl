@@ -40,6 +40,7 @@
     "bench:arrowfs": "node benchmarks/arrowfs.js",
     "bench:codec": "node benchmarks/codec.js",
     "bench:defaults": "node benchmarks/defaults.js",
+    "bench:fix": "node benchmarks/fix.js",
     "bench:io": "node benchmarks/io.js",
     "bench:text": "node benchmarks/text.js",
     "bench:records": "node benchmarks/records.js",

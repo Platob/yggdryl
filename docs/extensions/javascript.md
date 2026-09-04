@@ -43,6 +43,7 @@ declarations are checked against the tests that use them.
 | `IOBase` | [io](../io.md) |
 | `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
+| `fix` | [fix](../fix.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
 | `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
@@ -781,6 +782,96 @@ fs.rmSync(warehouse, { recursive: true, force: true })
 
 The walk is the same in every language: the [iceberg](../iceberg.md) page shows each of these
 steps beside its Rust and Python form.
+
+## FIX is a namespace
+
+`fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()` and
+`fix.installGlobalRegistry()` are the whole surface; the `fix:` vocabulary itself is four accessor
+pairs on the `field.fix` protocol view - `tag`, `tags`, `aliases`, `description` - and reading or
+writing one on any other protocol's view is a `TypeError` naming that view's scheme. Resolution,
+folding, merging, sharding and validation are the core's, documented on the [fix](../fix.md) page.
+What follows is only what the crossing adds.
+
+**Keys.** A tag is a `number` and a name or a dotted path is a `string`, coerced once per call.
+A tag is checked exactly: a fractional value or one outside `i32` throws rather than being narrowed
+into a different tag, which is the silent-truncation bug this boundary exists to prevent. Anything
+that is neither - a `bigint`, an object, `null` - is a `TypeError` naming what was given.
+`registry.get(key)`, `registry.has(key)`, `registry.getField(key)`, `registry.field(key)`,
+`registry.remove(key)`, `message.get(key)` and `message.at(key)` all take that same pair. The
+message's failing half is `at` rather than the core's `value`, because `value` is the property
+holding the whole message value.
+
+**Locations.** `FixRegistry.fromHandle` and `registry.writeInto` take what every folder-shaped
+entry point takes - an `IOBase` handle, a `Url`, or the string naming one - through the same
+coercion `new iceberg.Catalog(warehouse)` uses. Naming a folder that is not there is not an error:
+it loads as the empty registry and creates nothing, and a write creates the folder and its parents.
+
+**Errors.** A native refusal crosses unchanged, carrying the message the Rust error produced:
+absence from `fieldByTag`, `fieldByName`, `fieldByPath`, `field` and every `FixMsg` failing half,
+a conflicting insert, a datatype disagreement in a merge, a malformed `fix:` property, a shard that
+does not parse, an unresolved process default. The `get`-prefixed twins answer `null` instead. Only
+the two boundary refusals - a key that is neither a tag nor a name, and the typed vocabulary asked
+of another protocol's view - arrive as a `TypeError`, because those are argument mistakes rather
+than answers.
+
+**Mutation.** `insert`, `update` and `remove` need the registry unshared: once a `FixMsg` links it,
+it is installed as the process default, or an unfinished `keys()` walk holds it, a mutation throws
+rather than changing a dictionary underneath something that already resolved against it. A walk
+stops sharing when it is drained or when a `for...of` `break` returns it; `registry.clone()` is the
+independently mutable deep copy.
+
+**Values.** Both wrappers implement the JavaScript value protocols over their native state:
+`equals`, `stableHash()` as a `bigint`, `clone()`, `toString()` and `toJSON()`. Iterating a registry
+walks its fields in canonical-tag order and iterating a message walks its `[name, value]` pairs in
+the root's declared order - both over the core's own lazy cursor, so nothing is collected crossing
+the boundary. `FixMsg`'s constructor is the one widening gate: a plain object is read through
+`Scalar.fromJs` as the record its Struct root declares, and the core alone types, orders and
+validates it.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+const { Field, IOBase, Url, fields, fix } = require('yggdryl')
+
+const seed = path.resolve('config/fix')
+
+// One folder, named however JavaScript names one - the coercion `Catalog` uses.
+const url = Url.fromPath(seed)
+for (const location of [seed, url.toString(), url, new IOBase(seed)]) {
+  assert.equal(fix.FixRegistry.fromHandle(location).size, 34)
+}
+const registry = fix.FixRegistry.fromHandle(seed)
+
+// A key is a number tag or a string name, and a tag that would not fit i32 is
+// refused rather than narrowed into a different one.
+assert.ok(registry.get(55).equals(registry.get('symbol')))
+assert.throws(() => registry.getFieldByTag(2 ** 31), /tag must be a signed 32-bit integer/)
+assert.throws(() => registry.get(55n), {
+  name: 'TypeError',
+  message: 'key must be a number tag or a string name, got BigInt',
+})
+
+// Absence throws with the native message; the `get` half answers null.
+assert.throws(() => registry.fieldByName('Nope'), /expected a fix field at "name/)
+assert.equal(registry.getFieldByName('Nope'), null)
+assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
+
+// The typed vocabulary is answered by the fix view alone.
+const symbol = registry.fieldByTag(55)
+assert.equal(symbol.fix.tag, 55)
+assert.throws(() => symbol.iceberg.tag, { name: 'TypeError', message: /iceberg/ })
+
+// A message shares the dictionary it resolved against, so mutating it refuses.
+const root = fields.struct('row', [symbol], { nullable: false })
+const message = new fix.FixMsg(root, { Symbol: 'AAPL' }, registry)
+assert.throws(() => registry.remove(55), /shared with a message/)
+assert.equal(registry.clone().remove(55).name, 'Symbol')
+
+// Both collections are lazy native iterators the loader gives the protocol.
+assert.equal([...registry].length, 34)
+assert.deepEqual([...message].map(([name]) => name), ['Symbol'])
+assert.equal(message.at('ticker').asJs(), 'AAPL')
+```
 
 ## Errors
 
