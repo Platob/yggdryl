@@ -1601,6 +1601,24 @@ mod vocabulary {
         assert!(refused.contains("currency"), "{refused}");
     }
 
+    /// Every constant names an enum, which is what makes it usable as one:
+    /// an ISO code is already an identifier, so no two members collide.
+    #[test]
+    fn every_constant_names_its_own_enum_members() {
+        for (name, values) in lists() {
+            let members = AsciiDictionary::from_logical_name(name)
+                .unwrap()
+                .into_members()
+                .unwrap_or_else(|error| panic!("{name} must name members: {error}"));
+            assert_eq!(members.len(), values.len(), "{name}");
+            for (position, (member, code)) in members.iter().enumerate() {
+                // A code is already an identifier, so the member is the code.
+                assert_eq!(member, values[position], "{name}");
+                assert_eq!(*code, position as i64, "{name}");
+            }
+        }
+    }
+
     /// The vocabulary encodes a column of its own codes without growing.
     #[test]
     fn a_prebuilt_column_encodes_against_the_constant_alone() {
