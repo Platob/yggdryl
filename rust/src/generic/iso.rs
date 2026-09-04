@@ -13,6 +13,13 @@
 //! duration - and the caller keeps its structural spelling instead. Parsing is
 //! strict about shape and total about meaning: `2026-02-30` is an error, not a
 //! guess.
+//!
+//! An hour past the end of the day is a reading rather than an error, and what
+//! it means is whose day it is: a time of day folds it modulo the day, so
+//! `25:30:00` is `01:30:00`; a datetime carries it into the following date, so
+//! `2026-08-17T25:30:00` is the 18th at `01:30`; and a duration keeps it plain,
+//! because `25:30:00` of elapsed time is twenty-five and a half hours and never
+//! half past one.
 
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
@@ -216,33 +223,25 @@ fn parse_date_at(text: &str, position: usize) -> Result<i32> {
     i32::try_from(days).map_err(|_| iso_error("date", position, "date is out of range"))
 }
 
-/// Parse `HH:MM:SS[.fraction]`, returning the count, unit, and end position.
+/// Read the optional `.fraction` at `position`, returning its count at the
+/// unit's full width, that unit, and the end position. A clock with no
+/// fraction reads zero at second resolution and does not move the position.
 ///
 /// The fraction accepts `_` digit-group separators - `.000_000` reads exactly
 /// as `.000000` - because that is how a log emitter that groups microseconds
 /// spells a clock. A separator is legal only *between* digits; the digit count
 /// with separators removed keeps the 1-to-9 rule, so grouping never changes
 /// the unit a width names.
-fn parse_clock_at(
+fn parse_fraction_at(
     text: &str,
     position: usize,
     target: &'static str,
 ) -> Result<(i64, TimeUnit, usize)> {
-    let hours = digits(text, position, 2, target)?;
-    literal(text, position + 2, b':', target)?;
-    let minutes = digits(text, position + 3, 2, target)?;
-    literal(text, position + 5, b':', target)?;
-    let seconds = digits(text, position + 6, 2, target)?;
-    if hours >= 24 || minutes >= 60 || seconds >= 60 {
-        return Err(iso_error(target, position, "clock reading out of range"));
+    if text.as_bytes().get(position) != Some(&b'.') {
+        return Ok((0, TimeUnit::Second, position));
     }
-    let whole = hours * 3_600 + minutes * 60 + seconds;
-    let mut end = position + 8;
-    if text.as_bytes().get(end) != Some(&b'.') {
-        return Ok((whole, TimeUnit::Second, end));
-    }
-    end += 1;
-    let start = end;
+    let start = position + 1;
+    let mut end = start;
     let mut width = 0_usize;
     let mut fraction: i64 = 0;
     loop {
@@ -277,23 +276,52 @@ fn parse_clock_at(
         return Err(iso_error(target, start, "fraction must hold 1 to 9 digits"));
     }
     let unit = unit_of_fraction(width);
-    let full = fraction_digits(unit);
     // A short fraction is right-padded to the unit's width: `.5` is `500`
     // milliseconds.
-    for _ in width..full {
+    for _ in width..fraction_digits(unit) {
         fraction *= 10;
     }
+    Ok((fraction, unit, end))
+}
+
+/// Parse `HH:MM:SS[.fraction]`, returning the count, unit, and end position.
+///
+/// The hour field is two digits and may name an hour past the end of the day,
+/// which the count states as it was written: the caller that owns the day
+/// decides whether that folds or carries. Minutes and seconds are calendar
+/// fields, so they stay under sixty.
+fn parse_clock_at(
+    text: &str,
+    position: usize,
+    target: &'static str,
+) -> Result<(i64, TimeUnit, usize)> {
+    let hours = digits(text, position, 2, target)?;
+    literal(text, position + 2, b':', target)?;
+    let minutes = digits(text, position + 3, 2, target)?;
+    literal(text, position + 5, b':', target)?;
+    let seconds = digits(text, position + 6, 2, target)?;
+    if minutes >= 60 || seconds >= 60 {
+        return Err(iso_error(target, position, "clock reading out of range"));
+    }
+    let whole = hours * 3_600 + minutes * 60 + seconds;
+    let (fraction, unit, end) = parse_fraction_at(text, position + 8, target)?;
     let per = per_second(unit).expect("a fraction width names a resolution unit");
     Ok((whole * per + fraction, unit, end))
 }
 
 /// Parse `HH:MM:SS[.fraction]` into a count of `unit` since midnight.
+///
+/// A clock past the end of its day folds into it, because a time of day is a
+/// place on one dial and `24:00:00` is the midnight that closes a shift as
+/// much as the one that opens the next: hours run to `99`, and the reading is
+/// taken modulo the day.
 pub(crate) fn parse_time(text: &str) -> Result<(i64, TimeUnit)> {
     let (count, unit, end) = parse_clock_at(text, 0, "time")?;
     if end != text.len() {
         return Err(iso_error("time", end, "trailing text after the time"));
     }
-    Ok((count, unit))
+    let per = per_second(unit).expect("the clock parsed at a resolution unit");
+    Ok((count.rem_euclid(DAY * per), unit))
 }
 
 /// Parse a naive `YYYY-MM-DDTHH:MM:SS[.fraction]`, returning the end position.
@@ -313,6 +341,10 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
 }
 
 /// Parse a naive datetime into a count of `unit` since the Unix epoch.
+///
+/// A clock past the end of its day carries into the following date, because a
+/// datetime names one point on the line rather than a place on the dial:
+/// `2026-08-17T24:00:00` is the 18th at midnight.
 pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
     let (count, unit, end) = parse_datetime_at(text, "datetime")?;
     if end != text.len() {
@@ -327,6 +359,9 @@ pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
 
 /// Parse a zoned instant: a local reading, an offset or `Z`, and optionally
 /// the zone's bracketed name, which wins over the offset when both appear.
+///
+/// The local reading carries an hour past the end of its day into the
+/// following date, as a naive datetime does.
 pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
     let (local, unit, mut end) = parse_datetime_at(text, "timestamp")?;
     let per = per_second(unit).expect("the clock parsed at a resolution unit");
@@ -381,104 +416,88 @@ pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
     Ok((count, unit, zone))
 }
 
-/// Parse an ISO duration into a count of `unit`.
+/// Parse an elapsed duration into a count of `unit`.
 ///
-/// The general form is accepted - `-P1DT2H3M4.5S` - and every component is
-/// restated in seconds, so the writer's seconds-only spelling and a reader's
-/// decomposed one meet at the same count. The unit is the fraction's width.
+/// Two spellings read the same count. The ISO general form is accepted -
+/// `-P1DT2H3M4.5S` - and every component is restated in seconds, so the
+/// writer's seconds-only spelling and a reader's decomposed one meet at the
+/// same number. Beside it, a plain clock - `-25:30:00.500` - reads the elapsed
+/// hours as they were written: hours take as many digits as the count needs
+/// and never fold, because twenty-five hours of work is not one o'clock.
+/// Either way the sign leads, as ISO 8601 puts it, and the unit is the
+/// fraction's width.
 pub(crate) fn parse_duration(text: &str) -> Result<(i64, TimeUnit)> {
-    let (sign, rest) = match text.strip_prefix('-') {
-        Some(rest) => (-1_i64, rest),
-        None => (1, text.strip_prefix('+').unwrap_or(text)),
+    let (sign, position) = match text.as_bytes().first() {
+        Some(b'-') => (-1_i64, 1),
+        Some(b'+') => (1, 1),
+        _ => (1, 0),
     };
-    let rest = rest
-        .strip_prefix(['P', 'p'])
-        .ok_or_else(|| iso_error("duration", 0, "a duration starts with P"))?;
+    let (magnitude, unit) = match text.as_bytes().get(position) {
+        Some(b'P' | b'p') => parse_duration_components(text, position + 1)?,
+        _ => parse_elapsed_clock(text, position)?,
+    };
+    let count = magnitude
+        .checked_mul(sign)
+        .ok_or_else(|| iso_error("duration", 0, "duration is out of range"))?;
+    Ok((count, unit))
+}
 
+/// Parse the `nDTnHnMnS` components after `P`, at their own byte positions.
+fn parse_duration_components(text: &str, mut position: usize) -> Result<(i64, TimeUnit)> {
+    let bytes = text.as_bytes();
     let mut seconds: i64 = 0;
     let mut fraction: i64 = 0;
     let mut unit = TimeUnit::Second;
     let mut in_time = false;
     let mut saw_component = false;
-    let mut chars = rest.char_indices().peekable();
 
-    while let Some(&(position, character)) = chars.peek() {
-        if character == 'T' || character == 't' {
+    while position < bytes.len() {
+        if bytes[position] == b'T' || bytes[position] == b't' {
             in_time = true;
-            chars.next();
+            position += 1;
             continue;
         }
         let start = position;
-        let mut end = position;
-        while chars
-            .peek()
-            .is_some_and(|(_, digit)| digit.is_ascii_digit())
-        {
-            let (index, digit) = chars.next().expect("peeked");
-            end = index + digit.len_utf8();
+        while bytes.get(position).is_some_and(u8::is_ascii_digit) {
+            position += 1;
         }
-        let number: i64 = rest[start..end]
+        let number: i64 = text[start..position]
             .parse()
             .map_err(|_| iso_error("duration", start, "expected a component count"))?;
 
         // A fraction is only classic on the final seconds component.
-        let mut with_fraction = None;
-        if chars.peek().is_some_and(|&(_, next)| next == '.') {
-            chars.next();
-            let fraction_start = end + 1;
-            let mut fraction_end = fraction_start;
-            while chars
-                .peek()
-                .is_some_and(|(_, digit)| digit.is_ascii_digit())
-            {
-                let (index, digit) = chars.next().expect("peeked");
-                fraction_end = index + digit.len_utf8();
-            }
-            let width = fraction_end - fraction_start;
-            if width == 0 || width > 9 {
-                return Err(iso_error(
-                    "duration",
-                    fraction_start,
-                    "fraction must hold 1 to 9 digits",
-                ));
-            }
-            let mut value: i64 = rest[fraction_start..fraction_end]
-                .parse()
-                .map_err(|_| iso_error("duration", fraction_start, "expected digits"))?;
-            let parsed_unit = unit_of_fraction(width);
-            for _ in width..fraction_digits(parsed_unit) {
-                value *= 10;
-            }
-            with_fraction = Some((value, parsed_unit));
-        }
+        let (value, parsed_unit, end) = parse_fraction_at(text, position, "duration")?;
+        let with_fraction = end != position;
+        position = end;
 
-        let (label_position, label) = chars
-            .next()
-            .ok_or_else(|| iso_error("duration", end, "component is missing its label"))?;
+        let label = *bytes
+            .get(position)
+            .ok_or_else(|| iso_error("duration", position, "component is missing its label"))?;
         let weight = match (label.to_ascii_uppercase(), in_time) {
-            ('D', false) => DAY,
-            ('H', true) => 3_600,
-            ('M', true) => 60,
-            ('S', true) => 1,
+            (b'D', false) => DAY,
+            (b'H', true) => 3_600,
+            (b'M', true) => 60,
+            (b'S', true) => 1,
             _ => {
                 return Err(iso_error(
                     "duration",
-                    label_position,
+                    position,
                     "expected D, or T then H, M, S",
                 ));
             }
         };
-        if let Some((value, parsed_unit)) = with_fraction {
-            if !label.eq_ignore_ascii_case(&'S') {
+        if with_fraction {
+            if weight != 1 {
                 return Err(iso_error(
                     "duration",
-                    label_position,
+                    position,
                     "only the seconds component takes a fraction",
                 ));
             }
             fraction = value;
             unit = parsed_unit;
         }
+        position += 1;
         seconds = number
             .checked_mul(weight)
             .and_then(|component| seconds.checked_add(component))
@@ -487,15 +506,65 @@ pub(crate) fn parse_duration(text: &str) -> Result<(i64, TimeUnit)> {
     }
 
     if !saw_component {
-        return Err(iso_error("duration", 0, "a duration names a component"));
+        return Err(iso_error(
+            "duration",
+            position,
+            "a duration names a component",
+        ));
     }
+    Ok((elapsed(seconds, fraction, unit)?, unit))
+}
+
+/// Parse `H+:MM:SS[.fraction]`, the plain clock an elapsed count also spells.
+///
+/// The hours are a count, not a calendar field, so they take any width and
+/// stay whole; minutes and seconds remain the two-digit fields under sixty
+/// that a clock has.
+fn parse_elapsed_clock(text: &str, position: usize) -> Result<(i64, TimeUnit)> {
+    let bytes = text.as_bytes();
+    let mut end = position;
+    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+        end += 1;
+    }
+    if end == position {
+        return Err(iso_error(
+            "duration",
+            position,
+            "a duration spells P components or a plain clock",
+        ));
+    }
+    let hours: i64 = text[position..end]
+        .parse()
+        .map_err(|_| iso_error("duration", position, "duration is out of range"))?;
+    literal(text, end, b':', "duration")?;
+    let minutes = digits(text, end + 1, 2, "duration")?;
+    literal(text, end + 3, b':', "duration")?;
+    let seconds = digits(text, end + 4, 2, "duration")?;
+    if minutes >= 60 || seconds >= 60 {
+        return Err(iso_error("duration", end + 1, "clock reading out of range"));
+    }
+    let (fraction, unit, end) = parse_fraction_at(text, end + 6, "duration")?;
+    if end != text.len() {
+        return Err(iso_error(
+            "duration",
+            end,
+            "trailing text after the duration",
+        ));
+    }
+    let seconds = hours
+        .checked_mul(3_600)
+        .and_then(|hours| hours.checked_add(minutes * 60 + seconds))
+        .ok_or_else(|| iso_error("duration", position, "duration is out of range"))?;
+    Ok((elapsed(seconds, fraction, unit)?, unit))
+}
+
+/// Restate whole seconds plus a sub-second count as one count of `unit`.
+fn elapsed(seconds: i64, fraction: i64, unit: TimeUnit) -> Result<i64> {
     let per = per_second(unit).expect("the fraction width names a resolution unit");
-    let count = seconds
+    seconds
         .checked_mul(per)
         .and_then(|whole| whole.checked_add(fraction))
-        .and_then(|count| count.checked_mul(sign))
-        .ok_or_else(|| iso_error("duration", 0, "duration is out of range"))?;
-    Ok((count, unit))
+        .ok_or_else(|| iso_error("duration", 0, "duration is out of range"))
 }
 
 #[cfg(test)]

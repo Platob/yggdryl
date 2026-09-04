@@ -19,12 +19,10 @@ pub(crate) mod wire;
 pub use crate::generic::TypedScalar;
 pub use crate::generic::scalar::{Children, Float16, Float32, Float64, Scalar};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
-#[cfg(feature = "arrow")]
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{
     elide_display, elide_to, expected_got, stable_hash_display, stable_hash_of,
 };
-pub use display::{stable_hash_bytes, stable_hash_chunks};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
 pub use io::{

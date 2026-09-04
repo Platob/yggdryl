@@ -45,6 +45,7 @@
     "bench:text": "node benchmarks/text.js",
     "bench:records": "node benchmarks/records.js",
     "bench:schema": "node benchmarks/schema.js",
+    "bench:xxhash": "node benchmarks/xxhash.js",
     "build": "napi build --platform --release && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
     "build:debug": "napi build --platform && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
     "prepack": "npm run typecheck",

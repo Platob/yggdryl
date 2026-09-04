@@ -51,6 +51,10 @@ mod path;
 pub mod text;
 pub mod toml;
 mod uri;
+// The digest vocabulary's implementation. The value codec has no Arrow
+// dependency, so the module is unconditional like the Avro value codec; only
+// `xxhash/arrow.rs` is gated.
+pub mod xxhash;
 pub mod yaml;
 pub mod zlib;
 pub mod zstd;
@@ -78,9 +82,9 @@ pub use field::{
 };
 pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
 pub use generic::{
-    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, EnumScalar, Float, IOKind, IOMode,
-    Integer, Level, MediaType, MimeType, Scheme, TemporalFamily, TemporalRef, TimeUnit, Timezone,
-    UnionMode,
+    Codec, DataTypeId, DataTypeKind, Digest, DigestAlgorithm, DigestBytes, Digester, EdgeAlgorithm,
+    Encoder, EnumScalar, Float, IOKind, IOMode, Integer, Level, MediaType, MimeType, Scheme,
+    TemporalFamily, TemporalRef, TimeUnit, Timezone, UnionMode,
 };
 pub use generic::{I256, Scalar};
 pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};

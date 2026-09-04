@@ -1119,6 +1119,69 @@ pub trait IOBase: Send + IOMedia {
         Ok(bytes)
     }
 
+    /// Digest the complete value without holding it in memory.
+    ///
+    /// The read streams through [`Self::pstream_bytes`] and retains one
+    /// bounded chunk, so memory is flat in the object's size: a multi-gigabyte
+    /// file costs one window rather than a copy. Every wrapper inherits this -
+    /// a coding wrapper digests the decoded payload while the handle it wraps
+    /// digests the compressed form, which is how a caller asks the two
+    /// questions apart.
+    ///
+    /// A missing resource digests as empty. Construction is lazy everywhere in
+    /// this trait, so absence is emptiness here too: the answer is the
+    /// algorithm's empty-input value, never an error.
+    ///
+    /// ```
+    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{DigestAlgorithm, xxhash};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new();
+    /// handle.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
+    ///
+    /// assert_eq!(
+    ///     handle.read_digest(DigestAlgorithm::Xxh3_64)?,
+    ///     DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+    /// );
+    /// // Nothing written yet is the digest of no bytes.
+    /// assert_eq!(
+    ///     Buffer::new().read_digest(DigestAlgorithm::Xxh3_64)?.as_u64(),
+    ///     Some(xxhash::xxh3_64(b"")),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's read failure, or [`Error::NotAtomic`]
+    /// naming the kind when this handle is a container. A folder holds no
+    /// bytes of its own, and which files a folder digest would cover in what
+    /// order is a convention no format states.
+    fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
+        crate::xxhash::stream::read_digest(self, algorithm)
+    }
+
+    /// Digest `length` bytes starting at `offset`, streaming the window.
+    ///
+    /// The range is clamped exactly as [`Self::read_range_bytes`] clamps it: a
+    /// window that runs past the end digests only the bytes that are there,
+    /// and a window wholly past the end digests nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's read failure, or [`Error::NotAtomic`]
+    /// naming the kind when this handle is a container.
+    fn read_range_digest(
+        &self,
+        offset: u64,
+        length: usize,
+        algorithm: crate::DigestAlgorithm,
+    ) -> Result<crate::Digest> {
+        crate::xxhash::stream::read_range_digest(self, offset, length, algorithm)
+    }
+
     /// Write every byte at `offset`.
     ///
     /// # Errors
@@ -2880,6 +2943,19 @@ impl IOBase for Box<dyn IOBase> {
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.as_ref().read_range_bytes(offset, length)
+    }
+
+    fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
+        self.as_ref().read_digest(algorithm)
+    }
+
+    fn read_range_digest(
+        &self,
+        offset: u64,
+        length: usize,
+        algorithm: crate::DigestAlgorithm,
+    ) -> Result<crate::Digest> {
+        self.as_ref().read_range_digest(offset, length, algorithm)
     }
 
     fn clear(&mut self) -> Result<()> {

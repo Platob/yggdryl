@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses as dc
 import functools
-import hashlib
 import itertools
 import types
 import typing
@@ -230,7 +229,9 @@ def _value_hint(field: NativeField, hint: Any) -> Any:
             "native Struct defaults and generated dataclass hints have different layouts"
         )
     replacements: dict[type[Any], type[Any]] = {}
-    identity = hashlib.blake2b(field.into_json().encode(), digest_size=8).hexdigest()
+    # The core already answers a deterministic 64-bit identity for a Field, so
+    # the binding carries no hash of its own.
+    identity = f"{field.stable_hash():016x}"
     # Create exact subclasses from children upward. The public cached hint
     # classes remain metadata-free and therefore cannot be poisoned by two
     # same-layout Fields with different names or metadata.

@@ -425,33 +425,22 @@ fn parse_capture(
             .filter(|value| value.is_finite())
             .map(Scalar::from)
             .ok_or_else(invalid),
-        DataType::Date32 => iso::parse_date(value)
-            .map(Scalar::date32)
-            .map_err(|_| invalid()),
-        DataType::Time32(unit) | DataType::Time64(unit) => {
-            let (count, source) = iso::parse_time(value).map_err(|_| invalid())?;
-            let count = rescale(count, source, *unit).ok_or_else(invalid)?;
-            Scalar::from_time(count, *unit, Timezone::NAIVE).map_err(|_| invalid())
+        DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
+            Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }
-        DataType::Timestamp(unit, target_zone) => {
-            if let Ok((count, source, _)) = iso::parse_timestamp(value) {
-                let Some(zone) = target_zone else {
-                    return Err(invalid());
-                };
-                let count = rescale(count, source, *unit).ok_or_else(invalid)?;
-                return Scalar::datetime64(count, *unit, zone.clone()).map_err(|_| invalid());
+        DataType::Timestamp(unit, Some(zone)) => {
+            // A reading that names its own offset is the crate's; a naive one
+            // is autotyping's own rule, a wall clock in the column's zone.
+            if let Ok(instant) = Scalar::from_temporal_text(dtype, value) {
+                return Ok(instant);
             }
             let (local, source) = iso::parse_datetime(value).map_err(|_| invalid())?;
-            let count = match target_zone {
-                Some(zone) => {
-                    zoned_count(local, source, timezone.unwrap_or(zone)).map_err(|_| invalid())?
-                }
-                None => local,
-            };
+            let count =
+                zoned_count(local, source, timezone.unwrap_or(zone)).map_err(|_| invalid())?;
             let count = rescale(count, source, *unit).ok_or_else(invalid)?;
-            Scalar::datetime64(count, *unit, target_zone.clone().unwrap_or(Timezone::NAIVE))
-                .map_err(|_| invalid())
+            Scalar::datetime64(count, *unit, zone.clone()).map_err(|_| invalid())
         }
+        DataType::Timestamp(..) => Scalar::from_temporal_text(dtype, value).map_err(|_| invalid()),
         _ => Err(format_smolstr!(
             "autotype produced unsupported datatype {dtype}"
         )),

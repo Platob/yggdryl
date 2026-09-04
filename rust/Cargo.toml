@@ -72,6 +72,18 @@ smol_str = { version = "=0.3.2", features = ["serde"] }
 snap = { version = "1.1", optional = true }
 zstd = { version = "0.13", default-features = false }
 toml = { version = "=1.1.4", features = ["preserve_order"] }
+# The xxHash protocol itself: XXH32, XXH64, XXH3-64, and XXH3-128, with the
+# runtime AVX2/SSE2/NEON dispatch that keeps XXH3 at reference speed. The
+# `parquet` feature already compiles it, so a table build pays nothing new; the
+# four algorithm features plus `std` pull no transitive crate, and `random` is
+# off because a `RandomState` would drag `rand` in for nothing.
+twox-hash = { version = "=2.1.3", default-features = false, features = [
+    "xxhash32",
+    "xxhash64",
+    "xxhash3_64",
+    "xxhash3_128",
+    "std",
+] }
 uuid = { version = "1.18", features = ["v7"], optional = true }
 
 [dev-dependencies]
@@ -147,6 +159,16 @@ name = "io"
 path = "benchmarks/io.rs"
 harness = false
 required-features = ["parquet"]
+
+# The digest surface: throughput per algorithm and size, this module's
+# overhead over the protocol crate it wraps, the constant-memory handle read,
+# the canonical value feed, and the Arrow row-digest column. The value codec
+# needs no Arrow, so the target compiles in a default build; the row-digest
+# group is compiled in only when that feature is.
+[[bench]]
+name = "xxhash"
+path = "benchmarks/xxhash.rs"
+harness = false
 
 # Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against
 # the handle each backend wraps, record round trips, and listing. The vtable

@@ -42,10 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
 use super::{Comparison, Expression, Function, Operator, RECURSION_LIMIT, Safety, Segment};
-use crate::{
-    DataType, Error, Float16, Float32, Float64, I256, Result, Scalar, TimeUnit, Timezone,
-    TypedScalar,
-};
+use crate::{DataType, Error, Float16, Float32, Float64, I256, Result, Scalar, TypedScalar};
 
 /// Which way one ordering key sorts.
 #[derive(
@@ -1393,7 +1390,6 @@ fn number_literal(text: &str, position: usize) -> Result<Expression> {
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
-    use crate::generic::iso;
     use DataType as D;
 
     let fail = |expected: &str| {
@@ -1415,9 +1411,17 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             _ => return Err(fail("`true` or `false`")),
         },
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => integer(text)?,
-        // A date is an ISO date, never a raw count of days: the count is a
-        // physical detail and the literal is what a person wrote.
-        D::Date32 | D::Date64 => Scalar::date32(iso::parse_date(text)?),
+        // A temporal literal is its classic spelling, never a raw count: the
+        // count is a physical detail and the literal is what a person wrote.
+        // The reading is the crate's one text reading, so a literal and a
+        // cast of the same text land on the same value.
+        D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::Timestamp(..)
+        | D::Duration32(_)
+        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
             .parse::<u128>()
             .map(Scalar::U128)
@@ -1453,22 +1457,6 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
                 bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
             ))
         }
-        D::Time32(_) | D::Time64(_) => {
-            let (count, unit) = iso::parse_time(text)?;
-            parsed_time_value(count, unit)?
-        }
-        D::Timestamp(_, Some(_)) => {
-            let (count, unit, zone) = iso::parse_timestamp(text)?;
-            Scalar::datetime64(count, unit, zone)?
-        }
-        D::Timestamp(_, None) => {
-            let (count, unit) = iso::parse_datetime(text)?;
-            Scalar::datetime64(count, unit, Timezone::NAIVE)?
-        }
-        D::Duration32(_) | D::Duration64(_) => {
-            let (count, unit) = iso::parse_duration(text)?;
-            parsed_duration_value(count, unit)?
-        }
         other => {
             return Err(parse_error(
                 position,
@@ -1484,38 +1472,6 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
     // cast value can never end up shaped differently.
     super::eval::convert(dtype, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
-}
-
-fn parsed_time_value(count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match unit {
-        TimeUnit::Second | TimeUnit::Millisecond => Scalar::time32(
-            i32::try_from(count).map_err(|_| Error::InvalidRecord {
-                path: "$".into(),
-                reason: "time32 count exceeds 32 bits".into(),
-            })?,
-            unit,
-            Timezone::NAIVE,
-        ),
-        TimeUnit::Microsecond | TimeUnit::Nanosecond => {
-            Scalar::time64(count, unit, Timezone::NAIVE)
-        }
-        _ => Err(Error::InvalidRecord {
-            path: "$".into(),
-            reason: "time requires a fixed-length clock unit".into(),
-        }),
-    }
-}
-
-fn parsed_duration_value(count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match unit {
-        TimeUnit::Second | TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond => {
-            Scalar::duration64(count, unit)
-        }
-        _ => Err(Error::InvalidRecord {
-            path: "$".into(),
-            reason: "duration requires a fixed-length clock unit".into(),
-        }),
-    }
 }
 
 /// Read a float, accepting the three names the finite grammar cannot spell.

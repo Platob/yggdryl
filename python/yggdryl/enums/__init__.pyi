@@ -6,6 +6,7 @@ TIME_UNITS: tuple[str, ...]
 UNION_MODES: tuple[str, ...]
 IO_MODES: tuple[str, ...]
 CODECS: tuple[str, ...]
+DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
 COMPATIBILITY_SCHEMES: tuple[str, ...]
 LEVELS: Mapping[str, int]
@@ -15,6 +16,7 @@ __all__ = [
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
+    "DIGEST_ALGORITHMS",
     "IO_KINDS",
     "LEVELS",
     "TIME_UNITS",

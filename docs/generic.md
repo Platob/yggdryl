@@ -10,6 +10,7 @@ The enums live directly in `yggdryl::generic` and are re-exported at the crate r
 | --- | --- |
 | `DataTypeId`, `DataTypeKind` | Exact datatype identity and family |
 | `Codec`, `Level` | Content coding and the shared 0–9 compression scale |
+| `DigestAlgorithm`, `Digest`, `Digester` | Hash algorithm identity, the value it answers, and the runtime-selected streaming state |
 | `MimeType`, `MediaType` | Base representation and ordered content codings |
 | `Scheme` | URI and compatibility schemes |
 | `IOKind`, `IOMode` | Resource kind and I/O intent |
@@ -220,6 +221,42 @@ assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
 ```
 
 `Coded<H>` composes over any `IOBase`, including `Holder` or another coded handle. Levels reach [`gzip`](gzip.md), [`zlib`](zlib.md), and [`zstd`](zstd.md); `Identity` ignores them.
+
+## DigestAlgorithm: a hash over anything
+
+`DigestAlgorithm` names one xxHash algorithm and is the only place a name selects an
+implementation, the way `Codec` is for content codings. `Digest` is the value it answers -
+the algorithm carried with the number, so `xxh64` and `xxh3-64`, both 64 bits wide, can
+never be confused for one another. `Digester` is the runtime-selected streaming state, what
+`Encoder` is to `Codec`.
+
+```rust
+use yggdryl::{Digest, DigestAlgorithm};
+
+let digest = DigestAlgorithm::Xxh3_64.digest(b"AAPL");
+assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3_64);
+assert_eq!(Digest::from_str(&digest.to_string())?, digest);
+assert_eq!(digest.into_bytes().len(), DigestAlgorithm::Xxh3_64.width());
+
+// A caller who knows the algorithm at compile time uses the concrete state in
+// `yggdryl::xxhash` and pays no dispatch; this is the form for one held in a
+// variable.
+let mut digester = DigestAlgorithm::Xxh3_64.digester();
+digester.write_bytes(b"AA");
+digester.write_bytes(b"PL");
+assert_eq!(digester.as_digest(), digest);
+
+// Only the XXH3 pair takes a custom secret; every algorithm takes a seed.
+assert!(!DigestAlgorithm::Xxh64.is_secretable());
+assert!(DigestAlgorithm::Xxh3_64.is_secretable());
+assert_eq!(
+    DigestAlgorithm::ALL.map(DigestAlgorithm::as_str),
+    ["xxh32", "xxh64", "xxh3-64", "xxh3-128"],
+);
+```
+
+[xxhash](xxhash.md) owns the four implementations, the resumable states, the handle and
+Arrow surfaces, and the canonical `Scalar` byte feed every `stable_hash` reads.
 
 ## Media: a record encoding over a handle
 

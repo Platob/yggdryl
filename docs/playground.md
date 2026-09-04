@@ -11,7 +11,7 @@ page fetches that manifest and renders it. A browser build would need a WebAssem
 `node` crate that does not exist, and could not carry Parquet or Iceberg, so it is not offered here.
 
 The contract these values prove is on the [datatype
-page](datatype.md#ascii-widths-and-the-currency-registration); this page is the same contract with
+page](datatype.md#ascii-widths); this page is the same contract with
 every case laid out. To try a value of your own, add it to the corpus in the generator and rerun it:
 
 ```console

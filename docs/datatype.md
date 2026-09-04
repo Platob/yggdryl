@@ -533,7 +533,7 @@ none. The algorithm vocabulary is the five canonical lowercase names of
 strings.
 
 Across an Arrow boundary the three are extension-typed storage, as are the
-[ASCII widths](#ascii-widths-and-the-currency-registration) below: a variant is a struct of
+[ASCII widths](#ascii-widths) below: a variant is a struct of
 non-nullable `metadata` and `value` binaries under the canonical `arrow.parquet.variant` extension
 name, and both geospatial types are WKB bytes under the community `geoarrow.wkb` name, whose
 GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm. The identities
@@ -543,7 +543,7 @@ community choice that may be revisited when it stabilizes. The geospatial *value
 Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
 
-## ASCII widths and the currency registration
+## ASCII widths
 
 === "Rust"
 
@@ -562,13 +562,6 @@ and bounds by the one WKB reader documented there.
     assert_eq!(DataType::Ascii64.ascii_width(), Some(8));
     assert_eq!(DataType::Utf8.ascii_width(), None);
     assert!(DataType::ascii(17).is_err());
-
-    // `currency` is a registered name over `ascii32`, and displays as the width.
-    let currency = DataType::from_logical_name("Currency")?;
-    assert_eq!(currency, DataType::Ascii32);
-    assert_eq!(DataType::from_str("currency")?, currency);
-    assert_eq!(currency.to_string(), "ascii32");
-    assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
 
     // Storage pads to the width; every string rendering trims the padding.
     let ccy = Field::new("ccy", DataType::Ascii32, false);
@@ -620,13 +613,6 @@ and bounds by the one WKB reader documented there.
     assert DataType("utf8").ascii_width is None
     assert fields.ascii("ccy", 3).dtype == ascii32
 
-    # `currency` is a registered name over `ascii32`, and displays as the width.
-    currency = DataType.from_logical_name("Currency")
-    assert currency == ascii32
-    assert DataType("currency") == currency
-    assert str(currency) == "ascii32"
-    assert DataType.logical_names() == {"currency": ascii32}
-
     # Storage pads to the width; every string rendering trims the padding.
     ccy = Field("ccy", "ascii32", nullable=False)
     assert ccy.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
@@ -672,13 +658,6 @@ and bounds by the one WKB reader documented there.
     assert.equal(new DataType('utf8').asciiWidth, null)
     assert.ok(fields.ascii('ccy', 3).dtype.equals(ascii32))
 
-    // `currency` is a registered name over `ascii32`, and displays as the width.
-    const currency = DataType.fromLogicalName('Currency')
-    assert.ok(currency.equals(ascii32))
-    assert.ok(DataType.from('currency').equals(currency))
-    assert.equal(currency.toString(), 'ascii32')
-    assert.deepEqual(Object.keys(DataType.logicalNames()), ['currency'])
-
     // Storage pads to the width; every string rendering trims the padding.
     const row = fields.struct('row', [fields.ascii32('ccy', { nullable: false })], {
       nullable: false,
@@ -714,17 +693,14 @@ the way in under the same rule and canonicalize to it. `ascii(n)` selects the wi
 bytes, `ascii_width` answers the storage width, and a value that is not ASCII, holds a NUL, or is
 longer than the width is refused naming the width and, in a cast, the row.
 
-A registration is a name over a width, not a type: `currency` is ISO 4217's three-letter code, so
-it parses to `ascii32` and displays as `ascii32` - one canonical spelling. `LOGICAL_NAMES` is the
-registry and `from_logical_name` resolves it, ASCII case-insensitively and trimmed. Across Arrow the
-widths are `fixed_size_binary(4|8|16)` under the `yggdryl.ascii` extension name with an empty
-document, because the storage width says the width; a plain fixed binary of another width, or one
-carrying a document, imports as it is. Every other exchange sees text: Iceberg, Spark, Polars, and
-pandas [rewrite](#compatibility-rewriting) a width to `string`/`utf8`, Avro writes `string`, and a
-filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
+Across Arrow the widths are `fixed_size_binary(4|8|16)` under the `yggdryl.ascii` extension name
+with an empty document, because the storage width says the width; a plain fixed binary of another
+width, or one carrying a document, imports as it is. Every other exchange sees text: Iceberg,
+Spark, Polars, and pandas [rewrite](#compatibility-rewriting) a width to `string`/`utf8`, Avro
+writes `string`, and a filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
 [merge](field.md#merging-two-schemas) as text. One boundary shows storage: JavaScript's
-`readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII column arrives
-there as its padded bytes; read it under a declared `utf8` field, as above, for the text.
+`readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII column
+arrives there as its padded bytes; read it under a declared `utf8` field, as above, for the text.
 
 ### The dictionary vocabulary and its generated enum
 
@@ -769,6 +745,15 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     assert_eq!(stored.value(2), b"JPY\0");
     assert_eq!(AsciiDictionary::from_arrow_array(column)?, currencies);
 
+    // A prebuilt vocabulary starts from a constant and auto-registers past it,
+    // so a code below the constant's length names one value in every process.
+    let mut countries = AsciiDictionary::from_logical_name("Country")?;
+    assert_eq!(countries.len(), AsciiDictionary::COUNTRIES.len());
+    let france = countries.get_code("FR").expect("FR is prebuilt");
+    assert_eq!(AsciiDictionary::COUNTRIES[france as usize], "FR");
+    // `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
+    assert_eq!(countries.push("ZZ")?, AsciiDictionary::COUNTRIES.len() as i64);
+
     // The enum is the value list and the code is the position.
     let venues = AsciiDictionary::from_values(DataType::Ascii32, ["XNAS", "n/a"])?;
     assert_eq!(venues.into_members()?, [("XNAS".into(), 0), ("N_A".into(), 1)]);
@@ -806,6 +791,15 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     assert column.dictionary.to_pylist() == [b"USD\x00", b"EUR\x00", b"JPY\x00"]
     assert AsciiDictionary.from_arrow_array(column) == currencies
 
+    # A prebuilt vocabulary starts from a constant and auto-registers past it,
+    # so a code below the constant's length names one value in every process.
+    seed = AsciiDictionary.prebuilt()["country"]
+    countries = AsciiDictionary.from_logical_name("Country")
+    assert len(countries) == len(seed)
+    assert seed[countries.get_code("FR")] == "FR"
+    # `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
+    assert countries.push("ZZ") == len(seed)
+
     # The enum is the value list and the code is the position.
     Venue = AsciiDictionary.from_values("ascii32", ["XNAS", "n/a"]).into_intenum("Venue")
     assert issubclass(Venue, enum.IntEnum)
@@ -842,6 +836,15 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     assert.deepEqual(Array.from(column.get(2)), [0x4a, 0x50, 0x59, 0])
     assert.ok(AsciiDictionary.fromArrowArray(column).equals(currencies))
 
+    // A prebuilt vocabulary starts from a constant and auto-registers past it,
+    // so a code below the constant's length names one value in every process.
+    const seed = AsciiDictionary.prebuilt().country
+    const countries = AsciiDictionary.fromLogicalName('Country')
+    assert.equal(countries.length, seed.length)
+    assert.equal(seed[countries.getCode('FR')], 'FR')
+    // `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
+    assert.equal(countries.push('ZZ'), seed.length)
+
     // The enum is the value list and the code is the position.
     const Venue = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a']).intoEnum('Venue')
     assert.deepEqual({ ...Venue }, { XNAS: 0, N_A: 1 })
@@ -859,6 +862,167 @@ and closes with `_` dropping its trailing underscores, because that is the shape
 Python reserves for `_sunder_` and `__dunder__` names - which refuses `ascii128`
 and any two values that would name one member, and answers name to code because
 the vocabulary is already the code to value direction.
+
+## Logical names
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{AsciiDictionary, DataType, TimeUnit, Timezone};
+
+    // A name is one more spelling of a datatype, so it displays as that datatype.
+    let price = DataType::from_logical_name("Price")?;
+    assert_eq!(price, DataType::decimal64(18, 8)?);
+    assert_eq!(price.to_string(), "decimal64(18,8)");
+
+    // The same lookup backs the grammar, so a FIX declaration types a row.
+    let row = DataType::from_str(
+        "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, at: UTCTimestamp>",
+    )?;
+    assert_eq!(
+        row.get_field_by_path("venue").map(|field| field.dtype().clone()),
+        Some(DataType::Ascii32)
+    );
+    assert_eq!(
+        row.get_field_by_path("at").map(|field| field.dtype().clone()),
+        Some(DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)))
+    );
+
+    // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
+    assert_eq!(DataType::from_str("utc_date_only")?, DataType::Date32);
+    assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Ascii32));
+
+    // Three of the names also prebuild the vocabulary their codes come from.
+    assert_eq!(AsciiDictionary::prebuilt_values("MIC"), AsciiDictionary::MICS);
+    assert!(AsciiDictionary::prebuilt_values("tenor").is_empty());
+
+    // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
+    assert_eq!(DataType::from_str("int")?, DataType::Int32);
+    assert_eq!(DataType::from_str("float")?, DataType::Float32);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import AsciiDictionary, DataType
+
+    # A name is one more spelling of a datatype, so it displays as that datatype.
+    price = DataType.from_logical_name("Price")
+    assert price == DataType("decimal64(18,8)")
+    assert str(price) == "decimal64(18,8)"
+
+    # The same lookup backs the grammar, so a FIX declaration types a row.
+    row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
+    assert row["venue"].dtype == DataType("ascii32")
+    assert row["at"].dtype == DataType('timestamp(ns,"UTC")')
+
+    # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
+    assert DataType("utc_date_only") == DataType("date32")
+    assert DataType.logical_names()["currency"] == DataType("ascii32")
+
+    # Three of the names also prebuild the vocabulary their codes come from.
+    assert AsciiDictionary.prebuilt()["mic"] == AsciiDictionary.prebuilt()["exchange"]
+    assert "tenor" not in AsciiDictionary.prebuilt()
+
+    # The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
+    assert DataType("int") == DataType("int32")
+    assert DataType("float") == DataType("float32")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { AsciiDictionary, DataType } = require('yggdryl')
+
+    // A name is one more spelling of a datatype, so it displays as that datatype.
+    const price = DataType.fromLogicalName('Price')
+    assert.ok(price.equals(DataType.from('decimal64(18,8)')))
+    assert.equal(price.toString(), 'decimal64(18,8)')
+
+    // The same lookup backs the grammar, so a FIX declaration types a row.
+    const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
+    assert.equal(row.getField('venue').dtype.id, 'ascii32')
+    assert.equal(row.getField('at').dtype.toString(), 'timestamp(ns,"UTC")')
+
+    // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
+    assert.equal(DataType.from('utc_date_only').id, 'date32')
+    assert.equal(DataType.logicalNames().currency.id, 'ascii32')
+
+    // Three of the names also prebuild the vocabulary their codes come from.
+    assert.deepEqual(AsciiDictionary.prebuilt().mic, AsciiDictionary.prebuilt().exchange)
+    assert.equal(AsciiDictionary.prebuilt().tenor, undefined)
+
+    // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
+    assert.equal(DataType.from('int').id, 'int32')
+    assert.equal(DataType.from('float').id, 'float32')
+    ```
+
+A logical name is a *name*, never a type: `Price` resolves to `decimal64(18,8)` and displays as
+`decimal64(18,8)`, so the grammar keeps one canonical spelling per datatype and nothing downstream
+learns a new variant. `LOGICAL_NAMES` is the registry, `from_logical_name` resolves it, and the
+name folds the way every other datatype word does - trimmed, ASCII case-insensitive, with `_`, `-`,
+and spaces ignored - so `UTCTimestamp`, `utc_timestamp`, and `UTC Timestamp` are one name.
+
+The vocabulary is the [FIX Latest](https://www.fixtrading.org) datatype table, so a FIX field
+declaration types a column directly, plus `mic` - ISO 10383's own name for what FIX calls
+`Exchange`.
+
+| FIX | base | resolves to | why |
+| --- | --- | --- | --- |
+| `Currency` | String | `ascii32` | ISO 4217 alpha-3, stored `USD\0` |
+| `Country` | String | `ascii32` | ISO 3166-1 alpha-2, stored `FR\0\0` |
+| `Exchange`, `mic` | String | `ascii32` | ISO 10383 MIC, exactly 4 bytes |
+| `Language` | String | `ascii32` | ISO 639-1 alpha-2 |
+| `MonthYear` | String | `ascii64` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
+| `Tenor` | Pattern | `ascii64` | `D5`, `W2`, `M3`, `Y1` |
+| `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
+| `Length` | int | `int32` | a byte count |
+| `TagNum` | int | `int32` | a FIX tag |
+| `SeqNum` | int | `int64` | a session sequence number outgrows `int32` |
+| `NumInGroup` | int | `int32` | a repeating-group counter |
+| `DayOfMonth` | int | `int8` | 1 through 31 |
+| `Reserved100Plus` | Pattern | `int32` | a user-defined enumeration value |
+| `Reserved1000Plus` | Pattern | `int32` | as above |
+| `Reserved4000Plus` | Pattern | `int32` | as above |
+| `Qty` | float | `decimal64(18,8)` | exact, 8 bytes |
+| `Price` | float | `decimal64(18,8)` | exact, 8 bytes |
+| `PriceOffset` | float | `decimal64(18,8)` | exact and signed |
+| `Percentage` | float | `decimal64(18,8)` | `0.0525` is 5.25% |
+| `Amt` | float | `decimal128(38,8)` | a notional outgrows 10 integer digits |
+| `UTCTimestamp` | String | `timestamp(ns,"UTC")` | the instant, at the finest FIX width |
+| `TZTimestamp` | String | `timestamp(ns,"UTC")` | the offset resolves into the instant |
+| `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
+| `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
+| `UTCDateOnly` | String | `date32` | a calendar day |
+| `LocalMktDate` | String | `date32` | a calendar day |
+| `TZTimeOnly` | String | `ascii128` | a time of day plus an offset has no Arrow type |
+| `MultipleCharValue` | char | `utf8` | space-delimited members |
+| `MultipleStringValue` | String | `utf8` | space-delimited members |
+| `XID` | String | `utf8` | an XML identifier |
+| `XIDREF` | String | `utf8` | a reference to one |
+| `data` | - | `binary` | opaque bytes |
+| `XMLData` | data | `binary` | an XML document, opaque here |
+
+Five FIX base types already have a meaning in the Arrow/SQL grammar and keep it, because a stored
+schema string must not change meaning under a reader: `int` is `int32`, `float` is `float32`, `char`
+and `String` are `utf8`, and `Boolean` is `boolean`. The FIX types derived from `int` and `float`
+carry the precision those base types do not, which is what the registrations above add.
+
+The float family is exact rather than binary floating point because a price that does not
+round-trip is a broken trade. `decimal64` holds 18 digits in 8 bytes, which is 10 integer digits
+beside the 8 fractional ones a listed venue's tick fits in; a notional needs more integer room, so
+`Amt` widens to `decimal128`. A venue outside those bounds declares its own `decimal(p,s)`, which
+is why these are names over the ordinary constructors rather than a second numeric model.
+`TZTimestamp` keeps the instant and drops the local offset, because an Arrow column carries one
+zone for every row; read it under `timestamp(ns,"<zone>")` when the local reading is the value.
+
+`currency`, `country`, and `mic` also name a [prebuilt vocabulary](#the-dictionary-vocabulary-and-its-generated-enum):
+`AsciiDictionary::from_logical_name` seeds the codes those standards assign, in sorted order, and
+auto-registers past them. A code below the constant's length therefore names one value in every
+process reading this version, which a vocabulary that only auto-registers cannot promise. The MICs
+are the common venues rather than the whole ISO 10383 registry, which is thousands of segment
+codes.
 
 ## Identity and family
 

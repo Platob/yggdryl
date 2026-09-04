@@ -27,7 +27,21 @@ from ._native import (
     __version__,
     combined,
 )
-from . import avro, codec, enums, fields, fix, gzip, iceberg, json, toml, yaml, zlib, zstd
+from . import (
+    avro,
+    codec,
+    enums,
+    fields,
+    fix,
+    gzip,
+    iceberg,
+    json,
+    toml,
+    xxhash,
+    yaml,
+    zlib,
+    zstd,
+)
 from .fields import field
 from .scalar import Scalar, scalar
 
@@ -65,5 +79,6 @@ __all__ = [
     "toml",
     "yaml",
     "zlib",
+    "xxhash",
     "zstd",
 ]

@@ -103,7 +103,8 @@ over a `Scalar`, vectorized over an Arrow batch, and three-valued over container
 
 The three tiers share one resolved tree, which is the mechanism rather than the intention behind
 their agreeing. Where Arrow owns a kernel the kernel runs; where it does not, the row evaluator runs
-and its answers are gathered, which is slower and cannot disagree. The statistics tier answers
+and its answers are gathered, which is slower and cannot disagree. Text and temporals meet through
+this crate's own spellings on both tiers, with Arrow's kernel left to the spellings it alone reads. The statistics tier answers
 `false` only when it can prove no row matches, so everything it cannot prove costs a read rather than
 a lost row.
 

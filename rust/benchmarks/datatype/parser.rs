@@ -51,5 +51,24 @@ pub(crate) fn parser_benchmarks(criterion: &mut Criterion) {
             }
         });
     });
+    // The logical names: the registry lookup the grammar falls back to, and
+    // one FIX row declaration, which is what a registry-driven schema costs.
+    group.bench_function("logical_name", |bencher| {
+        bencher.iter(|| {
+            DataType::from_logical_name(black_box("UTCTimestamp"))
+                .expect("a registered logical name must resolve")
+        });
+    });
+    group.bench_function("logical_row", |bencher| {
+        bencher.iter(|| DataType::from_str(black_box(FIX_ROW)).expect("the FIX row must parse"));
+    });
     group.finish();
 }
+
+/// One row declared in FIX's own datatype names, across the four families a
+/// registration resolves into: an ASCII width, a decimal, a temporal, and an
+/// integer.
+const FIX_ROW: &str = concat!(
+    "struct<ccy:Currency,venue:Exchange,px:Price,qty:Qty,",
+    "at:UTCTimestamp,day:LocalMktDate,seq:SeqNum>"
+);

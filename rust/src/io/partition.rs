@@ -80,9 +80,14 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     // already refused when the pairing was built.
     let typed = crate::TypedScalar::from_value(value.clone())?;
     let array = typed.into_arrow_array()?;
-    let formatter =
-        ArrayFormatter::try_new(array.as_ref(), &partition_format()).map_err(Error::Arrow)?;
-    Ok(smol_str::SmolStr::new(formatter.value(0).to_string()))
+    match ArrayFormatter::try_new(array.as_ref(), &partition_format()) {
+        Ok(formatter) => Ok(smol_str::SmolStr::new(formatter.value(0).to_string())),
+        // Arrow's formatter carries no timezone database, so a zoned instant
+        // spells itself the classic way instead of refusing a directory name.
+        Err(error) => value
+            .into_temporal_text()
+            .ok_or_else(|| Error::Arrow(error)),
+    }
 }
 
 /// Build a constant column holding `value` for every row of a batch.

@@ -512,6 +512,71 @@ before the buffer is full.
 `copy_into` moves bytes between two handles in chunks, so neither side is buffered whole, and it
 carries the media type across. It is `copy_into` in Python and `copyInto` in JavaScript.
 
+## Digests
+
+`read_digest` and `read_range_digest` are derived the same way, and answer a
+[`Digest`](xxhash.md) rather than the bytes. Both stream through
+[`pstream_bytes`](#streamed-bytes) and retain one bounded chunk, so memory is flat in the
+object's size: a 64 GiB file costs one window rather than a copy, and nothing calls
+`read_all_bytes`. Because they are derived, every backend and every wrapper inherits them.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::DigestAlgorithm;
+
+    let mut handle = Buffer::new();
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+
+    assert_eq!(
+        handle.read_digest(DigestAlgorithm::Xxh3_64)?,
+        DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+    );
+    assert_eq!(
+        handle.read_range_digest(0, 6, DigestAlgorithm::Xxh3_64)?,
+        DigestAlgorithm::Xxh3_64.digest(b"symbol"),
+    );
+    // Absence is emptiness here too: nothing written digests as no bytes.
+    assert_eq!(
+        Buffer::new().read_digest(DigestAlgorithm::Xxh32)?,
+        DigestAlgorithm::Xxh32.digest(b""),
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase, xxhash
+
+    handle = IOBase.from_bytes()
+    handle.write_bytes(b"symbol,price\nAAPL,1\n")
+
+    assert handle.read_digest("xxh3-64") == xxhash.digest(handle.read_bytes(), "xxh3-64")
+    assert handle.read_range_digest(0, 6) == xxhash.digest(b"symbol", "xxh3-64")
+    assert IOBase.from_bytes().read_digest("xxh32") == xxhash.digest(b"", "xxh32")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase, xxhash } = require('yggdryl')
+
+    const handle = IOBase.fromBytes()
+    const payload = Buffer.from('symbol,price\nAAPL,1\n')
+    handle.writeBytes(payload)
+
+    assert.ok(handle.readDigest('xxh3-64').equals(xxhash.digest(payload, 'xxh3-64')))
+    assert.ok(handle.readRangeDigest(0, 6).equals(xxhash.digest(Buffer.from('symbol'), 'xxh3-64')))
+    ```
+
+A range is clamped exactly as `read_range_bytes` clamps it, a resource that does not exist
+digests as no bytes, and a container is a typed failure naming the kind - a folder holds no
+bytes of its own, and which files a folder digest would cover is a convention no format
+states. [xxhash](xxhash.md) carries the rest: the algorithms, the resumable states, the
+`Hashed<H>` wrapper that hashes writes as they land, and the canonical value feed.
+
 ## Structured values
 
 `read_scalar` and `write_scalar` use the handle's media type to select JSON,

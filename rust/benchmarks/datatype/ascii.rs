@@ -41,6 +41,15 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         });
     });
 
+    // The prebuilt vocabularies: building one registers every code in its
+    // constant, which is what a column pays once before its first batch.
+    group.bench_function("dictionary_prebuilt", |bencher| {
+        bencher.iter(|| {
+            AsciiDictionary::from_logical_name(black_box("mic"))
+                .expect("mic is a registered logical name")
+        });
+    });
+
     let codes = ["USD", "EUR", "JPY", "GBP"];
 
     // The per-column vocabulary: a hit is one lookup, a miss appends. The

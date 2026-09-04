@@ -130,6 +130,42 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
 }
 
 #[test]
+fn a_field_folds_an_out_of_day_clock_and_reads_an_elapsed_one() {
+    // A time of day folds into its day; the same text as a duration does not.
+    let clock = Field::new("clock", DataType::time32(TimeUnit::Second).unwrap(), false);
+    assert_eq!(
+        json::from_utf8_with_field("\"25:30:00\"", &clock).unwrap(),
+        Scalar::time32(5_400, TimeUnit::Second, Timezone::NAIVE).unwrap()
+    );
+
+    let elapsed = Field::new(
+        "elapsed",
+        DataType::duration64(TimeUnit::Second).unwrap(),
+        false,
+    );
+    let count = Scalar::duration64(93_784, TimeUnit::Second).unwrap();
+    for spelled in ["\"26:03:04\"", "\"P1DT2H3M4S\"", "\"PT93784S\""] {
+        assert_eq!(
+            json::from_utf8_with_field(spelled, &elapsed).unwrap(),
+            count
+        );
+    }
+    // One count has one spelling on the way out.
+    assert_eq!(json::into_utf8(&count).unwrap(), "\"PT93784S\"");
+
+    // A datetime carries the hour into the next date instead of folding it.
+    let at = Field::new(
+        "at",
+        DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+        false,
+    );
+    assert_eq!(
+        json::from_utf8_with_field("\"2026-08-17T24:00:00Z\"", &at).unwrap(),
+        json::from_utf8_with_field("\"2026-08-18T00:00:00Z\"", &at).unwrap()
+    );
+}
+
+#[test]
 fn bytes_readers_writers_and_streams_are_equivalent() {
     let source = br#"{"label":"caf\u00e9","value":1}"#;
     let expected = json::from_bytes(source).unwrap();

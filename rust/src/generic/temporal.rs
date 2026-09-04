@@ -415,6 +415,89 @@ impl Scalar {
         }
     }
 
+    /// Read one temporal from its classic text spelling, at the exact width,
+    /// unit and zone `dtype` declares.
+    ///
+    /// This is the crate's one text reading of a temporal: the row evaluator,
+    /// the field-directed record parsers and the Arrow cast leaf all arrive
+    /// here, so a spelling reads the same count wherever it is met. The unit
+    /// the spelling names is restated in the declared one and has to land
+    /// exactly - `10:00:00.500` is no `time32(second)` - and the zone is the
+    /// datatype's: a timestamp that declares one wants an offset in the text,
+    /// and one that declares none refuses it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the parse error the spelling raised, or an invalid-value error
+    /// when the count does not fit the declared unit and width.
+    pub(crate) fn from_temporal_text(dtype: &DataType, text: &str) -> Result<Self> {
+        use super::iso;
+
+        match dtype {
+            DataType::Date32 => Ok(Self::date32(iso::parse_date(text)?)),
+            DataType::Date64 => i64::from(iso::parse_date(text)?)
+                .checked_mul(86_400_000)
+                .map(Self::date64)
+                .ok_or_else(|| invalid("date64 count must fit signed 64 bits")),
+            DataType::Time32(unit) => {
+                let count = restated(clock_of_day(text)?, *unit, "time32")?;
+                Self::time32(narrow_i32(count, "time32")?, *unit, Timezone::NAIVE)
+            }
+            DataType::Time64(unit) => {
+                let count = restated(clock_of_day(text)?, *unit, "time64")?;
+                Self::time64(count, *unit, Timezone::NAIVE)
+            }
+            DataType::Timestamp(unit, None) => {
+                let count = restated(iso::parse_datetime(text)?, *unit, "datetime64")?;
+                Self::datetime64(count, *unit, Timezone::NAIVE)
+            }
+            DataType::Timestamp(unit, Some(zone)) => {
+                let (count, source, _) = iso::parse_timestamp(text)?;
+                let count = restated((count, source), *unit, "datetime64")?;
+                Self::datetime64(count, *unit, zone.clone())
+            }
+            DataType::Duration32(unit) => {
+                let count = restated(iso::parse_duration(text)?, *unit, "duration32")?;
+                Self::duration32(narrow_i32(count, "duration32")?, *unit)
+            }
+            DataType::Duration64(unit) => {
+                let count = restated(iso::parse_duration(text)?, *unit, "duration64")?;
+                Self::duration64(count, *unit)
+            }
+            other => Err(invalid(format!("{other} holds no temporal text"))),
+        }
+    }
+
+    /// Spell this temporal the classic way, when it has a classic spelling.
+    ///
+    /// This is the crate's one text spelling of a temporal: an expression
+    /// literal, a cast to text and the Arrow cast leaf all render here, so a
+    /// value reads back as what it printed. A reading with no classic
+    /// spelling - a date beyond four-digit years, an interval layout -
+    /// answers `None`, as [`iso`](super::iso) does.
+    // The name states the conversion direction, as the text codecs' own
+    // `into_*` readers do; the spelling is built, so it cannot borrow.
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn into_temporal_text(&self) -> Option<smol_str::SmolStr> {
+        use super::iso;
+
+        match self {
+            Self::Date32(days, _, _) => iso::format_date(*days),
+            Self::Date64(count, _, _) => i32::try_from(count.div_euclid(86_400_000))
+                .ok()
+                .and_then(iso::format_date),
+            Self::Time32(count, unit, _) => iso::format_time(i64::from(*count), *unit),
+            Self::Time64(count, unit, _) => iso::format_time(*count, *unit),
+            Self::DateTime64(count, unit, zone) if zone.is_naive() => {
+                iso::format_datetime(*count, *unit)
+            }
+            Self::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
+            Self::Duration32(count, unit, _) => iso::format_duration(i64::from(*count), *unit),
+            Self::Duration64(count, unit, _) => iso::format_duration(*count, *unit),
+            _ => None,
+        }
+    }
+
     /// Return this temporal's count restated in `unit`, when exact.
     pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64> {
         let temporal = self.as_temporal()?;
@@ -438,6 +521,39 @@ impl Scalar {
     pub fn temporal_dtype(&self) -> Option<DataType> {
         self.is_temporal().then(|| self.dtype().ok()).flatten()
     }
+}
+
+/// Read a time of day, naming the type that reads a zoned clock instead.
+///
+/// An offset makes a clock an instant, and the message says so rather than
+/// reporting the offset as trailing text.
+fn clock_of_day(text: &str) -> Result<(i64, TimeUnit)> {
+    let zoned = text.ends_with(['Z', 'z'])
+        || text
+            .len()
+            .checked_sub(6)
+            .is_some_and(|start| matches!(text.as_bytes()[start], b'+' | b'-'));
+    if zoned {
+        return Err(invalid(
+            "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
+        ));
+    }
+    super::iso::parse_time(text)
+}
+
+/// Restate a parsed count in the unit its datatype declares, when exact.
+fn restated((count, source): (i64, TimeUnit), unit: TimeUnit, kind: &'static str) -> Result<i64> {
+    if source == unit {
+        return Ok(count);
+    }
+    let restate = |count: i128| -> Option<i64> {
+        let nanoseconds = count.checked_mul(nanoseconds_per(source)?)?;
+        let divisor = nanoseconds_per(unit)?;
+        (nanoseconds % divisor == 0)
+            .then(|| i64::try_from(nanoseconds / divisor).ok())
+            .flatten()
+    };
+    restate(i128::from(count)).ok_or_else(|| invalid(format!("{kind} count is no exact {unit}")))
 }
 
 fn narrow_i32(count: i64, kind: &'static str) -> Result<i32> {
@@ -466,7 +582,7 @@ const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     }
 }
 
-pub(super) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
+pub(crate) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
     let count = i128::from(count);
     match unit {
         TimeUnit::Day => (0, count * 86_400_000_000_000),

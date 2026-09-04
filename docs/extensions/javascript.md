@@ -48,12 +48,42 @@ declarations are checked against the tests that use them.
 | `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
+| `xxhash`, `Digest` | [xxhash](../xxhash.md) |
 
 Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
 `dumpsRaw` on `zlib` - over `Buffer`, reading and writing exactly what `node:zlib` does. Their
 streaming `reader`/`writer` and the transparent handle wrappers stay Rust-only: both are built on
 Rust's `Read`/`Write`, which has no JavaScript spelling here. A handle still applies the coding its
 name declares without being told, and `IOBase.codec` is what asks it which one that is.
+
+## Digests
+
+`xxhash` carries the four one-shot functions, the four resumable states, and `Digest`;
+`IOBase.readDigest` and `Scalar.digest` redirect to the same native path. XXH32 answers a
+`number` - a 32-bit value always fits one exactly - and the wider algorithms answer
+`bigint`, because they do not.
+
+```javascript
+const assert = require('node:assert/strict')
+const { Scalar, xxhash } = require('yggdryl')
+
+const payload = Buffer.from('abc')
+assert.equal(xxhash.xxh32(payload), 0x32d153ff)
+assert.equal(xxhash.xxh3_64(payload), 0x78af5f94892f3950n)
+assert.equal(xxhash.xxh3_64('abc'), xxhash.xxh3_64(new Uint8Array(payload)))
+
+const digest = xxhash.digest(payload, 'xxh3-64')
+assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')
+assert.ok(xxhash.Digest.from(digest.toString()).equals(digest))
+assert.equal(Scalar.fromJs('AAPL').digest().value(), Scalar.fromJs('AAPL').stableHash())
+```
+
+`Digest` follows the convention every immutable wrapper here follows: `equals`, `compare`,
+`stableHash`, `clone`, `toString`, and `toJSON`, because JavaScript cannot overload equality
+or hashing. A `Buffer` or `Uint8Array` is hashed in place; an `ArrayBuffer` is narrowed to a
+`Buffer` window first, and a `string` is encoded as UTF-8. The streaming `reader`/`writer`
+pair and the `Hashed<H>` handle stay Rust-only, for the same `Read`/`Write` reason the
+codings do.
 
 ## A filesystem is whatever answers six calls
 

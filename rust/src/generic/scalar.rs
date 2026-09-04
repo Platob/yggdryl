@@ -80,9 +80,12 @@ impl Float64 {
     }
 
     /// Return the deterministic hash of the canonical IEEE bits.
+    ///
+    /// The value is hashed through [`Scalar::write_bytes`], so every float
+    /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        Scalar::F64(*self).stable_hash()
     }
 }
 
@@ -241,9 +244,12 @@ impl Float16 {
     }
 
     /// Return the deterministic hash of the canonical IEEE bits.
+    ///
+    /// The value is hashed through [`Scalar::write_bytes`], so every float
+    /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        Scalar::F16(*self).stable_hash()
     }
 }
 
@@ -402,9 +408,12 @@ impl Float32 {
     }
 
     /// Return the deterministic hash of the canonical IEEE bits.
+    ///
+    /// The value is hashed through [`Scalar::write_bytes`], so every float
+    /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        Scalar::F32(*self).stable_hash()
     }
 }
 
@@ -586,7 +595,7 @@ impl Float {
 
     /// Return the deterministic hash shared by equal widths and values.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        self.into_scalar().stable_hash()
     }
 
     fn common(self) -> Float64 {
@@ -716,7 +725,7 @@ impl Integer {
 
     /// Return the deterministic logical integer hash.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        self.into_scalar().stable_hash()
     }
 }
 
@@ -1402,11 +1411,25 @@ impl Scalar {
 
     /// Return the deterministic 64-bit hash used by every binding.
     ///
-    /// Equal values hash identically across integer, float, decimal, and
-    /// temporal widths because this delegates to the same canonical `Hash`
-    /// implementation as Rust collections.
+    /// This is XXH3-64 over [`Self::write_bytes`], the value's canonical byte
+    /// representation, so the value and its [`Self::digest`] have one
+    /// definition. Equal values hash identically across integer, float,
+    /// decimal, and temporal widths, because that feed writes each family's
+    /// canonical form rather than its storage width.
+    ///
+    /// ```
+    /// use yggdryl::{DigestAlgorithm, Scalar};
+    ///
+    /// assert_eq!(Scalar::I8(1).stable_hash(), Scalar::I64(1).stable_hash());
+    /// assert_eq!(
+    ///     Scalar::from("AAPL").stable_hash(),
+    ///     Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3_64).as_u64().unwrap(),
+    /// );
+    /// ```
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        let mut state = crate::xxhash::Xxh3_64::new();
+        self.write_bytes(&mut state);
+        state.as_u64()
     }
 
     /// Construct an ordered sequence.

@@ -136,7 +136,7 @@ pub(crate) fn decimal_text(coefficient: I256, scale: i8) -> String {
 ///
 /// Equal numbers share exactly one normal form, which is what lets `Hash` agree
 /// with the numeric `Ord` below without either of them widening the coefficient.
-pub(super) fn normalize(unscaled: I256, scale: i8) -> (I256, i8) {
+pub(crate) fn normalize(unscaled: I256, scale: i8) -> (I256, i8) {
     if unscaled.is_zero() {
         return (I256::ZERO, 0);
     }

@@ -282,6 +282,8 @@ ascii_dtype: DataType = DataType.ascii(3)
 ascii_width: int | None = ascii_dtype.ascii_width
 currency_dtype: DataType = DataType.from_logical_name("currency")
 logical_names: dict[str, DataType] = DataType.logical_names()
+prebuilt_lists: dict[str, list[str]] = AsciiDictionary.prebuilt()
+prebuilt_mics: AsciiDictionary = AsciiDictionary.from_logical_name("mic")
 typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
 typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
