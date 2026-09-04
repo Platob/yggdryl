@@ -64,6 +64,8 @@
 //! other reader would find them. [`crate::iceberg`] never calls this module for
 //! partitioning.
 
+#[cfg(feature = "arrow")]
+pub mod arrow;
 mod handle;
 mod scalar;
 mod secret;

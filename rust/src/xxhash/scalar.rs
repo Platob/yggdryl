@@ -183,75 +183,46 @@ impl Scalar {
         // magnitude is the payload: `I8(1)`, `U8(1)`, and `I64(1)` are equal
         // and must feed identically.
         if let Some(integer) = self.as_integer() {
-            let tag = if integer.is_negative() {
-                DataTypeId::Int128
-            } else {
-                DataTypeId::UInt128
-            };
-            write_tag(sink, tag);
-            sink.write(&integer.magnitude().to_le_bytes());
+            write_integer(sink, integer.is_negative(), integer.magnitude());
             return;
         }
         // All float widths widen exactly into binary64, which is the reading
         // their equality and ordering already share.
         if let Some(float) = self.as_float() {
-            write_tag(sink, DataTypeId::Float64);
-            sink.write(&float.as_f64().to_bits().to_le_bytes());
+            write_float(sink, float.as_f64());
             return;
         }
         // Decimals compare by the number they name, so the feed is the
         // normalized coefficient and scale rather than the stored pair.
         if let Some((unscaled, scale)) = self.as_decimal() {
-            let (unscaled, scale) = decimal::normalize(unscaled, scale);
-            write_tag(sink, DataTypeId::Decimal256);
-            sink.write(&unscaled.into_le_bytes());
-            sink.write(&scale.to_le_bytes());
+            write_decimal(sink, unscaled, scale);
             return;
         }
         // Temporals compare by family, normalized count, and zone; the stored
         // width and unit are how the count is spelled, not what it is.
         if let Some(temporal) = self.as_temporal() {
-            let tag = match temporal.family() {
-                crate::TemporalFamily::Date => DataTypeId::Date64,
-                crate::TemporalFamily::Time => DataTypeId::Time64,
-                crate::TemporalFamily::DateTime => DataTypeId::Timestamp,
-                crate::TemporalFamily::Duration => DataTypeId::Duration64,
-            };
-            let (class, count) = temporal_key(temporal.count(), temporal.unit());
-            write_tag(sink, tag);
-            sink.write(&[class]);
-            sink.write(&count.to_le_bytes());
-            write_text(sink, temporal.timezone().as_str());
+            write_temporal(
+                sink,
+                temporal.family(),
+                temporal.count(),
+                temporal.unit(),
+                temporal.timezone(),
+            );
             return;
         }
         match self {
-            Self::Null => write_tag(sink, DataTypeId::Null),
-            Self::Bool(value) => {
-                write_tag(sink, DataTypeId::Boolean);
-                sink.write(&[u8::from(*value)]);
-            }
-            Self::String(value) => {
-                write_tag(sink, DataTypeId::Utf8);
-                write_text(sink, value);
-            }
+            Self::Null => write_null(sink),
+            Self::Bool(value) => write_bool(sink, *value),
+            Self::String(value) => write_string(sink, value),
             Self::Enum(value) => {
                 write_tag(sink, DataTypeId::Dictionary);
                 write_text(sink, value.kind());
                 sink.write(&[value.ordinal()]);
             }
-            Self::Bytes(value) => {
-                write_tag(sink, DataTypeId::Binary);
-                write_len(sink, value.len());
-                sink.write(value);
-            }
-            Self::Geospatial(value) => {
-                write_tag(sink, DataTypeId::Geometry);
-                write_len(sink, value.len());
-                sink.write(value);
-            }
+            Self::Bytes(value) => write_binary(sink, value),
+            Self::Geospatial(value) => write_geospatial(sink, value),
             Self::Sequence(values) => {
-                write_tag(sink, DataTypeId::List);
-                write_len(sink, values.len());
+                write_sequence_header(sink, values.len());
                 for value in values.iter() {
                     value.feed(sink, depth + 1);
                 }
@@ -311,6 +282,115 @@ impl<K: crate::field::FieldType> crate::TypedScalar<K> {
 /// Write one [`DataTypeId`] discriminant as the value's tag.
 fn write_tag(sink: &mut impl Hasher, id: DataTypeId) {
     sink.write(&[id.as_u8()]);
+}
+
+// The family writers below are the feed's one definition of each canonical
+// form. `xxhash::arrow` reads Arrow buffers straight into them rather than
+// materializing a `Scalar` first, so the buffer path and the value path cannot
+// drift apart: there is one encoding, reached two ways.
+
+/// Write the tag a value with no payload carries.
+pub(super) fn write_null(sink: &mut impl Hasher) {
+    write_tag(sink, DataTypeId::Null);
+}
+
+/// Write a boolean.
+pub(super) fn write_bool(sink: &mut impl Hasher, value: bool) {
+    write_tag(sink, DataTypeId::Boolean);
+    sink.write(&[u8::from(value)]);
+}
+
+/// Write any integer width in its canonical sign-and-magnitude form.
+pub(super) fn write_integer(sink: &mut impl Hasher, negative: bool, magnitude: u128) {
+    let tag = if negative {
+        DataTypeId::Int128
+    } else {
+        DataTypeId::UInt128
+    };
+    write_tag(sink, tag);
+    sink.write(&magnitude.to_le_bytes());
+}
+
+/// Write a signed integer of any width.
+#[cfg(feature = "arrow")]
+pub(super) fn write_signed(sink: &mut impl Hasher, value: i128) {
+    write_integer(sink, value < 0, value.unsigned_abs());
+}
+
+/// Write an unsigned integer of any width.
+#[cfg(feature = "arrow")]
+pub(super) fn write_unsigned(sink: &mut impl Hasher, value: u128) {
+    write_integer(sink, false, value);
+}
+
+/// Write any float width as its common binary64 reading.
+///
+/// A NaN is normalized here rather than at the call site, so a raw Arrow
+/// buffer holding a non-canonical NaN payload feeds what the equivalent
+/// `Scalar` feeds.
+pub(super) fn write_float(sink: &mut impl Hasher, value: f64) {
+    let value = if value.is_nan() { f64::NAN } else { value };
+    write_tag(sink, DataTypeId::Float64);
+    sink.write(&value.to_bits().to_le_bytes());
+}
+
+/// Write an exact decimal as the number it names.
+pub(super) fn write_decimal(sink: &mut impl Hasher, unscaled: I256, scale: i8) {
+    let (unscaled, scale) = decimal::normalize(unscaled, scale);
+    write_tag(sink, DataTypeId::Decimal256);
+    sink.write(&unscaled.into_le_bytes());
+    sink.write(&scale.to_le_bytes());
+}
+
+/// Write a temporal as its family, normalized count, and zone.
+pub(super) fn write_temporal(
+    sink: &mut impl Hasher,
+    family: crate::TemporalFamily,
+    count: i64,
+    unit: crate::TimeUnit,
+    zone: &crate::Timezone,
+) {
+    let tag = match family {
+        crate::TemporalFamily::Date => DataTypeId::Date64,
+        crate::TemporalFamily::Time => DataTypeId::Time64,
+        crate::TemporalFamily::DateTime => DataTypeId::Timestamp,
+        crate::TemporalFamily::Duration => DataTypeId::Duration64,
+    };
+    let (class, count) = temporal_key(count, unit);
+    write_tag(sink, tag);
+    sink.write(&[class]);
+    sink.write(&count.to_le_bytes());
+    write_text(sink, zone.as_str());
+}
+
+/// Write UTF-8 text as a string value.
+pub(super) fn write_string(sink: &mut impl Hasher, text: &str) {
+    write_tag(sink, DataTypeId::Utf8);
+    write_text(sink, text);
+}
+
+/// Write opaque bytes as a byte value.
+pub(super) fn write_binary(sink: &mut impl Hasher, bytes: &[u8]) {
+    write_tag(sink, DataTypeId::Binary);
+    write_len(sink, bytes.len());
+    sink.write(bytes);
+}
+
+/// Write Well-Known Binary as a geospatial value.
+pub(super) fn write_geospatial(sink: &mut impl Hasher, bytes: &[u8]) {
+    write_tag(sink, DataTypeId::Geometry);
+    write_len(sink, bytes.len());
+    sink.write(bytes);
+}
+
+/// Write the tag and element count an ordered sequence starts with.
+///
+/// The elements follow, each feeding itself; a row is a sequence of its
+/// columns, which is what lets a row digest be built without materializing the
+/// row.
+pub(super) fn write_sequence_header(sink: &mut impl Hasher, count: usize) {
+    write_tag(sink, DataTypeId::List);
+    write_len(sink, count);
 }
 
 /// Write a length as `u64` little-endian.
