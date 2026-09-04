@@ -112,6 +112,16 @@ pub(crate) fn exact_i32(value: f64, name: &str) -> napi::Result<i32> {
     Ok(value as i32)
 }
 
+pub(crate) fn exact_i128(value: &napi::bindgen_prelude::BigInt, name: &str) -> napi::Result<i128> {
+    let (parsed, lossless) = value.get_i128();
+    if !lossless {
+        return Err(Error::from_reason(format!(
+            "{name} must be a signed 128-bit integer"
+        )));
+    }
+    Ok(parsed)
+}
+
 pub(crate) fn exact_i8(value: f64, name: &str) -> napi::Result<i8> {
     if !value.is_finite()
         || value.fract() != 0.0

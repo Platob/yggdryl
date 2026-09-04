@@ -43,6 +43,7 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
 | `iceberg` | [iceberg](../iceberg.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
+| `enums` | [generic](../generic.md) and this page |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
@@ -477,6 +478,120 @@ assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
 The import preserves exact physical layout and metadata. Rebuilding the
 dataclass derives annotations from that native graph rather than passing it
 through annotation inference again.
+
+## ASCII vocabularies as enums
+
+`yggdryl.enums` carries the core's static spellings - `DATA_TYPE_IDS`, `CODECS`, `LEVELS` and the
+rest, listed on the [generic page](../generic.md) - and the three enum bases a caller declares a
+vocabulary with. `Ascii32`, `Ascii64`, and `Ascii128` are the
+[ASCII widths](../datatype.md#ascii-widths-and-the-currency-registration); a subclass names its
+values as text and a member *is* the integer that value packs into, so the code is the same in
+every process, is exactly what the column stores, and orders as the text does.
+
+```python
+from yggdryl import DataType
+from yggdryl.enums import Ascii32
+
+class Currency(Ascii32):
+    USD = "USD"
+    EUR = "EUR"
+
+# A member is its value's own storage bytes, read big-endian.
+assert int(Currency.USD) == 0x55534400
+assert int(Currency.USD).to_bytes(4, "big") == b"USD\x00"
+assert Currency.EUR < Currency.USD
+assert Currency.dtype() == DataType("ascii32")
+
+# The ASCII value is what a member renders as; `int(member)` asks for the code.
+assert Currency.USD.into_str() == "USD"
+assert f"{Currency.EUR}" == "EUR"
+
+# The vocabulary is open: a value that was not declared reads back as a member
+# under its own code, and every spelling of it is that one member.
+jpy = Currency.from_str("JPY")
+assert jpy is Currency("JPY") is Currency(0x4A505900)
+assert [member.name for member in Currency] == ["USD", "EUR"]
+
+# A value the width refuses is an error, not a silent unknown member.
+try:
+    Currency.from_str("EURO!")
+except ValueError as error:
+    assert "at most 4 bytes" in str(error)
+else:
+    raise AssertionError("a value wider than the width must be reported")
+```
+
+Sixteen bytes need the whole 128-bit integer, which Python holds natively:
+
+```python
+from yggdryl.enums import Ascii128
+
+class Isin(Ascii128):
+    APPLE = "US0378331005"
+
+assert int(Isin.APPLE) == 0x55533033373833333130303500000000
+assert Isin.APPLE.into_str() == "US0378331005"
+```
+
+A class declares itself onto a field, which stores its members under the reserved `field:enum`
+key, so the enum crosses Arrow, a file, and the other binding as ordinary field metadata:
+
+```python
+from yggdryl import AsciiEnum, Field
+from yggdryl.enums import Ascii32, AsciiCode
+
+class Side(Ascii32):
+    BUY = "B"
+    SELL = "S"
+
+field = Side.field("side", nullable=False)
+assert field.dtype.id == "ascii32"
+assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
+assert field.get_property("field", "enum") == field.ascii_enum.into_json()
+
+# The declaration is metadata, so the Arrow round trip carries it and it reads
+# back as the class that wrote it.
+recovered = AsciiCode.from_field(Field.from_arrow(field.into_arrow()))
+assert recovered.__name__ == "Side"
+assert [(member.name, int(member)) for member in recovered] == [
+    (member.name, int(member)) for member in Side
+]
+```
+
+A value read back that the class did not declare is announced on the `yggdryl.enums.ascii` logger
+at `INFO`. It registers once and every later read answers the member that registration created, so
+the record of a vocabulary read past its declaration is emitted exactly once per value:
+
+```python
+import logging
+
+from yggdryl.enums import Ascii32
+
+class Side(Ascii32):
+    BUY = "B"
+    SELL = "S"
+
+records: list[logging.LogRecord] = []
+handler = logging.Handler()
+handler.emit = records.append  # type: ignore[method-assign]
+logger = logging.getLogger("yggdryl.enums.ascii")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+try:
+    assert Side.from_str("X") is Side.from_str("X") is Side("X")
+finally:
+    logger.removeHandler(handler)
+    logger.setLevel(logging.NOTSET)
+
+assert [record.getMessage() for record in records] == [f"Side registered 'X' as {0x58000000}"]
+```
+
+The declared members are the declaration and a value read back is data, so `as_enum()` and
+`field()` carry only what the class body names. `into_dictionary()` is the other direction: an
+[`AsciiDictionary`](../datatype.md#the-dictionary-vocabulary-and-its-generated-enum) over the same
+values, whose codes are positions in the column it encodes rather than the values themselves. Only
+the leaf declares members - `AsciiCode` is the base the three widths share, and nothing subclasses
+a vocabulary that already has members.
 
 ## Errors
 

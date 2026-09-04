@@ -1,5 +1,6 @@
 //! Native Python view of Yggdryl datatypes.
 
+use std::collections::BTreeMap;
 use std::num::IntErrorKind;
 use std::sync::Arc;
 
@@ -13,7 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyIterator, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::{
-    AsciiDictionary as CoreAsciiDictionary, DataType as CoreDataType,
+    AsciiDictionary as CoreAsciiDictionary, AsciiEnum as CoreAsciiEnum, DataType as CoreDataType,
     EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
@@ -1015,6 +1016,25 @@ impl PyDataType {
         self.inner.ascii_width()
     }
 
+    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    ///
+    /// The packed integer is the same in every process, so it is what an enum
+    /// member and a stable hash are, and it is exactly the bytes an ASCII
+    /// column stores.
+    fn ascii_packed(&self, value: &Bound<'_, PyAny>) -> PyResult<i128> {
+        self.inner
+            .ascii_packed(&ascii_value_of(value)?)
+            .map_err(value_error)
+    }
+
+    /// The ASCII value a packed integer carries, without its padding.
+    fn ascii_value(&self, packed: i128) -> PyResult<String> {
+        self.inner
+            .ascii_value(packed)
+            .map(|value| value.to_string())
+            .map_err(value_error)
+    }
+
     /// Internal field-class conversion view of temporal resolution. Keeping this on
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
@@ -1406,6 +1426,188 @@ impl PyDataType {
     }
 }
 
+/// The enum an ASCII field's values name: one value per member name.
+///
+/// A dictionary is a vocabulary and derives its member names; this is the
+/// vocabulary a declaration named itself, and it is what a ``Field`` stores
+/// under ``field:enum`` so the enum crosses Arrow, a file, and another runtime
+/// intact. The width lives in the field's datatype, so a member's code is its
+/// packed ASCII value under that width and never a position.
+#[pyclass(name = "AsciiEnum", module = "yggdryl._native", skip_from_py_object)]
+#[derive(Clone)]
+pub(crate) struct PyAsciiEnum {
+    inner: CoreAsciiEnum,
+}
+
+impl PyAsciiEnum {
+    pub(crate) const fn from_inner(inner: CoreAsciiEnum) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) const fn as_inner(&self) -> &CoreAsciiEnum {
+        &self.inner
+    }
+}
+
+/// The members argument: a mapping of member name to value, or its pairs.
+fn ascii_members_of(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
+    if let Ok(mapping) = value.cast::<PyDict>() {
+        return mapping
+            .iter()
+            .map(|(member, value)| Ok((member.extract()?, value.extract()?)))
+            .collect();
+    }
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(
+            "enum members must be a mapping or its name and value pairs, not one string",
+        ));
+    }
+    value
+        .try_iter()?
+        .map(|entry| entry?.extract::<(String, String)>())
+        .collect()
+}
+
+#[pymethods]
+impl PyAsciiEnum {
+    // The members move, so equality cannot be frozen into a hash: a mutable
+    // value follows Python's hash contract by having none.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Creates an enum from its members, one ASCII value per member name.
+    #[new]
+    #[pyo3(signature = (name, members=None))]
+    fn new(name: &str, members: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let members = members
+            .map(ascii_members_of)
+            .transpose()?
+            .unwrap_or_default();
+        CoreAsciiEnum::from_members(name, members)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Parses the ``field:enum`` document.
+    #[staticmethod]
+    fn from_json(document: &str) -> PyResult<Self> {
+        CoreAsciiEnum::from_json(document)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Renders the ``field:enum`` document, which is one text per enum.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_json(&self) -> String {
+        self.inner.into_json()
+    }
+
+    /// The enum's own name, which is not the field's name.
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    /// Every member by name, with the ASCII value it names.
+    #[getter]
+    fn members(&self) -> BTreeMap<&str, &str> {
+        self.inner.iter().collect()
+    }
+
+    /// The ASCII value one member names, or ``None`` for a member it has not.
+    fn get(&self, member: &str) -> Option<&str> {
+        self.inner.get(member)
+    }
+
+    /// The first member naming one ASCII value, or ``None`` when none does.
+    fn get_member(&self, value: &str) -> Option<&str> {
+        self.inner.get_member(value)
+    }
+
+    /// Names one ASCII value and returns the value the member had.
+    fn insert(&mut self, member: &str, value: &str) -> PyResult<Option<String>> {
+        self.inner
+            .insert(member, value)
+            .map(|held| held.map(|held| held.to_string()))
+            .map_err(value_error)
+    }
+
+    /// Removes one member and returns the ASCII value it named.
+    fn remove(&mut self, member: &str) -> Option<String> {
+        self.inner.remove(member).map(|value| value.to_string())
+    }
+
+    /// The members paired with their packed codes under one ASCII width.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_members(&self, width: &Bound<'_, PyAny>) -> PyResult<Vec<(String, i128)>> {
+        self.inner
+            .into_members(&core_dtype_from_value(width)?)
+            .map(|members| {
+                members
+                    .into_iter()
+                    .map(|(member, code)| (member.to_string(), code))
+                    .collect()
+            })
+            .map_err(value_error)
+    }
+
+    /// The vocabulary this enum names, as a dictionary over one width.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (width, key=None))]
+    fn into_dictionary(
+        &self,
+        width: &Bound<'_, PyAny>,
+        key: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyAsciiDictionary> {
+        let inner = self
+            .inner
+            .into_dictionary(core_dtype_from_value(width)?)
+            .map_err(value_error)?;
+        PyAsciiDictionary::keyed(inner, key)
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let members = PyList::new(py, self.inner.iter().map(|(member, _)| member))?;
+        Ok(members.try_iter()?.into_any())
+    }
+
+    fn __contains__(&self, member: &str) -> bool {
+        self.inner.get(member).is_some()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("AsciiEnum.from_json({:?})", self.inner.into_json())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        let answer = match operation {
+            CompareOp::Eq => self.inner == other.inner,
+            CompareOp::Ne => self.inner != other.inner,
+            _ => return Ok(other.py().NotImplemented()),
+        };
+        Ok(answer
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
 /// Iterator over a datatype's direct child fields.
 #[pyclass(module = "yggdryl._native")]
 pub(crate) struct PyDataTypeIterator {
@@ -1486,6 +1688,10 @@ fn ascii_column_of<'py>(values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyIte
 /// registry: a code is stable exactly as far as this object travels, and two
 /// independent encodes agree only when the same dictionary crossed both.
 /// Nothing in the write path registers on its own.
+///
+/// That code is a position. The other integer an ASCII value has is
+/// ``DataType.ascii_packed``, its own storage bytes, which is the same
+/// everywhere and is what ``into_intenum`` names its members by.
 ///
 /// The first argument is the ASCII *width* the values are stored as; the
 /// `values` property is the vocabulary itself, in the code order the generated
@@ -1633,8 +1839,9 @@ impl PyAsciiDictionary {
 
     /// Builds an `enum.IntEnum` whose members are this vocabulary.
     ///
-    /// The member names and their codes come from the core listing, so the
-    /// enum is the value list and a member is its position.
+    /// The member names and their codes come from the core listing, so a
+    /// member is its value packed big-endian and never its position: the same
+    /// value names the same integer in every process and every vocabulary.
     #[allow(clippy::wrong_self_convention)]
     fn into_intenum<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
         if name.trim().is_empty() {
@@ -1652,6 +1859,13 @@ impl PyAsciiDictionary {
         py.import("enum")?
             .getattr("IntEnum")?
             .call1((name, members))
+    }
+
+    /// The enum member name of one value, under the rule the generated enum
+    /// applies to a whole vocabulary at once.
+    #[staticmethod]
+    fn member_name(value: &str) -> String {
+        CoreAsciiDictionary::member_name(value).to_string()
     }
 
     fn __len__(&self) -> usize {

@@ -25,10 +25,10 @@ pub(crate) mod serde;
 mod temporal;
 
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
-pub use ascii::AsciiDictionary;
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::ascii_padded;
 pub(crate) use ascii::{ASCII_EXTENSION_NAME, ascii_bytes, ascii_text};
+pub use ascii::{AsciiDictionary, AsciiEnum};
 
 pub use crate::generic::{TimeUnit, UnionMode};
 pub(crate) use default::{

@@ -11,7 +11,7 @@ use yggdryl::{Field as CoreField, ProtocolField as CoreProtocolField, Scheme as 
 
 use crate::{
     JsDifferenceIterator,
-    datatype::{JsDataType, dtype_from_input},
+    datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
     exact_i32,
     media::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
@@ -444,6 +444,19 @@ impl JsField {
         self.inner.parquet_field_id().map_err(napi_error)
     }
 
+    /// The enum this field's ASCII values name, `null` when it declares none.
+    ///
+    /// The declaration is one `field:enum` document, so it reaches Arrow, a
+    /// file, and another runtime as ordinary field metadata and comes back the
+    /// enum that was written.
+    #[napi(getter)]
+    pub fn ascii_enum(&self) -> Result<Option<JsAsciiEnum>> {
+        self.inner
+            .ascii_enum()
+            .map(|value| value.map(JsAsciiEnum::from_core))
+            .map_err(napi_error)
+    }
+
     /// Typed location URL stored canonically in Arrow-compatible metadata.
     #[napi(getter)]
     pub fn location(&self) -> Result<Option<JsUrl>> {
@@ -697,6 +710,23 @@ impl JsField {
     #[napi]
     pub fn remove_parquet_field_id(&mut self) -> Result<Option<i32>> {
         self.inner.remove_parquet_field_id().map_err(napi_error)
+    }
+
+    /// Declare the enum this field's ASCII values name.
+    #[napi]
+    pub fn set_ascii_enum(&mut self, value: &JsAsciiEnum) -> Result<()> {
+        self.inner
+            .set_ascii_enum(value.as_core())
+            .map_err(napi_error)
+    }
+
+    /// Remove the declaration and return the enum it held.
+    #[napi]
+    pub fn remove_ascii_enum(&mut self) -> Result<Option<JsAsciiEnum>> {
+        self.inner
+            .remove_ascii_enum()
+            .map(|value| value.map(JsAsciiEnum::from_core))
+            .map_err(napi_error)
     }
 
     /// Set a typed location from any native identifier wrapper or URL string.

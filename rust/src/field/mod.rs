@@ -13,11 +13,12 @@ use crate::datatype::{
     DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::metadata::{
-    ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, LOCATION_KEY,
-    MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol, parse_field_id,
-    parse_reserved_bool, property_key, write_json_string as write_quoted,
+    ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_ENUM_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY,
+    LOCATION_KEY, MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol,
+    parse_ascii_enum, parse_field_id, parse_reserved_bool, property_key,
+    write_json_string as write_quoted,
 };
-use crate::{Error, Metadata, Result, Scalar, Scheme, Url, stable_hash_display};
+use crate::{AsciiEnum, Error, Metadata, Result, Scalar, Scheme, Url, stable_hash_display};
 
 use self::protocol::{ProtocolField, ProtocolFieldMut};
 
@@ -846,6 +847,90 @@ impl Field {
     /// [`Metadata::display`] carries what it is and who reads it.
     pub fn display(&self) -> Option<&str> {
         self.metadata.display()
+    }
+
+    /// The enum this field's ASCII values name, `None` when it declares none.
+    ///
+    /// The declaration is one `field:enum` document, so it reaches Arrow, a
+    /// file, and another runtime as ordinary field metadata and comes back the
+    /// enum that was written. A member's code is
+    /// [`DataType::ascii_packed`](crate::DataType::ascii_packed) of its value
+    /// under this field's own width, which is the only place the width is
+    /// stated.
+    ///
+    /// ```
+    /// use yggdryl::{AsciiEnum, DataType, Field};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
+    /// let mut field = Field::new("side", DataType::Ascii32, false);
+    /// field.set_ascii_enum(&side)?;
+    ///
+    /// // The declaration is metadata, so the Arrow round trip carries it.
+    /// let restored = Field::from_arrow(&field.clone().into_arrow()?)?;
+    /// assert_eq!(restored.ascii_enum()?, Some(side));
+    /// assert_eq!(restored.as_field_properties().get("enum").is_some(), true);
+    ///
+    /// // A value the width could not store is refused at the declaration.
+    /// let wide = AsciiEnum::from_members("Venue", [("LONG", "EUREX")])?;
+    /// assert!(Field::new("venue", DataType::Ascii32, false)
+    ///     .set_ascii_enum(&wide)
+    ///     .is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Generic metadata construction validates and canonicalizes the
+    /// `field:enum` document, so an error can only originate from externally
+    /// corrupted serialized state.
+    pub fn ascii_enum(&self) -> Result<Option<AsciiEnum>> {
+        self.get_metadata(FIELD_ENUM_KEY)
+            .map(parse_ascii_enum)
+            .transpose()
+    }
+
+    /// Declares the enum this field's ASCII values name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted widths when this field's datatype
+    /// is not one, and one naming the width when a member's value does not fit
+    /// it.
+    pub fn set_ascii_enum(&mut self, value: &AsciiEnum) -> Result<()> {
+        // Every member is packed here and the result dropped: the declaration
+        // is refused whole, so a field never holds an enum it cannot decode.
+        value.into_members(&self.dtype)?;
+        let (_, changed) = self
+            .metadata
+            .insert_validated(FIELD_ENUM_KEY.to_owned(), value.into_json());
+        if changed {
+            self.invalidate_arrow();
+        }
+        Ok(())
+    }
+
+    /// Returns a persistent field declaring one enum over its ASCII values.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set_ascii_enum`] returns, leaving this field
+    /// unchanged.
+    pub fn try_with_ascii_enum(mut self, value: &AsciiEnum) -> Result<Self> {
+        self.set_ascii_enum(value)?;
+        Ok(self)
+    }
+
+    /// Removes the declaration and returns the enum it held.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only for externally corrupted serialized state.
+    pub fn remove_ascii_enum(&mut self) -> Result<Option<AsciiEnum>> {
+        self.remove_metadata(FIELD_ENUM_KEY)
+            .map(|value| parse_ascii_enum(&value))
+            .transpose()
     }
 
     /// Parses the Arrow/Parquet field identifier stored in metadata.
@@ -2040,7 +2125,75 @@ mod tests {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
     use super::Field;
-    use crate::{DataType, Error};
+    use crate::{AsciiEnum, DataType, Error};
+
+    #[test]
+    fn a_field_declares_the_enum_its_ascii_values_name() {
+        let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")]).unwrap();
+        let field = Field::new("side", DataType::Ascii32, false)
+            .try_with_ascii_enum(&side)
+            .unwrap();
+
+        // One reserved document, readable through the `field:` protocol view
+        // and through the typed accessor that owns it.
+        assert_eq!(
+            field.get_metadata("field:enum"),
+            Some(r#"{"members":{"BUY":"B","SELL":"S"},"name":"Side"}"#)
+        );
+        assert_eq!(
+            field.as_field_properties().get("enum"),
+            field.get_metadata("field:enum")
+        );
+        assert_eq!(field.ascii_enum().unwrap(), Some(side.clone()));
+        assert_eq!(
+            field.as_metadata().as_field_properties().get("enum"),
+            field.get_metadata("field:enum")
+        );
+
+        // The members carry the packed codes of this field's own width.
+        assert_eq!(
+            side.into_members(field.dtype()).unwrap(),
+            [("BUY".into(), 0x4200_0000), ("SELL".into(), 0x5300_0000)]
+        );
+
+        // Metadata canonicalizes the document, so one enum is one stored text
+        // whichever spelling reached the field.
+        let restated = Field::new("side", DataType::Ascii32, false)
+            .try_with_metadata(
+                "field:enum",
+                r#"{"name":"Side","members":{"SELL":"S","BUY":"B"}}"#,
+            )
+            .unwrap();
+        assert_eq!(
+            restated.get_metadata("field:enum"),
+            field.get_metadata("field:enum")
+        );
+        assert_eq!(restated.stable_hash(), field.stable_hash());
+
+        // A declaration the width could not store is refused whole.
+        let wide = AsciiEnum::from_members("Venue", [("LONG", "EUREX")]).unwrap();
+        let mut narrow = Field::new("venue", DataType::Ascii32, false);
+        let refused = narrow.set_ascii_enum(&wide).unwrap_err().to_string();
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+        assert_eq!(narrow.ascii_enum().unwrap(), None);
+        assert!(
+            Field::new("venue", DataType::Utf8, false)
+                .set_ascii_enum(&wide)
+                .is_err()
+        );
+
+        // A stored document that is not one is refused where it is written.
+        let refused = Field::new("side", DataType::Ascii32, false)
+            .try_with_metadata("field:enum", "[]")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("field:enum"), "{refused}");
+
+        let mut removed = field.clone();
+        assert_eq!(removed.remove_ascii_enum().unwrap(), Some(side));
+        assert_eq!(removed.remove_ascii_enum().unwrap(), None);
+        assert_eq!(removed, Field::new("side", DataType::Ascii32, false));
+    }
 
     #[test]
     fn canonical_display_json_and_arrow_round_trip() {

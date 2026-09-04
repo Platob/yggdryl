@@ -733,7 +733,7 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     ```rust
     use arrow_array::types::Int32Type;
     use arrow_array::{Array, DictionaryArray, FixedSizeBinaryArray};
-    use yggdryl::{AsciiDictionary, DataType};
+    use yggdryl::{AsciiDictionary, AsciiEnum, DataType, Field};
 
     // Register as you encode: an unseen value takes the next code, a seen one
     // answers the code it already has.
@@ -769,9 +769,36 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     assert_eq!(stored.value(2), b"JPY\0");
     assert_eq!(AsciiDictionary::from_arrow_array(column)?, currencies);
 
-    // The enum is the value list and the code is the position.
+    // A dictionary code is a position. The other integer a value has is its
+    // own storage bytes, which is the same integer in every process and
+    // orders exactly as the text does.
+    assert_eq!(DataType::Ascii32.ascii_packed(b"USD")?, 0x5553_4400);
+    assert_eq!(DataType::Ascii32.ascii_packed(b"USD\0")?, 0x5553_4400);
+    assert_eq!(DataType::Ascii32.ascii_value(0x5553_4400)?, "USD");
+
+    // That is what an enum member is, at every width - sixteen bytes fill the
+    // whole `i128`.
     let venues = AsciiDictionary::from_values(DataType::Ascii32, ["XNAS", "n/a"])?;
-    assert_eq!(venues.into_members()?, [("XNAS".into(), 0), ("N_A".into(), 1)]);
+    assert_eq!(
+        venues.into_members()?,
+        [("XNAS".into(), 0x584E_4153), ("N_A".into(), 0x6E2F_6100)]
+    );
+    let isins = AsciiDictionary::from_values(DataType::Ascii128, ["US0378331005"])?;
+    assert_eq!(
+        isins.into_members()?,
+        [("US0378331005".into(), 0x5553_3033_3738_3333_3130_3035_0000_0000)]
+    );
+
+    // The same rule names one value at a time, for a vocabulary declared
+    // member by member rather than generated from a whole listing.
+    assert_eq!(AsciiDictionary::member_name("n/a").as_str(), "N_A");
+
+    // A field declares the enum its values name, as one metadata document, so
+    // the enum crosses Arrow and comes back the enum that was written.
+    let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
+    let field = Field::new("side", DataType::Ascii32, false).try_with_ascii_enum(&side)?;
+    assert_eq!(side.into_members(&DataType::Ascii32)?[0], ("BUY".into(), 0x4200_0000));
+    assert_eq!(Field::from_arrow(&field.into_arrow()?)?.ascii_enum()?, Some(side));
     ```
 
 === "Python"
@@ -781,7 +808,7 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
 
     import pyarrow as pa
 
-    from yggdryl import AsciiDictionary, DataType
+    from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field
 
     # Register as you encode: an unseen value takes the next code, a seen one
     # answers the code it already has.
@@ -809,15 +836,34 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
     # The enum is the value list and the code is the position.
     Venue = AsciiDictionary.from_values("ascii32", ["XNAS", "n/a"]).into_intenum("Venue")
     assert issubclass(Venue, enum.IntEnum)
-    assert [(member.name, member.value) for member in Venue] == [("XNAS", 0), ("N_A", 1)]
-    assert Venue(0).name == "XNAS"
+    assert [(member.name, member.value) for member in Venue] == [
+        ("XNAS", 0x584E4153),
+        ("N_A", 0x6E2F6100),
+    ]
+    assert Venue(0x584E4153).name == "XNAS"
+
+    # Sixteen bytes fill the whole 128-bit integer, which Python holds natively.
+    Isin = AsciiDictionary.from_values("ascii128", ["US0378331005"]).into_intenum("Isin")
+    assert Isin.US0378331005 == 0x55533033373833333130303500000000
+
+    # The same rule names one value at a time, for a vocabulary declared
+    # member by member rather than generated from a whole listing.
+    assert AsciiDictionary.member_name("n/a") == "N_A"
+
+    # A field declares the enum its values name, as one metadata document, so
+    # the enum crosses Arrow and comes back the enum that was written.
+    side = AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
+    field = Field("side", "ascii32", nullable=False)
+    field.set_ascii_enum(side)
+    assert side.into_members("ascii32")[0] == ("BUY", 0x42000000)
+    assert Field.from_arrow(field.into_arrow()).ascii_enum == side
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { AsciiDictionary } = require('yggdryl')
+    const { AsciiDictionary, AsciiEnum, DataType, Field } = require('yggdryl')
 
     // Register as you encode: an unseen value takes the next code, a seen one
     // answers the code it already has.
@@ -844,21 +890,53 @@ there as its padded bytes; read it under a declared `utf8` field, as above, for 
 
     // The enum is the value list and the code is the position.
     const Venue = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a']).intoEnum('Venue')
-    assert.deepEqual({ ...Venue }, { XNAS: 0, N_A: 1 })
-    assert.equal(Venue.N_A, 1)
+    assert.deepEqual({ ...Venue }, { XNAS: 0x584e4153n, N_A: 0x6e2f6100n })
+    assert.equal(Venue.N_A, new DataType('ascii32').asciiPacked('n/a'))
+
+    // Sixteen bytes fill the whole 128-bit integer, so every code is a bigint.
+    const Isin = AsciiDictionary.fromValues('ascii128', ['US0378331005']).intoEnum('Isin')
+    assert.equal(Isin.US0378331005, 0x55533033373833333130303500000000n)
+
+    // The same rule names one value at a time, for a vocabulary declared
+    // member by member rather than generated from a whole listing.
+    assert.equal(AsciiDictionary.memberName('n/a'), 'N_A')
+
+    // A field declares the enum its values name, as one metadata document, so
+    // every serialization carries it and it comes back the enum that wrote it.
+    const side = new AsciiEnum('Side', { BUY: 'B', SELL: 'S' })
+    const field = new Field('side', 'ascii32', false)
+    field.setAsciiEnum(side)
+    assert.deepEqual(side.intoMembers('ascii32'), { BUY: 0x42000000n, SELL: 0x53000000n })
+    assert.ok(Field.fromJSON(field.toJSON()).asciiEnum.equals(side))
     ```
 
-`AsciiDictionary` is the vocabulary of one column and it is a value the caller
-carries, never a process-global registry: a code is stable exactly as far as
-that value travels, so two encodes agree only where the same dictionary crossed
-both, and nothing in the write path starts encoding a column on its own. The
-generated enum is that value list and a member's code is its position, named
-once by the core listing - an ASCII letter kept uppercased, a digit kept, every
-other byte `_`, a leading digit prefixed with `_`, and a name that both opens
-and closes with `_` dropping its trailing underscores, because that is the shape
-Python reserves for `_sunder_` and `__dunder__` names - which refuses `ascii128`
-and any two values that would name one member, and answers name to code because
-the vocabulary is already the code to value direction.
+An ASCII value has two integers and they answer different questions.
+`AsciiDictionary` is the vocabulary of one column, a value the caller carries
+and never a process-global registry, and its code is a **position**: stable
+exactly as far as that dictionary travels, agreed between two encodes only
+where the same dictionary crossed both, and never registered by the write path
+on its own. `ascii_packed` is the value's **own storage bytes** read
+big-endian, so it is the same integer in every process, orders exactly as the
+text does, is what a stable hash hashes, and fills an `i32`, an `i64`, or a
+whole `i128` by width. An ASCII byte never sets the sign bit, so a packed code
+is never negative.
+
+The generated enum names its members by the packed code, so a member survives a
+process, a file, and another runtime; the name comes once from the core listing
+- an ASCII letter kept uppercased, a digit kept, every other byte `_`, a leading
+digit prefixed with `_`, and a name that both opens and closes with `_` dropping
+its trailing underscores, because that is the shape Python reserves for
+`_sunder_` and `__dunder__` names - which refuses any two values that would name
+one member, and answers name to code because the vocabulary is already the code
+to value direction.
+
+`AsciiEnum` is that naming as a value: an enum's own name and one ASCII value
+per member, which a field stores under the reserved `field:enum` key. The width
+is the field's datatype and is never copied into the document, so a member's
+code is the packed value under that width and one enum is one canonical text
+however it was built. Ordinary field metadata is what carries it, so the
+declaration reaches Arrow, a file, and either binding with the field, and the
+`field:` protocol view reads it beside `field:init` and `field:partition`.
 
 ## Identity and family
 

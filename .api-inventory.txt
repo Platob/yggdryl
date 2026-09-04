@@ -132,6 +132,8 @@
   pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("currency", DataType::Ascii32)];
   pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
+  pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>
+  pub fn ascii_value(&self, packed: i128) -> Result<SmolStr>
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub struct AsciiDictionary
   pub fn new(values: DataType) -> Result<Self>
@@ -147,9 +149,25 @@
   pub const fn key(&self) -> &DataType
   pub const fn values_dtype(&self) -> &DataType
   pub fn dtype(&self) -> Result<DataType>
-  pub fn into_members(&self) -> Result<Vec<(SmolStr, i64)>>
+  pub fn into_members(&self) -> Result<Vec<(SmolStr, i128)>>
+  pub fn member_name(value: &str) -> SmolStr
   pub fn into_arrow_array<I, V>(&mut self, values: I) -> Result<ArrayRef> where I: IntoIterator<Item = Option<V>>, V: AsRef<[u8]>,
   pub fn from_arrow_array(array: &dyn Array) -> Result<Self>
+  pub struct AsciiEnum
+  pub fn new(name: impl Into<SmolStr>) -> Result<Self>
+  pub fn from_members<I, N, V>(name: impl Into<SmolStr>, members: I) -> Result<Self> where I: IntoIterator<Item = (N, V)>, N: Into<SmolStr>, V: Into<SmolStr>,
+  pub fn from_json(document: &str) -> Result<Self>
+  pub fn into_json(&self) -> String
+  pub fn name(&self) -> &str
+  pub fn get(&self, member: &str) -> Option<&str>
+  pub fn get_member(&self, value: &str) -> Option<&str>
+  pub fn insert(&mut self, member: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Result<Option<SmolStr>>
+  pub fn remove(&mut self, member: &str) -> Option<SmolStr>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn iter(&self) -> impl Iterator<Item = (&str, &str)>
+  pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>>
+  pub fn into_dictionary(&self, width: DataType) -> Result<AsciiDictionary>
 
 ### yggdryl::datatype::nested  [rust\src\datatype\nested.rs]
   pub const fn new() -> Self
@@ -900,6 +918,7 @@
   pub fn alias(&self) -> Option<&str>
   pub fn comment(&self) -> Option<&str>
   pub fn display(&self) -> Option<&str>
+  pub fn ascii_enum(&self) -> Result<Option<AsciiEnum>>
   pub fn parquet_field_id(&self) -> Result<Option<i32>>
   pub fn field_by_parquet_field_id(&self, id: i32) -> Option<&Self>
   pub fn max_parquet_field_id(&self) -> Result<Option<i32>>
@@ -979,6 +998,9 @@
   pub fn set_display(&mut self, value: impl Into<String>) -> Result<()>
   pub fn try_with_display(mut self, value: impl Into<String>) -> Result<Self>
   pub fn remove_display(&mut self) -> Option<String>
+  pub fn set_ascii_enum(&mut self, value: &AsciiEnum) -> Result<()>
+  pub fn try_with_ascii_enum(mut self, value: &AsciiEnum) -> Result<Self>
+  pub fn remove_ascii_enum(&mut self) -> Result<Option<AsciiEnum>>
   pub fn set_parquet_field_id(&mut self, id: i32)
   pub fn with_parquet_field_id(mut self, id: i32) -> Self
   pub fn set_init(&mut self, init: bool)

@@ -475,19 +475,21 @@ def test_ascii_dictionary_generates_an_intenum_from_the_core_member_listing() ->
 
     assert issubclass(Currency, enum.IntEnum)
     assert Currency.__name__ == "Currency"
+    # A member is its value packed big-endian, never its position: the same
+    # value names the same integer in every process and every vocabulary.
     assert [(member.name, member.value) for member in Currency] == [
-        ("USD", 0),
-        ("N_A", 1),
-        ("_42", 2),
-        ("_", 3),
+        ("USD", 0x55534400),
+        ("N_A", 0x6E2F6100),
+        ("_42", 0x34320000),
+        ("_", 0),
     ]
-    assert Currency.USD == 0
-    assert Currency(0).name == "USD"
-    assert Currency["N_A"] == 1
+    assert Currency.USD == DataType("ascii32").ascii_packed("USD")
+    assert Currency(0x55534400).name == "USD"
+    assert Currency["N_A"] == 0x6E2F6100
 
-    # A sixteen-byte vocabulary is text, not enum members.
-    with pytest.raises(ValueError, match="ascii32 or ascii64 values"):
-        AsciiDictionary.from_values("ascii128", ["USD"]).into_intenum("Wide")
+    # Sixteen bytes name members too, under the whole 128-bit integer.
+    Wide = AsciiDictionary.from_values("ascii128", ["US0378331005"]).into_intenum("Wide")
+    assert Wide.US0378331005 == 0x55533033373833333130303500000000
     # A collision is named, never silently renamed.
     with pytest.raises(ValueError, match="both name the member N_A"):
         AsciiDictionary.from_values("ascii32", ["n/a", "n-a"]).into_intenum("Bad")
@@ -497,9 +499,9 @@ def test_ascii_dictionary_generates_an_intenum_from_the_core_member_listing() ->
         "Shape"
     )
     assert [(member.name, member.value) for member in Shape] == [
-        ("_A", 0),
-        ("__B", 1),
-        ("_", 2),
+        ("_A", 0x2D612D0000000000),
+        ("__B", 0x2D2D622D2D000000),
+        ("_", 0x2D00000000000000),
     ]
     # The enum needs a name, the way the JavaScript binding needs one.
     with pytest.raises(ValueError, match="non-empty enum name"):

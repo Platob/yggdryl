@@ -30,6 +30,11 @@ export declare class AsciiDictionary {
   getCode(value: string): number | null
   /** The vocabulary in code order: the code-to-value direction. */
   values(): Array<string>
+  /**
+   * The enum member name of one value, under the rule `intoEnum` applies
+   * to a whole vocabulary at once.
+   */
+  static memberName(value: string): string
   /** The number of registered values. */
   get length(): number
   /** The integer type the codes are read as. */
@@ -49,6 +54,49 @@ export declare class AsciiDictionary {
   toString(): string
 }
 export type JsAsciiDictionary = AsciiDictionary
+
+/**
+ * The enum an ASCII field's values name: one value per member name.
+ *
+ * A dictionary is a vocabulary and derives its member names; this is the
+ * vocabulary a declaration named itself, and it is what a `Field` stores
+ * under `field:enum` so the enum crosses Arrow, a file, and another runtime
+ * intact. The width lives in the field's datatype, so a member's code is its
+ * packed ASCII value under that width and never a position.
+ */
+export declare class AsciiEnum {
+  /** Create an enum from its members, one ASCII value per member name. */
+  constructor(name: string, members?: Record<string, string> | undefined | null)
+  /** Parse the `field:enum` document. */
+  static fromJson(document: string): AsciiEnum
+  /** Render the `field:enum` document, which is one text per enum. */
+  intoJson(): string
+  /** The enum's own name, which is not the field's name. */
+  get name(): string
+  /** Every member by name, with the ASCII value it names. */
+  get members(): Record<string, string>
+  /** The ASCII value one member names, or `null` for a member it has not. */
+  get(member: string): string | null
+  /** The first member naming one ASCII value, or `null` when none does. */
+  getMember(value: string): string | null
+  /** Name one ASCII value and return the value the member had. */
+  insert(member: string, value: string): string | null
+  /** Remove one member and return the ASCII value it named. */
+  remove(member: string): string | null
+  /** The members paired with their packed codes under one ASCII width. */
+  intoMembers(width: DataType | string): Record<string, bigint>
+  /** The vocabulary this enum names, as a dictionary over one width. */
+  intoDictionary(width: DataType | string, key?: DataType | string | undefined | null): AsciiDictionary
+  /** The number of members. */
+  get length(): number
+  /** Native equality: the enum name and every member it names. */
+  equals(other: AsciiEnum): boolean
+  /** Make a native clone that changes independently of this enum. */
+  clone(): AsciiEnum
+  /** The `field:enum` document, which is the enum's one canonical text. */
+  toString(): string
+}
+export type JsAsciiEnum = AsciiEnum
 
 /** One compressed block yielded by an owning lazy Avro iterator. */
 export declare class AvroBlock {
@@ -411,6 +459,17 @@ export declare class DataType {
   get kind(): string
   /** The storage width of an ASCII datatype in bytes, `null` for every other. */
   get asciiWidth(): number | null
+  /**
+   * The integer an ASCII value packs into: its storage bytes, big-endian.
+   *
+   * The packed integer is the same in every process, so it is what an enum
+   * member and a stable hash are, and it is exactly the bytes an ASCII
+   * column stores. It reaches 128 bits under `ascii128`, so it crosses as
+   * a `bigint` at every width.
+   */
+  asciiPacked(value: string): bigint
+  /** The ASCII value a packed integer carries, without its padding. */
+  asciiValue(packed: bigint): string
   /** Whether this type owns child fields. */
   get nested(): boolean
   /** Number of direct child fields. */
@@ -688,6 +747,14 @@ export declare class Field {
   get display(): string | null
   /** Arrow/Parquet signed 32-bit field identifier stored in metadata. */
   get parquetFieldId(): number | null
+  /**
+   * The enum this field's ASCII values name, `null` when it declares none.
+   *
+   * The declaration is one `field:enum` document, so it reaches Arrow, a
+   * file, and another runtime as ordinary field metadata and comes back the
+   * enum that was written.
+   */
+  get asciiEnum(): AsciiEnum | null
   /** Typed location URL stored canonically in Arrow-compatible metadata. */
   get location(): JsUrl | null
   /** Raw HTTP Accept field value. */
@@ -756,6 +823,10 @@ export declare class Field {
   setParquetFieldId(id: number): void
   /** Remove and return the Arrow/Parquet signed 32-bit field identifier. */
   removeParquetFieldId(): number | null
+  /** Declare the enum this field's ASCII values name. */
+  setAsciiEnum(value: AsciiEnum): void
+  /** Remove the declaration and return the enum it held. */
+  removeAsciiEnum(): AsciiEnum | null
   /** Set a typed location from any native identifier wrapper or URL string. */
   setLocation(value: JsUrl | JsUri | JsUrn | string): void
   /** Remove and return the typed location URL. */

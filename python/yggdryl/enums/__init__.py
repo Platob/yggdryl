@@ -1,9 +1,13 @@
-"""The core's static enum vocabularies, as canonical spellings.
+"""The core's static enum vocabularies, and the ASCII widths as enum bases.
 
 Pure enums cross the boundary as strings by convention - a datatype id is
 ``"int64"``, a codec is ``"gzip"`` - and this module enumerates what those
 strings can be. Every tuple is unpacked from one native listing at import, so
 it can never drift from the Rust constants it mirrors.
+
+The vocabularies a caller declares are the other half: subclassing
+:class:`Ascii32`, :class:`Ascii64`, or :class:`Ascii128` names one open ASCII
+vocabulary whose members are the integers their values pack into.
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ from __future__ import annotations
 from typing import Mapping
 
 from .._native import _enum_values
+from .ascii import Ascii32, Ascii64, Ascii128, AsciiCode
 
 _LISTING = _enum_values()
 
@@ -42,6 +47,10 @@ COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"]
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
 
 __all__ = [
+    "Ascii32",
+    "Ascii64",
+    "Ascii128",
+    "AsciiCode",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",

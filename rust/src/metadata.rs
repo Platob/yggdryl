@@ -13,7 +13,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result, Scheme, Url, stable_hash_display};
+use crate::{AsciiEnum, Error, Result, Scheme, Url, stable_hash_display};
 
 pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
@@ -37,6 +37,7 @@ pub(crate) const HTTP_LOCATION_KEY: &str = "http:location";
 pub(crate) const HTTP_RANGE_KEY: &str = "http:range";
 pub(crate) const HTTP_VARY_KEY: &str = "http:vary";
 pub(crate) const LOCATION_KEY: &str = "location";
+pub(crate) const FIELD_ENUM_KEY: &str = "field:enum";
 pub(crate) const FIELD_INIT_KEY: &str = "field:init";
 pub(crate) const FIELD_PARTITION_KEY: &str = "field:partition";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
@@ -1124,6 +1125,7 @@ fn validate_entry(key: String, value: String) -> Result<(String, String)> {
             value
         }
         LOCATION_KEY => Url::from_str(&value)?.to_string(),
+        FIELD_ENUM_KEY => parse_ascii_enum(&value)?.into_json(),
         FIELD_INIT_KEY => parse_reserved_bool(FIELD_INIT_KEY, &value)?.to_string(),
         FIELD_PARTITION_KEY => parse_reserved_bool(FIELD_PARTITION_KEY, &value)?.to_string(),
         PARQUET_FIELD_ID_KEY => parse_field_id(&value)?.to_string(),
@@ -1246,6 +1248,17 @@ fn invalid_content_length() -> Error {
         key: SmolStr::new_static(HTTP_CONTENT_LENGTH_KEY),
         reason: SmolStr::new_static("must be an unsigned 64-bit decimal integer"),
     }
+}
+
+/// Parse the enum document a field's ASCII values are named by.
+///
+/// The stored spelling is the one [`AsciiEnum::into_json`] renders, so a
+/// document that reaches storage reads back as the enum that wrote it.
+pub(crate) fn parse_ascii_enum(value: &str) -> Result<AsciiEnum> {
+    AsciiEnum::from_json(value).map_err(|error| Error::InvalidMetadataValue {
+        key: SmolStr::new_static(FIELD_ENUM_KEY),
+        reason: SmolStr::new(error.to_string()),
+    })
 }
 
 pub(crate) fn parse_field_id(value: &str) -> Result<i32> {

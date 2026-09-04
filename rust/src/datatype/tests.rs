@@ -1068,7 +1068,7 @@ mod ascii {
 
 /// The per-column ASCII vocabulary and the enum members it names.
 mod ascii_dictionary {
-    use super::super::{AsciiDictionary, DataType};
+    use super::super::{AsciiDictionary, AsciiEnum, DataType};
 
     #[test]
     fn registration_is_first_appearance_and_a_repeat_keeps_its_code() {
@@ -1241,11 +1241,11 @@ mod ascii_dictionary {
         assert_eq!(
             members,
             [
-                ("USD".into(), 0),
-                ("N_A".into(), 1),
-                ("_1ST".into(), 2),
-                ("_".into(), 3),
-                ("A_B".into(), 4),
+                ("USD".into(), 0x5553_4400),
+                ("N_A".into(), 0x6E2F_6100),
+                ("_1ST".into(), 0x3173_7400),
+                ("_".into(), 0),
+                ("A_B".into(), 0x612D_6200),
             ]
         );
 
@@ -1258,10 +1258,10 @@ mod ascii_dictionary {
         assert_eq!(
             members,
             [
-                ("_A".into(), 0),
-                ("__B".into(), 1),
-                ("_".into(), 2),
-                ("__".into(), 3),
+                ("_A".into(), 0x2D61_2D00_0000_0000),
+                ("__B".into(), 0x2D2D_622D_2D00_0000),
+                ("_".into(), 0x2D00_0000_0000_0000),
+                ("__".into(), 0x2D2D_0000_0000_0000),
             ]
         );
         assert!(
@@ -1271,10 +1271,16 @@ mod ascii_dictionary {
                 .unwrap()
                 .is_empty()
         );
+
+        // The same rule names one value at a time, for a vocabulary declared
+        // member by member rather than generated from a whole listing.
+        assert_eq!(AsciiDictionary::member_name("--b--").as_str(), "__B");
+        assert_eq!(AsciiDictionary::member_name("1st").as_str(), "_1ST");
+        assert_eq!(AsciiDictionary::member_name("USD\0").as_str(), "USD_");
     }
 
     #[test]
-    fn members_refuse_a_collision_naming_both_values_and_the_widest_width() {
+    fn members_refuse_a_collision_naming_both_values() {
         let refused = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "usd"])
             .unwrap()
             .into_members()
@@ -1294,16 +1300,162 @@ mod ascii_dictionary {
             "{refused}"
         );
 
-        // Sixteen bytes is text, not an enum vocabulary.
-        let refused = AsciiDictionary::from_values(DataType::Ascii128, ["USD"])
-            .unwrap()
-            .into_members()
+        // Sixteen bytes name members too: the code is the whole `i128`, and
+        // a width names one value with one integer whatever the vocabulary.
+        assert_eq!(
+            AsciiDictionary::from_values(DataType::Ascii128, ["US0378331005"])
+                .unwrap()
+                .into_members()
+                .unwrap(),
+            [(
+                "US0378331005".into(),
+                0x5553_3033_3738_3333_3130_3035_0000_0000
+            )]
+        );
+        assert_eq!(
+            AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD"])
+                .unwrap()
+                .into_members()
+                .unwrap(),
+            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"])
+                .unwrap()
+                .into_members()
+                .unwrap()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn an_enum_names_its_values_and_renders_one_document() {
+        let mut side =
+            AsciiEnum::from_members("Side", [("SELL", "S"), ("BUY", "B"), ("BID", "B")]).unwrap();
+        assert_eq!(side.name(), "Side");
+        assert_eq!(side.len(), 3);
+        assert_eq!(side.get("BID"), Some("B"));
+
+        // Two members may name one value; the first by name reads it back, so
+        // an alias never changes what a stored code decodes as.
+        assert_eq!(side.get_member("B"), Some("BID"));
+        assert_eq!(side.get_member("X"), None);
+        assert_eq!(
+            side.into_members(&DataType::Ascii32).unwrap(),
+            [
+                ("BID".into(), 0x4200_0000),
+                ("BUY".into(), 0x4200_0000),
+                ("SELL".into(), 0x5300_0000),
+            ]
+        );
+
+        // The vocabulary behind the names is an ordinary dictionary, whose
+        // codes stay the local positions every vocabulary's codes are.
+        let dictionary = side.into_dictionary(DataType::Ascii32).unwrap();
+        assert_eq!(dictionary.as_values(), ["B", "S"]);
+
+        // One enum is one document however it was built, and the document is
+        // what comes back.
+        let document = side.into_json();
+        assert_eq!(
+            document,
+            r#"{"members":{"BID":"B","BUY":"B","SELL":"S"},"name":"Side"}"#
+        );
+        assert_eq!(AsciiEnum::from_json(&document).unwrap(), side);
+        assert_eq!(
+            AsciiEnum::from_json(r#" {"name":"Side","members":{"SELL":"S","BUY":"B","BID":"B"}} "#)
+                .unwrap(),
+            side
+        );
+        assert_eq!(
+            AsciiEnum::from_json(r#"{"name":"Empty"}"#).unwrap(),
+            AsciiEnum::new("Empty").unwrap()
+        );
+        assert!(AsciiEnum::new("Empty").unwrap().is_empty());
+
+        assert_eq!(side.remove("BID"), Some("B".into()));
+        assert_eq!(side.remove("BID"), None);
+        assert_eq!(side.get_member("B"), Some("BUY"));
+        assert_eq!(
+            side.iter().collect::<Vec<_>>(),
+            [("BUY", "B"), ("SELL", "S")]
+        );
+
+        // A member the width cannot store is refused when the codes are asked
+        // for, which is where the width is known.
+        let refused = side.into_members(&DataType::Utf8).unwrap_err().to_string();
+        assert!(refused.contains("an ASCII width"), "{refused}");
+    }
+
+    #[test]
+    fn an_enum_refuses_what_a_document_could_not_carry_back() {
+        for (name, member) in [("", "BUY"), ("Side", ""), ("Si\u{7}de", "BUY")] {
+            assert!(AsciiEnum::from_members(name, [(member, "B")]).is_err());
+        }
+        for document in [
+            "[]",
+            "not json",
+            r#"{"members":{"BUY":"B"}}"#,
+            r#"{"name":7}"#,
+            r#"{"name":"Side","members":[]}"#,
+            r#"{"name":"Side","members":{"BUY":7}}"#,
+            r#"{"name":"Side","members":{"":"B"}}"#,
+        ] {
+            assert!(AsciiEnum::from_json(document).is_err(), "{document}");
+        }
+    }
+
+    #[test]
+    fn an_ascii_value_packs_into_the_integer_its_storage_reads_as() {
+        for (dtype, value, packed) in [
+            (DataType::Ascii32, "USD", 0x5553_4400_i128),
+            (DataType::Ascii32, "", 0),
+            (DataType::Ascii64, "EUREX", 0x4555_5245_5800_0000),
+            (
+                DataType::Ascii128,
+                "US0378331005",
+                0x5553_3033_3738_3333_3130_3035_0000_0000,
+            ),
+        ] {
+            assert_eq!(dtype.ascii_packed(value.as_bytes()).unwrap(), packed);
+            // The storage padding is the same value, and reads back trimmed.
+            let padded = format!("{value}\0");
+            assert_eq!(dtype.ascii_packed(padded.as_bytes()).unwrap(), packed);
+            assert_eq!(dtype.ascii_value(packed).unwrap(), value);
+        }
+
+        // An ASCII byte never sets the sign bit, so the order of the packed
+        // integers is the order of the text.
+        assert!(
+            DataType::Ascii32.ascii_packed(b"EUR").unwrap()
+                < DataType::Ascii32.ascii_packed(b"USD").unwrap()
+        );
+        assert!(
+            DataType::Ascii64
+                .ascii_packed(b"\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f")
+                .unwrap()
+                > 0
+        );
+
+        // What the width refuses, the packing refuses, in both directions.
+        let refused = DataType::Ascii32
+            .ascii_packed(b"EURO!")
             .unwrap_err()
             .to_string();
-        assert!(
-            refused.contains("ascii32 or ascii64 values to name enum members"),
-            "{refused}"
-        );
-        assert!(refused.contains("got ascii128"), "{refused}");
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+        let refused = DataType::Ascii32.ascii_value(-1).unwrap_err().to_string();
+        assert!(refused.contains("wider than the width"), "{refused}");
+        let refused = DataType::Ascii32
+            .ascii_value(0x1_5553_4400)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("wider than the width"), "{refused}");
+        let refused = DataType::Ascii32
+            .ascii_value(0x0055_4400)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("a NUL byte at 0"), "{refused}");
+        let refused = DataType::Utf8.ascii_packed(b"USD").unwrap_err().to_string();
+        assert!(refused.contains("an ASCII width"), "{refused}");
+        assert!(DataType::Utf8.ascii_value(0).is_err());
     }
 }

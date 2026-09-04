@@ -107,7 +107,12 @@ the Puffin specification assigns no MIME name.
     and `enums` in JavaScript; `Scalar.from_enum` / `Scalar.fromEnum` preserves
     a member's core identity. `TypedScalar` and the
     `wkb` reader are Rust-only; a geospatial value crosses the bindings as
-    its plain WKB bytes.
+    its plain WKB bytes. `yggdryl.enums` also carries the three
+    [ASCII width bases](extensions/python.md#ascii-vocabularies-as-enums) a
+    Python caller declares a vocabulary with; they are Python-only, because
+    they are the packed ASCII codes behind that language's own enum protocol.
+    The declaration they build is the shared `AsciiEnum`, which every runtime
+    reads off the field that stores it.
 
 ```rust
 use yggdryl::generic::Holder;

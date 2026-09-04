@@ -13,7 +13,7 @@
 //! an ordered set of values whose position is the code a `dictionary(key,
 //! ascii-N)` column stores.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 #[cfg(feature = "arrow")]
 use std::sync::Arc;
 
@@ -83,6 +83,80 @@ impl DataType {
             Self::Ascii128 => Some(16),
             _ => None,
         }
+    }
+
+    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    ///
+    /// Storage pads with trailing NUL to the width, so the packed integer
+    /// orders exactly as the text does and is the same integer in every
+    /// process - what a stable hash and a portable enum member both need, and
+    /// what a dictionary code, local to the one column that built it, can
+    /// never be. An ASCII byte is at most `0x7F`, so the sign bit is never
+    /// set and the value is never negative: `ascii32` fills an `i32`,
+    /// `ascii64` an `i64`, and `ascii128` an `i128`.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // `USD` stores as `USD\0`, which is that big-endian `i32`.
+    /// assert_eq!(DataType::Ascii32.ascii_packed(b"USD")?, 0x5553_4400);
+    /// assert_eq!(DataType::Ascii32.ascii_packed(b"USD\0")?, 0x5553_4400);
+    /// assert_eq!(DataType::Ascii32.ascii_value(0x5553_4400)?, "USD");
+    ///
+    /// // The order of the integers is the order of the text.
+    /// assert!(DataType::Ascii32.ascii_packed(b"EUR")? < DataType::Ascii32.ascii_packed(b"USD")?);
+    ///
+    /// // Sixteen bytes need the whole `i128`.
+    /// let isin = DataType::Ascii128.ascii_packed(b"US0378331005")?;
+    /// assert_eq!(DataType::Ascii128.ascii_value(isin)?, "US0378331005");
+    ///
+    /// assert!(DataType::Ascii32.ascii_packed(b"EURO!").is_err());
+    /// assert!(DataType::Utf8.ascii_packed(b"USD").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted widths when this is not one, and
+    /// one naming the width when `value` is not ASCII text that fits it.
+    pub fn ascii_packed(&self, value: &[u8]) -> Result<i128> {
+        let width = self
+            .ascii_width()
+            .ok_or_else(|| ascii_values_refusal(self))?;
+        let text = ascii_text(width, value)?;
+        let mut slot = [0_u8; 16];
+        // The text fits the width, and the width fits the slot.
+        slot[..text.len()].copy_from_slice(text.as_bytes());
+        Ok(i128::from_be_bytes(slot) >> (8 * (16 - i128::from(width))))
+    }
+
+    /// The ASCII value a packed integer carries, without its padding.
+    ///
+    /// The inverse of [`Self::ascii_packed`], and it refuses exactly what that
+    /// refuses: an integer wider than the width, a negative one, and one whose
+    /// bytes are not the padded storage of an ASCII value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted widths when this is not one, and
+    /// one naming the width when `packed` is not the storage of an ASCII value
+    /// of it.
+    pub fn ascii_value(&self, packed: i128) -> Result<SmolStr> {
+        let width = self
+            .ascii_width()
+            .ok_or_else(|| ascii_values_refusal(self))?;
+        let slot = usize::try_from(width).unwrap_or(0);
+        let bytes = packed.to_be_bytes();
+        let (above, stored) = bytes.split_at(bytes.len() - slot);
+        if above.iter().any(|byte| *byte != 0) {
+            return Err(ascii_refusal(
+                width,
+                format_smolstr!("the integer {packed}, which is wider than the width"),
+            ));
+        }
+        ascii_text(width, stored).map(SmolStr::new)
     }
 
     /// Resolves a registered logical name, ASCII case-insensitively and trimmed.
@@ -212,6 +286,11 @@ fn ascii_refusal(width: i32, actual: SmolStr) -> Error {
 /// agree only when the same `AsciiDictionary` crossed both. Nothing in the
 /// write path registers on its own - a caller that wants the encoding
 /// declares it and registers as it encodes.
+///
+/// A dictionary code is a position, which is why it is local to one column.
+/// The other integer an ASCII value has is [`DataType::ascii_packed`], its own
+/// storage bytes, which is the same everywhere and is what an enum member and
+/// [`Self::into_members`] are.
 ///
 /// The values are one ASCII width ([`DataType::ascii_width`]) and the keys
 /// are `Int32` or `Int64`; [`Self::dtype`] is the `dictionary(key, ascii-N)`
@@ -442,7 +521,8 @@ impl AsciiDictionary {
         DataType::dictionary(self.key.clone(), self.width.clone())
     }
 
-    /// The generated-enum members: one name per value, paired with its code.
+    /// The generated-enum members: one name per value, paired with its packed
+    /// code.
     ///
     /// The name rule, stated once here and used by every binding: an ASCII
     /// letter is kept uppercased, a digit is kept, every other byte becomes
@@ -452,6 +532,10 @@ impl AsciiDictionary {
     /// empty value becomes `_`. Two values that would name one member are an
     /// error naming both, never a silent rename.
     ///
+    /// The code is [`DataType::ascii_packed`], never the value's position, so
+    /// two vocabularies that hold one value name it with one integer and the
+    /// member survives a process, a file, and a hash.
+    ///
     /// ```
     /// use yggdryl::{AsciiDictionary, DataType};
     ///
@@ -459,7 +543,18 @@ impl AsciiDictionary {
     /// let currencies = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "n/a", "-a-"])?;
     /// assert_eq!(
     ///     currencies.into_members()?,
-    ///     [("USD".into(), 0), ("N_A".into(), 1), ("_A".into(), 2)]
+    ///     [
+    ///         ("USD".into(), 0x5553_4400),
+    ///         ("N_A".into(), 0x6E2F_6100),
+    ///         ("_A".into(), 0x2D61_2D00),
+    ///     ]
+    /// );
+    ///
+    /// // Sixteen bytes name members too: the code is the whole `i128`.
+    /// let isins = AsciiDictionary::from_values(DataType::Ascii128, ["US0378331005"])?;
+    /// assert_eq!(
+    ///     isins.into_members()?,
+    ///     [("US0378331005".into(), 0x5553_3033_3738_3333_3130_3035_0000_0000)]
     /// );
     /// # Ok(())
     /// # }
@@ -467,23 +562,12 @@ impl AsciiDictionary {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the two supported widths when the values are
-    /// `Ascii128` - a sixteen-byte vocabulary is text, not enum members - and
-    /// one naming both values when two of them collide.
-    pub fn into_members(&self) -> Result<Vec<(SmolStr, i64)>> {
-        if matches!(self.width, DataType::Ascii128) {
-            return Err(Error::InvalidDataType {
-                kind: "ascii-dictionary",
-                reason: crate::text::expected_got(
-                    format_args!("ascii32 or ascii64 values to name enum members"),
-                    format_args!("{}", self.width),
-                ),
-            });
-        }
+    /// Returns an error naming both values when two of them collide.
+    pub fn into_members(&self) -> Result<Vec<(SmolStr, i128)>> {
         let mut members = Vec::with_capacity(self.values.len());
         let mut taken: HashMap<SmolStr, &str> = HashMap::with_capacity(self.values.len());
-        for (code, value) in self.values.iter().enumerate() {
-            let name = member_name(value);
+        for value in &self.values {
+            let name = Self::member_name(value);
             if let Some(first) = taken.insert(name.clone(), value.as_str()) {
                 return Err(Error::InvalidDataType {
                     kind: "ascii-dictionary",
@@ -492,10 +576,52 @@ impl AsciiDictionary {
                     ),
                 });
             }
-            let code = i64::try_from(code).map_err(|_| self.key_capacity_refusal())?;
-            members.push((name, code));
+            members.push((name, self.width.ascii_packed(value.as_bytes())?));
         }
         Ok(members)
+    }
+
+    /// The enum member name of one value, under the rule stated on
+    /// [`Self::into_members`].
+    ///
+    /// The rule belongs to the vocabulary rather than to one width, so an enum
+    /// that registers one value at a time names it exactly as generating the
+    /// whole vocabulary at once would.
+    ///
+    /// ```
+    /// use yggdryl::AsciiDictionary;
+    ///
+    /// assert_eq!(AsciiDictionary::member_name("USD").as_str(), "USD");
+    /// assert_eq!(AsciiDictionary::member_name("n/a").as_str(), "N_A");
+    /// assert_eq!(AsciiDictionary::member_name("-a-").as_str(), "_A");
+    /// assert_eq!(AsciiDictionary::member_name("").as_str(), "_");
+    /// ```
+    pub fn member_name(value: &str) -> SmolStr {
+        let mut name = String::with_capacity(value.len() + 1);
+        // A registered value passed `ascii_text`, so one byte is one character.
+        // Any other byte is not ASCII alphanumeric, so it becomes `_` like the
+        // rest of what the rule replaces.
+        for byte in value.bytes() {
+            name.push(if byte.is_ascii_alphanumeric() {
+                char::from(byte.to_ascii_uppercase())
+            } else {
+                '_'
+            });
+        }
+        if name.starts_with(|first: char| first.is_ascii_digit()) {
+            name.insert(0, '_');
+        }
+        // A name that both opens and closes with `_` carries the shape Python
+        // reserves for `_sunder_` and `__dunder__`, where a member is refused or
+        // silently dropped; a name of nothing but `_` has no other spelling.
+        let named = name.trim_end_matches('_').len();
+        if name.starts_with('_') && named > 0 {
+            name.truncate(named);
+        }
+        if name.is_empty() {
+            return SmolStr::new_static("_");
+        }
+        SmolStr::new(name)
     }
 
     /// The storage width in bytes, which [`Self::new`] validated.
@@ -525,34 +651,6 @@ impl AsciiDictionary {
     }
 }
 
-/// The enum member name of one ASCII value, under the rule stated on
-/// [`AsciiDictionary::into_members`].
-fn member_name(value: &str) -> SmolStr {
-    let mut name = String::with_capacity(value.len() + 1);
-    // Every registered value passed `ascii_text`, so one byte is one character.
-    for byte in value.bytes() {
-        name.push(if byte.is_ascii_alphanumeric() {
-            char::from(byte.to_ascii_uppercase())
-        } else {
-            '_'
-        });
-    }
-    if name.starts_with(|first: char| first.is_ascii_digit()) {
-        name.insert(0, '_');
-    }
-    // A name that both opens and closes with `_` carries the shape Python
-    // reserves for `_sunder_` and `__dunder__`, where a member is refused or
-    // silently dropped; a name of nothing but `_` has no other spelling.
-    let named = name.trim_end_matches('_').len();
-    if name.starts_with('_') && named > 0 {
-        name.truncate(named);
-    }
-    if name.is_empty() {
-        return SmolStr::new_static("_");
-    }
-    SmolStr::new(name)
-}
-
 fn ascii_values_refusal(values: &DataType) -> Error {
     Error::InvalidDataType {
         kind: "ascii-dictionary",
@@ -561,6 +659,263 @@ fn ascii_values_refusal(values: &DataType) -> Error {
             format_args!("{values}"),
         ),
     }
+}
+
+/// The enum an ASCII field's values name: one value per member name.
+///
+/// [`AsciiDictionary`] is a vocabulary and derives its member names from its
+/// values; this is the vocabulary a declaration named itself, and it is what a
+/// [`crate::Field`] stores under `field:enum` so the enum crosses Arrow, a
+/// file, and another runtime intact.
+///
+/// The width lives in the field's datatype and is never copied here: a
+/// member's code is [`DataType::ascii_packed`] of its value under that width,
+/// so every reader of one enum answers the same integers. Members are held by
+/// name, which is what makes the rendered document deterministic - the order a
+/// declaration happened to use is not part of a member's identity once the
+/// code is the value's own bytes.
+///
+/// ```
+/// use yggdryl::{AsciiEnum, DataType};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
+/// assert_eq!(side.get("BUY"), Some("B"));
+/// assert_eq!(side.get_member("S"), Some("SELL"));
+/// assert_eq!(
+///     side.into_members(&DataType::Ascii32)?,
+///     [("BUY".into(), 0x4200_0000), ("SELL".into(), 0x5300_0000)]
+/// );
+/// assert_eq!(
+///     side.into_json(),
+///     r#"{"members":{"BUY":"B","SELL":"S"},"name":"Side"}"#
+/// );
+/// assert_eq!(AsciiEnum::from_json(&side.into_json())?, side);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AsciiEnum {
+    /// The enum's own name, which is not the field's name.
+    name: SmolStr,
+    /// Member name to ASCII value, ordered by name so the document is one text.
+    members: BTreeMap<SmolStr, SmolStr>,
+}
+
+impl AsciiEnum {
+    /// Creates an enum of no members under one name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `name` is empty or holds a control character.
+    pub fn new(name: impl Into<SmolStr>) -> Result<Self> {
+        let name = name.into();
+        validate_enum_text("enum name", &name)?;
+        Ok(Self {
+            name,
+            members: BTreeMap::new(),
+        })
+    }
+
+    /// Creates an enum from its members, one ASCII value per member name.
+    ///
+    /// A repeated member name keeps the last value, exactly as [`Self::insert`]
+    /// would; two members may share a value, because two spellings of one code
+    /// is what an alias is.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the enum name or a member name is empty or holds
+    /// a control character.
+    pub fn from_members<I, N, V>(name: impl Into<SmolStr>, members: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (N, V)>,
+        N: Into<SmolStr>,
+        V: Into<SmolStr>,
+    {
+        let mut enumeration = Self::new(name)?;
+        for (member, value) in members {
+            enumeration.insert(member, value)?;
+        }
+        Ok(enumeration)
+    }
+
+    /// Parses the `field:enum` document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the document is not a JSON object of a string
+    /// `"name"` and an object `"members"` of strings, and one naming the part
+    /// when a name is empty or holds a control character.
+    pub fn from_json(document: &str) -> Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(document.trim()).map_err(|error| {
+            enum_document_refusal(format_smolstr!(
+                "expected an enum JSON document, got unparsable JSON: {error}"
+            ))
+        })?;
+        let Some(object) = value.as_object() else {
+            return Err(enum_document_refusal(format_smolstr!(
+                "expected an enum JSON object, got {}",
+                crate::text::elide_display(&value)
+            )));
+        };
+        let Some(serde_json::Value::String(name)) = object.get("name") else {
+            return Err(enum_document_refusal(SmolStr::new_static(
+                "expected a JSON string \"name\"",
+            )));
+        };
+        let empty = serde_json::Map::new();
+        let members = match object.get("members") {
+            None | Some(serde_json::Value::Null) => &empty,
+            Some(serde_json::Value::Object(members)) => members,
+            Some(other) => {
+                return Err(enum_document_refusal(format_smolstr!(
+                    "expected a JSON object \"members\", got {}",
+                    crate::text::elide_display(other)
+                )));
+            }
+        }
+        .iter()
+        .map(|(member, value)| match value {
+            serde_json::Value::String(value) => Ok((member.as_str(), value.as_str())),
+            other => Err(enum_document_refusal(format_smolstr!(
+                "expected a JSON string for the member {member:?}, got {}",
+                crate::text::elide_display(other)
+            ))),
+        })
+        .collect::<Result<Vec<_>>>()?;
+        Self::from_members(name.as_str(), members)
+    }
+
+    /// Renders the `field:enum` document: every name in order, so one enum
+    /// is one text however it was built.
+    pub fn into_json(&self) -> String {
+        let members = self
+            .members
+            .iter()
+            .map(|(member, value)| {
+                (
+                    member.as_str().to_owned(),
+                    serde_json::Value::String(value.as_str().to_owned()),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::Value::Object(serde_json::Map::from_iter([
+            (
+                "name".to_owned(),
+                serde_json::Value::String(self.name.as_str().to_owned()),
+            ),
+            ("members".to_owned(), serde_json::Value::Object(members)),
+        ]))
+        .to_string()
+    }
+
+    /// The enum's own name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The ASCII value one member names, or `None` for a member it has not.
+    pub fn get(&self, member: &str) -> Option<&str> {
+        self.members.get(member).map(SmolStr::as_str)
+    }
+
+    /// The first member naming one ASCII value, or `None` when none does.
+    ///
+    /// Two members may share a value; the first by name answers, so an alias
+    /// never changes which member a stored value reads back as.
+    pub fn get_member(&self, value: &str) -> Option<&str> {
+        self.members
+            .iter()
+            .find(|(_, held)| held.as_str() == value)
+            .map(|(member, _)| member.as_str())
+    }
+
+    /// Names one ASCII value and returns the value the member had.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `member` is empty or holds a control character.
+    pub fn insert(
+        &mut self,
+        member: impl Into<SmolStr>,
+        value: impl Into<SmolStr>,
+    ) -> Result<Option<SmolStr>> {
+        let member = member.into();
+        validate_enum_text("member name", &member)?;
+        Ok(self.members.insert(member, value.into()))
+    }
+
+    /// Removes one member and returns the ASCII value it named.
+    pub fn remove(&mut self, member: &str) -> Option<SmolStr> {
+        self.members.remove(member)
+    }
+
+    /// The number of members.
+    pub fn len(&self) -> usize {
+        self.members.len()
+    }
+
+    /// Returns whether this enum names nothing.
+    pub fn is_empty(&self) -> bool {
+        self.members.is_empty()
+    }
+
+    /// The members by name, each with the ASCII value it names.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.members
+            .iter()
+            .map(|(member, value)| (member.as_str(), value.as_str()))
+    }
+
+    /// The members paired with their packed codes under one ASCII width.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted widths when `width` is not one,
+    /// and one naming the width when a value does not fit it.
+    pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>> {
+        self.members
+            .iter()
+            .map(|(member, value)| Ok((member.clone(), width.ascii_packed(value.as_bytes())?)))
+            .collect()
+    }
+
+    /// The vocabulary this enum names, as a dictionary over one width.
+    ///
+    /// The values are in member-name order, which is the order this enum holds
+    /// them in; a dictionary code is that position and remains local to the
+    /// column it encodes, exactly as it is for any other vocabulary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the accepted widths when `width` is not one,
+    /// and one naming the width when a value does not fit it.
+    pub fn into_dictionary(&self, width: DataType) -> Result<AsciiDictionary> {
+        AsciiDictionary::from_values(width, self.members.values())
+    }
+}
+
+fn enum_document_refusal(reason: SmolStr) -> Error {
+    Error::InvalidDataType {
+        kind: "ascii-enum",
+        reason,
+    }
+}
+
+/// Refuses the two spellings a stored document could not carry back.
+fn validate_enum_text(part: &'static str, value: &str) -> Result<()> {
+    if value.is_empty() {
+        return Err(enum_document_refusal(format_smolstr!(
+            "expected a non-empty {part}"
+        )));
+    }
+    if let Some(position) = value.chars().position(char::is_control) {
+        return Err(enum_document_refusal(format_smolstr!(
+            "expected a {part} with no control character, got one at {position}"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(feature = "arrow")]

@@ -1,17 +1,19 @@
 //! Node.js view of the native `DataType` domain.
 
+use std::collections::HashMap;
+
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Env, Error, Object, Result, Uint8Array, Unknown,
+    BigInt, Buffer, ClassInstance, Either, Either3, Env, Error, Object, Result, Uint8Array, Unknown,
 };
 use napi_derive::napi;
 use yggdryl::{
-    AsciiDictionary as CoreAsciiDictionary, DataType as CoreDataType,
+    AsciiDictionary as CoreAsciiDictionary, AsciiEnum as CoreAsciiEnum, DataType as CoreDataType,
     EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField, Scheme as CoreScheme,
     TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::{
-    JsDifferenceIterator, exact_i8, exact_i32, exact_u8,
+    JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8,
     field::JsField,
     napi_error, ordering_value,
     record::arrow_scalar_to_ipc,
@@ -429,6 +431,29 @@ impl JsDataType {
         self.inner.ascii_width()
     }
 
+    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    ///
+    /// The packed integer is the same in every process, so it is what an enum
+    /// member and a stable hash are, and it is exactly the bytes an ASCII
+    /// column stores. It reaches 128 bits under `ascii128`, so it crosses as
+    /// a `bigint` at every width.
+    #[napi]
+    pub fn ascii_packed(&self, value: String) -> Result<BigInt> {
+        self.inner
+            .ascii_packed(value.as_bytes())
+            .map(BigInt::from)
+            .map_err(napi_error)
+    }
+
+    /// The ASCII value a packed integer carries, without its padding.
+    #[napi]
+    pub fn ascii_value(&self, packed: BigInt) -> Result<String> {
+        self.inner
+            .ascii_value(exact_i128(&packed, "packed")?)
+            .map(|value| value.to_string())
+            .map_err(napi_error)
+    }
+
     /// Whether this type owns child fields.
     #[napi(getter)]
     pub fn nested(&self) -> bool {
@@ -836,6 +861,13 @@ impl JsAsciiDictionary {
             .collect()
     }
 
+    /// The enum member name of one value, under the rule `intoEnum` applies
+    /// to a whole vocabulary at once.
+    #[napi]
+    pub fn member_name(value: String) -> String {
+        CoreAsciiDictionary::member_name(&value).to_string()
+    }
+
     /// The number of registered values.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
@@ -890,7 +922,8 @@ impl JsAsciiDictionary {
     /// Internal member listing for the loader's frozen `intoEnum` object.
     ///
     /// The names and codes are the core listing; the loader adds only the
-    /// JavaScript freezing and tagging.
+    /// JavaScript freezing and tagging. A code is the value packed
+    /// big-endian, which reaches 128 bits, so every one crosses as a `bigint`.
     #[napi(js_name = "_intoEnumNative", skip_typescript)]
     pub fn enum_members_native<'env>(&self, env: &'env Env) -> Result<Object<'env>> {
         let members = self.inner.into_members().map_err(napi_error)?;
@@ -927,5 +960,152 @@ impl JsAsciiDictionary {
         CoreAsciiDictionary::from_arrow_array(array.as_ref())
             .map(Self::from_core)
             .map_err(napi_error)
+    }
+}
+
+/// The enum an ASCII field's values name: one value per member name.
+///
+/// A dictionary is a vocabulary and derives its member names; this is the
+/// vocabulary a declaration named itself, and it is what a `Field` stores
+/// under `field:enum` so the enum crosses Arrow, a file, and another runtime
+/// intact. The width lives in the field's datatype, so a member's code is its
+/// packed ASCII value under that width and never a position.
+#[napi(js_name = "AsciiEnum")]
+pub struct JsAsciiEnum {
+    inner: CoreAsciiEnum,
+}
+
+impl JsAsciiEnum {
+    pub(crate) const fn from_core(inner: CoreAsciiEnum) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) const fn as_core(&self) -> &CoreAsciiEnum {
+        &self.inner
+    }
+}
+
+#[napi]
+impl JsAsciiEnum {
+    /// Create an enum from its members, one ASCII value per member name.
+    #[napi(constructor)]
+    pub fn new(name: String, members: Option<HashMap<String, String>>) -> Result<Self> {
+        CoreAsciiEnum::from_members(name, members.unwrap_or_default())
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Parse the `field:enum` document.
+    #[napi(factory)]
+    pub fn from_json(document: String) -> Result<Self> {
+        CoreAsciiEnum::from_json(&document)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Render the `field:enum` document, which is one text per enum.
+    #[napi]
+    #[allow(clippy::wrong_self_convention)]
+    pub fn into_json(&self) -> String {
+        self.inner.into_json()
+    }
+
+    /// The enum's own name, which is not the field's name.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name().to_owned()
+    }
+
+    /// Every member by name, with the ASCII value it names.
+    #[napi(getter)]
+    pub fn members(&self) -> HashMap<String, String> {
+        self.inner
+            .iter()
+            .map(|(member, value)| (member.to_owned(), value.to_owned()))
+            .collect()
+    }
+
+    /// The ASCII value one member names, or `null` for a member it has not.
+    #[napi]
+    pub fn get(&self, member: String) -> Option<String> {
+        self.inner.get(&member).map(str::to_owned)
+    }
+
+    /// The first member naming one ASCII value, or `null` when none does.
+    #[napi]
+    pub fn get_member(&self, value: String) -> Option<String> {
+        self.inner.get_member(&value).map(str::to_owned)
+    }
+
+    /// Name one ASCII value and return the value the member had.
+    #[napi]
+    pub fn insert(&mut self, member: String, value: String) -> Result<Option<String>> {
+        self.inner
+            .insert(member, value)
+            .map(|held| held.map(|held| held.to_string()))
+            .map_err(napi_error)
+    }
+
+    /// Remove one member and return the ASCII value it named.
+    #[napi]
+    pub fn remove(&mut self, member: String) -> Option<String> {
+        self.inner.remove(&member).map(|value| value.to_string())
+    }
+
+    /// The members paired with their packed codes under one ASCII width.
+    #[napi]
+    #[allow(clippy::wrong_self_convention)]
+    pub fn into_members(
+        &self,
+        width: Either<ClassInstance<'_, JsDataType>, String>,
+    ) -> Result<HashMap<String, BigInt>> {
+        self.inner
+            .into_members(&dtype_from_input(width)?)
+            .map(|members| {
+                members
+                    .into_iter()
+                    .map(|(member, code)| (member.to_string(), BigInt::from(code)))
+                    .collect()
+            })
+            .map_err(napi_error)
+    }
+
+    /// The vocabulary this enum names, as a dictionary over one width.
+    #[napi]
+    #[allow(clippy::wrong_self_convention)]
+    pub fn into_dictionary(
+        &self,
+        width: Either<ClassInstance<'_, JsDataType>, String>,
+        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
+    ) -> Result<JsAsciiDictionary> {
+        let dictionary = self
+            .inner
+            .into_dictionary(dtype_from_input(width)?)
+            .map_err(napi_error)?;
+        JsAsciiDictionary::keyed(dictionary, key)
+    }
+
+    /// The number of members.
+    #[napi(getter)]
+    pub fn length(&self) -> u32 {
+        u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
+    }
+
+    /// Native equality: the enum name and every member it names.
+    #[napi]
+    pub fn equals(&self, other: &JsAsciiEnum) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Make a native clone that changes independently of this enum.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        Self::from_core(self.inner.clone())
+    }
+
+    /// The `field:enum` document, which is the enum's one canonical text.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        self.inner.into_json()
     }
 }

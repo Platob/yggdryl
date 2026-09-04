@@ -5,7 +5,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { AsciiDictionary, DataType } = require('yggdryl')
+const { AsciiDictionary, AsciiEnum, DataType, Field } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')
@@ -246,32 +246,93 @@ test('a seeded ASCII vocabulary is a value carried by its holder', () => {
   assert.equal(seeded.getCode('JPY'), null)
 })
 
-test('the generated enum is the value list and the code is the position', () => {
+test('the generated enum names each value by the integer it packs into', () => {
   const venues = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a', '3M'])
   const Venue = venues.intoEnum('Venue')
 
-  assert.deepEqual({ ...Venue }, { XNAS: 0, N_A: 1, _3M: 2 })
-  assert.equal(Venue.XNAS, 0)
+  // A member is its value packed big-endian, never its position, so it needs
+  // the whole width and crosses as a `bigint`.
+  assert.deepEqual({ ...Venue }, { XNAS: 0x584e4153n, N_A: 0x6e2f6100n, _3M: 0x334d0000n })
+  assert.equal(Venue.XNAS, new DataType('ascii32').asciiPacked('XNAS'))
+  assert.equal(new DataType('ascii32').asciiValue(Venue.N_A), 'n/a')
   assert.equal(Object.isFrozen(Venue), true)
   assert.equal(Object.prototype.toString.call(Venue), '[object Venue]')
   // Name to code only; `values` stays the code to value direction.
-  assert.equal(venues.values()[Venue.N_A], 'n/a')
+  assert.deepEqual(venues.values(), ['XNAS', 'n/a', '3M'])
+
+  // The same rule names one value at a time, for a vocabulary a caller
+  // declares member by member rather than generates from a whole listing.
+  assert.equal(AsciiDictionary.memberName('n/a'), 'N_A')
+  assert.equal(AsciiDictionary.memberName('3M'), '_3M')
+  assert.equal(AsciiDictionary.memberName(''), '_')
 
   // A name that opens and closes with `_` drops its trailing underscores, so
   // both runtimes name the same members.
   const shapes = AsciiDictionary.fromValues('ascii64', ['-a-', '--b--', '-'])
-  assert.deepEqual({ ...shapes.intoEnum('Shape') }, { _A: 0, __B: 1, _: 2 })
+  assert.deepEqual({ ...shapes.intoEnum('Shape') }, {
+    _A: 0x2d612d0000000000n,
+    __B: 0x2d2d622d2d000000n,
+    _: 0x2d00000000000000n,
+  })
+
+  // Sixteen bytes name members too, under the whole 128-bit integer.
+  const wide = AsciiDictionary.fromValues('ascii128', ['US0378331005']).intoEnum('Wide')
+  assert.equal(wide.US0378331005, 0x55533033373833333130303500000000n)
 
   assert.throws(() => venues.intoEnum(''), /non-empty enum name/)
   assert.throws(() => venues.intoEnum(null), /non-empty enum name/)
   assert.throws(
-    () => AsciiDictionary.fromValues('ascii128', ['identifier']).intoEnum('Wide'),
-    /expected ascii32 or ascii64 values/,
-  )
-  assert.throws(
     () => AsciiDictionary.fromValues('ascii32', ['n/a', 'n-a']).intoEnum('Venue'),
     /both name the member N_A/,
   )
+})
+
+test('an ASCII value packs into the integer its storage reads as', () => {
+  const ascii32 = new DataType('ascii32')
+
+  assert.equal(ascii32.asciiPacked('USD'), 0x55534400n)
+  assert.equal(ascii32.asciiPacked('USD\0'), 0x55534400n)
+  assert.equal(ascii32.asciiValue(0x55534400n), 'USD')
+  // The order of the integers is the order of the text.
+  assert.ok(ascii32.asciiPacked('EUR') < ascii32.asciiPacked('USD'))
+
+  const ascii128 = new DataType('ascii128')
+  const isin = ascii128.asciiPacked('US0378331005')
+  assert.equal(isin, 0x55533033373833333130303500000000n)
+  assert.equal(ascii128.asciiValue(isin), 'US0378331005')
+
+  assert.throws(() => ascii32.asciiPacked('EURO!'), /at most 4 bytes/)
+  assert.throws(() => ascii32.asciiValue(-1n), /wider than the width/)
+  assert.throws(() => new DataType('utf8').asciiPacked('USD'), /an ASCII width/)
+})
+
+test('an enum declares itself onto the field its values name', () => {
+  const side = new AsciiEnum('Side', { BUY: 'B', SELL: 'S' })
+
+  assert.equal(side.name, 'Side')
+  assert.deepEqual(side.members, { BUY: 'B', SELL: 'S' })
+  assert.equal(side.get('BUY'), 'B')
+  assert.equal(side.getMember('S'), 'SELL')
+  assert.equal(side.length, 2)
+  assert.deepEqual(side.intoMembers('ascii32'), { BUY: 0x42000000n, SELL: 0x53000000n })
+  assert.deepEqual(side.intoDictionary('ascii32').values(), ['B', 'S'])
+  assert.equal(side.toString(), '{"members":{"BUY":"B","SELL":"S"},"name":"Side"}')
+  assert.ok(AsciiEnum.fromJson(side.intoJson()).equals(side))
+
+  // The declaration is ordinary field metadata under one reserved key, so
+  // every serialization carries it and it reads back as the enum that wrote it.
+  const field = new Field('side', 'ascii32', false)
+  field.setAsciiEnum(side)
+  assert.equal(field.get('field:enum'), side.intoJson())
+  assert.ok(Field.fromJSON(field.toJSON()).asciiEnum.equals(side))
+  assert.ok(field.removeAsciiEnum().equals(side))
+  assert.equal(field.asciiEnum, null)
+
+  // A value the width could not store is refused at the declaration.
+  const wide = new AsciiEnum('Venue', { LONG: 'EUREX' })
+  assert.throws(() => new Field('venue', 'ascii32').setAsciiEnum(wide), /at most 4 bytes/)
+  assert.throws(() => new AsciiEnum('Side', { '': 'B' }), /non-empty member name/)
+  assert.throws(() => AsciiEnum.fromJson('[]'), /enum JSON object/)
 })
 
 test('an ASCII vocabulary encodes Arrow columns whose codes continue', () => {

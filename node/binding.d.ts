@@ -1,5 +1,6 @@
 export {
   AsciiDictionary,
+  AsciiEnum,
   BatchReader,
   Bound,
   BoundStatement,
@@ -378,11 +379,12 @@ declare module './index' {
     intoArrowArray(values: readonly (string | null | undefined)[]): ArrowVector
     /**
      * Build the generated enum: a frozen object mapping each member name to
-     * its code, tagged with `name`. It is name to code only, because a
+     * its packed code, tagged with `name`. It is name to code only, because a
      * numeric reverse map would collide with values that render as digits;
-     * `values()` is the code to value direction.
+     * `values()` is the code to value direction. A code reaches 128 bits under
+     * `ascii128`, so every one of them is a `bigint`.
      */
-    intoEnum(name: string): Readonly<Record<string, number>>
+    intoEnum(name: string): Readonly<Record<string, bigint>>
   }
   namespace AsciiDictionary {
     /** Recover a vocabulary from an Apache Arrow Vector through native IPC. */

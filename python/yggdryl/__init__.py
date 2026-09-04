@@ -8,6 +8,7 @@ underneath and nothing else.
 
 from ._native import (
     AsciiDictionary,
+    AsciiEnum,
     Bound,
     BoundStatement,
     DataType,
@@ -33,6 +34,7 @@ from .scalar import Scalar, scalar
 
 __all__ = [
     "AsciiDictionary",
+    "AsciiEnum",
     "Bound",
     "BoundStatement",
     "DataType",

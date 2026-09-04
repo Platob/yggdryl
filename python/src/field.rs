@@ -14,7 +14,7 @@ use yggdryl::ArrowCast;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
 use crate::datatype::{
-    PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
+    PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
@@ -811,6 +811,19 @@ impl PyField {
         self.inner.parquet_field_id().map_err(value_error)
     }
 
+    /// The enum this field's ASCII values name, ``None`` when it declares none.
+    ///
+    /// The declaration is one ``field:enum`` document, so it reaches Arrow, a
+    /// file, and another runtime as ordinary field metadata and comes back the
+    /// enum that was written.
+    #[getter]
+    fn ascii_enum(&self) -> PyResult<Option<PyAsciiEnum>> {
+        self.inner
+            .ascii_enum()
+            .map(|value| value.map(PyAsciiEnum::from_inner))
+            .map_err(value_error)
+    }
+
     #[getter]
     fn dictionary_id(&self) -> Option<i64> {
         self.inner.dictionary_id()
@@ -972,6 +985,23 @@ impl PyField {
     fn remove_parquet_field_id(&mut self) -> PyResult<Option<i32>> {
         self.require_mutable()?;
         self.inner.remove_parquet_field_id().map_err(value_error)
+    }
+
+    /// Declares the enum this field's ASCII values name.
+    fn set_ascii_enum(&mut self, value: &PyAsciiEnum) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_ascii_enum(value.as_inner())
+            .map_err(value_error)
+    }
+
+    /// Removes the declaration and returns the enum it held.
+    fn remove_ascii_enum(&mut self) -> PyResult<Option<PyAsciiEnum>> {
+        self.require_mutable()?;
+        self.inner
+            .remove_ascii_enum()
+            .map(|value| value.map(PyAsciiEnum::from_inner))
+            .map_err(value_error)
     }
 
     fn set_alias(&mut self, value: String) -> PyResult<()> {

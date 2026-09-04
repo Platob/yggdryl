@@ -11,6 +11,7 @@ import pyarrow as pa  # type: ignore[import-untyped]
 
 from yggdryl import (
     AsciiDictionary,
+    AsciiEnum,
     Bound,
     BoundStatement,
     DataType,
@@ -47,6 +48,7 @@ from yggdryl._native import (
     ScalarEntryIterator,
     ScalarIterator,
 )
+from yggdryl.enums import Ascii32, AsciiCode
 from yggdryl.fields import (
     Ascii32Field,
     AsciiField,
@@ -300,6 +302,37 @@ ascii_recovered: AsciiDictionary = AsciiDictionary.from_arrow_array(ascii_column
 ascii_enum: type[IntEnum] = ascii_seeded.into_intenum("Currency")
 ascii_member: IntEnum = ascii_enum["USD"]
 ascii_members: list[str] = [member.name for member in ascii_enum]
+ascii_member_name: str = AsciiDictionary.member_name("n/a")
+
+
+class TypedCurrency(Ascii32):
+    USD = "USD"
+    EUR = "EUR"
+
+
+ascii_declared_code: int = int(TypedCurrency.USD)
+ascii_declared_value: str = TypedCurrency.USD.into_str()
+ascii_parsed: TypedCurrency = TypedCurrency.from_str("JPY")
+ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
+ascii_declared_dtype: DataType = TypedCurrency.dtype()
+ascii_declared_enum: AsciiEnum = TypedCurrency.as_enum()
+ascii_declared_field: Field = TypedCurrency.field("ccy", nullable=False)
+ascii_declared_dictionary: AsciiDictionary = TypedCurrency.into_dictionary()
+ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
+ascii_base: type[AsciiCode] = TypedCurrency
+
+ascii_declaration: AsciiEnum = AsciiEnum("Side", {"BUY": "B"})
+ascii_declaration_json: str = ascii_declaration.into_json()
+ascii_declaration_parsed: AsciiEnum = AsciiEnum.from_json(ascii_declaration_json)
+ascii_declaration_name: str = ascii_declaration.name
+ascii_declaration_members: dict[str, str] = ascii_declaration.members
+ascii_declaration_value: str | None = ascii_declaration.get("BUY")
+ascii_declaration_member: str | None = ascii_declaration.get_member("B")
+ascii_declaration_prior: str | None = ascii_declaration.insert("SELL", "S")
+ascii_declaration_removed: str | None = ascii_declaration.remove("SELL")
+ascii_declaration_codes: list[tuple[str, int]] = ascii_declaration.into_members("ascii32")
+ascii_declaration_dictionary: AsciiDictionary = ascii_declaration.into_dictionary("ascii32")
+ascii_field_enum: AsciiEnum | None = ascii_declared_field.ascii_enum
 
 byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
     position=1, batch_size=3
