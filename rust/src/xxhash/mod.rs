@@ -46,9 +46,11 @@
 
 mod secret;
 mod state;
+pub(crate) mod stream;
 
 pub use secret::SECRET_MINIMUM_LENGTH;
 pub use state::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+pub use stream::{DigestReader, DigestWriter};
 
 pub(crate) use state::low_64;
 
@@ -158,6 +160,20 @@ pub fn xxh3_128_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> 
 /// ```
 pub fn digest(input: &[u8], algorithm: DigestAlgorithm) -> Digest {
     algorithm.digest(input)
+}
+
+/// Wrap a reader so the bytes it yields are digested as they pass.
+///
+/// This is the codings' `reader`/`writer` pair for digests: a caller who is
+/// already moving a payload hashes it in the same pass rather than reading it
+/// twice.
+pub fn reader<R: std::io::Read>(source: R, algorithm: DigestAlgorithm) -> DigestReader<R> {
+    DigestReader::new(source, algorithm)
+}
+
+/// Wrap a writer so the bytes written through it are digested.
+pub fn writer<W: std::io::Write>(target: W, algorithm: DigestAlgorithm) -> DigestWriter<W> {
+    DigestWriter::new(target, algorithm)
 }
 
 #[cfg(test)]
