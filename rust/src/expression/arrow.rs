@@ -4,8 +4,12 @@
 //! definition. Where Arrow owns a kernel for an operator - every comparison,
 //! every cast - the kernel runs. Where it does not, the row evaluator runs and
 //! its answers are gathered into an array, which is slower and *cannot
-//! disagree*. The property test asserts the equality the design is built to
-//! make cheap.
+//! disagree*. A cast between text and a temporal is the one kernel with a
+//! reading in front of it: the column reads through the same
+//! [`Scalar::from_temporal_text`](crate::Scalar) and spells through the same
+//! classic form a row does, and Arrow's kernel answers only the spellings this
+//! crate cannot read. The property test asserts the equality the design is
+//! built to make cheap.
 //!
 //! # What runs as a kernel
 //!

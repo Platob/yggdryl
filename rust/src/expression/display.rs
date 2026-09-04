@@ -412,8 +412,6 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
 
 /// The inner text of a typed literal, or `None` for a value with no text form.
 pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
-    use crate::generic::iso;
-
     match value {
         Scalar::Bool(held) => Some(SmolStr::new(held.to_string())),
         Scalar::I8(held) => Some(SmolStr::new(held.to_string())),
@@ -435,18 +433,15 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
         Scalar::Bytes(held) | Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
-        Scalar::Date32(days, _, _) => iso::format_date(*days),
-        Scalar::Date64(count, _, _) => i32::try_from(count.div_euclid(86_400_000))
-            .ok()
-            .and_then(iso::format_date),
-        Scalar::Time32(count, unit, _) => iso::format_time(i64::from(*count), *unit),
-        Scalar::Time64(count, unit, _) => iso::format_time(*count, *unit),
-        Scalar::DateTime64(count, unit, zone) if zone.is_naive() => {
-            iso::format_datetime(*count, *unit)
-        }
-        Scalar::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
-        Scalar::Duration32(count, unit, _) => iso::format_duration(i64::from(*count), *unit),
-        Scalar::Duration64(count, unit, _) => iso::format_duration(*count, *unit),
+        // Every temporal spells itself the one classic way, which the Arrow
+        // cast leaf renders a whole column with.
+        Scalar::Date32(..)
+        | Scalar::Date64(..)
+        | Scalar::Time32(..)
+        | Scalar::Time64(..)
+        | Scalar::DateTime64(..)
+        | Scalar::Duration32(..)
+        | Scalar::Duration64(..) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
         Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
     }

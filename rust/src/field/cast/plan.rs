@@ -43,6 +43,10 @@ pub trait ArrowCast {
     /// errors when it is false. A non-nullable target Field replaces resulting
     /// nulls with its canonical default; a nullable Field retains them.
     ///
+    /// Temporals cross a text boundary through this crate's own spellings, so
+    /// a column reads and prints what a row reads and prints; Arrow's kernel
+    /// keeps the spellings only it knows.
+    ///
     /// # Errors
     ///
     /// Returns an error for an unsupported cast, an ambiguous case-insensitive
@@ -196,6 +200,15 @@ enum ArrayCastKind {
     AsciiIngest,
     /// A recognized ASCII source rendering as trimmed text.
     AsciiText,
+    /// Text entering a temporal: every exposed value is read through the
+    /// crate's own spellings, which are wider than Arrow's. Arrow's kernel
+    /// stays behind them for the spellings only it knows, so the reading is
+    /// never narrower than it was.
+    TemporalIngest,
+    /// A temporal rendering as its classic text, so a column spells what a
+    /// row spells - a zoned instant included, which Arrow's own formatter
+    /// refuses without its timezone database.
+    TemporalText,
     DeferredUnsupported {
         reason: String,
     },
@@ -432,6 +445,25 @@ impl ArrayCastPlan {
             ) if matches!(source_extension, Some(RecognizedExtension::Ascii(_))) => {
                 ArrayCastKind::AsciiText
             }
+            (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, source)
+                if is_temporal_arrow(source) =>
+            {
+                ArrayCastKind::TemporalText
+            }
+            // A temporal reads text with this crate's spellings rather than
+            // Arrow's: a grouped fraction, an hour past the end of the day, a
+            // bracketed zone name, and a duration in either spelling all read
+            // here, and Arrow reads nothing into a duration at all.
+            (
+                DataType::Date32
+                | DataType::Date64
+                | DataType::Time32(_)
+                | DataType::Time64(_)
+                | DataType::Timestamp(..)
+                | DataType::Duration32(_)
+                | DataType::Duration64(_),
+                source,
+            ) if holds_text(source) => ArrayCastKind::TemporalIngest,
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
@@ -734,6 +766,17 @@ impl ArrayCastPlan {
             ArrayCastKind::AsciiText => {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
+            ArrayCastKind::TemporalText => {
+                render_temporal_text(&array, self.safe, &self.field, exposure, budget)?
+            }
+            ArrayCastKind::TemporalIngest => ingest_temporal_text(
+                &array,
+                &self.expected,
+                self.safe,
+                &self.field,
+                exposure,
+                budget,
+            )?,
             ArrayCastKind::DeferredUnsupported { reason } => {
                 let source_type = DataType::from_arrow(array.data_type())?;
                 let exposed = exposure.map_or(array.len(), BooleanBuffer::count_set_bits);
@@ -1340,6 +1383,196 @@ fn ingest_ascii_array(
             .is_valid(index)
             .then(|| source.value(index).as_bytes())
     })
+}
+
+/// Whether a source Arrow type holds temporals with a classic spelling.
+///
+/// The interval layouts are temporal too and have no such spelling, so they
+/// keep Arrow's rendering.
+fn is_temporal_arrow(source: &ArrowDataType) -> bool {
+    matches!(
+        source,
+        ArrowDataType::Date32
+            | ArrowDataType::Date64
+            | ArrowDataType::Time32(_)
+            | ArrowDataType::Time64(_)
+            | ArrowDataType::Timestamp(..)
+            | ArrowDataType::Duration(_)
+    )
+}
+
+/// Renders a temporal column as the classic text this crate spells.
+///
+/// [`Scalar::into_temporal_text`] is what an expression literal and the row
+/// evaluator spell with, and it reads the zone rules this crate owns, so a
+/// zoned instant renders here where Arrow's formatter refuses one. A value
+/// with no classic spelling keeps Arrow's rendering.
+fn render_temporal_text(
+    array: &ArrayRef,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let source_type = DataType::from_arrow(array.data_type())?;
+    let rows = array.len();
+    budget.add_array(field.dtype(), rows)?;
+    let mut spelled = Vec::with_capacity(rows);
+    let mut ours = BooleanBufferBuilder::new(rows);
+    let mut unspelled = false;
+    for index in 0..rows {
+        let text = if is_exposed(exposure, index) && array.is_valid(index) {
+            crate::arrow::value::value_from_array(&source_type, array.as_ref(), index)?
+                .into_temporal_text()
+        } else {
+            None
+        };
+        let absent = !is_exposed(exposure, index) || array.is_null(index);
+        ours.append(absent || text.is_some());
+        unspelled |= !absent && text.is_none();
+        spelled.push(text);
+    }
+    let mask = BooleanArray::new(ours.finish(), None);
+    let read_here: ArrayRef = Arc::new(StringArray::from_iter(
+        spelled
+            .iter()
+            .map(|text| text.as_ref().map(smol_str::SmolStr::as_str)),
+    ));
+    if !unspelled {
+        return Ok(read_here);
+    }
+    // Arrow's formatter keeps the readings this crate has no spelling for,
+    // such as a date outside four-digit years.
+    let cast = if can_cast_types(array.data_type(), &ArrowDataType::Utf8) {
+        let arrow = arrow_cast_exposed(
+            array,
+            &ArrowDataType::Utf8,
+            true,
+            exposure,
+            &Field::new(field.name(), DataType::Utf8, true),
+            budget,
+        )?;
+        zip(&mask, &read_here.as_ref(), &arrow.as_ref())?
+    } else {
+        read_here
+    };
+    if !safe {
+        for index in 0..rows {
+            if !mask.value(index) && cast.is_null(index) {
+                return Err(Error::IncompatibleSchema(format!(
+                    "field {:?} row {index}: this {source_type} reading has no classic spelling",
+                    field.name(),
+                )));
+            }
+        }
+    }
+    Ok(cast)
+}
+
+/// Whether a source layout holds text values, however it wraps them.
+fn holds_text(source: &ArrowDataType) -> bool {
+    match source {
+        ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View => true,
+        ArrowDataType::Dictionary(_, values) => holds_text(values),
+        ArrowDataType::RunEndEncoded(_, values) => holds_text(values.data_type()),
+        _ => false,
+    }
+}
+
+/// Reads a column of temporal text through this crate's own spellings.
+///
+/// [`Scalar::from_temporal_text`] is what the row evaluator reads one value
+/// with, so a batch and a row cannot answer differently about a spelling this
+/// crate knows - its refusals included: a reading this crate takes but its
+/// declared unit or width cannot hold is null here as it is there, never
+/// Arrow's rounded one. Arrow's kernel answers only what this crate cannot
+/// read at all - a bare date entering a timestamp, a twelve-hour clock, a
+/// compact `YYYYMMDD` - so the column still reads everything it used to.
+fn ingest_temporal_text(
+    array: &ArrayRef,
+    expected: &ArrowDataType,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    // The temporary is nullable text: this leaf owns the failures, and the
+    // target's own null policy runs after the reading.
+    let text = if array.data_type() == &ArrowDataType::Utf8 {
+        Arc::clone(array)
+    } else {
+        arrow_cast_exposed(
+            array,
+            &ArrowDataType::Utf8,
+            safe,
+            exposure,
+            &Field::new(field.name(), DataType::Utf8, true),
+            budget,
+        )?
+    };
+    let source = downcast::<StringArray>(text.as_ref())?;
+    let rows = source.len();
+    let read = Field::new(field.name(), field.dtype().clone(), true);
+    budget.add_array(field.dtype(), rows)?;
+    let mut values = Vec::with_capacity(rows);
+    let mut ours = BooleanBufferBuilder::new(rows);
+    let mut refused = false;
+    for index in 0..rows {
+        let cell = (is_exposed(exposure, index) && source.is_valid(index))
+            .then(|| source.value(index))
+            .map(|text| Scalar::from_temporal_text(field.dtype(), text));
+        match cell {
+            // An absent value is this reading's own: nothing else reads it.
+            None => {
+                values.push(Scalar::Null);
+                ours.append(true);
+            }
+            Some(Ok(value)) => {
+                values.push(value);
+                ours.append(true);
+            }
+            // A spelling this crate read and then refused - a count its unit
+            // or width cannot hold exactly - stays refused: Arrow would round
+            // it, and the row tier does not.
+            Some(Err(error)) => {
+                let unread = matches!(error, crate::Error::Parse { .. });
+                values.push(Scalar::Null);
+                ours.append(!unread);
+                refused |= unread;
+            }
+        }
+    }
+    let mask = BooleanArray::new(ours.finish(), None);
+    let read_here =
+        crate::arrow::value::array_from_values(&read, &values.iter().collect::<Vec<_>>())?;
+    let cast = if refused && can_cast_types(source.data_type(), expected) {
+        // Arrow reads what this crate could not at its own risk: a value
+        // neither reading takes stays null, and strict mode reports it below.
+        let arrow = arrow_cast_exposed(&text, expected, true, exposure, &read, budget)?;
+        zip(&mask, &read_here.as_ref(), &arrow.as_ref())?
+    } else {
+        read_here
+    };
+    if !safe {
+        for index in 0..rows {
+            let absent = !is_exposed(exposure, index) || source.is_null(index);
+            if absent || !cast.is_null(index) {
+                continue;
+            }
+            let cell = source.value(index);
+            let reason = match Scalar::from_temporal_text(field.dtype(), cell) {
+                Err(crate::Error::InvalidRecord { reason, .. }) => reason.to_string(),
+                Err(other) => other.to_string(),
+                Ok(_) => String::new(),
+            };
+            return Err(Error::IncompatibleSchema(format!(
+                "field {:?} row {index}: {cell:?} does not read as {}: {reason}",
+                field.name(),
+                field.dtype(),
+            )));
+        }
+    }
+    Ok(cast)
 }
 
 /// Builds the fixed storage of an ASCII width from one cell per row.

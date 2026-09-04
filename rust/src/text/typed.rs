@@ -3,7 +3,7 @@ use std::str::FromStr;
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, I256, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
 pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
@@ -33,13 +33,13 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::LargeBinary
         | DataType::BinaryView => binary(value, field),
         DataType::Geometry(_) | DataType::Geography(_) => geospatial(value, field),
-        DataType::Date32 => date32(value, field),
-        DataType::Date64 => date64(value, field),
-        DataType::Time32(unit) => time32(value, *unit, field),
-        DataType::Time64(unit) => time64(value, *unit, field),
-        DataType::Timestamp(unit, zone) => datetime64(value, *unit, zone.as_ref(), field),
-        DataType::Duration32(unit) => duration32(value, *unit, field),
-        DataType::Duration64(unit) => duration64(value, *unit, field),
+        DataType::Date32
+        | DataType::Date64
+        | DataType::Time32(_)
+        | DataType::Time64(_)
+        | DataType::Timestamp(..)
+        | DataType::Duration32(_)
+        | DataType::Duration64(_) => temporal(value, field),
         DataType::List(child)
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
@@ -266,147 +266,29 @@ fn decimal_coefficient(text: &str, target_scale: i8) -> std::result::Result<I256
     Ok(coefficient)
 }
 
-fn date32(value: Scalar, field: &Field) -> Result<Scalar> {
-    match value {
-        Scalar::String(text) => crate::generic::iso::parse_date(&text)
-            .map(Scalar::date32)
-            .map_err(|_| invalid(field, "expected an ISO date")),
-        value => Ok(value),
-    }
-}
-
-fn date64(value: Scalar, field: &Field) -> Result<Scalar> {
-    match value {
-        Scalar::String(text) => crate::generic::iso::parse_date(&text)
-            .ok()
-            .and_then(|days| i64::from(days).checked_mul(86_400_000))
-            .map(Scalar::date64)
-            .ok_or_else(|| invalid(field, "expected an ISO date")),
-        value => Ok(value),
-    }
-}
-
-fn time32(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
-    match value {
-        Scalar::String(text) => {
-            let (count, source, zone) =
-                parse_time_with_zone(&text).map_err(|_| invalid(field, "expected an ISO time"))?;
-            if !zone.is_naive() {
-                return Err(invalid(
-                    field,
-                    "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
-                ));
-            }
-            let count = rescale(count, source, unit)
-                .and_then(|count| i32::try_from(count).ok())
-                .ok_or_else(|| invalid(field, "time does not fit its declared unit"))?;
-            Scalar::time32(count, unit, zone)
-        }
-        value => Ok(value),
-    }
-}
-
-fn time64(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
-    match value {
-        Scalar::String(text) => {
-            let (count, source, zone) =
-                parse_time_with_zone(&text).map_err(|_| invalid(field, "expected an ISO time"))?;
-            if !zone.is_naive() {
-                return Err(invalid(
-                    field,
-                    "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
-                ));
-            }
-            let count = rescale(count, source, unit)
-                .ok_or_else(|| invalid(field, "time does not fit its declared unit"))?;
-            Scalar::time64(count, unit, zone)
-        }
-        value => Ok(value),
-    }
-}
-
-fn datetime64(
-    value: Scalar,
-    unit: TimeUnit,
-    declared_zone: Option<&Timezone>,
-    field: &Field,
-) -> Result<Scalar> {
+/// Read a temporal from its text spelling under the field's declared type.
+///
+/// The spelling, the exact restatement in the declared unit and the zone rule
+/// are [`Scalar::from_temporal_text`]; the field only names where the value
+/// sat, so the reason the reading gives survives into the record error.
+fn temporal(value: Scalar, field: &Field) -> Result<Scalar> {
     let Scalar::String(text) = value else {
         return Ok(value);
     };
-    let (count, source, parsed_zone) = if declared_zone.is_some() {
-        let (count, source, zone) = crate::generic::iso::parse_timestamp(&text)
-            .map_err(|_| invalid(field, "expected an ISO timestamp with timezone"))?;
-        (count, source, zone)
-    } else {
-        let (count, source) = crate::generic::iso::parse_datetime(&text)
-            .map_err(|_| invalid(field, "expected an ISO timezone-naive datetime"))?;
-        (count, source, Timezone::NAIVE)
-    };
-    let count = rescale(count, source, unit)
-        .ok_or_else(|| invalid(field, "datetime does not fit its declared unit"))?;
-    Scalar::datetime64(count, unit, declared_zone.cloned().unwrap_or(parsed_zone))
+    Scalar::from_temporal_text(field.dtype(), &text)
+        .map_err(|error| invalid(field, reason_of(&error)))
 }
 
-fn duration32(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
-    let Scalar::String(text) = value else {
-        return Ok(value);
-    };
-    let (count, source) = crate::generic::iso::parse_duration(&text)
-        .map_err(|_| invalid(field, "expected an ISO duration or a plain clock"))?;
-    let count = rescale(count, source, unit)
-        .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
-    Scalar::duration32(
-        i32::try_from(count).map_err(|_| invalid(field, "duration exceeds 32 bits"))?,
-        unit,
-    )
-}
-
-fn duration64(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
-    let Scalar::String(text) = value else {
-        return Ok(value);
-    };
-    let (count, source) = crate::generic::iso::parse_duration(&text)
-        .map_err(|_| invalid(field, "expected an ISO duration or a plain clock"))?;
-    let count = rescale(count, source, unit)
-        .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
-    Scalar::duration64(count, unit)
-}
-
-fn parse_time_with_zone(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
-    if let Some(clock) = text.strip_suffix('Z') {
-        let (count, unit) = crate::generic::iso::parse_time(clock)?;
-        return Ok((count, unit, Timezone::UTC));
-    }
-    if text.len() >= 6 {
-        let suffix = &text[text.len() - 6..];
-        if matches!(suffix.as_bytes().first(), Some(b'+' | b'-')) && suffix.as_bytes()[3] == b':' {
-            let zone = Timezone::from_str(suffix)?;
-            let (count, unit) = crate::generic::iso::parse_time(&text[..text.len() - 6])?;
-            return Ok((count, unit, zone));
-        }
-    }
-    let (count, unit) = crate::generic::iso::parse_time(text)?;
-    Ok((count, unit, Timezone::NAIVE))
-}
-
-fn rescale(count: i64, source: TimeUnit, target: TimeUnit) -> Option<i64> {
-    let source = nanoseconds(source)?;
-    let target = nanoseconds(target)?;
-    let nanoseconds = i128::from(count).checked_mul(source)?;
-    (nanoseconds % target == 0)
-        .then(|| i64::try_from(nanoseconds / target).ok())
-        .flatten()
-}
-
-const fn nanoseconds(unit: TimeUnit) -> Option<i128> {
-    match unit {
-        TimeUnit::Day => Some(86_400_000_000_000),
-        TimeUnit::Second => Some(1_000_000_000),
-        TimeUnit::Millisecond => Some(1_000_000),
-        TimeUnit::Microsecond => Some(1_000),
-        TimeUnit::Nanosecond => Some(1),
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => None,
+/// The reason one error carries, as a record error restates it.
+fn reason_of(error: &Error) -> SmolStr {
+    match error {
+        Error::Parse {
+            target,
+            position,
+            reason,
+        } => format_smolstr!("expected an ISO {target}: {reason} at byte {position}"),
+        Error::InvalidRecord { reason, .. } => reason.clone(),
+        other => SmolStr::new(other.to_string()),
     }
 }
 
