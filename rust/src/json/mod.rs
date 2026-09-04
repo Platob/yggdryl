@@ -547,7 +547,7 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 /// exactly as another JSON formatter's `indent=n` option reads.
 ///
 /// ```
-/// use yggdryl::generic::Scalar;
+/// use yggdryl::Scalar;
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {

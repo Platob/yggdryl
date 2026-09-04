@@ -3,6 +3,8 @@
 mod dictionary;
 mod dtypes;
 mod fields;
+pub(crate) mod iso;
+mod scalars;
 mod vocabulary;
 
 pub use dictionary::AsciiEnum;
@@ -14,3 +16,6 @@ pub(crate) use dtypes::{
     code_refusal, code_text,
 };
 pub use fields::*;
+pub use scalars::{
+    AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, MicScalar,
+};

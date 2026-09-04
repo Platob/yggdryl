@@ -4,7 +4,7 @@ use crate::{Codec, Error, MimeType, Result, Url};
 
 /// Treat a backend's own not-found answer as a completed removal.
 ///
-/// This is the shape [`IOBase::clear`] and [`IOBase::remove`] require: issue the
+/// This is the shape [`super::IOBase::clear`] and [`super::IOBase::remove`] require: issue the
 /// delete, and let the store say whether there was anything there. A backend
 /// with a different absence signal - a store's no-such-key, an HTTP 404 - maps
 /// its own answer the same way; everything else stays the typed failure it is,

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::generic::wkb;
+use crate::types::geospatial::wkb;
 use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_free_text, ascii_padded, ascii_text,
     code_refusal, code_text, guid_parse, guid_text,

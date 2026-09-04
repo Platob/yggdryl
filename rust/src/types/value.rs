@@ -974,7 +974,7 @@ fn validate_dtype_value(
         // framing is the validation: a buffer the WKB reader refuses is not a
         // geometry, whatever bytes it carries.
         D::Geometry(_) | D::Geography(_) => match value.as_wkb() {
-            Some(bytes) => crate::generic::wkb::Geometry::from_slice(bytes)
+            Some(bytes) => crate::types::geospatial::wkb::Geometry::from_slice(bytes)
                 .map(|_| ())
                 .map_err(|error| expected_because(dtype.name(), value, &error)),
             None => Err(expected(dtype.name(), value)),

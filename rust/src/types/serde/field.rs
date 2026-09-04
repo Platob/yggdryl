@@ -8,7 +8,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::Scalar;
+use crate::Scalar;
 use crate::types::serde::{integer, invalid, key};
 use crate::{DataType, Error, Field, Metadata, Result};
 

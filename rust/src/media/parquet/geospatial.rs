@@ -13,7 +13,7 @@
 //! for a geospatial column (their sort order is undefined) and accumulates
 //! the format's own [`GeospatialStatistics`] instead - bounding box and
 //! geometry type codes - which this module computes from the WKB bytes
-//! through [`crate::generic::wkb`], the one WKB implementation.
+//! through [`crate::types::geospatial::wkb`], the one WKB implementation.
 
 use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
@@ -37,7 +37,7 @@ use crate::EdgeAlgorithm;
 use crate::GeospatialType;
 use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
-use crate::generic::wkb;
+use crate::types::geospatial::wkb;
 use crate::types::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.

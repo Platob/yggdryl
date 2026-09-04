@@ -28,8 +28,8 @@ use arrow_array::{
     UInt32Array, UInt64Array,
 };
 
+use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
-use crate::generic::TemporalFamily;
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, TimeUnit, Timezone};
 
 use super::scalar::{

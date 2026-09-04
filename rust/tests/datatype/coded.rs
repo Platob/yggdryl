@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::generic::{CurrencyScalar, MicScalar};
 use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
+use yggdryl::types::{CurrencyScalar, MicScalar};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {

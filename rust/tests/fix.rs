@@ -733,13 +733,16 @@ fn serialization_is_inherited_by_fields_and_messages() {
 #[test]
 fn nothing_outside_the_module_references_it() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut pending = vec![
-        src.join("field"),
-        src.join("metadata.rs"),
-        src.join("iceberg"),
-        src.join("io"),
-        src.join("generic"),
-    ];
+    let mut pending = std::fs::read_dir(&src)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            !matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("fix" | "lib.rs")
+            )
+        })
+        .collect::<Vec<_>>();
     let mut scanned = 0;
     while let Some(path) = pending.pop() {
         if path.is_dir() {

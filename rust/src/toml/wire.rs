@@ -274,7 +274,7 @@ fn write_scalar<W: Write>(
         Scalar::D128(coefficient, scale) => {
             write_quoted(
                 writer,
-                &crate::generic::decimal::decimal_text(
+                &crate::types::decimal::scalars::decimal_text(
                     crate::I256::from_i128(*coefficient),
                     *scale,
                 ),
@@ -283,7 +283,7 @@ fn write_scalar<W: Write>(
         Scalar::D256(coefficient, scale) => {
             write_quoted(
                 writer,
-                &crate::generic::decimal::decimal_text(*coefficient, *scale),
+                &crate::types::decimal::scalars::decimal_text(*coefficient, *scale),
             )?;
         }
         Scalar::String(value) => write_quoted(writer, value)?,
@@ -388,9 +388,9 @@ fn write_temporal<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Time64(count, unit, zone) => write_time(writer, *count, *unit, zone)?,
         Scalar::DateTime64(count, unit, zone) => {
             let text = if zone.is_naive() {
-                crate::generic::iso::format_datetime(*count, *unit)
+                crate::types::ascii::iso::format_datetime(*count, *unit)
             } else {
-                crate::generic::iso::format_timestamp(*count, *unit, zone)
+                crate::types::ascii::iso::format_timestamp(*count, *unit, zone)
             };
             match text {
                 Some(text) => write_quoted(writer, &text)?,
@@ -409,7 +409,7 @@ fn write_duration<W: Write>(
     zone: &Timezone,
 ) -> Result<()> {
     if zone.is_naive() {
-        if let Some(text) = crate::generic::iso::format_duration(count, unit) {
+        if let Some(text) = crate::types::ascii::iso::format_duration(count, unit) {
             return write_quoted(writer, &text);
         }
     } else {
@@ -425,7 +425,7 @@ fn write_time<W: Write>(writer: &mut W, count: i64, unit: TimeUnit, zone: &Timez
             "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
         ));
     }
-    let Some(text) = crate::generic::iso::format_time(count, unit) else {
+    let Some(text) = crate::types::ascii::iso::format_time(count, unit) else {
         write!(writer, "{count}")?;
         return Ok(());
     };

@@ -32,7 +32,7 @@
 //! bounds for geospatial columns - their sort order is undefined, so a bound
 //! would be a lie - and records the format's own geospatial statistics
 //! instead: bounding box and geometry types, computed from the WKB bytes by
-//! [`crate::generic::wkb`] and readable back through
+//! [`crate::types::geospatial::wkb`] and readable back through
 //! [`ColumnStatistics::geospatial`] or recomputable by
 //! [`read_geospatial_statistics`]. Geography columns record no bounding box:
 //! a planar fold of the vertices under-covers non-planar edges.

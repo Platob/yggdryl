@@ -3,7 +3,7 @@
 mod dtypes;
 mod fields;
 mod parser;
-mod scalars;
+pub(crate) mod scalars;
 
 pub(crate) use dtypes::validate_decimal;
 pub use fields::*;

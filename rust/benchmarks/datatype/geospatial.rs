@@ -3,7 +3,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::generic::wkb::{self, Geometry};
+use yggdryl::types::geospatial::wkb::{self, Geometry};
 
 /// A little-endian XY point: order byte, type code 1, then x and y.
 fn point(x: f64, y: f64) -> Vec<u8> {

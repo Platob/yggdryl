@@ -3,7 +3,7 @@
 mod dtypes;
 mod fields;
 mod parser;
-mod scalars;
+pub(crate) mod scalars;
 
 pub(crate) use dtypes::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 pub use fields::*;

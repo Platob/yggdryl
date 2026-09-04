@@ -33,11 +33,11 @@ impl Serialize for JsonRef<'_> {
             Scalar::F32(value) => serialize_float(serializer, value.as_f64()),
             Scalar::F64(value) => serialize_float(serializer, value.as_f64()),
             Scalar::D128(unscaled, scale) => serializer.serialize_str(
-                &crate::generic::decimal::decimal_text(I256::from_i128(*unscaled), *scale),
+                &crate::types::decimal::scalars::decimal_text(I256::from_i128(*unscaled), *scale),
             ),
-            Scalar::D256(unscaled, scale) => {
-                serializer.serialize_str(&crate::generic::decimal::decimal_text(*unscaled, *scale))
-            }
+            Scalar::D256(unscaled, scale) => serializer.serialize_str(
+                &crate::types::decimal::scalars::decimal_text(*unscaled, *scale),
+            ),
             Scalar::String(value) => serializer.serialize_str(value),
             Scalar::Enum(value) => serializer.serialize_str(value.as_str()),
             Scalar::Bytes(value) | Scalar::Geospatial(value) => {
@@ -48,7 +48,7 @@ impl Serialize for JsonRef<'_> {
                     return Err(S::Error::custom("Date32 cannot carry a timezone"));
                 }
                 if *unit == TimeUnit::Day && zone.is_naive() {
-                    if let Some(text) = crate::generic::iso::format_date(*count) {
+                    if let Some(text) = crate::types::ascii::iso::format_date(*count) {
                         return serializer.serialize_str(&text);
                     }
                 }
@@ -63,7 +63,7 @@ impl Serialize for JsonRef<'_> {
                     let days = count.div_euclid(DAY_MILLISECONDS);
                     if count.rem_euclid(DAY_MILLISECONDS) == 0 {
                         if let Ok(days) = i32::try_from(days) {
-                            if let Some(text) = crate::generic::iso::format_date(days) {
+                            if let Some(text) = crate::types::ascii::iso::format_date(days) {
                                 return serializer.serialize_str(&text);
                             }
                         }
@@ -77,9 +77,9 @@ impl Serialize for JsonRef<'_> {
             Scalar::Time64(count, unit, zone) => serialize_time(serializer, *count, *unit, zone),
             Scalar::DateTime64(count, unit, zone) => {
                 let text = if zone.is_naive() {
-                    crate::generic::iso::format_datetime(*count, *unit)
+                    crate::types::ascii::iso::format_datetime(*count, *unit)
                 } else {
-                    crate::generic::iso::format_timestamp(*count, *unit, zone)
+                    crate::types::ascii::iso::format_timestamp(*count, *unit, zone)
                 };
                 match text {
                     Some(text) => serializer.serialize_str(&text),
@@ -141,7 +141,7 @@ fn serialize_time<S: Serializer>(
             "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
         ));
     }
-    let Some(text) = crate::generic::iso::format_time(count, unit) else {
+    let Some(text) = crate::types::ascii::iso::format_time(count, unit) else {
         return serializer.serialize_i64(count);
     };
     serializer.serialize_str(&text)
@@ -154,7 +154,7 @@ fn serialize_duration<S: Serializer>(
     zone: &Timezone,
 ) -> Result<S::Ok, S::Error> {
     if zone.is_naive() {
-        if let Some(text) = crate::generic::iso::format_duration(count, unit) {
+        if let Some(text) = crate::types::ascii::iso::format_duration(count, unit) {
             return serializer.serialize_str(&text);
         }
     } else {

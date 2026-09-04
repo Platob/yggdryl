@@ -1,7 +1,7 @@
 //! The `Scalar` conversion is the one structural model of a schema, and every
 //! serialized form is expressed over it.
 
-use yggdryl::generic::Scalar;
+use yggdryl::Scalar;
 use yggdryl::{DataType, Field, Metadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
@@ -329,14 +329,14 @@ fn formatting_changes_bytes_never_meaning() {
 fn indentation_reads_literally_in_every_format() {
     use yggdryl::text::Formatting;
 
-    let value = yggdryl::generic::Scalar::from_mapping([
+    let value = yggdryl::Scalar::from_mapping([
         (
-            yggdryl::generic::Scalar::String("id".into()),
-            yggdryl::generic::Scalar::I64(1),
+            yggdryl::Scalar::String("id".into()),
+            yggdryl::Scalar::I64(1),
         ),
         (
-            yggdryl::generic::Scalar::String("tags".into()),
-            yggdryl::generic::Scalar::from_sequence([yggdryl::generic::Scalar::String("a".into())]),
+            yggdryl::Scalar::String("tags".into()),
+            yggdryl::Scalar::from_sequence([yggdryl::Scalar::String("a".into())]),
         ),
     ])
     .unwrap();

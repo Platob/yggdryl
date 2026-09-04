@@ -66,7 +66,7 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::iso;
+use crate::types::ascii::iso;
 use crate::{Error, Result, Scalar};
 
 /// The two bytes that open a placeholder.
@@ -503,9 +503,11 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         Scalar::F32(held) => held.as_f32().to_string(),
         Scalar::F64(held) => held.as_f64().to_string(),
         Scalar::D128(unscaled, scale) => {
-            crate::generic::decimal::decimal_text(crate::I256::from_i128(*unscaled), *scale)
+            crate::types::decimal::scalars::decimal_text(crate::I256::from_i128(*unscaled), *scale)
         }
-        Scalar::D256(unscaled, scale) => crate::generic::decimal::decimal_text(*unscaled, *scale),
+        Scalar::D256(unscaled, scale) => {
+            crate::types::decimal::scalars::decimal_text(*unscaled, *scale)
+        }
         Scalar::Date32(days, _, _) => iso::format_date(*days)?.to_string(),
         Scalar::Date64(milliseconds, _, _) => {
             let days = milliseconds.checked_div(86_400_000)?;
@@ -532,7 +534,7 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
         Scalar::Geospatial(bytes) => {
-            crate::generic::wkb::into_wkt(bytes).unwrap_or_else(|_| hex_text(bytes))
+            crate::types::geospatial::wkb::into_wkt(bytes).unwrap_or_else(|_| hex_text(bytes))
         }
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.

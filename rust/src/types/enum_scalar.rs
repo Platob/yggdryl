@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 
-use super::Scalar;
+use super::scalar::Scalar;
 use crate::{
     Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Error, IOKind, IOMode, Result, TimeUnit,
     UnionMode,

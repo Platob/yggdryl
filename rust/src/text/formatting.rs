@@ -11,7 +11,7 @@
 //! beside it would be genuinely confusing.
 //!
 //! ```
-//! use yggdryl::generic::Scalar;
+//! use yggdryl::Scalar;
 //! use yggdryl::text::{Formatting, Indent};
 //!
 //! # fn main() -> yggdryl::Result<()> {

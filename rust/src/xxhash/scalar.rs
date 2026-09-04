@@ -15,8 +15,8 @@
 
 use std::hash::Hasher;
 
-use crate::generic::decimal;
-use crate::generic::temporal::temporal_key;
+use crate::types::decimal::scalars as decimal;
+use crate::types::temporal::scalars::temporal_key;
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, I256, Scalar};
 
 /// The tag byte a value nested past the shared recursion limit feeds instead

@@ -284,7 +284,7 @@ fn max_bytes(statistics: &Statistics) -> Option<Vec<u8>> {
 mod tests {
     use super::{ColumnStatistics, FileStatistics, GeospatialStatistics, RowGroupStatistics};
     use crate::Scalar;
-    use crate::generic::wkb::BoundingBox;
+    use crate::types::geospatial::wkb::BoundingBox;
 
     #[test]
     fn statistics_project_into_one_lossless_generic_value_shape() {

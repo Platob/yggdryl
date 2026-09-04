@@ -410,11 +410,11 @@ fn arithmetic(
         return Ok(Scalar::Null);
     }
     let operation = match operator {
-        Operator::Add => crate::generic::Arithmetic::Add,
-        Operator::Sub => crate::generic::Arithmetic::Sub,
-        Operator::Mul => crate::generic::Arithmetic::Mul,
-        Operator::Div => crate::generic::Arithmetic::Div,
-        Operator::Rem => crate::generic::Arithmetic::Rem,
+        Operator::Add => crate::types::Arithmetic::Add,
+        Operator::Sub => crate::types::Arithmetic::Sub,
+        Operator::Mul => crate::types::Arithmetic::Mul,
+        Operator::Div => crate::types::Arithmetic::Div,
+        Operator::Rem => crate::types::Arithmetic::Rem,
     };
     left.checked_arithmetic_as(right, operation, unwrap_dictionary(dtype))
 }
@@ -723,7 +723,7 @@ fn text_pair(values: &[Scalar], answer: impl Fn(&str, &str) -> bool) -> Scalar {
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: Function) -> Scalar {
-    use crate::generic::iso;
+    use crate::types::ascii::iso;
 
     let text = match value {
         Scalar::Date32(days, _, _) => iso::format_date(*days),

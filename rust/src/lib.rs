@@ -63,7 +63,6 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
-pub use generic::{EnumScalar, Float, Integer, Scalar, TemporalFamily, TemporalRef};
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -81,13 +80,14 @@ pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use mime_type::MimeType;
 pub use scheme::Scheme;
-pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
+pub use text::{Format, Limits, ScalarIter};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 #[cfg(feature = "arrow")]
 pub use types::cast::{ArrowCast, ArrowFieldType};
+pub use types::floating::scalars::{Float16, Float32, Float64};
 pub use types::protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, FieldPropertiesField,
     FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut, GlueField,
@@ -98,8 +98,9 @@ pub use types::protocol::{
     UrnField, UrnFieldMut,
 };
 pub use types::{
-    AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
-    PartitionFields, Pretty, TypedField, TypedFieldRef,
+    AnyType, Children, Differences, EnumScalar, Field, FieldRef, FieldType, Float, Integer,
+    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, TemporalFamily,
+    TemporalRef, TypedField, TypedFieldRef, TypedScalar,
 };
 pub use types::{
     AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,

@@ -689,7 +689,7 @@ mod semi_structured_and_geospatial {
         assert!(matches!(default, Scalar::Geospatial(_)), "{default:?}");
         let bytes = default.as_wkb().expect("a WKB payload");
         assert_eq!(
-            crate::generic::wkb::into_wkt(bytes).unwrap(),
+            crate::types::geospatial::wkb::into_wkt(bytes).unwrap(),
             "POINT EMPTY",
             "the default is POINT EMPTY"
         );

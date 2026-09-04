@@ -15,8 +15,8 @@ pub(crate) mod position;
 pub(crate) mod typed;
 pub(crate) mod wire;
 
-pub use crate::generic::TypedScalar;
-pub use crate::generic::scalar::{Children, Float16, Float32, Float64, Scalar};
+pub use crate::types::floating::scalars::{Float16, Float32, Float64};
+pub use crate::types::{Children, Scalar, TypedScalar};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{

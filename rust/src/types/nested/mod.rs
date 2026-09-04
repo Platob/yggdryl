@@ -3,6 +3,7 @@
 mod dtypes;
 mod fields;
 mod parser;
+mod scalars;
 
 pub use dtypes::{DictionaryType, MapType, RunEndEncodedType, UnionFields};
 pub(crate) use dtypes::{
@@ -10,3 +11,8 @@ pub(crate) use dtypes::{
     validate_union_fields,
 };
 pub use fields::*;
+pub use scalars::{
+    Children, DictionaryScalar, FixedSizeListScalar, LargeListScalar, LargeListViewScalar,
+    ListScalar, ListViewScalar, MapScalar, RunEndEncodedScalar, StructScalar, UnionScalar,
+    VariantScalar,
+};

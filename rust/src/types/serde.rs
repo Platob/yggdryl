@@ -7,7 +7,7 @@ use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::generic::Scalar;
+use crate::Scalar;
 use crate::{Error, Field, Result};
 
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
@@ -542,7 +542,7 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::generic::Scalar;
+    /// use yggdryl::Scalar;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;

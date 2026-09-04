@@ -123,7 +123,7 @@ fn serde_reads_a_pairing_back_through_the_validating_constructor() {
 
 #[test]
 fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
-    use crate::generic::{Int64Scalar, Utf8Scalar};
+    use crate::types::{Int64Scalar, Utf8Scalar};
 
     let price = Int64Scalar::new(Scalar::from(7_i64)).unwrap();
     assert_eq!(price.dtype(), &DataType::Int64);
@@ -152,7 +152,7 @@ fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
 
 #[test]
 fn the_newest_markers_narrow_their_pairings_like_every_other() {
-    use crate::generic::{GeographyScalar, GeometryScalar, VariantScalar};
+    use crate::types::{GeographyScalar, GeometryScalar, VariantScalar};
 
     // A variant accepts any value: the datatype is the self-describing one.
     let anything = VariantScalar::new(Scalar::from("seven")).unwrap();
@@ -185,7 +185,7 @@ fn the_newest_markers_narrow_their_pairings_like_every_other() {
 
 #[test]
 fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
-    use crate::generic::{Int64Scalar, TimestampScalar};
+    use crate::types::{Int64Scalar, TimestampScalar};
 
     assert_eq!(
         std::mem::size_of::<Int64Scalar>(),
@@ -222,7 +222,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
 
 #[test]
 fn a_narrowed_pairing_serializes_as_the_two_halves_and_reads_back_checked() {
-    use crate::generic::Int64Scalar;
+    use crate::types::Int64Scalar;
 
     let typed = Int64Scalar::new(Scalar::from(7_i64)).unwrap();
     let encoded = serde_json::to_vec(&typed).unwrap();
@@ -258,7 +258,7 @@ mod arrow {
 
     #[test]
     fn the_narrowed_decode_checks_the_marker_before_the_array() {
-        use crate::generic::{Int64Scalar, Utf8Scalar};
+        use crate::types::{Int64Scalar, Utf8Scalar};
 
         let array = Int64Scalar::new(Scalar::from(7_i64))
             .unwrap()
