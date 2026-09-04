@@ -131,6 +131,67 @@ Consequences to apply everywhere:
 Sweep at the end: every remaining `*Scalar` name in the tree is either a
 pairing builder or a bug.
 
+## Case law
+
+One case per kind of name, in all three languages. No exceptions and no lint
+allowance.
+
+| Kind | Rust | Python | JavaScript |
+| --- | --- | --- | --- |
+| type, trait, class, enum variant | `UpperCamelCase` | `CapWords` | `PascalCase` |
+| function, method, field | `snake_case` | `snake_case` | `camelCase` |
+| module, file | `snake_case` | `snake_case` | `lowercase` |
+| constant | `SCREAMING_SNAKE_CASE` | `SCREAMING_SNAKE_CASE` | `SCREAMING_SNAKE_CASE` |
+
+**A type name never contains an underscore.** rustc's `non_camel_case_types`
+allows one between digit runs, which is why `Xxh3_64` compiles clean today with
+no `#[allow]` anywhere in the tree. This rule is stricter than the compiler:
+no underscore in a type name, for any reason.
+
+**A number attaches directly** — `Int8`, `Float16`, `Decimal128`, `Ascii32`,
+`DateTime64`, `Xxh32`. When a name would carry two numbers and running them
+together reads wrong, **rename so only one number remains**. Never reach for an
+underscore to separate them.
+
+Constants keep their screaming snake case: `ASCII_EXTENSION_NAME` and
+`MAGIC_PROBE_LEN` are values, not types, and are correct as they stand.
+
+### The offenders
+
+The whole tree has exactly two, and they are both in the digest vocabulary:
+
+| Was | Becomes | Why this name |
+| --- | --- | --- |
+| `Xxh3_64` (struct and `DigestAlgorithm` variant) | `Xxh3` | XXH3 at 64 bits is the default and the plain `XXH3` of the reference library |
+| `Xxh3_128` (struct and `DigestAlgorithm` variant) | `Xxh128` | `XXH128` is the reference library's own entry point for it |
+
+The four algorithm types then read `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` — one
+number each, none ambiguous, none underscored.
+
+This is not a Rust-only tidy. The underscore reaches the published surfaces:
+
+- `node/index.d.ts` exports `class Xxh3_64`, `class Xxh3_128`, and the
+  generated aliases `JsXxh3_64` and `JsXxh3_128` — four snake-cased names in a
+  TypeScript API where every other class is PascalCase and every method is
+  camelCase, because napi converts methods but passes class names through.
+- `node/binding.js` exposes `xxhash.xxh3_64(data, options)` and
+  `xxhash.xxh3_128(...)`, the only snake-cased functions in the JavaScript API.
+
+The rename fixes all of it at once: `xxhash.xxh3(…)` and `xxhash.xxh128(…)`
+are single tokens, so they are already camel-legal, and the `Js*` aliases stop
+being wrong. Python's `xxhash.xxh3_64` becomes `xxhash.xxh3` for the same
+reason, and Python class names need no change — all thirty-nine are already
+`CapWords`.
+
+### Wire spellings
+
+Canonical digest text stays `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`, because
+those are the names the algorithm is published under and a digest string is
+read by people. `xxh3` and `xxh128` join them as accepted input spellings, on
+the same foreign-spelling path that accepts `timestamp` for `datetime64`. A
+type name and a wire name are allowed to differ; both are canonical for their
+own audience, and neither is an alias for the other.
+
 ## Symmetry law
 
 **Every datatype family owns the same trio, under the same name.** A family is
@@ -400,6 +461,8 @@ half of `TemporalValue` directly. `Scalar::as_temporal` returns
 | `TemporalRef<'a>` | — | retired; `&Temporal` |
 | `Scalar::I8(i8)` … and 29 siblings | `Scalar::Integer(Integer::I8(Int8))` … | the hierarchy |
 | `EnumScalar` | `Enum` | a value, so no `Scalar` suffix |
+| `Xxh3_64` | `Xxh3` | no underscore in a type name — see *Case law* |
+| `Xxh3_128` | `Xxh128` | same, and `XXH128` is the reference name |
 | `Integer` (sign/magnitude struct) | `Integer` (family enum) | the enum takes the name and the methods; the struct is deleted |
 | `Float` (width view) | `Floating` (family enum) | already the right shape; rename to the folder and reuse |
 | `Scalar::String(SmolStr)` | `Scalar::Text(Text)` / `Scalar::Ascii(Ascii)` | the width class stops being lost |
@@ -469,7 +532,8 @@ Each phase is one commit and ends green under default features and
 | 6 | root | reshape `Scalar` to the 11 family variants; rewrite every construction, match, and conversion in the crate |
 | 7 | ports | Arrow scalar/array boundary, the cast planner, expression eval, Avro/JSON/YAML/TOML codecs, xxhash canonical feed, Iceberg scalar rendering |
 | 8 | bindings | Python and JavaScript: the drill-down is Rust-only, so both expose the same flat conversions they do today and gain `family()` and `id()` accessors |
-| 9 | docs | `docs/types.md` scalar section, the tier tables, `AGENTS.md` *Generic scalar*, `.api-inventory.txt`, `.api-bindings.txt` |
+| 9 | case sweep | `Xxh3_64` → `Xxh3`, `Xxh3_128` → `Xxh128` across Rust, the napi classes and `Js*` aliases, `node/binding.js`, the Python methods, and 291 references; add the accepted wire spellings |
+| 10 | docs | `docs/types.md` scalar section, the tier tables, `AGENTS.md` *Generic scalar*, `.api-inventory.txt`, `.api-bindings.txt` |
 
 Phase 6 is the one that cannot be split; land phases 3-5 so that it is a
 mechanical rewrite against traits that already compile.
@@ -523,6 +587,9 @@ Behavioral invariants, each with a test:
   `generic/inference.rs` are gone with no fallback, and a round trip through
   `Scalar` preserves `LargeUtf8`, `BinaryView`, `Geometry`, and `Map`.
 - `DataTypeKind::ALL` is the family list and nothing else.
+- No type, trait, class, or enum variant name in the workspace contains an
+  underscore: `rg -n "(struct|enum|trait|class) [A-Z][A-Za-z0-9]*_" rust python node`
+  returns nothing.
 - Every physical representation has one concrete struct implementing
   `ScalarValue` and its family trait.
 - `rg -n "Timestamp" rust/src` matches only Arrow's own foreign type and the

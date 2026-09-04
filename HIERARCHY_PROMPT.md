@@ -9,7 +9,11 @@ Land `REORGANIZATION_PROMPT.md` first. This brief and the scalar brief can land
 in either order, except that `DataType::DateTime64` and the interned `Timezone`
 come from the scalar brief and are assumed here.
 
-`SCALAR_HIERARCHY_PROMPT.md`'s *Naming law* governs every name introduced here:
+`SCALAR_HIERARCHY_PROMPT.md`'s *Case law* and *Naming law* govern every name
+introduced here. Case law first: a type, trait, or enum variant name never
+contains an underscore, and a number attaches directly — so a new family enum
+is `TemporalType`, never `Temporal_Type`, and a widened leaf is `Decimal256`,
+never `Decimal_256`. Naming law second:
 bare name is the value, `*Type` is the datatype, `*Scalar` and `*Field` are the
 convenience builders. On this side the `*Type` suffix is load-bearing — it is
 what separates `types::temporal::Temporal` (the value family) from
@@ -353,6 +357,8 @@ Behavioral invariants, each with a test:
 - No family enum exists with one member.
 - Every name obeys the naming law: `rg -n "(struct|enum) [A-Za-z0-9_]+Scalar" rust/src`
   matches only pairings, and every family enum is bare-named.
+- Every name obeys the case law: no underscore in any type, trait, class, or
+  enum variant name in any of the three languages.
 - The size assertions are in the tree and passing.
 - `AGENTS.md` states the three-floor rule and the earned-family test once, and
   every notion-specific layout rule it replaces is deleted.

@@ -244,6 +244,8 @@ throughout. Sweep every page, every example, and every prose mention:
 | `field::temporal::Timestamp` | `types::temporal::DateTime64Type` |
 | `TimestampScalar` | `DateTime64Scalar` |
 | `EnumScalar` | `Enum` |
+| `Xxh3_64` / `Xxh3_128` (Rust, TS classes, `Js*` aliases) | `Xxh3` / `Xxh128` |
+| `xxhash.xxh3_64(…)` / `xxhash.xxh3_128(…)` (Python, JS) | `xxhash.xxh3(…)` / `xxhash.xxh128(…)` |
 
 The `*Scalar` and `*Field` builder aliases stay. Per the naming law in
 `SCALAR_HIERARCHY_PROMPT.md`, a bare name is the value and the suffix is the
@@ -295,6 +297,9 @@ Sweeps, each reported with its result:
   `=== "JavaScript"` block, or an explicit Rust-only line.
 - No page references a module path that no longer exists:
   `rg -n "yggdryl::(generic|io|datatype|field)\b" docs` returns nothing.
+- No example spells an underscored type name: `rg -n "Xxh3_" docs` returns
+  nothing, and the digest wire strings `xxh3-64` / `xxh3-128` appear only where
+  a canonical digest string is being shown.
 - Every public item in `.api-inventory.txt` appears on exactly one page, or is
   listed in that page's *Contract* table as intentionally undocumented.
 - No prose section exceeds ~120 words.
