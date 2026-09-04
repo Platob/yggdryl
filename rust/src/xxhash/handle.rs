@@ -14,7 +14,7 @@ use crate::{Digest, DigestAlgorithm, Digester, Result};
 /// bytes back.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::xxhash::Hashed;
 /// use yggdryl::DigestAlgorithm;
 ///

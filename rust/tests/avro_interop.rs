@@ -7,7 +7,7 @@
 //! half can never read as a pass.
 
 use yggdryl::TimeUnit;
-use yggdryl::local::File;
+use yggdryl::holder::local::File;
 use yggdryl::{Scalar, Timezone, avro};
 
 /// Where the exchange files live, shared with the Python driver.

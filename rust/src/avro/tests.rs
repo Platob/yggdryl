@@ -1,7 +1,7 @@
 //! Unit tests for the Avro codec module.
 
 use crate::IOBase;
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
@@ -1395,7 +1395,7 @@ mod records {
 
     use crate::avro::{Avro, AvroOptions};
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{DataType, Field, MediaType, Url, avro};
     use crate::{IOBase, IOMedia};
 
@@ -2596,7 +2596,7 @@ mod limits {
 
     use crate::IOMedia;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{DataType, Field, Url};
 
     /// A struct field is the schema of the batches it describes.

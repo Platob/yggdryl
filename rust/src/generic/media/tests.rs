@@ -4,9 +4,10 @@ use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
 use super::Media;
-use crate::buffered::BufferedOptions;
-use crate::generic::{Holder, IORecordOptions, RecordOptions};
-use crate::io::Buffer;
+use crate::generic::{IORecordOptions, RecordOptions};
+use crate::holder::Buffer;
+use crate::holder::Holder;
+use crate::holder::buffered::BufferedOptions;
 use crate::text::TextOptions;
 use crate::{DataType, Field, MediaType, MimeType, Url};
 use crate::{IOBase, IOMedia};

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Url};
 
 #[test]

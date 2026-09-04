@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::{Error, MediaType, Result, Url};
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{IOBase, IOFolder, Listing};
 
 /// A local directory addressed as a container rather than as bytes.
@@ -25,7 +25,7 @@ use crate::{IOBase, IOFolder, Listing};
 ///
 /// ```
 /// use yggdryl::IOBase;
-/// use yggdryl::local::Folder;
+/// use yggdryl::holder::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let root = Folder::temporary()?;
@@ -83,7 +83,7 @@ impl Folder {
     ///
     /// ```
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let temporary = Folder::temporary()?;
@@ -111,7 +111,7 @@ impl Folder {
     /// the value cannot be expressed as a canonical `file:` URL.
     ///
     /// ```no_run
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let home = Folder::home()?;
@@ -145,7 +145,7 @@ impl Folder {
     /// created or probed.
     ///
     /// ```
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// match Folder::config() {

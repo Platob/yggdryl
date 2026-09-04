@@ -3,9 +3,9 @@
 use std::io::{Read, Write};
 
 use super::IOBase;
-use crate::generic::Holder;
 #[cfg(feature = "arrow")]
 use crate::generic::RecordOptions;
+use crate::holder::Holder;
 use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 
 /// Implement [`IOBase`] methods by forwarding them to an inner handle.
@@ -22,7 +22,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// overridden, so it invokes the second form and writes the pair itself:
 ///
 /// ```
-/// use yggdryl::{IOBase, IOMedia, io::Buffer};
+/// use yggdryl::{IOBase, IOMedia, holder::Buffer};
 ///
 /// struct Cached {
 ///     handle: Buffer,
@@ -60,7 +60,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// ```
 ///
 /// ```
-/// use yggdryl::{IOBase, IOMedia, io::Buffer};
+/// use yggdryl::{IOBase, IOMedia, holder::Buffer};
 ///
 /// struct Wrapper {
 ///     handle: Buffer,
@@ -97,7 +97,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// ```
 /// use std::sync::atomic::{AtomicUsize, Ordering};
 ///
-/// use yggdryl::{IOBase, IOMedia, io::Buffer};
+/// use yggdryl::{IOBase, IOMedia, holder::Buffer};
 ///
 /// /// A handle that counts the reads reaching the one it wraps.
 /// struct Counted {
@@ -251,13 +251,13 @@ macro_rules! delegate_iobase {
     };
 
     (@method $handle:ident, parent) => {
-        fn parent(&self) -> Option<$crate::generic::Holder> {
+        fn parent(&self) -> Option<$crate::holder::Holder> {
             $crate::IOBase::parent(&self.$handle)
         }
     };
 
     (@method $handle:ident, child_by_path) => {
-        fn child_by_path(&self, name: &str) -> $crate::Result<$crate::generic::Holder> {
+        fn child_by_path(&self, name: &str) -> $crate::Result<$crate::holder::Holder> {
             $crate::IOBase::child_by_path(&self.$handle, name)
         }
     };

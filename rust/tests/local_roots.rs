@@ -7,7 +7,7 @@
 use std::ffi::OsString;
 
 use yggdryl::IOBase;
-use yggdryl::local::Folder;
+use yggdryl::holder::local::Folder;
 
 #[test]
 fn home_and_config_follow_the_environment_and_create_nothing() {

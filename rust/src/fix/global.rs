@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::format_smolstr;
 
 use super::FixRegistry;
-use crate::local::Folder;
+use crate::holder::local::Folder;
 use crate::{Error, Result, Url};
 
 /// The environment variable naming the folder the default loads from.

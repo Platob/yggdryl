@@ -2,7 +2,7 @@
 //! security switches that keep the environment out unless asked for.
 
 use yggdryl::IOBase;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::text::{self, Format, Limits, Loading, Placeholders};
 use yggdryl::{Scalar, Url};
 

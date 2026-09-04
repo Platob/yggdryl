@@ -7,9 +7,9 @@ use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::ArrowError;
 
 use super::Ipc;
-use crate::buffered::{Buffered, BufferedOptions};
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::Buffer;
+use crate::holder::Buffer;
+use crate::holder::buffered::{Buffered, BufferedOptions};
 use crate::{Codec, DataType, Field, Url};
 use crate::{IOBase, IOMedia};
 

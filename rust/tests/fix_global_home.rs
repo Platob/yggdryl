@@ -7,7 +7,7 @@
 
 use std::ffi::OsString;
 
-use yggdryl::local::Folder;
+use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, FixRegistry};
 
 const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";

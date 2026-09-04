@@ -279,7 +279,7 @@ impl Attributes for Url {
 ///
 /// ```no_run
 /// use yggdryl::expression::{Attributes, Handle, Selector};
-/// use yggdryl::local::Folder;
+/// use yggdryl::holder::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let folder = Folder::temporary()?;

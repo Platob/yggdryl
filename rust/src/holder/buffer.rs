@@ -21,7 +21,7 @@ use crate::{IOBase, MediaType, MimeType, Result, Url};
 /// re-inferred after the bytes change.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut buffer = Buffer::from_bytes(br#"{"symbol":"AAPL"}"#.to_vec());

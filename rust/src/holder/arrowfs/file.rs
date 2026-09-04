@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, MediaType, MimeType, Result, Url};
 use crate::{IOBase, IOFile, Listing};
 

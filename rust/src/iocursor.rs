@@ -12,7 +12,7 @@
 //! ```
 //! use std::io::Read;
 //!
-//! use yggdryl::{IOBase, IOCursor, io::Buffer};
+//! use yggdryl::{IOBase, IOCursor, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut handle = Buffer::new();
@@ -214,7 +214,7 @@ mod tests {
     use std::io::{Read, Seek, SeekFrom, Write};
 
     use super::*;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
 
     #[test]
     fn a_cursor_advances_and_seeks_over_any_handle() {
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn a_cursor_stream_bypasses_the_wrapped_page_cache() {
         let handle = Buffer::from_bytes(vec![0xA5; 256 * 1024]).buffered(
-            crate::buffered::BufferedOptions::default()
+            crate::holder::buffered::BufferedOptions::default()
                 .with_page_size(4 * 1024)
                 .with_max_bytes(32 * 1024),
         );
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn a_cursor_stream_keeps_one_compression_decoder_alive() {
-        use crate::buffered::tests::Counting;
+        use crate::holder::buffered::tests::Counting;
 
         let plain = b"symbol,price\nAAPL,1\n".repeat(4 * 1024);
         let encoded = crate::coding::gzip::dump(&plain).unwrap();

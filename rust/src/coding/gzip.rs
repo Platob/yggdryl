@@ -84,7 +84,7 @@ impl<W: Write> FlateFinish for GzEncoder<W> {
 /// [`IOBase::open`] materialize the decoded value until close.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::coding::gzip::Gzip;
 ///
 /// # fn main() -> yggdryl::Result<()> {

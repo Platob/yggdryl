@@ -9,8 +9,8 @@
 //! all answer exactly what the wrapped handle answers.
 //!
 //! ```
-//! use yggdryl::buffered::{Buffered, BufferedOptions};
-//! use yggdryl::{IOBase, io::Buffer};
+//! use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+//! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let options = BufferedOptions::default().with_page_size(256);
@@ -43,7 +43,7 @@
 //! - **Absence stays absence.** A read past the end returns `0` without
 //!   touching the inner handle, a short read at the true end is remembered as
 //!   short, and a handle with no bytes yet caches nothing - the laziness
-//!   contract in [`crate::io`] holds unchanged.
+//!   [`IOBase`] laziness contract holds unchanged.
 //! - **A hit asks the handle for nothing.** Not for bytes, and not for the
 //!   size either: the size is remembered beside the pages, and re-asked only
 //!   when a read runs past what the cache knows - which is exactly where
@@ -58,8 +58,8 @@
 //!   pinning is a retention guarantee, never a prefetch.
 //!
 //! ```
-//! use yggdryl::buffered::{Buffered, BufferedOptions};
-//! use yggdryl::{IOBase, io::Buffer};
+//! use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+//! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! // Four pages of budget over a sixteen-page value: the middle cannot all
@@ -92,9 +92,9 @@
 //! wrapping it retains the decoded pages, so hits require no second decode:
 //!
 //! ```
-//! use yggdryl::buffered::BufferedOptions;
+//! use yggdryl::holder::buffered::BufferedOptions;
 //! use yggdryl::coding::gzip::Gzip;
-//! use yggdryl::{IOBase, io::Buffer};
+//! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let payload = "symbol,price\nAAPL,1\n".repeat(512).into_bytes();
@@ -125,8 +125,8 @@
 //! re-wraps the handle it holds instead of stacking a second cache:
 //!
 //! ```
-//! use yggdryl::buffered::BufferedOptions;
-//! use yggdryl::{IOBase, io::Buffer};
+//! use yggdryl::holder::buffered::BufferedOptions;
+//! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let once = Buffer::new().buffered(BufferedOptions::default());

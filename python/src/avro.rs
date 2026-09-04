@@ -14,7 +14,7 @@ use pyo3::types::{PyAny, PyByteArray, PyBytes, PyDict, PyList};
 use yggdryl::avro::{
     Block as CoreAvroBlock, Blocks as CoreAvroBlocks, Container, Resolution, Schema,
 };
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::text::Limits;
 
 use crate::record::string_pairs_from_value;

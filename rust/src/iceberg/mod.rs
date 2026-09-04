@@ -17,7 +17,7 @@
 //!
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-//! use yggdryl::local::Folder;
+//! use yggdryl::holder::local::Folder;
 //! use yggdryl::{DataType, Field};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -114,7 +114,8 @@ pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
-use crate::generic::{Holder, RecordOptions};
+use crate::generic::RecordOptions;
+use crate::holder::Holder;
 use crate::{Error, Result};
 use crate::{IOBase, IOMedia};
 

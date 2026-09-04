@@ -41,7 +41,7 @@ impl JsRecordOptions {
     /// Resolve the options a call was given, or the ones a handle names.
     pub(crate) fn resolved(
         value: Option<&Self>,
-        handle: &yggdryl::generic::Holder,
+        handle: &yggdryl::holder::Holder,
     ) -> Result<CoreRecordOptions> {
         use yggdryl::IOMedia as _;
 

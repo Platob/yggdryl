@@ -1,13 +1,21 @@
-//! One concrete value for any [`IOBase`] implementation.
+//! Byte storage handles and the concrete [`Holder`] that unifies them.
+//!
+//! [`Buffer`] owns in-memory bytes, [`local`] and [`arrowfs`] supply the
+//! path/folder/file backend roles, and [`buffered`] adds a page cache over any
+//! [`IOBase`] implementation.
 
-use crate::buffered::{Buffered, BufferedOptions};
+pub mod arrowfs;
+mod buffer;
+pub mod buffered;
+pub mod local;
+
+pub use buffer::Buffer;
+
+use crate::holder::buffered::{Buffered, BufferedOptions};
+use crate::holder::local::{File, Folder};
 use crate::{MediaType, Result, Url};
 
 use crate::IOBase;
-use crate::io::Buffer;
-use crate::local::Folder;
-
-use crate::local::File;
 
 /// A concrete, sized value holding any core [`IOBase`] implementation.
 ///
@@ -22,9 +30,9 @@ use crate::local::File;
 /// tree through one type.
 ///
 /// ```
-/// use yggdryl::generic::Holder;
+/// use yggdryl::holder::Holder;
 /// use yggdryl::IOBase;
-/// use yggdryl::local::Folder;
+/// use yggdryl::holder::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let root = Holder::folder(Folder::temporary()?.path()?)?;
@@ -44,16 +52,16 @@ pub enum Holder {
     /// A local directory.
     Folder(Folder),
     /// A local location that resolves to whatever it turns out to be.
-    Path(crate::local::Path),
+    Path(crate::holder::local::Path),
     /// A memory-mapped local file.
     File(File),
     /// A directory on a foreign Arrow filesystem.
-    ArrowFolder(crate::arrowfs::Folder),
+    ArrowFolder(crate::holder::arrowfs::Folder),
     /// A foreign-filesystem location that resolves to whatever it turns out
     /// to be.
-    ArrowPath(crate::arrowfs::Path),
+    ArrowPath(crate::holder::arrowfs::Path),
     /// A staged whole-value file on a foreign Arrow filesystem.
-    ArrowFile(crate::arrowfs::File),
+    ArrowFile(crate::holder::arrowfs::File),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -112,7 +120,7 @@ impl Holder {
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        Ok(Self::Path(crate::local::Path::new(path)?))
+        Ok(Self::Path(crate::holder::local::Path::new(path)?))
     }
 
     /// Hold this resource behind a page cache.
@@ -553,20 +561,20 @@ impl From<File> for Holder {
     }
 }
 
-impl From<crate::arrowfs::Folder> for Holder {
-    fn from(value: crate::arrowfs::Folder) -> Self {
+impl From<crate::holder::arrowfs::Folder> for Holder {
+    fn from(value: crate::holder::arrowfs::Folder) -> Self {
         Self::ArrowFolder(value)
     }
 }
 
-impl From<crate::arrowfs::Path> for Holder {
-    fn from(value: crate::arrowfs::Path) -> Self {
+impl From<crate::holder::arrowfs::Path> for Holder {
+    fn from(value: crate::holder::arrowfs::Path) -> Self {
         Self::ArrowPath(value)
     }
 }
 
-impl From<crate::arrowfs::File> for Holder {
-    fn from(value: crate::arrowfs::File) -> Self {
+impl From<crate::holder::arrowfs::File> for Holder {
+    fn from(value: crate::holder::arrowfs::File) -> Self {
         Self::ArrowFile(value)
     }
 }

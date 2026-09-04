@@ -35,7 +35,7 @@ const MAX_PAGE_SIZE: usize = 1024 * 1024 * 1024;
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::buffered::BufferedOptions;
+/// use yggdryl::holder::buffered::BufferedOptions;
 ///
 /// let options = BufferedOptions::default();
 /// assert_eq!(options.page_size(), 64 * 1024);

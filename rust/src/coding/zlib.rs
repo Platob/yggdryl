@@ -153,7 +153,7 @@ impl<W: Write> FlateFinish for DeflateEncoder<W> {
 /// [`IOBase::open`] materialize the decoded value until close.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::coding::zlib::Zlib;
 ///
 /// # fn main() -> yggdryl::Result<()> {

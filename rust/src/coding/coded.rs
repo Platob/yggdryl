@@ -4,7 +4,7 @@ use crate::IOBase;
 use crate::coding::gzip::Gzip;
 use crate::coding::zlib::Zlib;
 use crate::coding::zstd::Zstd;
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, Level, MediaType, Result, Url};
 
 /// A handle wrapped in the content coding its media type names.
@@ -16,7 +16,7 @@ use crate::{Error, Level, MediaType, Result, Url};
 ///
 /// ```
 /// use yggdryl::coding::Coded;
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::Url;
 ///
 /// # fn main() -> yggdryl::Result<()> {

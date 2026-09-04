@@ -1,7 +1,7 @@
 use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray};
 
 use crate::generic::{IORecordOptions as _, RecordOptions};
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::text::{LineSep, Text, TextOptions};
 use crate::{DataType, Timezone};
 use crate::{IOBase as _, IOMedia as _};

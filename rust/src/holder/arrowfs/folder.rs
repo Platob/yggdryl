@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{IOBase, IOFolder, Listing};
 use crate::{IOKind, MediaType, Result, Url};
 

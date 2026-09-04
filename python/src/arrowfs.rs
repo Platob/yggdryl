@@ -16,7 +16,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
+use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
 use yggdryl::{Error, IOKind, Result};
 
 /// A held `pyarrow.fs.FileSystem`, presented as the core vtable.

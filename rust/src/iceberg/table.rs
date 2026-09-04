@@ -9,7 +9,7 @@
 //!
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-//! use yggdryl::local::Folder;
+//! use yggdryl::holder::local::Folder;
 //! use yggdryl::{DataType, Field};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -89,7 +89,8 @@ use super::snapshot::{Snapshot, SnapshotRef};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::field::cast::ArrowCast;
-use crate::generic::{Holder, IORecordOptions, RecordOptions};
+use crate::generic::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
 use crate::{DataType, Error, Field, IOKind, MimeType, Result, Scalar};
 use crate::{IOBase, IOMedia};
 
@@ -629,7 +630,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// ```no_run
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let folder = yggdryl::local::Folder::new(yggdryl::local::Folder::temporary()?.path()?.join("t"))?;
+    /// # let folder = yggdryl::holder::local::Folder::new(yggdryl::holder::local::Folder::temporary()?.path()?.join("t"))?;
     /// # let mut table = yggdryl::iceberg::Table::open(folder)?;
     /// table.commit_metadata_changes(|metadata| {
     ///     metadata.set_property("commit.retry.num-retries", "4")?;
@@ -895,7 +896,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// ```no_run
     /// use yggdryl::iceberg::Table;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let table = Table::open(Folder::new("/lake/trades")?)?;

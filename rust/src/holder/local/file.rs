@@ -21,7 +21,7 @@ use memmap2::MmapMut;
 
 use crate::{Error, MediaType, MimeType, Result, Url};
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{IOBase, IOFile};
 
 /// Growth is geometric so repeated appends do not remap on every write.

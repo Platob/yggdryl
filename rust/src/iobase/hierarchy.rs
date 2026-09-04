@@ -1,7 +1,7 @@
 //! Shared hierarchy traversal for [`IOBase`](super::IOBase).
 
 use super::IOBase;
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, Result, Url};
 
 /// Resolve a chain of fixed names below `base`, without touching anything.

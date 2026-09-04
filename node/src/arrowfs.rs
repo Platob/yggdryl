@@ -42,7 +42,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 
-use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
+use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
 use yggdryl::{Error, IOKind, Result};
 
 use crate::napi_error;

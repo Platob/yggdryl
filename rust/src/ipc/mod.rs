@@ -22,7 +22,7 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
-//! use yggdryl::{IOBase, IOMedia, io::Buffer};
+//! use yggdryl::{IOBase, IOMedia, holder::Buffer};
 //! use yggdryl::ipc::Ipc;
 //! use yggdryl::{DataType, Url};
 //!

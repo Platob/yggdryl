@@ -13,8 +13,9 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
-//! use yggdryl::generic::{Holder, Media};
-//! use yggdryl::{IOBase, IOMedia, io::Buffer};
+//! use yggdryl::generic::Media;
+//! use yggdryl::holder::Holder;
+//! use yggdryl::{IOBase, IOMedia, holder::Buffer};
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,9 +45,9 @@
 //! # }
 //! ```
 
-use super::Holder;
 use crate::IOBase;
 use crate::arrow::{Error, Result};
+use crate::holder::Holder;
 use crate::ipc::Ipc;
 use crate::{Field, MimeType};
 

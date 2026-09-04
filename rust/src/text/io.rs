@@ -239,7 +239,7 @@ mod tests {
 
     use super::{Plan, from_io, from_io_all, into_io, into_io_all};
     use crate::IOBase;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::text::Format;
     use crate::{Codec, Scalar, Url};
 

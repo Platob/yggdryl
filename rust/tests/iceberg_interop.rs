@@ -18,8 +18,8 @@ use std::sync::Arc;
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
 use yggdryl::generic::IORecordOptions;
+use yggdryl::holder::local::Folder;
 use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::local::Folder;
 use yggdryl::{DataType, Field};
 
 /// The directory both halves of the exchange live under.
@@ -366,7 +366,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
         })
         .collect();
     let mut handle =
-        yggdryl::local::File::new(dir.join("manifest-10k.avro")).expect("a file handle");
+        yggdryl::holder::local::File::new(dir.join("manifest-10k.avro")).expect("a file handle");
     write_manifest(&mut handle, FormatVersion::V2, &schema, &spec, &entries)
         .expect("the baseline manifest writes");
     println!("iceberg-interop: wrote manifest-10k.avro");
@@ -387,7 +387,7 @@ fn times_the_baseline_manifest_for_the_comparison_table() {
     }
     let path = interop_root().join("manifest-10k.avro");
     assert!(path.exists(), "run a_large_manifest first");
-    let handle = yggdryl::local::File::new(&path).expect("a file handle");
+    let handle = yggdryl::holder::local::File::new(&path).expect("a file handle");
 
     let best = |action: &dyn Fn() -> usize| -> f64 {
         let mut fastest = f64::INFINITY;

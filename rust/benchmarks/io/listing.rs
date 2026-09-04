@@ -10,7 +10,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::local::Folder;
+use yggdryl::holder::local::Folder;
 
 /// The folder widths the two legs are measured at.
 const WIDTHS: [usize; 3] = [

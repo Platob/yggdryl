@@ -13,7 +13,7 @@
 
 use std::collections::VecDeque;
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, IOBase, Result};
 
 /// The entries of one listing, yielded one at a time.
@@ -27,7 +27,7 @@ use crate::{Error, IOBase, Result};
 /// listing over the same state yields the same sequence.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 ///
 /// // A resource that cannot contain others lists nothing rather than failing.
 /// let buffer = Buffer::new();

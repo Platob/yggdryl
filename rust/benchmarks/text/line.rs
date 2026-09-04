@@ -6,7 +6,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::IOMedia;
 use yggdryl::Url;
 use yggdryl::generic::RecordOptions;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::text::TextOptions;
 
 const ROWS: usize = crate::bench_profile::corpus(50_000, 2_000);

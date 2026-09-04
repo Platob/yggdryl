@@ -9,7 +9,7 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::IOBase;
-use yggdryl::arrowfs::Folder;
+use yggdryl::holder::arrowfs::Folder;
 
 use super::{local, local_location, memory, tree};
 
@@ -67,7 +67,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     });
 
     group.bench_function("ls_recursive/local_folder", |bencher| {
-        let folder = yggdryl::local::Folder::new(root.join("lake")).expect("a valid path");
+        let folder = yggdryl::holder::local::Folder::new(root.join("lake")).expect("a valid path");
         bencher.iter(|| black_box(&folder).ls(true, false).count());
     });
 

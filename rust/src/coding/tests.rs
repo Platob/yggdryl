@@ -1,7 +1,7 @@
 //! A coded handle presents the decoded bytes and stores the encoded ones.
 
 use super::Coding;
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{Codec, Level, MimeType, Url};
 use crate::{IOBase, IOMedia};
 
@@ -179,7 +179,7 @@ fn truncation_shrinks_and_grows_the_decoded_value() {
 
 #[test]
 fn an_open_handle_answers_reads_out_of_what_it_holds() {
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::tests::Counting;
 
     let mut source = Coding::new(Buffer::new(), Codec::Gzip);
     source.write_all_bytes(PAYLOAD).unwrap();
@@ -272,7 +272,7 @@ fn compressed_headers_and_trailers_may_cross_source_chunks() {
 
 #[test]
 fn one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window() {
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::tests::Counting;
 
     // Deliberately incompressible enough to span many transport reads. The
     // regression was one `pread` per encoded byte when output batches were 1.
@@ -299,7 +299,7 @@ fn one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window() {
 
 #[test]
 fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::tests::Counting;
 
     let payload = PAYLOAD.repeat(64);
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
@@ -336,7 +336,7 @@ fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
 
 #[test]
 fn closed_positional_reads_decode_only_the_requested_prefix() {
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::tests::Counting;
 
     let mut state = 0xA537_1D09_u32;
     let payload: Vec<u8> = (0..4 * 1024 * 1024)
@@ -446,7 +446,7 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
 
 #[test]
 fn an_open_stream_reads_only_its_decoded_snapshot() {
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::tests::Counting;
 
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(PAYLOAD).unwrap();
@@ -504,7 +504,7 @@ fn empty_and_invalid_closed_streams_have_stable_end_states() {
 
 mod dispatched {
     use super::super::Coded;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{Codec, IOBase, Level, Url};
 
     const PAYLOAD: &[u8] = b"symbol,price\nAAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\n\

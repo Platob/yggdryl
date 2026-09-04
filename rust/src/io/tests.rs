@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use super::IOBase;
 use crate::Codec;
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{Field, MediaType, MimeType, Scalar, Url};
 
 #[test]
@@ -277,7 +277,7 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use crate::generic::Holder;
+    use crate::holder::Holder;
     use crate::{IOKind, Result};
     use crate::{IOMedia, Listing};
 
@@ -380,7 +380,7 @@ mod records {
 
     use crate::arrow::BatchReader;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{ArrowWriteSession, IOBase, IOMedia};
     use crate::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
@@ -2447,15 +2447,15 @@ mod records {
 
 /// The page cache as a handle: a cursor over it, and a real file under it.
 ///
-/// The unit tests in [`crate::buffered`] cover the caching rules themselves;
+/// The unit tests in [`crate::holder::buffered`] cover the caching rules themselves;
 /// these cover the wrapper where it meets the rest of `io`.
 mod buffered_handle {
     use std::io::{Read, Seek, SeekFrom, Write};
 
     use super::{Buffer, IOBase};
     use crate::IOCursor;
-    use crate::buffered::BufferedOptions;
-    use crate::buffered::tests::Counting;
+    use crate::holder::buffered::BufferedOptions;
+    use crate::holder::buffered::tests::Counting;
 
     /// Small pages, so a modest fixture crosses several of them.
     const PAGE: usize = 64;
@@ -2533,7 +2533,7 @@ mod buffered_handle {
 
     #[test]
     fn a_buffered_file_reads_from_pages_and_writes_through() {
-        let path = crate::local::Folder::temporary()
+        let path = crate::holder::local::Folder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -2546,7 +2546,7 @@ mod buffered_handle {
         let payload: Vec<u8> = (0..5_000_u32).map(|index| index as u8).collect();
         std::fs::write(&path, &payload).unwrap();
 
-        let mut handle = crate::local::File::new(&path)
+        let mut handle = crate::holder::local::File::new(&path)
             .unwrap()
             .buffered(BufferedOptions::default().with_page_size(512));
 
@@ -2600,7 +2600,10 @@ mod conformance {
     /// one per backend; `IOBase` is implemented for the box, so the byte half
     /// of the contract forwards unchanged.
     fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
-        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
@@ -2608,21 +2611,24 @@ mod conformance {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("a writable temporary root");
 
-        let memory = Arc::new(crate::arrowfs::MemoryFileSystem::new());
+        let memory = Arc::new(crate::holder::arrowfs::MemoryFileSystem::new());
         vec![
             ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
             (
                 "local::File",
                 Box::new(
-                    crate::local::File::create(root.join(format!("{label}.bin")))
+                    crate::holder::local::File::create(root.join(format!("{label}.bin")))
                         .expect("a valid path"),
                 ),
             ),
             (
                 "arrowfs::File",
                 Box::new(
-                    crate::arrowfs::File::from_location(memory, &format!("bench/{label}.bin"))
-                        .expect("a valid location"),
+                    crate::holder::arrowfs::File::from_location(
+                        memory,
+                        &format!("bench/{label}.bin"),
+                    )
+                    .expect("a valid location"),
                 ),
             ),
             (
@@ -2631,8 +2637,9 @@ mod conformance {
                     // Pages far smaller than the default, so even these short
                     // fixtures cross page boundaries and exercise the cache
                     // rather than living inside one page.
-                    Buffer::new()
-                        .buffered(crate::buffered::BufferedOptions::default().with_page_size(4)),
+                    Buffer::new().buffered(
+                        crate::holder::buffered::BufferedOptions::default().with_page_size(4),
+                    ),
                 ),
             ),
         ]
@@ -2640,14 +2647,17 @@ mod conformance {
 
     /// Remove whatever the local backend left behind.
     fn cleanup(label: &str) {
-        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
         ));
         // Teardown goes through the abstraction, not around it: a folder
         // handle already addresses this tree, and absence is a no-op success.
-        if let Ok(mut folder) = crate::local::Folder::new(&root) {
+        if let Ok(mut folder) = crate::holder::local::Folder::new(&root) {
             folder.remove(true).expect("a removable tree");
         }
     }
@@ -2705,20 +2715,25 @@ mod conformance {
     fn every_backend_reads_a_missing_resource_as_empty() {
         // The laziness contract: absence is emptiness on the read path, so a
         // caller probes a location without an existence check first.
-        let memory = Arc::new(crate::arrowfs::MemoryFileSystem::new());
-        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
+        let memory = Arc::new(crate::holder::arrowfs::MemoryFileSystem::new());
+        let mut root = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!("yggdryl-conformance-absent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
 
         let absent: Vec<(&str, Box<dyn IOBase>)> = vec![
             (
                 "local::File",
-                Box::new(crate::local::File::new(root.join("absent.bin")).expect("a valid path")),
+                Box::new(
+                    crate::holder::local::File::new(root.join("absent.bin")).expect("a valid path"),
+                ),
             ),
             (
                 "arrowfs::File",
                 Box::new(
-                    crate::arrowfs::File::from_location(memory, "nowhere/absent.bin")
+                    crate::holder::arrowfs::File::from_location(memory, "nowhere/absent.bin")
                         .expect("a valid location"),
                 ),
             ),
@@ -2962,7 +2977,7 @@ mod lifecycle {
     use super::*;
     #[cfg(feature = "arrow")]
     use crate::IOMedia;
-    use crate::local::{File, Folder, Path};
+    use crate::holder::local::{File, Folder, Path};
 
     /// A temp root nothing else in this file uses.
     fn root(label: &str) -> std::path::PathBuf {
@@ -3283,14 +3298,14 @@ mod lifecycle {
 mod shape {
     use super::{Buffer, IOBase};
 
-    use crate::buffered::tests::Counting;
     use crate::coding::Coding;
-    use crate::generic::Holder;
+    use crate::holder::Holder;
+    use crate::holder::buffered::tests::Counting;
     use crate::{Codec, IOKind, MediaType, MimeType};
 
     /// A writable temporary root of this test's own.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = crate::local::Folder::temporary()
+        let mut path = crate::holder::local::Folder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path");
@@ -3350,19 +3365,19 @@ mod shape {
 
         // Nothing has been written, so the kind is undecided - and the name
         // still says which surface reads it, exactly as the media type does.
-        let missing = crate::local::Path::new(path.join("trades.parquet")).unwrap();
+        let missing = crate::holder::local::Path::new(path.join("trades.parquet")).unwrap();
         assert_eq!(missing.kind(), IOKind::Unknown);
         assert_eq!(missing.media_type().base(), &MimeType::PARQUET);
         assert!(missing.is_tabular());
         assert!(!missing.is_atomic());
 
-        let notes = crate::local::Path::new(path.join("notes.txt")).unwrap();
+        let notes = crate::holder::local::Path::new(path.join("notes.txt")).unwrap();
         assert_eq!(notes.kind(), IOKind::Unknown);
         assert!(notes.is_atomic());
         assert!(!notes.is_tabular());
 
         // The leaf implementation answers the same, existing or not.
-        let leaf = crate::local::File::new(path.join("trades.arrows")).unwrap();
+        let leaf = crate::holder::local::File::new(path.join("trades.arrows")).unwrap();
         assert!(leaf.is_tabular());
         assert!(!leaf.is_atomic());
 
@@ -3376,7 +3391,7 @@ mod shape {
         std::fs::create_dir_all(lake.join("year=2024/month=01")).unwrap();
         std::fs::write(lake.join("year=2024/month=01/part-0.parquet"), b"PAR1").unwrap();
 
-        let folder = crate::local::Folder::new(&lake).unwrap();
+        let folder = crate::holder::local::Folder::new(&lake).unwrap();
         assert_eq!(folder.kind(), IOKind::Directory);
         assert!(folder.is_container());
         // The probe descends to the first leaf; a folder is never one whole
@@ -3389,19 +3404,19 @@ mod shape {
         let logs = path.join("logs");
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(logs.join("run.txt"), b"started").unwrap();
-        let folder = crate::local::Folder::new(&logs).unwrap();
+        let folder = crate::holder::local::Folder::new(&logs).unwrap();
         assert!(!folder.is_tabular());
         assert!(!folder.is_atomic());
         assert!(!folder.is_io());
 
         // So is an empty one, and so is a folder that does not exist yet.
-        let empty = crate::local::Folder::new(path.join("empty")).unwrap();
+        let empty = crate::holder::local::Folder::new(path.join("empty")).unwrap();
         assert!(!empty.is_tabular());
         assert!(!empty.is_atomic());
         assert!(!empty.is_io());
 
         // A location resolving to that lake answers exactly as the folder did.
-        let located = crate::local::Path::new(&lake).unwrap();
+        let located = crate::holder::local::Path::new(&lake).unwrap();
         assert_eq!(located.kind(), IOKind::Directory);
         assert!(located.is_tabular());
         assert!(!located.is_atomic());
@@ -3454,7 +3469,7 @@ mod shape {
         handle.set_media_type(MediaType::from(MimeType::PARQUET));
 
         // A page cache is invisible: it answers exactly what it wraps.
-        let cached = handle.buffered(crate::buffered::BufferedOptions::default());
+        let cached = handle.buffered(crate::holder::buffered::BufferedOptions::default());
         assert!(cached.is_tabular());
         assert!(!cached.is_atomic());
 
@@ -3486,7 +3501,7 @@ mod shape {
         let path = root("dimensions");
         let lake = path.join("lake");
         for (name, values) in [("a.arrows", vec![1, 2]), ("b.arrows", vec![3])] {
-            let mut leaf = crate::local::Path::new(lake.join(name)).expect("a lazy leaf");
+            let mut leaf = crate::holder::local::Path::new(lake.join(name)).expect("a lazy leaf");
             let batch = rows(&values);
             let options = leaf.record_options().expect("IPC options");
             leaf.overwrite_arrow_reader(
@@ -3495,12 +3510,12 @@ mod shape {
             )
             .expect("a published IPC leaf");
         }
-        crate::local::Path::new(lake.join("notes.txt"))
+        crate::holder::local::Path::new(lake.join("notes.txt"))
             .expect("a text leaf")
             .write_all_bytes(b"not a table row")
             .expect("a published unrelated leaf");
 
-        let folder = crate::local::Folder::new(&lake).expect("the lake folder");
+        let folder = crate::holder::local::Folder::new(&lake).expect("the lake folder");
         assert_eq!(folder.row_size().expect("metadata row count"), 3);
         assert_eq!(folder.column_size().expect("metadata field width"), 1);
 
@@ -3515,7 +3530,7 @@ mod laziness {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::super::{IOBase, Listing};
-    use crate::generic::Holder;
+    use crate::holder::Holder;
     use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 
     /// A container of `width` synthetic leaves that counts what it produces.
@@ -3621,7 +3636,7 @@ mod laziness {
                     if fails_at == Some(index) {
                         return Err(Error::absent("file", format!("{root}/part-{index}")));
                     }
-                    Ok(Holder::from(crate::io::Buffer::new()))
+                    Ok(Holder::from(crate::holder::Buffer::new()))
                 }))
             }))
         }
@@ -3673,12 +3688,12 @@ mod laziness {
 
     #[test]
     fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
-        let root = crate::local::Folder::temporary()
+        let root = crate::holder::local::Folder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
             .join(format!("yggdryl-order-{}", std::process::id()));
-        let mut folder = crate::local::Folder::new(&root).expect("a local folder");
+        let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         for name in ["c.bin", "a.bin", "b.bin"] {
             let mut leaf = folder.child_by_path(name).expect("a child");
@@ -3706,12 +3721,12 @@ mod laziness {
 
     #[test]
     fn a_glob_whose_fixed_prefix_loses_lists_nothing_beneath_it() {
-        let root = crate::local::Folder::temporary()
+        let root = crate::holder::local::Folder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
             .join(format!("yggdryl-prefix-{}", std::process::id()));
-        let mut folder = crate::local::Folder::new(&root).expect("a local folder");
+        let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         let mut leaf = folder
             .child_by_path("year=2024/month=01/part-0.parquet")
@@ -3750,12 +3765,12 @@ mod laziness {
         // one leaf. The walk yields an entry before the subtree under it, and
         // what it retains is one level's cursor per *open* level - the
         // frontier - never the thirty-two entries it will eventually yield.
-        let root = crate::local::Folder::temporary()
+        let root = crate::holder::local::Folder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
             .join(format!("yggdryl-deep-{}", std::process::id()));
-        let mut folder = crate::local::Folder::new(&root).expect("a local folder");
+        let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
         folder.remove(true).ok();
         let mut path = String::new();
         for level in 0..16 {

@@ -12,7 +12,8 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
 };
 use napi_derive::napi;
-use yggdryl::generic::{DEFAULT_ROOT_NAME, Holder};
+use yggdryl::generic::DEFAULT_ROOT_NAME;
+use yggdryl::holder::Holder;
 use yggdryl::iceberg::{
     Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,

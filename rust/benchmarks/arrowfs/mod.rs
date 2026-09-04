@@ -2,7 +2,7 @@
 //!
 //! Every measurement here is a *wrapper overhead* measurement: the same
 //! payload, the same operation, once through an `arrowfs` handle and once
-//! through the native handle the reader already trusts - `io::Buffer` for the
+//! through the native handle the reader already trusts - `holder::Buffer` for the
 //! memory filesystem, `local::File` for the local one. The difference is what
 //! the vtable and the staging cost.
 
@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOBase;
-use yggdryl::arrowfs::{ArrowFileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::generic::IORecordOptions;
+use yggdryl::holder::arrowfs::{ArrowFileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per record fixture, large enough that encoding dominates setup.
@@ -73,7 +73,7 @@ pub(crate) fn memory() -> Arc<MemoryFileSystem> {
 
 /// One local filesystem mapping, and the temporary root it works under.
 pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
-    let mut root = yggdryl::local::Folder::temporary()
+    let mut root = yggdryl::holder::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");
@@ -88,8 +88,8 @@ pub(crate) fn local_location(root: &std::path::Path, name: &str) -> String {
 }
 
 /// A native in-memory handle whose media type comes from a name.
-pub(crate) fn buffer(name: &str) -> yggdryl::io::Buffer {
-    yggdryl::io::Buffer::new().with_media_type(
+pub(crate) fn buffer(name: &str) -> yggdryl::holder::Buffer {
+    yggdryl::holder::Buffer::new().with_media_type(
         Url::from_str(&format!("file:///{name}"))
             .expect("a valid location")
             .media_type(),

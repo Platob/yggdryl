@@ -11,7 +11,7 @@
 //! - [`Folder`] is the container: it lists and resolves children.
 //! - [`File`] is the leaf: its bytes are a memory mapping of one file.
 //!
-//! All three are lazy in the same way everything in [`crate::io`] is:
+//! All three follow the shared [`IOBase`](crate::IOBase) laziness contract:
 //! constructing one touches nothing, reading something that does not exist
 //! yields nothing, and writing creates it.
 //!
@@ -21,7 +21,7 @@
 //!
 //! ```no_run
 //! use yggdryl::IOBase;
-//! use yggdryl::local::Folder;
+//! use yggdryl::holder::local::Folder;
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let root = Folder::temporary()?;

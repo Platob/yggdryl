@@ -12,7 +12,7 @@ use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::avro::AvroOptions;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Field, Url, avro};
 
 /// Rows in the wide fixture.

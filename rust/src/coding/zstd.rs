@@ -120,7 +120,7 @@ impl FlateFinish for FailingWrite {
 /// [`IOBase::open`] materialize the decoded value until close.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::coding::zstd::Zstd;
 ///
 /// # fn main() -> yggdryl::Result<()> {

@@ -11,16 +11,16 @@
 //! the bytes: an optional [`Url`] naming where they live, and a [`MediaType`]
 //! naming what they are.
 //!
-//! The core ships [`Buffer`](crate::io::Buffer), an auto-scaling in-memory implementation, and
-//! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
+//! The core ships [`Buffer`](crate::holder::Buffer), an auto-scaling in-memory implementation, and
+//! [`crate::holder::local`], whose [`File`](crate::holder::local::File) is an auto-resizing
 //! memory-mapped local file. Two wrapping handles sit over any of them and are
 //! handles themselves: [`Coding`](crate::coding::Coding) presents the decoded bytes of a compressed
-//! resource, and [`crate::buffered::Buffered`] serves reads from a page cache
+//! resource, and [`crate::holder::buffered::Buffered`] serves reads from a page cache
 //! whose header and footer pages are pinned. Anything else - an object store,
 //! an Arrow filesystem - implements the same trait outside the core.
 //!
 //! ```
-//! use yggdryl::{IOBase, io::Buffer};
+//! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut buffer = Buffer::new();
@@ -42,7 +42,7 @@ use std::io::{Read as _, Write as _};
 use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Url};
 use crate::{Codec, Level};
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 
 /// Default byte-stream batch size used by core readers and language bindings.
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
@@ -202,7 +202,7 @@ pub trait IOBase: Send + IOMedia {
     /// resource.
     ///
     /// ```
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::new();
@@ -277,7 +277,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -304,7 +304,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -383,7 +383,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -452,7 +452,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::holder::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -505,7 +505,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::MimeType;
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// let mut notes = Buffer::new();
     /// notes.set_media_type(MimeType::PLAIN_TEXT.into());
@@ -548,7 +548,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::MimeType;
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// let mut trades = Buffer::new();
     /// trades.set_media_type(MimeType::ARROW_FILE.into());
@@ -636,7 +636,7 @@ pub trait IOBase: Send + IOMedia {
     /// compressed handle.
     ///
     /// ```
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     /// use yggdryl::{Field, Url, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -710,7 +710,7 @@ pub trait IOBase: Send + IOMedia {
     /// algorithm's empty-input value, never an error.
     ///
     /// ```
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     /// use yggdryl::{DigestAlgorithm, xxhash};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -803,7 +803,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// A whole-value write is a *complete* operation, so it ends with
     /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
-    /// [`local::File`](crate::local::File) grows geometrically so appending
+    /// [`local::File`](crate::holder::local::File) grows geometrically so appending
     /// does not remap on every write - must not leave that slack visible to a
     /// second handle on the same location, which would read the padding as
     /// content. Positional [`Self::pwrite`] deliberately does not publish;
@@ -839,7 +839,7 @@ pub trait IOBase: Send + IOMedia {
     /// follow.
     ///
     /// ```
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
@@ -896,10 +896,10 @@ pub trait IOBase: Send + IOMedia {
     /// is a second round trip on the hot path, and a recursive delete over a
     /// large tree turns into a flood of them. Where a backend needs a different
     /// call for a leaf than for a container, the handle's own static role
-    /// answers which - [`local::File`](crate::local::File) is a file,
-    /// [`local::Folder`](crate::local::Folder) is a directory - so the dispatch
+    /// answers which - [`local::File`](crate::holder::local::File) is a file,
+    /// [`local::Folder`](crate::holder::local::Folder) is a directory - so the dispatch
     /// is on the type, not on a probe. The one documented exception is a
-    /// generic path handle such as [`local::Path`](crate::local::Path), whose
+    /// generic path handle such as [`local::Path`](crate::holder::local::Path), whose
     /// whole job is to report [`IOKind`] from what is actually there: it routes
     /// on the kind it *already* resolves, and adds no second probe for the
     /// delete.
@@ -918,7 +918,7 @@ pub trait IOBase: Send + IOMedia {
     /// omission.
     ///
     /// ```
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
@@ -1099,21 +1099,21 @@ pub trait IOBase: Send + IOMedia {
         Cursor::at(self, position)
     }
 
-    /// Consume this handle into a page-cached [`Buffered`](crate::buffered::Buffered) one.
+    /// Consume this handle into a page-cached [`Buffered`](crate::holder::buffered::Buffered) one.
     ///
     /// Reads are served from fixed-size pages held under a byte budget, with
     /// the first page and the page holding the last byte pinned so a
     /// header-and-footer access pattern never re-reads either end. Everything
     /// else answers exactly as this handle does.
     ///
-    /// [`Buffered`](crate::buffered::Buffered) shadows this with an inherent
+    /// [`Buffered`](crate::holder::buffered::Buffered) shadows this with an inherent
     /// method of the same name, so
     /// buffering an already-buffered handle re-wraps the handle it holds
     /// rather than stacking a second cache.
     ///
     /// ```
-    /// use yggdryl::buffered::BufferedOptions;
-    /// use yggdryl::{IOBase, io::Buffer};
+    /// use yggdryl::holder::buffered::BufferedOptions;
+    /// use yggdryl::{IOBase, holder::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"symbol,price\n".to_vec())
@@ -1126,11 +1126,14 @@ pub trait IOBase: Send + IOMedia {
     /// # Ok(())
     /// # }
     /// ```
-    fn buffered(self, options: crate::buffered::BufferedOptions) -> crate::buffered::Buffered<Self>
+    fn buffered(
+        self,
+        options: crate::holder::buffered::BufferedOptions,
+    ) -> crate::holder::buffered::Buffered<Self>
     where
         Self: Sized,
     {
-        crate::buffered::Buffered::new(self, options)
+        crate::holder::buffered::Buffered::new(self, options)
     }
 
     /// Consume this handle into plain-text record media.

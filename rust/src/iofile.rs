@@ -1,6 +1,6 @@
 //! The byte-leaf role every storage backend implements.
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, IOBase, IOKind, Listing, Result, Url};
 
 /// A resource that holds bytes.

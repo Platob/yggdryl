@@ -9,7 +9,7 @@ use super::catalogs::{Catalog, level_names};
 use super::{Names, Occupant, classify, invalid, resolve};
 use crate::IOBase;
 use crate::arrow::{BatchReader, field_from_arrow_schema};
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Field, Result};
 
 /// The root name a schema inferred from an incoming reader is given.

@@ -4,7 +4,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::{Scalar, Url};
 
 const ROWS: usize = crate::bench_profile::corpus(16_384, 1_024);

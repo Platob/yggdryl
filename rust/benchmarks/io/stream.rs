@@ -12,11 +12,11 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::buffered::BufferedOptions;
 use yggdryl::coding::gzip::Gzip;
 use yggdryl::coding::zlib::Zlib;
 use yggdryl::coding::zstd::Zstd;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
+use yggdryl::holder::buffered::BufferedOptions;
 
 const FIXTURE: usize = crate::bench_profile::corpus(8 * 1024 * 1024, 512 * 1024);
 const BATCHES: [(&str, usize); 3] = [

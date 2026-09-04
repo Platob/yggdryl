@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use super::{Buffered, BufferedOptions};
-use crate::generic::Holder;
-use crate::io::Buffer;
+use crate::holder::Buffer;
+use crate::holder::Holder;
 use crate::{IOBase, IOMedia};
 use crate::{MediaType, MimeType, Url};
 
@@ -666,7 +666,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     // A located leaf, because that is the case the projection gets wrong: it
     // reopens a handle's *location*, which for a coding view holds the
     // compressed form rather than the bytes the view presents.
-    let root = crate::local::Folder::temporary()
+    let root = crate::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap()
@@ -688,19 +688,23 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     let rows = |reader: crate::arrow::BatchReader| -> usize {
         reader.map(|batch| batch.unwrap().num_rows()).sum()
     };
-    let coded =
-        || crate::coding::Coding::new(crate::local::File::new(&path).unwrap(), crate::Codec::Gzip);
+    let coded = || {
+        crate::coding::Coding::new(
+            crate::holder::local::File::new(&path).unwrap(),
+            crate::Codec::Gzip,
+        )
+    };
 
     // Four ways to the same two records. The last is the one that read the
     // gzip header as text before the cache learned to defer.
     let plain_file = rows(
-        crate::local::File::new(&path)
+        crate::holder::local::File::new(&path)
             .unwrap()
             .read_arrow_reader(&options)
             .unwrap(),
     );
     let cached_file = rows(
-        crate::local::File::new(&path)
+        crate::holder::local::File::new(&path)
             .unwrap()
             .buffered(BufferedOptions::default())
             .read_arrow_reader(&options)

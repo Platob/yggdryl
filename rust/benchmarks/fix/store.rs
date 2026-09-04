@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::local::Folder;
+use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, FixRegistry, Url};
 
 use super::{BRANCH_FIELDS, scratch, seed, seed_root, two_branches};

@@ -13,7 +13,7 @@ use crate::{Error, Result};
 /// Every backend has the same three roles - bytes with no location, a leaf that
 /// holds bytes, a container that holds other resources - plus the honest answer
 /// for a location that does not exist yet. A generic handle such as
-/// [`crate::local::Path`] reads this to decide which specialized implementation
+/// [`crate::holder::local::Path`] reads this to decide which specialized implementation
 /// to work through, so adding a backend means answering this question rather
 /// than inventing new vocabulary.
 ///
@@ -27,7 +27,7 @@ use crate::{Error, Result};
 /// [`is_container`](Self::is_container) stays the one question a walk asks.
 ///
 /// ```
-/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::{IOBase, holder::Buffer};
 /// use yggdryl::IOKind;
 ///
 /// assert_eq!(Buffer::new().kind(), IOKind::Memory);

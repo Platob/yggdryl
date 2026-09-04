@@ -2,7 +2,7 @@
 
 mod mapped {
     use crate::IOBase;
-    use crate::local::{File, Folder};
+    use crate::holder::local::{File, Folder};
 
     fn path(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -102,7 +102,7 @@ mod mapped {
         // the ancestry is repaired once, and the same open is retried once.
         let mut root = Folder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-ancestry-{}", std::process::id()));
-        crate::local::Folder::new(&root)
+        crate::holder::local::Folder::new(&root)
             .expect("a local folder")
             .remove(true)
             .expect("a removable folder");
@@ -119,7 +119,7 @@ mod mapped {
             b"rows"
         );
 
-        crate::local::Folder::new(&root)
+        crate::holder::local::Folder::new(&root)
             .expect("a local folder")
             .remove(true)
             .expect("a removable folder");
@@ -196,8 +196,8 @@ mod mapped {
 
 mod hierarchy {
     use crate::IOBase;
-    use crate::generic::Holder;
-    use crate::local::Folder;
+    use crate::holder::Holder;
+    use crate::holder::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -292,7 +292,7 @@ mod hierarchy {
         assert_eq!(parent.url().unwrap(), directory.url());
 
         // A buffer has no location, so it has no parent.
-        assert!(crate::io::Buffer::new().parent().is_none());
+        assert!(crate::holder::Buffer::new().parent().is_none());
     }
 
     #[test]
@@ -357,8 +357,8 @@ mod hierarchy {
 /// One generic location resolves to the implementation it turns out to need.
 mod generic_path {
     use crate::IOBase;
-    use crate::generic::Holder;
-    use crate::local::{Folder, Path};
+    use crate::holder::Holder;
+    use crate::holder::local::{Folder, Path};
     use crate::{IOKind, MediaType, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -529,7 +529,7 @@ mod generic_path {
 
 /// The three roles are what a backend implements; `local` is the reference.
 mod roles {
-    use crate::local::{File, Folder, Path};
+    use crate::holder::local::{File, Folder, Path};
     use crate::{IOBase, IOFile, IOFolder, IOPath};
     use crate::{IOKind, MimeType};
 
@@ -621,7 +621,7 @@ mod roles {
 mod privacy {
     use crate::IOBase;
     use crate::Url;
-    use crate::local::Folder;
+    use crate::holder::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -699,7 +699,7 @@ mod privacy {
 /// A pattern is a location, so listing one expands it.
 mod globbing {
     use crate::IOBase;
-    use crate::local::{Folder, Path};
+    use crate::holder::local::{Folder, Path};
     use crate::{IOKind, Url};
 
     /// Build a small lake: two years, two months each, one part per month.
@@ -722,7 +722,7 @@ mod globbing {
         root
     }
 
-    fn names(entries: &[crate::generic::Holder]) -> Vec<String> {
+    fn names(entries: &[crate::holder::Holder]) -> Vec<String> {
         entries
             .iter()
             .filter_map(|entry| entry.url().map(ToString::to_string))
@@ -902,7 +902,7 @@ mod roots {
     use std::ffi::OsString;
 
     use crate::IOBase;
-    use crate::local::Folder;
+    use crate::holder::local::Folder;
 
     fn set(text: &str) -> Option<OsString> {
         Some(OsString::from(text))

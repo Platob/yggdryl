@@ -242,7 +242,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
 
     struct CountedReader {
         bytes: std::io::Cursor<Vec<u8>>,

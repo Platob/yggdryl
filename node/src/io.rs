@@ -16,8 +16,9 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 
 use yggdryl::IOMode;
-use yggdryl::buffered::BufferedOptions;
-use yggdryl::generic::{Holder, IORecordOptions as _};
+use yggdryl::generic::IORecordOptions as _;
+use yggdryl::holder::Holder;
+use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::arrow::JsBatchReader;
@@ -93,11 +94,11 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
-        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::arrowfs::File::new(
+        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::holder::arrowfs::File::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),
-        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::arrowfs::Path::new(
+        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::holder::arrowfs::Path::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
@@ -110,10 +111,10 @@ pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::ArrowFolder(folder) => folder.clone(),
         Holder::ArrowFile(file) => {
-            yggdryl::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+            yggdryl::holder::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
         }
         Holder::ArrowPath(path) => {
-            yggdryl::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+            yggdryl::holder::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
         }
         _ => return None,
     };
@@ -186,10 +187,13 @@ impl JsIOBase {
 
     /// Build a handle on `path` over a held JavaScript file system handler.
     fn over_arrow_fs(env: Env, filesystem: &ArrowFileSystemInput<'_>, path: &str) -> Result<Self> {
-        let backend: std::sync::Arc<dyn yggdryl::arrowfs::ArrowFileSystem> =
+        let backend: std::sync::Arc<dyn yggdryl::holder::arrowfs::ArrowFileSystem> =
             std::sync::Arc::new(JsArrowFileSystem::new(env, filesystem)?);
-        let url = yggdryl::arrowfs::location_url(backend.as_ref(), path).map_err(napi_error)?;
-        Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
+        let url =
+            yggdryl::holder::arrowfs::location_url(backend.as_ref(), path).map_err(napi_error)?;
+        Ok(Self::from_core(yggdryl::holder::arrowfs::located(
+            backend, url,
+        )))
     }
 
     /// Build a container handle for one recorded location.
@@ -300,7 +304,7 @@ impl JsIOBase {
     #[napi(factory)]
     pub fn from_bytes(data: Option<Uint8Array>) -> Self {
         let bytes = data.map(|data| data.to_vec()).unwrap_or_default();
-        Self::from_core(Holder::Buffer(yggdryl::io::Buffer::from_bytes(bytes)))
+        Self::from_core(Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes)))
     }
 
     /// The location this handle addresses.
@@ -721,7 +725,10 @@ impl JsIOBase {
 
         // Every fallible conversion happened above. The temporary is replaced
         // immediately and can therefore never become observable to JavaScript.
-        let held = std::mem::replace(&mut self.inner, Holder::buffer(yggdryl::io::Buffer::new()));
+        let held = std::mem::replace(
+            &mut self.inner,
+            Holder::buffer(yggdryl::holder::Buffer::new()),
+        );
         self.inner = held.buffered(options);
         Ok(())
     }
@@ -729,7 +736,10 @@ impl JsIOBase {
     /// Replace this handle with one retained plain-text media view.
     #[napi(js_name = "_intoTextNative", skip_typescript)]
     pub fn into_text_native(&mut self, options: Option<&JsTextOptions>) {
-        let held = std::mem::replace(&mut self.inner, Holder::buffer(yggdryl::io::Buffer::new()));
+        let held = std::mem::replace(
+            &mut self.inner,
+            Holder::buffer(yggdryl::holder::Buffer::new()),
+        );
         self.inner = match options {
             Some(options) => held.into_text_with(options.inner.clone()),
             None => held.into_text(),

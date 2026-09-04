@@ -6,8 +6,8 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
 use super::{Catalog, Catalogs};
 use crate::IOBase;
+use crate::holder::local::Folder;
 use crate::iceberg::Transform;
-use crate::local::Folder;
 use crate::{DataType, Field, IOKind};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
@@ -689,7 +689,7 @@ fn a_catalog_names_itself_after_its_warehouse_folder() {
 
     // An in-memory warehouse names itself after its identity URL the same
     // way, so every warehouse has the answer its handle can give.
-    let memory = Catalog::new(crate::io::Buffer::new());
+    let memory = Catalog::new(crate::holder::Buffer::new());
     assert_eq!(
         memory.name(),
         memory.warehouse().url().and_then(crate::Url::file_name)
@@ -788,7 +788,7 @@ mod call_counts {
 
     use super::{Catalog, taxi_schema};
     use crate::Result;
-    use crate::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
+    use crate::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]

@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use super::File;
 use super::Folder;
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 use crate::{IOBase, IOPath, Listing};
 
@@ -22,7 +22,7 @@ use crate::{IOBase, IOPath, Listing};
 ///
 /// ```no_run
 /// use yggdryl::IOBase;
-/// use yggdryl::local::{Folder, Path};
+/// use yggdryl::holder::local::{Folder, Path};
 /// use yggdryl::IOKind;
 ///
 /// # fn main() -> yggdryl::Result<()> {

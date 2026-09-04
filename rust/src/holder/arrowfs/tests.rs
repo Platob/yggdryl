@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::arrowfs::{ArrowFileSystem, File, FileInfo, Folder, MemoryFileSystem, Path};
+use crate::holder::arrowfs::{ArrowFileSystem, File, FileInfo, Folder, MemoryFileSystem, Path};
 use crate::{IOBase, IOMedia};
 use crate::{IOKind, MediaType, MimeType, Result};
 
@@ -59,7 +59,7 @@ impl ArrowFileSystem for Counting {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
         self.count();
         self.inner.list(path, recursive)
     }
@@ -106,8 +106,8 @@ impl ArrowFileSystem for Failing {
         Self::refusal()
     }
 
-    fn list(&self, _path: &str, _recursive: bool) -> crate::arrowfs::FileInfos {
-        crate::arrowfs::FileInfos::failing(
+    fn list(&self, _path: &str, _recursive: bool) -> crate::holder::arrowfs::FileInfos {
+        crate::holder::arrowfs::FileInfos::failing(
             Self::refusal::<()>().expect_err("the refusal this filesystem always answers with"),
         )
     }
@@ -141,11 +141,11 @@ mod laziness {
         let file = File::from_location(filesystem.clone(), "bucket/key.parquet").unwrap();
         let folder = Folder::from_location(filesystem.clone(), "bucket/lake").unwrap();
         let path = Path::from_location(filesystem.clone(), "bucket/anything").unwrap();
-        let located = crate::arrowfs::located(filesystem.clone(), path.url().clone());
+        let located = crate::holder::arrowfs::located(filesystem.clone(), path.url().clone());
 
         // Not one call reached the vtable while direct and generic handles were built.
         assert_eq!(filesystem.calls(), 0);
-        assert!(matches!(located, crate::generic::Holder::ArrowPath(_)));
+        assert!(matches!(located, crate::holder::Holder::ArrowPath(_)));
 
         // Nor does borrowing what a handle already knows about itself.
         let _ = (file.url(), folder.url(), path.url());
@@ -739,10 +739,10 @@ mod hierarchy {
         assert!(message.contains("expected a container"), "{message}");
 
         let child = directory.child_by_path("a.bin").unwrap();
-        assert!(matches!(&child, crate::generic::Holder::ArrowPath(_)));
+        assert!(matches!(&child, crate::holder::Holder::ArrowPath(_)));
         assert_eq!(child.media_type().base(), &MimeType::OCTET_STREAM);
         let parent = child.parent().expect("the generic child has a parent");
-        assert!(matches!(&parent, crate::generic::Holder::ArrowPath(_)));
+        assert!(matches!(&parent, crate::holder::Holder::ArrowPath(_)));
         assert_eq!(parent.kind(), IOKind::Directory);
 
         // Nothing there yet has not decided what it is; a write settles it.
@@ -969,8 +969,8 @@ mod records {
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
 
-    use crate::arrowfs::LocalFileSystem;
     use crate::generic::{IORecordOptions, RecordOptions};
+    use crate::holder::arrowfs::LocalFileSystem;
     use crate::{DataType, Field};
 
     fn schema() -> Field {
@@ -1004,7 +1004,10 @@ mod records {
 
     /// A temporary root for the local reference filesystem.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = crate::local::Folder::temporary().unwrap().path().unwrap();
+        let mut path = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         path.push(format!("yggdryl-arrowfs-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
@@ -1197,7 +1200,7 @@ mod listing_cost {
 
     use super::{Counting, Result};
     use crate::IOBase;
-    use crate::arrowfs::{ArrowFileSystem, Folder};
+    use crate::holder::arrowfs::{ArrowFileSystem, Folder};
 
     /// A tree `depth` levels deep, `width` leaves per level.
     fn tree(filesystem: &Counting, depth: usize, width: usize) {

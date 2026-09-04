@@ -12,14 +12,7 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
-// Foreign Arrow filesystems behind the one storage trait. The vtable adds no
-// dependency, so the module is unconditional like the Avro value codec; the
-// record surface its handles answer is inherited and already gated by `arrow`.
-pub mod arrowfs;
 pub mod avro;
-// The page cache over any handle. It is a wrapping handle like the codings,
-// so it lives beside them rather than inside `io`, and it needs no Arrow.
-pub mod buffered;
 mod bytestream;
 mod codec;
 pub mod coding;
@@ -33,6 +26,7 @@ pub mod expression;
 pub mod field;
 pub mod fix;
 pub mod generic;
+pub mod holder;
 mod i256;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
@@ -59,7 +53,6 @@ mod iopath;
 pub mod ipc;
 pub mod json;
 mod listing;
-pub mod local;
 mod media_type;
 mod metadata;
 mod mime_type;

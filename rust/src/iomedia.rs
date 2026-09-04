@@ -533,7 +533,7 @@ pub trait IOMedia: Send {
     ///
     /// ```
     /// use yggdryl::generic::IORecordOptions;
-    /// use yggdryl::{IOMedia, io::Buffer};
+    /// use yggdryl::{IOMedia, holder::Buffer};
     /// use yggdryl::{DataType, MimeType, Scalar};
     ///
     /// struct Quote {

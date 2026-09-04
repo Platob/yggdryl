@@ -10,8 +10,8 @@
 //! Two implementations ship in-tree. [`MemoryFileSystem`] holds everything in
 //! one map and is the substrate the tests and benchmarks run on;
 //! [`LocalFileSystem`] is a thin `std::fs` mapping that proves the vtable
-//! against a real OS filesystem. Neither replaces [`crate::local`], whose
-//! mapped [`File`](crate::local::File) remains the local backend.
+//! against a real OS filesystem. Neither replaces [`crate::holder::local`], whose
+//! mapped [`File`](crate::holder::local::File) remains the local backend.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
@@ -384,7 +384,7 @@ struct MemoryState {
 /// working backend with no foreign runtime in sight.
 ///
 /// ```
-/// use yggdryl::arrowfs::{ArrowFileSystem, MemoryFileSystem};
+/// use yggdryl::holder::arrowfs::{ArrowFileSystem, MemoryFileSystem};
 /// use yggdryl::IOKind;
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -581,8 +581,8 @@ impl ArrowFileSystem for MemoryFileSystem {
 /// A thin `std::fs` mapping of the vtable, the reference "local" filesystem.
 ///
 /// It exists to prove [`ArrowFileSystem`] against a real OS filesystem and to
-/// benchmark the wrapper against [`crate::local::File`]; it does not replace
-/// [`crate::local`], whose memory-mapped `File` remains the local backend.
+/// benchmark the wrapper against [`crate::holder::local::File`]; it does not replace
+/// [`crate::holder::local`], whose memory-mapped `File` remains the local backend.
 ///
 /// Publication is atomic: [`ArrowFileSystem::write_full`] writes a temporary
 /// sibling and renames it into place, so a reader never observes a

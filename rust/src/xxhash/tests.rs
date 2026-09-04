@@ -451,7 +451,7 @@ mod handles {
 
     use super::super::{reader, writer, xxh3_64};
     use crate::IOBase;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{DigestAlgorithm, Error};
 
     /// A temporary root, named so parallel tests never share one.
@@ -496,14 +496,17 @@ mod handles {
     fn a_memory_mapped_local_file_streams_the_same_digest_as_its_bytes() {
         let path = root("local").join("trades.csv");
         std::fs::write(&path, payload()).unwrap();
-        agrees("local file", &crate::local::File::new(&path).unwrap());
+        agrees(
+            "local file",
+            &crate::holder::local::File::new(&path).unwrap(),
+        );
     }
 
     #[test]
     fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
         use std::sync::Arc;
 
-        use crate::arrowfs::{Folder, MemoryFileSystem};
+        use crate::holder::arrowfs::{Folder, MemoryFileSystem};
 
         let lake = Folder::from_location(Arc::new(MemoryFileSystem::new()), "lake").unwrap();
         let mut leaf = lake.child_by_path("trades.csv").unwrap();
@@ -514,7 +517,7 @@ mod handles {
 
     #[test]
     fn a_cache_streams_the_same_digest_and_stays_unpolluted() {
-        use crate::buffered::{Buffered, BufferedOptions};
+        use crate::holder::buffered::{Buffered, BufferedOptions};
 
         let bytes = payload();
         let mut inner = Buffer::new();
@@ -577,7 +580,7 @@ mod handles {
 
             let missing = root("missing").join("never-written.csv");
             assert_eq!(
-                crate::local::File::new(&missing)
+                crate::holder::local::File::new(&missing)
                     .unwrap()
                     .read_digest(algorithm)
                     .unwrap(),
@@ -588,7 +591,7 @@ mod handles {
 
     #[test]
     fn a_container_is_refused_by_kind() {
-        let folder = crate::local::Folder::new(root("container")).unwrap();
+        let folder = crate::holder::local::Folder::new(root("container")).unwrap();
         let error = folder.read_digest(DigestAlgorithm::Xxh3_64).unwrap_err();
         assert!(
             matches!(
@@ -728,7 +731,7 @@ mod handles {
 mod hashed {
     use super::super::{Hashed, xxh3_64, xxh3_64_with_seed};
     use crate::IOBase;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{DigestAlgorithm, Error};
 
     /// A handle that counts the reads reaching the one it wraps, so "answered
@@ -887,7 +890,7 @@ mod hashed {
     fn pending_writes_count_only_after_flush() {
         use std::sync::Arc;
 
-        use crate::arrowfs::{Folder, MemoryFileSystem};
+        use crate::holder::arrowfs::{Folder, MemoryFileSystem};
 
         // An Arrow filesystem file stages writes in memory and publishes the
         // whole value on flush, which is exactly the case the size check is
@@ -985,7 +988,7 @@ mod hashed {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let handle = Hashed::new(
-            crate::local::Folder::new(&root).unwrap(),
+            crate::holder::local::Folder::new(&root).unwrap(),
             DigestAlgorithm::Xxh3_64,
         );
         // The running state starts live and empty and a folder's size is

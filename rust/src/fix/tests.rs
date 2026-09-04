@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::global::autoload;
 use super::registry::{BranchedName, Folded};
 use super::store::shard_of;
-use crate::local::Folder;
+use crate::holder::local::Folder;
 use crate::{DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, Scalar};
 
 /// The venue dictionary every branched case is written against.

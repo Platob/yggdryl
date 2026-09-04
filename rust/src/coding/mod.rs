@@ -20,7 +20,7 @@ pub use coded::Coded;
 
 use std::io::Read;
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::{Codec, Level, MediaType, Result, Url};
 
@@ -158,7 +158,7 @@ impl<H: IOBase> Coding<H> {
     fn owned_presented_handle(&self) -> Result<Holder> {
         if let Some(plain) = self.materialized() {
             return Ok(Holder::buffer(
-                crate::io::Buffer::from_bytes(plain.clone())
+                crate::holder::Buffer::from_bytes(plain.clone())
                     .with_media_type(self.media_type.clone()),
             ));
         }
@@ -172,7 +172,7 @@ impl<H: IOBase> Coding<H> {
             self.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?
                 .read_to_end(&mut plain)?;
             return Ok(Holder::buffer(
-                crate::io::Buffer::from_bytes(plain).with_media_type(self.media_type.clone()),
+                crate::holder::Buffer::from_bytes(plain).with_media_type(self.media_type.clone()),
             ));
         }
 
@@ -192,7 +192,7 @@ impl<H: IOBase> Coding<H> {
             }
         }
 
-        let mut encoded = crate::io::Buffer::new();
+        let mut encoded = crate::holder::Buffer::new();
         self.handle.copy_into(&mut encoded)?;
         encoded.set_media_type(encoded_media_type);
         Ok(Holder::buffer(encoded))

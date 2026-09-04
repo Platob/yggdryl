@@ -7,7 +7,7 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::{Scalar, avro, json};
 
 /// Rows in the representative container.

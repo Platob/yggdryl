@@ -12,8 +12,9 @@ use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
-use yggdryl::buffered::BufferedOptions;
-use yggdryl::generic::{Holder, IORecordOptions as _, RecordOptions};
+use yggdryl::generic::{IORecordOptions as _, RecordOptions};
+use yggdryl::holder::Holder;
+use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
@@ -41,11 +42,11 @@ pub(crate) struct PyIOBase {
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
-        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::arrowfs::File::new(
+        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::holder::arrowfs::File::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),
-        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::arrowfs::Path::new(
+        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::holder::arrowfs::Path::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
@@ -58,10 +59,10 @@ pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::ArrowFolder(folder) => folder.clone(),
         Holder::ArrowFile(file) => {
-            yggdryl::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+            yggdryl::holder::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
         }
         Holder::ArrowPath(path) => {
-            yggdryl::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+            yggdryl::holder::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
         }
         _ => return None,
     };
@@ -123,11 +124,13 @@ impl PyIOBase {
     /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
     fn over_arrow_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
         let location = crate::uri::path_string_from_value(path)?;
-        let backend: std::sync::Arc<dyn yggdryl::arrowfs::ArrowFileSystem> =
+        let backend: std::sync::Arc<dyn yggdryl::holder::arrowfs::ArrowFileSystem> =
             std::sync::Arc::new(crate::arrowfs::PyArrowFileSystem::new(filesystem));
-        let url =
-            yggdryl::arrowfs::location_url(backend.as_ref(), &location).map_err(value_error)?;
-        Ok(Self::from_core(yggdryl::arrowfs::located(backend, url)))
+        let url = yggdryl::holder::arrowfs::location_url(backend.as_ref(), &location)
+            .map_err(value_error)?;
+        Ok(Self::from_core(yggdryl::holder::arrowfs::located(
+            backend, url,
+        )))
     }
 
     /// Resolve the options a record call runs under.
@@ -271,7 +274,7 @@ impl PyIOBase {
             }
             // No location to rebuild from, so the content is what is taken.
             let bytes = handle.inner.read_all_bytes().map_err(value_error)?;
-            let mut buffer = Holder::Buffer(yggdryl::io::Buffer::from_bytes(bytes));
+            let mut buffer = Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes));
             buffer.set_media_type(handle.inner.media_type().clone());
             return Ok(Self::from_core(buffer));
         }
@@ -295,7 +298,7 @@ impl PyIOBase {
                 ));
             };
             return Ok(Self::from_core(Holder::Buffer(
-                yggdryl::io::Buffer::from_bytes(bytes),
+                yggdryl::holder::Buffer::from_bytes(bytes),
             )));
         }
         let url = core_url_from_value(value)?;
@@ -344,7 +347,7 @@ impl PyIOBase {
     #[classmethod]
     #[pyo3(signature = (data = None))]
     fn from_bytes(_cls: &Bound<'_, PyType>, data: Option<Vec<u8>>) -> Self {
-        Self::from_core(Holder::Buffer(yggdryl::io::Buffer::from_bytes(
+        Self::from_core(Holder::Buffer(yggdryl::holder::Buffer::from_bytes(
             data.unwrap_or_default(),
         )))
     }
@@ -913,7 +916,10 @@ impl PyIOBase {
 
         // Options are validated before the temporary empty holder is installed,
         // so no Python exception can leave the object detached from its value.
-        let held = std::mem::replace(&mut slf.inner, Holder::Buffer(yggdryl::io::Buffer::new()));
+        let held = std::mem::replace(
+            &mut slf.inner,
+            Holder::Buffer(yggdryl::holder::Buffer::new()),
+        );
         slf.inner = held.buffered(options);
         Ok(slf)
     }
@@ -927,7 +933,10 @@ impl PyIOBase {
         mut slf: PyRefMut<'py, Self>,
         options: Option<PyRef<'_, PyTextOptions>>,
     ) -> PyRefMut<'py, Self> {
-        let held = std::mem::replace(&mut slf.inner, Holder::Buffer(yggdryl::io::Buffer::new()));
+        let held = std::mem::replace(
+            &mut slf.inner,
+            Holder::Buffer(yggdryl::holder::Buffer::new()),
+        );
         slf.inner = match options {
             Some(options) => held.into_text_with(options.inner.clone()),
             None => held.into_text(),

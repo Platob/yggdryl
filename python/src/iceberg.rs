@@ -17,7 +17,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::IOBase as _;
-use yggdryl::generic::{DEFAULT_ROOT_NAME, Holder, IORecordOptions as _};
+use yggdryl::generic::{DEFAULT_ROOT_NAME, IORecordOptions as _};
+use yggdryl::holder::Holder;
 use yggdryl::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,

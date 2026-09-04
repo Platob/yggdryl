@@ -21,7 +21,8 @@ use criterion::{BatchSize, BenchmarkGroup, Criterion, Throughput};
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
 use yggdryl::avro::Avro;
-use yggdryl::generic::{Holder, IORecordOptions, Media};
+use yggdryl::generic::{IORecordOptions, Media};
+use yggdryl::holder::Holder;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
 use yggdryl::{DataType, Field, IOMode, Scalar};
@@ -88,7 +89,7 @@ fn stateful_triplet<T, Empty, Seeded>(
     });
 }
 
-fn ipc_target(source: &RecordBatch, seeded: bool, merge: bool) -> Ipc<yggdryl::io::Buffer> {
+fn ipc_target(source: &RecordBatch, seeded: bool, merge: bool) -> Ipc<yggdryl::holder::Buffer> {
     let mut target = Ipc::new(handle("stateful.arrows")).with_field(wide());
     if seeded {
         let options = target.record_options().expect("an implemented encoding");
@@ -104,7 +105,11 @@ fn ipc_target(source: &RecordBatch, seeded: bool, merge: bool) -> Ipc<yggdryl::i
     target
 }
 
-fn parquet_target(source: &RecordBatch, seeded: bool, merge: bool) -> Parquet<yggdryl::io::Buffer> {
+fn parquet_target(
+    source: &RecordBatch,
+    seeded: bool,
+    merge: bool,
+) -> Parquet<yggdryl::holder::Buffer> {
     let mut target = Parquet::new(handle("stateful.parquet")).with_field(wide());
     if seeded {
         let options = target.record_options().expect("an implemented encoding");
@@ -120,7 +125,7 @@ fn parquet_target(source: &RecordBatch, seeded: bool, merge: bool) -> Parquet<yg
     target
 }
 
-fn avro_target(source: &RecordBatch, seeded: bool, merge: bool) -> Avro<yggdryl::io::Buffer> {
+fn avro_target(source: &RecordBatch, seeded: bool, merge: bool) -> Avro<yggdryl::holder::Buffer> {
     let mut target = Avro::new(handle("stateful.avro")).with_field(wide());
     if seeded {
         let options = target.record_options().expect("an implemented encoding");
@@ -167,7 +172,7 @@ fn text_source() -> RecordBatch {
     .expect("a text-line fixture")
 }
 
-fn text_target(source: &RecordBatch, seeded: bool) -> yggdryl::io::Buffer {
+fn text_target(source: &RecordBatch, seeded: bool) -> yggdryl::holder::Buffer {
     let mut target = handle("stateful.log");
     if seeded {
         let options = target.record_options().expect("text record options");

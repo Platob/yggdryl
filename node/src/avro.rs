@@ -5,7 +5,7 @@ use std::sync::Arc;
 use napi::bindgen_prelude::{Buffer, ClassInstance, Result};
 use napi_derive::napi;
 use yggdryl::avro::{Block as CoreBlock, Blocks as CoreBlocks, Container, Resolution, Schema};
-use yggdryl::io::Buffer as CoreBuffer;
+use yggdryl::holder::Buffer as CoreBuffer;
 use yggdryl::{Limits, Scalar};
 
 use crate::codec::JsScalar;

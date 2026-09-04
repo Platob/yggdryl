@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 
 use crate::IOBase;
-use crate::local::Folder;
+use crate::holder::local::Folder;
 use crate::{DataType, Field, Scalar};
 
 use super::{
@@ -302,7 +302,7 @@ fn table_metadata_state_is_read_only_through_complete_accessors() {
 /// without teaching the table about a test-only storage hook.
 #[derive(Debug, Default)]
 struct PublishedHintFailure {
-    inner: crate::arrowfs::MemoryFileSystem,
+    inner: crate::holder::arrowfs::MemoryFileSystem,
     fail_next_hint: AtomicBool,
 }
 
@@ -312,16 +312,16 @@ impl PublishedHintFailure {
     }
 }
 
-impl crate::arrowfs::ArrowFileSystem for PublishedHintFailure {
+impl crate::holder::arrowfs::ArrowFileSystem for PublishedHintFailure {
     fn type_name(&self) -> &str {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::arrowfs::FileInfo> {
+    fn file_info(&self, path: &str) -> crate::Result<crate::holder::arrowfs::FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
         self.inner.list(path, recursive)
     }
 
@@ -359,7 +359,7 @@ impl crate::arrowfs::ArrowFileSystem for PublishedHintFailure {
 /// valid competing document and must return through the retry gate.
 #[derive(Debug, Default)]
 struct SameVersionWinner {
-    inner: crate::arrowfs::MemoryFileSystem,
+    inner: crate::holder::arrowfs::MemoryFileSystem,
     armed: AtomicBool,
     injections: AtomicUsize,
 }
@@ -382,16 +382,16 @@ impl SameVersionWinner {
     }
 }
 
-impl crate::arrowfs::ArrowFileSystem for SameVersionWinner {
+impl crate::holder::arrowfs::ArrowFileSystem for SameVersionWinner {
     fn type_name(&self) -> &str {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::arrowfs::FileInfo> {
+    fn file_info(&self, path: &str) -> crate::Result<crate::holder::arrowfs::FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
         self.inner.list(path, recursive)
     }
 
@@ -2667,7 +2667,7 @@ mod planning {
         Field, FormatVersion, IOBase, PartitionSpec, Table, collect, root, trade_schema, trades,
     };
     use crate::DataType;
-    use crate::local::Folder;
+    use crate::holder::local::Folder;
 
     /// A table partitioned by venue, with one commit per venue.
     ///
@@ -2987,8 +2987,8 @@ mod handles {
     };
     use crate::IOMedia;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
-    use crate::local::Folder;
+    use crate::holder::Buffer;
+    use crate::holder::local::Folder;
     use crate::{DataType, MimeType};
 
     /// Create a venue-partitioned table and return the folder addressing it.
@@ -3837,7 +3837,8 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
 #[test]
 fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let filesystem = Arc::new(PublishedHintFailure::default());
-    let folder = crate::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+    let folder =
+        crate::holder::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -3872,7 +3873,8 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 #[test]
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
-    let folder = crate::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+    let folder =
+        crate::holder::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -5356,7 +5358,7 @@ mod line_projection {
     use crate::IOMedia;
     use crate::Url;
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::text::TextOptions;
 
     const HEADER: &str = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+)\s*";
@@ -5448,7 +5450,7 @@ mod manifest_planning {
     use super::trade_schema;
     use crate::IOBase;
     use crate::Scalar;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
 
     /// One entry carrying every statistic a manifest can record.
     fn full_entry(index: i64) -> ManifestEntry {

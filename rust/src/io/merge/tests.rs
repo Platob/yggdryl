@@ -7,7 +7,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::BatchReader;
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{DataType, Field, Url};
 use crate::{IOBase, IOMedia};
 

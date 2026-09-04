@@ -14,7 +14,7 @@ use std::hint::black_box;
 use yggdryl::IOBase;
 use yggdryl::avro::AvroOptions;
 use yggdryl::generic::IORecordOptions;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Url, avro};
 
 /// Rows in the sweep fixture.

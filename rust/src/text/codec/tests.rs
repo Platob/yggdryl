@@ -1,6 +1,6 @@
 use super::{Json, Jsonl, TextCodec, Toml, Yaml};
 use crate::IOBase;
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{MimeType, Scalar, Url};
 use std::sync::atomic::{AtomicUsize, Ordering};
 

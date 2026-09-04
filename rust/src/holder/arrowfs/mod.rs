@@ -17,7 +17,7 @@
 //!   close, because an Arrow filesystem replaces files rather than writing
 //!   ranges.
 //!
-//! All three are lazy in the same way everything in [`crate::io`] is:
+//! All three follow the shared [`IOBase`](crate::IOBase) laziness contract:
 //! constructing one performs no filesystem call, reading something that does
 //! not exist yields nothing, and writing creates it. Because the vtable adds
 //! no dependency the module is unconditional, and every wrapper and record
@@ -27,12 +27,12 @@
 //! Two [`ArrowFileSystem`] implementations ship in-tree:
 //! [`MemoryFileSystem`], the "memory" filesystem the tests and benchmarks
 //! run on, and [`LocalFileSystem`], a thin `std::fs` mapping that proves the
-//! vtable against a real OS filesystem without replacing [`crate::local`].
+//! vtable against a real OS filesystem without replacing [`crate::holder::local`].
 //!
 //! ```
 //! use std::sync::Arc;
 //!
-//! use yggdryl::arrowfs::{Folder, MemoryFileSystem};
+//! use yggdryl::holder::arrowfs::{Folder, MemoryFileSystem};
 //! use yggdryl::IOBase;
 //!
 //! # fn main() -> yggdryl::Result<()> {
@@ -51,7 +51,7 @@
 
 use std::sync::Arc;
 
-use crate::generic::Holder;
+use crate::holder::Holder;
 
 mod file;
 mod folder;

@@ -11,7 +11,7 @@ use parquet::basic::Compression;
 use super::{Parquet, ParquetOptions};
 use crate::arrow::arrow_schema_from_field;
 use crate::generic::{IORecordOptions, RecordOptions};
-use crate::io::Buffer;
+use crate::holder::Buffer;
 use crate::{DataType, Field, MediaType, Url};
 use crate::{IOBase, IOMedia};
 
@@ -757,7 +757,7 @@ mod pushdown {
     }
 
     /// A file wide enough that skipping two columns is measurable.
-    fn stored() -> Parquet<crate::io::Buffer> {
+    fn stored() -> Parquet<crate::holder::Buffer> {
         let rows = 4_096;
         let ids: Vec<i64> = (0..rows).collect();
         let batch = RecordBatch::try_new(
@@ -896,7 +896,7 @@ mod limits {
 
     use super::{Parquet, ParquetOptions, batch, handle, reader, root};
     use crate::generic::{IORecordOptions, RecordOptions};
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{IOBase, IOMedia};
 
     /// The total rows a handle yields under `options`.
@@ -1083,7 +1083,7 @@ mod geospatial {
 
     use super::{Parquet, handle};
     use crate::ArrowCast;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
     use crate::{IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.

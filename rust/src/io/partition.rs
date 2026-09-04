@@ -26,7 +26,8 @@ use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, S
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::field::cast::cast_field_array;
-use crate::generic::{Holder, IORecordOptions, RecordOptions};
+use crate::generic::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
 use crate::{ArrowCast, DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 

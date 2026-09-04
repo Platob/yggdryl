@@ -11,7 +11,7 @@ use criterion::{BenchmarkGroup, Criterion};
 use yggdryl::DataType;
 use yggdryl::avro::Avro;
 use yggdryl::generic::RecordOptions;
-use yggdryl::io::Buffer;
+use yggdryl::holder::Buffer;
 use yggdryl::ipc::Ipc;
 use yggdryl::parquet::Parquet;
 use yggdryl::{IOBase, IOMedia};

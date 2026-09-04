@@ -3,7 +3,6 @@
 mod arithmetic;
 pub(crate) mod decimal;
 mod enum_scalar;
-mod holder;
 mod inference;
 pub(crate) mod iso;
 mod magic;
@@ -20,7 +19,6 @@ pub mod wkb;
 
 pub(crate) use arithmetic::Arithmetic;
 pub use enum_scalar::EnumScalar;
-pub use holder::Holder;
 pub use magic::MAGIC_PROBE_LEN;
 #[cfg(feature = "arrow")]
 pub use media::Media;

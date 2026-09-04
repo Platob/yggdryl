@@ -19,15 +19,15 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group};
 use smol_str::SmolStr;
 use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+use yggdryl::holder::local::Folder;
 use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
-use yggdryl::io::Buffer;
 use yggdryl::io::partition::partition_text;
-use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// Distinct venue values the planning tables partition on.
@@ -798,7 +798,7 @@ fn read_benchmarks(criterion: &mut Criterion) {
 /// jittered backoff - which is exactly what is being measured.
 ///
 /// One mutex serializes the append calls themselves. The local backend is a
-/// memory mapping, and `yggdryl::local` documents the consequence: two
+/// memory mapping, and `yggdryl::holder::local` documents the consequence: two
 /// writers truncating one mapped file at the same instant can raise SIGBUS,
 /// which no retry can catch. The gate stands in for the atomic PUT an object
 /// store gives every writer, while the *handles* still race optimistically -
@@ -882,7 +882,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
 /// is a regression.
 fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use yggdryl::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, MemoryFileSystem};
+    use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, MemoryFileSystem};
     use yggdryl::iceberg::Catalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
@@ -941,7 +941,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     };
     let counted = || {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = yggdryl::arrowfs::Folder::from_location(
+        let warehouse = yggdryl::holder::arrowfs::Folder::from_location(
             Arc::clone(&filesystem) as Arc<dyn ArrowFileSystem>,
             "warehouse",
         )

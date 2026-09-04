@@ -38,7 +38,7 @@
 //! ```no_run
 //! use yggdryl::DataType;
 //! use yggdryl::iceberg::Catalog;
-//! use yggdryl::local::Folder;
+//! use yggdryl::holder::local::Folder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let catalog = Catalog::new(Folder::new(Folder::temporary()?.path()?.join("warehouse"))?);
@@ -98,7 +98,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Table;
 use crate::IOBase;
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::metadata::Metadata;
 use crate::{Error, Result, Scalar};
 
@@ -272,20 +272,22 @@ fn resolve(warehouse: &(impl IOBase + ?Sized), name: &str) -> Result<Holder> {
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
         Holder::Folder(_) | Holder::ArrowFolder(_) => Ok(child),
-        Holder::Path(path) => Ok(Holder::Folder(crate::local::Folder::from_url(
+        Holder::Path(path) => Ok(Holder::Folder(crate::holder::local::Folder::from_url(
             path.url().clone(),
         )?)),
         Holder::File(file) => match file.url() {
-            Some(url) => Ok(Holder::Folder(crate::local::Folder::from_url(url.clone())?)),
+            Some(url) => Ok(Holder::Folder(crate::holder::local::Folder::from_url(
+                url.clone(),
+            )?)),
             None => Err(invalid(SmolStr::new_static(
                 "expected a located folder for a catalog name, got a handle with no URL",
             ))),
         },
-        Holder::ArrowPath(path) => Ok(Holder::ArrowFolder(crate::arrowfs::Folder::new(
+        Holder::ArrowPath(path) => Ok(Holder::ArrowFolder(crate::holder::arrowfs::Folder::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
-        Holder::ArrowFile(file) => Ok(Holder::ArrowFolder(crate::arrowfs::Folder::new(
+        Holder::ArrowFile(file) => Ok(Holder::ArrowFolder(crate::holder::arrowfs::Folder::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),

@@ -6,7 +6,7 @@
 use std::ffi::OsString;
 use std::sync::Arc;
 
-use yggdryl::local::Folder;
+use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, FixRegistry};
 
 const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";

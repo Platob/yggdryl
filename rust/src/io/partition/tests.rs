@@ -182,8 +182,9 @@ mod lazy_folder_reader {
 
     use super::super::folder_reader;
     use super::prices;
-    use crate::arrowfs::{ArrowFileSystem, File, FileInfo, FileInfos, MemoryFileSystem};
-    use crate::generic::{Holder, IORecordOptions, RecordOptions};
+    use crate::generic::{IORecordOptions, RecordOptions};
+    use crate::holder::Holder;
+    use crate::holder::arrowfs::{ArrowFileSystem, File, FileInfo, FileInfos, MemoryFileSystem};
     use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
     use crate::{IOBase, Listing};
 
@@ -467,11 +468,15 @@ mod lake {
 
     use crate::DataType;
     use crate::IOMedia;
-    use crate::generic::{Holder, IORecordOptions};
+    use crate::generic::IORecordOptions;
+    use crate::holder::Holder;
 
     /// Build an empty `lake/` under the temp directory and hold it as a folder.
     fn lake(label: &str) -> (PathBuf, Holder) {
-        let mut root = crate::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!("yggdryl-lake-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();

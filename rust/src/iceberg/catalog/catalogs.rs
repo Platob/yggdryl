@@ -6,7 +6,7 @@ use super::{
     write_properties,
 };
 use crate::IOBase;
-use crate::generic::Holder;
+use crate::holder::Holder;
 use crate::metadata::Metadata;
 use crate::{IOKind, Result};
 

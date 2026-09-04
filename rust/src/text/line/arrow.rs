@@ -9,8 +9,9 @@ use arrow_schema::{DataType as ArrowDataType, Schema};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::BatchReader;
-use crate::generic::{Holder, IORecordOptions, iso};
-use crate::io::Buffer;
+use crate::generic::{IORecordOptions, iso};
+use crate::holder::Buffer;
+use crate::holder::Holder;
 use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone};
 use crate::{Cursor, IOBase};
 

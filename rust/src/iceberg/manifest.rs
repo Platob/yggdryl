@@ -724,7 +724,7 @@ fn parse_manifest(bytes: &[u8]) -> Result<OfficialManifest> {
 
 /// Build an in-memory official-reader view of a fixed UUID manifest.
 fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
-    let source = crate::io::Buffer::from(bytes);
+    let source = crate::holder::Buffer::from(bytes);
     let container = crate::avro::read_container(&source)?;
     let schema = container.schema.into_json();
     if !contains_fixed_uuid(&schema) {
@@ -748,7 +748,7 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
-    let mut output = crate::io::Buffer::new();
+    let mut output = crate::holder::Buffer::new();
     crate::avro::write_container(&mut output, &schema, &metadata_refs, &container.rows)?;
     let output = output.into_bytes();
     let limit = crate::Limits::default().max_input_bytes();
@@ -2408,7 +2408,7 @@ mod official_read_tests {
 
     use crate::DataType;
     use crate::IOBase;
-    use crate::io::Buffer;
+    use crate::holder::Buffer;
 
     struct OversizedHandle {
         handle: Buffer,
