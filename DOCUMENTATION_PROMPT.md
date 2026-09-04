@@ -53,6 +53,7 @@ nav:
       - temporal: types/temporal.md
       - text: types/text.md
       - ascii: types/ascii.md
+      - guid: types/guid.md
       - bytes: types/bytes.md
       - nested: types/nested.md
       - geospatial: types/geospatial.md
@@ -84,6 +85,10 @@ nav:
       - toml: text/toml.md
   - Identifiers:
       - uri: uri.md
+  - FIX:
+      - overview: fix/index.md
+      - registry: fix/registry.md
+      - message: fix/message.md
   - Runtime:
       - arrow: arrow.md
       - expression: expression.md
@@ -244,6 +249,8 @@ throughout. Sweep every page, every example, and every prose mention:
 | `TemporalRef` | `&Temporal` |
 | `field::temporal::Timestamp` | `types::temporal::DateTime64Type` |
 | `TimestampScalar` | `DateTime64Scalar` |
+| `AsciiDictionary` | `AsciiEnum` |
+| `Ascii32` / `Ascii64` / `Ascii128` | `Ascii` / `FixedAscii(n)` |
 | `EnumScalar` | `Enum` |
 | `Xxh3_64` / `Xxh3_128` (Rust, TS classes, `Js*` aliases) | `Xxh3` / `Xxh128` |
 | `xxhash.xxh3_64(…)` / `xxhash.xxh3_128(…)` (Python, JS) | `xxhash.xxh3(…)` / `xxhash.xxh128(…)` |

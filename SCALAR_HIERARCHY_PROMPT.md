@@ -219,13 +219,20 @@ eleven families:
 | `ascii/` | `Ascii`, `FixedAscii`, `Country`, `Currency`, `Mic`, `Cfi` | `AsciiType` | `Ascii` | `Ascii(Ascii)` |
 | `bytes/` | `Binary`, `FixedSizeBinary`, `LargeBinary`, `BinaryView` | `BytesType` | `Bytes` | `Bytes(Bytes)` |
 | `nested/` | 11 | `NestedType` | `Nested` (3 shapes) | `Nested(Nested)` |
+| `guid/` | `Guid` | — | — | `Guid(Guid)` |
 | `geospatial/` | `Geometry`, `Geography` | `GeospatialType` | `Geospatial` | `Geospatial(Geospatial)` |
 
-Five exceptions, and only five. Each is stated in its module doc:
+Six exceptions, and only six. Each is stated in its module doc:
 
 - **`boolean/` holds two families.** `Null` and `Boolean` are both
   parameterless, so neither earns a family enum, and neither would fill a
   folder. They share one.
+- **`guid/` is one member with no family enum.** The leaf sits at tier 1, as
+  `Boolean` does, but it keeps a folder of its own because it carries a value
+  contract nothing else shares: sixteen bytes under the canonical `arrow.uuid`
+  extension, rendered as RFC 9562's hyphenated form, with `Scalar::Bytes` of
+  sixteen and bare 32-digit hex accepted on the way in. It already has its own
+  `DataTypeKind`, so the kind list needs no change for it.
 - **`Integer` has ten members where `IntegerType` has eight.** Arrow has no
   128-bit integer, so `Int128` and `UInt128` are value-only and infer to
   `Decimal(n, 0)`. They cost the family 16 bytes extra (32 rather than 16);
@@ -254,6 +261,32 @@ Five exceptions, and only five. Each is stated in its module doc:
   sequence, never a struct. So `Nested` keeps three leaves, `dtype()` answers
   the most general datatype for the shape, and a `Field` is what narrows it.
   Eleven nested leaves would be false precision.
+
+### The ASCII family's shared contract
+
+`datatype/coded.rs` states the reason the four codes sit in this family rather
+than in one of their own: *"the value contract is the ASCII contract,
+unchanged"* — `ascii_width` answers for a code exactly as for a width, and
+`ascii_packed` and `AsciiEnum` work over a code with nothing added. What a code
+adds is identity and a constant, and neither is a value family. By the earned
+test in `HIERARCHY_PROMPT.md` a separate `code/` family would fail the second
+half: no behavior the root cannot express.
+
+The constant is what the trait floor is for:
+
+```rust
+pub trait AsciiValue: ScalarValue {
+    /// The fixed byte width, or `None` when the datatype carries it.
+    const WIDTH: Option<i32>;
+    fn as_str(&self) -> &str;
+}
+```
+
+`Country::WIDTH` is `Some(2)`, `Cfi::WIDTH` is `Some(6)`, `Ascii::WIDTH` is
+`None`. The per-width monomorphization `datatype/coded.rs` already performs by
+hand becomes a trait constant, and the shared rule — ASCII bytes, none above
+`0x7F`, no NUL, trailing `\0` trimmed on render — is stated once and
+implemented six times.
 
 ### This fixes a correctness bug
 
@@ -284,12 +317,16 @@ Measured with `rustc -O`, the full eleven-family set:
 | Family | Bytes | | Family | Bytes |
 | --- | --- | --- | --- | --- |
 | `Boolean` | 1 | | `Temporal` | 24 |
+| `Guid` | 16 | | `Ascii` | 32 |
 | `Enum` | 2 | | `Binary` | 24 |
 | `Floating` | 16 | | `Geospatial` | 24 |
 | `Integer` | 32 | | `Nested` | 24 |
 | `Decimal` | 48 | | `Text` / `Ascii` | 32 |
 
-`size_of::<Scalar>()` stays **48**. `Decimal` at 48 and align 16 already sets
+`size_of::<Scalar>()` stays **48**, re-measured with the six-member `Ascii`
+family and `Guid` in place; `Guid` is sixteen bytes and `Copy`, holding the
+`u128` its storage bytes read big-endian, which is what `guid_packed` already
+answers and what a stable hash already hashes. `Decimal` at 48 and align 16 already sets
 the ceiling, so `Text`, `Ascii`, and `Binary` becoming real families costs
 nothing at the root while each becomes a small value in its own right.
 
@@ -299,7 +336,11 @@ nothing at the root while each becomes a small value in its own right.
   `Text`, `Ascii` splits out of it, and the seven nested kinds — `List`,
   `Struct`, `Union`, `Map`, `Dictionary`, `RunEndEncoded`, `Variant` — collapse
   into `Nested`, with `NestedType` answering which shape and `is_wrapper`
-  moving onto it.
+  moving onto it. `Guid` already has its own kind and keeps it. The `Ascii`
+  split is not cosmetic: `Ascii`, `FixedAscii`, `Country`, `Currency`, `Mic`,
+  and `Cfi` all report `DataTypeKind::String` today, so nothing at the kind
+  level tells a currency from free text — the same lost identity as the
+  `dtype()` arms above.
 - `Floating` replaces today's `Float` enum, which already has the family shape
   and only needs the folder's name. Same absorption as `Integer`.
 - `types::text::Text` and `media::text::Text<H>` are two types in two layers.
@@ -331,6 +372,7 @@ pub enum Scalar {
     Temporal(Temporal),
     Text(Text),
     Ascii(Ascii),
+    Guid(Guid),
     Bytes(Bytes),
     Geospatial(Geospatial),
     Nested(Nested),
@@ -391,6 +433,7 @@ pub struct DateTime64 { count: i64, unit: TimeUnit, timezone: Timezone }
 pub struct Date32     { count: i32, unit: TimeUnit, timezone: Timezone }
 #[repr(transparent)] pub struct Utf8(SmolStr);
 #[repr(transparent)] pub struct Binary(Arc<[u8]>);   // a Bytes leaf, not the family
+#[repr(transparent)] pub struct Guid(u128);          // the storage bytes, big-endian
 #[repr(transparent)] pub struct Sequence(Arc<[Scalar]>);
 ```
 
@@ -468,6 +511,12 @@ let epoch: i64 = at.count();                                // tier 3, 16 bytes,
 
 fn round<T: TemporalValue>(value: T, unit: TimeUnit) -> Result<T> { value.with_unit(unit) }
 ```
+
+`DataType::scalar` and `Field::scalar` are already the one coercion entry point
+on `main`. `ScalarValue::from_scalar` narrows a value that exists to its leaf
+and must **route through them**, never re-validate — the value contract is
+centralized there, and a second copy inside the trait is the duplicate
+`AGENTS.md` forbids.
 
 `TemporalRef<'a>` is retired. It existed only because there was no concrete
 struct to borrow; `Temporal` is that value now, and it implements the family
@@ -579,6 +628,7 @@ const _: () = assert!(size_of::<Scalar>() == 48);
 const _: () = assert!(size_of::<DateTime64>() == 16);
 const _: () = assert!(size_of::<Temporal>() == 24);
 const _: () = assert!(size_of::<Bytes>() == 24);
+const _: () = assert!(size_of::<Guid>() == 16);
 const _: () = assert!(size_of::<Floating>() == 16);
 const _: () = assert!(size_of::<Int32>() == 4);
 ```

@@ -86,6 +86,7 @@ pub enum DataType {
     Decimal(DecimalType),
     Text(TextType),
     Ascii(AsciiType),
+    Guid,
     Bytes(BytesType),
     Temporal(TemporalType),
     Nested(NestedType),
@@ -103,6 +104,7 @@ pub enum DataType {
 | `BytesType` | 4 | `FixedSizeBinary(i32)` carries its width; the family is `Bytes`, not `Binary`, because `Binary` is one of its own members |
 | `TemporalType` | 8 | `DateTime64 { unit, timezone }`, `Time32(TimeUnit)`, … carried inline |
 | `NestedType` | 11 | `List(Arc<Field>)`, `Struct(Fields)`, `Union(UnionFields, UnionMode)`, `Arc<DictionaryType>`, `Arc<MapType>`, `Arc<RunEndEncodedType>`, `Variant` |
+| — (`Guid`) | 1 | parameterless; no family enum, the leaf sits at tier 1 |
 | `GeospatialType` | 2 | `Geometry(Arc<GeospatialParams>)`, `Geography(…)` |
 
 Parameters ride inline in the family enum's variants; a separate leaf struct
@@ -308,8 +310,15 @@ Revisit the family tier when a second columnar encoding exists. Not before.
 | identifier | `FromStr`, `Display` | — (newtype narrowing) | `Uri`, `Url(Uri)`, `Urn(Uri)` | conforms |
 | digest | `Digester` | `DigestAlgorithm` | the four resumable states | conforms |
 | expression | — | `Expression` (recursive, by node class) | leaf nodes | conforms |
+| FIX vocabulary | `FixKey` resolution | `FixBranch`, `FixId` | `FixRegistry`, `FixMsg`, the `FixField` view | conforms; see below |
 
-Three of nine already conform. `Uri`/`Url`/`Urn` narrow by newtype rather than
+`fix/` arrived on `main` after these briefs were written and already follows
+the rule unasked: a FIX field is a core `Field` behind a `fix:` protocol view,
+nesting reuses `Struct` and `List` rather than adding a component or group
+class, and `FixRegistry` persists through `IOBase`. It needs no tiering — only
+a home in the layer tree, which `REORGANIZATION_PROMPT.md` now gives it.
+
+Four of ten already conform. `Uri`/`Url`/`Urn` narrow by newtype rather than
 by enum, which is the same rule with a cheaper middle floor — document it as
 conforming rather than converting it.
 

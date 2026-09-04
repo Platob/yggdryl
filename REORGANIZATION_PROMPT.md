@@ -31,8 +31,8 @@ move, and all three change behavior:
 
 - Root holds the crate's contracts as one readable index: `IOBase`, `IOMedia`,
   the three storage roles, `Error`, `Metadata`, and every shared enum.
-- Nine layer folders: `types`, `text`, `arrow`, `expression`, `uri`, `holder`,
-  `coding`, `media`, `xxhash`.
+- Ten layer folders: `types`, `text`, `arrow`, `expression`, `uri`, `holder`,
+  `coding`, `media`, `xxhash`, `fix`.
 - One type family lives in one folder: `types/<family>/{dtypes,fields,scalars,casts}.rs`.
 - `generic/` and `io/` no longer exist.
 - Two duplicate public `Coded<H>` types and two public `Text` types are resolved.
@@ -123,6 +123,7 @@ Folders. One abstraction layer each.
 | `coding/` | content codings over a handle |
 | `media/` | record encodings and the table format |
 | `xxhash/` | the xxHash protocol implementation |
+| `fix/` | the FIX vocabulary, registry, shard store, and message |
 
 ## Target tree — `types/`
 
@@ -159,6 +160,7 @@ types/
   text/             Utf8, LargeUtf8, Utf8View
   ascii/            Ascii, FixedAscii, Country, Currency, Mic, Cfi, AsciiEnum, vocabulary.rs
   bytes/            Binary, FixedSizeBinary, LargeBinary, BinaryView
+  guid/             Guid
   nested/           List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Variant, Dictionary, Map, RunEndEncoded
   geospatial/       Geometry, Geography, wkb.rs
 ```
@@ -324,6 +326,7 @@ codec's own complexity, not a layout problem, and splitting them here would
 hide the reorganization inside unrelated churn:
 
 `iceberg/{tests,manifest,table,metadata,scan}.rs`, `avro/{tests,batch,container}.rs`,
+`fix/{tests,registry}.rs`,
 `arrow/{value,mod}.rs`, `expression/{parser,mod,bind}.rs`, `parquet/{tests,mod}.rs`,
 `xxhash/tests.rs`, `arrowfs/tests.rs`.
 
@@ -430,6 +433,17 @@ Split `field/cast/plan.rs` (5936 lines, the largest file in the crate):
 Then delete `datatype/`, `field/`, `generic/`, and `io/`. They must already be
 empty; a leftover file means an earlier phase was incomplete.
 
+### Phase 8b — `fix/`
+
+`fix/` becomes its own layer folder and moves as a unit: `mod.rs`,
+`registry.rs`, `field.rs`, `msg.rs`, `store.rs`, `global.rs`, `tests.rs`. It
+needs no restructuring — a FIX field is already a core `Field` behind a `fix:`
+protocol view, and nesting already reuses `Struct` and `List`. Two things it
+leans on move with their owners and must not be duplicated for it:
+`local::Folder::{temporary, home, config}` stay in `holder/local/`, and the
+`from_*_scalar` / `into_*_scalar` entry points stay with their formats under
+`text/`.
+
 ### Phase 9 — `text/` and `uri/`
 
 Move `json/`, `yaml/`, `toml/` under `text/`; `generic/text.rs` →
@@ -451,6 +465,8 @@ plus a module folder.
 | `tests/uri.rs` | `uri/{parser,url,urn,glob,hive,pattern}.rs` |
 | `tests/arrow.rs` | `arrow/{value,rows,batch,cast_coverage}.rs` |
 | `tests/expression.rs`, `tests/xxhash.rs` | as today |
+| `tests/fix.rs` | `fix/{registry,field,msg,store,global}.rs`; folds in today's `fix_global_env`, `fix_global_home`, `fix_global_install` |
+| `tests/holder.rs` | also folds in today's `local_roots.rs` |
 | `tests/allocations.rs`, `tests/docs_index.rs`, `tests/interop.rs` | cross-cutting; keep as separate binaries |
 
 Fold today's loose binaries into the mirror: `batch_cast`, `cast_coverage`,
