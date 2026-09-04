@@ -310,8 +310,9 @@ impl Field {
 
     /// Returns one nested child by path, an exact name first.
     ///
-    /// [`DataType::get_field_by_path`] carries the rule; this node's datatype
-    /// is where it starts.
+    /// [`DataType::get_field_by_path`] carries the rule, including the one
+    /// that makes a list transparent - `orders.price` reaches the price of an
+    /// `array<struct>` item; this node's datatype is where it starts.
     pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
         self.dtype.get_field_by_path(path)
     }
