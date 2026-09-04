@@ -16,6 +16,48 @@ use super::nested::{
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 
 impl DataType {
+    /// The canonical value this datatype holds, from any value it accepts.
+    ///
+    /// This is the crate's one value contract in one call: the value is
+    /// checked against the datatype and rewritten into the exact
+    /// representation it declares - an integer narrowed to its width, a
+    /// decimal restated at its scale, a temporal restated at its unit, an
+    /// ASCII value trimmed of the padding its storage adds. A value that
+    /// already matches comes back untouched, so a correctly built value costs
+    /// one walk and no allocation, and nothing downstream checks it again.
+    ///
+    /// A null is the null of this datatype: nullability belongs to the
+    /// [`crate::Field`] holding the column, never to the value in it, so
+    /// [`crate::Field::scalar`] is where a column refuses one.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // The padded spelling storage holds is the same value, trimmed.
+    /// assert_eq!(DataType::Currency.scalar("USD\0")?, Scalar::from("USD"));
+    /// // A decimal is restated at the scale the column declares.
+    /// assert_eq!(
+    ///     DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?,
+    ///     Scalar::d128(10_125_000_000, 8)
+    /// );
+    /// // An integer narrows to the width it is declared at.
+    /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
+    /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);
+    ///
+    /// assert!(DataType::Currency.scalar("EURO").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the value's path when it is not a value this
+    /// datatype accepts.
+    pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar> {
+        crate::field::dtype_scalar(self, value.into())
+    }
+
     /// Returns a deterministic cross-process hash of the canonical display.
     pub fn stable_hash(&self) -> u64 {
         crate::stable_hash_display(self)

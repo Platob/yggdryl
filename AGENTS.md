@@ -191,10 +191,11 @@ Canonical core spellings:
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
   `into_arrow`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `into_scheme_compat`, `dense_union`,
-  `decimal`, `time`, `ascii`, `ascii_width`, `is_ascii`, `code_name`.
+  `decimal`, `time`, `ascii`, `ascii_width`, `is_ascii`, `code_name`,
+  `scalar`.
 - `Field`: `from_parts`, `from_str`, `from_arrow`, `from_arrow_ref`,
   `from_json`, `into_arrow`, `into_arrow_ref`, `into_json`, `default_value`,
-  `into_scheme_compat`. Use `field`, never `schema`, in options and accessors.
+  `scalar`, `into_scheme_compat`. Use `field`, never `schema`, in options and accessors.
   `as_<protocol>`/`as_<protocol>_mut` borrow one protocol's view beside the
   runtime-scheme `protocol`/`protocol_mut` pair. `as_field_properties` and
   `as_arrow_properties` are two deliberate spellings in that family:
@@ -395,6 +396,14 @@ Iceberg contract:
   passwords may contain `:`. S3 authority inference treats the first path part
   ending in `.com` or `.io` as a hostname; otherwise it is the bucket. Infer
   region lazily from recognized AWS hosts.
+- `DataType::scalar` is the one value contract: it checks a value against the
+  datatype and rewrites it into the exact representation that datatype
+  declares - an integer narrowed, a decimal restated at its scale, a temporal
+  at its unit, an ASCII value trimmed of its padding - and returns an
+  unchanged value untouched. `Field::scalar` is that plus the field's
+  nullability and name. Everything that turns a caller's value into a stored
+  one goes through them: never wrap a single value in a synthetic row, and
+  never re-check a value a `scalar` call already answered.
 - Errors contain expected, actual, and location: nested path, byte position,
   batch index, or URL. Use typed variants, canonical formatting, bounded user
   text, and the shared diff renderer. Mutations fail atomically.
@@ -474,6 +483,9 @@ Both extensions:
   identity.
 - Infer/cast once at the boundary, then redirect to the most specific native
   method. No duplicated parser, schema, suffix, codec, scalar, or record logic.
+  A value entering a datatype or a field crosses through `DataType::scalar` or
+  `Field::scalar`, never through the host runtime's own casting: PyArrow and
+  Arrow JS know none of the value rules this crate owns.
 - Explicit scalar conversion pairs are Python `as_py`/`from_py` and JavaScript
   `asJs`/`fromJs`. Native and Arrow values map through `Scalar` losslessly when
   the target runtime can represent them.

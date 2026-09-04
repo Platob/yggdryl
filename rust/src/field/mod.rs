@@ -74,7 +74,8 @@ pub use diff::{Differences, OwnedDifferences};
 pub(crate) use diff::{dtypes_equal, show_diff};
 pub use pretty::Pretty;
 pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef};
-pub(crate) use value::validate_dtype_value_for;
+use value::root_path;
+pub(crate) use value::{dtype_scalar, validate_dtype_value_for};
 
 /// A null-typed field.
 pub type NullField = TypedField<scalar::Null>;
@@ -241,6 +242,47 @@ impl Field {
     /// that null through a physically nullable logical child when possible.
     pub fn default_value(&self) -> Result<Scalar> {
         default_value_for_field(self)
+    }
+
+    /// The canonical value this field holds, from any value it accepts.
+    ///
+    /// [`DataType::scalar`] with this field's nullability on top: the value is
+    /// checked and rewritten by the datatype, and a null is refused here when
+    /// the column cannot hold one. Every other value contract in the crate is
+    /// this one, so a value built here is a value every reader accepts.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let ccy = Field::new("ccy", DataType::Currency, false);
+    /// // The padded spelling storage holds canonicalizes to the text.
+    /// assert_eq!(ccy.scalar("USD\0")?, Scalar::from("USD"));
+    /// assert!(ccy.scalar(Scalar::Null).is_err());
+    /// assert_eq!(
+    ///     Field::new("ccy", DataType::Currency, true).scalar(Scalar::Null)?,
+    ///     Scalar::Null
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming this field when the value is not one its
+    /// datatype accepts, or is null under a field that is not nullable.
+    pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar> {
+        let value = value.into();
+        if !self.is_nullable() && crate::datatype::value_is_logically_null(self.dtype(), &value) {
+            // The same refusal a column value takes, so one field answers one
+            // way whether the value arrives alone or inside a row.
+            return Err(Error::InvalidRecord {
+                path: SmolStr::from(root_path(self.name())),
+                reason: SmolStr::new_static("non-nullable field received null"),
+            });
+        }
+        dtype_scalar(self.dtype(), value)
+            .map_err(|error| value::rooted_at_field(error, self.name()))
     }
 
     /// Checks this field's datatype and returns an allocation-free typed view.

@@ -262,6 +262,7 @@
   pub fn from_str(input: &str) -> Result<Self>
 
 ### yggdryl::datatype::scalar  [rust\src\datatype\scalar.rs]
+  pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar>
   pub fn stable_hash(&self) -> u64
   pub const fn id(&self) -> DataTypeId
   pub const fn kind(&self) -> DataTypeKind
@@ -916,6 +917,7 @@
   pub struct Field
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
   pub fn default_value(&self) -> Result<Scalar>
+  pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar>
   pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
   pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
   pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,

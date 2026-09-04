@@ -103,6 +103,23 @@ pub(crate) fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Resu
     })
 }
 
+/// The canonical value one datatype holds, from any value it accepts.
+///
+/// Both halves of the value contract in one walk over one value: the check
+/// that the datatype accepts it, then the rewrite into the exact
+/// representation the datatype declares. Nothing wraps the value in a
+/// synthetic row to get there, which is what a scalar used to cost.
+pub(crate) fn dtype_scalar(dtype: &DataType, value: Scalar) -> Result<Scalar> {
+    validate_dtype_value_for(dtype, &value)?;
+    if matches!(value, Scalar::Null) {
+        return Ok(value);
+    }
+    // The value has no field around it, so a refusal is already rooted at the
+    // value itself, exactly as the check above roots one.
+    let (canonical, changed) = canonicalize_dtype_value(dtype, &value)?;
+    Ok(if changed { canonical } else { value })
+}
+
 /// Rewrite one row value into the exact representation a root field declares.
 pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     if let Some(record) = value.as_record() {
@@ -132,8 +149,13 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     }
 }
 
+/// Re-root one value refusal at the field that refused it.
+pub(crate) fn rooted_at_field(error: Error, name: &str) -> Error {
+    prepend_canonical_error(error, PathSegment::Field(SmolStr::new(name)))
+}
+
 /// Render the `$`-rooted path of a schema root.
-fn root_path(name: &str) -> String {
+pub(crate) fn root_path(name: &str) -> String {
     let mut path = String::from("$");
     crate::path::push_field_name(&mut path, name);
     path

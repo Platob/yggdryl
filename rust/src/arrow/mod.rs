@@ -840,14 +840,9 @@ pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
 }
 
 pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {
-    // Wrap the single value in a one-column row so it goes through exactly the
-    // same schema-directed validator every other value does.
-    let root = Field::new("scalar", DataType::from_fields([field.clone()])?, false);
-    let row = root.canonicalize_value(Scalar::from_sequence([value]))?;
-    row.as_sequence()
-        .and_then(|values| values.first())
-        .cloned()
-        .ok_or_else(|| Error::internal("arrow::validate_scalar_value"))
+    // The field's own value contract, which is the same walk a column value
+    // takes with no synthetic row built around it.
+    Ok(field.scalar(value)?)
 }
 
 /// One real Arrow struct scalar paired with its exact Yggdryl root field.
