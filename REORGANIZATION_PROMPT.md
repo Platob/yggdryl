@@ -17,11 +17,15 @@ Follow `AGENTS.md`. This file contains only reorganization decisions; where it
 contradicts an existing `AGENTS.md` layout rule, `AGENTS.md` is rewritten in
 Phase 12 to match this file.
 
-`SCALAR_HIERARCHY_PROMPT.md` is the follow-on semantic change: it reshapes
-`Scalar` into family tiers and renames `DataType::Timestamp` to `DateTime64`.
-It depends on the `types/<family>/` tree this brief creates and must land after
+Three follow-on briefs depend on the tree this one creates and must land after
 it, never interleaved — this brief's invariant is that the test count does not
-move, and that one changes behavior.
+move, and all three change behavior:
+
+| Brief | Change |
+| --- | --- |
+| `SCALAR_HIERARCHY_PROMPT.md` | `Scalar` into family tiers; `DataType::Timestamp` to `DateTime64`; `Timezone` interned |
+| `HIERARCHY_PROMPT.md` | the same three-floor rule for `DataType`, `Field`, `Holder`, `Media`, and the conformance sweep |
+| `DOCUMENTATION_PROMPT.md` | every docs page rewritten to the new tree, with a use/narrow/optimize ladder in all three languages |
 
 ## Outcome
 
