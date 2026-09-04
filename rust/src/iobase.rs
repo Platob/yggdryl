@@ -11,16 +11,16 @@
 //! the bytes: an optional [`Url`] naming where they live, and a [`MediaType`]
 //! naming what they are.
 //!
-//! The core ships [`Buffer`], an auto-scaling in-memory implementation, and
+//! The core ships [`Buffer`](crate::io::Buffer), an auto-scaling in-memory implementation, and
 //! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
 //! memory-mapped local file. Two wrapping handles sit over any of them and are
-//! handles themselves: [`Coded`] presents the decoded bytes of a compressed
+//! handles themselves: [`Coding`](crate::coding::Coding) presents the decoded bytes of a compressed
 //! resource, and [`crate::buffered::Buffered`] serves reads from a page cache
 //! whose header and footer pages are pinned. Anything else - an object store,
 //! an Arrow filesystem - implements the same trait outside the core.
 //!
 //! ```
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::{IOBase, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut buffer = Buffer::new();
@@ -202,7 +202,7 @@ pub trait IOBase: Send + IOMedia {
     /// resource.
     ///
     /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::new();
@@ -505,7 +505,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::MimeType;
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// let mut notes = Buffer::new();
     /// notes.set_media_type(MimeType::PLAIN_TEXT.into());
@@ -548,7 +548,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::MimeType;
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// let mut trades = Buffer::new();
     /// trades.set_media_type(MimeType::ARROW_FILE.into());
@@ -636,7 +636,7 @@ pub trait IOBase: Send + IOMedia {
     /// compressed handle.
     ///
     /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     /// use yggdryl::{Field, Url, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -710,7 +710,7 @@ pub trait IOBase: Send + IOMedia {
     /// algorithm's empty-input value, never an error.
     ///
     /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     /// use yggdryl::{DigestAlgorithm, xxhash};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -839,7 +839,7 @@ pub trait IOBase: Send + IOMedia {
     /// follow.
     ///
     /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
@@ -918,7 +918,7 @@ pub trait IOBase: Send + IOMedia {
     /// omission.
     ///
     /// ```
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"AAPL,1".to_vec());
@@ -1113,7 +1113,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::buffered::BufferedOptions;
-    /// use yggdryl::io::{Buffer, IOBase};
+    /// use yggdryl::{IOBase, io::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::from_bytes(b"symbol,price\n".to_vec())

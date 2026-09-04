@@ -1,9 +1,10 @@
 //! One value naming every transparent content-coding handle.
 
 use crate::IOBase;
-use crate::gzip::Gzip;
-use crate::zlib::Zlib;
-use crate::zstd::Zstd;
+use crate::coding::gzip::Gzip;
+use crate::coding::zlib::Zlib;
+use crate::coding::zstd::Zstd;
+use crate::generic::Holder;
 use crate::{Error, Level, MediaType, Result, Url};
 
 /// A handle wrapped in the content coding its media type names.
@@ -14,8 +15,8 @@ use crate::{Error, Level, MediaType, Result, Url};
 /// another handle - sees plain bytes.
 ///
 /// ```
-/// use yggdryl::generic::Coded;
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::coding::Coded;
+/// use yggdryl::{IOBase, io::Buffer};
 /// use yggdryl::Url;
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -30,24 +31,25 @@ use crate::{Error, Level, MediaType, Result, Url};
 /// # }
 /// ```
 #[derive(Debug)]
-pub enum Coded<H: IOBase> {
+pub enum Coded {
     /// The bytes pass through unchanged.
-    Identity(H),
+    Identity(Holder),
     /// RFC 1952 gzip framing over DEFLATE.
-    Gzip(Gzip<H>),
+    Gzip(Gzip<Holder>),
     /// RFC 1950 zlib framing over DEFLATE.
-    Zlib(Zlib<H>),
+    Zlib(Zlib<Holder>),
     /// RFC 8878 Zstandard.
-    Zstd(Zstd<H>),
+    Zstd(Zstd<Holder>),
 }
 
-impl<H: IOBase> Coded<H> {
+impl Coded {
     /// Wrap a handle in one coding.
     ///
     /// [`crate::Codec::Deflate`] has no transparent handle of its own - raw DEFLATE
     /// carries no framing to detect - so it wraps as [`Self::Zlib`], which is
     /// the framed form of the same algorithm.
-    pub fn wrap(handle: H, codec: crate::Codec) -> Self {
+    pub fn wrap(handle: impl Into<Holder>, codec: crate::Codec) -> Self {
+        let handle = handle.into();
         match codec {
             crate::Codec::Identity => Self::Identity(handle),
             crate::Codec::Gzip => Self::Gzip(Gzip::new(handle)),
@@ -57,7 +59,8 @@ impl<H: IOBase> Coded<H> {
     }
 
     /// Wrap a handle in the coding its own media type declares.
-    pub fn infer(handle: H) -> Self {
+    pub fn infer(handle: impl Into<Holder>) -> Self {
+        let handle = handle.into();
         let codec = handle.codec();
         Self::wrap(handle, codec)
     }
@@ -84,7 +87,7 @@ impl<H: IOBase> Coded<H> {
     }
 
     /// Borrow the compressed handle underneath.
-    pub const fn handle(&self) -> &H {
+    pub const fn handle(&self) -> &Holder {
         match self {
             Self::Identity(handle) => handle,
             Self::Gzip(handle) => handle.handle(),
@@ -98,7 +101,7 @@ impl<H: IOBase> Coded<H> {
     /// # Errors
     ///
     /// Returns the encode or write failure.
-    pub fn into_handle(self) -> Result<H> {
+    pub fn into_handle(self) -> Result<Holder> {
         match self {
             Self::Identity(handle) => Ok(handle),
             Self::Gzip(handle) => handle.into_handle(),
@@ -128,7 +131,7 @@ impl<H: IOBase> Coded<H> {
     }
 }
 
-impl<H: IOBase> crate::IOMedia for Coded<H> {
+impl crate::IOMedia for Coded {
     fn as_io_base(&self) -> &dyn IOBase {
         self.as_io()
     }
@@ -242,8 +245,8 @@ impl<H: IOBase> crate::IOMedia for Coded<H> {
     }
 }
 
-/// A `Compression` is the decoded view of the handle it wraps.
-impl<H: IOBase> IOBase for Coded<H> {
+/// A `Coded` value is the decoded view of the handle it wraps.
+impl IOBase for Coded {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
     }
@@ -328,11 +331,11 @@ impl<H: IOBase> IOBase for Coded<H> {
         self.as_io_mut().remove(recursive)
     }
 
-    fn parent(&self) -> Option<super::Holder> {
+    fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }
 
-    fn child_by_path(&self, name: &str) -> Result<super::Holder> {
+    fn child_by_path(&self, name: &str) -> Result<Holder> {
         self.as_io().child_by_path(name)
     }
 
@@ -341,10 +344,10 @@ impl<H: IOBase> IOBase for Coded<H> {
     }
 }
 
-impl<H: IOBase> TryFrom<Coded<H>> for Gzip<H> {
+impl TryFrom<Coded> for Gzip<Holder> {
     type Error = Error;
 
-    fn try_from(value: Coded<H>) -> Result<Self> {
+    fn try_from(value: Coded) -> Result<Self> {
         match value {
             Coded::Gzip(handle) => Ok(handle),
             other => Err(Error::Io(std::io::Error::new(
@@ -354,6 +357,3 @@ impl<H: IOBase> TryFrom<Coded<H>> for Gzip<H> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

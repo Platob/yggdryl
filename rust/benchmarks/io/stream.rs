@@ -13,10 +13,10 @@ use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::IOBase;
 use yggdryl::buffered::BufferedOptions;
-use yggdryl::gzip::Gzip;
+use yggdryl::coding::gzip::Gzip;
+use yggdryl::coding::zlib::Zlib;
+use yggdryl::coding::zstd::Zstd;
 use yggdryl::io::Buffer;
-use yggdryl::zlib::Zlib;
-use yggdryl::zstd::Zstd;
 
 const FIXTURE: usize = crate::bench_profile::corpus(8 * 1024 * 1024, 512 * 1024);
 const BATCHES: [(&str, usize); 3] = [
@@ -47,19 +47,19 @@ fn cases(payload: &[u8]) -> Vec<(&'static str, Box<dyn IOBase>)> {
         (
             "gzip",
             Box::new(Gzip::new(Buffer::from_bytes(
-                yggdryl::gzip::dump(payload).expect("a gzip fixture"),
+                yggdryl::coding::gzip::dump(payload).expect("a gzip fixture"),
             ))),
         ),
         (
             "zlib",
             Box::new(Zlib::new(Buffer::from_bytes(
-                yggdryl::zlib::dump(payload).expect("a zlib fixture"),
+                yggdryl::coding::zlib::dump(payload).expect("a zlib fixture"),
             ))),
         ),
         (
             "zstd",
             Box::new(Zstd::new(Buffer::from_bytes(
-                yggdryl::zstd::dump(payload).expect("a zstd fixture"),
+                yggdryl::coding::zstd::dump(payload).expect("a zstd fixture"),
             ))),
         ),
     ]
@@ -106,7 +106,7 @@ fn positional_drain(handle: &dyn IOBase, batch_size: usize, limit: usize) -> usi
 /// zero cached pages afterwards. The stream delegates through the wrapper;
 /// callers that need a cache still get it through positional reads.
 fn zero_cache_holds(payload: &[u8]) {
-    let encoded = yggdryl::gzip::dump(payload).expect("a gzip fixture");
+    let encoded = yggdryl::coding::gzip::dump(payload).expect("a gzip fixture");
     let handle = Gzip::new(Buffer::from_bytes(encoded)).buffered(BufferedOptions::default());
     assert_eq!(drain(&handle, 64 * 1024), payload.len());
     assert_eq!(handle.cached_pages(), 0);

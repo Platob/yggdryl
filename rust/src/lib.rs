@@ -22,6 +22,7 @@ pub mod avro;
 pub mod buffered;
 mod bytestream;
 mod codec;
+pub mod coding;
 mod datatype;
 mod datatype_id;
 mod datatype_kind;
@@ -32,7 +33,6 @@ pub mod expression;
 pub mod field;
 pub mod fix;
 pub mod generic;
-pub mod gzip;
 mod i256;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
@@ -78,8 +78,6 @@ mod uri;
 // `xxhash/arrow.rs` is gated.
 pub mod xxhash;
 pub mod yaml;
-pub mod zlib;
-pub mod zstd;
 
 pub use bytestream::ByteStream;
 pub use codec::{Codec, Encoder, Level};

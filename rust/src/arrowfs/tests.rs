@@ -911,8 +911,8 @@ mod wrappers {
         let filesystem = memory();
         let leaf = File::from_location(filesystem.clone(), "bucket/trades.json.gz").unwrap();
 
-        // `Coded` presents the decoded bytes and stores the encoded ones.
-        let mut coded = crate::io::Coded::new(leaf, crate::Codec::Gzip);
+        // `Coding` presents the decoded bytes and stores the encoded ones.
+        let mut coded = crate::coding::Coding::new(leaf, crate::Codec::Gzip);
         coded.write_all_bytes(br#"{"symbol":"AAPL"}"#).unwrap();
         coded.close().unwrap();
 
@@ -923,7 +923,10 @@ mod wrappers {
         let stored = File::from_location(filesystem, "bucket/trades.json.gz").unwrap();
         let bytes = stored.read_all_bytes().unwrap();
         assert_eq!(&bytes[..2], &[0x1f, 0x8b], "a gzip member header");
-        assert_eq!(crate::gzip::load(&bytes).unwrap(), br#"{"symbol":"AAPL"}"#);
+        assert_eq!(
+            crate::coding::gzip::load(&bytes).unwrap(),
+            br#"{"symbol":"AAPL"}"#
+        );
     }
 
     #[test]
@@ -932,7 +935,7 @@ mod wrappers {
         filesystem
             .write_full(
                 "bucket/app.log.gz",
-                &crate::gzip::dump(b"alpha\nbeta\ngamma\n").unwrap(),
+                &crate::coding::gzip::dump(b"alpha\nbeta\ngamma\n").unwrap(),
             )
             .unwrap();
         let handle = File::from_location(filesystem, "bucket/app.log.gz").unwrap();

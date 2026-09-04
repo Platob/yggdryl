@@ -27,7 +27,7 @@ use crate::{Error, Result};
 /// [`is_container`](Self::is_container) stays the one question a walk asks.
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::{IOBase, io::Buffer};
 /// use yggdryl::IOKind;
 ///
 /// assert_eq!(Buffer::new().kind(), IOKind::Memory);

@@ -679,7 +679,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("app.log.gz");
     let plain = b"2024-02-01T10:00:00 [INFO] alpha\n2024-02-01T10:00:01 [WARN] beta\n";
-    std::fs::write(&path, crate::gzip::dump(plain).unwrap()).unwrap();
+    std::fs::write(&path, crate::coding::gzip::dump(plain).unwrap()).unwrap();
 
     let options: crate::generic::RecordOptions = TextOptions::new()
         .try_with_rowheader(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
@@ -689,7 +689,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
         reader.map(|batch| batch.unwrap().num_rows()).sum()
     };
     let coded =
-        || crate::io::Coded::new(crate::local::File::new(&path).unwrap(), crate::Codec::Gzip);
+        || crate::coding::Coding::new(crate::local::File::new(&path).unwrap(), crate::Codec::Gzip);
 
     // Four ways to the same two records. The last is the one that read the
     // gzip header as text before the cache learned to defer.

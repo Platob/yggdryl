@@ -3,14 +3,14 @@
 //! [`Buffered`] wraps one handle and serves its reads from fixed-size pages.
 //! A miss fetches the covering pages with page-aligned reads from the inner
 //! handle and keeps them; a hit copies out of memory and touches nothing. It
-//! is a wrapping handle like [`Coded`](crate::io::Coded): it owns its inner
+//! is a wrapping handle like [`Coding`](crate::coding::Coding): it owns its inner
 //! handle, mirrors everything it does not change, and is invisible except for
 //! speed - `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`, and `ls`
 //! all answer exactly what the wrapped handle answers.
 //!
 //! ```
 //! use yggdryl::buffered::{Buffered, BufferedOptions};
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::{IOBase, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let options = BufferedOptions::default().with_page_size(256);
@@ -59,7 +59,7 @@
 //!
 //! ```
 //! use yggdryl::buffered::{Buffered, BufferedOptions};
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::{IOBase, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! // Four pages of budget over a sixteen-page value: the middle cannot all
@@ -87,14 +87,14 @@
 //!
 //! # Over a compressed handle
 //!
-//! A content coding is not seekable. A closed [`Coded`](crate::io::Coded)
+//! A content coding is not seekable. A closed [`Coding`](crate::coding::Coding)
 //! positional read decodes through the requested range and retains nothing;
 //! wrapping it retains the decoded pages, so hits require no second decode:
 //!
 //! ```
 //! use yggdryl::buffered::BufferedOptions;
-//! use yggdryl::gzip::Gzip;
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::coding::gzip::Gzip;
+//! use yggdryl::{IOBase, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let payload = "symbol,price\nAAPL,1\n".repeat(512).into_bytes();
@@ -112,8 +112,8 @@
 //! # }
 //! ```
 //!
-//! The order matters: `Buffered<Coded<_>>` caches decoded bytes;
-//! `Coded<Buffered<_>>` caches encoded transport. For a full scan use
+//! The order matters: `Buffered<Coding<_>>` caches decoded bytes;
+//! `Coding<Buffered<_>>` caches encoded transport. For a full scan use
 //! [`IOBase::pstream_bytes`], which keeps one decoder and bypasses pages. For
 //! repeated random access, [`open`](IOBase::open) materializes once and
 //! [`close`](IOBase::close) releases it.
@@ -126,7 +126,7 @@
 //!
 //! ```
 //! use yggdryl::buffered::BufferedOptions;
-//! use yggdryl::io::{Buffer, IOBase};
+//! use yggdryl::{IOBase, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let once = Buffer::new().buffered(BufferedOptions::default());

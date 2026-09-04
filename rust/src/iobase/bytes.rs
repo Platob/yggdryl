@@ -22,7 +22,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// overridden, so it invokes the second form and writes the pair itself:
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase, IOMedia};
+/// use yggdryl::{IOBase, IOMedia, io::Buffer};
 ///
 /// struct Cached {
 ///     handle: Buffer,
@@ -60,7 +60,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// ```
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase, IOMedia};
+/// use yggdryl::{IOBase, IOMedia, io::Buffer};
 ///
 /// struct Wrapper {
 ///     handle: Buffer,
@@ -97,7 +97,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// ```
 /// use std::sync::atomic::{AtomicUsize, Ordering};
 ///
-/// use yggdryl::io::{Buffer, IOBase, IOMedia};
+/// use yggdryl::{IOBase, IOMedia, io::Buffer};
 ///
 /// /// A handle that counts the reads reaching the one it wraps.
 /// struct Counted {

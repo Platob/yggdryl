@@ -1,7 +1,7 @@
 //! The content codings Yggdryl understands, and how to apply them.
 //!
 //! One [`Codec`] vocabulary names every coding, and each format module
-//! ([`crate::gzip`], [`crate::zlib`], [`crate::zstd`]) exposes the same four
+//! ([`crate::coding::gzip`], [`crate::coding::zlib`], [`crate::coding::zstd`]) exposes the same four
 //! operations: `load`/`dump` for whole buffers and `reader`/`writer` for
 //! streams. Nothing buffers a whole object to compress it, so a multi-gigabyte
 //! file costs one window.
@@ -11,7 +11,7 @@
 //! the codec.
 //!
 //! ```
-//! use yggdryl::{Codec, gzip};
+//! use yggdryl::{Codec, coding::gzip};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let compressed = gzip::dump(b"symbol,price\nAAPL,1\n")?;
@@ -31,7 +31,8 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::{Error, MediaType, MimeType, Result, Url, gzip, zlib, zstd};
+use crate::coding::{gzip, zlib, zstd};
+use crate::{Error, MediaType, MimeType, Result, Url};
 
 /// How aggressively a codec trades throughput for output size.
 ///

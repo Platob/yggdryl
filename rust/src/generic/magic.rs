@@ -314,8 +314,8 @@ fn decode_probe(codec: crate::Codec, input: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::MAGIC_PROBE_LEN;
+    use crate::coding::{gzip, zstd};
     use crate::{MediaType, MimeType};
-    use crate::{gzip, zstd};
 
     #[test]
     fn container_signatures_are_identified() {
@@ -365,7 +365,7 @@ mod tests {
             Some(MimeType::ZSTD)
         );
 
-        let zlib_payload = crate::zlib::dump(b"hello").unwrap();
+        let zlib_payload = crate::coding::zlib::dump(b"hello").unwrap();
         assert_eq!(
             MimeType::from_magic_bytes(&zlib_payload),
             Some(MimeType::ZLIB)

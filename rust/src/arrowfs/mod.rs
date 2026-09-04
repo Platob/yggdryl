@@ -21,7 +21,7 @@
 //! constructing one performs no filesystem call, reading something that does
 //! not exist yields nothing, and writing creates it. Because the vtable adds
 //! no dependency the module is unconditional, and every wrapper and record
-//! method - [`Coded`](crate::io::Coded), globs, Hive partitions, IPC,
+//! method - [`Coding`](crate::coding::Coding), globs, Hive partitions, IPC,
 //! Parquet, Iceberg tables - is inherited rather than reimplemented.
 //!
 //! Two [`ArrowFileSystem`] implementations ship in-tree:

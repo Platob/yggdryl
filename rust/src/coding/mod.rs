@@ -1,15 +1,22 @@
 //! A handle that compresses on the way out and decompresses on the way in.
 //!
-//! [`Coded`] wraps any [`IOBase`] and presents the *decoded* bytes: reads
+//! [`Coding`] wraps any [`IOBase`] and presents the *decoded* bytes: reads
 //! decompress, writes compress, and the wrapped handle only ever holds the
-//! encoded form. The per-format aliases - [`crate::gzip::Gzip`],
-//! [`crate::zlib::Zlib`], [`crate::zstd::Zstd`] - are this type with the codec
+//! encoded form. The per-format aliases - [`crate::coding::gzip::Gzip`],
+//! [`crate::coding::zlib::Zlib`], [`crate::coding::zstd::Zstd`] - are this type with the codec
 //! already chosen.
 //!
 //! A coding is not seekable, so positional mutation and an explicitly opened
 //! session materialize the decoded value until [`IOBase::close`]. Sequential
 //! reads decode through one bounded stream and retain no earlier page. Pending
 //! writes are published on [`IOBase::flush`] rather than on every `pwrite`.
+
+mod coded;
+pub mod gzip;
+pub mod zlib;
+pub mod zstd;
+
+pub use coded::Coded;
 
 use std::io::Read;
 
@@ -24,7 +31,7 @@ use crate::{Codec, Level, MediaType, Result, Url};
 /// `application/vnd.apache.arrow.stream`, because that is what its bytes now
 /// are.
 #[derive(Debug)]
-pub struct Coded<H: IOBase> {
+pub struct Coding<H: IOBase> {
     handle: H,
     codec: Codec,
     level: Level,
@@ -36,7 +43,7 @@ pub struct Coded<H: IOBase> {
     media_type: MediaType,
 }
 
-impl<H: IOBase> Coded<H> {
+impl<H: IOBase> Coding<H> {
     /// Wrap a handle in a content coding without touching it.
     pub fn new(handle: H, codec: Codec) -> Self {
         let media_type = decoded_media_type(handle.media_type(), codec);
@@ -242,7 +249,7 @@ fn decoded_media_type(media_type: &MediaType, codec: Codec) -> MediaType {
         .unwrap_or_else(|_| MediaType::new(media_type.base().clone()))
 }
 
-impl<H: IOBase> crate::IOMedia for Coded<H> {
+impl<H: IOBase> crate::IOMedia for Coding<H> {
     crate::impl_default_iomedia!();
 
     /// Keep an owning Arrow reader on the decoded view without caching it.
@@ -275,7 +282,7 @@ impl<H: IOBase> crate::IOMedia for Coded<H> {
     }
 }
 
-impl<H: IOBase> IOBase for Coded<H> {
+impl<H: IOBase> IOBase for Coding<H> {
     /// Read the range out of the decoded value.
     ///
     /// An open handle answers from the value it already holds; a closed one

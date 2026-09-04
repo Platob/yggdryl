@@ -175,7 +175,7 @@ impl ArrowFileSystem for PyArrowFileSystem {
             // a codec from the suffix, so writing to `trades.json.gz` would
             // gzip the bytes on the way down. This method's contract is to
             // store exactly what it was handed - the content coding belongs
-            // to the handle, where `Coded` already applied it, and applying
+            // to the handle, where `Coding` already applied it, and applying
             // it again here would store a value nothing can read back.
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs.set_item("compression", py.None())?;

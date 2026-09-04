@@ -1,7 +1,6 @@
 //! Shared scalar, dispatch, I/O vocabulary, and runtime wrappers.
 
 mod arithmetic;
-mod coded;
 pub(crate) mod decimal;
 mod enum_scalar;
 mod holder;
@@ -20,7 +19,6 @@ mod typed;
 pub mod wkb;
 
 pub(crate) use arithmetic::Arithmetic;
-pub use coded::Coded;
 pub use enum_scalar::EnumScalar;
 pub use holder::Holder;
 pub use magic::MAGIC_PROBE_LEN;

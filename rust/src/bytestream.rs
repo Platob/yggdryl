@@ -195,7 +195,7 @@ impl<C: IOCursor + ?Sized> ByteSource for CursorSource<'_, C> {
 /// One positional stream tied to the disjoint position field of its cursor.
 ///
 /// This is what keeps a `Cursor<Buffered<_>>` off the page cache and a
-/// `Cursor<Coded<_>>` on one decoder rather than rebuilding either path for
+/// `Cursor<Coding<_>>` on one decoder rather than rebuilding either path for
 /// each output chunk.
 struct AdvancingSource<'source> {
     stream: ByteStream<'source>,

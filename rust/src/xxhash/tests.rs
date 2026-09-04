@@ -539,7 +539,7 @@ mod handles {
 
     #[test]
     fn a_coding_wrapper_digests_the_decoded_payload_and_its_handle_the_compressed_form() {
-        use crate::gzip::Gzip;
+        use crate::coding::gzip::Gzip;
 
         let plain = payload();
         let mut handle = Gzip::new(Buffer::new());

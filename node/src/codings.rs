@@ -24,7 +24,7 @@ fn level_of(level: Option<u8>) -> Level {
 /// Decode one whole gzip value.
 #[napi(js_name = "_gzipLoads", skip_typescript)]
 pub fn gzip_loads(data: Buffer) -> Result<Buffer> {
-    yggdryl::gzip::load(data.as_ref())
+    yggdryl::coding::gzip::load(data.as_ref())
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -32,7 +32,7 @@ pub fn gzip_loads(data: Buffer) -> Result<Buffer> {
 /// Encode one whole gzip value; `level` is the shared 0-9 scale.
 #[napi(js_name = "_gzipDumps", skip_typescript)]
 pub fn gzip_dumps(data: Buffer, level: Option<u8>) -> Result<Buffer> {
-    yggdryl::gzip::dump_with_level(data.as_ref(), level_of(level))
+    yggdryl::coding::gzip::dump_with_level(data.as_ref(), level_of(level))
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -40,7 +40,7 @@ pub fn gzip_dumps(data: Buffer, level: Option<u8>) -> Result<Buffer> {
 /// Decode one whole zlib value.
 #[napi(js_name = "_zlibLoads", skip_typescript)]
 pub fn zlib_loads(data: Buffer) -> Result<Buffer> {
-    yggdryl::zlib::load(data.as_ref())
+    yggdryl::coding::zlib::load(data.as_ref())
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -48,7 +48,7 @@ pub fn zlib_loads(data: Buffer) -> Result<Buffer> {
 /// Encode one whole zlib value; `level` is the shared 0-9 scale.
 #[napi(js_name = "_zlibDumps", skip_typescript)]
 pub fn zlib_dumps(data: Buffer, level: Option<u8>) -> Result<Buffer> {
-    yggdryl::zlib::dump_with_level(data.as_ref(), level_of(level))
+    yggdryl::coding::zlib::dump_with_level(data.as_ref(), level_of(level))
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -61,7 +61,7 @@ pub fn zlib_dumps(data: Buffer, level: Option<u8>) -> Result<Buffer> {
 /// an unframed payload cannot be told apart from their bytes alone.
 #[napi(js_name = "_zlibLoadsRaw", skip_typescript)]
 pub fn zlib_loads_raw(data: Buffer) -> Result<Buffer> {
-    yggdryl::zlib::load_raw(data.as_ref())
+    yggdryl::coding::zlib::load_raw(data.as_ref())
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -72,7 +72,7 @@ pub fn zlib_loads_raw(data: Buffer) -> Result<Buffer> {
 /// back is [`zlib_loads_raw`], never [`zlib_loads`].
 #[napi(js_name = "_zlibDumpsRaw", skip_typescript)]
 pub fn zlib_dumps_raw(data: Buffer, level: Option<u8>) -> Result<Buffer> {
-    yggdryl::zlib::dump_raw_with_level(data.as_ref(), level_of(level))
+    yggdryl::coding::zlib::dump_raw_with_level(data.as_ref(), level_of(level))
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -80,7 +80,7 @@ pub fn zlib_dumps_raw(data: Buffer, level: Option<u8>) -> Result<Buffer> {
 /// Decode one whole Zstandard value.
 #[napi(js_name = "_zstdLoads", skip_typescript)]
 pub fn zstd_loads(data: Buffer) -> Result<Buffer> {
-    yggdryl::zstd::load(data.as_ref())
+    yggdryl::coding::zstd::load(data.as_ref())
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -88,7 +88,7 @@ pub fn zstd_loads(data: Buffer) -> Result<Buffer> {
 /// Encode one whole Zstandard value; `level` is the shared 0-9 scale.
 #[napi(js_name = "_zstdDumps", skip_typescript)]
 pub fn zstd_dumps(data: Buffer, level: Option<u8>) -> Result<Buffer> {
-    yggdryl::zstd::dump_with_level(data.as_ref(), level_of(level))
+    yggdryl::coding::zstd::dump_with_level(data.as_ref(), level_of(level))
         .map(Buffer::from)
         .map_err(napi_error)
 }

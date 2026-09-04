@@ -47,7 +47,7 @@
 //! the Iceberg v3 layer - so variant columns are schema-level until it does.
 //!
 //! ```
-//! use yggdryl::io::{Buffer, IOBase, IOMedia};
+//! use yggdryl::{IOBase, IOMedia, io::Buffer};
 //! use yggdryl::parquet::Parquet;
 //! use yggdryl::{DataType, Url};
 //!

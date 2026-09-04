@@ -27,7 +27,7 @@ use crate::{Error, IOBase, Result};
 /// listing over the same state yields the same sequence.
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase};
+/// use yggdryl::{IOBase, io::Buffer};
 ///
 /// // A resource that cannot contain others lists nothing rather than failing.
 /// let buffer = Buffer::new();

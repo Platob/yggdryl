@@ -38,7 +38,7 @@ macro_rules! coding {
         #[pyfunction]
         pub(crate) fn $load<'py>(py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyBytes>> {
             let decoded = py
-                .detach(|| yggdryl::$module::$core_load(data))
+                .detach(|| yggdryl::coding::$module::$core_load(data))
                 .map_err(value_error)?;
             Ok(PyBytes::new(py, &decoded))
         }
@@ -52,7 +52,7 @@ macro_rules! coding {
             level: Option<u8>,
         ) -> PyResult<Bound<'py, PyBytes>> {
             let encoded = py
-                .detach(|| yggdryl::$module::$core_dump(data, level_of(level)))
+                .detach(|| yggdryl::coding::$module::$core_dump(data, level_of(level)))
                 .map_err(value_error)?;
             Ok(PyBytes::new(py, &encoded))
         }

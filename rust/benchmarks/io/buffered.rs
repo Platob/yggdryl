@@ -47,7 +47,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
 use yggdryl::arrowfs::{ArrowFileSystem, File as ArrowFile, LocalFileSystem, MemoryFileSystem};
 use yggdryl::buffered::BufferedOptions;
-use yggdryl::gzip::Gzip;
+use yggdryl::coding::gzip::Gzip;
 use yggdryl::io::Buffer;
 use yggdryl::local::{File, Folder};
 
@@ -215,7 +215,7 @@ pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
 
 /// What a page cache is worth over a *compressed* handle.
 ///
-/// A content coding is not seekable, so [`Coded`](yggdryl::io::Coded) answers
+/// A content coding is not seekable, so [`Coding`](yggdryl::coding::Coding) answers
 /// a positional read by decoding the value. Which decode you pay depends on
 /// whether the handle is open, and that is the whole table:
 ///
@@ -231,7 +231,7 @@ pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
 ///   cache turns one decoder start per read into one per page miss, and here
 ///   the whole value is four pages, so after the first pass there are none.
 ///
-/// The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the
+/// The order of wrapping is the useful one: `Buffered<Coding<_>>` caches the
 /// *decoded* bytes. The other way round would cache the compressed bytes and
 /// still decode on every read.
 fn coded_cases(group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>) {

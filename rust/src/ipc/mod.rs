@@ -22,7 +22,7 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
-//! use yggdryl::io::{Buffer, IOBase, IOMedia};
+//! use yggdryl::{IOBase, IOMedia, io::Buffer};
 //! use yggdryl::ipc::Ipc;
 //! use yggdryl::{DataType, Url};
 //!
@@ -587,7 +587,7 @@ where
 fn owned_decoded_reader<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn Read + Send>>> {
     let codec = handle.codec();
     // A raw `trades.arrows.gz` holder can be reopened under the same coding.
-    // An explicit `Coded` view presents decoded bytes while retaining that raw
+    // An explicit `Coding` view presents decoded bytes while retaining that raw
     // URL, so reopening its child would silently replace the view with gzip
     // bytes mislabeled as identity; snapshot the presented stream in that case.
     let decoded_view_over_coded_url = codec.is_identity()

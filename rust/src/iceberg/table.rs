@@ -1411,7 +1411,7 @@ impl<H: IOBase> Table<H> {
         let (suffix, encoded) = match compression {
             iceberg_official::compression::CompressionCodec::None => ("", encoded),
             iceberg_official::compression::CompressionCodec::Gzip(_) => {
-                (".gz", crate::gzip::dump(&encoded)?)
+                (".gz", crate::coding::gzip::dump(&encoded)?)
             }
             other => {
                 return Err(invalid(format_smolstr!(
@@ -3067,7 +3067,7 @@ fn metadata_names_at_version(metadata_dir: &Holder, version: u32) -> Result<Vec<
 /// detected from its magic bytes, independent of the filename.
 fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
     let decoded = if bytes.starts_with(&[0x1f, 0x8b]) {
-        crate::gzip::load(bytes)?
+        crate::coding::gzip::load(bytes)?
     } else {
         bytes.to_vec()
     };

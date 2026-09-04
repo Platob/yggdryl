@@ -12,7 +12,7 @@
 //! ```
 //! use std::io::Read;
 //!
-//! use yggdryl::io::{Buffer, IOBase, IOCursor};
+//! use yggdryl::{IOBase, IOCursor, io::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut handle = Buffer::new();
@@ -291,9 +291,9 @@ mod tests {
         use crate::buffered::tests::Counting;
 
         let plain = b"symbol,price\nAAPL,1\n".repeat(4 * 1024);
-        let encoded = crate::gzip::dump(&plain).unwrap();
+        let encoded = crate::coding::gzip::dump(&plain).unwrap();
         let handle =
-            crate::io::Coded::new(Counting::from_bytes(encoded.clone()), crate::Codec::Gzip);
+            crate::coding::Coding::new(Counting::from_bytes(encoded.clone()), crate::Codec::Gzip);
         let mut cursor = handle.cursor();
         let decoded = cursor
             .stream_bytes(31)

@@ -2581,7 +2581,7 @@ mod buffered_handle {
 /// The assertions above describe `Buffer`, which is the implementation they
 /// were written against. They are not *about* `Buffer` though - they are the
 /// behavior [`IOBase`] requires of anything that holds bytes, so a backend
-/// that passes them is a backend a caller can hand to `Coded`, `Ipc`,
+/// that passes them is a backend a caller can hand to `Coding`, `Ipc`,
 /// `Parquet`, or an Iceberg table without reading its source. This module
 /// runs one battery over each: the in-memory `Buffer`, the memory-mapped
 /// `local::File`, an `arrowfs::File` over a foreign Arrow filesystem, whose
@@ -3233,7 +3233,7 @@ mod lifecycle {
     fn a_coding_handle_removes_the_encoded_resource() {
         let root = root("coded");
         let path = root.join("trades.csv.gz");
-        let mut coded = crate::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
+        let mut coded = crate::coding::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
         coded
             .write_all_bytes(b"symbol,price\n")
             .expect("a decoded write");
@@ -3284,8 +3284,8 @@ mod shape {
     use super::{Buffer, IOBase};
 
     use crate::buffered::tests::Counting;
+    use crate::coding::Coding;
     use crate::generic::Holder;
-    use crate::io::Coded;
     use crate::{Codec, IOKind, MediaType, MimeType};
 
     /// A writable temporary root of this test's own.
@@ -3339,7 +3339,7 @@ mod shape {
         assert!(handle.is_tabular());
         assert!(!handle.is_atomic());
 
-        let coded = Coded::new(handle, Codec::Gzip);
+        let coded = Coding::new(handle, Codec::Gzip);
         assert!(coded.is_tabular());
         assert!(!coded.is_atomic());
     }

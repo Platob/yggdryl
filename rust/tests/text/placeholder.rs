@@ -324,7 +324,7 @@ fn every_entry_point_carries_the_same_loading() {
             .media_type(),
     );
     handle
-        .write_all_bytes(&yggdryl::gzip::dump(document.as_bytes()).unwrap())
+        .write_all_bytes(&yggdryl::coding::gzip::dump(document.as_bytes()).unwrap())
         .unwrap();
     let loaded = text::from_io_with(&handle, &loading).unwrap();
     assert_eq!(loaded.get_key_str("name"), Some(&expected));

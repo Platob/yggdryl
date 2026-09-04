@@ -14,7 +14,7 @@ use crate::Result;
 
 use crate::IOBase;
 use crate::codec::{Encoder, EncoderKind, FlateFinish};
-use crate::io::Coded;
+use crate::coding::Coding;
 use crate::{Codec, Level};
 
 /// Decode a complete zlib-framed stream.
@@ -153,8 +153,8 @@ impl<W: Write> FlateFinish for DeflateEncoder<W> {
 /// [`IOBase::open`] materialize the decoded value until close.
 ///
 /// ```
-/// use yggdryl::io::{Buffer, IOBase};
-/// use yggdryl::zlib::Zlib;
+/// use yggdryl::{IOBase, io::Buffer};
+/// use yggdryl::coding::zlib::Zlib;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut handle = Zlib::new(Buffer::new());
@@ -170,32 +170,32 @@ impl<W: Write> FlateFinish for DeflateEncoder<W> {
 /// ```
 #[derive(Debug)]
 pub struct Zlib<H: IOBase> {
-    coded: Coded<H>,
+    coding: Coding<H>,
 }
 
 impl<H: IOBase> Zlib<H> {
     /// Wrap a handle in a zlib coding without touching it.
     pub fn new(handle: H) -> Self {
         Self {
-            coded: Coded::new(handle, Codec::Zlib),
+            coding: Coding::new(handle, Codec::Zlib),
         }
     }
 
     /// Return this handle with a different compression level.
     #[must_use]
     pub fn with_level(mut self, level: Level) -> Self {
-        self.coded = self.coded.with_level(level);
+        self.coding = self.coding.with_level(level);
         self
     }
 
     /// Return the compression level writes use.
     pub const fn level(&self) -> Level {
-        self.coded.level()
+        self.coding.level()
     }
 
     /// Borrow the wrapped handle, which holds the compressed bytes.
     pub const fn handle(&self) -> &H {
-        self.coded.handle()
+        self.coding.handle()
     }
 
     /// Consume this handle, publishing any pending write first.
@@ -204,23 +204,23 @@ impl<H: IOBase> Zlib<H> {
     ///
     /// Returns the encode or write failure.
     pub fn into_handle(self) -> crate::Result<H> {
-        self.coded.into_handle()
+        self.coding.into_handle()
     }
 }
 
 impl<H: IOBase> crate::IOMedia for Zlib<H> {
-    crate::delegate_iomedia!(coded);
+    crate::delegate_iomedia!(coding);
 }
 
 impl<H: IOBase> IOBase for Zlib<H> {
-    crate::delegate_iobase!(coded);
+    crate::delegate_iobase!(coding);
 
     fn read_all_bytes(&self) -> crate::Result<Vec<u8>> {
-        self.coded.read_all_bytes()
+        self.coding.read_all_bytes()
     }
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
-        self.coded.read_range_bytes(offset, length)
+        self.coding.read_range_bytes(offset, length)
     }
 }
 

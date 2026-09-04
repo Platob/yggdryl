@@ -1,6 +1,6 @@
 //! A coded handle presents the decoded bytes and stores the encoded ones.
 
-use super::Coded;
+use super::Coding;
 use crate::io::Buffer;
 use crate::{Codec, Level, MimeType, Url};
 use crate::{IOBase, IOMedia};
@@ -71,7 +71,7 @@ AAPL,24
 #[test]
 fn every_coding_round_trips_through_the_handle() {
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Deflate, Codec::Zstd] {
-        let mut handle = Coded::new(Buffer::new(), codec);
+        let mut handle = Coding::new(Buffer::new(), codec);
         handle.write_all_bytes(PAYLOAD).unwrap();
         handle.flush().unwrap();
 
@@ -84,7 +84,7 @@ fn every_coding_round_trips_through_the_handle() {
 
 #[test]
 fn an_identity_coding_is_a_pass_through() {
-    let mut handle = Coded::new(Buffer::new(), Codec::Identity);
+    let mut handle = Coding::new(Buffer::new(), Codec::Identity);
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.flush().unwrap();
 
@@ -93,7 +93,7 @@ fn an_identity_coding_is_a_pass_through() {
 
 #[test]
 fn positional_reads_and_writes_address_the_decoded_value() {
-    let mut handle = Coded::new(Buffer::new(), Codec::Gzip);
+    let mut handle = Coding::new(Buffer::new(), Codec::Gzip);
     handle.write_all_bytes(PAYLOAD).unwrap();
 
     let mut head = [0_u8; 6];
@@ -119,7 +119,7 @@ fn the_media_type_reported_is_the_decoded_one() {
     );
     assert_eq!(inner.media_type().encoding_len(), 1);
 
-    let handle = Coded::new(inner, Codec::Gzip);
+    let handle = Coding::new(inner, Codec::Gzip);
     // Wrapping removes the coding, because the wrapper's bytes are decoded.
     assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
     assert_eq!(handle.media_type().encoding_len(), 0);
@@ -128,14 +128,14 @@ fn the_media_type_reported_is_the_decoded_one() {
 
 #[test]
 fn a_missing_resource_reads_as_empty_rather_than_failing() {
-    let handle = Coded::new(Buffer::new(), Codec::Zstd);
+    let handle = Coding::new(Buffer::new(), Codec::Zstd);
     assert_eq!(handle.size(), 0);
     assert!(handle.read_all_bytes().unwrap().is_empty());
 }
 
 #[test]
 fn open_materializes_and_close_publishes() {
-    let mut handle = Coded::new(Buffer::new(), Codec::Gzip);
+    let mut handle = Coding::new(Buffer::new(), Codec::Gzip);
     assert!(!handle.opened());
 
     handle.open().unwrap();
@@ -151,8 +151,8 @@ fn open_materializes_and_close_publishes() {
 
 #[test]
 fn a_higher_level_does_not_change_what_is_read_back() {
-    let mut best = Coded::new(Buffer::new(), Codec::Zstd).with_level(Level::BEST);
-    let mut fast = Coded::new(Buffer::new(), Codec::Zstd).with_level(Level::FAST);
+    let mut best = Coding::new(Buffer::new(), Codec::Zstd).with_level(Level::BEST);
+    let mut fast = Coding::new(Buffer::new(), Codec::Zstd).with_level(Level::FAST);
 
     best.write_all_bytes(PAYLOAD).unwrap();
     fast.write_all_bytes(PAYLOAD).unwrap();
@@ -166,7 +166,7 @@ fn a_higher_level_does_not_change_what_is_read_back() {
 
 #[test]
 fn truncation_shrinks_and_grows_the_decoded_value() {
-    let mut handle = Coded::new(Buffer::new(), Codec::Zlib);
+    let mut handle = Coding::new(Buffer::new(), Codec::Zlib);
     handle.write_all_bytes(PAYLOAD).unwrap();
 
     handle.truncate(6).unwrap();
@@ -181,12 +181,12 @@ fn truncation_shrinks_and_grows_the_decoded_value() {
 fn an_open_handle_answers_reads_out_of_what_it_holds() {
     use crate::buffered::tests::Counting;
 
-    let mut source = Coded::new(Buffer::new(), Codec::Gzip);
+    let mut source = Coding::new(Buffer::new(), Codec::Gzip);
     source.write_all_bytes(PAYLOAD).unwrap();
     source.flush().unwrap();
     let encoded = source.into_handle().unwrap().into_bytes();
 
-    let mut handle = Coded::new(Counting::from_bytes(encoded), Codec::Gzip);
+    let mut handle = Coding::new(Counting::from_bytes(encoded), Codec::Gzip);
     handle.open().unwrap();
     let reads = handle.handle().reads();
     let sizes = handle.handle().sizes();
@@ -220,7 +220,7 @@ fn an_open_handle_answers_reads_out_of_what_it_holds() {
 fn closed_codings_stream_bounded_chunks_from_decoded_offsets() {
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(PAYLOAD).unwrap();
-        let handle = Coded::new(Buffer::from_bytes(encoded), codec);
+        let handle = Coding::new(Buffer::from_bytes(encoded), codec);
 
         let chunks = handle
             .pstream_bytes(7, 13)
@@ -257,7 +257,7 @@ fn closed_codings_stream_bounded_chunks_from_decoded_offsets() {
 fn compressed_headers_and_trailers_may_cross_source_chunks() {
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(PAYLOAD).unwrap();
-        let handle = Coded::new(Buffer::from_bytes(encoded), codec);
+        let handle = Coding::new(Buffer::from_bytes(encoded), codec);
         let decoded = handle
             .pstream_bytes(0, 1)
             .unwrap()
@@ -281,7 +281,7 @@ fn one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window() {
         .collect();
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(&payload).unwrap();
-        let handle = Coded::new(Counting::from_bytes(encoded.clone()), codec);
+        let handle = Coding::new(Counting::from_bytes(encoded.clone()), codec);
         let first = handle.pstream_bytes(0, 1).unwrap().next().unwrap().unwrap();
 
         assert_eq!(first, payload[..1], "{codec}");
@@ -304,7 +304,7 @@ fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
     let payload = PAYLOAD.repeat(64);
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(&payload).unwrap();
-        let handle = Coded::new(Counting::from_bytes(encoded), codec);
+        let handle = Coding::new(Counting::from_bytes(encoded), codec);
         let mut stream = handle.pstream_bytes(5, 17).unwrap();
 
         assert_eq!(handle.handle().reads(), 0, "{codec} read at construction");
@@ -349,7 +349,7 @@ fn closed_positional_reads_decode_only_the_requested_prefix() {
         .collect();
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(&payload).unwrap();
-        let handle = Coded::new(Counting::from_bytes(encoded.clone()), codec);
+        let handle = Coding::new(Counting::from_bytes(encoded.clone()), codec);
         let mut first = [0_u8; 4096];
 
         assert_eq!(handle.pread(0, &mut first).unwrap(), first.len(), "{codec}");
@@ -366,7 +366,7 @@ fn closed_positional_reads_decode_only_the_requested_prefix() {
 fn closed_size_counts_through_a_stream_without_opening() {
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let payload = PAYLOAD.repeat(1_024);
-        let handle = Coded::new(Buffer::from_bytes(codec.dump(&payload).unwrap()), codec);
+        let handle = Coding::new(Buffer::from_bytes(codec.dump(&payload).unwrap()), codec);
 
         assert_eq!(handle.size(), payload.len() as u64, "{codec}");
         assert!(
@@ -382,12 +382,12 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     let encoded = Codec::Gzip.dump(&payload).unwrap();
 
     let (direct_source, direct_reads) = SharedReads::new(encoded.clone());
-    let direct = crate::gzip::Gzip::new(direct_source);
+    let direct = crate::coding::gzip::Gzip::new(direct_source);
     assert_eq!(direct.read_all_bytes().unwrap(), payload);
     let direct_reads = direct_reads.load(std::sync::atomic::Ordering::Relaxed);
 
     let (boxed_source, boxed_reads) = SharedReads::new(encoded);
-    let boxed_inner = crate::gzip::Gzip::new(boxed_source);
+    let boxed_inner = crate::coding::gzip::Gzip::new(boxed_source);
     let boxed: Box<dyn IOBase> = Box::new(boxed_inner);
     assert_eq!(boxed.read_all_bytes().unwrap(), payload);
     assert!(direct_reads > 0);
@@ -430,7 +430,7 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
             .unwrap()
             .media_type(),
     );
-    let coded = Coded::new(inner, Codec::Gzip);
+    let coded = Coding::new(inner, Codec::Gzip);
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
         .unwrap()
         .with_field(field);
@@ -450,7 +450,7 @@ fn an_open_stream_reads_only_its_decoded_snapshot() {
 
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(PAYLOAD).unwrap();
-        let mut handle = Coded::new(Counting::from_bytes(encoded), codec);
+        let mut handle = Coding::new(Counting::from_bytes(encoded), codec);
         handle.open().unwrap();
         let reads = handle.handle().reads();
         let sizes = handle.handle().sizes();
@@ -473,7 +473,7 @@ fn an_open_stream_reads_only_its_decoded_snapshot() {
 #[test]
 fn empty_and_invalid_closed_streams_have_stable_end_states() {
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
-        let empty = Coded::new(Buffer::new(), codec);
+        let empty = Coding::new(Buffer::new(), codec);
         let mut stream = empty.pstream_bytes(0, 3).unwrap();
         assert!(
             stream.next().is_none(),
@@ -483,7 +483,7 @@ fn empty_and_invalid_closed_streams_have_stable_end_states() {
 
         // Invalid framing is portable across decoder implementations, while
         // some DEFLATE readers deliberately accept an omitted checksum at EOF.
-        let corrupt = Coded::new(Buffer::from_bytes(vec![0xA5; 32]), codec);
+        let corrupt = Coding::new(Buffer::from_bytes(vec![0xA5; 32]), codec);
         let mut stream = corrupt.pstream_bytes(0, 7).unwrap();
         let mut failed = false;
         for item in &mut stream {
@@ -499,5 +499,74 @@ fn empty_and_invalid_closed_streams_have_stable_end_states() {
             "{codec} did not fuse after an error"
         );
         assert!(!corrupt.opened(), "{codec} cached a failed decode");
+    }
+}
+
+mod dispatched {
+    use super::super::Coded;
+    use crate::io::Buffer;
+    use crate::{Codec, IOBase, Level, Url};
+
+    const PAYLOAD: &[u8] = b"symbol,price\nAAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\n\
+    AAPL,7\nAAPL,8\nAAPL,9\nAAPL,10\nAAPL,11\nAAPL,12\n";
+
+    #[test]
+    fn every_coding_round_trips_through_the_enum() {
+        for codec in Codec::ALL {
+            let mut handle = Coded::wrap(Buffer::new(), codec);
+            handle.write_all_bytes(PAYLOAD).unwrap();
+            handle.flush().unwrap();
+
+            assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD, "{codec}");
+            assert_eq!(handle.size(), PAYLOAD.len() as u64, "{codec}");
+        }
+    }
+
+    #[test]
+    fn the_handles_own_media_type_picks_the_coding() {
+        let named = Buffer::new().with_media_type(
+            Url::from_str("file:///trades.csv.zst")
+                .unwrap()
+                .media_type(),
+        );
+        let mut handle = Coded::infer(named);
+        assert_eq!(handle.codec(), Codec::Zstd);
+
+        handle.write_all_bytes(PAYLOAD).unwrap();
+        handle.flush().unwrap();
+        assert_eq!(handle.read_all_bytes().unwrap(), PAYLOAD);
+        assert!(handle.handle().size() < PAYLOAD.len() as u64);
+    }
+
+    #[test]
+    fn raw_deflate_wraps_as_its_framed_form() {
+        let handle = Coded::wrap(Buffer::new(), Codec::Deflate);
+        assert_eq!(handle.codec(), Codec::Zlib);
+    }
+
+    #[test]
+    fn an_identity_coding_writes_the_payload_unchanged() {
+        let mut handle = Coded::wrap(Buffer::new(), Codec::Identity);
+        handle.write_all_bytes(PAYLOAD).unwrap();
+        handle.flush().unwrap();
+
+        assert_eq!(handle.handle().read_all_bytes().unwrap(), PAYLOAD);
+    }
+
+    #[test]
+    fn a_level_reaches_the_encoder_and_the_handle_survives_it() {
+        let mut handle = Coded::wrap(Buffer::new(), Codec::Gzip).with_level(Level::BEST);
+        handle.write_all_bytes(PAYLOAD).unwrap();
+
+        let inner = handle.into_handle().unwrap();
+        let encoded = inner.read_all_bytes().unwrap();
+        assert_eq!(crate::coding::gzip::load(&encoded).unwrap(), PAYLOAD);
+    }
+
+    #[test]
+    fn a_missing_resource_reads_as_empty_rather_than_failing() {
+        let handle = Coded::wrap(Buffer::new(), Codec::Gzip);
+        assert_eq!(handle.size(), 0);
+        assert!(handle.read_all_bytes().unwrap().is_empty());
     }
 }

@@ -14,7 +14,7 @@
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
 //! use yggdryl::generic::{Holder, Media};
-//! use yggdryl::io::{Buffer, IOBase, IOMedia};
+//! use yggdryl::{IOBase, IOMedia, io::Buffer};
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
