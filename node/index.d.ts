@@ -135,14 +135,14 @@ export declare class Bound {
   /** Return whether answering this expression requires reading rows. */
   get readsRows(): boolean
   /** Evaluate this expression for one row of column values, in schema order. */
-  eval(row: Scalar): Scalar
+  eval(row: JsScalar): JsScalar
   /**
    * Answer this predicate for one row, reading unknown as "no".
    *
    * Unknown is not true, so a row whose value is null does not pass a
    * comparison against it.
    */
-  matches(row: Scalar): boolean
+  matches(row: JsScalar): boolean
   /** The canonical text of the expression this resolved. */
   toString(): string
 }
@@ -289,7 +289,7 @@ export type JsCompaction = Compaction
  * One live data file of the current snapshot, with the spec that placed it.
  *
  * This is a class rather than a plain object because a partition value crosses
- * as the native [`Scalar`](crate::codec::JsScalar) the manifest recorded.
+ * as the native [`Scalar`](crate::text::codec::JsScalar) the manifest recorded.
  * Rendering it as text here would have to spell a null `null`, which is exactly
  * what makes a directory name unable to answer the question.
  */
@@ -299,9 +299,9 @@ export declare class DataFile {
   /** The file's location, as a URI. */
   get filePath(): string
   /** The file's generic MIME type. */
-  get mimeType(): JsMimeType
+  get mimeType(): MimeType
   /** The partition tuple the manifest records, in spec order. */
-  get partition(): Array<Scalar>
+  get partition(): Array<JsScalar>
   /** The partition field names, in the same order as the tuple. */
   get partitionNames(): Array<string>
   /** Rows in the file. */
@@ -583,7 +583,7 @@ export declare class Expression {
    * timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
    * one out of an ordinary JavaScript value.
    */
-  static literal(value: Scalar): Expression
+  static literal(value: JsScalar): Expression
   /** Name one holder attribute, such as `size`, or `partition` with a column. */
   static attribute(name: string, key?: string | undefined | null): Expression
   /** Name one late-bound value. */
@@ -774,9 +774,9 @@ export declare class Field {
   /** Raw HTTP Content-Type field value, including parameters. */
   get contentType(): string | null
   /** Typed base MIME value derived from Content-Type. */
-  get mimeType(): JsMimeType
+  get mimeType(): MimeType
   /** Typed media value derived from Content-Type and Content-Encoding. */
-  get mediaType(): JsMediaType
+  get mediaType(): MediaType
   /** Raw HTTP `ETag` field value. */
   get etag(): string | null
   /** Raw HTTP Expires field value. */
@@ -874,11 +874,11 @@ export declare class Field {
   /** Set a bare typed MIME value while preserving Content-Encoding. */
   setMimeType(value: MimeTypeInput): void
   /** Remove and return the prior typed MIME value. */
-  removeMimeType(): JsMimeType | null
+  removeMimeType(): MimeType | null
   /** Atomically project a typed media value to both HTTP content headers. */
   setMediaType(value: MediaTypeInput): void
   /** Atomically remove and return both prior typed HTTP media headers. */
-  removeMediaType(): JsMediaType | null
+  removeMediaType(): MediaType | null
   /** Set raw HTTP `ETag` metadata. */
   setEtag(value: string): void
   /** Remove raw HTTP `ETag` metadata. */
@@ -1064,13 +1064,13 @@ export declare class FixMsg {
    * native value first, and the core alone validates and canonicalizes it
    * against `field`.
    */
-  constructor(field: Field, value: Scalar, registry?: FixRegistry | undefined | null)
+  constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /** The registry this message resolves against, sharing it. */
   get registry(): FixRegistry
   /** The root Struct field: the message's resolved schema. */
-  get field(): Field
+  get field(): JsField
   /** The ordered row value. */
-  get value(): Scalar
+  get value(): JsScalar
   /**
    * How many values the root declares, which is what `entries` yields.
    *
@@ -1092,36 +1092,36 @@ export declare class FixMsg {
    * An identifier is exact and does not tier: a dictionary this message does
    * not speak simply misses.
    */
-  getById(id: string): Scalar | null
+  getById(id: string): JsScalar | null
   /** The value of the root child an identifier names. */
-  byId(id: string): Scalar
+  byId(id: string): JsScalar
   /**
    * The value of the root child a tag names, or `null`.
    *
    * The tag resolves in this message's own branch first, then in the
    * standard one.
    */
-  getByTag(tag: number): Scalar | null
+  getByTag(tag: number): JsScalar | null
   /** The value of the root child a tag names. */
-  byTag(tag: number): Scalar
+  byTag(tag: number): JsScalar
   /**
    * The value of the root child a name reaches, or `null`.
    *
    * The name folds through this message's own branch first, then the
    * standard one.
    */
-  getByName(name: string): Scalar | null
+  getByName(name: string): JsScalar | null
   /** The value of the root child a name reaches. */
-  byName(name: string): Scalar
+  byName(name: string): JsScalar
   /** The value a dotted path reaches, or `null`. */
-  getByPath(path: string): Scalar | null
+  getByPath(path: string): JsScalar | null
   /** The value a dotted path reaches. */
-  byPath(path: string): Scalar
+  byPath(path: string): JsScalar
   /**
    * The value a tag or a name reaches in the standard branch tier, or
    * `null`.
    */
-  get(key: number | string): Scalar | null
+  get(key: number | string): JsScalar | null
   /**
    * The value a tag or a name reaches in the standard branch tier.
    *
@@ -1129,7 +1129,7 @@ export declare class FixMsg {
    * `value`, because `value` is this class's property for the whole message
    * value.
    */
-  at(key: number | string): Scalar
+  at(key: number | string): JsScalar
   /**
    * The `[name, value]` pairs of the root, in the order it declares.
    *
@@ -1180,7 +1180,7 @@ export declare class FixRegistry {
    *
    * The first refusal fails the whole build.
    */
-  static fromFields(fields: Array<Field>): FixRegistry
+  static fromFields(fields: Array<JsField>): FixRegistry
   /**
    * Load every shard under `<location>/primitive` and `<location>/nested`.
    *
@@ -1204,18 +1204,18 @@ export declare class FixRegistry {
    * `id` is the `branch:tag` text; a malformed one throws the native parse
    * failure, never a miss.
    */
-  getFieldById(id: string): Field | null
+  getFieldById(id: string): JsField | null
   /** The field a canonical or alternate identifier names. */
-  fieldById(id: string): Field
+  fieldById(id: string): JsField
   /**
    * The field a canonical or alternate tag names, or `null`.
    *
    * A bare tag is the standard branch exactly, never whichever dictionary
    * happens to be loaded.
    */
-  getFieldByTag(tag: number): Field | null
+  getFieldByTag(tag: number): JsField | null
   /** The field a canonical or alternate tag names. */
-  fieldByTag(tag: number): Field
+  fieldByTag(tag: number): JsField
   /**
    * The field a canonical name or alias names inside one dictionary, ASCII
    * case folded, or `null`.
@@ -1223,45 +1223,45 @@ export declare class FixRegistry {
    * A name is unique per branch, not registry-wide, so the dictionary is
    * named: `'standard'` is the specification's own.
    */
-  getFieldByName(branch: string, name: string): Field | null
+  getFieldByName(branch: string, name: string): JsField | null
   /**
    * The field a canonical name or alias names inside one dictionary, ASCII
    * case folded.
    */
-  fieldByName(branch: string, name: string): Field
+  fieldByName(branch: string, name: string): JsField
   /**
    * The field a dotted path reaches through a component or a group, in one
    * dictionary, or `null`.
    */
-  getFieldByPath(branch: string, path: string): Field | null
+  getFieldByPath(branch: string, path: string): JsField | null
   /**
    * The field a dotted path reaches through a component or a group, in one
    * dictionary.
    */
-  fieldByPath(branch: string, path: string): Field
+  fieldByPath(branch: string, path: string): JsField
   /** The field a tag or a name reaches in the standard branch, or `null`. */
-  getField(key: number | string): Field | null
+  getField(key: number | string): JsField | null
   /** The field a tag or a name reaches in the standard branch. */
-  field(key: number | string): Field
+  field(key: number | string): JsField
   /**
    * The field a tag or a name reaches in the standard branch, or `null`:
    * the Map-like spelling of `getField`.
    */
-  get(key: number | string): Field | null
+  get(key: number | string): JsField | null
   /** Whether a tag or a name reaches a field in the standard branch. */
   has(key: number | string): boolean
   /** Add a field, answering the one it replaced. */
-  insert(field: Field): Field | null
+  insert(field: JsField): JsField | null
   /**
    * Merge a definition into the stored field with the same canonical
    * identifier.
    */
-  update(field: Field): void
+  update(field: JsField): void
   /**
    * Remove the field a tag or a name reaches in the standard branch,
    * answering it.
    */
-  remove(key: number | string): Field | null
+  remove(key: number | string): JsField | null
   /**
    * Remove the field a canonical or alternate identifier names, answering
    * it.
@@ -1270,7 +1270,7 @@ export declare class FixRegistry {
    * is the spelling that reaches a vendor dictionary at all; `id` is parsed
    * exactly as every other identifier argument is.
    */
-  removeById(id: string): Field | null
+  removeById(id: string): JsField | null
   /**
    * The fields in ascending canonical-identifier order, lazily.
    *
@@ -1423,7 +1423,7 @@ export declare class IcebergOptions {
    * file as the format its manifest entry records, so one table can mix
    * formats and still read as one shape.
    */
-  get dataMimeType(): JsMimeType
+  get dataMimeType(): MimeType
   /**
    * Set the MIME type for new data files from a native value or parser input.
    *
@@ -1498,7 +1498,7 @@ export declare class IOBase {
   /** The final path component, as `path.basename`. */
   get name(): string
   /** The media type of the bytes here. */
-  get mediaType(): JsMediaType
+  get mediaType(): MediaType
   /**
    * Declare what the bytes here are.
    *
@@ -1778,9 +1778,9 @@ export declare class IOBase {
    * The encoding is never guessed: it is whatever the handle already says it
    * holds, which is why no record method below takes a format argument.
    */
-  recordOptions(): RecordOptions
+  recordOptions(): JsRecordOptions
   /** Read the canonical non-null struct root `Field` of this resource. */
-  readArrowField(options?: RecordOptions | undefined | null): Field
+  readArrowField(options?: JsRecordOptions | undefined | null): JsField
   /**
    * Read this resource's rows as one `BatchReader`.
    *
@@ -1791,7 +1791,7 @@ export declare class IOBase {
    * partitions beneath it, restoring the columns their directory names spell
    * out.
    */
-  readArrowReader(options?: RecordOptions | undefined | null): BatchReader
+  readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
   /**
    * Replace this resource's rows with every batch `batches` yields.
    *
@@ -1799,14 +1799,14 @@ export declare class IOBase {
    * to `options.field` once in the core, and a match key is refused because
    * overwrite never infers merge intent.
    */
-  overwriteArrowReader(batches: BatchReader, options?: RecordOptions | undefined | null): void
+  overwriteArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
   /**
    * Add every batch `batches` yields after the rows this resource holds.
    *
    * Both sides stream: what is stored is chained ahead of what arrives, and
    * incoming batches are cast to the target shape as they are pulled.
    */
-  appendArrowReader(batches: BatchReader, options?: RecordOptions | undefined | null): void
+  appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
   /**
    * Merge every incoming row by `options.mergeByNames`.
    *
@@ -1814,7 +1814,7 @@ export declare class IOBase {
    * streaming, applies `options.field` once, and publishes through the
    * implementor's overwrite hook without casting the shaped rows twice.
    */
-  mergeArrowReader(batches: BatchReader, options?: RecordOptions | undefined | null): void
+  mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
   /** Decode this location as a host-independent forward-slash path. */
   intoPath(): string
   /** Return the location as text, so a handle prints where it points. */
@@ -2216,7 +2216,7 @@ export declare class PartitionSpec {
    * the spec a write can use; a `bucket`, `truncate`, or calendar spec reads
    * here but is refused by name when it would have to place a row.
    */
-  static identity(schema: Field, columns: Array<string>, specId?: number | undefined | null): PartitionSpec
+  static identity(schema: JsField, columns: Array<string>, specId?: number | undefined | null): PartitionSpec
   /** The identifier this spec is recorded under. */
   get specId(): number
   /** The partition fields, in the order the directories nest. */
@@ -2364,23 +2364,23 @@ export declare class RecordOptions {
   /** Derive the options for the encoding a MIME type names. */
   static forMimeType(value: MimeTypeInput): RecordOptions
   /** The MIME type of the encoding these options describe. */
-  get mimeType(): JsMimeType
+  get mimeType(): MimeType
   /**
    * The declared root Field, built from `name`, `dtype`, and `metadata`;
    * `null` until a datatype is declared.
    */
-  get field(): Field | null
+  get field(): JsField | null
   /**
    * Declare the root Field: its name, datatype, and metadata become the
    * three declared parts; nullability and dictionary options are dropped.
    */
-  set field(field: Field)
+  set field(field: JsField)
   /** The root Field name, declared or given to an inferred schema. */
   get name(): string
   /** Set the root Field name. */
   set name(name: string)
   /** The declared root datatype; `null` when the shape is inferred. */
-  get dtype(): DataType | null
+  get dtype(): JsDataType | null
   /**
    * Declare the root datatype from a `DataType` or a type expression;
    * `null` clears it.
@@ -2490,7 +2490,7 @@ export declare class RecordOptions {
   /** Return these options with a fixed Avro marker, or `null` to clear it. */
   withSyncMarker(marker?: Buffer | undefined | null): RecordOptions
   /** Return these options with a declared canonical root Field. */
-  withField(field: Field): RecordOptions
+  withField(field: JsField): RecordOptions
   /** Return these options with a different root Field name. */
   withName(name: string): RecordOptions
   /** Return these options with a declared root datatype. */
@@ -2830,7 +2830,7 @@ export declare class Table {
    * columns are numbered automatically, so a plain schema works as it is; a
    * schema that already carries field identifiers keeps every one of them.
    */
-  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static create(root: LocationInput, schema: JsField, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /** Open the table a container handle addresses. */
   static open(root: LocationInput): Table
   /**
@@ -2840,7 +2840,7 @@ export declare class Table {
    * automatically; an existing table is opened as it is and `schema`
    * describes only the table this call would create.
    */
-  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static openOrCreate(root: LocationInput, schema: JsField, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /**
    * The folder the table lives in.
    *
@@ -2849,7 +2849,7 @@ export declare class Table {
    * a table on a foreign Arrow file system must hand back a folder on that
    * file system, not the local path its URL happens to spell.
    */
-  get root(): JsIOBase
+  get root(): IOBase
   /** The table's base location, as a URI. */
   get location(): string
   /** A stable identifier for the table itself, not for any one version. */
@@ -2865,7 +2865,7 @@ export declare class Table {
   /** The location of the current metadata document, as a URI. */
   get metadataLocation(): string
   /** The schema new data is written against. */
-  get schema(): Field
+  get schema(): JsField
   /** The partition spec new data is written against. */
   get spec(): PartitionSpec
   /**
@@ -2876,7 +2876,7 @@ export declare class Table {
    */
   get currentSnapshot(): Snapshot | null
   /** Every schema the table has had, oldest first. */
-  get schemas(): Array<Field>
+  get schemas(): Array<JsField>
   /** Every retained snapshot, oldest first. */
   get snapshots(): Array<Snapshot>
   /** Every manifest the current snapshot points at. */
@@ -2899,7 +2899,7 @@ export declare class Table {
    * schema evolved readable as one shape. `options` configures this one
    * call and is put back afterwards, so the handle's own override survives.
    */
-  scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scan(field?: JsField | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
   /**
    * Read the rows matching one predicate as a `BatchReader`.
    *
@@ -2909,7 +2909,7 @@ export declare class Table {
    * files themselves. Planning prunes with the metadata chain, and only the
    * conjuncts it could not settle are tested against the rows.
    */
-  scanMatching(filter: Expression | string, field?: Field | undefined | null): BatchReader
+  scanMatching(filter: Expression | string, field?: JsField | undefined | null): BatchReader
   /** Report what one predicate lets the scan leave alone. */
   planMatching(filter: Expression | string): ScanPlanCounts
   /**
@@ -3008,7 +3008,7 @@ export declare class Table {
    */
   mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
-  evolveSchema(schema: Field): number
+  evolveSchema(schema: JsField): number
   /**
    * Read one retained snapshot's rows: time travel as an ordinary scan.
    *
@@ -3220,15 +3220,15 @@ export declare class TextOptions {
   /** Return the fixed `text/plain` media type. */
   get mimeType(): MimeType
   /** Return the declared root field, if any. */
-  get field(): Field | null
+  get field(): JsField | null
   /** Replace the declared root field. */
-  set field(field: Field)
+  set field(field: JsField)
   /** Return the inferred or declared root name. */
   get name(): string
   /** Replace the root name. */
   set name(name: string)
   /** Return the declared root datatype, if any. */
-  get dtype(): DataType | null
+  get dtype(): JsDataType | null
   /** Replace or clear the declared root datatype. */
   set dtype(dtype: DataTypeInput | undefined | null)
   /** Return root metadata entries in key order. */
@@ -3296,7 +3296,7 @@ export declare class TextOptions {
   /** Set or clear the autotyping timezone. */
   set timezone(value: TimezoneInput | undefined | null)
   /** Return a copy with a declared root field. */
-  withField(field: Field): TextOptions
+  withField(field: JsField): TextOptions
   /** Return a copy with a different root name. */
   withName(name: string): TextOptions
   /** Return a copy with a declared root datatype. */

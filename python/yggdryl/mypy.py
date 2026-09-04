@@ -10,7 +10,7 @@ from mypy.types import LiteralType
 
 _SCALAR_DECORATORS = {
     "yggdryl.scalar",
-    "yggdryl.scalar.scalar",
+    "yggdryl.types.scalar.scalar",
 }
 
 
@@ -19,7 +19,7 @@ def _add_field_accessor(context: ClassDefContext) -> None:
 
     string_type = context.api.named_type("builtins.str")
     struct_field = context.api.named_type(
-        "yggdryl.fields._typing.TypedField",
+        "yggdryl.types._typing.TypedField",
         [
             LiteralType("struct", string_type),
             context.api.named_type("builtins.object"),

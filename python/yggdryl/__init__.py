@@ -1,49 +1,21 @@
-"""Allocation-conscious schema, codec, and resource identifier values.
+"""Allocation-conscious types, storage, media, and protocols."""
 
-The ``gzip``, ``zlib``, and ``zstd`` submodules carry the standard library's
-names on purpose: they hold the same wire formats behind the same
-``loads``/``dumps`` spelling, so ``from yggdryl import gzip`` changes the engine
-underneath and nothing else.
-"""
-
-from ._native import (
+from ._native import __version__, combined
+from .expression import Bound, BoundStatement, Expression, Statement
+from .holder import IOBase
+from .media import MediaType, MimeType, RecordOptions, TextOptions
+from .types import (
     AsciiEnum,
-    Bound,
-    BoundStatement,
     DataType,
-    Expression,
     Field,
-    IOBase,
-    MediaType,
-    MimeType,
     ProtocolField,
-    RecordOptions,
-    Statement,
-    TextOptions,
+    Scalar,
     Timezone,
-    Uri,
-    Url,
-    Urn,
-    __version__,
-    combined,
+    field,
 )
-from . import (
-    avro,
-    codec,
-    enums,
-    fields,
-    fix,
-    gzip,
-    iceberg,
-    json,
-    toml,
-    xxhash,
-    yaml,
-    zlib,
-    zstd,
-)
-from .fields import field
-from .scalar import Scalar, scalar
+from .types.scalar import scalar
+from .uri import Uri, Url, Urn
+from . import coding, enums, expression, fix, holder, media, text, types, uri, xxhash
 
 __all__ = [
     "AsciiEnum",
@@ -57,28 +29,25 @@ __all__ = [
     "MimeType",
     "ProtocolField",
     "RecordOptions",
+    "Scalar",
     "Statement",
     "TextOptions",
     "Timezone",
     "Uri",
     "Url",
     "Urn",
-    "Scalar",
     "__version__",
+    "coding",
     "combined",
-    "codec",
-    "avro",
     "enums",
+    "expression",
     "field",
-    "scalar",
-    "fields",
     "fix",
-    "gzip",
-    "iceberg",
-    "json",
-    "toml",
-    "yaml",
-    "zlib",
+    "holder",
+    "media",
+    "scalar",
+    "text",
+    "types",
+    "uri",
     "xxhash",
-    "zstd",
 ]

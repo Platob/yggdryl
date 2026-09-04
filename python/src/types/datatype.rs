@@ -243,7 +243,7 @@ pub(crate) fn core_dtype_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDa
 fn core_dtype_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
     let inferred = hint
         .py()
-        .import("yggdryl.fields._hints")?
+        .import("yggdryl.types._hints")?
         .getattr("datatype_from_pyhint")?
         .call1((hint,))?;
     let inferred = inferred.extract::<PyRef<'_, PyDataType>>()?;
@@ -403,7 +403,7 @@ impl PyDataType {
         Self::new(value)
     }
 
-    /// Internal direct constructor used by the typed ``yggdryl.fields`` facade.
+    /// Internal direct constructor used by the typed ``yggdryl.types`` facade.
     #[staticmethod]
     fn _simple(kind: &str) -> PyResult<Self> {
         let inner = match kind {
@@ -790,7 +790,7 @@ impl PyDataType {
     /// Returns the cached Python annotation corresponding to this datatype.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dtype = Py::new(py, self.clone())?;
-        py.import("yggdryl.fields._defaults")?
+        py.import("yggdryl.types._defaults")?
             .getattr("_default_pyhint_from_datatype")?
             .call1((dtype,))
     }
@@ -808,7 +808,7 @@ impl PyDataType {
         let field = yggdryl::Field::new("value", self.inner.clone(), false);
         let scalar = default_arrow_scalar_to_pyarrow(py, &field, &array)?;
         let dtype = Py::new(py, self.clone())?;
-        py.import("yggdryl.fields._defaults")?
+        py.import("yggdryl.types._defaults")?
             .getattr("_default_pyvalue_from_datatype")?
             .call1((dtype, scalar))
     }

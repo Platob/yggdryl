@@ -28,17 +28,12 @@ from yggdryl import (
     Url,
     Urn,
     Scalar,
-    avro,
-    fields,
+    types,
     fix,
-    gzip,
-    iceberg,
-    json,
-    toml,
-    yaml,
-    zlib,
-    zstd,
 )
+from yggdryl.coding import gzip, zlib, zstd
+from yggdryl.media import avro, iceberg
+from yggdryl.text import json, toml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
@@ -49,7 +44,7 @@ from yggdryl._native import (
     ScalarIterator,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
-from yggdryl.fields import (
+from yggdryl.types import (
     AsciiField,
     FixedAsciiField,
     GuidField,
@@ -174,23 +169,23 @@ spark_compatible: Field = field.into_scheme_compat("spark")
 polars_compatible: Field = field.into_scheme_compat("polars")
 pandas_compatible: Field = field.into_scheme_compat("pandas")
 iceberg_compatible: Field = field.into_scheme_compat("iceberg")
-typed_id: Int32Field = fields.int32("id", nullable=False)
+typed_id: Int32Field = types.int32("id", nullable=False)
 typed_id_kind: Literal["int32"] = typed_id.dtype.id
 typed_id_value: int | None = typed_id.default_pyvalue()
 typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
-typed_clock: TimeField = fields.time("clock", "microseconds", nullable=False)
-typed_ids: ListField[int] = fields.list("ids", typed_id)
-nullable_item: Int32Field = fields.int32("item")
-typed_fixed: FixedSizeListField[int] = fields.fixed_size_list(
+typed_clock: TimeField = types.time("clock", "microseconds", nullable=False)
+typed_ids: ListField[int] = types.list("ids", typed_id)
+nullable_item: Int32Field = types.int32("item")
+typed_fixed: FixedSizeListField[int] = types.fixed_size_list(
     "fixed", nullable_item, 2, nullable=False
 )
 typed_fixed_value: list[int | None] | None = typed_fixed.default_pyvalue()
 typed_fixed_dtype_value: list[int | None] = (
     typed_fixed.dtype.default_pyvalue()
 )
-typed_struct = fields.struct("row", [typed_id], nullable=False)
+typed_struct = types.struct("row", [typed_id], nullable=False)
 typed_struct_value: object | Mapping[str, object] | None = (
     typed_struct.default_pyvalue()
 )
@@ -259,11 +254,11 @@ enum_value: str | None = native_enum.enum_value
 enum_ordinal: int | None = native_enum.enum_ordinal
 dense_union_dtype: DataType = DataType.variant(
     [
-        fields.int64("integer", nullable=False),
-        fields.utf8("text", nullable=False),
+        types.int64("integer", nullable=False),
+        types.utf8("text", nullable=False),
     ]
 )
-typed_dense_union: DenseUnionField = fields.dense_union(
+typed_dense_union: DenseUnionField = types.dense_union(
     "payload",
     tuple(dense_union_dtype),
     nullable=False,
@@ -274,14 +269,14 @@ typed_dense_union_value: object = typed_dense_union.default_pyvalue()
 # The parenthesis disambiguates: a bare DataType.variant() is the Variant
 # datatype, and the three geospatial-era factories carry their own literals.
 bare_variant_dtype: DataType = DataType.variant()
-typed_variant: VariantField = fields.variant("payload", nullable=False)
+typed_variant: VariantField = types.variant("payload", nullable=False)
 typed_variant_kind: Literal["variant"] = typed_variant.dtype.id
 geometry_dtype: DataType = DataType.geometry("EPSG:3857")
-typed_geometry: GeometryField = fields.geometry("shape", nullable=False)
+typed_geometry: GeometryField = types.geometry("shape", nullable=False)
 typed_geometry_kind: Literal["geometry"] = typed_geometry.dtype.id
 typed_geometry_value: bytes = typed_geometry.dtype.default_pyvalue()
 geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
-typed_geography: GeographyField = fields.geography("region", "OGC:CRS84", "vincenty")
+typed_geography: GeographyField = types.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 ascii_dtype: DataType = DataType.ascii(3)
@@ -291,23 +286,23 @@ currency_width: int | None = currency_dtype.ascii_width
 logical_names: dict[str, DataType] = DataType.logical_names()
 prebuilt_lists: dict[str, list[str]] = AsciiEnum.prebuilt()
 prebuilt_mics: AsciiEnum = AsciiEnum.from_logical_name("mic")
-typed_ascii: AsciiField = fields.ascii("note", nullable=False)
+typed_ascii: AsciiField = types.ascii("note", nullable=False)
 typed_ascii_kind: Literal["ascii"] = typed_ascii.dtype.id
-typed_ascii_fixed: FixedAsciiField = fields.fixed_ascii("ccy", 3, nullable=False)
+typed_ascii_fixed: FixedAsciiField = types.fixed_ascii("ccy", 3, nullable=False)
 typed_ascii_fixed_kind: Literal["fixed_ascii"] = typed_ascii_fixed.dtype.id
-typed_country: CountryField = fields.country("iso", nullable=False)
+typed_country: CountryField = types.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
-typed_currency: CurrencyField = fields.currency("ccy", nullable=False)
+typed_currency: CurrencyField = types.currency("ccy", nullable=False)
 typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
-typed_mic: MicField = fields.mic("venue")
+typed_mic: MicField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
-typed_cfi: CfiField = fields.cfi("classification")
+typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
-typed_guid: GuidField = fields.guid("id", nullable=False)
+typed_guid: GuidField = types.guid("id", nullable=False)
 typed_guid_kind: Literal["guid"] = typed_guid.dtype.id
 typed_guid_value: str = typed_guid.dtype.default_pyvalue()
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
-typed_ascii_isin: FixedAsciiField = fields.fixed_ascii("isin", 12)
+typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
 typed_ascii_isin_value: str | None = typed_ascii_isin.default_pyvalue()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
@@ -382,8 +377,8 @@ hint_is_a_runtime_typing_object: type[int] = (
 invalid_time_unit = DataType.time(1)  # type: ignore[arg-type]
 # ``mysql`` is a metadata namespace, not one of the five compatibility targets.
 invalid_compatibility_target = field.into_scheme_compat("mysql")  # type: ignore[arg-type]
-inferred_dictionary: Field = fields.dictionary("labels", int, str)
-inferred_mapping: Field = fields.map_of("counts", str, pa.int32())
+inferred_dictionary: Field = types.dictionary("labels", int, str)
+inferred_mapping: Field = types.map_of("counts", str, pa.int32())
 field_differences: list[str] = list(field.show_diffs(typed_id, False))
 json_source: json.Source = io.BytesIO(b'{"value":42}')
 yaml_source: yaml.Source = io.StringIO("value: 42\n")
@@ -435,7 +430,7 @@ iceberg_properties.clear()
 
 partitioned: Field = Field(
     "row",
-    DataType.from_fields([fields.int32("year", nullable=False)]),
+    DataType.from_fields([types.int32("year", nullable=False)]),
     nullable=False,
 ).with_partition_fields(["year"])
 partition_children: list[Field] = partitioned.partition_fields
