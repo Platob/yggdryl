@@ -1,0 +1,361 @@
+# Scalar hierarchy brief
+
+Replace the flat 30-variant `Scalar` enum with a three-tier hierarchy: one root
+enum over families, one enum per family over its physical widths, and one
+concrete final struct per representation, each reachable through a trait so
+generic code monomorphizes instead of matching. Rename
+`DataType::Timestamp` to `DataType::DateTime64` so the schema side spells the
+value side's name.
+
+Follow `AGENTS.md`. This is a semantic change and is **not** part of
+`REORGANIZATION_PROMPT.md`, whose invariant is that the test count never moves.
+Land the reorganization first: this brief assumes `types/<family>/scalars.rs`
+already exists.
+
+## Outcome
+
+- `Scalar` is an enum over families, one variant per value family.
+- Each family is an enum over its widths: `TemporalScalar`, `IntegerScalar`,
+  `DecimalScalar`, `FloatingScalar`, `TextScalar`, `GeospatialScalar`,
+  `NestedScalar`.
+- Each width is a concrete final struct: `Int32`, `Decimal128`, `DateTime64`,
+  `Date32`. Small, `Copy` where the payload allows, `repr(transparent)` where
+  it is one field.
+- `ScalarValue` (a leaf), `ScalarFamily` (a family enum), and one trait per
+  family (`TemporalValue`, `IntegerValue`, …) are the drill-down contract.
+- `DataType::Timestamp(TimeUnit, Option<Timezone>)` becomes
+  `DataType::DateTime64 { unit: TimeUnit, timezone: Timezone }`.
+- `Scalar` stays 48 bytes. `DateTime64` is 16 bytes and `Copy`.
+
+## Non-goals
+
+- No new datatype, no new physical representation, no change to what a value
+  can hold. Only how it is spelled and reached.
+- No `Box<dyn ScalarValue>` anywhere. The traits exist for monomorphization;
+  the enums exist for dynamic dispatch. Neither replaces the other.
+- No second value tree. `AGENTS.md` forbids it and this is one tree with
+  named floors, not two.
+
+## Read first
+
+- `AGENTS.md`, *Generic scalar* and *Public vocabulary*.
+- `rust/src/generic/scalar.rs`, `generic/typed.rs`, `generic/temporal.rs`,
+  `generic/enum_scalar.rs`, `generic/timezone/`.
+- `rust/src/datatype/mod.rs` lines 80-95 for the `Timestamp` variant.
+- `REORGANIZATION_PROMPT.md`, *Target tree — `types/`*.
+
+## Measured constraint
+
+Nesting is not free. Payload layouts modeled with `rustc -O` on 1.94, with
+`SmolStr` as a 24-byte inline value and `I256` as `[u8; 32]`:
+
+| Shape | `size_of::<Scalar>()` | align |
+| --- | --- | --- |
+| today, one flat enum | 48 | 16 |
+| nested families, `Timezone(SmolStr)` inline | **64** | 16 |
+| nested families, `Arc<Timezone>` | 48 | 16 |
+| nested families, `Timezone` interned to 4 bytes | **48** | 16 |
+| the above, plus decimals boxed and `Arc<str>` for text | 32 | 8 |
+
+Two conclusions, both binding:
+
+1. **Naive nesting costs 33% per value.** Each family enum carries its own
+   discriminant and `Timezone(SmolStr)` at 24 bytes makes `TemporalScalar` 48
+   on its own, so the root grows to 64. Interning `Timezone` is a
+   **prerequisite**, not an optimization — see the phase below.
+2. **The 32-byte row is rejected.** It requires boxing `Decimal128` and
+   dropping `SmolStr`'s inline storage. Decimal prices and short symbol strings
+   are the hot values in this workload; paying an allocation per price to save
+   16 bytes per scalar is the wrong trade, and it violates the `AGENTS.md` rule
+   that core scalar creation does not allocate.
+
+With `Timezone` interned, nesting is size-neutral at the root and a large win
+per family:
+
+| Type | Today | After |
+| --- | --- | --- |
+| `Scalar` | 48 | 48 |
+| a temporal value | 48 (the whole `Scalar`) | `TemporalScalar` 24 |
+| a datetime | 48 (the whole `Scalar`) | `DateTime64` 16, `Copy` |
+| a date | 48 (the whole `Scalar`) | `Date32` 12, `Copy` |
+| an `i32` | 48 (the whole `Scalar`) | `Int32` 4, `Copy` |
+
+That is the point of the drill-down: code that knows it holds a datetime moves
+16 bytes, not 48, and never matches a discriminant.
+
+## Tiers
+
+### Tier 0 — datatype markers
+
+Unchanged in role, renamed for collision. The `FieldType` zero-sized markers in
+`types/<family>/fields.rs` take a `Type` suffix so the bare name is free for the
+value struct: `Int8Type`, `DateTime64Type`, `Utf8Type`, `Decimal128Type`.
+`TypedField<K>` and `TypedScalar<K>` keep taking them.
+
+### Tier 1 — `Scalar`
+
+`types/scalar.rs`. One variant per value family.
+
+```rust
+#[non_exhaustive]
+pub enum Scalar {
+    Null,
+    Boolean(bool),
+    Integer(IntegerScalar),
+    Floating(FloatingScalar),
+    Decimal(DecimalScalar),
+    Text(TextScalar),
+    Binary(Binary),
+    Temporal(TemporalScalar),
+    Geospatial(GeospatialScalar),
+    Enum(EnumScalar),
+    Nested(NestedScalar),
+}
+```
+
+A family with exactly one representation carries the concrete struct directly
+and has no tier-2 enum — `Binary` and `Boolean` are the two.
+
+Datatype families and value families are **not** 1:1, and the code says so
+once: `Utf8`, `LargeUtf8`, `Utf8View`, and `Ascii32/64/128` are seven datatypes
+over one `TextScalar`; `Dictionary` and `RunEndEncoded` are encodings of their
+value type and have no value family at all. `types/<family>/scalars.rs` is
+where a datatype family contributes its arms, which is why the two lists differ.
+
+### Tier 2 — family enums
+
+`types/<family>/scalars.rs`, each `#[non_exhaustive]`.
+
+| Family enum | Variants | Concrete structs |
+| --- | --- | --- |
+| `IntegerScalar` | 10 | `Int8` `Int16` `Int32` `Int64` `UInt8` `UInt16` `UInt32` `UInt64` `Int128` `UInt128` |
+| `FloatingScalar` | 3 | `Float16` `Float32` `Float64` |
+| `DecimalScalar` | 2 | `Decimal128` `Decimal256` |
+| `TemporalScalar` | 7 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` |
+| `TextScalar` | 2 | `Utf8` `Ascii` |
+| `GeospatialScalar` | 2 | `Geometry` `Geography` |
+| `NestedScalar` | 3 | `Sequence` `Mapping` `Record` |
+
+### Tier 3 — concrete final structs
+
+One per physical representation. `Copy` wherever the payload is; `Eq`, `Ord`,
+`Hash`, `Display`, serde on every one, with the same total order the flat enum
+has today.
+
+```rust
+#[repr(transparent)] pub struct Int32(i32);
+pub struct Decimal128 { coefficient: i128, scale: i8 }
+pub struct DateTime64 { count: i64, unit: TimeUnit, timezone: Timezone }
+pub struct Date32     { count: i32, unit: TimeUnit, timezone: Timezone }
+#[repr(transparent)] pub struct Utf8(SmolStr);
+#[repr(transparent)] pub struct Binary(Arc<[u8]>);
+#[repr(transparent)] pub struct Sequence(Arc<[Scalar]>);
+```
+
+`Float16`, `Float32`, `Float64`, `I256`, and `EnumScalar` already exist and
+keep their definitions; they only gain the trait impls.
+
+## Traits
+
+```rust
+/// A concrete final scalar value: one datatype variant, one representation.
+pub trait ScalarValue:
+    Sized + Clone + Debug + Display + Eq + Ord + Hash + Send + Sync + 'static
+{
+    /// The family enum this value is a variant of. `Self` when the family has
+    /// exactly one representation.
+    type Family: ScalarFamily;
+    /// The zero-sized marker naming this value's datatype variant.
+    type Type: FieldType;
+
+    const ID: DataTypeId;
+    const KIND: DataTypeKind;
+
+    fn dtype(&self) -> DataType;
+    fn into_family(self) -> Self::Family;
+    fn from_family(family: &Self::Family) -> Option<&Self>;
+    fn into_scalar(self) -> Scalar;
+    fn from_scalar(value: &Scalar) -> Option<&Self>;
+}
+
+/// One family of scalar values, over its physical widths.
+pub trait ScalarFamily: Sized + Clone + Debug + Display + Eq + Ord + Hash {
+    const KIND: DataTypeKind;
+
+    fn id(&self) -> DataTypeId;
+    fn dtype(&self) -> DataType;
+    fn into_scalar(self) -> Scalar;
+    fn from_scalar(value: &Scalar) -> Option<&Self>;
+}
+```
+
+One trait per family, implemented by every leaf of that family and by the
+family enum itself, so the same call reads at either floor:
+
+```rust
+pub trait TemporalValue: ScalarValue {
+    const FAMILY: TemporalFamily;
+    const BIT_WIDTH: u8;
+    fn count(&self) -> i64;
+    fn unit(&self) -> TimeUnit;
+    fn timezone(&self) -> Timezone;
+    fn with_unit(self, unit: TimeUnit) -> Result<Self>;
+    fn with_timezone(self, timezone: Timezone) -> Result<Self>;
+}
+
+pub trait IntegerValue:  ScalarValue { const SIGNED: bool; const BIT_WIDTH: u8;
+                                       fn as_i128(&self) -> i128;
+                                       fn from_i128(value: i128) -> Result<Self>; }
+pub trait FloatingValue: ScalarValue { const BIT_WIDTH: u8; fn as_f64(&self) -> f64; }
+pub trait DecimalValue:  ScalarValue { fn coefficient(&self) -> I256; fn scale(&self) -> i8;
+                                       fn rescale(self, scale: i8) -> Result<Self>; }
+pub trait TextValue:     ScalarValue { fn as_str(&self) -> &str; }
+pub trait BytesValue:    ScalarValue { fn as_bytes(&self) -> &[u8]; }
+pub trait NestedValue:   ScalarValue { fn len(&self) -> usize;
+                                       fn children(&self) -> Children<'_>; }
+```
+
+The drill-down, all three floors, no allocation and no `dyn`:
+
+```rust
+let value: Scalar = /* … */;
+let Scalar::Temporal(temporal) = &value else { return };   // tier 1 -> 2
+let TemporalScalar::DateTime64(at) = temporal else { return }; // tier 2 -> 3
+let epoch: i64 = at.count();                                // tier 3, 16 bytes, Copy
+
+fn round<T: TemporalValue>(value: T, unit: TimeUnit) -> Result<T> { value.with_unit(unit) }
+```
+
+`TemporalRef<'a>` is retired. It existed only because there was no concrete
+struct to borrow; `TemporalScalar` is that value now, and it implements the
+family half of `TemporalValue` directly. `Scalar::as_temporal` returns
+`Option<&TemporalScalar>`.
+
+## Renames
+
+| Was | Becomes | Why |
+| --- | --- | --- |
+| `DataType::Timestamp(TimeUnit, Option<Timezone>)` | `DataType::DateTime64 { unit, timezone }` | matches `Scalar::DateTime64`, and drops an `Option` the value side never had |
+| `DataTypeId::Timestamp` | `DataTypeId::DateTime64` | follows the variant |
+| `field::temporal::Timestamp` (marker) | `types::temporal::DateTime64Type` | marker suffix; frees `DateTime64` for the value |
+| `TimestampScalar` (alias) | `types::temporal::DateTime64` | the concrete struct replaces the alias |
+| `TemporalRef<'a>` | — | retired; `&TemporalScalar` |
+| `Scalar::I8(i8)` … and 29 siblings | `Scalar::Integer(IntegerScalar::I8(Int8))` … | the hierarchy |
+| every `*Scalar` `TypedScalar` alias | — | retired where a concrete struct now names the same thing |
+
+`Timezone` becomes non-optional on the datatype, exactly as it already is on
+the scalar: `Timezone::NAIVE` is the explicit spelling for a wall-clock column,
+and `DataType::datetime64(unit, timezone)` is the constructor. Delete the
+`Option` handling at every call site rather than defaulting it.
+
+`TypedScalar<K>` stays. A concrete struct fixes the *representation*, not every
+datatype parameter — `Decimal128` carries a scale but not a precision, so the
+value-plus-datatype pairing still has a job.
+
+### Grammar
+
+`datetime64` is the canonical spelling and what `Display` writes. `timestamp`
+stays **accepted** as an input spelling and is not a compatibility alias: it is
+the Arrow/SQL/Hive/Spark word, and `AGENTS.md` already requires the grammar to
+accept foreign forms and display them as the core datatype. Add it to the same
+foreign-spelling path that already accepts SQL forms; do not add a second
+canonical name and do not add a deprecation.
+
+## Prerequisite phase — intern `Timezone`
+
+Required by the measurement above, and it is the change that makes every
+temporal struct `Copy`.
+
+`Timezone(SmolStr)` at 24 bytes becomes a 4-byte handle into the registry that
+`timezone/registry.rs` already owns:
+
+```rust
+#[repr(transparent)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+pub struct Timezone(NonZeroU32);
+```
+
+- `NAIVE` and `UTC` are const handles 1 and 2, so the two hot zones need no
+  lookup and stay usable in `const` contexts.
+- Fixed offsets occupy a reserved handle range encoding the offset in minutes,
+  so `+05:30` interns without touching the registry map.
+- Any other name is interned on first use; the registry never evicts, so a
+  handle is valid for the process lifetime and `Copy` is sound.
+- `Ord` and `Display` resolve the handle to its canonical name, keeping the
+  stable name order the current `Ord` gives. `Eq` and `Hash` stay by handle,
+  which is why interning must be canonicalizing: two spellings of one zone must
+  produce one handle. Prove it with a test over the alias table.
+- Serde stays the canonical name string. The handle is never serialized, never
+  crosses the C Data Interface, and never appears in a binding.
+
+Land this alone, with the full suite green, before any tier work.
+
+## Phases
+
+Each phase is one commit and ends green under default features and
+`--features "parquet iceberg"`.
+
+| # | Phase | Content |
+| --- | --- | --- |
+| 1 | intern `Timezone` | the prerequisite above; assert `size_of::<Timezone>() == 4` |
+| 2 | `Timestamp` → `DateTime64` | the datatype variant, `DataTypeId`, the marker, constructors, grammar, Arrow import/export, serde, 309 Rust call sites and 172 in `python`/`node`/`docs` |
+| 3 | traits | add `ScalarValue`, `ScalarFamily`, and the seven family traits with no enum change yet; implement them for the existing flat variants through temporary shims inside `types/` only |
+| 4 | leaves | add the concrete structs per family in `types/<family>/scalars.rs`; give each its `ScalarValue` impl and its family trait impl |
+| 5 | family enums | add the tier-2 enums; delete the phase-3 shims |
+| 6 | root | reshape `Scalar` to the 11 family variants; rewrite every construction, match, and conversion in the crate |
+| 7 | ports | Arrow scalar/array boundary, the cast planner, expression eval, Avro/JSON/YAML/TOML codecs, xxhash canonical feed, Iceberg scalar rendering |
+| 8 | bindings | Python and JavaScript: the drill-down is Rust-only, so both expose the same flat conversions they do today and gain `family()` and `id()` accessors |
+| 9 | docs | `docs/types.md` scalar section, the tier tables, `AGENTS.md` *Generic scalar*, `.api-inventory.txt`, `.api-bindings.txt` |
+
+Phase 6 is the one that cannot be split; land phases 3-5 so that it is a
+mechanical rewrite against traits that already compile.
+
+## Verification
+
+Per phase, the `REORGANIZATION_PROMPT.md` gate, plus:
+
+```
+cargo test --locked --manifest-path rust/Cargo.toml --workspace --all-targets --features "parquet iceberg"
+cargo bench --locked --manifest-path rust/Cargo.toml --bench types --features "parquet iceberg"
+```
+
+Assertions to add and keep:
+
+```rust
+const _: () = assert!(size_of::<Timezone>() == 4);
+const _: () = assert!(size_of::<Scalar>() == 48);
+const _: () = assert!(size_of::<DateTime64>() == 16);
+const _: () = assert!(size_of::<TemporalScalar>() == 24);
+const _: () = assert!(size_of::<Int32>() == 4);
+```
+
+`size_of::<Scalar>()` never exceeding 48 is the guard that keeps a later
+variant from silently undoing the interning.
+
+Behavioral invariants, each with a test:
+
+- Total order, equality, and hash over `Scalar` are identical to the flat enum
+  for every pair in the existing corpus. Order is the pair the reorganization
+  cannot check for you: assert it against a recorded fixture, not against the
+  new implementation.
+- Canonical `Display` output is byte-identical except `timestamp` →
+  `datetime64`.
+- Serde round-trips are byte-identical except the same word.
+- `Timezone` handle equality agrees with name equality across the full alias
+  table, including fixed offsets and unregistered IANA names.
+- `--no-default-features --lib` still compiles: the tiers and traits are
+  Arrow-free; only `casts.rs` is gated.
+- Allocation counts from `tests/allocations.rs` do not rise. Interning
+  `Timezone` should lower them.
+
+## Completion
+
+- `Scalar` has 11 variants, each naming a family.
+- Every physical representation has one concrete struct implementing
+  `ScalarValue` and its family trait.
+- `rg -n "Timestamp" rust/src` matches only Arrow's own foreign type and the
+  grammar's foreign-spelling table.
+- `TemporalRef` and every retired `*Scalar` alias are gone, with no shim.
+- The size assertions above are in the tree and passing.
+- `AGENTS.md` *Generic scalar* describes the three tiers and names
+  `DateTime64` on both the datatype and the value.

@@ -17,6 +17,12 @@ Follow `AGENTS.md`. This file contains only reorganization decisions; where it
 contradicts an existing `AGENTS.md` layout rule, `AGENTS.md` is rewritten in
 Phase 12 to match this file.
 
+`SCALAR_HIERARCHY_PROMPT.md` is the follow-on semantic change: it reshapes
+`Scalar` into family tiers and renames `DataType::Timestamp` to `DateTime64`.
+It depends on the `types/<family>/` tree this brief creates and must land after
+it, never interleaved — this brief's invariant is that the test count does not
+move, and that one changes behavior.
+
 ## Outcome
 
 - Root holds the crate's contracts as one readable index: `IOBase`, `IOMedia`,
