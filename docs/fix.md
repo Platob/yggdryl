@@ -674,10 +674,11 @@ changed.
 
 Nothing reads a `records/` folder any more, and nothing reads the flat
 `<root>/records/<shard>.json` that came before it. The project keeps no backward compatibility, so
-neither layout is migrated and neither is detected: a root holding only `records/` has neither tree
-and therefore loads as the empty registry, exactly as an untouched machine does. Re-writing such a
-root through `write_into` produces the two trees and leaves the stale `records/` folder alone,
-because the writer owns only what it wrote.
+neither layout is migrated. Neither is silently tolerated either: a root that still holds `records/`
+is refused, naming the folder, because it is a dictionary this loader cannot read rather than the
+absence an untouched machine has. Answering it with an empty registry would turn every later lookup
+into a wrong answer instead of a failure, which is the one thing loading must never do. Delete the
+folder, or point at a root written by this version.
 
 === "Rust"
 

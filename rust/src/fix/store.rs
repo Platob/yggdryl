@@ -36,6 +36,12 @@ const PRIMITIVE: &str = "primitive";
 const NESTED: &str = "nested";
 /// Both trees, in the order a load walks them and a write cleans them.
 const TREES: [&str; 2] = [PRIMITIVE, NESTED];
+/// The single folder the two trees replaced.
+///
+/// It is named here for one reason: a root still holding it is a registry
+/// written by a retired layout, and answering that with an empty dictionary
+/// would turn every later lookup into a wrong answer instead of a failure.
+const RETIRED: &str = "records";
 /// How many consecutive tags one shard holds.
 const SHARD_WIDTH: i32 = 100;
 /// The extension every shard carries.
@@ -166,6 +172,23 @@ impl FixRegistry {
     /// registry refuses.
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
         let mut registry = Self::new();
+        // A root written before the trees existed holds `records/` and neither
+        // of them, so every read below would answer nothing and the caller
+        // would get a working-looking empty dictionary instead of a failure.
+        // Absence is the laziness contract; a retired layout sitting there is
+        // not absence, and this module never falls back to empty on one.
+        let retired = handle.child_by_path(RETIRED)?;
+        if retired.is_container() {
+            return Err(Error::InvalidRecord {
+                path: retired
+                    .url()
+                    .map_or_else(|| SmolStr::new(RETIRED), |url| format_smolstr!("{url}")),
+                reason: crate::text::expected_got(
+                    format_args!("the {PRIMITIVE} and {NESTED} trees"),
+                    format_args!("the retired {RETIRED:?} folder"),
+                ),
+            });
+        }
         for tree in TREES {
             let root = handle.child_by_path(tree)?;
             for folder in root.ls(false, false) {

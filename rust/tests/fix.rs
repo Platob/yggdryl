@@ -193,6 +193,19 @@ fn shards_round_trip_through_a_temporary_folder() {
     assert!(FixRegistry::from_handle(&absent).unwrap().is_empty());
     assert!(!root.join("absent").exists(), "loading creates nothing");
 
+    // A root written by the retired single-folder layout is not absence: it
+    // holds a dictionary this loader cannot read, so it says so instead of
+    // answering an empty one every later lookup would resolve against.
+    let stale = root.join("stale");
+    std::fs::create_dir_all(stale.join("records").join("standard")).unwrap();
+    let error = FixRegistry::from_handle(&Folder::new(&stale).unwrap()).unwrap_err();
+    assert!(
+        matches!(error, yggdryl::Error::InvalidRecord { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("records"), "{error}");
+    std::fs::remove_dir_all(&stale).unwrap();
+
     let _ = std::fs::remove_dir_all(&root);
 }
 
