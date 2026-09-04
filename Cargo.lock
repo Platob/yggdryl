@@ -3462,6 +3462,7 @@ dependencies = [
  "smol_str",
  "snap",
  "toml",
+ "twox-hash",
  "uuid",
  "zstd",
 ]
