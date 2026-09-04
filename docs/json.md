@@ -72,14 +72,10 @@ keeps the existing natural Python/JavaScript result.
 ### One inferring entry point
 
 `yggdryl::from_json_scalar`, `from_json_scalar_with_field` and
-`into_json_scalar` name the `Scalar` they answer. Each coerces at the boundary
-and redirects to the explicit form - `from_bytes`, `from_bytes_with_field`,
-`into_utf8` - which also carries the `_with_limits` and `_with_formatting`
-variants. Input is always content, never a path: `&str`, `String`, `&[u8]`,
-`Vec<u8>` or any other byte-like value is parsed as JSON, even when the text
-names an existing file. Python `json.loads(..., cls=Scalar)` with `json.dumps`
-and JavaScript `json.loads(..., { scalar: true })` with `json.dumps` are the
-bindings' one inferring entry point already.
+`into_json_scalar` are JSON's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`. Text that names an
+existing file is parsed as JSON, so a bare file name fails as invalid syntax
+rather than being read.
 
 === "Rust"
 

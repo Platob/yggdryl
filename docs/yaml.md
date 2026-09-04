@@ -67,14 +67,10 @@ native tree; omitting the selector keeps natural language objects.
 ### One inferring entry point
 
 `yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field` and
-`into_yaml_scalar` name the `Scalar` they answer. Each coerces at the boundary
-and redirects to the explicit form - `from_bytes`, `from_bytes_with_field`,
-`into_utf8` - which also carries the `_with_limits` and `_with_formatting`
-variants. Input is always content, never a path: `&str`, `String`, `&[u8]`,
-`Vec<u8>` or any other byte-like value is parsed as YAML, so text that names an
-existing file is that plain string scalar. Python `yaml.loads(..., cls=Scalar)`
-with `yaml.dumps` and JavaScript `yaml.loads(..., { scalar: true })` with
-`yaml.dumps` are the bindings' one inferring entry point already.
+`into_yaml_scalar` are YAML's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`. Text that names an
+existing file is parsed as YAML, so a bare file name is that plain string
+scalar rather than the file's content.
 
 === "Rust"
 

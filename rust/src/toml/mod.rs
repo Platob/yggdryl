@@ -72,6 +72,14 @@ pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 ///
 /// This is the named entry point over [`into_utf8`], which it redirects to
 /// unchanged; another layout goes through [`into_utf8_with_formatting`].
+///
+/// ```
+/// use yggdryl::{Scalar, into_toml_scalar};
+///
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// assert_eq!(into_toml_scalar(&value)?, "\"id\" = 1\n");
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
 pub fn into_toml_scalar(value: &Scalar) -> Result<String> {
     into_utf8(value)
 }

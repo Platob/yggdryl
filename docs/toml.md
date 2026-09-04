@@ -75,15 +75,10 @@ repeated writes byte-identical.
 ### One inferring entry point
 
 `yggdryl::from_toml_scalar`, `from_toml_scalar_with_field` and
-`into_toml_scalar` name the `Scalar` they answer, a `Record` because a TOML
-root is a table. Each coerces at the boundary and redirects to the explicit
-form - `from_bytes`, `from_bytes_with_field`, `into_utf8` - which also carries
-the `_with_limits` and `_with_formatting` variants. Input is always content,
-never a path: `&str`, `String`, `&[u8]`, `Vec<u8>` or any other byte-like value
-is parsed as TOML, so text that names an existing file fails as the bare word
-it is. Python `toml.loads(..., cls=Scalar)` with `toml.dumps` and JavaScript
-`toml.loads(..., { scalar: true })` with `toml.dumps` are the bindings' one
-inferring entry point already.
+`into_toml_scalar` are TOML's [inferring entry points](text.md#raw-document-codecs)
+over `from_bytes`, `from_bytes_with_field` and `into_utf8`; the answer is a
+`Record` because a TOML root is a table. Text that names an existing file is
+parsed as TOML, so a bare file name fails as the bare word it is.
 
 === "Rust"
 

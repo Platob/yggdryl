@@ -92,6 +92,14 @@ pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// This is the named entry point over [`into_utf8`], which it redirects to
 /// unchanged; a layout other than compact goes through
 /// [`into_utf8_with_formatting`].
+///
+/// ```
+/// use yggdryl::{Scalar, into_json_scalar};
+///
+/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// assert_eq!(into_json_scalar(&value)?, r#"{"id":1}"#);
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
 pub fn into_json_scalar(value: &Scalar) -> Result<String> {
     into_utf8(value)
 }
