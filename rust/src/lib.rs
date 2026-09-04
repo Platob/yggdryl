@@ -81,12 +81,15 @@ pub use generic::{
     UnionMode,
 };
 pub use generic::{I256, Scalar};
+pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
+pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
 };
+pub use yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 
 #[cfg(test)]
 mod tests {

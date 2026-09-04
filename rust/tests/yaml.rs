@@ -2,7 +2,10 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
-use yggdryl::{DataType, Field, I256, Limits, Scalar, TimeUnit, Timezone, yaml};
+use yggdryl::{
+    DataType, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
+    from_yaml_scalar_with_field, into_yaml_scalar, yaml,
+};
 
 struct OneByte<R>(R);
 
@@ -166,4 +169,66 @@ fn nonfinite_yaml_floats_use_the_core_schema_spelling() {
         let decoded = yaml::from_utf8(&encoded).unwrap();
         assert!(decoded.as_f64().unwrap().is_nan() == value.as_f64().unwrap().is_nan());
     }
+}
+
+#[test]
+fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
+    let value = Scalar::from_record([
+        ("id", Scalar::I64(7)),
+        ("name", Scalar::from("ada")),
+        ("tags", Scalar::from_sequence([Scalar::from("rust")])),
+    ])
+    .unwrap();
+    let encoded = into_yaml_scalar(&value).unwrap();
+    assert_eq!(encoded, yaml::into_utf8(&value).unwrap());
+    assert_eq!(from_yaml_scalar(&encoded).unwrap(), value);
+    assert_eq!(yaml::from_yaml_scalar(&encoded).unwrap(), value);
+
+    let text = "id: 7\nname: ada\n";
+    let expected = yaml::from_bytes(text.as_bytes()).unwrap();
+    assert_eq!(from_yaml_scalar(text).unwrap(), expected);
+    let owned_text = String::from(text);
+    let owned_bytes = Vec::from(text.as_bytes());
+    assert_eq!(from_yaml_scalar(owned_text).unwrap(), expected);
+    assert_eq!(from_yaml_scalar(text.as_bytes()).unwrap(), expected);
+    assert_eq!(from_yaml_scalar(owned_bytes).unwrap(), expected);
+
+    assert_eq!(
+        from_yaml_scalar("id: [").unwrap_err().to_string(),
+        yaml::from_bytes(b"id: [").unwrap_err().to_string()
+    );
+}
+
+#[test]
+fn from_yaml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() {
+    let input =
+        "clock: '00:00:01.5'\npayload: AP8=\nat: '1970-01-01T00:00:00Z'\namount: '123.4500'\n";
+    let field = typed_row_field();
+    let decoded = from_yaml_scalar_with_field(input, &field).unwrap();
+
+    assert_eq!(
+        decoded,
+        yaml::from_bytes_with_field(input.as_bytes(), &field).unwrap()
+    );
+    let row = decoded.as_sequence().unwrap();
+    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(
+        row[1],
+        Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
+    );
+    let untyped = from_yaml_scalar(input).unwrap();
+    assert!(matches!(
+        untyped.as_record().unwrap()["amount"],
+        Scalar::String(_)
+    ));
+}
+
+#[test]
+fn a_string_naming_an_existing_file_is_a_yaml_string_not_a_path() {
+    let path = "Cargo.toml";
+    assert!(std::fs::read_to_string(path).unwrap().contains("[package]"));
+
+    let value = from_yaml_scalar(path).unwrap();
+    assert_eq!(value, Scalar::from(path));
+    assert_eq!(value, yaml::from_bytes(path.as_bytes()).unwrap());
 }

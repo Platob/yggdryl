@@ -64,6 +64,55 @@ other keys remain `Mapping` and preserve insertion order. Duplicate keys are
 rejected. Python `cls=Scalar` and JavaScript `{ scalar: true }` return the exact
 native tree; omitting the selector keeps natural language objects.
 
+### One inferring entry point
+
+`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field` and
+`into_yaml_scalar` name the `Scalar` they answer. Each coerces at the boundary
+and redirects to the explicit form - `from_bytes`, `from_bytes_with_field`,
+`into_utf8` - which also carries the `_with_limits` and `_with_formatting`
+variants. Input is always content, never a path: `&str`, `String`, `&[u8]`,
+`Vec<u8>` or any other byte-like value is parsed as YAML, so text that names an
+existing file is that plain string scalar. Python `yaml.loads(..., cls=Scalar)`
+with `yaml.dumps` and JavaScript `yaml.loads(..., { scalar: true })` with
+`yaml.dumps` are the bindings' one inferring entry point already.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{from_yaml_scalar, into_yaml_scalar};
+
+    let value = from_yaml_scalar("symbol: AAPL\nquantity: 2\n")?;
+    let encoded = into_yaml_scalar(&value)?;
+
+    assert_eq!(encoded, "quantity: 2\nsymbol: AAPL\n");
+    assert_eq!(from_yaml_scalar(encoded.as_bytes())?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, yaml
+
+    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
+    encoded = yaml.dumps(value)
+
+    assert encoded == b"quantity: 2\nsymbol: AAPL\n"
+    assert yaml.loads(encoded, cls=Scalar) == value
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { yaml } = require('yggdryl')
+
+    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { scalar: true })
+    const encoded = yaml.dumps(value)
+
+    assert.equal(encoded.toString(), 'quantity: 2\nsymbol: AAPL\n')
+    assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
+    ```
+
 ## Natural values and exact Fields
 
 Schemaless reads preserve only types proven by YAML syntax: null, boolean,

@@ -1,4 +1,14 @@
 //! Natural JSON values and lazy stream decoding.
+//!
+//! The explicit representation forms carry the implementation: `from_utf8`,
+//! `from_bytes` and `from_reader` with their `_all`, `_with_field` and
+//! `_with_limits` modifiers, and `into_utf8`, `into_bytes` and `into_writer`
+//! with `_with_formatting`. [`from_json_scalar`], [`from_json_scalar_with_field`]
+//! and [`into_json_scalar`] are the one inferring boundary over them, not
+//! aliases: each names the `Scalar` it answers, coerces any byte-like input at
+//! the boundary and redirects to its explicit form, holding no parsing,
+//! rendering, validation or limits logic of its own. Deleting them as
+//! duplicates would remove the only entry point that names the `Scalar`.
 
 use std::borrow::Borrow;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -32,6 +42,59 @@ fn is_json_whitespace(input: &[u8]) -> bool {
 /// Caller limits may choose any smaller depth. This implementation ceiling
 /// keeps adversarial explicit limits from turning nesting into stack exhaustion.
 pub const MAX_PARSER_DEPTH: usize = 384;
+
+/// Decode exactly one JSON value from byte-like content into the shared
+/// `Scalar`.
+///
+/// This is the inferring entry point over [`from_bytes`]: `input` may be
+/// `&str`, `String`, `&[u8]`, `Vec<u8>` or any other byte-like value, and its
+/// bytes are decoded there under default [`Limits`]. Inference is
+/// deterministic - the input is always content, never a path - so text that
+/// happens to name an existing file is parsed as JSON rather than read. A
+/// caller who needs explicit limits calls [`from_bytes_with_limits`].
+///
+/// ```
+/// use yggdryl::{Scalar, from_json_scalar, into_json_scalar};
+///
+/// let value = from_json_scalar(r#"{"id":1}"#)?;
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(into_json_scalar(&value)?, r#"{"id":1}"#);
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_json_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
+    from_bytes(input.as_ref())
+}
+
+/// Decode JSON content and interpret the natural value under `field`,
+/// answering the shared `Scalar`.
+///
+/// This is the inferring entry point over [`from_bytes_with_field`]: it
+/// coerces `input` exactly as [`from_json_scalar`] does - content, never a
+/// path - and redirects, so `field` types natural strings, orders records and
+/// validates there under default [`Limits`]. Explicit limits go through
+/// [`from_bytes_with_field_and_limits`].
+///
+/// ```
+/// use yggdryl::{DataType, Field, Scalar, from_json_scalar_with_field};
+///
+/// let field = Field::new("amount", DataType::decimal128(10, 2)?, false);
+/// let value = from_json_scalar_with_field(r#""12.50""#, &field)?;
+/// assert_eq!(value, Scalar::d128(1250, 2));
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar> {
+    from_bytes_with_field(input.as_ref(), field)
+}
+
+/// Encode one value as compact JSON UTF-8, naming the shared `Scalar` it
+/// takes.
+///
+/// This is the named entry point over [`into_utf8`], which it redirects to
+/// unchanged; a layout other than compact goes through
+/// [`into_utf8_with_formatting`].
+pub fn into_json_scalar(value: &Scalar) -> Result<String> {
+    into_utf8(value)
+}
 
 /// Decode exactly one JSON value from borrowed UTF-8 text.
 ///

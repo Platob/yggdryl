@@ -69,6 +69,55 @@ Duplicate object names are rejected. Python `cls=Scalar` and JavaScript
 `{ scalar: true }` return that exact native tree directly; omitting the selector
 keeps the existing natural Python/JavaScript result.
 
+### One inferring entry point
+
+`yggdryl::from_json_scalar`, `from_json_scalar_with_field` and
+`into_json_scalar` name the `Scalar` they answer. Each coerces at the boundary
+and redirects to the explicit form - `from_bytes`, `from_bytes_with_field`,
+`into_utf8` - which also carries the `_with_limits` and `_with_formatting`
+variants. Input is always content, never a path: `&str`, `String`, `&[u8]`,
+`Vec<u8>` or any other byte-like value is parsed as JSON, even when the text
+names an existing file. Python `json.loads(..., cls=Scalar)` with `json.dumps`
+and JavaScript `json.loads(..., { scalar: true })` with `json.dumps` are the
+bindings' one inferring entry point already.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{from_json_scalar, into_json_scalar};
+
+    let value = from_json_scalar(r#"{"symbol":"AAPL","quantity":100}"#)?;
+    let encoded = into_json_scalar(&value)?;
+
+    assert_eq!(encoded, r#"{"quantity":100,"symbol":"AAPL"}"#);
+    assert_eq!(from_json_scalar(encoded.as_bytes())?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar, json
+
+    value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
+    encoded = json.dumps(value)
+
+    assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
+    assert json.loads(encoded, cls=Scalar) == value
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { json } = require('yggdryl')
+
+    const value = json.loads('{"symbol":"AAPL","quantity":100}', { scalar: true })
+    const encoded = json.dumps(value)
+
+    assert.equal(encoded.toString(), '{"quantity":100,"symbol":"AAPL"}')
+    assert.ok(json.loads(encoded, { scalar: true }).equals(value))
+    ```
+
 ## Natural values and exact Fields
 
 JSON has syntax for null, booleans, finite numbers, strings, arrays, and

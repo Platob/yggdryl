@@ -3,7 +3,7 @@ use std::io::Cursor;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::text;
-use yggdryl::{Scalar, toml};
+use yggdryl::{Scalar, from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar, toml};
 
 use crate::fixtures::{nested, representative, typed};
 
@@ -16,6 +16,12 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
     group.bench_function("encode_representative", |bencher| {
         bencher.iter(|| toml::into_bytes(black_box(&value)).unwrap());
     });
+    group.bench_function("encode_utf8_representative", |bencher| {
+        bencher.iter(|| toml::into_utf8(black_box(&value)).unwrap());
+    });
+    group.bench_function("encode_scalar_entry", |bencher| {
+        bencher.iter(|| into_toml_scalar(black_box(&value)).unwrap());
+    });
     let mut writer_output = Vec::with_capacity(encoded.len());
     group.bench_function("write_representative", |bencher| {
         bencher.iter(|| {
@@ -26,6 +32,9 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("decode_representative", |bencher| {
         bencher.iter(|| toml::from_bytes(black_box(&encoded)).unwrap());
+    });
+    group.bench_function("decode_scalar_entry", |bencher| {
+        bencher.iter(|| from_toml_scalar(black_box(&encoded)).unwrap());
     });
     group.bench_function("decode_borrowed_str", |bencher| {
         bencher.iter(|| toml::from_utf8(black_box(encoded_text)).unwrap());
@@ -46,6 +55,11 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
     group.bench_function("decode_typed_natural_with_field", |bencher| {
         bencher.iter(|| {
             toml::from_bytes_with_field(black_box(&typed_encoded), black_box(&field)).unwrap()
+        });
+    });
+    group.bench_function("decode_scalar_entry_with_field", |bencher| {
+        bencher.iter(|| {
+            from_toml_scalar_with_field(black_box(&typed_encoded), black_box(&field)).unwrap()
         });
     });
 
