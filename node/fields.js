@@ -165,12 +165,10 @@ function createFields(DataType, Field, native) {
     utf8: simple('utf8'),
     largeUtf8: simple('large_utf8'),
     utf8View: simple('utf8_view'),
-    ascii16: simple('ascii16'),
-    ascii24: simple('ascii24'),
-    ascii32: simple('ascii32'),
-    ascii64: simple('ascii64'),
-    ascii96: simple('ascii96'),
-    ascii128: simple('ascii128'),
+    ascii: simple('ascii'),
+    fixedAscii(name, width, value) {
+      return field(name, DataType.ascii(width), value)
+    },
     guid: simple('guid'),
     // Each registered code is a datatype of its own, storing the width its
     // standard fixes and carrying that identity across Arrow.
@@ -178,9 +176,6 @@ function createFields(DataType, Field, native) {
     currency: simple('currency'),
     mic: simple('mic'),
     cfi: simple('cfi'),
-    ascii(name, width, value) {
-      return field(name, DataType.ascii(width), value)
-    },
 
     list: list('list'),
     listView: list('list_view'),

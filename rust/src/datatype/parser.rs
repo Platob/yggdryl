@@ -76,12 +76,8 @@ impl fmt::Display for DataType {
             D::Utf8 => formatter.write_str("utf8"),
             D::LargeUtf8 => formatter.write_str("large_utf8"),
             D::Utf8View => formatter.write_str("utf8_view"),
-            D::Ascii16 => formatter.write_str("ascii16"),
-            D::Ascii24 => formatter.write_str("ascii24"),
-            D::Ascii32 => formatter.write_str("ascii32"),
-            D::Ascii64 => formatter.write_str("ascii64"),
-            D::Ascii96 => formatter.write_str("ascii96"),
-            D::Ascii128 => formatter.write_str("ascii128"),
+            D::Ascii => formatter.write_str("ascii"),
+            D::FixedAscii(width) => write!(formatter, "ascii({width})"),
             D::Country => formatter.write_str("country"),
             D::Currency => formatter.write_str("currency"),
             D::Mic => formatter.write_str("mic"),
@@ -355,27 +351,22 @@ impl<'a> Parser<'a> {
             }
             "largeutf8" | "largestring" => DataType::LargeUtf8,
             "utf8view" | "stringview" => DataType::Utf8View,
-            "ascii16" => DataType::Ascii16,
-            "ascii24" => DataType::Ascii24,
-            "ascii32" => DataType::Ascii32,
-            "ascii64" => DataType::Ascii64,
-            "ascii96" => DataType::Ascii96,
-            "ascii128" => DataType::Ascii128,
+
             // `uuid` is what every other system calls it, and there is no
             // parenthesized form to disambiguate, so both spellings parse.
             "guid" | "uuid" => DataType::Guid,
-            // Bare `ascii` names no width; `ascii(N)` lets the family
-            // constructor select the physical width.
-            "ascii" => {
-                let close = self
-                    .consume_opening()
-                    .ok_or_else(|| self.error_here("expected an ASCII width from 1 to 16 bytes"))?;
-                let position = self.current_position();
-                let width = self.parse_i32("ASCII width")?;
-                self.expect_symbol(close)?;
-                DataType::ascii(width)
-                    .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
-            }
+            // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
+            // one of exactly N bytes.
+            "ascii" => match self.consume_opening() {
+                Some(close) => {
+                    let position = self.current_position();
+                    let width = self.parse_i32("ASCII width")?;
+                    self.expect_symbol(close)?;
+                    DataType::ascii(width)
+                        .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
+                }
+                None => DataType::Ascii,
+            },
             "list" | "array" => self.parse_list(ListKind::List, depth + 1)?,
             "listview" | "arrayview" => self.parse_list(ListKind::ListView, depth + 1)?,
             "fixedsizelist" | "fixedarray" => self.parse_fixed_size_list(depth + 1)?,

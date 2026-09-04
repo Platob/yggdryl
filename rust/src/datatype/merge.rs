@@ -38,6 +38,8 @@ use smol_str::format_smolstr;
 use crate::generic::{TimeUnit, UnionMode};
 use crate::{DataType, Error, Field, Result};
 
+use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
+
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
 /// Answering `Utf8` for an integer beside a string is the right call when two
@@ -74,6 +76,14 @@ impl Widening {
     }
 
     /// Pick between two ranked candidates.
+    /// The wider or the narrower of two ordered values, as this asks for.
+    fn widen<T: Ord>(self, left: T, right: T) -> T {
+        match self {
+            Self::Up => left.max(right),
+            Self::Down => left.min(right),
+        }
+    }
+
     fn pick<T>(self, left: (u8, T), right: (u8, T)) -> T {
         let take_left = match self {
             Self::Up => left.0 >= right.0,
@@ -116,8 +126,8 @@ impl DataType {
     /// assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
     ///
     /// // ASCII widths are text, so they meet variable text there when widening.
-    /// assert_eq!(DataType::Ascii32.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
-    /// assert_eq!(DataType::Ascii32.merge_with(&DataType::Ascii64, false)?, DataType::Ascii32);
+    /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::FixedAscii(8), false)?, DataType::FixedAscii(4));
     /// # Ok(())
     /// # }
     /// ```
@@ -396,9 +406,9 @@ fn merge_scalar(
     // Text is next, over numbers and temporals.
     if let Some(rank) = text_rank(left) {
         return Ok(match text_rank(right) {
-            Some(other) => Some(rebuild_text(how.pick((rank, rank), (other, other)))),
+            Some(other) => Some(rebuild_text(how.widen(rank, other))),
             None if recode == Recode::Allowed && is_mergeable_into_text(right) => {
-                Some(rebuild_text(rank.max(UTF8_RANK)))
+                Some(rebuild_text(rank.max(TextRank::Utf8)))
             }
             None => None,
         });
@@ -406,7 +416,7 @@ fn merge_scalar(
     if let Some(rank) = text_rank(right) {
         return Ok(
             if recode == Recode::Allowed && is_mergeable_into_text(left) {
-                Some(rebuild_text(rank.max(UTF8_RANK)))
+                Some(rebuild_text(rank.max(TextRank::Utf8)))
             } else {
                 None
             },
@@ -467,49 +477,57 @@ fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
 }
 
 /// The rank of `utf8`: the narrowest text a non-text side re-encodes into.
-const UTF8_RANK: u8 = 6;
+/// Where one text layout sits in the family's order.
+///
+/// The derived order is the one merging wants: a fixed ASCII width orders by
+/// the bytes it stores, every fixed width is narrower than variable ASCII,
+/// and every ASCII shape is narrower than UTF-8 - so widening beside variable
+/// text answers the variable text and narrowing answers the fixed width.
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum TextRank {
+    /// Fixed ASCII of that many bytes.
+    Fixed(i32),
+    /// Variable ASCII, which holds any fixed value.
+    Ascii,
+    /// UTF-8 with 32-bit offsets.
+    Utf8,
+    /// The UTF-8 view layout.
+    Utf8View,
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8,
+}
 
-/// How wide a text layout is, if it is one.
+/// Where a datatype sits in the text order, if it is text at all.
 ///
-/// The ASCII widths rank below every variable layout, so widening beside
-/// variable text answers the variable text and narrowing the ASCII width.
-///
-/// A registered code ranks as the narrowest width that holds it. Two schemas
-/// that agree on a code never reach here - the merge answers an equal pair
-/// before ranking anything - so this rank decides only the pairs that
+/// A [registered code](super::coded) ranks as the fixed width it stores. Two
+/// schemas that agree on a code never reach here - the merge answers an equal
+/// pair before ranking anything - so this decides only the pairs that
 /// disagree, and a code reconciled against anything else gives up its
-/// identity for the plain width both fit in: a currency merged with a
-/// country is `ascii24`, never one standard's code carrying the other's
-/// values.
-const fn text_rank(dtype: &DataType) -> Option<u8> {
+/// identity for the plain shape both fit in: a currency merged with a country
+/// is `ascii(3)`, never one standard's code carrying the other's values.
+fn text_rank(dtype: &DataType) -> Option<TextRank> {
     match dtype {
-        DataType::Ascii16 | DataType::Country => Some(0),
-        DataType::Ascii24 | DataType::Currency => Some(1),
-        DataType::Ascii32 | DataType::Mic => Some(2),
-        // Six bytes is narrower than `ascii64` but wider than `ascii32`, and
-        // `ascii64` is the narrowest width that holds a CFI code.
-        DataType::Ascii64 | DataType::Cfi => Some(3),
-        DataType::Ascii96 => Some(4),
-        DataType::Ascii128 => Some(5),
-        DataType::Utf8 => Some(UTF8_RANK),
-        DataType::Utf8View => Some(7),
-        DataType::LargeUtf8 => Some(8),
+        DataType::FixedAscii(width) => Some(TextRank::Fixed(*width)),
+        DataType::Country => Some(TextRank::Fixed(COUNTRY_WIDTH as i32)),
+        DataType::Currency => Some(TextRank::Fixed(CURRENCY_WIDTH as i32)),
+        DataType::Mic => Some(TextRank::Fixed(MIC_WIDTH as i32)),
+        DataType::Cfi => Some(TextRank::Fixed(CFI_WIDTH as i32)),
+        DataType::Ascii => Some(TextRank::Ascii),
+        DataType::Utf8 => Some(TextRank::Utf8),
+        DataType::Utf8View => Some(TextRank::Utf8View),
+        DataType::LargeUtf8 => Some(TextRank::LargeUtf8),
         _ => None,
     }
 }
 
-/// Rebuild a text layout from a width rank.
-const fn rebuild_text(rank: u8) -> DataType {
+/// Rebuild a text layout from its rank.
+const fn rebuild_text(rank: TextRank) -> DataType {
     match rank {
-        0 => DataType::Ascii16,
-        1 => DataType::Ascii24,
-        2 => DataType::Ascii32,
-        3 => DataType::Ascii64,
-        4 => DataType::Ascii96,
-        5 => DataType::Ascii128,
-        7 => DataType::Utf8View,
-        8 => DataType::LargeUtf8,
-        _ => DataType::Utf8,
+        TextRank::Fixed(width) => DataType::FixedAscii(width),
+        TextRank::Ascii => DataType::Ascii,
+        TextRank::Utf8View => DataType::Utf8View,
+        TextRank::LargeUtf8 => DataType::LargeUtf8,
+        TextRank::Utf8 => DataType::Utf8,
     }
 }
 
@@ -727,26 +745,32 @@ mod tests {
         let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
         let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
 
-        assert_eq!(up(&DataType::Ascii32, &DataType::Utf8), DataType::Utf8);
-        assert_eq!(down(&DataType::Ascii32, &DataType::Utf8), DataType::Ascii32);
         assert_eq!(
-            up(&DataType::Ascii32, &DataType::Ascii64),
-            DataType::Ascii64
+            up(&DataType::FixedAscii(4), &DataType::Utf8),
+            DataType::Utf8
         );
         assert_eq!(
-            down(&DataType::Ascii32, &DataType::Ascii64),
-            DataType::Ascii32
+            down(&DataType::FixedAscii(4), &DataType::Utf8),
+            DataType::FixedAscii(4)
         );
         assert_eq!(
-            up(&DataType::LargeUtf8, &DataType::Ascii128),
+            up(&DataType::FixedAscii(4), &DataType::FixedAscii(8)),
+            DataType::FixedAscii(8)
+        );
+        assert_eq!(
+            down(&DataType::FixedAscii(4), &DataType::FixedAscii(8)),
+            DataType::FixedAscii(4)
+        );
+        assert_eq!(
+            up(&DataType::LargeUtf8, &DataType::FixedAscii(16)),
             DataType::LargeUtf8
         );
         assert_eq!(
-            down(&DataType::LargeUtf8, &DataType::Ascii128),
-            DataType::Ascii128
+            down(&DataType::LargeUtf8, &DataType::FixedAscii(16)),
+            DataType::FixedAscii(16)
         );
         assert_eq!(
-            DataType::Ascii32
+            DataType::FixedAscii(4)
                 .merge_exact(&DataType::Utf8, Widening::Up)
                 .unwrap(),
             DataType::Utf8
@@ -756,41 +780,41 @@ mod tests {
     #[test]
     fn ascii_absorbs_a_number_at_no_less_than_utf8_and_only_when_allowed() {
         assert_eq!(
-            DataType::Ascii32
+            DataType::FixedAscii(4)
                 .merge_with(&DataType::Int32, true)
                 .unwrap(),
             DataType::Utf8
         );
         assert_eq!(
             DataType::Int32
-                .merge_with(&DataType::Ascii32, false)
+                .merge_with(&DataType::FixedAscii(4), false)
                 .unwrap(),
             DataType::Utf8
         );
-        let refused = DataType::Ascii32
+        let refused = DataType::FixedAscii(4)
             .merge_exact(&DataType::Int32, Widening::Up)
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("ascii32"), "{refused}");
+        assert!(refused.contains("ascii(4)"), "{refused}");
         assert!(refused.contains("int32"), "{refused}");
     }
 
     #[test]
     fn bytes_win_over_ascii_and_keep_only_an_identical_fixed_width() {
         assert_eq!(
-            DataType::Ascii32
+            DataType::FixedAscii(4)
                 .merge_with(&DataType::FixedSizeBinary(4), true)
                 .unwrap(),
             DataType::FixedSizeBinary(4)
         );
         assert_eq!(
             DataType::FixedSizeBinary(8)
-                .merge_with(&DataType::Ascii32, true)
+                .merge_with(&DataType::FixedAscii(4), true)
                 .unwrap(),
             DataType::Binary
         );
         assert_eq!(
-            DataType::Ascii32
+            DataType::FixedAscii(4)
                 .merge_with(&DataType::Binary, true)
                 .unwrap(),
             DataType::Binary

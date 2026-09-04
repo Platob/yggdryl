@@ -218,9 +218,9 @@
     }
   }
 
-  /** The auto-registering vocabulary, one push at a time. */
-  const renderDictionary = (root, data) => {
-    const group = data.dictionary
+  /** A declared vocabulary, one member at a time, then the declaration. */
+  const renderVocabulary = (root, data) => {
+    const group = data.vocabulary
     const steps = group.steps
     let at = 0
 
@@ -236,7 +236,7 @@
     const view = make('div', 'ygg-pg__view')
     const show = () => {
       const step = steps[at]
-      counter.textContent = `Push ${at + 1} of ${steps.length}`
+      counter.textContent = `Member ${at + 1} of ${steps.length}`
       const first = at === 0
       const last = at === steps.length - 1
       // Disabling the focused control drops focus to <body>, so move it first.
@@ -247,11 +247,16 @@
       view.textContent = ''
       view.append(
         detail([
-          ['pushed', step.value],
-          ['code', String(step.code)],
-          ['new', step.isNew ? 'yes' : 'no, it keeps its first code', false],
-          ['vocabulary', step.vocabulary.join(', ')],
-          ['datatype', step.dtype],
+          ['value', step.value],
+          ['member', step.member],
+          ['generated name', step.generated],
+          ['code', step.code],
+          ['storage', step.storageHex],
+          [
+            'in the prebuilt listing',
+            step.isPrebuilt ? 'yes' : 'no, this one is the declaration\u2019s own',
+            false,
+          ],
         ]),
         call(step.call),
       )
@@ -267,21 +272,22 @@
     show()
 
     const after = make('div', 'ygg-pg__after')
-    after.append(make('h3', null, 'After the last push'))
-    const column = group.column
+    after.append(make('h3', null, 'The listing the package ships'))
+    const prebuilt = group.prebuilt
     after.append(
       detail([
-        ['column', column.input.map((value) => (value === null ? 'null' : value)).join(', ')],
-        ['codes', column.codes.map((value) => (value === null ? 'null' : String(value))).join(', ')],
+        ['datatype', group.dtype],
+        ['codes', String(prebuilt.size)],
+        ['first twelve', prebuilt.sample.join(', ')],
       ]),
-      call(column.call),
+      call(prebuilt.call),
+      make('h3', null, 'The declaration on the field'),
       detail([
-        [
-          `enum ${group.enum.name}`,
-          group.enum.members.map(([name, value]) => `${name} = ${value}`).join(', '),
-        ],
+        [`enum ${group.enum.name}`, group.enum.members.map(([n, v]) => `${n} = ${v}`).join(', ')],
+        ['ARROW:extension:name', group.declaration.extensionName],
+        ['field:enum', group.declaration.carried],
       ]),
-      call(group.enum.call),
+      call(group.declaration.call),
     )
 
     root.append(controls, view, after)
@@ -367,7 +373,7 @@
           if (role === 'lookup') continue
           root.textContent = ''
           if (role === 'widths') renderWidths(root, data)
-          else if (role === 'dictionary') renderDictionary(root, data)
+          else if (role === 'vocabulary') renderVocabulary(root, data)
           else if (role === 'encode' || role === 'decode') {
             views[role] = renderCases(root, data, role)
           }

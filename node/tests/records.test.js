@@ -594,7 +594,7 @@ test('a field casts whatever Arrow JS holds, batch by batch', () => {
 test('an ASCII column pads on the way in and trims on the way out', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
-  const declared = fields.struct('row', [fields.ascii32('ccy')], { nullable: false })
+  const declared = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })
   const options = handle.recordOptions().withField(declared)
   const codes = (values) =>
     new arrow.Table({ ccy: arrow.vectorFromArray(values, new arrow.Utf8()) })
@@ -616,6 +616,37 @@ test('an ASCII column pads on the way in and trims on the way out', () => {
   assert.throws(
     () => handle.overwriteArrowTable(codes(['EURO!']), options),
     /ASCII text of at most 4 bytes/,
+  )
+})
+
+test('a variable ASCII column stores the bytes it is given', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  const declared = fields.struct('row', [fields.ascii('note')], { nullable: false })
+  const options = handle.recordOptions().withField(declared)
+  const notes = (values) =>
+    new arrow.Table({ note: arrow.vectorFromArray(values, new arrow.Utf8()) })
+
+  handle.overwriteArrowTable(notes(['a', 'much longer note']), options)
+  assert.ok(handle.readArrowField().equals(declared))
+  // No width, so no padding: the stored bytes are the value's own, and Arrow
+  // JS sees the variable binary the extension sits over.
+  const stored = handle.readArrowReader().intoTable().getChild('note')
+  assert.equal(stored.type.toString(), 'Binary')
+  assert.deepEqual([...stored].map((value) => Buffer.from(value).toString()), [
+    'a',
+    'much longer note',
+  ])
+  const text = fields.struct('row', [fields.utf8('note')], { nullable: false })
+  assert.deepEqual(
+    [...handle.readRecords(handle.recordOptions().withField(text))].map((row) => row.note),
+    ['a', 'much longer note'],
+  )
+
+  // The value contract is the width's, minus the width itself.
+  assert.throws(
+    () => handle.overwriteArrowTable(notes(['\u20ac']), options),
+    /non-ASCII byte/,
   )
 })
 

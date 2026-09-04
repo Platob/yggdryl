@@ -857,12 +857,12 @@ mod types {
         // has nothing that carries a code's identity, so a code is a string
         // there exactly as a width is.
         for dtype in [
-            DataType::Ascii16,
-            DataType::Ascii24,
-            DataType::Ascii32,
-            DataType::Ascii64,
-            DataType::Ascii96,
-            DataType::Ascii128,
+            DataType::FixedAscii(2),
+            DataType::FixedAscii(3),
+            DataType::FixedAscii(4),
+            DataType::FixedAscii(8),
+            DataType::FixedAscii(12),
+            DataType::FixedAscii(16),
             DataType::Country,
             DataType::Currency,
             DataType::Mic,

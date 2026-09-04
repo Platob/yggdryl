@@ -143,12 +143,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['utf8', fields.utf8('value')],
     ['large_utf8', fields.largeUtf8('value')],
     ['utf8_view', fields.utf8View('value')],
-    ['ascii16', fields.ascii16('value')],
-    ['ascii24', fields.ascii24('value')],
-    ['ascii32', fields.ascii32('value')],
-    ['ascii64', fields.ascii64('value')],
-    ['ascii96', fields.ascii96('value')],
-    ['ascii128', fields.ascii128('value')],
+    ['ascii', fields.ascii('value')],
+    ['fixed_ascii', fields.fixedAscii('value', 4)],
     ['country', fields.country('value')],
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
@@ -176,7 +172,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 56)
+  assert.equal(byId.size, 52)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -184,9 +180,16 @@ test('typed field factories cover every native datatype variant', () => {
   for (const [id, value] of byId) {
     assert.equal(value.nullable, true, id)
   }
+  // Canonical display opens with the variant id and appends its parameters.
+  // `fixed_ascii` is the one exception: `ascii` alone spells the variable
+  // form, so the fixed one is that spelling with its width as the parameter.
+  const spellings = new Map([['fixed_ascii', 'ascii']])
   for (const [id, value] of byId) {
-    // Canonical display opens with the variant id and appends its parameters.
-    assert.equal(value.dtype.toString().split(/[(<]/, 1)[0], id, id)
+    assert.equal(
+      value.dtype.toString().split(/[(<]/, 1)[0],
+      spellings.get(id) ?? id,
+      id,
+    )
   }
   assert.deepEqual(
     new Set([...byId.values()].map((value) => value.dtype.kind)),
@@ -212,22 +215,31 @@ test('typed field factories cover every native datatype variant', () => {
   )
 })
 
-test('the ascii factory selects the width through the native constructor', () => {
-  const currency = fields.ascii('ccy', 3, { nullable: false })
+test('the ascii factories build the variable form and one fixed width', () => {
+  const free = fields.ascii('note')
+  const currency = fields.fixedAscii('ccy', 3, { nullable: false })
 
-  assert.equal(currency.dtype.id, 'ascii24')
+  assert.equal(free.dtype.id, 'ascii')
+  assert.equal(free.dtype.asciiWidth, null)
+  assert.equal(free.nullable, true)
+  assert.equal(currency.dtype.id, 'fixed_ascii')
   assert.equal(currency.dtype.asciiWidth, 3)
   assert.equal(currency.nullable, false)
-  assert.ok(currency.dtype.equals(fields.ascii24('ccy').dtype))
-  assert.equal(fields.ascii('iso', 2).dtype.id, 'ascii16')
+  assert.ok(currency.dtype.equals(DataType.ascii(3)))
+  assert.equal(fields.fixedAscii('iso', 2).dtype.asciiWidth, 2)
   assert.equal(fields.guid('id').dtype.id, 'guid')
   assert.equal(fields.guid('id', { nullable: false }).nullable, false)
-  assert.equal(fields.ascii('code', 6).dtype.id, 'ascii64')
-  assert.equal(fields.ascii('code', 12).dtype.id, 'ascii96')
-  assert.equal(fields.ascii('code', 12).nullable, true)
-  assert.equal(fields.ascii32('ccy').defaultJSValue(), null)
-  assert.equal(fields.ascii32('ccy', { nullable: false }).defaultJSValue(), '')
-  assert.throws(() => fields.ascii('code', 17), /expected an ASCII width from 1 to 16 bytes, got 17/)
+  // A fixed width past the packed integer is still storage, so it builds.
+  assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
+  assert.equal(fields.fixedAscii('code', 12).nullable, true)
+  assert.equal(fields.ascii('note').defaultJSValue(), null)
+  assert.equal(fields.ascii('note', { nullable: false }).defaultJSValue(), '')
+  assert.equal(fields.fixedAscii('ccy', 4).defaultJSValue(), null)
+  assert.equal(fields.fixedAscii('ccy', 4, { nullable: false }).defaultJSValue(), '')
+  assert.throws(
+    () => fields.fixedAscii('code', 0),
+    /expected an ASCII width of at least 1 byte, got 0/,
+  )
 })
 
 test('the registered codes build their own datatype at their own width', () => {
@@ -248,7 +260,7 @@ test('the registered codes build their own datatype at their own width', () => {
     assert.equal(value.nullable, true, name)
   }
 
-  assert.ok(!fields.currency('ccy').dtype.equals(fields.ascii24('ccy').dtype))
+  assert.ok(!fields.currency('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
   assert.equal(declared.get('country')[0].name, 'venue_country')
   assert.equal(fields.currency('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')

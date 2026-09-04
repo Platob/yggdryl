@@ -2,70 +2,6 @@
 /* eslint-disable */
 
 /**
- * A per-column ASCII vocabulary and the codes that name its values.
- *
- * The vocabulary is a value rather than a process-global registry: a caller
- * holds one per column, and a code stays stable exactly as long as this
- * object is carried. Two independent encodes build two vocabularies, and
- * their codes agree only when the same dictionary crossed both. Nothing in
- * the write path registers on its own.
- */
-export declare class AsciiDictionary {
-  /** Create an empty vocabulary over an ASCII width, keyed `int32`. */
-  constructor(values: DataType | string, key?: DataType | string | undefined | null)
-  /**
-   * Create a vocabulary pre-seeded in first-appearance order, where a
-   * repeat keeps the code of its first appearance.
-   */
-  static fromValues(values: DataType | string, seen: Array<string>, key?: DataType | string | undefined | null): AsciiDictionary
-  /**
-   * Create the vocabulary a registered logical name prebuilds, such as
-   * `currency`, `country`, or `mic`.
-   *
-   * A registered name over an ASCII width with no prebuilt list answers an
-   * empty vocabulary of that width.
-   */
-  static fromLogicalName(name: string, key?: DataType | string | undefined | null): AsciiDictionary
-  /** The prebuilt vocabularies, keyed by the logical name that spells them. */
-  static prebuilt(): Record<string, string[]>
-  /** Register `value` and return its code, existing or newly appended. */
-  push(value: string): number
-  /** The value a code names, or `null` when the vocabulary has no such code. */
-  get(code: number): string | null
-  /**
-   * The code a value has, or `null` when it was never registered. A value
-   * carrying the storage's trailing NUL padding resolves as its trimmed
-   * form.
-   */
-  getCode(value: string): number | null
-  /** The vocabulary in code order: the code-to-value direction. */
-  values(): Array<string>
-  /**
-   * The enum member name of one value, under the rule `intoEnum` applies
-   * to a whole vocabulary at once.
-   */
-  static memberName(value: string): string
-  /** The number of registered values. */
-  get length(): number
-  /** The integer type the codes are read as. */
-  get key(): DataType
-  /** The ASCII width the values are stored as. */
-  get valuesDtype(): DataType
-  /** The datatype an encoded column carries: `dictionary(key, ascii-N)`. */
-  get dtype(): DataType
-  /** Native equality: the width, the key type, and the values in order. */
-  equals(other: AsciiDictionary): boolean
-  /** Make a native clone that grows independently of this vocabulary. */
-  clone(): AsciiDictionary
-  /**
-   * The `fromValues` call that rebuilds this vocabulary: the width, the
-   * values in code order, and the key.
-   */
-  toString(): string
-}
-export type JsAsciiDictionary = AsciiDictionary
-
-/**
  * The enum an ASCII field's values name: one value per member name.
  *
  * A dictionary is a vocabulary and derives its member names; this is the
@@ -95,8 +31,12 @@ export declare class AsciiEnum {
   remove(member: string): string | null
   /** The members paired with their packed codes under one ASCII width. */
   intoMembers(width: DataType | string): Record<string, bigint>
-  /** The vocabulary this enum names, as a dictionary over one width. */
-  intoDictionary(width: DataType | string, key?: DataType | string | undefined | null): AsciiDictionary
+  /** The enum a registered logical name prebuilds, named for it. */
+  static fromLogicalName(name: string): AsciiEnum
+  /** The prebuilt vocabularies, keyed by the logical name that spells them. */
+  static prebuilt(): Record<string, string[]>
+  /** The enum member name one ASCII value takes. */
+  static memberName(value: string): string
   /** The number of members. */
   get length(): number
   /** Native equality: the enum name and every member it names. */
@@ -418,9 +358,8 @@ export declare class DataType {
   /** Creates the physical time-of-day type selected by its resolution. */
   static time(unit: string): DataType
   /**
-   * Creates the ASCII width holding `width` bytes: 1 or 2 is `ascii16`, 3
-   * `ascii24`, 4 `ascii32`, 5 through 8 `ascii64`, 9 through 12 `ascii96`,
-   * and 13 through 16 `ascii128`.
+   * Creates the fixed ASCII datatype storing exactly `width` bytes,
+   * padding shorter values with trailing NUL.
    */
   static ascii(width: number): DataType
   /**
@@ -475,8 +414,8 @@ export declare class DataType {
    *
    * The packed integer is the same in every process, so it is what an enum
    * member and a stable hash are, and it is exactly the bytes an ASCII
-   * column stores. It reaches 128 bits under `ascii128`, so it crosses as
-   * a `bigint` at every width.
+   * column stores. It reaches 128 bits at the widest packable width, so it
+   * crosses as a `bigint` at every width.
    */
   asciiPacked(value: string): bigint
   /** The ASCII value a packed integer carries, without its padding. */

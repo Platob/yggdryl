@@ -10,46 +10,53 @@ use arrow_array::{
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
 use yggdryl::field::{
-    Ascii24Field, Ascii32Field, Ascii64Field, CfiField, CountryField, CurrencyField, MicField,
-    ascii,
+    AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
 };
-use yggdryl::generic::{Ascii64Scalar, CfiScalar, CurrencyScalar};
+use yggdryl::generic::{CfiScalar, CurrencyScalar, FixedAsciiScalar};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};
 
 use crate::typed::assert_typed_marker;
 
 #[test]
 fn ascii_markers_cover_the_widths_and_the_codes() {
-    assert_typed_marker::<ascii::Ascii32>(DataType::Ascii32);
-    assert_typed_marker::<ascii::Ascii64>(DataType::Ascii64);
-    assert_typed_marker::<ascii::Ascii128>(DataType::Ascii128);
+    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(4));
+    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(8));
+    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(16));
     assert_typed_marker::<ascii::Country>(DataType::Country);
     assert_typed_marker::<ascii::Currency>(DataType::Currency);
     assert_typed_marker::<ascii::Mic>(DataType::Mic);
     assert_typed_marker::<ascii::Cfi>(DataType::Cfi);
 
-    // A unit variant has a static constructor; a marker refuses its siblings.
-    let ccy = Ascii32Field::new("ccy", false);
-    assert_eq!(ccy.dtype(), &DataType::Ascii32);
-    assert!(Ascii64Field::try_new("ccy", DataType::Ascii32, false).is_err());
+    // The variable shape is parameterless, so it has a static constructor;
+    // the fixed one carries a width and takes its datatype through `try_new`.
+    assert_typed_marker::<ascii::Ascii>(DataType::Ascii);
+    assert_eq!(AsciiField::new("note", true).dtype(), &DataType::Ascii);
+    let ccy = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
+    assert_eq!(ccy.dtype(), &DataType::FixedAscii(4));
+    assert!(FixedAsciiField::try_new("ccy", DataType::Ascii, false).is_err());
+    assert!(AsciiField::try_new("note", DataType::FixedAscii(4), true).is_err());
 
     // The code/width boundary is the one the markers exist for: a currency
-    // and an `ascii24` are the same three bytes and are not each other.
+    // and an `ascii(3)` are the same three bytes and are not each other.
     assert_eq!(
         CurrencyField::new("ccy", false).dtype(),
         &DataType::Currency
     );
     assert_eq!(CountryField::new("iso", true).dtype(), &DataType::Country);
     assert_eq!(MicField::new("venue", true).dtype(), &DataType::Mic);
-    assert!(CurrencyField::try_new("ccy", DataType::Ascii24, false).is_err());
-    assert!(Ascii24Field::try_new("ccy", DataType::Currency, false).is_err());
+    assert!(CurrencyField::try_new("ccy", DataType::FixedAscii(3), false).is_err());
+    assert!(FixedAsciiField::try_new("ccy", DataType::Currency, false).is_err());
     // Six bytes against eight: the confusion a width/code mix-up produces.
-    assert!(CfiField::try_new("code", DataType::Ascii64, false).is_err());
+    assert!(CfiField::try_new("code", DataType::FixedAscii(8), false).is_err());
 
     // The typed value is checked under the one ASCII rule for its width.
-    let code = Ascii64Scalar::new(Scalar::from("ABC")).unwrap();
+    let code =
+        FixedAsciiScalar::try_from_parts(DataType::FixedAscii(8), Scalar::from("ABC")).unwrap();
     assert_eq!(code.value(), &Scalar::from("ABC"));
-    assert!(Ascii64Scalar::new(Scalar::from("ABCDEFGHI")).is_err());
+    assert!(
+        FixedAsciiScalar::try_from_parts(DataType::FixedAscii(8), Scalar::from("ABCDEFGHI"))
+            .is_err()
+    );
 
     // A typed code value is checked at the width its own standard fixes.
     assert_eq!(
@@ -90,7 +97,7 @@ fn cast_column(batch: RecordBatch, target: Field) -> yggdryl::arrow::Result<Arra
 
 #[test]
 fn text_entering_an_ascii_width_is_validated_and_padded() {
-    let field = Ascii32Field::new("ccy", true);
+    let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), true).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EU"), None]));
 
     let cast = field.cast_arrow_array(source, false).unwrap();
@@ -101,7 +108,7 @@ fn text_entering_an_ascii_width_is_validated_and_padded() {
 
 #[test]
 fn a_value_breaking_the_width_rule_is_refused_naming_the_row_and_the_width() {
-    let field = Ascii32Field::new("ccy", true);
+    let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), true).unwrap();
     for (value, fact) in [
         ("EURO!", "5 bytes"),
         ("\u{20ac}", "non-ASCII byte"),
@@ -121,7 +128,7 @@ fn a_value_breaking_the_width_rule_is_refused_naming_the_row_and_the_width() {
 
 #[test]
 fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
-    let field = Ascii32Field::new("ccy", false);
+    let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     let source = fixed(4, &[Some(b"USD\0"), Some(b"EUR\0")]);
     let cast = field
         .as_field()
@@ -142,7 +149,7 @@ fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
 
 #[test]
 fn an_ascii_column_renders_as_trimmed_text() {
-    let source = root([DataType::Ascii32.nullable_field("ccy")]);
+    let source = root([DataType::FixedAscii(4).nullable_field("ccy")]);
     let stored = fixed(4, &[Some(b"USD\0"), Some(b"EU\0\0"), None]);
 
     let text = cast_column(
@@ -167,10 +174,10 @@ fn an_ascii_column_renders_as_trimmed_text() {
 
 #[test]
 fn ascii_widths_re_pad_between_each_other() {
-    let narrow = root([DataType::Ascii32.nullable_field("ccy")]);
+    let narrow = root([DataType::FixedAscii(4).nullable_field("ccy")]);
     let widened = cast_column(
         batch_of(&narrow, fixed(4, &[Some(b"USD\0"), None])),
-        DataType::Ascii64.nullable_field("ccy"),
+        DataType::FixedAscii(8).nullable_field("ccy"),
     )
     .unwrap();
     let widened = widened
@@ -181,10 +188,10 @@ fn ascii_widths_re_pad_between_each_other() {
     assert!(widened.is_null(1));
 
     // Narrowing keeps what fits and refuses what does not, by row and width.
-    let wide = root([DataType::Ascii64.nullable_field("ccy")]);
+    let wide = root([DataType::FixedAscii(8).nullable_field("ccy")]);
     let narrowed = cast_column(
         batch_of(&wide, fixed(8, &[Some(b"USD\0\0\0\0\0")])),
-        DataType::Ascii32.nullable_field("ccy"),
+        DataType::FixedAscii(4).nullable_field("ccy"),
     )
     .unwrap();
     assert_eq!(
@@ -200,7 +207,7 @@ fn ascii_widths_re_pad_between_each_other() {
             &wide,
             fixed(8, &[Some(b"USD\0\0\0\0\0"), Some(b"EUROS\0\0\0")]),
         ),
-        DataType::Ascii32.nullable_field("ccy"),
+        DataType::FixedAscii(4).nullable_field("ccy"),
     )
     .unwrap_err()
     .to_string();
@@ -211,7 +218,7 @@ fn ascii_widths_re_pad_between_each_other() {
 
 #[test]
 fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
-    let source = root([DataType::Ascii32.nullable_field("ccy")]);
+    let source = root([DataType::FixedAscii(4).nullable_field("ccy")]);
     let stored = fixed(4, &[Some(b"USD\0")]);
 
     let bytes = cast_column(
@@ -239,7 +246,7 @@ fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
 
 #[test]
 fn a_dictionary_of_text_enters_an_ascii_width() {
-    let field = Ascii32Field::new("ccy", true);
+    let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), true).unwrap();
     let keys = Int32Array::from(vec![Some(0), Some(1), None, Some(0)]);
     let values: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
     let source: ArrayRef = Arc::new(DictionaryArray::<Int32Type>::try_new(keys, values).unwrap());
@@ -253,7 +260,7 @@ fn a_dictionary_of_text_enters_an_ascii_width() {
 
 #[test]
 fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
-    let field = Ascii32Field::new("ccy", false);
+    let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
 
     let cast = field.cast_arrow_array(source, false).unwrap();
@@ -266,7 +273,7 @@ fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
 fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     let target = root([Field::new(
         "position",
-        DataType::from_fields([DataType::Ascii32.required_field("ccy")]).unwrap(),
+        DataType::from_fields([DataType::FixedAscii(4).required_field("ccy")]).unwrap(),
         true,
     )]);
     // Row 1 is null at the struct level; its child slot holds a value that

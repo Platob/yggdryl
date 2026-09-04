@@ -3,13 +3,12 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Env, Error, Object, Result, Uint8Array, Unknown,
+    BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
 use yggdryl::{
-    AsciiDictionary as CoreAsciiDictionary, AsciiEnum as CoreAsciiEnum, DataType as CoreDataType,
-    EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField, Scheme as CoreScheme,
-    TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
+    Field as CoreField, Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::{
@@ -110,12 +109,7 @@ impl JsDataType {
             "utf8" => CoreDataType::Utf8,
             "large_utf8" => CoreDataType::LargeUtf8,
             "utf8_view" => CoreDataType::Utf8View,
-            "ascii16" => CoreDataType::Ascii16,
-            "ascii24" => CoreDataType::Ascii24,
-            "ascii32" => CoreDataType::Ascii32,
-            "ascii64" => CoreDataType::Ascii64,
-            "ascii96" => CoreDataType::Ascii96,
-            "ascii128" => CoreDataType::Ascii128,
+            "ascii" => CoreDataType::Ascii,
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
@@ -189,9 +183,8 @@ impl JsDataType {
         Ok(Self::from_core(inner))
     }
 
-    /// Creates the ASCII width holding `width` bytes: 1 or 2 is `ascii16`, 3
-    /// `ascii24`, 4 `ascii32`, 5 through 8 `ascii64`, 9 through 12 `ascii96`,
-    /// and 13 through 16 `ascii128`.
+    /// Creates the fixed ASCII datatype storing exactly `width` bytes,
+    /// padding shorter values with trailing NUL.
     #[napi(factory)]
     pub fn ascii(width: f64) -> Result<Self> {
         CoreDataType::ascii(exact_i32(width, "width")?)
@@ -444,8 +437,8 @@ impl JsDataType {
     ///
     /// The packed integer is the same in every process, so it is what an enum
     /// member and a stable hash are, and it is exactly the bytes an ASCII
-    /// column stores. It reaches 128 bits under `ascii128`, so it crosses as
-    /// a `bigint` at every width.
+    /// column stores. It reaches 128 bits at the widest packable width, so it
+    /// crosses as a `bigint` at every width.
     #[napi]
     pub fn ascii_packed(&self, value: String) -> Result<BigInt> {
         self.inner
@@ -783,219 +776,6 @@ impl JsDataType {
     }
 }
 
-/// A per-column ASCII vocabulary and the codes that name its values.
-///
-/// The vocabulary is a value rather than a process-global registry: a caller
-/// holds one per column, and a code stays stable exactly as long as this
-/// object is carried. Two independent encodes build two vocabularies, and
-/// their codes agree only when the same dictionary crossed both. Nothing in
-/// the write path registers on its own.
-#[napi(js_name = "AsciiDictionary")]
-pub struct JsAsciiDictionary {
-    inner: CoreAsciiDictionary,
-}
-
-impl JsAsciiDictionary {
-    const fn from_core(inner: CoreAsciiDictionary) -> Self {
-        Self { inner }
-    }
-
-    /// Apply the optional `key` argument the two constructors share.
-    fn keyed(
-        dictionary: CoreAsciiDictionary,
-        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
-    ) -> Result<Self> {
-        match key {
-            None => Ok(Self::from_core(dictionary)),
-            Some(key) => dictionary
-                .with_key(dtype_from_input(key)?)
-                .map(Self::from_core)
-                .map_err(napi_error),
-        }
-    }
-}
-
-#[napi]
-impl JsAsciiDictionary {
-    /// Create an empty vocabulary over an ASCII width, keyed `int32`.
-    #[napi(constructor)]
-    pub fn new(
-        values: Either<ClassInstance<'_, JsDataType>, String>,
-        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
-    ) -> Result<Self> {
-        let dictionary = CoreAsciiDictionary::new(dtype_from_input(values)?).map_err(napi_error)?;
-        Self::keyed(dictionary, key)
-    }
-
-    /// Create a vocabulary pre-seeded in first-appearance order, where a
-    /// repeat keeps the code of its first appearance.
-    #[napi(factory)]
-    pub fn from_values(
-        values: Either<ClassInstance<'_, JsDataType>, String>,
-        seen: Vec<String>,
-        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
-    ) -> Result<Self> {
-        let dictionary = CoreAsciiDictionary::from_values(dtype_from_input(values)?, seen)
-            .map_err(napi_error)?;
-        Self::keyed(dictionary, key)
-    }
-
-    /// Create the vocabulary a registered logical name prebuilds, such as
-    /// `currency`, `country`, or `mic`.
-    ///
-    /// A registered name over an ASCII width with no prebuilt list answers an
-    /// empty vocabulary of that width.
-    #[napi(factory)]
-    pub fn from_logical_name(
-        name: String,
-        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
-    ) -> Result<Self> {
-        let dictionary = CoreAsciiDictionary::from_logical_name(&name).map_err(napi_error)?;
-        Self::keyed(dictionary, key)
-    }
-
-    /// The prebuilt vocabularies, keyed by the logical name that spells them.
-    #[napi(ts_return_type = "Record<string, string[]>")]
-    pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
-        let mut lists = Object::new(env)?;
-        for (name, values) in CoreAsciiDictionary::PREBUILT {
-            lists.set(*name, values.to_vec())?;
-        }
-        Ok(lists)
-    }
-
-    /// Register `value` and return its code, existing or newly appended.
-    #[napi]
-    pub fn push(&mut self, value: String) -> Result<i64> {
-        self.inner.push(&value).map_err(napi_error)
-    }
-
-    /// The value a code names, or `null` when the vocabulary has no such code.
-    #[napi]
-    pub fn get(&self, code: i64) -> Option<String> {
-        self.inner.get(code).map(str::to_owned)
-    }
-
-    /// The code a value has, or `null` when it was never registered. A value
-    /// carrying the storage's trailing NUL padding resolves as its trimmed
-    /// form.
-    #[napi]
-    pub fn get_code(&self, value: String) -> Option<i64> {
-        self.inner.get_code(&value)
-    }
-
-    /// The vocabulary in code order: the code-to-value direction.
-    #[napi]
-    pub fn values(&self) -> Vec<String> {
-        self.inner
-            .as_values()
-            .iter()
-            .map(|value| value.as_str().to_owned())
-            .collect()
-    }
-
-    /// The enum member name of one value, under the rule `intoEnum` applies
-    /// to a whole vocabulary at once.
-    #[napi]
-    pub fn member_name(value: String) -> String {
-        CoreAsciiDictionary::member_name(&value).to_string()
-    }
-
-    /// The number of registered values.
-    #[napi(getter)]
-    pub fn length(&self) -> u32 {
-        u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
-    }
-
-    /// The integer type the codes are read as.
-    #[napi(getter)]
-    pub fn key(&self) -> JsDataType {
-        JsDataType::from_core(self.inner.key().clone())
-    }
-
-    /// The ASCII width the values are stored as.
-    #[napi(getter)]
-    pub fn values_dtype(&self) -> JsDataType {
-        JsDataType::from_core(self.inner.values_dtype().clone())
-    }
-
-    /// The datatype an encoded column carries: `dictionary(key, ascii-N)`.
-    #[napi(getter)]
-    pub fn dtype(&self) -> Result<JsDataType> {
-        self.inner
-            .dtype()
-            .map(JsDataType::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Native equality: the width, the key type, and the values in order.
-    #[napi]
-    pub fn equals(&self, other: &JsAsciiDictionary) -> bool {
-        self.inner == other.inner
-    }
-
-    /// Make a native clone that grows independently of this vocabulary.
-    #[napi(js_name = "clone")]
-    pub fn clone_js(&self) -> Self {
-        Self::from_core(self.inner.clone())
-    }
-
-    /// The `fromValues` call that rebuilds this vocabulary: the width, the
-    /// values in code order, and the key.
-    #[napi(js_name = "toString")]
-    pub fn js_string(&self) -> String {
-        format!(
-            "AsciiDictionary.fromValues({:?}, {:?}, {:?})",
-            self.inner.values_dtype().to_string(),
-            self.inner.as_values(),
-            self.inner.key().to_string()
-        )
-    }
-
-    /// Internal member listing for the loader's frozen `intoEnum` object.
-    ///
-    /// The names and codes are the core listing; the loader adds only the
-    /// JavaScript freezing and tagging. A code is the value packed
-    /// big-endian, which reaches 128 bits, so every one crosses as a `bigint`.
-    #[napi(js_name = "_intoEnumNative", skip_typescript)]
-    pub fn enum_members_native<'env>(&self, env: &'env Env) -> Result<Object<'env>> {
-        let members = self.inner.into_members().map_err(napi_error)?;
-        let mut object = Object::new(env)?;
-        for (name, code) in members {
-            object.set(name.as_str(), code)?;
-        }
-        Ok(object)
-    }
-
-    /// Internal copied-IPC encode of one column under this vocabulary.
-    #[napi(js_name = "_intoArrowArrayIpcNative", skip_typescript)]
-    pub fn arrow_array_ipc_native(&mut self, values: Vec<Option<String>>) -> Result<Buffer> {
-        let array = self.inner.into_arrow_array(values).map_err(napi_error)?;
-        let dtype = self.inner.dtype().map_err(napi_error)?;
-        crate::codec::arrow_array_ipc(&CoreField::new("value", dtype, true), array)
-    }
-
-    /// Internal copied-IPC vocabulary recovery from an Arrow JS vector.
-    #[napi(factory, js_name = "_fromArrowArrayIpcNative", skip_typescript)]
-    pub fn from_arrow_array_ipc_native(bytes: Uint8Array) -> Result<Self> {
-        let (schema, batches) = crate::codec::arrow_batches(&bytes)?;
-        crate::codec::ensure_one_column(&schema, "AsciiDictionary array")?;
-        let [batch] = batches.as_slice() else {
-            return Err(napi_error(format!(
-                "AsciiDictionary array IPC must contain exactly one record batch, got {}",
-                batches.len()
-            )));
-        };
-        let array = batch
-            .columns()
-            .first()
-            .ok_or_else(|| napi_error("AsciiDictionary array IPC has no value column"))?;
-        CoreAsciiDictionary::from_arrow_array(array.as_ref())
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-}
-
 /// The enum an ASCII field's values name: one value per member name.
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
@@ -1103,19 +883,28 @@ impl JsAsciiEnum {
             .map_err(napi_error)
     }
 
-    /// The vocabulary this enum names, as a dictionary over one width.
+    /// The enum a registered logical name prebuilds, named for it.
+    #[napi(factory)]
+    pub fn from_logical_name(name: String) -> Result<Self> {
+        CoreAsciiEnum::from_logical_name(&name)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The prebuilt vocabularies, keyed by the logical name that spells them.
+    #[napi(ts_return_type = "Record<string, string[]>")]
+    pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
+        let mut lists = Object::new(env)?;
+        for (name, values) in CoreAsciiEnum::PREBUILT {
+            lists.set(*name, values.to_vec())?;
+        }
+        Ok(lists)
+    }
+
+    /// The enum member name one ASCII value takes.
     #[napi]
-    #[allow(clippy::wrong_self_convention)]
-    pub fn into_dictionary(
-        &self,
-        width: Either<ClassInstance<'_, JsDataType>, String>,
-        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
-    ) -> Result<JsAsciiDictionary> {
-        let dictionary = self
-            .inner
-            .into_dictionary(dtype_from_input(width)?)
-            .map_err(napi_error)?;
-        JsAsciiDictionary::keyed(dictionary, key)
+    pub fn member_name(value: String) -> String {
+        CoreAsciiEnum::member_name(&value).to_string()
     }
 
     /// The number of members.

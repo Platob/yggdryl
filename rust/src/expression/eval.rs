@@ -921,12 +921,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(error) => Err(error),
             }
         }
-        DataType::Ascii16
-        | DataType::Ascii24
-        | DataType::Ascii32
-        | DataType::Ascii64
-        | DataType::Ascii96
-        | DataType::Ascii128 => {
+        DataType::Ascii | DataType::FixedAscii(_) => {
             // The row tier enforces the width rule the cast plan enforces on
             // columns, so the two tiers refuse the same values.
             let Some(bytes) = crate::datatype::ascii_bytes(value) else {

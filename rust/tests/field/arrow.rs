@@ -172,7 +172,8 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
 
 #[test]
 fn ascii_ffi_schemas_carry_the_extension_identity() {
-    let currency = Field::from_parts("ccy", DataType::Ascii32, false, [("owner", "core")]).unwrap();
+    let currency =
+        Field::from_parts("ccy", DataType::FixedAscii(4), false, [("owner", "core")]).unwrap();
 
     let schema = currency.clone().into_arrow_ffi().unwrap();
     assert_eq!(schema.format(), "w:4");
@@ -192,14 +193,14 @@ fn ascii_ffi_schemas_carry_the_extension_identity() {
     assert_eq!(imported, currency);
 
     // A bare datatype carries the identity too.
-    let schema = DataType::Ascii128.into_arrow_ffi().unwrap();
+    let schema = DataType::FixedAscii(16).into_arrow_ffi().unwrap();
     assert_eq!(schema.format(), "w:16");
     assert_eq!(
         schema.metadata().unwrap().get("ARROW:extension:name"),
         Some(&"yggdryl.ascii".to_owned())
     );
     let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
-    assert_eq!(imported.dtype(), &DataType::Ascii128);
+    assert_eq!(imported.dtype(), &DataType::FixedAscii(16));
 }
 
 #[test]

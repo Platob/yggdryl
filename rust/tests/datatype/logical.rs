@@ -1,10 +1,7 @@
 //! A row declared in FIX's datatype names is an ordinary row everywhere else.
 
-use arrow_array::Array;
-use arrow_array::DictionaryArray;
-use arrow_array::types::Int32Type;
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::{AsciiDictionary, DataType, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{AsciiEnum, DataType, Field, Scalar, TimeUnit, Timezone};
 
 /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
 const FIX_ROW: &str = "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, \
@@ -96,42 +93,34 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
 }
 
 #[test]
-fn a_prebuilt_vocabulary_encodes_a_venue_column_against_constant_codes() {
-    let mut venues = AsciiDictionary::from_logical_name("Exchange").unwrap();
-    let seeded = venues.len();
-    let column = venues
-        .into_arrow_array([Some("XCME"), Some("XLON"), None, Some("XCME")])
+fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
+    let venues = AsciiEnum::from_logical_name("Exchange").unwrap();
+    assert_eq!(venues.len(), AsciiEnum::MICS.len());
+    assert_eq!(venues.get("XCME"), Some("XCME"));
+
+    // The listing is what a field declares, so a venue column crosses Arrow
+    // carrying the vocabulary its values come from.
+    let venue = Field::new("venue", DataType::Mic, false)
+        .try_with_ascii_enum(&venues)
         .unwrap();
-    // Every value was already in the constant, so the column registered none.
-    assert_eq!(venues.len(), seeded);
+    let recovered = Field::from_arrow(&venue.clone().into_arrow().unwrap()).unwrap();
+    assert_eq!(recovered, venue);
+    assert_eq!(recovered.ascii_enum().unwrap().as_ref(), Some(&venues));
 
-    let encoded = column
-        .as_any()
-        .downcast_ref::<DictionaryArray<Int32Type>>()
-        .unwrap();
-    let xcme = i32::try_from(venues.get_code("XCME").unwrap()).unwrap();
-    let xlon = i32::try_from(venues.get_code("XLON").unwrap()).unwrap();
+    // A member's code is the value's own bytes under the resolved width, so
+    // two processes reading this schema answer the same integers.
+    let members = venues.into_members(&DataType::Mic).unwrap();
+    for (member, code) in &members {
+        assert_eq!(
+            *code,
+            DataType::Mic.ascii_packed(member.as_bytes()).unwrap()
+        );
+    }
     assert_eq!(
-        encoded.keys().iter().collect::<Vec<_>>(),
-        [Some(xcme), Some(xlon), None, Some(xcme)]
-    );
-    assert_eq!(encoded.values().len(), seeded);
-
-    // The vocabulary recovered from the array is the one that wrote it, so a
-    // reader that only has the column still reads the same codes. An array
-    // carries storage and no identity, so a `mic` vocabulary - four bytes,
-    // exactly what `ascii32` stores - is recovered by naming the datatype.
-    assert_eq!(
-        AsciiDictionary::from_arrow_array_as(DataType::Mic, encoded).unwrap(),
-        venues
-    );
-
-    // Another process building the same prebuilt vocabulary agrees on every
-    // code, which is what a constant seed buys over auto-registration alone.
-    assert_eq!(
-        AsciiDictionary::from_logical_name("mic")
+        AsciiEnum::from_logical_name("mic")
             .unwrap()
-            .get_code("XCME"),
-        Some(i64::from(xcme))
+            .into_members(&DataType::Mic)
+            .unwrap(),
+        members
     );
 }

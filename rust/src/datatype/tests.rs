@@ -802,24 +802,14 @@ mod ascii {
     #[test]
     fn every_spelling_parses_and_displays_as_its_datatype() {
         for (spelling, dtype) in [
-            ("ascii16", DataType::Ascii16),
-            ("ascii24", DataType::Ascii24),
-            ("ascii32", DataType::Ascii32),
-            ("ascii64", DataType::Ascii64),
-            ("ascii96", DataType::Ascii96),
-            ("ascii128", DataType::Ascii128),
-            ("ASCII64", DataType::Ascii64),
-            ("ascii(1)", DataType::Ascii16),
-            ("ascii(2)", DataType::Ascii16),
-            ("ascii(3)", DataType::Ascii24),
-            ("ascii(4)", DataType::Ascii32),
-            ("ascii(5)", DataType::Ascii64),
-            ("ascii(6)", DataType::Ascii64),
-            ("ascii(8)", DataType::Ascii64),
-            ("ascii(9)", DataType::Ascii96),
-            ("ascii(12)", DataType::Ascii96),
-            ("ascii(13)", DataType::Ascii128),
-            ("ascii(16)", DataType::Ascii128),
+            ("ascii", DataType::Ascii),
+            ("ASCII", DataType::Ascii),
+            // A fixed width is exactly what it says, at any length.
+            ("ascii(1)", DataType::FixedAscii(1)),
+            ("ascii(3)", DataType::FixedAscii(3)),
+            ("ascii(6)", DataType::FixedAscii(6)),
+            ("ascii(12)", DataType::FixedAscii(12)),
+            ("ascii(64)", DataType::FixedAscii(64)),
             ("country", DataType::Country),
             ("Country", DataType::Country),
             ("currency", DataType::Currency),
@@ -829,15 +819,15 @@ mod ascii {
             ("Exchange", DataType::Mic),
             ("cfi", DataType::Cfi),
             ("CFI", DataType::Cfi),
-            ("MonthYear", DataType::Ascii64),
-            ("TZTimeOnly", DataType::Ascii128),
+            ("MonthYear", DataType::FixedAscii(8)),
+            ("TZTimeOnly", DataType::FixedAscii(16)),
         ] {
             let parsed: DataType = spelling
                 .parse()
                 .unwrap_or_else(|error| panic!("{spelling} must parse: {error}"));
             assert_eq!(parsed, dtype, "{spelling}");
-            // One canonical spelling: every alias displays as the datatype.
-            assert_eq!(parsed.to_string(), dtype.name(), "{spelling}");
+            // One canonical spelling: every alias displays as the datatype,
+            // and that display re-parses to the same value.
             assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
         }
         let row: DataType = "struct<ccy: currency, isin: ascii(12), code: cfi, iso: country>"
@@ -849,7 +839,7 @@ mod ascii {
         );
         assert_eq!(
             row.get_field_by_path("isin").map(Field::dtype),
-            Some(&DataType::Ascii96)
+            Some(&DataType::FixedAscii(12))
         );
         assert_eq!(
             row.get_field_by_path("code").map(Field::dtype),
@@ -862,26 +852,23 @@ mod ascii {
     }
 
     #[test]
-    fn widths_outside_the_family_and_a_bare_ascii_are_refused_by_name() {
-        let error = "ascii(17)".parse::<DataType>().unwrap_err().to_string();
-        assert!(
-            error.contains("expected an ASCII width from 1 to 16 bytes, got 17"),
-            "{error}"
-        );
+    fn a_width_of_no_bytes_is_refused_by_name() {
         let error = "ascii(0)".parse::<DataType>().unwrap_err().to_string();
-        assert!(error.contains("got 0"), "{error}");
-        let error = "ascii".parse::<DataType>().unwrap_err().to_string();
         assert!(
-            error.contains("expected an ASCII width from 1 to 16 bytes"),
+            error.contains("expected an ASCII width of at least 1 byte, got 0"),
             "{error}"
         );
+        // Bare `ascii` is the variable shape, not a missing width.
+        assert_eq!("ascii".parse::<DataType>().unwrap(), DataType::Ascii);
         assert!(matches!(
             "ascii()".parse::<DataType>(),
             Err(Error::Parse { .. })
         ));
 
-        let error = DataType::ascii(17).unwrap_err().to_string();
-        assert!(error.contains("got 17"), "{error}");
+        // A width above the packed limit is a legal column and simply has no
+        // packed integer.
+        assert_eq!(DataType::ascii(17).unwrap(), DataType::FixedAscii(17));
+        assert!(DataType::FixedAscii(17).ascii_packed(b"USD").is_err());
         assert!(DataType::ascii(-1).is_err());
     }
 
@@ -898,12 +885,13 @@ mod ascii {
             assert!(dtype.is_code());
         }
         assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
-        assert_ne!(DataType::Currency, DataType::Ascii24);
-        // ISO 10962 is six characters, and `cfi` stores exactly those six
-        // rather than padding into the eight the next ASCII width takes.
+        assert_ne!(DataType::Currency, DataType::FixedAscii(3));
+        // ISO 10962 is six characters, and `cfi` stores exactly those six.
         assert_eq!(DataType::Cfi.ascii_width(), Some(6));
-        assert_eq!(DataType::ascii(6).unwrap(), DataType::Ascii64);
-        assert!(!DataType::Ascii64.is_code());
+        // A width of six bytes is spellable, and it is still not a CFI code.
+        assert_eq!(DataType::ascii(6).unwrap(), DataType::FixedAscii(6));
+        assert_ne!(DataType::Cfi, DataType::FixedAscii(6));
+        assert!(!DataType::FixedAscii(6).is_code());
 
         // A code name is a grammar keyword like every other, so the parser
         // reads it case-insensitively and trimmed.
@@ -927,7 +915,7 @@ mod ascii {
         assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(
             DataType::Currency.ascii_packed(b"USD").unwrap(),
-            DataType::Ascii24.ascii_packed(b"USD").unwrap()
+            DataType::FixedAscii(3).ascii_packed(b"USD").unwrap()
         );
         assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
         assert_eq!(
@@ -950,15 +938,15 @@ mod ascii {
         );
         assert_eq!(
             DataType::Currency
-                .merge_with(&DataType::Ascii24, true)
+                .merge_with(&DataType::FixedAscii(3), true)
                 .unwrap(),
-            DataType::Ascii24
+            DataType::FixedAscii(3)
         );
         assert_eq!(
             DataType::Currency
                 .merge_with(&DataType::Country, true)
                 .unwrap(),
-            DataType::Ascii24
+            DataType::FixedAscii(3)
         );
         assert_eq!(
             DataType::Currency
@@ -970,70 +958,84 @@ mod ascii {
 
     #[test]
     fn serde_and_the_structural_value_round_trip() {
-        for (dtype, tag) in [
-            (DataType::Ascii32, "ascii32"),
-            (DataType::Ascii64, "ascii64"),
-            (DataType::Ascii128, "ascii128"),
-        ] {
+        // The structural encoding names every parameter, so a fixed width
+        // carries its width beside the tag, exactly as a fixed binary does.
+        for width in [1, 3, 4, 6, 12, 16, 64] {
+            let dtype = DataType::ascii(width).unwrap();
             let json = dtype.clone().into_json().unwrap();
-            assert_eq!(json, format!(r#"{{"type":"{tag}"}}"#));
+            assert_eq!(json, format!(r#"{{"type":"fixed_ascii","width":{width}}}"#));
             assert_eq!(DataType::from_json(&json).unwrap(), dtype);
 
             let value = dtype.clone().into_value();
             assert_eq!(
                 value.get_key_str("type").and_then(Scalar::as_str),
-                Some(tag)
+                Some("fixed_ascii")
             );
             assert_eq!(DataType::from_value(value).unwrap(), dtype);
         }
+
+        // The variable shape takes no parameter at all.
+        let json = DataType::Ascii.into_json().unwrap();
+        assert_eq!(json, r#"{"type":"ascii"}"#);
+        assert_eq!(DataType::from_json(&json).unwrap(), DataType::Ascii);
     }
 
     #[test]
     fn identity_kind_and_widths_answer_for_every_width() {
-        for (dtype, id, width) in [
-            (DataType::Ascii16, DataTypeId::Ascii16, 2),
-            (DataType::Ascii24, DataTypeId::Ascii24, 3),
-            (DataType::Ascii32, DataTypeId::Ascii32, 4),
-            (DataType::Ascii64, DataTypeId::Ascii64, 8),
-            (DataType::Ascii96, DataTypeId::Ascii96, 12),
-            (DataType::Ascii128, DataTypeId::Ascii128, 16),
-        ] {
-            assert_eq!(dtype.id(), id);
+        // One identifier covers every fixed width, because the width is a
+        // parameter of the datatype and not a variant of its own.
+        for width in [1, 2, 3, 4, 6, 8, 12, 16, 64] {
+            let dtype = DataType::ascii(width).unwrap();
+            assert_eq!(dtype.id(), DataTypeId::FixedAscii);
             assert_eq!(dtype.kind(), DataTypeKind::String);
-            assert_eq!(dtype.name(), id.as_str());
+            assert_eq!(dtype.name(), "fixed_ascii");
+            assert_eq!(dtype.to_string(), format!("ascii({width})"));
             assert_eq!(dtype.ascii_width(), Some(width));
-            assert_eq!(id.fixed_byte_width(), usize::try_from(width).ok());
+            assert!(dtype.is_ascii());
             assert!(!dtype.is_nested());
             dtype.validate().unwrap();
         }
+        // The variable shape is the same family with no width at all.
+        assert_eq!(DataType::Ascii.id(), DataTypeId::Ascii);
+        assert_eq!(DataType::Ascii.kind(), DataTypeKind::String);
+        assert_eq!(DataType::Ascii.ascii_width(), None);
+        assert!(DataType::Ascii.is_ascii());
         assert_eq!(DataType::Utf8.ascii_width(), None);
         assert_eq!(DataType::FixedSizeBinary(4).ascii_width(), None);
     }
 
     #[test]
     fn ordering_and_hashing_are_consistent_for_every_width() {
-        // The widths sit after the variable text layouts, in width order.
-        assert!(DataType::Utf8View < DataType::Ascii16);
-        assert!(DataType::Ascii16 < DataType::Ascii24);
-        assert!(DataType::Ascii24 < DataType::Ascii32);
-        assert!(DataType::Ascii32 < DataType::Ascii64);
-        assert!(DataType::Ascii64 < DataType::Ascii96);
-        assert!(DataType::Ascii96 < DataType::Ascii128);
-        assert!(DataType::Ascii128 < DataType::list(DataType::Utf8.nullable_field("item")));
-        assert_eq!(DataType::Ascii64.cmp(&DataType::Ascii64), Ordering::Equal);
-        assert_eq!(hash_of(&DataType::Ascii64), hash_of(&DataType::Ascii64));
+        // The ASCII family sits after the variable text layouts, and one
+        // fixed width orders against another by the bytes it stores.
+        assert!(DataType::Utf8View < DataType::Ascii);
+        assert!(DataType::Ascii < DataType::FixedAscii(2));
+        assert!(DataType::FixedAscii(2) < DataType::FixedAscii(3));
+        assert!(DataType::FixedAscii(3) < DataType::FixedAscii(4));
+        assert!(DataType::FixedAscii(4) < DataType::FixedAscii(8));
+        assert!(DataType::FixedAscii(8) < DataType::FixedAscii(12));
+        assert!(DataType::FixedAscii(12) < DataType::FixedAscii(16));
+        assert!(DataType::FixedAscii(16) < DataType::list(DataType::Utf8.nullable_field("item")));
+        assert_eq!(
+            DataType::FixedAscii(8).cmp(&DataType::FixedAscii(8)),
+            Ordering::Equal
+        );
+        assert_eq!(
+            hash_of(&DataType::FixedAscii(8)),
+            hash_of(&DataType::FixedAscii(8))
+        );
         assert_ne!(
-            DataType::Ascii32.stable_hash(),
-            DataType::Ascii64.stable_hash()
+            DataType::FixedAscii(4).stable_hash(),
+            DataType::FixedAscii(8).stable_hash()
         );
         // A code and the width that holds it are two identities over one
         // storage, and the hash is the only thing telling three of the four
         // pairs apart at all.
         for (code, width) in [
-            (DataType::Country, DataType::Ascii16),
-            (DataType::Currency, DataType::Ascii24),
-            (DataType::Mic, DataType::Ascii32),
-            (DataType::Cfi, DataType::Ascii64),
+            (DataType::Country, DataType::FixedAscii(2)),
+            (DataType::Currency, DataType::FixedAscii(3)),
+            (DataType::Mic, DataType::FixedAscii(4)),
+            (DataType::Cfi, DataType::FixedAscii(8)),
         ] {
             assert_ne!(code.stable_hash(), width.stable_hash(), "{code}");
             assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{code}");
@@ -1043,12 +1045,12 @@ mod ascii {
     #[test]
     fn the_default_is_the_empty_string_stored_as_all_nul() {
         for dtype in [
-            DataType::Ascii16,
-            DataType::Ascii24,
-            DataType::Ascii32,
-            DataType::Ascii64,
-            DataType::Ascii96,
-            DataType::Ascii128,
+            DataType::FixedAscii(2),
+            DataType::FixedAscii(3),
+            DataType::FixedAscii(4),
+            DataType::FixedAscii(8),
+            DataType::FixedAscii(12),
+            DataType::FixedAscii(16),
         ] {
             assert_eq!(dtype.default_value().unwrap(), Scalar::from(""));
             assert!(dtype.is_default_value(&Scalar::from("")).unwrap());
@@ -1067,7 +1069,7 @@ mod ascii {
 
     #[test]
     fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
-        let root = DataType::from_fields([DataType::Ascii32.required_field("ccy")])
+        let root = DataType::from_fields([DataType::FixedAscii(4).required_field("ccy")])
             .unwrap()
             .required_field("row");
         let row = |value: Scalar| Scalar::from_sequence([value]);
@@ -1112,12 +1114,12 @@ mod ascii {
             .validate_value(&row(Scalar::I64(7)))
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("expected ascii32"), "{refused}");
+        assert!(refused.contains("expected fixed_ascii"), "{refused}");
     }
 
     #[test]
     fn arrow_storage_is_padded_and_reads_back_trimmed() {
-        let field = DataType::Ascii64.nullable_field("code");
+        let field = DataType::FixedAscii(8).nullable_field("code");
         let array = crate::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(8));
         assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
@@ -1151,8 +1153,8 @@ mod ascii {
     #[test]
     fn compatibility_reads_every_width_as_utf8() {
         let schema = DataType::from_fields([
-            DataType::Ascii32.nullable_field("ccy"),
-            DataType::Ascii128.required_field("code"),
+            DataType::FixedAscii(4).nullable_field("ccy"),
+            DataType::FixedAscii(16).required_field("code"),
         ])
         .unwrap()
         .required_field("row");
@@ -1172,7 +1174,7 @@ mod ascii {
             schema
         );
         assert_eq!(
-            DataType::Ascii64
+            DataType::FixedAscii(8)
                 .into_scheme_compat(&Scheme::ICEBERG)
                 .unwrap(),
             DataType::Utf8
@@ -1301,265 +1303,25 @@ mod guid {
     }
 }
 
-/// The per-column ASCII vocabulary and the enum members it names.
-mod ascii_dictionary {
-    use super::super::{AsciiDictionary, AsciiEnum, DataType};
+/// The enum a field declares, and the codes its members name.
+mod ascii_enum {
+    use super::super::{AsciiEnum, DataType};
 
     #[test]
-    fn registration_is_first_appearance_and_a_repeat_keeps_its_code() {
-        let mut currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        assert!(currencies.is_empty());
-        assert_eq!(currencies.push("USD").unwrap(), 0);
-        assert_eq!(currencies.push("EUR").unwrap(), 1);
-        assert_eq!(currencies.push("USD").unwrap(), 0);
-        assert_eq!(currencies.push("JPY").unwrap(), 2);
-        assert_eq!(currencies.push("EUR").unwrap(), 1);
-        assert_eq!(currencies.len(), 3);
-        assert!(!currencies.is_empty());
-        assert_eq!(currencies.as_values(), ["USD", "EUR", "JPY"]);
-
-        // Both directions, and the padded spelling resolves to its trimmed form.
-        assert_eq!(currencies.get(0), Some("USD"));
-        assert_eq!(currencies.get(2), Some("JPY"));
-        assert_eq!(currencies.get(3), None);
-        assert_eq!(currencies.get(-1), None);
-        assert_eq!(currencies.get_code("EUR"), Some(1));
-        assert_eq!(currencies.get_code("EUR\0"), Some(1));
-        assert_eq!(currencies.push("EUR\0\0").unwrap(), 1);
-        assert_eq!(currencies.get_code("GBP"), None);
-
-        // The width and key the codes are read under.
-        assert_eq!(currencies.values_dtype(), &DataType::Ascii32);
-        assert_eq!(currencies.key(), &DataType::Int32);
-    }
-
-    #[test]
-    fn the_bytes_spelling_registers_as_its_trimmed_text() {
-        let mut currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        assert_eq!(currencies.push_bytes(b"USD\0").unwrap(), 0);
-        assert_eq!(currencies.push("USD").unwrap(), 0);
-        assert_eq!(currencies.push_bytes(b"EUR").unwrap(), 1);
-        assert_eq!(currencies.as_values(), ["USD", "EUR"]);
-
-        // Bytes meet the width's own rule, never a decoding error of their own.
-        let refused = currencies.push_bytes(b"\xFF\xFE").unwrap_err().to_string();
-        assert!(
-            refused.contains("at most 4 bytes, got a non-ASCII byte 0xFF at 0"),
-            "{refused}"
-        );
-        assert_eq!(currencies.len(), 2);
-    }
-
-    #[test]
-    fn push_refuses_what_the_width_refuses_naming_the_width() {
-        let mut codes = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        for value in ["EUR\u{20ac}", "US\0D", "EURO!"] {
-            let refused = codes.push(value).unwrap_err().to_string();
-            assert!(
-                refused.contains("ASCII text of at most 4 bytes"),
-                "{value}: {refused}"
-            );
+    fn the_member_name_rule_is_applied_once_per_value() {
+        // An ASCII letter is kept uppercased, a digit is kept, every other
+        // byte becomes `_`, a leading digit takes a `_` in front, and a name
+        // that both opens and closes with `_` drops its trailing ones.
+        for (value, member) in [
+            ("USD", "USD"),
+            ("usd", "USD"),
+            ("n/a", "N_A"),
+            ("-a-", "_A"),
+            ("3M", "_3M"),
+            ("", "_"),
+        ] {
+            assert_eq!(AsciiEnum::member_name(value).as_str(), member, "{value:?}");
         }
-        // A refusal registers nothing.
-        assert!(codes.is_empty());
-
-        // The wider member refuses at its own width.
-        let mut wide = AsciiDictionary::new(DataType::Ascii64).unwrap();
-        assert_eq!(wide.push("EURO!").unwrap(), 0);
-        let refused = wide.push("NINE-CHAR").unwrap_err().to_string();
-        assert!(
-            refused.contains("ASCII text of at most 8 bytes"),
-            "{refused}"
-        );
-    }
-
-    #[test]
-    fn the_values_and_key_datatypes_are_refused_by_name() {
-        let refused = AsciiDictionary::new(DataType::Utf8)
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("an ASCII width"), "{refused}");
-        assert!(refused.contains("got utf8"), "{refused}");
-
-        let dictionary = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        assert_eq!(
-            dictionary.clone().with_key(DataType::Int64).unwrap().key(),
-            &DataType::Int64
-        );
-        for key in [DataType::Int16, DataType::UInt32, DataType::Utf8] {
-            let refused = dictionary
-                .clone()
-                .with_key(key.clone())
-                .unwrap_err()
-                .to_string();
-            assert!(
-                refused.contains("an int32 or int64 key datatype"),
-                "{refused}"
-            );
-            assert!(refused.contains(&format!("got {key}")), "{refused}");
-        }
-    }
-
-    #[test]
-    fn from_values_dedups_and_preserves_first_appearance_order() {
-        let seeded =
-            AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD", "EUR", "JPY", "USD"])
-                .unwrap();
-        assert_eq!(seeded.as_values(), ["EUR", "USD", "JPY"]);
-        assert_eq!(seeded.get_code("EUR"), Some(0));
-        assert_eq!(seeded.get_code("JPY"), Some(2));
-
-        // The same values pushed one at a time are the same vocabulary.
-        let mut pushed = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        for value in ["EUR", "USD", "EUR", "JPY", "USD"] {
-            pushed.push(value).unwrap();
-        }
-        assert_eq!(pushed, seeded);
-
-        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EURO!"])
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("at most 4 bytes"), "{refused}");
-    }
-
-    #[test]
-    fn the_datatype_is_the_dictionary_of_the_key_and_the_width() {
-        let currencies = AsciiDictionary::new(DataType::Ascii32).unwrap();
-        let dtype = currencies.dtype().unwrap();
-        assert_eq!(
-            dtype,
-            DataType::dictionary(DataType::Int32, DataType::Ascii32).unwrap()
-        );
-        assert_eq!(dtype.to_string(), "dictionary(int32,ascii32)");
-        assert_eq!(dtype.to_string().parse::<DataType>().unwrap(), dtype);
-
-        let wide = AsciiDictionary::new(DataType::Ascii64)
-            .unwrap()
-            .with_key(DataType::Int64)
-            .unwrap();
-        assert_eq!(
-            wide.dtype().unwrap().to_string(),
-            "dictionary(int64,ascii64)"
-        );
-    }
-
-    #[test]
-    fn equality_is_the_width_the_key_and_the_values_in_order() {
-        let usd_first = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"]).unwrap();
-        let eur_first = AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD"]).unwrap();
-        assert_ne!(usd_first, eur_first);
-        assert_eq!(
-            usd_first,
-            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"]).unwrap()
-        );
-        assert_ne!(
-            usd_first,
-            AsciiDictionary::from_values(DataType::Ascii64, ["USD", "EUR"]).unwrap()
-        );
-        assert_ne!(
-            usd_first,
-            usd_first.clone().with_key(DataType::Int64).unwrap()
-        );
-        assert_ne!(
-            usd_first,
-            AsciiDictionary::from_values(DataType::Ascii32, ["USD"]).unwrap()
-        );
-    }
-
-    #[test]
-    fn members_apply_the_name_rule_once() {
-        let members =
-            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "n/a", "1st", "", "a-b"])
-                .unwrap()
-                .into_members()
-                .unwrap();
-        assert_eq!(
-            members,
-            [
-                ("USD".into(), 0x5553_4400),
-                ("N_A".into(), 0x6E2F_6100),
-                ("_1ST".into(), 0x3173_7400),
-                ("_".into(), 0),
-                ("A_B".into(), 0x612D_6200),
-            ]
-        );
-
-        // A name that opens and closes with `_` is the shape Python reserves,
-        // so the trailing run goes; a name of nothing but `_` keeps it.
-        let members = AsciiDictionary::from_values(DataType::Ascii64, ["-a-", "--b--", "-", "--"])
-            .unwrap()
-            .into_members()
-            .unwrap();
-        assert_eq!(
-            members,
-            [
-                ("_A".into(), 0x2D61_2D00_0000_0000),
-                ("__B".into(), 0x2D2D_622D_2D00_0000),
-                ("_".into(), 0x2D00_0000_0000_0000),
-                ("__".into(), 0x2D2D_0000_0000_0000),
-            ]
-        );
-        assert!(
-            AsciiDictionary::new(DataType::Ascii32)
-                .unwrap()
-                .into_members()
-                .unwrap()
-                .is_empty()
-        );
-
-        // The same rule names one value at a time, for a vocabulary declared
-        // member by member rather than generated from a whole listing.
-        assert_eq!(AsciiDictionary::member_name("--b--").as_str(), "__B");
-        assert_eq!(AsciiDictionary::member_name("1st").as_str(), "_1ST");
-        assert_eq!(AsciiDictionary::member_name("USD\0").as_str(), "USD_");
-    }
-
-    #[test]
-    fn members_refuse_a_collision_naming_both_values() {
-        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["USD", "usd"])
-            .unwrap()
-            .into_members()
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("\"USD\""), "{refused}");
-        assert!(refused.contains("\"usd\""), "{refused}");
-        assert!(refused.contains("USD"), "{refused}");
-
-        let refused = AsciiDictionary::from_values(DataType::Ascii32, ["a-b", "a/b"])
-            .unwrap()
-            .into_members()
-            .unwrap_err()
-            .to_string();
-        assert!(
-            refused.contains("\"a-b\"") && refused.contains("\"a/b\""),
-            "{refused}"
-        );
-
-        // Sixteen bytes name members too: the code is the whole `i128`, and
-        // a width names one value with one integer whatever the vocabulary.
-        assert_eq!(
-            AsciiDictionary::from_values(DataType::Ascii128, ["US0378331005"])
-                .unwrap()
-                .into_members()
-                .unwrap(),
-            [(
-                "US0378331005".into(),
-                0x5553_3033_3738_3333_3130_3035_0000_0000
-            )]
-        );
-        assert_eq!(
-            AsciiDictionary::from_values(DataType::Ascii32, ["EUR", "USD"])
-                .unwrap()
-                .into_members()
-                .unwrap(),
-            AsciiDictionary::from_values(DataType::Ascii32, ["USD", "EUR"])
-                .unwrap()
-                .into_members()
-                .unwrap()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-        );
     }
 
     #[test]
@@ -1575,18 +1337,13 @@ mod ascii_dictionary {
         assert_eq!(side.get_member("B"), Some("BID"));
         assert_eq!(side.get_member("X"), None);
         assert_eq!(
-            side.into_members(&DataType::Ascii32).unwrap(),
+            side.into_members(&DataType::FixedAscii(4)).unwrap(),
             [
                 ("BID".into(), 0x4200_0000),
                 ("BUY".into(), 0x4200_0000),
                 ("SELL".into(), 0x5300_0000),
             ]
         );
-
-        // The vocabulary behind the names is an ordinary dictionary, whose
-        // codes stay the local positions every vocabulary's codes are.
-        let dictionary = side.into_dictionary(DataType::Ascii32).unwrap();
-        assert_eq!(dictionary.as_values(), ["B", "S"]);
 
         // One enum is one document however it was built, and the document is
         // what comes back.
@@ -1618,7 +1375,7 @@ mod ascii_dictionary {
         // A member the width cannot store is refused when the codes are asked
         // for, which is where the width is known.
         let refused = side.into_members(&DataType::Utf8).unwrap_err().to_string();
-        assert!(refused.contains("an ASCII width"), "{refused}");
+        assert!(refused.contains("a fixed ASCII width"), "{refused}");
     }
 
     #[test]
@@ -1642,11 +1399,11 @@ mod ascii_dictionary {
     #[test]
     fn an_ascii_value_packs_into_the_integer_its_storage_reads_as() {
         for (dtype, value, packed) in [
-            (DataType::Ascii32, "USD", 0x5553_4400_i128),
-            (DataType::Ascii32, "", 0),
-            (DataType::Ascii64, "EUREX", 0x4555_5245_5800_0000),
+            (DataType::FixedAscii(4), "USD", 0x5553_4400_i128),
+            (DataType::FixedAscii(4), "", 0),
+            (DataType::FixedAscii(8), "EUREX", 0x4555_5245_5800_0000),
             (
-                DataType::Ascii128,
+                DataType::FixedAscii(16),
                 "US0378331005",
                 0x5553_3033_3738_3333_3130_3035_0000_0000,
             ),
@@ -1661,37 +1418,44 @@ mod ascii_dictionary {
         // An ASCII byte never sets the sign bit, so the order of the packed
         // integers is the order of the text.
         assert!(
-            DataType::Ascii32.ascii_packed(b"EUR").unwrap()
-                < DataType::Ascii32.ascii_packed(b"USD").unwrap()
+            DataType::FixedAscii(4).ascii_packed(b"EUR").unwrap()
+                < DataType::FixedAscii(4).ascii_packed(b"USD").unwrap()
         );
         assert!(
-            DataType::Ascii64
+            DataType::FixedAscii(8)
                 .ascii_packed(b"\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f")
                 .unwrap()
                 > 0
         );
 
         // What the width refuses, the packing refuses, in both directions.
-        let refused = DataType::Ascii32
+        let refused = DataType::FixedAscii(4)
             .ascii_packed(b"EURO!")
             .unwrap_err()
             .to_string();
         assert!(refused.contains("at most 4 bytes"), "{refused}");
-        let refused = DataType::Ascii32.ascii_value(-1).unwrap_err().to_string();
+        let refused = DataType::FixedAscii(4)
+            .ascii_value(-1)
+            .unwrap_err()
+            .to_string();
         assert!(refused.contains("wider than the width"), "{refused}");
-        let refused = DataType::Ascii32
+        let refused = DataType::FixedAscii(4)
             .ascii_value(0x1_5553_4400)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("wider than the width"), "{refused}");
-        let refused = DataType::Ascii32
+        let refused = DataType::FixedAscii(4)
             .ascii_value(0x0055_4400)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("a NUL byte at 0"), "{refused}");
         let refused = DataType::Utf8.ascii_packed(b"USD").unwrap_err().to_string();
-        assert!(refused.contains("an ASCII width"), "{refused}");
+        assert!(refused.contains("a fixed ASCII width"), "{refused}");
         assert!(DataType::Utf8.ascii_value(0).is_err());
+        // The variable shape has no width, so it has no packed integer; nor
+        // does a width wider than the widest integer this crate carries.
+        assert!(DataType::Ascii.ascii_packed(b"USD").is_err());
+        assert!(DataType::FixedAscii(17).ascii_packed(b"USD").is_err());
     }
 }
 
@@ -1699,7 +1463,7 @@ mod ascii_dictionary {
 mod logical {
     use super::super::DataType;
     use super::{TimeUnit, UnionMode};
-    use crate::{AsciiDictionary, Timezone};
+    use crate::Timezone;
 
     /// The whole registry, as the module documents it. A change to a mapping
     /// changes what a stored schema string means, so it changes here first.
@@ -1711,9 +1475,9 @@ mod logical {
             ("mic", DataType::Mic),
             ("exchange", DataType::Mic),
             ("cfi", DataType::Cfi),
-            ("language", DataType::Ascii16),
-            ("monthyear", DataType::Ascii64),
-            ("tenor", DataType::Ascii64),
+            ("language", DataType::FixedAscii(2)),
+            ("monthyear", DataType::FixedAscii(8)),
+            ("tenor", DataType::FixedAscii(8)),
             ("pattern", DataType::Utf8),
             ("length", DataType::Int32),
             ("tagnum", DataType::Int32),
@@ -1740,7 +1504,7 @@ mod logical {
             ("localmkttime", DataType::Time32(TimeUnit::Second)),
             ("utcdateonly", DataType::Date32),
             ("localmktdate", DataType::Date32),
-            ("tztimeonly", DataType::Ascii128),
+            ("tztimeonly", DataType::FixedAscii(16)),
             ("multiplecharvalue", DataType::Utf8),
             ("multiplestringvalue", DataType::Utf8),
             ("xid", DataType::Utf8),
@@ -1801,7 +1565,7 @@ mod logical {
             ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
             ("XMLData", DataType::Binary),
             ("data", DataType::Binary),
-            ("Tenor", DataType::Ascii64),
+            ("Tenor", DataType::FixedAscii(8)),
         ] {
             let parsed: DataType = spelling.parse().unwrap();
             assert_eq!(parsed, dtype, "{spelling}");
@@ -1872,7 +1636,7 @@ mod logical {
         assert_eq!(*mode, UnionMode::Dense);
 
         // The prebuilt vocabularies are keyed by the same names.
-        for (name, _) in AsciiDictionary::PREBUILT {
+        for (name, _) in crate::AsciiEnum::PREBUILT {
             assert!(
                 DataType::LOGICAL_NAMES
                     .iter()
@@ -1883,16 +1647,16 @@ mod logical {
     }
 }
 
-/// The prebuilt vocabularies: constant codes, then auto-registration.
+/// The prebuilt vocabularies: the listings a code column starts from.
 mod vocabulary {
     use super::super::DataType;
-    use crate::AsciiDictionary;
+    use crate::AsciiEnum;
 
     fn lists() -> [(&'static str, &'static [&'static str]); 3] {
         [
-            ("currency", AsciiDictionary::CURRENCIES),
-            ("country", AsciiDictionary::COUNTRIES),
-            ("mic", AsciiDictionary::MICS),
+            ("currency", AsciiEnum::CURRENCIES),
+            ("country", AsciiEnum::COUNTRIES),
+            ("mic", AsciiEnum::MICS),
         ]
     }
 
@@ -1922,135 +1686,57 @@ mod vocabulary {
             }
         }
         // The code sets are the standards' own shapes.
-        assert!(
-            AsciiDictionary::CURRENCIES
-                .iter()
-                .all(|code| code.len() == 3)
-        );
-        assert!(
-            AsciiDictionary::COUNTRIES
-                .iter()
-                .all(|code| code.len() == 2)
-        );
-        assert!(AsciiDictionary::MICS.iter().all(|code| code.len() == 4));
+        assert!(AsciiEnum::CURRENCIES.iter().all(|code| code.len() == 3));
+        assert!(AsciiEnum::COUNTRIES.iter().all(|code| code.len() == 2));
+        assert!(AsciiEnum::MICS.iter().all(|code| code.len() == 4));
     }
 
+    /// An ISO code is already an identifier, so no two members collide and
+    /// the member is the code itself.
     #[test]
-    fn a_prebuilt_code_is_the_position_in_the_constant() {
+    fn every_constant_names_its_own_enum_members() {
         for (name, values) in lists() {
-            let dictionary = AsciiDictionary::from_logical_name(name).unwrap();
-            assert_eq!(dictionary.len(), values.len(), "{name}");
-            assert_eq!(dictionary.as_values(), values, "{name}");
-            for (position, value) in values.iter().enumerate() {
-                assert_eq!(dictionary.get_code(value), Some(position as i64), "{value}");
-                assert_eq!(dictionary.get(position as i64), Some(*value), "{value}");
+            let declared = AsciiEnum::from_logical_name(name).unwrap();
+            let dtype = DataType::from_logical_name(name).unwrap();
+            assert_eq!(declared.len(), values.len(), "{name}");
+            assert_eq!(declared.name(), name, "{name}");
+            for value in values {
+                assert_eq!(declared.get(value), Some(*value), "{value}");
             }
-            // Rebuilding answers the same value, so a code is a constant.
-            assert_eq!(
-                AsciiDictionary::from_logical_name(name).unwrap(),
-                dictionary
-            );
+            // A member is the integer its value packs into under the width
+            // the name resolves to, never a position in this listing.
+            let members = declared.into_members(&dtype).unwrap();
+            for (member, code) in &members {
+                assert_eq!(*code, dtype.ascii_packed(member.as_bytes()).unwrap());
+            }
         }
     }
 
     #[test]
     fn the_two_names_of_one_list_prebuild_one_vocabulary() {
         assert_eq!(
-            AsciiDictionary::from_logical_name("Exchange").unwrap(),
-            AsciiDictionary::from_logical_name("mic").unwrap()
+            AsciiEnum::from_logical_name("Exchange").unwrap().len(),
+            AsciiEnum::from_logical_name("mic").unwrap().len()
         );
-        assert_eq!(
-            AsciiDictionary::prebuilt_values(" MIC "),
-            AsciiDictionary::MICS
-        );
-        assert!(AsciiDictionary::prebuilt_values("isin").is_empty());
+        assert_eq!(AsciiEnum::prebuilt_values(" MIC "), AsciiEnum::MICS);
+        assert!(AsciiEnum::prebuilt_values("isin").is_empty());
     }
 
     #[test]
-    fn auto_registration_continues_past_the_constant() {
-        let mut countries = AsciiDictionary::from_logical_name("country").unwrap();
-        let next = AsciiDictionary::COUNTRIES.len() as i64;
-        // `ZZ` is ISO 3166's user-assigned range, so no assigned code holds it.
-        assert_eq!(countries.get_code("ZZ"), None);
-        assert_eq!(countries.push("ZZ").unwrap(), next);
-        assert_eq!(countries.push("ZZ").unwrap(), next);
-        assert_eq!(countries.get(next), Some("ZZ"));
-        // A prebuilt code is untouched by what registered after it.
-        let france = countries.get_code("FR").expect("FR is prebuilt");
-        assert_eq!(AsciiDictionary::COUNTRIES[france as usize], "FR");
-    }
-
-    #[test]
-    fn a_registered_name_with_no_constant_prebuilds_the_empty_width() {
+    fn a_registered_name_with_no_constant_prebuilds_no_members() {
         for name in ["language", "monthyear", "tenor"] {
-            let dictionary = AsciiDictionary::from_logical_name(name).unwrap();
-            assert!(dictionary.is_empty(), "{name}");
-            assert_eq!(
-                dictionary.values_dtype(),
-                &DataType::from_logical_name(name).unwrap(),
+            assert!(
+                AsciiEnum::from_logical_name(name).unwrap().is_empty(),
                 "{name}"
             );
         }
     }
 
     #[test]
-    fn a_name_that_is_not_an_ascii_width_is_refused_by_width() {
-        let refused = AsciiDictionary::from_logical_name("price")
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("decimal64(18,8)"), "{refused}");
-        let refused = AsciiDictionary::from_logical_name("isin")
+    fn a_name_that_is_not_registered_is_refused_by_the_vocabulary() {
+        let refused = AsciiEnum::from_logical_name("isin")
             .unwrap_err()
             .to_string();
         assert!(refused.contains("currency"), "{refused}");
-    }
-
-    /// Every constant names an enum, which is what makes it usable as one:
-    /// an ISO code is already an identifier, so no two members collide.
-    #[test]
-    fn every_constant_names_its_own_enum_members() {
-        for (name, values) in lists() {
-            let vocabulary = AsciiDictionary::from_logical_name(name).unwrap();
-            let dtype = vocabulary.values_dtype().clone();
-            let members = vocabulary
-                .into_members()
-                .unwrap_or_else(|error| panic!("{name} must name members: {error}"));
-            assert_eq!(members.len(), values.len(), "{name}");
-            for (position, (member, code)) in members.iter().enumerate() {
-                // A code is already an identifier, so the member is the code.
-                assert_eq!(member, values[position], "{name}");
-                // A member is the integer its value packs into, never the
-                // position it happens to sit at in this vocabulary.
-                assert_eq!(
-                    *code,
-                    dtype.ascii_packed(values[position].as_bytes()).unwrap(),
-                    "{name}"
-                );
-            }
-        }
-    }
-
-    /// The vocabulary encodes a column of its own codes without growing.
-    #[test]
-    fn a_prebuilt_column_encodes_against_the_constant_alone() {
-        use arrow_array::Array;
-        use arrow_array::types::Int32Type;
-
-        let mut venues = AsciiDictionary::from_logical_name("mic").unwrap();
-        let registered = venues.len();
-        let column = venues
-            .into_arrow_array([Some("XCME"), None, Some("XLON"), Some("XCME")])
-            .unwrap();
-        assert_eq!(venues.len(), registered, "an encode of prebuilt codes grew");
-        let column = column
-            .as_any()
-            .downcast_ref::<arrow_array::DictionaryArray<Int32Type>>()
-            .unwrap();
-        let xcme = i32::try_from(venues.get_code("XCME").unwrap()).unwrap();
-        let xlon = i32::try_from(venues.get_code("XLON").unwrap()).unwrap();
-        assert_eq!(
-            column.keys().iter().collect::<Vec<_>>(),
-            [Some(xcme), None, Some(xlon), Some(xcme)]
-        );
     }
 }

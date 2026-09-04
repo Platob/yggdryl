@@ -1871,8 +1871,8 @@ mod records {
     #[test]
     fn an_ascii_column_is_an_avro_string() {
         let root = DataType::from_fields([
-            DataType::Ascii32.required_field("ccy"),
-            DataType::Ascii128.nullable_field("code"),
+            DataType::FixedAscii(4).required_field("ccy"),
+            DataType::FixedAscii(16).nullable_field("code"),
         ])
         .unwrap()
         .required_field("row");

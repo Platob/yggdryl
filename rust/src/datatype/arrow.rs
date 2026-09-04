@@ -377,12 +377,11 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
-            R::Ascii16 => Self::FixedSizeBinary(2),
-            R::Ascii24 => Self::FixedSizeBinary(3),
-            R::Ascii32 => Self::FixedSizeBinary(4),
-            R::Ascii64 => Self::FixedSizeBinary(8),
-            R::Ascii96 => Self::FixedSizeBinary(12),
-            R::Ascii128 => Self::FixedSizeBinary(16),
+            R::Ascii => Self::Binary,
+            R::FixedAscii(width) => {
+                validate_non_negative("FixedAscii", "width", *width)?;
+                Self::FixedSizeBinary(*width)
+            }
             R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
@@ -514,12 +513,11 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
-            R::Ascii16 => Self::FixedSizeBinary(2),
-            R::Ascii24 => Self::FixedSizeBinary(3),
-            R::Ascii32 => Self::FixedSizeBinary(4),
-            R::Ascii64 => Self::FixedSizeBinary(8),
-            R::Ascii96 => Self::FixedSizeBinary(12),
-            R::Ascii128 => Self::FixedSizeBinary(16),
+            R::Ascii => Self::Binary,
+            R::FixedAscii(width) => {
+                validate_non_negative("FixedAscii", "width", width)?;
+                Self::FixedSizeBinary(width)
+            }
             R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
@@ -693,12 +691,7 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
-        DataType::Ascii16
-        | DataType::Ascii24
-        | DataType::Ascii32
-        | DataType::Ascii64
-        | DataType::Ascii96
-        | DataType::Ascii128 => Some((ASCII_EXTENSION_NAME, String::new())),
+        DataType::Ascii | DataType::FixedAscii(_) => Some((ASCII_EXTENSION_NAME, String::new())),
         DataType::Guid => Some((GUID_EXTENSION_NAME, String::new())),
         // A code carries its own name, so the identity survives Arrow: three
         // bytes under `yggdryl.currency` read back a currency, and the same
@@ -863,12 +856,8 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         DataType::Variant
         | DataType::Geometry(_)
         | DataType::Geography(_)
-        | DataType::Ascii16
-        | DataType::Ascii24
-        | DataType::Ascii32
-        | DataType::Ascii64
-        | DataType::Ascii96
-        | DataType::Ascii128
+        | DataType::Ascii
+        | DataType::FixedAscii(_)
         | DataType::Country
         | DataType::Currency
         | DataType::Mic

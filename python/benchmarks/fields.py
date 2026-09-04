@@ -22,7 +22,7 @@ from typing import Annotated
 import pyarrow as pa
 
 from yggdryl import (
-    AsciiDictionary,
+    AsciiEnum,
     DataType,
     Field,
     MediaType,
@@ -148,7 +148,7 @@ def _build_ascii_datatype() -> DataType:
 
 
 def _build_ascii_field() -> Field:
-    return fields.ascii32("ccy", nullable=False)
+    return fields.fixed_ascii("ccy", 4, nullable=False)
 
 
 def _build_code_datatype() -> DataType:
@@ -259,25 +259,23 @@ def _write_through_protocol_view() -> None:
     PROTOCOL_FIELD.iceberg["doc"] = "closing price"
 
 
-ASCII_VOCABULARY = ("USD", "EUR", "JPY", "GBP")
-ASCII_COLUMN = [ASCII_VOCABULARY[index % 4] for index in range(10_000)]
-ASCII_DICTIONARY = AsciiDictionary.from_values("ascii32", ASCII_VOCABULARY)
+CURRENCY = DataType("currency")
+CURRENCIES = AsciiEnum.from_logical_name("currency")
 
 
-def _ascii_push_hit() -> int:
-    return ASCII_DICTIONARY.push("GBP")
+def _ascii_prebuilt_vocabulary() -> object:
+    # What a schema pays once when it declares a currency column.
+    return AsciiEnum.from_logical_name("currency")
 
 
-def _ascii_push_miss() -> object:
-    dictionary = AsciiDictionary("ascii32")
-    for value in ASCII_VOCABULARY:
-        dictionary.push(value)
-    return dictionary
+def _ascii_vocabulary_members() -> object:
+    # The packed code of every declared value, which is what a reader of the
+    # schema computes once.
+    return CURRENCIES.into_members(CURRENCY)
 
 
-def _ascii_encode_column() -> object:
-    # A fresh vocabulary per call: the encode registers as it goes.
-    return AsciiDictionary("ascii32").into_arrow_array(ASCII_COLUMN)
+def _ascii_vocabulary_intenum() -> object:
+    return CURRENCIES.into_intenum(CURRENCY)
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -402,11 +400,19 @@ def main() -> None:
             lambda: MediaType.from_content_headers(CONTENT_TYPE, CONTENT_ENCODING),
             args.iterations,
         )
-        _measure("ASCII dictionary push hit", _ascii_push_hit, args.iterations)
-        _measure("ASCII dictionary push miss", _ascii_push_miss, args.iterations)
         _measure(
-            "ASCII dictionary 10k encode",
-            _ascii_encode_column,
+            "ASCII vocabulary prebuilt",
+            _ascii_prebuilt_vocabulary,
+            max(1, args.iterations // 100),
+        )
+        _measure(
+            "ASCII vocabulary members",
+            _ascii_vocabulary_members,
+            max(1, args.iterations // 100),
+        )
+        _measure(
+            "ASCII vocabulary IntEnum",
+            _ascii_vocabulary_intenum,
             max(1, args.iterations // 1_000),
         )
     finally:

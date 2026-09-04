@@ -1389,7 +1389,7 @@ mod geospatial {
 
     #[test]
     fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
-        let declared = crate::Field::new("ccy", crate::DataType::Ascii32, true);
+        let declared = crate::Field::new("ccy", crate::DataType::FixedAscii(4), true);
         let media = written(
             "ascii.parquet",
             vec![declared.clone().into_arrow().unwrap()],

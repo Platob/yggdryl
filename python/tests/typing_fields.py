@@ -19,7 +19,7 @@ from yggdryl import (
     toml,
     yaml,
 )
-from yggdryl.fields import Ascii24Field, StructField
+from yggdryl.fields import CurrencyField, StructField
 
 
 @scalar(frozen=True, slots=True)
@@ -61,7 +61,7 @@ imported: Field = Field.from_arrow_schema(arrow_schema, name=root.name)
 dynamic_class: type[object] = imported.into_dataclass(
     name="DynamicTypedOrder"
 )
-currency: Ascii24Field = fields.ascii24("currency", nullable=False)
+currency: CurrencyField = fields.currency("currency", nullable=False)
 currency_code: str | None = currency.default_pyvalue()
 
 

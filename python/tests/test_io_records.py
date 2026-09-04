@@ -780,7 +780,7 @@ class TestAsciiRecords:
             DataType.from_fields(
                 [
                     Field("id", "int64", nullable=False),
-                    Field("ccy", "ascii32", nullable=False),
+                    Field("ccy", DataType.ascii(4), nullable=False),
                 ]
             ),
             nullable=False,
@@ -791,7 +791,7 @@ class TestAsciiRecords:
             pa.table({"id": [1, 2], "ccy": ["USD", "EUR"]}), options=options
         )
 
-        assert handle.read_arrow_field().dtype["ccy"].dtype == DataType("ascii32")
+        assert handle.read_arrow_field().dtype["ccy"].dtype == DataType.ascii(4)
         stored = handle.read_arrow_reader().read_all().column("ccy")
         assert stored.to_pylist() == [b"USD\x00", b"EUR\x00"]
         # Every read route renders the width trimmed through the one core rule.

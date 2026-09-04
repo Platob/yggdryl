@@ -457,17 +457,16 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = if self.inner.dtype().ascii_width().is_some()
-            || matches!(self.inner.dtype(), CoreDataType::Guid)
-        {
-            ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
-        } else {
-            // Project the complete Field so registered extension metadata can
-            // be rehydrated by PyArrow before selecting its scalar target type.
-            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
-            let target = arrow_field.getattr("type")?;
-            arrow_scalar_to_pyarrow_type(py, value, target, safe)?
-        };
+        let scalar =
+            if self.inner.dtype().is_ascii() || matches!(self.inner.dtype(), CoreDataType::Guid) {
+                ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
+            } else {
+                // Project the complete Field so registered extension metadata can
+                // be rehydrated by PyArrow before selecting its scalar target type.
+                let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+                let target = arrow_field.getattr("type")?;
+                arrow_scalar_to_pyarrow_type(py, value, target, safe)?
+            };
         if !self.inner.is_nullable() && !scalar.getattr("is_valid")?.extract::<bool>()? {
             return Err(PyValueError::new_err(format!(
                 "field {:?} is not nullable",

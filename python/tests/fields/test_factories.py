@@ -52,12 +52,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "utf8": fields.utf8("value"),
         "large_utf8": fields.large_utf8("value"),
         "utf8_view": fields.utf8_view("value"),
-        "ascii16": fields.ascii16("value"),
-        "ascii24": fields.ascii24("value"),
-        "ascii32": fields.ascii32("value"),
-        "ascii64": fields.ascii64("value"),
-        "ascii96": fields.ascii96("value"),
-        "ascii128": fields.ascii128("value"),
+        "ascii": fields.ascii("value"),
+        "fixed_ascii": fields.fixed_ascii("value", 4),
         "list": fields.list("value", item),
         "list_view": fields.list_view("value", item),
         "fixed_size_list": fields.fixed_size_list("value", item, 3),
@@ -84,7 +80,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": fields.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 56
+    assert len(values_by_kind) == 52
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
@@ -145,11 +141,12 @@ def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
 def test_typed_factory_parameters_use_native_validation() -> None:
     assert fields.decimal("small", 38).dtype.id == "decimal128"
     assert fields.decimal("wide", 39).dtype.id == "decimal256"
-    assert fields.ascii("iso", 2).dtype == DataType("ascii16")
-    assert fields.ascii("ccy", 3).dtype == DataType("ascii24")
-    assert fields.ascii("cfi", 6).dtype == DataType("ascii64")
-    assert fields.ascii("isin", 12, nullable=False).dtype.id == "ascii96"
-    assert fields.ascii32("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
+    assert fields.ascii("note").dtype == DataType("ascii")
+    assert fields.fixed_ascii("iso", 2).dtype == DataType.ascii(2)
+    assert fields.fixed_ascii("ccy", 3).dtype == DataType.ascii(3)
+    # A fixed width past the packed integer is still storage, so it builds.
+    assert fields.fixed_ascii("isin", 64, nullable=False).dtype.ascii_width == 64
+    assert fields.currency("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
         "ISO 4217"
     )
     assert fields.time("coarse", "ms").dtype == DataType("time32(ms)")
@@ -166,8 +163,8 @@ def test_typed_factory_parameters_use_native_validation() -> None:
         fields.interval("window", "us")
     with pytest.raises(ValueError, match="precision"):
         fields.decimal32("amount", 10)
-    with pytest.raises(ValueError, match="from 1 to 16 bytes"):
-        fields.ascii("wide", 17)
+    with pytest.raises(ValueError, match="at least 1 byte"):
+        fields.fixed_ascii("narrow", 0)
     with pytest.raises(ValueError, match="run_ends"):
         fields.run_end_encoded(
             "encoded",

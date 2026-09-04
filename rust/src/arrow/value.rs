@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::datatype::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_padded, ascii_text,
-    code_cell_text, guid_bytes, guid_parse, guid_text,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_free_text,
+    ascii_padded, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -168,12 +168,8 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 *width,
             )?)
         }
-        DataType::Ascii16 => ascii_array(2, values)?,
-        DataType::Ascii24 => ascii_array(3, values)?,
-        DataType::Ascii32 => ascii_array(4, values)?,
-        DataType::Ascii64 => ascii_array(8, values)?,
-        DataType::Ascii96 => ascii_array(12, values)?,
-        DataType::Ascii128 => ascii_array(16, values)?,
+        DataType::Ascii => ascii_bytes_array(values)?,
+        DataType::FixedAscii(width) => ascii_array(*width, values)?,
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
@@ -401,15 +397,15 @@ pub(crate) fn value_from_array(
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::from(guid_text(&guid_parse(fixed.value(index))?))
         }
-        // Storage reads back trimmed: the padding is the layout, not the text.
-        DataType::Ascii16
-        | DataType::Ascii24
-        | DataType::Ascii32
-        | DataType::Ascii64
-        | DataType::Ascii96
-        | DataType::Ascii128 => {
+        // Fixed storage reads back trimmed: the padding is the layout, not
+        // the text. Variable storage holds the bytes it was given.
+        DataType::FixedAscii(_) => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::from(ascii_text(fixed.value_length(), fixed.value(index))?)
+        }
+        DataType::Ascii => {
+            let bytes = downcast::<BinaryArray>(array)?;
+            Scalar::from(ascii_free_text(bytes.value(index))?)
         }
         // A code reads back the same way, at the width its own type fixes.
         DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
@@ -799,12 +795,14 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
-            | DataType::Ascii32
             | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Ascii16 | DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Ascii24 | DataType::Currency => self.add_fixed_rows(rows, 3)?,
+            DataType::Country => self.add_fixed_rows(rows, 2)?,
+            DataType::Currency => self.add_fixed_rows(rows, 3)?,
             DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
+            // A fixed ASCII column charges the width it stores, whatever it is.
+            DataType::FixedAscii(width) => {
+                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -815,13 +813,11 @@ impl MaterializationBudget {
             | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
-            | DataType::Ascii64
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
-            | DataType::Ascii128
             | DataType::Guid
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
@@ -832,6 +828,7 @@ impl MaterializationBudget {
             }
             DataType::Binary
             | DataType::Utf8
+            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -904,12 +901,14 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
-            | DataType::Ascii32
             | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Ascii16 | DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Ascii24 | DataType::Currency => self.add_fixed_rows(rows, 3)?,
+            DataType::Country => self.add_fixed_rows(rows, 2)?,
+            DataType::Currency => self.add_fixed_rows(rows, 3)?,
             DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
+            // A fixed ASCII column charges the width it stores, whatever it is.
+            DataType::FixedAscii(width) => {
+                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -920,13 +919,11 @@ impl MaterializationBudget {
             | DataType::Duration64(_)
             | DataType::Interval(TimeUnit::DayTime)
             | DataType::Decimal64 { .. }
-            | DataType::Ascii64
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
-            | DataType::Ascii128
             | DataType::Guid
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
@@ -935,6 +932,7 @@ impl MaterializationBudget {
             }
             DataType::Binary
             | DataType::Utf8
+            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -1893,6 +1891,26 @@ fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Resul
         Buffer::from(bytes),
         nulls(validity),
     )?))
+}
+
+/// Build the variable-width storage of an ASCII column.
+///
+/// Every present value passes the one ASCII rule with no width to fit, so the
+/// array holds exactly the bytes the value is - there is nothing to pad.
+fn ascii_bytes_array(values: &[&Scalar]) -> Result<ArrayRef> {
+    let text = values
+        .iter()
+        .map(|value| -> Result<Option<&str>> {
+            match ascii_bytes(value) {
+                Some(raw) => Ok(Some(ascii_free_text(raw)?)),
+                None if matches!(value, Scalar::Null) => Ok(None),
+                None => Err(invalid_value_kind("ASCII text", value)),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Arc::new(BinaryArray::from_iter(
+        text.iter().map(|value| value.map(str::as_bytes)),
+    )))
 }
 
 /// Build the padded fixed-width storage of an ASCII column.

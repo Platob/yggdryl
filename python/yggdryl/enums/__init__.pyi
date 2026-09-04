@@ -1,17 +1,12 @@
 from typing import Mapping
 
 from .ascii import (
-    Ascii16 as Ascii16,
-    Ascii24 as Ascii24,
-    Ascii32 as Ascii32,
-    Ascii64 as Ascii64,
-    Ascii96 as Ascii96,
-    Ascii128 as Ascii128,
     AsciiCode as AsciiCode,
     CfiCode as CfiCode,
     CountryCode as CountryCode,
     CurrencyCode as CurrencyCode,
     MicCode as MicCode,
+    fixed_ascii as fixed_ascii,
 )
 from .codes import (
     CFI as CFI,
@@ -32,12 +27,6 @@ COMPATIBILITY_SCHEMES: tuple[str, ...]
 LEVELS: Mapping[str, int]
 
 __all__ = [
-    "Ascii16",
-    "Ascii24",
-    "Ascii32",
-    "Ascii64",
-    "Ascii96",
-    "Ascii128",
     "AsciiCode",
     "CfiCode",
     "CountryCode",
@@ -47,6 +36,7 @@ __all__ = [
     "Country",
     "Currency",
     "MIC",
+    "fixed_ascii",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",

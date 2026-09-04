@@ -29,10 +29,10 @@ mod temporal;
 mod vocabulary;
 
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
+pub use ascii::AsciiEnum;
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::ascii_padded;
-pub(crate) use ascii::{ASCII_EXTENSION_NAME, ascii_bytes, ascii_text};
-pub use ascii::{AsciiDictionary, AsciiEnum};
+pub(crate) use ascii::{ASCII_EXTENSION_NAME, ascii_bytes, ascii_free_text, ascii_text};
 pub(crate) use coded::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_cell_text, code_for_extension,
     code_refusal, code_text,
@@ -121,18 +121,10 @@ pub enum DataType {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
-    /// ASCII text padded with trailing NUL to 2 bytes.
-    Ascii16,
-    /// ASCII text padded with trailing NUL to 3 bytes.
-    Ascii24,
-    /// ASCII text padded with trailing NUL to 4 bytes.
-    Ascii32,
-    /// ASCII text padded with trailing NUL to 8 bytes.
-    Ascii64,
-    /// ASCII text padded with trailing NUL to 12 bytes.
-    Ascii96,
-    /// ASCII text padded with trailing NUL to 16 bytes.
-    Ascii128,
+    /// Variable-width ASCII text.
+    Ascii,
+    /// ASCII text padded with trailing NUL to a fixed byte width.
+    FixedAscii(i32),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.

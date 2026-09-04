@@ -1,6 +1,6 @@
 # Playground
 
-Every ASCII width, every registered code, every refusal, and the dictionary vocabulary, as the
+Every ASCII datatype, every registered code, every refusal, and a declared vocabulary, as the
 package itself answered them.
 
 Nothing on this page is computed in your browser. The JavaScript extension is a native Node addon,
@@ -18,7 +18,7 @@ every case laid out. To try a value of your own, add it to the corpus in the gen
 node scripts/build_docs_playground.js
 ```
 
-## The widths and the codes
+## The ASCII datatypes and the codes
 
 <div class="ygg-pg" data-playground="widths" markdown="1">
 This section renders `assets/playground.json` and needs JavaScript.
@@ -36,14 +36,16 @@ This section renders `assets/playground.json` and needs JavaScript.
 This section renders `assets/playground.json` and needs JavaScript.
 </div>
 
-## The dictionary vocabulary
+## A declared vocabulary
 
-<div class="ygg-pg" data-playground="dictionary" markdown="1">
+<div class="ygg-pg" data-playground="vocabulary" markdown="1">
 This section renders `assets/playground.json` and needs JavaScript.
 </div>
 
-The vocabulary is a value the caller carries, not a process-global registry: a code is stable
-exactly as far as that value travels.
+A member *is* the integer its ASCII value packs into - the value's own storage bytes, big-endian -
+so the code is the same in every process and in every declaration, never a position in some
+column's vocabulary. The declaration itself rides on the field under one reserved metadata key, so
+it crosses Arrow, a file, and another runtime beside the datatype's own identity.
 
 ## Look up a value
 

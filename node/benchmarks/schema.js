@@ -2,7 +2,7 @@
 
 const { performance } = require('node:perf_hooks')
 const {
-  AsciiDictionary,
+  AsciiEnum,
   DataType,
   Expression,
   Field,
@@ -71,12 +71,9 @@ class BenchRow {
 // Resolve before timing so this measures the steady cached class accessor.
 intoField(BenchRow)
 
-const currencies = AsciiDictionary.fromValues('ascii32', ['USD', 'EUR', 'JPY', 'GBP'])
-// One bounded column per call: this measures the encode plus the copied Arrow
-// IPC crossing, not Arrow JS materialization of a large table.
-const currencyRows = Array.from({ length: 64 }, (_, index) =>
-  currencies.values()[index % currencies.length],
-)
+// The prebuilt ISO 4217 listing: what a schema pays once when it declares a
+// currency column, and the members every reader of that schema computes.
+const currencies = AsciiEnum.fromLogicalName('currency')
 
 const knownMime = 'application/json'
 const customMime = 'application/vnd.benchmark+json'
@@ -91,7 +88,8 @@ benchmark('schema/time_infer_time64', () => DataType.time('ns'))
 benchmark('schema/variant_dense_2', () => DataType.variant([id, name]))
 benchmark('schema/ascii_infer', () => DataType.ascii(3))
 benchmark('schema/currency', () => DataType.from('currency'))
-benchmark('schema/ascii_field', () => fields.ascii32('ccy'))
+benchmark('schema/ascii_field', () => fields.currency('ccy'))
+benchmark('schema/fixed_ascii_field', () => fields.fixedAscii('tenor', 8))
 benchmark('schema/time_field_infer_time32', () => fields.time('clock', 'ms'))
 benchmark('schema/time_field_infer_time64', () => fields.time('clock', 'ns'))
 benchmark('schema/from_json', () => DataType.fromJSON(structuralJson))
@@ -129,11 +127,10 @@ benchmark('schema/partition_field_names', () => partitioned.partitionFieldNames(
 benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
 )
-benchmark('schema/ascii_dictionary_push_hit', () => currencies.push('EUR'))
-benchmark('schema/ascii_dictionary_enum', () => currencies.intoEnum('Currency'))
-benchmark('schema/ascii_dictionary_arrow_column_64', () =>
-  currencies.intoArrowArray(currencyRows),
+benchmark('schema/ascii_vocabulary_prebuilt', () =>
+  AsciiEnum.fromLogicalName('currency'),
 )
+benchmark('schema/ascii_vocabulary_enum', () => currencies.intoEnum('currency'))
 benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
 benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))
 benchmark('schema/media_compound_parse', () => MediaType.fromString(compoundMedia))

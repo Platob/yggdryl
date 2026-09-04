@@ -5,13 +5,10 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
-use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::{ArrowCast, AsciiDictionary, DataType, Field};
+use criterion::{Criterion, Throughput};
+use yggdryl::{ArrowCast, AsciiEnum, DataType, Field};
 
 const ROWS: usize = 10_000;
-
-/// Distinct four-byte values, so a miss benchmark measures the append.
-const MISSES: usize = 64;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
@@ -26,13 +23,13 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     group.bench_function("parse_display_round_trip", |bencher| {
         bencher.iter(|| {
             let dtype =
-                DataType::from_str(black_box("ascii32")).expect("the static spelling must parse");
+                DataType::from_str(black_box("ascii(4)")).expect("the static spelling must parse");
             DataType::from_str(black_box(&dtype.to_string()))
                 .expect("canonical display output must round-trip")
         });
     });
     group.bench_function("field_arrow_projection", |bencher| {
-        let field = DataType::Ascii32.required_field("ccy");
+        let field = DataType::FixedAscii(4).required_field("ccy");
         bencher.iter(|| {
             black_box(&field)
                 .clone()
@@ -41,48 +38,21 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // The prebuilt vocabularies: building one registers every code in its
-    // constant, which is what a column pays once before its first batch.
-    group.bench_function("dictionary_prebuilt", |bencher| {
+    // The prebuilt vocabularies: building one names every code in its
+    // constant, which is what a schema pays once when it declares the column.
+    group.bench_function("vocabulary_prebuilt", |bencher| {
         bencher.iter(|| {
-            AsciiDictionary::from_logical_name(black_box("mic"))
+            AsciiEnum::from_logical_name(black_box("mic"))
                 .expect("mic is a registered logical name")
         });
     });
 
     let codes = ["USD", "EUR", "JPY", "GBP"];
 
-    // The per-column vocabulary: a hit is one lookup, a miss appends. The
-    // miss batch starts from an empty vocabulary so the growth is measured
-    // rather than amortized away by the earlier iterations.
-    let misses: Vec<String> = (0..MISSES).map(|index| format!("{index:04}")).collect();
-    group.bench_function("dictionary_push_hit", |bencher| {
-        let mut dictionary = AsciiDictionary::from_values(DataType::Ascii32, codes)
-            .expect("the benchmark codes fit ascii32");
-        bencher.iter(|| {
-            dictionary
-                .push(black_box("JPY"))
-                .expect("the code is registered")
-        });
-    });
-    group.bench_function("dictionary_push_miss", |bencher| {
-        let empty = AsciiDictionary::new(DataType::Ascii32).expect("ascii32 is a width");
-        bencher.iter_batched_ref(
-            || empty.clone(),
-            |dictionary| {
-                for value in &misses {
-                    dictionary
-                        .push(black_box(value))
-                        .expect("the value fits the width");
-                }
-            },
-            BatchSize::SmallInput,
-        );
-    });
     let text: ArrayRef = Arc::new(StringArray::from_iter_values(
         (0..ROWS).map(|index| codes[index % codes.len()]),
     ));
-    let target = DataType::Ascii32.required_field("ccy");
+    let target = DataType::FixedAscii(4).required_field("ccy");
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("utf8_to_ascii32_ingest", |bencher| {
         bencher.iter(|| {
@@ -98,7 +68,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         .cast_arrow_array(Arc::clone(&text), false)
         .expect("the codes fit the width");
     let batch = RecordBatch::try_new(
-        root([DataType::Ascii32.required_field("ccy")])
+        root([DataType::FixedAscii(4).required_field("ccy")])
             .into_arrow_schema()
             .expect("the benchmark root is valid"),
         vec![padded],
@@ -112,19 +82,14 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
                 .expect("the stored codes are valid")
         });
     });
-    // Encoding the same 10k-row column as codes over the four-value
-    // vocabulary: every value is a hit, so this is the steady state a caller
-    // reaches after the first batch registered the column.
-    group.bench_function("dictionary_into_arrow_array", |bencher| {
-        let column: Vec<Option<&str>> = (0..ROWS)
-            .map(|index| Some(codes[index % codes.len()]))
-            .collect();
-        let mut dictionary = AsciiDictionary::from_values(DataType::Ascii32, codes)
-            .expect("the benchmark codes fit ascii32");
+    // Naming the members of one declared vocabulary: the packed code of
+    // every value, which is what a reader of the schema computes once.
+    group.bench_function("vocabulary_into_members", |bencher| {
+        let declared = AsciiEnum::from_logical_name("mic").expect("mic is registered");
         bencher.iter(|| {
-            dictionary
-                .into_arrow_array(black_box(&column).iter().copied())
-                .expect("the codes fit the width")
+            declared
+                .into_members(black_box(&DataType::Mic))
+                .expect("every prebuilt code fits its width")
         });
     });
     group.finish();

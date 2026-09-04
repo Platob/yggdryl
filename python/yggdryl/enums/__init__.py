@@ -1,16 +1,15 @@
-"""The core's static enum vocabularies, and the ASCII widths as enum bases.
+"""The core's static enum vocabularies, and the ASCII datatypes as enum bases.
 
 Pure enums cross the boundary as strings by convention - a datatype id is
 ``"int64"``, a codec is ``"gzip"`` - and this module enumerates what those
 strings can be. Every tuple is unpacked from one native listing at import, so
 it can never drift from the Rust constants it mirrors.
 
-The vocabularies a caller declares are the other half: subclassing one of the
-six width bases - :class:`Ascii16`, :class:`Ascii24`, :class:`Ascii32`,
-:class:`Ascii64`, :class:`Ascii96`, :class:`Ascii128` - or one of the four
-registered code bases - :class:`CountryCode`, :class:`CurrencyCode`,
-:class:`MicCode`, :class:`CfiCode` - names one open ASCII vocabulary whose
-members are the integers their values pack into.
+The vocabularies a caller declares are the other half: subclassing the base
+:func:`fixed_ascii` builds for one width, or one of the four registered code
+bases - :class:`CountryCode`, :class:`CurrencyCode`, :class:`MicCode`,
+:class:`CfiCode` - names one open ASCII vocabulary whose members are the
+integers their values pack into.
 
 The four registered codes arrive already declared: :class:`Country`,
 :class:`Currency`, :class:`MIC`, and :class:`CFI` are those vocabularies over
@@ -23,17 +22,12 @@ from typing import Mapping
 
 from .._native import _enum_values
 from .ascii import (
-    Ascii16,
-    Ascii24,
-    Ascii32,
-    Ascii64,
-    Ascii96,
-    Ascii128,
     AsciiCode,
     CfiCode,
     CountryCode,
     CurrencyCode,
     MicCode,
+    fixed_ascii,
 )
 from .codes import CFI, Country, Currency, MIC
 
@@ -70,12 +64,6 @@ COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"]
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
 
 __all__ = [
-    "Ascii16",
-    "Ascii24",
-    "Ascii32",
-    "Ascii64",
-    "Ascii96",
-    "Ascii128",
     "AsciiCode",
     "CfiCode",
     "CountryCode",
@@ -85,6 +73,7 @@ __all__ = [
     "Country",
     "Currency",
     "MIC",
+    "fixed_ascii",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",

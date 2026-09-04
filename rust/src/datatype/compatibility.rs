@@ -349,12 +349,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic
@@ -452,12 +448,8 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic
@@ -545,12 +537,8 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic
@@ -645,12 +633,8 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         // every Iceberg reader must see `USD`, never the padded bytes.
         D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic

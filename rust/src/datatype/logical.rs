@@ -30,9 +30,9 @@
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
-//! | `Language` | String | `ascii16` | ISO 639-1 alpha-2 |
-//! | `MonthYear` | String | `ascii64` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
-//! | `Tenor` | Pattern | `ascii64` | `D5`, `W2`, `M3`, `Y1` |
+//! | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
+//! | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
+//! | `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
 //! | `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
 //! | `Length` | int | `int32` | a byte count |
 //! | `TagNum` | int | `int32` | a FIX tag |
@@ -53,7 +53,7 @@
 //! | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 //! | `UTCDateOnly` | String | `date32` | a calendar day |
 //! | `LocalMktDate` | String | `date32` | a calendar day |
-//! | `TZTimeOnly` | String | `ascii128` | a time of day plus an offset has no Arrow type |
+//! | `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
 //! | `MultipleCharValue` | char | `utf8` | space-delimited members |
 //! | `MultipleStringValue` | String | `utf8` | space-delimited members |
 //! | `XID` | String | `utf8` | an XML identifier |
@@ -96,9 +96,9 @@ impl DataType {
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
         // The rest are names over an ASCII width, which is all they need.
-        ("language", DataType::Ascii16),
-        ("monthyear", DataType::Ascii64),
-        ("tenor", DataType::Ascii64),
+        ("language", DataType::FixedAscii(2)),
+        ("monthyear", DataType::FixedAscii(8)),
+        ("tenor", DataType::FixedAscii(8)),
         ("pattern", DataType::Utf8),
         // The int family, each carrying the range its base type does not.
         ("length", DataType::Int32),
@@ -158,7 +158,7 @@ impl DataType {
         ("localmkttime", DataType::Time32(TimeUnit::Second)),
         ("utcdateonly", DataType::Date32),
         ("localmktdate", DataType::Date32),
-        ("tztimeonly", DataType::Ascii128),
+        ("tztimeonly", DataType::FixedAscii(16)),
         // The remaining text and binary shapes.
         ("multiplecharvalue", DataType::Utf8),
         ("multiplestringvalue", DataType::Utf8),

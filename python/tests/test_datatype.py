@@ -11,7 +11,7 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import AsciiDictionary, DataType, Field
+from yggdryl import AsciiEnum, DataType, Field
 
 
 def test_dtype_infers_native_string_and_arrow_values() -> None:
@@ -362,26 +362,30 @@ def test_the_guid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
         field.cast_arrow_array(pa.array(["not-a-guid"]))
 
 
-def test_ascii_widths_select_once() -> None:
-    ascii24 = DataType("ascii24")
+def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
+    ascii_text = DataType("ascii")
+    fixed = DataType.ascii(3)
 
-    # The family constructor selects the narrowest width that holds the bytes.
-    assert DataType.ascii(2) == DataType("ascii16")
-    assert DataType.ascii(3) == ascii24
-    assert DataType.ascii(4) == DataType("ascii32")
-    assert DataType.ascii(6) == DataType("ascii64")
-    assert DataType.ascii(8) == DataType("ascii64")
-    assert DataType.ascii(12) == DataType("ascii96")
-    assert DataType.ascii(16) == DataType("ascii128")
-    assert DataType("ascii(3)") == ascii24
-    assert str(ascii24) == "ascii24"
-    assert eval(repr(ascii24), {"DataType": DataType}) == ascii24
-    assert ascii24.id == "ascii24"
-    assert ascii24.kind == "string"
-    assert ascii24.ascii_width == 3
-    assert DataType("ascii16").ascii_width == 2
-    assert DataType("ascii96").ascii_width == 12
-    assert DataType("ascii128").ascii_width == 16
+    # Variable ASCII stores the bytes it is given, so it has no width.
+    assert ascii_text.id == "ascii"
+    assert ascii_text.kind == "string"
+    assert str(ascii_text) == "ascii"
+    assert ascii_text.ascii_width is None
+    assert eval(repr(ascii_text), {"DataType": DataType}) == ascii_text
+
+    # A fixed width is the width, so two widths are two datatypes and neither
+    # is the variable form.
+    assert fixed.id == "fixed_ascii"
+    assert fixed.kind == "string"
+    assert str(fixed) == "ascii(3)"
+    assert fixed.ascii_width == 3
+    assert DataType("ascii(3)") == fixed
+    assert eval(repr(fixed), {"DataType": DataType}) == fixed
+    assert DataType.ascii(4) != fixed
+    assert fixed != ascii_text
+    # Any width of at least one byte is storage; only the packed integer
+    # stops at sixteen bytes.
+    assert DataType.ascii(64).ascii_width == 64
     assert DataType("utf8").ascii_width is None
 
     # A name is one more spelling of a datatype, and it folds case, `_`, `-`,
@@ -396,12 +400,8 @@ def test_ascii_widths_select_once() -> None:
 
     with pytest.raises(ValueError, match="currency"):
         DataType.from_logical_name("isin")
-    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
-        DataType.ascii(17)
-    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 0"):
+    with pytest.raises(ValueError, match="at least 1 byte, got 0"):
         DataType.ascii(0)
-    with pytest.raises(ValueError):
-        DataType("ascii")
 
 
 def test_a_registered_code_is_its_own_datatype() -> None:
@@ -417,7 +417,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert currency.kind == "string"
     assert str(currency) == "currency"
     assert currency.ascii_width == 3
-    assert currency != DataType("ascii24")
+    assert currency != DataType.ascii(3)
     assert DataType(" CURRENCY ") == currency
     assert eval(repr(currency), {"DataType": DataType}) == currency
 
@@ -426,7 +426,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "string")
 
     # The packed integer is the value's own bytes, exactly as for a width.
-    assert currency.ascii_packed("USD") == DataType("ascii24").ascii_packed("USD")
+    assert currency.ascii_packed("USD") == DataType.ascii(3).ascii_packed("USD")
     assert currency.ascii_value(0x555344) == "USD"
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
@@ -447,8 +447,8 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
 
     # The same three bytes under the width's own name are the width, and
     # under no name at all are a plain fixed binary.
-    assert Field.from_arrow(Field("ccy", "ascii24").into_arrow()) == Field(
-        "ccy", "ascii24"
+    assert Field.from_arrow(Field("ccy", DataType.ascii(3)).into_arrow()) == Field(
+        "ccy", DataType.ascii(3)
     )
     assert Field.from_arrow(pa.field("ccy", pa.binary(3))) == Field(
         "ccy", "fixed_size_binary(3)"
@@ -463,9 +463,9 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
         ccy.cast_arrow_array(pa.array(["EURO"]))
 
 
-def test_ascii_widths_pad_into_arrow_storage_and_trim_out_of_it() -> None:
-    ascii32 = DataType("ascii32")
-    ccy = Field("ccy", "ascii32")
+def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> None:
+    ascii32 = DataType.ascii(4)
+    ccy = Field("ccy", ascii32)
 
     assert ascii32.into_arrow() == pa.binary(4)
     arrow_field = ccy.into_arrow()
@@ -503,215 +503,110 @@ def test_ascii_widths_pad_into_arrow_storage_and_trim_out_of_it() -> None:
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ascii32.arrow_scalar("EURO!")
     with pytest.raises(ValueError, match="non-ASCII"):
-        ccy.arrow_scalar("€")
+        ccy.arrow_scalar("\u20ac")
     # Only text and bytes are ASCII values; nothing is stringified.
-    with pytest.raises(ValueError, match="expected ascii32, got i64"):
+    with pytest.raises(ValueError, match="got i64"):
         ascii32.arrow_scalar(3)
-    with pytest.raises(ValueError, match="expected ascii32, got boolean"):
+    with pytest.raises(ValueError, match="got boolean"):
         ascii32.arrow_scalar(True)
-    with pytest.raises(ValueError, match="expected ascii32"):
+    with pytest.raises(ValueError):
         ccy.cast(1.5)
 
 
-def test_ascii_dictionary_registers_values_in_first_appearance_order() -> None:
-    currencies = AsciiDictionary("ascii32")
+def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
+    note = DataType("ascii")
+    field = Field("note", note)
 
-    assert currencies.push("USD") == 0
-    assert currencies.push("EUR") == 1
-    assert currencies.push("USD") == 0
-    # The padded spelling storage holds is the same value, in either shape.
-    assert currencies.push("USD\x00") == 0
-    assert currencies.push(b"USD\x00") == 0
+    # No width, so no padding: variable ASCII is Arrow's variable binary under
+    # the same extension name, told apart from the fixed form by its storage.
+    assert note.into_arrow() == pa.binary()
+    arrow_field = field.into_arrow()
+    assert arrow_field.type == pa.binary()
+    assert arrow_field.metadata == {
+        b"ARROW:extension:name": b"yggdryl.ascii",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow_field) == field
+    assert Field.from_arrow(pa.field("note", pa.binary())) == Field("note", "binary")
 
-    assert currencies.values == ["USD", "EUR"]
-    assert len(currencies) == 2
-    assert list(currencies) == ["USD", "EUR"]
-    assert "EUR" in currencies and "JPY" not in currencies
-    assert currencies.get(1) == "EUR"
-    assert currencies.get(7) is None
-    assert currencies.get_code("USD") == 0
-    assert currencies.get_code("USD\x00") == 0
-    assert currencies.get_code("JPY") is None
+    assert note.arrow_scalar("free text") == pa.scalar(b"free text", pa.binary())
+    assert note.default_pyvalue() == ""
+    assert note.default_pyhint() is str
+    assert note.default_arrow_scalar() == pa.scalar(b"", pa.binary())
 
-    assert currencies.dtype == DataType("dictionary(int32,ascii32)")
-    assert currencies.key == DataType("int32")
-    assert currencies.values_dtype == DataType("ascii32")
+    stored = field.cast_arrow_array(pa.array(["a", "much longer note", None]))
+    assert stored.to_pylist() == [b"a", b"much longer note", None]
+    row = DataType.from_fields([Field("note", "utf8")])
+    batch = pa.record_batch([stored], schema=pa.schema([arrow_field]))
+    assert row.cast_arrow_batch(batch).column(0).to_pylist() == [
+        "a",
+        "much longer note",
+        None,
+    ]
 
-    seeded = AsciiDictionary.from_values("ascii32", ["USD", "EUR", "USD"])
-    assert seeded.values == currencies.values
-    assert seeded == currencies
-    assert copy.copy(currencies) == currencies
-    assert copy.deepcopy(currencies) == currencies
+    # The value contract is the width's, minus the width itself.
+    with pytest.raises(ValueError, match="non-ASCII"):
+        note.arrow_scalar("\u20ac")
+    with pytest.raises(ValueError, match="NUL"):
+        note.arrow_scalar("a\x00b")
+    # A packed integer needs a width, so the variable form has none.
+    with pytest.raises(ValueError, match="at most 16 bytes"):
+        note.ascii_packed("USD")
 
-    wide = AsciiDictionary("ascii64", key="int64")
-    assert wide.push("SEDOL1") == 0
-    assert wide.dtype == DataType("dictionary(int64,ascii64)")
 
 
-def test_ascii_dictionary_prebuilds_the_iso_vocabularies() -> None:
-    prebuilt = AsciiDictionary.prebuilt()
+
+def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
+    prebuilt = AsciiEnum.prebuilt()
     assert set(prebuilt) == {"currency", "country", "mic", "exchange"}
     # `exchange` is FIX's name for the ISO 10383 code, so it is one list.
     assert prebuilt["mic"] == prebuilt["exchange"]
 
-    countries = AsciiDictionary.from_logical_name("Country")
-    seed = prebuilt["country"]
-    assert countries.values == seed
-    # A country vocabulary sits over the `country` datatype, so it stores the
-    # two bytes ISO 3166-1 fixes rather than an ASCII width's padding.
-    assert countries.values_dtype == DataType("country")
-    assert seed[countries.get_code("FR")] == "FR"
-    # A prebuilt code is a constant, so a second build agrees on every code.
-    assert AsciiDictionary.from_logical_name("country") == countries
-    # `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
-    assert countries.get_code("ZZ") is None
-    assert countries.push("ZZ") == len(seed)
+    countries = AsciiEnum.from_logical_name("Country")
+    assert countries.name == "country"
+    assert len(countries) == len(prebuilt["country"])
+    # An ISO code names itself, so the member and its value are one spelling.
+    assert countries.get("FR") == "FR"
+    assert countries.get_member("FR") == "FR"
+    assert "FR" in countries
+    # A prebuilt listing is a constant, so a second build is the same enum.
+    assert AsciiEnum.from_logical_name("country") == countries
+    # `ZZ` is ISO 3166's user-assigned range, so no member names it.
+    assert countries.get("ZZ") is None
 
-    # A registered name with no prebuilt list answers the empty width, and one
-    # that resolves to anything but a width is refused by width.
-    assert len(AsciiDictionary.from_logical_name("tenor")) == 0
-    assert AsciiDictionary.from_logical_name("mic", key="int64").key == DataType("int64")
-    with pytest.raises(ValueError, match="decimal64"):
-        AsciiDictionary.from_logical_name("price")
+    # A member's code is the value's own bytes under the datatype the name
+    # resolved to, so every reader of the schema answers the same integers.
+    country = DataType("country")
+    members = dict(countries.into_members(country))
+    assert members["FR"] == country.ascii_packed("FR")
+    codes = countries.into_intenum(country)
+    assert issubclass(codes, enum.IntEnum)
+    assert codes.__name__ == "country"
+    assert codes["FR"] == country.ascii_packed("FR")
+
+    # A registered name with no prebuilt listing answers an enum of no
+    # members, and one that is no registration at all is refused.
+    assert len(AsciiEnum.from_logical_name("tenor")) == 0
     with pytest.raises(ValueError, match="currency"):
-        AsciiDictionary.from_logical_name("isin")
+        AsciiEnum.from_logical_name("isin")
 
 
-def test_ascii_dictionary_refuses_what_the_width_and_the_key_refuse() -> None:
-    currencies = AsciiDictionary("ascii32")
-
-    with pytest.raises(ValueError, match="at most 4 bytes, got 5 bytes"):
-        currencies.push("EURO!")
-    with pytest.raises(ValueError, match="at most 4 bytes, got a non-ASCII byte"):
-        currencies.push("€")
-    with pytest.raises(ValueError, match="at most 4 bytes, got a NUL byte at 2"):
-        currencies.push("US\x00D")
-    # Bytes meet the same width rule, never a decoding error of their own.
-    with pytest.raises(ValueError, match="at most 4 bytes, got a non-ASCII byte 0xFF"):
-        currencies.push(b"\xff\xfe")
-    assert currencies.get_code(b"\xff") is None
-    assert b"\xff" not in currencies
-    # Only text and bytes are ASCII values; nothing is stringified.
-    with pytest.raises(TypeError, match="must be str or bytes"):
-        currencies.push(3)
-    assert currencies.values == []
-
-    # A column is an iterable of values: one string is one value, not its
-    # characters.
-    with pytest.raises(TypeError, match="not one string"):
-        AsciiDictionary.from_values("ascii32", "USD")
-    with pytest.raises(TypeError, match="not one string"):
-        currencies.into_arrow_array("USD")
-    assert currencies.values == []
-
-    with pytest.raises(ValueError, match="an ASCII width"):
-        AsciiDictionary("utf8")
-    with pytest.raises(ValueError, match="an int32 or int64 key datatype"):
-        AsciiDictionary("ascii32", key="int16")
-    with pytest.raises(ValueError, match="at most 4 bytes"):
-        AsciiDictionary.from_values("ascii32", ["USD", "EURO!"])
-
-
-def test_ascii_dictionary_generates_an_intenum_from_the_core_member_listing() -> None:
-    codes = AsciiDictionary.from_values("ascii32", ["USD", "n/a", "42", ""])
-
-    Currency = codes.into_intenum("Currency")
-
-    assert issubclass(Currency, enum.IntEnum)
-    assert Currency.__name__ == "Currency"
-    # A member is its value packed big-endian, never its position: the same
-    # value names the same integer in every process and every vocabulary.
-    assert [(member.name, member.value) for member in Currency] == [
-        ("USD", 0x55534400),
-        ("N_A", 0x6E2F6100),
-        ("_42", 0x34320000),
-        ("_", 0),
-    ]
-    assert Currency.USD == DataType("ascii32").ascii_packed("USD")
-    assert Currency(0x55534400).name == "USD"
-    assert Currency["N_A"] == 0x6E2F6100
-
-    # Sixteen bytes name members too, under the whole 128-bit integer.
-    Wide = AsciiDictionary.from_values("ascii128", ["US0378331005"]).into_intenum("Wide")
-    assert Wide.US0378331005 == 0x55533033373833333130303500000000
-    # A collision is named, never silently renamed.
-    with pytest.raises(ValueError, match="both name the member N_A"):
-        AsciiDictionary.from_values("ascii32", ["n/a", "n-a"]).into_intenum("Bad")
+def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:
+    assert AsciiEnum.member_name("n/a") == "N_A"
+    assert AsciiEnum.member_name("3M") == "_3M"
+    assert AsciiEnum.member_name("") == "_"
     # A name that opens and closes with `_` would be a reserved `_sunder_` or
     # `__dunder__`, so the trailing run goes and every member is a member.
-    Shape = AsciiDictionary.from_values("ascii64", ["-a-", "--b--", "-"]).into_intenum(
-        "Shape"
-    )
-    assert [(member.name, member.value) for member in Shape] == [
-        ("_A", 0x2D612D0000000000),
-        ("__B", 0x2D2D622D2D000000),
-        ("_", 0x2D00000000000000),
+    assert AsciiEnum.member_name("-a-") == "_A"
+    assert AsciiEnum.member_name("--b--") == "__B"
+
+    codes = AsciiEnum("Currency", {"USD": "USD", "N_A": "n/a"})
+    width = DataType.ascii(4)
+    assert codes.into_members(width) == [
+        ("N_A", 0x6E2F6100),
+        ("USD", 0x55534400),
     ]
-    # The enum needs a name, the way the JavaScript binding needs one.
-    with pytest.raises(ValueError, match="non-empty enum name"):
-        codes.into_intenum("")
-
-
-def test_ascii_dictionary_encodes_arrow_columns_under_continuing_codes() -> None:
-    currencies = AsciiDictionary("ascii32")
-
-    first = currencies.into_arrow_array(["USD", None, "EUR", "USD"])
-    assert first.type == pa.dictionary(pa.int32(), pa.binary(4))
-    assert first.indices.to_pylist() == [0, None, 1, 0]
-    assert first.dictionary.to_pylist() == [b"USD\x00", b"EUR\x00"]
-    assert first.to_pylist() == [b"USD\x00", None, b"EUR\x00", b"USD\x00"]
-
-    # A second column continues the same codes, and an Arrow holder is a column.
-    second = currencies.into_arrow_array(pa.array(["JPY", "EUR"]))
-    assert second.indices.to_pylist() == [2, 1]
-    assert currencies.values == ["USD", "EUR", "JPY"]
-
-    recovered = AsciiDictionary.from_arrow_array(second)
-    assert recovered.values == currencies.values
-    assert recovered == currencies
-
-    keyed = AsciiDictionary("ascii32", key="int64")
-    wide = keyed.into_arrow_array(["USD"])
-    assert wide.type == pa.dictionary(pa.int64(), pa.binary(4))
-    assert AsciiDictionary.from_arrow_array(wide) == keyed
-
-    with pytest.raises(ValueError, match="a dictionary array of int32 or int64"):
-        AsciiDictionary.from_arrow_array(pa.array(["USD"]))
-    with pytest.raises(ValueError, match="a dictionary array of int32 or int64"):
-        AsciiDictionary.from_arrow_array(
-            pa.array(["USD"]).dictionary_encode()
-        )
-    with pytest.raises(ValueError, match="at most 4 bytes"):
-        currencies.into_arrow_array(["EURO!"])
-    # A refused column registers nothing: the mutation fails atomically.
-    with pytest.raises(ValueError, match="at most 4 bytes"):
-        currencies.into_arrow_array(["GBP", "EURO!"])
-    assert currencies.values == ["USD", "EUR", "JPY"]
-    assert currencies.push("GBP") == 3
-
-    # A vocabulary Arrow allows but a code cannot name: a repeat would shift
-    # every later code.
-    repeated = pa.DictionaryArray.from_arrays(
-        pa.array([2, 0], type=pa.int32()),
-        pa.array([b"USD\x00", b"USD\x00", b"EUR\x00"], type=pa.binary(4)),
-    )
-    with pytest.raises(ValueError, match="a vocabulary with no repeated value"):
-        AsciiDictionary.from_arrow_array(repeated)
-
-
-def test_ascii_dictionary_equality_is_the_width_the_key_and_the_value_order() -> None:
-    left = AsciiDictionary.from_values("ascii32", ["USD", "EUR"])
-
-    assert left == AsciiDictionary.from_values("ascii32", ["USD", "EUR"])
-    assert left != AsciiDictionary.from_values("ascii32", ["EUR", "USD"])
-    assert left != AsciiDictionary.from_values("ascii64", ["USD", "EUR"])
-    assert left != AsciiDictionary.from_values("ascii32", ["USD", "EUR"], key="int64")
-    assert left != "USD"
-
-    assert repr(left) == (
-        "AsciiDictionary.from_values(\"ascii32\", ['USD', 'EUR'], key=\"int32\")"
-    )
-    assert eval(repr(left), {"AsciiDictionary": AsciiDictionary}) == left
-    # Registration moves the vocabulary, so the value carries no hash.
-    with pytest.raises(TypeError):
-        hash(left)
+    # A value the width could not store is refused by the width, never
+    # silently truncated into a member.
+    with pytest.raises(ValueError, match="at most 2 bytes"):
+        codes.into_members(DataType.ascii(2))

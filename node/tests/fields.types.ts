@@ -2,10 +2,9 @@ import {
   DataType,
   Field,
   fields,
-  type Ascii32Field,
-  type Ascii64Field,
-  type Ascii128Field,
   type AsciiField,
+  type CurrencyField,
+  type FixedAsciiField,
   type GeographyField,
   type GeometryField,
   type Duration32Field,
@@ -51,19 +50,19 @@ const projectedShape: GeometryField = fields.geometry('shape', 'EPSG:3857', {
 const region: GeographyField = fields.geography('region', 'OGC:CRS84', 'vincenty', {
   nullable: false,
 })
-const currency: Ascii32Field = fields.ascii32('ccy', { nullable: false })
-const currencyId: 'ascii32' = currency.dtype.id
+const currency: CurrencyField = fields.currency('ccy', { nullable: false })
+const currencyId: 'currency' = currency.dtype.id
 const currencyKind: 'string' = currency.dtype.kind
 const currencyValue: string = currency.defaultJSValue()
-const middle: Ascii64Field = fields.ascii64('middle', { nullable: false })
-const wide: Ascii128Field = fields.ascii128('wide', { nullable: false })
-const sized: AsciiField = fields.ascii('code', 12, { nullable: false })
-const nullableCode: string | null = fields.ascii('code', 3).defaultJSValue()
+const note: AsciiField = fields.ascii('note', { nullable: false })
+const noteId: 'ascii' = note.dtype.id
+const sized: FixedAsciiField = fields.fixedAscii('code', 12, { nullable: false })
+const nullableCode: string | null = fields.fixedAscii('code', 3).defaultJSValue()
 void currencyId
 void currencyKind
 void currencyValue
-void middle
-void wide
+void note
+void noteId
 void sized
 void nullableCode
 void payloadId

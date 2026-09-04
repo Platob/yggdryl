@@ -229,7 +229,7 @@ fn codec_errors_keep_the_format_and_byte_position() {
 
 #[test]
 fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
-    let row = DataType::from_fields([DataType::Ascii32.required_field("ccy")])
+    let row = DataType::from_fields([DataType::FixedAscii(4).required_field("ccy")])
         .unwrap()
         .required_field("row");
     let expected = Scalar::from_sequence([Scalar::from("USD")]);

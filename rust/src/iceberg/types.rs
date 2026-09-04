@@ -169,12 +169,8 @@ impl PrimitiveType {
             DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
-            | DataType::Ascii16
-            | DataType::Ascii24
-            | DataType::Ascii32
-            | DataType::Ascii64
-            | DataType::Ascii96
-            | DataType::Ascii128
+            | DataType::Ascii
+            | DataType::FixedAscii(_)
             // Iceberg has `string` and `fixed[n]` and nothing that carries a
             // code's identity, so a code writes as the text it is.
             | DataType::Country

@@ -86,18 +86,10 @@ pub enum DataTypeId {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
-    /// ASCII text padded with trailing NUL to 2 bytes.
-    Ascii16,
-    /// ASCII text padded with trailing NUL to 3 bytes.
-    Ascii24,
-    /// ASCII text padded with trailing NUL to 4 bytes.
-    Ascii32,
-    /// ASCII text padded with trailing NUL to 8 bytes.
-    Ascii64,
-    /// ASCII text padded with trailing NUL to 12 bytes.
-    Ascii96,
-    /// ASCII text padded with trailing NUL to 16 bytes.
-    Ascii128,
+    /// Variable-width ASCII text.
+    Ascii,
+    /// ASCII text padded with trailing NUL to a fixed byte width.
+    FixedAscii,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -146,7 +138,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 58] = [
+    pub const ALL: [Self; 54] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -177,12 +169,8 @@ impl DataTypeId {
         Self::Utf8,
         Self::LargeUtf8,
         Self::Utf8View,
-        Self::Ascii16,
-        Self::Ascii24,
-        Self::Ascii32,
-        Self::Ascii64,
-        Self::Ascii96,
-        Self::Ascii128,
+        Self::Ascii,
+        Self::FixedAscii,
         Self::Country,
         Self::Currency,
         Self::Mic,
@@ -254,12 +242,8 @@ impl DataTypeId {
             Self::Utf8 => "utf8",
             Self::LargeUtf8 => "large_utf8",
             Self::Utf8View => "utf8_view",
-            Self::Ascii16 => "ascii16",
-            Self::Ascii24 => "ascii24",
-            Self::Ascii32 => "ascii32",
-            Self::Ascii64 => "ascii64",
-            Self::Ascii96 => "ascii96",
-            Self::Ascii128 => "ascii128",
+            Self::Ascii => "ascii",
+            Self::FixedAscii => "fixed_ascii",
             Self::Country => "country",
             Self::Currency => "currency",
             Self::Mic => "mic",
@@ -337,12 +321,8 @@ impl DataTypeId {
             Self::Utf8
             | Self::LargeUtf8
             | Self::Utf8View
-            | Self::Ascii16
-            | Self::Ascii24
-            | Self::Ascii32
-            | Self::Ascii64
-            | Self::Ascii96
-            | Self::Ascii128
+            | Self::Ascii
+            | Self::FixedAscii
             // A registered code is fixed-width ASCII text with an identity,
             // so it belongs to the family every text behaviour is uniform
             // over: comparison, casting to a variable layout, merging.
@@ -380,6 +360,7 @@ impl DataTypeId {
                 | Self::Duration64
                 | Self::Interval
                 | Self::FixedSizeBinary
+                | Self::FixedAscii
                 | Self::List
                 | Self::ListView
                 | Self::FixedSizeList
@@ -466,28 +447,19 @@ impl DataTypeId {
             Self::Boolean => Some(1),
             Self::Int8 | Self::UInt8 => Some(1),
             Self::Int16 | Self::UInt16 | Self::Float16 => Some(2),
-            Self::Int32
-            | Self::UInt32
-            | Self::Float32
-            | Self::Date32
-            | Self::Decimal32
-            | Self::Ascii32 => Some(4),
+            Self::Int32 | Self::UInt32 | Self::Float32 | Self::Date32 | Self::Decimal32 => Some(4),
             Self::Int64
             | Self::UInt64
             | Self::Float64
             | Self::Date64
             | Self::Duration64
             | Self::Timestamp
-            | Self::Decimal64
-            | Self::Ascii64 => Some(8),
+            | Self::Decimal64 => Some(8),
             Self::Duration32 | Self::Mic => Some(4),
-            Self::Ascii16 | Self::Country => Some(2),
-            Self::Ascii24 | Self::Currency => Some(3),
+            Self::Country => Some(2),
+            Self::Currency => Some(3),
             Self::Cfi => Some(6),
-            Self::Ascii96 => Some(12),
-            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Ascii128 | Self::Guid => {
-                Some(16)
-            }
+            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Guid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }
@@ -571,15 +543,11 @@ mod tests {
     }
 
     #[test]
-    fn ascii_widths_and_codes_are_parameter_free_text() {
-        assert_eq!(DataTypeId::ALL.len(), 58);
+    fn the_ascii_family_and_the_codes_are_text() {
+        assert_eq!(DataTypeId::ALL.len(), 54);
         for id in [
-            DataTypeId::Ascii16,
-            DataTypeId::Ascii24,
-            DataTypeId::Ascii32,
-            DataTypeId::Ascii64,
-            DataTypeId::Ascii96,
-            DataTypeId::Ascii128,
+            DataTypeId::Ascii,
+            DataTypeId::FixedAscii,
             DataTypeId::Country,
             DataTypeId::Currency,
             DataTypeId::Mic,
@@ -587,11 +555,15 @@ mod tests {
         ] {
             assert_eq!(id.kind(), DataTypeKind::String);
             assert!(id.is_string());
-            assert!(!id.is_parameterized());
         }
+        // A fixed width is a parameter; every other ASCII identifier is not.
+        assert!(DataTypeId::FixedAscii.is_parameterized());
+        assert!(!DataTypeId::Ascii.is_parameterized());
+        assert!(!DataTypeId::Currency.is_parameterized());
+        assert_eq!(DataTypeId::from_str("ASCII").unwrap(), DataTypeId::Ascii);
         assert_eq!(
-            DataTypeId::from_str("ASCII128").unwrap(),
-            DataTypeId::Ascii128
+            DataTypeId::from_str("Fixed_Ascii").unwrap(),
+            DataTypeId::FixedAscii
         );
         assert_eq!(
             DataTypeId::from_str("Currency").unwrap(),
@@ -649,16 +621,18 @@ mod tests {
         assert_eq!(DataTypeId::Duration64.as_u8(), 21);
         assert_eq!(DataTypeId::Binary.as_u8(), 23);
         assert_eq!(DataTypeId::Utf8.as_u8(), 27);
-        assert_eq!(DataTypeId::Country.as_u8(), 36);
-        assert_eq!(DataTypeId::Cfi.as_u8(), 39);
-        assert_eq!(DataTypeId::Guid.as_u8(), 40);
-        assert_eq!(DataTypeId::List.as_u8(), 41);
-        assert_eq!(DataTypeId::Struct.as_u8(), 46);
-        assert_eq!(DataTypeId::Dictionary.as_u8(), 48);
-        assert_eq!(DataTypeId::Decimal256.as_u8(), 52);
-        assert_eq!(DataTypeId::Map.as_u8(), 53);
-        assert_eq!(DataTypeId::Geometry.as_u8(), 56);
-        assert_eq!(DataTypeId::Geography.as_u8(), 57);
+        assert_eq!(DataTypeId::Ascii.as_u8(), 30);
+        assert_eq!(DataTypeId::FixedAscii.as_u8(), 31);
+        assert_eq!(DataTypeId::Country.as_u8(), 32);
+        assert_eq!(DataTypeId::Cfi.as_u8(), 35);
+        assert_eq!(DataTypeId::Guid.as_u8(), 36);
+        assert_eq!(DataTypeId::List.as_u8(), 37);
+        assert_eq!(DataTypeId::Struct.as_u8(), 42);
+        assert_eq!(DataTypeId::Dictionary.as_u8(), 44);
+        assert_eq!(DataTypeId::Decimal256.as_u8(), 48);
+        assert_eq!(DataTypeId::Map.as_u8(), 49);
+        assert_eq!(DataTypeId::Geometry.as_u8(), 52);
+        assert_eq!(DataTypeId::Geography.as_u8(), 53);
     }
 
     #[test]
@@ -678,12 +652,12 @@ mod tests {
     fn fixed_widths_match_their_layout() {
         assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
         assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
-        assert_eq!(DataTypeId::Ascii32.fixed_byte_width(), Some(4));
-        assert_eq!(DataTypeId::Ascii16.fixed_byte_width(), Some(2));
-        assert_eq!(DataTypeId::Ascii24.fixed_byte_width(), Some(3));
-        assert_eq!(DataTypeId::Ascii96.fixed_byte_width(), Some(12));
-        assert_eq!(DataTypeId::Ascii64.fixed_byte_width(), Some(8));
-        assert_eq!(DataTypeId::Ascii128.fixed_byte_width(), Some(16));
+        assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
+        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
+        // A fixed ASCII width is a parameter, so the identifier alone has
+        // none: `DataType::ascii_width` is what answers for one value.
+        assert_eq!(DataTypeId::FixedAscii.fixed_byte_width(), None);
+        assert_eq!(DataTypeId::Ascii.fixed_byte_width(), None);
         assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);
         assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
     }

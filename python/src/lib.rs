@@ -14,7 +14,7 @@ use crate::codec::{
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
     codec_infer_text, codec_normalize_format,
 };
-use crate::datatype::{PyAsciiDictionary, PyAsciiEnum, PyDataType, PyDataTypeIterator};
+use crate::datatype::{PyAsciiEnum, PyDataType, PyDataTypeIterator};
 use crate::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
@@ -279,7 +279,6 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
-    module.add_class::<PyAsciiDictionary>()?;
     module.add_class::<PyAsciiEnum>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;

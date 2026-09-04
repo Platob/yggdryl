@@ -1,6 +1,4 @@
-import { Vector as ArrowVector } from 'apache-arrow'
-
-import { AsciiDictionary, AsciiEnum, DataType, Field } from '..'
+import { AsciiEnum, DataType, Field } from '..'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
@@ -28,8 +26,9 @@ const geometryType: DataType = DataType.geometry()
 const projectedGeometry: DataType = DataType.geometry('EPSG:3857')
 const geographyType: DataType = DataType.geography()
 const vincentyGeography: DataType = DataType.geography('OGC:CRS84', 'vincenty')
-const asciiType: DataType = DataType.ascii(3)
-const asciiWidth: number | null = asciiType.asciiWidth
+const asciiType: DataType = new DataType('ascii')
+const fixedAsciiType: DataType = DataType.ascii(3)
+const asciiWidth: number | null = fixedAsciiType.asciiWidth
 const currencyType: DataType = new DataType('currency')
 const currencyTypeWidth: number | null = currencyType.asciiWidth
 
@@ -45,31 +44,14 @@ void geometryType
 void projectedGeometry
 void geographyType
 void vincentyGeography
+void asciiType
 void asciiWidth
 void currencyType
 void currencyTypeWidth
 
-const currencies = new AsciiDictionary('ascii32')
-const seededCurrencies: AsciiDictionary = AsciiDictionary.fromValues(
-  DataType.ascii(3),
-  ['USD', 'EUR'],
-  'int64',
-)
-const prebuiltLists: Record<string, string[]> = AsciiDictionary.prebuilt()
-const prebuiltMics: AsciiDictionary = AsciiDictionary.fromLogicalName('mic')
-const currencyCode: number = currencies.push('USD')
-const currencyValue: string | null = currencies.get(0)
-const currencyLookup: number | null = currencies.getCode('USD')
-const currencyValues: string[] = currencies.values()
-const currencyMemberName: string = AsciiDictionary.memberName('n/a')
-const currencyCount: number = currencies.length
-const currencyDtype: DataType = currencies.dtype
-const currencyKey: DataType = currencies.key
-const currencyWidth: DataType = currencies.valuesDtype
-const currencyEquals: boolean = currencies.equals(seededCurrencies)
-const currencyText: string = currencies.toString()
-const currencyClone: AsciiDictionary = currencies.clone()
-const currencyEnum: Readonly<Record<string, bigint>> = currencies.intoEnum('Currency')
+const prebuiltLists: Record<string, string[]> = AsciiEnum.prebuilt()
+const prebuiltMics: AsciiEnum = AsciiEnum.fromLogicalName('mic')
+const currencyMemberName: string = AsciiEnum.memberName('n/a')
 const currencyPacked: bigint = DataType.ascii(3).asciiPacked('USD')
 const currencyUnpacked: string = DataType.ascii(3).asciiValue(currencyPacked)
 const currencyDeclaration: AsciiEnum = new AsciiEnum('Currency', { USD: 'USD' })
@@ -82,9 +64,9 @@ const currencyDeclarationMember: string | null = currencyDeclaration.getMember('
 const currencyDeclarationPrior: string | null = currencyDeclaration.insert('EUR', 'EUR')
 const currencyDeclarationRemoved: string | null = currencyDeclaration.remove('EUR')
 const currencyDeclarationCodes: Record<string, bigint> =
-  currencyDeclaration.intoMembers('ascii32')
-const currencyDeclarationDictionary: AsciiDictionary =
-  currencyDeclaration.intoDictionary('ascii32')
+  currencyDeclaration.intoMembers(DataType.ascii(3))
+const currencyDeclarationEnum: Readonly<Record<string, bigint>> =
+  currencyDeclaration.intoEnum('currency')
 const currencyDeclarationLength: number = currencyDeclaration.length
 const currencyDeclarationEquals: boolean =
   currencyDeclaration.equals(currencyDeclarationParsed)
@@ -92,29 +74,14 @@ const currencyDeclarationClone: AsciiEnum = currencyDeclaration.clone()
 const currencyDeclarationText: string = currencyDeclaration.toString()
 const guidType: DataType = new DataType('guid')
 const guidId: string = guidType.id
-const declaredField: Field = new Field('side', 'ascii32', false)
+const declaredField: Field = new Field('side', DataType.ascii(3), false)
 declaredField.setAsciiEnum(currencyDeclaration)
 const declaredFieldEnum: AsciiEnum | null = declaredField.asciiEnum
 const declaredFieldRemoved: AsciiEnum | null = declaredField.removeAsciiEnum()
-const currencyColumn: ArrowVector = currencies.intoArrowArray(['USD', null])
-const recoveredCurrencies: AsciiDictionary =
-  AsciiDictionary.fromArrowArray(currencyColumn)
 
 void prebuiltLists
 void prebuiltMics
-void currencyCode
-void currencyValue
-void currencyLookup
-void currencyValues
 void currencyMemberName
-void currencyCount
-void currencyDtype
-void currencyKey
-void currencyWidth
-void currencyEquals
-void currencyText
-void currencyClone
-void currencyEnum
 void currencyPacked
 void currencyUnpacked
 void currencyDeclaration
@@ -127,7 +94,7 @@ void currencyDeclarationMember
 void currencyDeclarationPrior
 void currencyDeclarationRemoved
 void currencyDeclarationCodes
-void currencyDeclarationDictionary
+void currencyDeclarationEnum
 void currencyDeclarationLength
 void currencyDeclarationEquals
 void currencyDeclarationClone
@@ -137,4 +104,3 @@ void guidId
 void declaredField
 void declaredFieldEnum
 void declaredFieldRemoved
-void recoveredCurrencies

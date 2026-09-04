@@ -10,7 +10,6 @@ from typing import Any, Literal
 import pyarrow as pa  # type: ignore[import-untyped]
 
 from yggdryl import (
-    AsciiDictionary,
     AsciiEnum,
     Bound,
     BoundStatement,
@@ -48,13 +47,11 @@ from yggdryl._native import (
     ScalarEntryIterator,
     ScalarIterator,
 )
-from yggdryl.enums import Ascii32, AsciiCode
+from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.fields import (
-    Ascii24Field,
-    GuidField,
-    Ascii32Field,
-    Ascii96Field,
     AsciiField,
+    FixedAsciiField,
+    GuidField,
     CfiField,
     CountryField,
     CurrencyField,
@@ -291,13 +288,12 @@ ascii_width: int | None = ascii_dtype.ascii_width
 currency_dtype: DataType = DataType.from_logical_name("currency")
 currency_width: int | None = currency_dtype.ascii_width
 logical_names: dict[str, DataType] = DataType.logical_names()
-prebuilt_lists: dict[str, list[str]] = AsciiDictionary.prebuilt()
-prebuilt_mics: AsciiDictionary = AsciiDictionary.from_logical_name("mic")
-typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
-typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
-typed_ascii_narrow: Ascii24Field = fields.ascii24("ccy", nullable=False)
-typed_ascii_narrow_kind: Literal["ascii24"] = typed_ascii_narrow.dtype.id
-typed_ascii_isin: Ascii96Field = fields.ascii96("isin")
+prebuilt_lists: dict[str, list[str]] = AsciiEnum.prebuilt()
+prebuilt_mics: AsciiEnum = AsciiEnum.from_logical_name("mic")
+typed_ascii: AsciiField = fields.ascii("note", nullable=False)
+typed_ascii_kind: Literal["ascii"] = typed_ascii.dtype.id
+typed_ascii_fixed: FixedAsciiField = fields.fixed_ascii("ccy", 3, nullable=False)
+typed_ascii_fixed_kind: Literal["fixed_ascii"] = typed_ascii_fixed.dtype.id
 typed_country: CountryField = fields.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
 typed_currency: CurrencyField = fields.currency("ccy", nullable=False)
@@ -309,28 +305,18 @@ typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
 typed_guid: GuidField = fields.guid("id", nullable=False)
 typed_guid_kind: Literal["guid"] = typed_guid.dtype.id
 typed_guid_value: str = typed_guid.dtype.default_pyvalue()
-typed_ascii_isin_kind: Literal["ascii96"] = typed_ascii_isin.dtype.id
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
-typed_ascii_width: AsciiField = fields.ascii("isin", 12)
-typed_ascii_width_value: str | None = typed_ascii_width.default_pyvalue()
-ascii_dictionary: AsciiDictionary = AsciiDictionary("ascii32", key="int32")
-ascii_code: int = ascii_dictionary.push("USD")
-ascii_seeded: AsciiDictionary = AsciiDictionary.from_values("ascii32", ["USD", "EUR"])
-ascii_value: str | None = ascii_seeded.get(0)
-ascii_lookup: int | None = ascii_seeded.get_code("EUR")
-ascii_vocabulary: list[str] = ascii_seeded.values
-ascii_dictionary_dtype: DataType = ascii_seeded.dtype
-ascii_key_dtype: DataType = ascii_seeded.key
-ascii_values_dtype: DataType = ascii_seeded.values_dtype
-ascii_column: pa.Array = ascii_seeded.into_arrow_array(["USD", None, "EUR"])
-ascii_recovered: AsciiDictionary = AsciiDictionary.from_arrow_array(ascii_column)
-ascii_enum: type[IntEnum] = ascii_seeded.into_intenum("Currency")
-ascii_member: IntEnum = ascii_enum["USD"]
-ascii_members: list[str] = [member.name for member in ascii_enum]
-ascii_member_name: str = AsciiDictionary.member_name("n/a")
+typed_ascii_isin: FixedAsciiField = fields.fixed_ascii("isin", 12)
+typed_ascii_isin_value: str | None = typed_ascii_isin.default_pyvalue()
+ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 
-class TypedCurrency(Ascii32):
+# A width base is a class built at runtime, so it is bound to a name rather
+# than spelled inline: a dynamic base is not a base a checker can follow.
+ascii_width_base: type[AsciiCode] = fixed_ascii(4)
+
+
+class TypedCurrency(CurrencyCode):
     USD = "USD"
     EUR = "EUR"
 
@@ -342,7 +328,6 @@ ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
 ascii_declared_dtype: DataType = TypedCurrency.dtype()
 ascii_declared_enum: AsciiEnum = TypedCurrency.as_enum()
 ascii_declared_field: Field = TypedCurrency.field("ccy", nullable=False)
-ascii_declared_dictionary: AsciiDictionary = TypedCurrency.into_dictionary()
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
 ascii_base: type[AsciiCode] = TypedCurrency
 
@@ -355,8 +340,11 @@ ascii_declaration_value: str | None = ascii_declaration.get("BUY")
 ascii_declaration_member: str | None = ascii_declaration.get_member("B")
 ascii_declaration_prior: str | None = ascii_declaration.insert("SELL", "S")
 ascii_declaration_removed: str | None = ascii_declaration.remove("SELL")
-ascii_declaration_codes: list[tuple[str, int]] = ascii_declaration.into_members("ascii32")
-ascii_declaration_dictionary: AsciiDictionary = ascii_declaration.into_dictionary("ascii32")
+ascii_declaration_codes: list[tuple[str, int]] = ascii_declaration.into_members(
+    DataType.ascii(4)
+)
+ascii_declaration_intenum: type[IntEnum] = ascii_declaration.into_intenum(DataType.ascii(4))
+ascii_declaration_intenum_member: IntEnum = ascii_declaration_intenum["BUY"]
 ascii_field_enum: AsciiEnum | None = ascii_declared_field.ascii_enum
 
 byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(

@@ -94,12 +94,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::Utf8
         | D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic
@@ -320,12 +316,8 @@ fn text_or_binary_to_js<'env>(
         D::Utf8
         | D::LargeUtf8
         | D::Utf8View
-        | D::Ascii16
-        | D::Ascii24
-        | D::Ascii32
-        | D::Ascii64
-        | D::Ascii96
-        | D::Ascii128
+        | D::Ascii
+        | D::FixedAscii(_)
         | D::Country
         | D::Currency
         | D::Mic

@@ -64,7 +64,7 @@ fn restored_columns_take_the_type_the_schema_declares() {
 fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
     let declared = DataType::from_fields([
         DataType::Int64.required_field("price"),
-        DataType::Ascii32.required_field("ccy"),
+        DataType::FixedAscii(4).required_field("ccy"),
     ])
     .unwrap()
     .required_field("row");
@@ -86,7 +86,7 @@ fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
         .expect("the ASCII storage, as the schema declares");
     assert_eq!(ccy.value(0), b"USD\0");
     let field = Field::from_arrow(restored.schema().field(1)).unwrap();
-    assert_eq!(field.dtype(), &DataType::Ascii32);
+    assert_eq!(field.dtype(), &DataType::FixedAscii(4));
     assert!(field.is_partition());
 }
 
@@ -618,7 +618,7 @@ mod lake {
     fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
         let (root, mut handle) = lake("ascii");
         let field = DataType::from_fields([
-            DataType::Ascii32.required_field("ccy"),
+            DataType::FixedAscii(4).required_field("ccy"),
             DataType::Int64.required_field("qty"),
         ])
         .unwrap()

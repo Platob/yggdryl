@@ -551,21 +551,22 @@ and bounds by the one WKB reader documented there.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
+    use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, RecordBatch, StringArray};
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{ArrowCast, DataType, DataTypeKind, Field, Scalar};
 
-    // Six widths named by their bits; the family constructor selects the
-    // narrowest one that holds the bytes.
-    assert_eq!(DataType::ascii(2)?, DataType::Ascii16);
-    assert_eq!(DataType::ascii(3)?, DataType::Ascii24);
-    assert_eq!(DataType::ascii(6)?, DataType::Ascii64);
-    assert_eq!(DataType::from_str("ascii(12)")?, DataType::Ascii96);
-    assert_eq!(DataType::Ascii32.kind(), DataTypeKind::String);
-    assert_eq!(DataType::Ascii64.ascii_width(), Some(8));
+    // Two shapes: text of any length, and text padded to one fixed width.
+    assert_eq!(DataType::from_str("ascii")?, DataType::Ascii);
+    assert_eq!(DataType::ascii(3)?, DataType::FixedAscii(3));
+    assert_eq!(DataType::from_str("ascii(12)")?, DataType::FixedAscii(12));
+    assert_eq!(DataType::FixedAscii(4).to_string(), "ascii(4)");
+    assert_eq!(DataType::Ascii.kind(), DataTypeKind::String);
+    assert_eq!(DataType::FixedAscii(8).ascii_width(), Some(8));
+    // Variable ASCII has no width to report, and neither has anything else.
+    assert_eq!(DataType::Ascii.ascii_width(), None);
     assert_eq!(DataType::Utf8.ascii_width(), None);
-    assert!(DataType::ascii(17).is_err());
+    assert!(DataType::ascii(0).is_err());
 
     // A registered code is a datatype, not a name over a width: it stores the
     // width its standard fixes and displays as itself.
@@ -573,7 +574,7 @@ and bounds by the one WKB reader documented there.
     assert_eq!(DataType::from_str("currency")?, currency);
     assert_eq!(currency.to_string(), "currency");
     assert_eq!(currency.ascii_width(), Some(3));
-    assert_ne!(currency, DataType::Ascii24);
+    assert_ne!(currency, DataType::FixedAscii(3));
     assert_eq!(currency.kind(), DataTypeKind::String);
     assert_eq!(
         DataType::CODES,
@@ -581,8 +582,8 @@ and bounds by the one WKB reader documented there.
             ("country", DataType::Country, 2),
             ("currency", DataType::Currency, 3),
             ("mic", DataType::Mic, 4),
-            // Six bytes: `cfi` stores what it is, not the eight the next
-            // ASCII width would pad it to.
+            // Six bytes: `cfi` stores what it is, not the eight some other
+            // width would pad it to.
             ("cfi", DataType::Cfi, 6),
         ]
     );
@@ -595,7 +596,7 @@ and bounds by the one WKB reader documented there.
     assert_eq!(Field::from_arrow(&arrow)?, venue);
 
     // Storage pads to the width; every string rendering trims the padding.
-    let ccy = Field::new("ccy", DataType::Ascii32, false);
+    let ccy = Field::new("ccy", DataType::FixedAscii(4), false);
     let stored = scalar_array(&ccy, &Scalar::from("USD"))?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(0), b"USD\0");
@@ -607,6 +608,17 @@ and bounds by the one WKB reader documented there.
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.ascii");
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
     assert_eq!(Field::from_arrow(&arrow)?, ccy);
+
+    // The variable form is the same extension over Arrow's `Binary`: no width,
+    // so no padding, and the storage is the bytes the value is.
+    let note = Field::new("note", DataType::Ascii, false);
+    let arrow = note.clone().into_arrow()?;
+    assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.ascii");
+    assert_eq!(Field::from_arrow(&arrow)?, note);
+    let free = scalar_array(&note, &Scalar::from("a note of any length at all"))?;
+    let free = free.as_any().downcast_ref::<BinaryArray>().unwrap();
+    assert_eq!(free.value(0), b"a note of any length at all");
 
     // A cast into the width pads; the stored column read under `utf8` trims.
     let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EU"]));
@@ -620,7 +632,13 @@ and bounds by the one WKB reader documented there.
     let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(trimmed.value(1), "EU");
 
-    assert_eq!(DataType::Ascii32.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    // A width merged with the variable form drops the width, and either
+    // merged with text is text.
+    assert_eq!(
+        DataType::FixedAscii(4).merge_with(&DataType::Ascii, true)?,
+        DataType::Ascii
+    );
+    assert_eq!(DataType::Ascii.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
 
     let long: ArrayRef = Arc::new(StringArray::from(vec!["EURO!"]));
     let refused = ccy.cast_arrow_array(long, false).unwrap_err().to_string();
@@ -635,24 +653,28 @@ and bounds by the one WKB reader documented there.
 
     from yggdryl import DataType, Field, fields
 
-    ascii32 = DataType("ascii32")
-    assert DataType.ascii(2) == DataType("ascii16")
-    assert DataType.ascii(3) == DataType("ascii24")
-    assert DataType.ascii(6) == DataType("ascii64")
-    assert DataType("ascii(12)") == DataType("ascii96")
-    assert ascii32.kind == "string"
+    # Two shapes: text of any length, and text padded to one fixed width.
+    note = DataType("ascii")
+    ascii32 = DataType.ascii(4)
+    assert note.id == "ascii"
+    assert ascii32.id == "fixed_ascii"
+    assert str(ascii32) == "ascii(4)"
+    assert DataType("ascii(12)") == DataType.ascii(12)
+    assert ascii32.kind == note.kind == "string"
     assert ascii32.ascii_width == 4
-    assert DataType("ascii24").ascii_width == 3
-    assert DataType("ascii96").ascii_width == 12
+    assert DataType.ascii(12).ascii_width == 12
+    # Variable ASCII has no width to report, and neither has anything else.
+    assert note.ascii_width is None
     assert DataType("utf8").ascii_width is None
-    assert fields.ascii("ccy", 3).dtype == DataType("ascii24")
+    assert fields.fixed_ascii("ccy", 3).dtype == DataType.ascii(3)
+    assert fields.ascii("note").dtype == note
 
     # A registered code is a datatype, not a name over a width: it stores the
     # width its standard fixes and displays as itself.
     currency = DataType("currency")
     assert str(currency) == "currency"
     assert currency.ascii_width == 3
-    assert currency != DataType("ascii24")
+    assert currency != DataType.ascii(3)
     assert currency.kind == "string"
     assert [(DataType(name).id, DataType(name).ascii_width) for name in
             ("country", "currency", "mic", "cfi")] == [
@@ -667,7 +689,7 @@ and bounds by the one WKB reader documented there.
     assert Field.from_arrow(venue_arrow) == venue
 
     # Storage pads to the width; every string rendering trims the padding.
-    ccy = Field("ccy", "ascii32", nullable=False)
+    ccy = Field("ccy", ascii32, nullable=False)
     assert ccy.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
     assert ccy.default_pyvalue() == ""
 
@@ -680,6 +702,17 @@ and bounds by the one WKB reader documented there.
     }
     assert Field.from_arrow(arrow) == ccy
 
+    # The variable form is the same extension over Arrow's variable binary: no
+    # width, so no padding, and the storage is the bytes the value is.
+    free = fields.ascii("note", nullable=False)
+    free_arrow = free.into_arrow()
+    assert free_arrow.type == pa.binary()
+    assert free_arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.ascii"
+    assert Field.from_arrow(free_arrow) == free
+    assert free.arrow_scalar("a note of any length at all") == pa.scalar(
+        b"a note of any length at all", pa.binary()
+    )
+
     # A cast into the width pads; the stored column read under `utf8` trims.
     padded = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
     assert padded.to_pylist() == [b"USD\x00", b"EU\x00\x00"]
@@ -687,12 +720,15 @@ and bounds by the one WKB reader documented there.
     text = DataType.from_fields([fields.utf8("ccy")])
     assert text.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", "EU"]
 
-    assert ascii32.merge_with("utf8") == DataType("utf8")
+    # A width merged with the variable form drops the width, and either merged
+    # with text is text.
+    assert ascii32.merge_with(note) == note
+    assert note.merge_with("utf8") == DataType("utf8")
 
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ccy.cast_arrow_array(pa.array(["EURO!"]))
-    with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
-        DataType.ascii(17)
+    with pytest.raises(ValueError, match="at least 1 byte, got 0"):
+        DataType.ascii(0)
     ```
 
 === "JavaScript"
@@ -702,17 +738,20 @@ and bounds by the one WKB reader documented there.
     const arrow = require('apache-arrow')
     const { DataType, fields } = require('yggdryl')
 
-    const ascii32 = new DataType('ascii32')
-    assert.equal(DataType.ascii(2).id, 'ascii16')
-    assert.equal(DataType.ascii(3).id, 'ascii24')
-    assert.equal(DataType.ascii(6).id, 'ascii64')
-    assert.equal(DataType.from('ascii(12)').id, 'ascii96')
+    // Two shapes: text of any length, and text padded to one fixed width.
+    const note = new DataType('ascii')
+    const ascii32 = DataType.ascii(4)
+    assert.equal(note.id, 'ascii')
+    assert.equal(ascii32.id, 'fixed_ascii')
+    assert.equal(ascii32.toString(), 'ascii(4)')
+    assert.ok(DataType.from('ascii(12)').equals(DataType.ascii(12)))
     assert.equal(ascii32.kind, 'string')
     assert.equal(ascii32.asciiWidth, 4)
-    assert.equal(new DataType('ascii24').asciiWidth, 3)
-    assert.equal(new DataType('ascii96').asciiWidth, 12)
+    // Variable ASCII has no width to report, and neither has anything else.
+    assert.equal(note.asciiWidth, null)
     assert.equal(new DataType('utf8').asciiWidth, null)
-    assert.equal(fields.ascii('ccy', 3).dtype.id, 'ascii24')
+    assert.ok(fields.fixedAscii('ccy', 3).dtype.equals(DataType.ascii(3)))
+    assert.equal(fields.ascii('note').dtype.id, 'ascii')
 
     // A registered code is a datatype, not a name over a width: it stores the
     // width its standard fixes and displays as itself.
@@ -720,7 +759,7 @@ and bounds by the one WKB reader documented there.
     assert.equal(currency.id, 'currency')
     assert.equal(currency.toString(), 'currency')
     assert.equal(currency.asciiWidth, 3)
-    assert.ok(!currency.equals(new DataType('ascii24')))
+    assert.ok(!currency.equals(DataType.ascii(3)))
     assert.deepEqual(
       ['country', 'currency', 'mic', 'cfi'].map((name) => new DataType(name).asciiWidth),
       [2, 3, 4, 6],
@@ -737,7 +776,7 @@ and bounds by the one WKB reader documented there.
     assert.equal(venueArrow.metadata.get('ARROW:extension:name'), 'yggdryl.mic')
 
     // Storage pads to the width; every string rendering trims the padding.
-    const row = fields.struct('row', [fields.ascii32('ccy', { nullable: false })], {
+    const row = fields.struct('row', [fields.fixedAscii('ccy', 4, { nullable: false })], {
       nullable: false,
     })
     assert.equal(row.getField('ccy').defaultJSValue(), '')
@@ -756,131 +795,118 @@ and bounds by the one WKB reader documented there.
     })
     assert.deepEqual([...text.castArrow(stored).getChild('ccy')], ['USD', 'EU'])
 
-    assert.equal(ascii32.mergeWith('utf8').id, 'utf8')
+    // The variable form is the same extension over Arrow's `Binary`: no width,
+    // so no padding, and the storage is the bytes the value is.
+    const notes = fields.struct('row', [fields.ascii('note', { nullable: false })], {
+      nullable: false,
+    })
+    const free = notes.castArrow(
+      new arrow.Table({
+        note: arrow.vectorFromArray(['a note of any length at all'], new arrow.Utf8()),
+      }),
+    )
+    assert.equal(String(free.schema.fields[0].type), 'Binary')
+    assert.equal(
+      Buffer.from(free.getChild('note').get(0)).toString(),
+      'a note of any length at all',
+    )
+
+    // A width merged with the variable form drops the width, and either merged
+    // with text is text.
+    assert.equal(ascii32.mergeWith(note).id, 'ascii')
+    assert.equal(note.mergeWith('utf8').id, 'utf8')
 
     assert.throws(() => row.castArrow(codes(['EURO!'])), /ASCII text of at most 4 bytes/)
-    assert.throws(() => DataType.ascii(17), /from 1 to 16 bytes, got 17/)
+    assert.throws(() => DataType.ascii(0), /at least 1 byte, got 0/)
     ```
 
-`ascii16`, `ascii24`, `ascii32`, `ascii64`, `ascii96`, and `ascii128` are ASCII text padded with
-trailing NUL to 2, 3, 4, 8, 12, and 16 bytes, named by their bit width like `int32` and
-`decimal128`. The six are the widths the codes of the trade actually take: two bytes for a country,
-three for a currency, four for a venue, six inside eight for a CFI code, twelve for an ISIN, and
-sixteen for whatever is longer. A value is ASCII - every byte at most `0x7F` - of at most the width
-in bytes, with no NUL byte; storage pads it to exactly the width, and every string rendering trims
-the padding, so a column reads back as the text that went in. The canonical scalar is the trimmed
-string; bytes and a string carrying trailing NULs are accepted on the way in under the same rule and
-canonicalize to it. `ascii(n)` selects the narrowest width that holds `n` bytes, `ascii_width`
-answers the storage width, and a value that is not ASCII, holds a NUL, or is longer than the width
-is refused naming the width and, in a cast, the row.
+ASCII is two datatypes. `ascii` is text of any length, stored as the bytes it is; `ascii(n)` is that
+same text padded with trailing NUL to exactly `n` bytes, for any `n` of at least one byte. The fixed
+form is what the codes of the trade take - two bytes for a country, three for a currency, four for a
+venue, six for a CFI code, twelve for an ISIN - and it buys a column of fixed-size slots, a packed
+integer, and a schema that says how long a value may be; the variable form buys none of those and
+takes a value of any length. A value is ASCII - every byte at most `0x7F` - with no NUL byte, and at
+most the width when there is one; storage pads it to exactly that width, and every string rendering
+trims the padding, so a column reads back as the text that went in. The canonical scalar is the
+trimmed string; bytes and a string carrying trailing NULs are accepted on the way in under the same
+rule and canonicalize to it. `ascii_width` answers the storage width, `None` for the variable form,
+and a value that is not ASCII, holds a NUL, or is longer than the width is refused naming the width
+and, in a cast, the row.
 
 `country`, `currency`, `mic` and `cfi` are datatypes of their own, not names over a width. Each is
 one published registry - ISO 3166-1 alpha-2, ISO 4217, ISO 10383, ISO 10962 - with exactly one
 storage width: two, three, four and six bytes. `CODES` is that listing, `code_name` answers a code's
 identity, and `is_code` distinguishes the four from the widths. The value contract is unchanged: a
-code answers `ascii_width`, so `ascii_packed`, `AsciiEnum` and `AsciiDictionary` work over it with
-nothing added, and an enum member is still the integer its value packs into. What a code adds over
-the width that would hold it is identity and a constant - the identity crosses Arrow, and the width
-is known at compile time, so the ingest and render paths are monomorphized per code rather than
-reading a length out of the datatype on every row. Six bytes is the point of `cfi`: it stores what a
-CFI code is rather than padding into `ascii64`'s eight.
+code answers `ascii_width`, so `ascii_packed` and `AsciiEnum` work over it with nothing added, and
+an enum member is still the integer its value packs into. What a code adds over the width that would
+hold it is identity and a constant - the identity crosses Arrow, and the width is known at compile
+time, so the ingest and render paths are monomorphized per code rather than reading a length out of
+the datatype on every row. Six bytes is the point of `cfi`: it stores what a CFI code is rather than
+padding into some wider slot.
 
-Across Arrow a width is `fixed_size_binary(2|3|4|8|12|16)` under the `yggdryl.ascii` extension name
-with an empty document, because the storage width says the width; a code is
-`fixed_size_binary(2|3|4|6)` under its own `yggdryl.country`, `yggdryl.currency`, `yggdryl.mic` or
-`yggdryl.cfi`, because the name is what says which registry the bytes belong to. Three bytes under
-`yggdryl.currency` read back a currency and three bytes under `yggdryl.ascii` read back an
-`ascii24`; a plain fixed binary of any width, or one carrying a document, imports as it is. Two
-schemas that agree on a code keep it, and a code [merged](field.md#merging-two-schemas) with
-anything else answers the plain text both fit in - a currency beside a country is `ascii24`, never
-one standard's code carrying the other's values. Every other exchange sees text: Iceberg, Spark, Polars, and
-pandas [rewrite](#compatibility-rewriting) a width to `string`/`utf8`, Avro writes `string`, and a
-filter such as `ccy = 'USD'` meets the literal at `utf8`. Widths
-[merge](field.md#merging-two-schemas) as text. One boundary shows storage: JavaScript's
-`readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII column
-arrives there as its padded bytes; read it under a declared `utf8` field, as above, for the text.
+Across Arrow the two ASCII shapes share the `yggdryl.ascii` extension name with an empty document,
+and the storage says which: `binary` is the variable form, `fixed_size_binary(n)` is the width `n`.
+A code is `fixed_size_binary(2|3|4|6)` under its own `yggdryl.country`, `yggdryl.currency`,
+`yggdryl.mic` or `yggdryl.cfi`, because the name is what says which registry the bytes belong to.
+Three bytes under `yggdryl.currency` read back a currency and three bytes under `yggdryl.ascii` read
+back an `ascii(3)`; a plain binary or fixed binary, or one carrying a document, imports as it is.
+Two schemas that agree on a code keep it, and a code [merged](field.md#merging-two-schemas) with
+anything else answers the plain text both fit in - a currency beside a country is `ascii(3)`, never
+one standard's code carrying the other's values; a width beside the variable form is the variable
+form, which is the narrowest shape holding both. Every other exchange sees text: Iceberg, Spark,
+Polars, and pandas [rewrite](#compatibility-rewriting) either shape to `string`/`utf8`, Avro writes
+`string`, and a filter such as `ccy = 'USD'` meets the literal at `utf8`. One boundary shows storage:
+JavaScript's `readRecords` hands out Arrow JS rows, which carry no extension identity, so an ASCII
+column arrives there as its stored bytes; read it under a declared `utf8` field, as above, for the
+text.
 
-### The dictionary vocabulary and its generated enum
+### The declared vocabulary and its generated enum
 
 === "Rust"
 
     ```rust
-    use arrow_array::types::Int32Type;
-    use arrow_array::{Array, DictionaryArray, FixedSizeBinaryArray};
-    use yggdryl::{AsciiDictionary, AsciiEnum, DataType, Field};
+    use yggdryl::{AsciiEnum, DataType, Field};
 
-    // Register as you encode: an unseen value takes the next code, a seen one
-    // answers the code it already has.
-    let mut currencies = AsciiDictionary::new(DataType::Ascii32)?;
-    assert_eq!(currencies.push("USD")?, 0);
-    assert_eq!(currencies.push("EUR")?, 1);
-    assert_eq!(currencies.push("USD")?, 0);
-    assert_eq!(currencies.as_values(), ["USD", "EUR"]);
-    assert_eq!(currencies.get(1), Some("EUR"));
-    assert_eq!(currencies.get_code("USD\0"), Some(0));
-
-    // An encoded column carries the key type over the width.
-    assert_eq!(currencies.dtype()?.to_string(), "dictionary(int32,ascii32)");
-    assert_eq!(currencies.key(), &DataType::Int32);
-    assert_eq!(currencies.values_dtype(), &DataType::Ascii32);
-
-    // The keys are the codes, a `None` is a null key, and the values are the
-    // vocabulary in the width's padded storage.
-    let column = currencies.into_arrow_array([Some("USD"), None, Some("JPY"), Some("EUR")])?;
-    let column = column
-        .as_any()
-        .downcast_ref::<DictionaryArray<Int32Type>>()
-        .unwrap();
+    // A value's integer is its own storage bytes read big-endian, so it is the
+    // same integer in every process and orders exactly as the text does.
+    assert_eq!(DataType::FixedAscii(4).ascii_packed(b"USD")?, 0x5553_4400);
+    assert_eq!(DataType::FixedAscii(4).ascii_packed(b"USD\0")?, 0x5553_4400);
+    assert_eq!(DataType::FixedAscii(4).ascii_value(0x5553_4400)?, "USD");
+    assert_eq!(DataType::Currency.ascii_packed(b"USD")?, 0x0055_5344);
+    // Sixteen bytes fill the whole `i128`; a wider width has no packed code.
     assert_eq!(
-        column.keys().iter().collect::<Vec<_>>(),
-        [Some(0), None, Some(2), Some(1)]
+        DataType::FixedAscii(16).ascii_packed(b"US0378331005")?,
+        0x5553_3033_3738_3333_3130_3035_0000_0000
     );
-    let stored = column
-        .values()
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
-    assert_eq!(stored.value(2), b"JPY\0");
-    assert_eq!(AsciiDictionary::from_arrow_array(column)?, currencies);
+    assert!(DataType::FixedAscii(17).ascii_packed(b"US").is_err());
+    assert!(DataType::Ascii.ascii_packed(b"US").is_err());
 
-    // A prebuilt vocabulary starts from a constant and auto-registers past it,
-    // so a code below the constant's length names one value in every process.
-    let mut countries = AsciiDictionary::from_logical_name("Country")?;
-    assert_eq!(countries.len(), AsciiDictionary::COUNTRIES.len());
-    let france = countries.get_code("FR").expect("FR is prebuilt");
-    assert_eq!(AsciiDictionary::COUNTRIES[france as usize], "FR");
-    // `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
-    assert_eq!(countries.push("ZZ")?, AsciiDictionary::COUNTRIES.len() as i64);
-
-    // A dictionary code is a position. The other integer a value has is its
-    // own storage bytes, which is the same integer in every process and
-    // orders exactly as the text does.
-    assert_eq!(DataType::Ascii32.ascii_packed(b"USD")?, 0x5553_4400);
-    assert_eq!(DataType::Ascii32.ascii_packed(b"USD\0")?, 0x5553_4400);
-    assert_eq!(DataType::Ascii32.ascii_value(0x5553_4400)?, "USD");
-
-    // That is what an enum member is, at every width - sixteen bytes fill the
-    // whole `i128`.
-    let venues = AsciiDictionary::from_values(DataType::Ascii32, ["XNAS", "n/a"])?;
+    // An enum is that naming as a value: one ASCII value per member name.
+    let venues = AsciiEnum::from_members("Venue", [("XNAS", "XNAS"), ("N_A", "n/a")])?;
+    assert_eq!(venues.get("N_A"), Some("n/a"));
     assert_eq!(
-        venues.into_members()?,
-        [("XNAS".into(), 0x584E_4153), ("N_A".into(), 0x6E2F_6100)]
-    );
-    let isins = AsciiDictionary::from_values(DataType::Ascii128, ["US0378331005"])?;
-    assert_eq!(
-        isins.into_members()?,
-        [("US0378331005".into(), 0x5553_3033_3738_3333_3130_3035_0000_0000)]
+        venues.into_members(&DataType::Mic)?,
+        [("N_A".into(), 0x6E2F_6100), ("XNAS".into(), 0x584E_4153)]
     );
 
     // The same rule names one value at a time, for a vocabulary declared
     // member by member rather than generated from a whole listing.
-    assert_eq!(AsciiDictionary::member_name("n/a").as_str(), "N_A");
+    assert_eq!(AsciiEnum::member_name("n/a").as_str(), "N_A");
+
+    // The ISO listings ship with the package, so a code column declares the
+    // vocabulary it draws from without a copy per language.
+    let currencies = AsciiEnum::from_logical_name("currency")?;
+    assert_eq!(currencies.len(), AsciiEnum::CURRENCIES.len());
+    assert_eq!(currencies.get("USD"), Some("USD"));
+    assert_eq!(AsciiEnum::from_logical_name("Exchange")?.len(), AsciiEnum::MICS.len());
+    // A registered name with no listing answers an enum of no members.
+    assert!(AsciiEnum::from_logical_name("tenor")?.is_empty());
 
     // A field declares the enum its values name, as one metadata document, so
     // the enum crosses Arrow and comes back the enum that was written.
     let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
-    let field = Field::new("side", DataType::Ascii32, false).try_with_ascii_enum(&side)?;
-    assert_eq!(side.into_members(&DataType::Ascii32)?[0], ("BUY".into(), 0x4200_0000));
+    let field = Field::new("side", DataType::FixedAscii(4), false).try_with_ascii_enum(&side)?;
+    assert_eq!(side.into_members(&DataType::FixedAscii(4))?[0], ("BUY".into(), 0x4200_0000));
     assert_eq!(Field::from_arrow(&field.into_arrow()?)?.ascii_enum()?, Some(side));
     ```
 
@@ -889,65 +915,53 @@ arrives there as its padded bytes; read it under a declared `utf8` field, as abo
     ```python
     import enum
 
-    import pyarrow as pa
+    import pytest
 
-    from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field
+    from yggdryl import AsciiEnum, DataType, Field
 
-    # Register as you encode: an unseen value takes the next code, a seen one
-    # answers the code it already has.
-    currencies = AsciiDictionary("ascii32")
-    assert currencies.push("USD") == 0
-    assert currencies.push("EUR") == 1
-    assert currencies.push("USD") == 0
-    assert currencies.values == ["USD", "EUR"]
-    assert currencies.get(1) == "EUR"
-    assert currencies.get_code("USD\x00") == 0
-
-    # An encoded column carries the key type over the width.
-    assert currencies.dtype == DataType("dictionary(int32,ascii32)")
-    assert currencies.key == DataType("int32")
-    assert currencies.values_dtype == DataType("ascii32")
-
-    # The indices are the codes, `None` is a null key, and the dictionary is the
-    # vocabulary in the width's padded storage.
-    column = currencies.into_arrow_array(["USD", None, "JPY", "EUR"])
-    assert column.type == pa.dictionary(pa.int32(), pa.binary(4))
-    assert column.indices.to_pylist() == [0, None, 2, 1]
-    assert column.dictionary.to_pylist() == [b"USD\x00", b"EUR\x00", b"JPY\x00"]
-    assert AsciiDictionary.from_arrow_array(column) == currencies
-
-    # A prebuilt vocabulary starts from a constant and auto-registers past it,
-    # so a code below the constant's length names one value in every process.
-    seed = AsciiDictionary.prebuilt()["country"]
-    countries = AsciiDictionary.from_logical_name("Country")
-    assert len(countries) == len(seed)
-    assert seed[countries.get_code("FR")] == "FR"
-    # `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
-    assert countries.push("ZZ") == len(seed)
-
-    # The enum is the value list and the code is the position.
-    Venue = AsciiDictionary.from_values("ascii32", ["XNAS", "n/a"]).into_intenum("Venue")
-    assert issubclass(Venue, enum.IntEnum)
-    assert [(member.name, member.value) for member in Venue] == [
-        ("XNAS", 0x584E4153),
-        ("N_A", 0x6E2F6100),
-    ]
-    assert Venue(0x584E4153).name == "XNAS"
-
+    # A value's integer is its own storage bytes read big-endian, so it is the
+    # same integer in every process and orders exactly as the text does.
+    ascii32 = DataType.ascii(4)
+    assert ascii32.ascii_packed("USD") == 0x55534400
+    assert ascii32.ascii_packed("USD\x00") == 0x55534400
+    assert ascii32.ascii_value(0x55534400) == "USD"
+    assert DataType("currency").ascii_packed("USD") == 0x555344
     # Sixteen bytes fill the whole 128-bit integer, which Python holds natively.
-    Isin = AsciiDictionary.from_values("ascii128", ["US0378331005"]).into_intenum("Isin")
-    assert Isin.US0378331005 == 0x55533033373833333130303500000000
+    assert DataType.ascii(16).ascii_packed("US0378331005") == (
+        0x55533033373833333130303500000000
+    )
+    with pytest.raises(ValueError, match="at most 16 bytes"):
+        DataType("ascii").ascii_packed("US")
+
+    # An enum is that naming as a value: one ASCII value per member name.
+    venues = AsciiEnum("Venue", {"XNAS": "XNAS", "N_A": "n/a"})
+    assert venues.get("N_A") == "n/a"
+    assert venues.into_members("mic") == [("N_A", 0x6E2F6100), ("XNAS", 0x584E4153)]
+
+    # ... and as a Python `IntEnum`, keyed by the same integers.
+    Venue = venues.into_intenum("mic")
+    assert issubclass(Venue, enum.IntEnum)
+    assert Venue(0x584E4153).name == "XNAS"
 
     # The same rule names one value at a time, for a vocabulary declared
     # member by member rather than generated from a whole listing.
-    assert AsciiDictionary.member_name("n/a") == "N_A"
+    assert AsciiEnum.member_name("n/a") == "N_A"
+
+    # The ISO listings ship with the package, so a code column declares the
+    # vocabulary it draws from without a copy per language.
+    currencies = AsciiEnum.from_logical_name("currency")
+    assert len(currencies) == len(AsciiEnum.prebuilt()["currency"])
+    assert currencies.get("USD") == "USD"
+    assert len(AsciiEnum.from_logical_name("Exchange")) == len(AsciiEnum.prebuilt()["mic"])
+    # A registered name with no listing answers an enum of no members.
+    assert len(AsciiEnum.from_logical_name("tenor")) == 0
 
     # A field declares the enum its values name, as one metadata document, so
     # the enum crosses Arrow and comes back the enum that was written.
     side = AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
-    field = Field("side", "ascii32", nullable=False)
+    field = Field("side", ascii32, nullable=False)
     field.set_ascii_enum(side)
-    assert side.into_members("ascii32")[0] == ("BUY", 0x42000000)
+    assert side.into_members(ascii32)[0] == ("BUY", 0x42000000)
     assert Field.from_arrow(field.into_arrow()).ascii_enum == side
     ```
 
@@ -955,89 +969,74 @@ arrives there as its padded bytes; read it under a declared `utf8` field, as abo
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { AsciiDictionary, AsciiEnum, DataType, Field } = require('yggdryl')
+    const { AsciiEnum, DataType, Field } = require('yggdryl')
 
-    // Register as you encode: an unseen value takes the next code, a seen one
-    // answers the code it already has.
-    const currencies = new AsciiDictionary('ascii32')
-    assert.equal(currencies.push('USD'), 0)
-    assert.equal(currencies.push('EUR'), 1)
-    assert.equal(currencies.push('USD'), 0)
-    assert.deepEqual(currencies.values(), ['USD', 'EUR'])
-    assert.equal(currencies.get(1), 'EUR')
-    assert.equal(currencies.getCode('USD\0'), 0)
-
-    // An encoded column carries the key type over the width.
-    assert.equal(currencies.dtype.toString(), 'dictionary(int32,ascii32)')
-    assert.equal(currencies.key.toString(), 'int32')
-    assert.equal(currencies.valuesDtype.toString(), 'ascii32')
-
-    // The keys are the codes, a `null` is a null key, and the values are the
-    // vocabulary in the width's padded storage.
-    const column = currencies.intoArrowArray(['USD', null, 'JPY', 'EUR'])
-    assert.deepEqual(Array.from(column.data[0].values), [0, 0, 2, 1])
-    assert.equal(column.get(1), null)
-    assert.deepEqual(Array.from(column.get(2)), [0x4a, 0x50, 0x59, 0])
-    assert.ok(AsciiDictionary.fromArrowArray(column).equals(currencies))
-
-    // A prebuilt vocabulary starts from a constant and auto-registers past it,
-    // so a code below the constant's length names one value in every process.
-    const seed = AsciiDictionary.prebuilt().country
-    const countries = AsciiDictionary.fromLogicalName('Country')
-    assert.equal(countries.length, seed.length)
-    assert.equal(seed[countries.getCode('FR')], 'FR')
-    // `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
-    assert.equal(countries.push('ZZ'), seed.length)
-
-    // The enum is the value list and the code is the position.
-    const Venue = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a']).intoEnum('Venue')
-    assert.deepEqual({ ...Venue }, { XNAS: 0x584e4153n, N_A: 0x6e2f6100n })
-    assert.equal(Venue.N_A, new DataType('ascii32').asciiPacked('n/a'))
-
+    // A value's integer is its own storage bytes read big-endian, so it is the
+    // same integer in every process and orders exactly as the text does.
+    const ascii32 = DataType.ascii(4)
+    assert.equal(ascii32.asciiPacked('USD'), 0x55534400n)
+    assert.equal(ascii32.asciiPacked('USD\0'), 0x55534400n)
+    assert.equal(ascii32.asciiValue(0x55534400n), 'USD')
+    assert.equal(new DataType('currency').asciiPacked('USD'), 0x555344n)
     // Sixteen bytes fill the whole 128-bit integer, so every code is a bigint.
-    const Isin = AsciiDictionary.fromValues('ascii128', ['US0378331005']).intoEnum('Isin')
-    assert.equal(Isin.US0378331005, 0x55533033373833333130303500000000n)
+    assert.equal(
+      DataType.ascii(16).asciiPacked('US0378331005'),
+      0x55533033373833333130303500000000n,
+    )
+    assert.throws(() => new DataType('ascii').asciiPacked('US'), /at most 16 bytes/)
+
+    // An enum is that naming as a value: one ASCII value per member name.
+    const venues = new AsciiEnum('Venue', { XNAS: 'XNAS', N_A: 'n/a' })
+    assert.equal(venues.get('N_A'), 'n/a')
+    assert.deepEqual(venues.intoMembers('mic'), { XNAS: 0x584e4153n, N_A: 0x6e2f6100n })
+
+    // ... and as the generated enum: a frozen name-to-code object, tagged with
+    // the enum's own name.
+    const Venue = venues.intoEnum('mic')
+    assert.equal(Venue.XNAS, new DataType('mic').asciiPacked('XNAS'))
+    assert.equal(Object.prototype.toString.call(Venue), '[object Venue]')
 
     // The same rule names one value at a time, for a vocabulary declared
     // member by member rather than generated from a whole listing.
-    assert.equal(AsciiDictionary.memberName('n/a'), 'N_A')
+    assert.equal(AsciiEnum.memberName('n/a'), 'N_A')
+
+    // The ISO listings ship with the package, so a code column declares the
+    // vocabulary it draws from without a copy per language.
+    const currencies = AsciiEnum.fromLogicalName('currency')
+    assert.equal(currencies.length, AsciiEnum.prebuilt().currency.length)
+    assert.equal(currencies.get('USD'), 'USD')
+    assert.equal(AsciiEnum.fromLogicalName('tenor').length, 0)
 
     // A field declares the enum its values name, as one metadata document, so
     // every serialization carries it and it comes back the enum that wrote it.
     const side = new AsciiEnum('Side', { BUY: 'B', SELL: 'S' })
-    const field = new Field('side', 'ascii32', false)
+    const field = new Field('side', ascii32, false)
     field.setAsciiEnum(side)
-    assert.deepEqual(side.intoMembers('ascii32'), { BUY: 0x42000000n, SELL: 0x53000000n })
+    assert.deepEqual(side.intoMembers(ascii32), { BUY: 0x42000000n, SELL: 0x53000000n })
     assert.ok(Field.fromJSON(field.toJSON()).asciiEnum.equals(side))
     ```
 
-An ASCII value has two integers and they answer different questions.
-`AsciiDictionary` is the vocabulary of one column, a value the caller carries
-and never a process-global registry, and its code is a **position**: stable
-exactly as far as that dictionary travels, agreed between two encodes only
-where the same dictionary crossed both, and never registered by the write path
-on its own. `ascii_packed` is the value's **own storage bytes** read
-big-endian, so it is the same integer in every process, orders exactly as the
-text does, is what a stable hash hashes, and fills an `i32`, an `i64`, or a
-whole `i128` by width. An ASCII byte never sets the sign bit, so a packed code
-is never negative.
+An ASCII value has one integer, and it is the value itself. `ascii_packed` is the value's **own
+storage bytes** read big-endian, so it is the same integer in every process, orders exactly as the
+text does, is what a stable hash hashes, and fills an `i32`, an `i64`, or a whole `i128` by width.
+An ASCII byte never sets the sign bit, so a packed code is never negative. Only a fixed width has
+one: the variable form takes a value of any length and so has no integer its bytes always fit, and
+neither has a width past the sixteen bytes an `i128` holds.
 
-The generated enum names its members by the packed code, so a member survives a
-process, a file, and another runtime; the name comes once from the core listing
-- an ASCII letter kept uppercased, a digit kept, every other byte `_`, a leading
-digit prefixed with `_`, and a name that both opens and closes with `_` dropping
-its trailing underscores, because that is the shape Python reserves for
-`_sunder_` and `__dunder__` names - which refuses any two values that would name
-one member, and answers name to code because the vocabulary is already the code
-to value direction.
+The generated enum names its members by that packed code, so a member survives a process, a file,
+and another runtime; the name comes once from the core listing - an ASCII letter kept uppercased, a
+digit kept, every other byte `_`, a leading digit prefixed with `_`, and a name that both opens and
+closes with `_` dropping its trailing underscores, because that is the shape Python reserves for
+`_sunder_` and `__dunder__` names.
 
-`AsciiEnum` is that naming as a value: an enum's own name and one ASCII value
-per member, which a field stores under the reserved `field:enum` key. The width
-is the field's datatype and is never copied into the document, so a member's
-code is the packed value under that width and one enum is one canonical text
-however it was built. Ordinary field metadata is what carries it, so the
-declaration reaches Arrow, a file, and either binding with the field, and the
-`field:` protocol view reads it beside `field:init` and `field:partition`.
+`AsciiEnum` is that naming as a value: an enum's own name and one ASCII value per member, which a
+field stores under the reserved `field:enum` key. The width is the field's datatype and is never
+copied into the document, so a member's code is the packed value under that width and one enum is
+one canonical text however it was built. Ordinary field metadata is what carries it, so the
+declaration reaches Arrow, a file, and either binding with the field, and the `field:` protocol view
+reads it beside `field:init` and `field:partition`. `from_logical_name` builds one from the ISO
+listings the package ships - `CURRENCIES`, `COUNTRIES`, `MICS`, reachable as `prebuilt()` from
+either binding - so a code column declares the vocabulary it draws from without a copy per language.
 
 ## The GUID
 
@@ -1160,7 +1159,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
 === "Rust"
 
     ```rust
-    use yggdryl::{AsciiDictionary, DataType, TimeUnit, Timezone};
+    use yggdryl::{AsciiEnum, DataType, TimeUnit, Timezone};
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     let price = DataType::from_logical_name("Price")?;
@@ -1185,8 +1184,8 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
 
     // Three of the names also prebuild the vocabulary their codes come from.
-    assert_eq!(AsciiDictionary::prebuilt_values("MIC"), AsciiDictionary::MICS);
-    assert!(AsciiDictionary::prebuilt_values("tenor").is_empty());
+    assert_eq!(AsciiEnum::prebuilt_values("MIC"), AsciiEnum::MICS);
+    assert!(AsciiEnum::prebuilt_values("tenor").is_empty());
 
     // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert_eq!(DataType::from_str("int")?, DataType::Int32);
@@ -1196,7 +1195,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
 === "Python"
 
     ```python
-    from yggdryl import AsciiDictionary, DataType
+    from yggdryl import AsciiEnum, DataType
 
     # A name is one more spelling of a datatype, so it displays as that datatype.
     price = DataType.from_logical_name("Price")
@@ -1213,8 +1212,8 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     assert DataType.logical_names()["currency"] == DataType("currency")
 
     # Three of the names also prebuild the vocabulary their codes come from.
-    assert AsciiDictionary.prebuilt()["mic"] == AsciiDictionary.prebuilt()["exchange"]
-    assert "tenor" not in AsciiDictionary.prebuilt()
+    assert AsciiEnum.prebuilt()["mic"] == AsciiEnum.prebuilt()["exchange"]
+    assert "tenor" not in AsciiEnum.prebuilt()
 
     # The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert DataType("int") == DataType("int32")
@@ -1225,7 +1224,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { AsciiDictionary, DataType } = require('yggdryl')
+    const { AsciiEnum, DataType } = require('yggdryl')
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     const price = DataType.fromLogicalName('Price')
@@ -1242,8 +1241,8 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     assert.equal(DataType.logicalNames().currency.id, 'currency')
 
     // Three of the names also prebuild the vocabulary their codes come from.
-    assert.deepEqual(AsciiDictionary.prebuilt().mic, AsciiDictionary.prebuilt().exchange)
-    assert.equal(AsciiDictionary.prebuilt().tenor, undefined)
+    assert.deepEqual(AsciiEnum.prebuilt().mic, AsciiEnum.prebuilt().exchange)
+    assert.equal(AsciiEnum.prebuilt().tenor, undefined)
 
     // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert.equal(DataType.from('int').id, 'int32')
@@ -1257,17 +1256,18 @@ name folds the way every other datatype word does - trimmed, ASCII case-insensit
 and spaces ignored - so `UTCTimestamp`, `utc_timestamp`, and `UTC Timestamp` are one name.
 
 The vocabulary is the [FIX Latest](https://www.fixtrading.org) datatype table, so a FIX field
-declaration types a column directly, plus `mic` - ISO 10383's own name for what FIX calls
-`Exchange`.
+declaration types a column directly, plus `mic` and `cfi` - ISO 10383's and ISO 10962's own names
+for two codes FIX itself carries as plain `String` fields.
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Currency` | String | `ascii32` | ISO 4217 alpha-3, stored `USD\0` |
-| `Country` | String | `ascii32` | ISO 3166-1 alpha-2, stored `FR\0\0` |
-| `Exchange`, `mic` | String | `ascii32` | ISO 10383 MIC, exactly 4 bytes |
-| `Language` | String | `ascii32` | ISO 639-1 alpha-2 |
-| `MonthYear` | String | `ascii64` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
-| `Tenor` | Pattern | `ascii64` | `D5`, `W2`, `M3`, `Y1` |
+| `Currency` | String | `currency` | ISO 4217 alpha-3, exactly 3 bytes |
+| `Country` | String | `country` | ISO 3166-1 alpha-2, exactly 2 bytes |
+| `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
+| `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
+| `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
+| `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
+| `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
 | `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
 | `Length` | int | `int32` | a byte count |
 | `TagNum` | int | `int32` | a FIX tag |
@@ -1288,7 +1288,7 @@ declaration types a column directly, plus `mic` - ISO 10383's own name for what 
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 | `UTCDateOnly` | String | `date32` | a calendar day |
 | `LocalMktDate` | String | `date32` | a calendar day |
-| `TZTimeOnly` | String | `ascii128` | a time of day plus an offset has no Arrow type |
+| `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
 | `MultipleCharValue` | char | `utf8` | space-delimited members |
 | `MultipleStringValue` | String | `utf8` | space-delimited members |
 | `XID` | String | `utf8` | an XML identifier |
@@ -1309,12 +1309,11 @@ is why these are names over the ordinary constructors rather than a second numer
 `TZTimestamp` keeps the instant and drops the local offset, because an Arrow column carries one
 zone for every row; read it under `timestamp(ns,"<zone>")` when the local reading is the value.
 
-`currency`, `country`, and `mic` also name a [prebuilt vocabulary](#the-dictionary-vocabulary-and-its-generated-enum):
-`AsciiDictionary::from_logical_name` seeds the codes those standards assign, in sorted order, and
-auto-registers past them. A code below the constant's length therefore names one value in every
-process reading this version, which a vocabulary that only auto-registers cannot promise. The MICs
-are the common venues rather than the whole ISO 10383 registry, which is thousands of segment
-codes.
+`currency`, `country`, and `mic` also name a [prebuilt vocabulary](#the-declared-vocabulary-and-its-generated-enum):
+`AsciiEnum::from_logical_name` builds the enum of the codes those standards assign, in sorted
+order, named for the registration. A member's code is the value's own bytes under the datatype the
+name resolved to, so every process reading this version answers the same integers. The MICs are the
+common venues rather than the whole ISO 10383 registry, which is thousands of segment codes.
 
 ## Identity and family
 

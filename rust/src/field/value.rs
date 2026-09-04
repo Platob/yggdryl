@@ -13,7 +13,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::datatype::{
-    ascii_bytes, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
+    ascii_bytes, ascii_free_text, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
     value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
@@ -321,19 +321,20 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Utf8View => Ok((value.clone(), false)),
         // The canonical ASCII spelling is the trimmed string; bytes and a
         // string carrying trailing NULs are rewritten here.
-        D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => {
-            match (dtype.ascii_width(), ascii_bytes(value)) {
-                (Some(width), Some(bytes)) => {
-                    let text = ascii_text(width, bytes)?;
-                    if matches!(value, Scalar::String(current) if current == text) {
-                        Ok((value.clone(), false))
-                    } else {
-                        Ok((Scalar::from(text), true))
-                    }
+        D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
+            Some(bytes) => {
+                let text = match dtype.ascii_width() {
+                    Some(width) => ascii_text(width, bytes)?,
+                    None => ascii_free_text(bytes)?,
+                };
+                if matches!(value, Scalar::String(current) if current == text) {
+                    Ok((value.clone(), false))
+                } else {
+                    Ok((Scalar::from(text), true))
                 }
-                _ => canonicalization_failure(dtype),
             }
-        }
+            None => canonicalization_failure(dtype),
+        },
         // A code canonicalizes the same way, at the width its own type fixes.
         D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
             Some(bytes) => {
@@ -852,14 +853,13 @@ fn validate_dtype_value(
             require(matches!(value, Scalar::String(_)), dtype.name(), value)
         }
         // Text or bytes, both under the one ASCII rule naming the width.
-        D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => {
-            match (dtype.ascii_width(), ascii_bytes(value)) {
-                (Some(width), Some(bytes)) => {
-                    ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure)
-                }
-                _ => Err(expected(dtype.name(), value)),
-            }
-        }
+        D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
+            Some(bytes) => match dtype.ascii_width() {
+                Some(width) => ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure),
+                None => ascii_free_text(bytes).map(|_| ()).map_err(ascii_failure),
+            },
+            None => Err(expected(dtype.name(), value)),
+        },
         D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
             Some(bytes) => code_cell_text(dtype, bytes)
                 .map(|_| ())

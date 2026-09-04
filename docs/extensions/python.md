@@ -510,17 +510,19 @@ through annotation inference again.
 
 `yggdryl.enums` carries the core's static spellings - `DATA_TYPE_IDS`, `CODECS`, `LEVELS` and the
 rest, listed on the [generic page](../generic.md) - and the enum bases a caller declares a
-vocabulary with. `Ascii16`, `Ascii24`, `Ascii32`, `Ascii64`, `Ascii96`, and `Ascii128` are the
-[ASCII widths](../datatype.md#ascii-widths-and-the-registered-codes), and `CountryCode`,
-`CurrencyCode`, `MicCode`, and `CfiCode` the four registered codes; a subclass names its
-values as text and a member *is* the integer that value packs into, so the code is the same in
-every process, is exactly what the column stores, and orders as the text does.
+vocabulary with. `fixed_ascii(width)` builds the base for one
+[ASCII width](../datatype.md#ascii-widths-and-the-registered-codes) - one class per width, built
+once and cached - and `CountryCode`, `CurrencyCode`, `MicCode`, and `CfiCode` are the four
+registered codes; a subclass names its values as text and a member *is* the integer that value
+packs into, so the code is the same in every process, is exactly what the column stores, and orders
+as the text does. Only a fixed width has a packed integer, so only a fixed width names a
+vocabulary: `DataType("ascii")` takes a value of any length and has none.
 
 ```python
 from yggdryl import DataType
-from yggdryl.enums import Ascii32
+from yggdryl.enums import fixed_ascii
 
-class Currency(Ascii32):
+class Currency(fixed_ascii(4)):
     USD = "USD"
     EUR = "EUR"
 
@@ -528,7 +530,7 @@ class Currency(Ascii32):
 assert int(Currency.USD) == 0x55534400
 assert int(Currency.USD).to_bytes(4, "big") == b"USD\x00"
 assert Currency.EUR < Currency.USD
-assert Currency.dtype() == DataType("ascii32")
+assert Currency.dtype() == DataType.ascii(4)
 
 # The ASCII value is what a member renders as; `int(member)` asks for the code.
 assert Currency.USD.into_str() == "USD"
@@ -552,9 +554,9 @@ else:
 Sixteen bytes need the whole 128-bit integer, which Python holds natively:
 
 ```python
-from yggdryl.enums import Ascii128
+from yggdryl.enums import fixed_ascii
 
-class Isin(Ascii128):
+class Isin(fixed_ascii(16)):
     APPLE = "US0378331005"
 
 assert int(Isin.APPLE) == 0x55533033373833333130303500000000
@@ -566,14 +568,14 @@ key, so the enum crosses Arrow, a file, and the other binding as ordinary field 
 
 ```python
 from yggdryl import AsciiEnum, Field
-from yggdryl.enums import Ascii32, AsciiCode
+from yggdryl.enums import AsciiCode, fixed_ascii
 
-class Side(Ascii32):
+class Side(fixed_ascii(4)):
     BUY = "B"
     SELL = "S"
 
 field = Side.field("side", nullable=False)
-assert field.dtype.id == "ascii32"
+assert field.dtype.id == "fixed_ascii"
 assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
 assert field.get_property("field", "enum") == field.ascii_enum.into_json()
 
@@ -593,9 +595,9 @@ the record of a vocabulary read past its declaration is emitted exactly once per
 ```python
 import logging
 
-from yggdryl.enums import Ascii32
+from yggdryl.enums import fixed_ascii
 
-class Side(Ascii32):
+class Side(fixed_ascii(4)):
     BUY = "B"
     SELL = "S"
 
@@ -615,11 +617,8 @@ assert [record.getMessage() for record in records] == [f"Side registered 'X' as 
 ```
 
 The declared members are the declaration and a value read back is data, so `as_enum()` and
-`field()` carry only what the class body names. `into_dictionary()` is the other direction: an
-[`AsciiDictionary`](../datatype.md#the-dictionary-vocabulary-and-its-generated-enum) over the same
-values, whose codes are positions in the column it encodes rather than the values themselves. Only
-the leaf declares members - `AsciiCode` is the base the six widths and four codes share, and
-nothing subclasses a vocabulary that already has members.
+`field()` carry only what the class body names. Only the leaf declares members - `AsciiCode` is the
+base every width and code shares, and nothing subclasses a vocabulary that already has members.
 
 ### The registered vocabularies
 
@@ -635,7 +634,7 @@ from yggdryl import DataType
 from yggdryl.enums import CFI, Country, Currency, MIC
 
 assert Currency.dtype() == DataType("currency")
-assert Currency.dtype() != DataType("ascii24")
+assert Currency.dtype() != DataType.ascii(3)
 assert int(Currency.USD) == 0x555344
 assert (Country.FR, MIC.XPAR, CFI.ESVUFR) == (Country("FR"), MIC("XPAR"), CFI("ESVUFR"))
 assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"

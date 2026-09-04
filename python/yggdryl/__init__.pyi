@@ -1,5 +1,4 @@
 from ._native import (
-    AsciiDictionary as AsciiDictionary,
     AsciiEnum as AsciiEnum,
     Bound as Bound,
     BoundStatement as BoundStatement,

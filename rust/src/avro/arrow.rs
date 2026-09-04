@@ -247,12 +247,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View
-        | DataType::Ascii16
-        | DataType::Ascii24
-        | DataType::Ascii32
-        | DataType::Ascii64
-        | DataType::Ascii96
-        | DataType::Ascii128
+        | DataType::Ascii
+        | DataType::FixedAscii(_)
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
@@ -326,12 +322,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 DataType::Utf8
                     | DataType::LargeUtf8
                     | DataType::Utf8View
-                    | DataType::Ascii16
-                    | DataType::Ascii24
-                    | DataType::Ascii32
-                    | DataType::Ascii64
-                    | DataType::Ascii96
-                    | DataType::Ascii128
+                    | DataType::Ascii
+                    | DataType::FixedAscii(_)
                     | DataType::Country
                     | DataType::Currency
                     | DataType::Mic

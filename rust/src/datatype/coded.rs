@@ -12,9 +12,9 @@
 //! at most the width in bytes, with no NUL byte; storage pads with trailing
 //! `\0` to exactly the width, and every string rendering trims the padding.
 //! [`DataType::ascii_width`] answers for a code exactly as it does for a
-//! width, so [`DataType::ascii_packed`], [`super::AsciiEnum`] and
-//! [`super::AsciiDictionary`] work over a code with nothing added: an enum
-//! member is still the integer its value packs into.
+//! width, so [`DataType::ascii_packed`] and [`super::AsciiEnum`] work over a
+//! code with nothing added: an enum member is still the integer its value
+//! packs into.
 //!
 //! What a code adds over the width that would hold it is identity and a
 //! constant. The identity crosses Arrow as its own extension name, so a
@@ -135,7 +135,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// assert_eq!(DataType::Currency.code_name(), Some("currency"));
-    /// assert_eq!(DataType::Ascii24.code_name(), None);
+    /// assert_eq!(DataType::FixedAscii(3).code_name(), None);
     /// ```
     #[must_use]
     pub const fn code_name(&self) -> Option<&'static str> {
@@ -154,7 +154,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// assert!(DataType::Mic.is_code());
-    /// assert!(!DataType::Ascii32.is_code());
+    /// assert!(!DataType::FixedAscii(4).is_code());
     /// ```
     #[must_use]
     pub const fn is_code(&self) -> bool {
@@ -201,7 +201,7 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
 /// fits it.
 #[inline]
 pub(crate) fn code_text<const WIDTH: usize>(bytes: &[u8]) -> Result<&str> {
-    ascii_text_sized(WIDTH, bytes)
+    ascii_text_sized(Some(WIDTH), bytes)
 }
 
 /// The trimmed text one code cell holds, validated at the code's own width.
@@ -250,7 +250,7 @@ mod tests {
             assert_eq!(DataType::from_str(name).unwrap(), *dtype);
             assert!(dtype.is_code());
         }
-        assert!(!DataType::Ascii24.is_code());
+        assert!(!DataType::FixedAscii(3).is_code());
     }
 
     #[test]
@@ -281,7 +281,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(refused.contains("at most 2 bytes"), "{refused}");
-        let wrong = code_cell_text(&DataType::Ascii24, b"USD")
+        let wrong = code_cell_text(&DataType::FixedAscii(3), b"USD")
             .unwrap_err()
             .to_string();
         assert!(wrong.contains("registered codes"), "{wrong}");

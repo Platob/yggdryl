@@ -4,17 +4,10 @@ from __future__ import annotations
 
 import logging
 
-import pyarrow
 import pytest
 
-from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field, enums, scalar
+from yggdryl import AsciiEnum, DataType, Field, enums, scalar
 from yggdryl.enums import (
-    Ascii16,
-    Ascii24,
-    Ascii32,
-    Ascii64,
-    Ascii96,
-    Ascii128,
     AsciiCode,
     CFI,
     CfiCode,
@@ -24,6 +17,7 @@ from yggdryl.enums import (
     CurrencyCode,
     MIC,
     MicCode,
+    fixed_ascii,
 )
 
 
@@ -64,7 +58,7 @@ def test_the_level_scale_names_its_points() -> None:
     assert enums.LEVELS["best"] == 9
 
 
-class _Currency(Ascii32):
+class _Currency(fixed_ascii(4)):
     """A declared vocabulary: a member is the integer its value packs into."""
 
     USD = "USD"
@@ -73,8 +67,8 @@ class _Currency(Ascii32):
 
 def test_a_member_is_the_integer_its_ascii_value_packs_into() -> None:
     assert int(_Currency.USD) == 0x55534400
-    assert int(_Currency.EUR) == DataType("ascii32").ascii_packed("EUR")
-    assert _Currency.dtype() == DataType("ascii32")
+    assert int(_Currency.EUR) == DataType.ascii(4).ascii_packed("EUR")
+    assert _Currency.dtype() == DataType.ascii(4)
 
     # The packed code is the bytes an ASCII column stores, so the order of the
     # integers is the order of the text and the code is the same everywhere.
@@ -89,29 +83,29 @@ def test_a_member_is_the_integer_its_ascii_value_packs_into() -> None:
 
 
 def test_the_widths_pack_into_the_integer_they_name() -> None:
-    class Country(Ascii16):
+    class Country(fixed_ascii(2)):
         US = "US"
 
-    class Currency(Ascii24):
+    class Currency(fixed_ascii(3)):
         USD = "USD"
 
-    class Venue(Ascii64):
+    class Venue(fixed_ascii(8)):
         XNAS = "XNAS"
 
-    class Isin(Ascii96):
+    class Isin(fixed_ascii(12)):
         SAMPLE = "US0378331005"
 
-    class Wide(Ascii128):
+    class Wide(fixed_ascii(16)):
         SAMPLE = "US0378331005XNAS"
 
     # ISO 3166-1 is two bytes and ISO 4217 three, so each packs with no
     # padding at all under the width its standard names.
-    assert Country.dtype() == DataType("ascii16")
+    assert Country.dtype() == DataType.ascii(2)
     assert int(Country.US) == 0x5553
-    assert Currency.dtype() == DataType("ascii24")
+    assert Currency.dtype() == DataType.ascii(3)
     assert int(Currency.USD) == 0x555344
-    assert Venue.dtype() == DataType("ascii64")
-    assert int(Venue.XNAS) == DataType("ascii64").ascii_packed("XNAS")
+    assert Venue.dtype() == DataType.ascii(8)
+    assert int(Venue.XNAS) == DataType.ascii(8).ascii_packed("XNAS")
 
     # Twelve bytes need 96 bits and sixteen the whole 128, both of which Python
     # holds natively.
@@ -120,15 +114,27 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
     assert Isin.SAMPLE.into_str() == "US0378331005"
     assert int(Wide.SAMPLE).bit_length() > 96
 
+    # One width is one base, built once and cached, so two declarations of the
+    # same width name the same class.
+    assert fixed_ascii(3) is Currency.__mro__[1]
+    assert fixed_ascii(3).__name__ == "FixedAscii3"
+
     # The base names no datatype, so it is not a vocabulary of its own.
-    with pytest.raises(TypeError, match="Ascii16, Ascii24"):
+    with pytest.raises(TypeError, match="fixed_ascii"):
         AsciiCode.dtype()
+
+    # A member *is* the packed integer, so a width with none names no
+    # vocabulary, and neither does the variable form.
+    with pytest.raises(ValueError, match="at most 16 bytes"):
+        fixed_ascii(17)
+    with pytest.raises(ValueError, match="at least 1 byte"):
+        fixed_ascii(0)
 
 
 def test_an_undeclared_value_registers_once_and_says_so_once(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    class Side(Ascii32):
+    class Side(fixed_ascii(4)):
         BUY = "B"
         SELL = "S"
 
@@ -153,14 +159,14 @@ def test_an_undeclared_value_registers_once_and_says_so_once(
 
 
 def test_a_registration_takes_the_generated_member_name() -> None:
-    class Book(Ascii32):
+    class Book(fixed_ascii(4)):
         TOP = "TOP"
 
-    assert Book.from_str("n/a").name == AsciiDictionary.member_name("n/a") == "N_A"
+    assert Book.from_str("n/a").name == AsciiEnum.member_name("n/a") == "N_A"
 
 
 def test_two_names_for_one_value_are_one_member() -> None:
-    class Side(Ascii32):
+    class Side(fixed_ascii(4)):
         BUY = "B"
         BID = "B"
 
@@ -170,7 +176,7 @@ def test_two_names_for_one_value_are_one_member() -> None:
 
 
 def test_a_value_the_width_refuses_is_an_error() -> None:
-    class Currency(Ascii32):
+    class Currency(fixed_ascii(4)):
         USD = "USD"
 
     with pytest.raises(ValueError, match="at most 4 bytes"):
@@ -184,15 +190,15 @@ def test_a_value_the_width_refuses_is_an_error() -> None:
 
 
 def test_a_declaration_travels_on_the_field_it_names() -> None:
-    class Side(Ascii32):
+    class Side(fixed_ascii(4)):
         BUY = "B"
         SELL = "S"
 
     field = Side.field("side", nullable=False)
-    assert field.dtype == DataType("ascii32")
+    assert field.dtype == DataType.ascii(4)
     assert field.nullable is False
     assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
-    assert field.ascii_enum.into_members("ascii32") == [
+    assert field.ascii_enum.into_members(DataType.ascii(4)) == [
         ("BUY", int(Side.BUY)),
         ("SELL", int(Side.SELL)),
     ]
@@ -203,36 +209,18 @@ def test_a_declaration_travels_on_the_field_it_names() -> None:
     restored = Field.from_arrow(field.into_arrow())
     recovered = AsciiCode.from_field(restored)
     assert recovered.__name__ == "Side"
-    assert recovered.dtype() == DataType("ascii32")
+    assert recovered.dtype() == DataType.ascii(4)
     assert [(member.name, int(member)) for member in recovered] == [
         (member.name, int(member)) for member in Side
     ]
     assert recovered.from_str("B").into_str() == "B"
 
     with pytest.raises(ValueError, match="declares no enum"):
-        AsciiCode.from_field(Field("side", "ascii32"))
-    with pytest.raises(ValueError, match="an ASCII width"):
+        AsciiCode.from_field(Field("side", DataType.ascii(4)))
+    with pytest.raises(ValueError, match="a fixed ASCII width or a registered code"):
         AsciiCode.from_field(
             Field("side", "utf8", metadata={"field:enum": Side.as_enum().into_json()})
         )
-
-
-def test_the_vocabulary_behind_a_class_is_an_ordinary_dictionary() -> None:
-    class Currency(Ascii32):
-        USD = "USD"
-        EUR = "EUR"
-
-    vocabulary = Currency.into_dictionary()
-    assert vocabulary.values == ["EUR", "USD"]
-    assert vocabulary.dtype == DataType("dictionary(int32,ascii32)")
-
-    column = vocabulary.into_arrow_array(["USD", None, "EUR"])
-    assert column.indices.to_pylist() == [1, None, 0]
-
-    # A dictionary code is a position in the column that built it; a member is
-    # the value's own bytes, which is why the two are different integers.
-    assert vocabulary.get_code("USD") == 1
-    assert int(Currency.USD) == 0x55534400
 
 
 def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> None:
@@ -253,7 +241,7 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # with none of the padding a wider width would have stored.
     assert int(Country.US) == 0x5553
     assert int(Currency.USD) == 0x555344
-    assert int(MIC.XPAR) == DataType("ascii32").ascii_packed("XPAR")
+    assert int(MIC.XPAR) == DataType.ascii(4).ascii_packed("XPAR")
     assert int(CFI.ESVUFR) == 0x455356554652
     assert str(CFI.ESVUFR) == "ESVUFR"
 
@@ -263,12 +251,16 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     assert "XLIT" not in MIC.__members__
 
     # A declaration reads back as the class that wrote it, over the code's
-    # datatype: `currency` and `ascii24` are both three bytes and are not the
+    # datatype: `currency` and `ascii(3)` are both three bytes and are not the
     # same vocabulary base.
     recovered = AsciiCode.from_field(Field.from_arrow(Currency.field("ccy").into_arrow()))
     assert recovered.__name__ == "Currency"
     assert recovered.dtype() == DataType("currency")
     assert int(recovered.USD) == int(Currency.USD)
+
+
+#: A width base bound to a name, which is what an annotation can spell.
+FixedAscii3 = fixed_ascii(3)
 
 
 def test_an_annotation_infers_the_vocabulary_it_names() -> None:
@@ -277,7 +269,7 @@ def test_an_annotation_infers_the_vocabulary_it_names() -> None:
         ccy: Currency
         venue: MIC
         home: Country
-        width: Ascii24
+        width: FixedAscii3
 
     row = Trade.field()
     declared = {child.name: child for child in row}
@@ -290,5 +282,5 @@ def test_an_annotation_infers_the_vocabulary_it_names() -> None:
     assert declared["home"].ascii_enum == Country.as_enum()
 
     # A bare width base names no members, so it stays a plain ASCII column.
-    assert declared["width"].dtype == DataType("ascii24")
+    assert declared["width"].dtype == DataType.ascii(3)
     assert declared["width"].ascii_enum is None

@@ -1,14 +1,16 @@
 """Open ASCII vocabularies declared as enums over one fixed-width datatype.
 
-A subclass of one of the six widths - `Ascii16`, `Ascii24`, `Ascii32`,
-`Ascii64`, `Ascii96`, `Ascii128` - or of one of the four registered code
-bases - `CountryCode`, `CurrencyCode`, `MicCode`, `CfiCode` - declares its
-values as ASCII text, and a member *is*
-the integer that value packs into: the value's own storage bytes read
-big-endian. The code is therefore the same in every process,
-is exactly what the column stores, and is what a stable hash hashes -
-never a position in some column's vocabulary. The order of the integers is the
-order of the text.
+A subclass of one of the four registered code bases - `CountryCode`,
+`CurrencyCode`, `MicCode`, `CfiCode` - or of the base `fixed_ascii(width)`
+builds, declares its values as ASCII text, and a member *is* the integer that
+value packs into: the value's own storage bytes read big-endian. The code is
+therefore the same in every process, is exactly what the column stores, and is
+what a stable hash hashes - never a position in some column's vocabulary. The
+order of the integers is the order of the text.
+
+Only a fixed width has a packed integer, so only a fixed width names an enum:
+`DataType("ascii")` takes a value of any length and has no integer its bytes
+always fit.
 
 A width says how many bytes a value may take. A registered code says what the
 value *is*, and carries that identity across Arrow, so a vocabulary declared
@@ -30,11 +32,12 @@ the declaration builds.
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from .._native import AsciiDictionary, AsciiEnum, DataType, Field
+from .._native import AsciiEnum, DataType, Field
 
 if TYPE_CHECKING:
     from typing import Self
@@ -43,12 +46,6 @@ if TYPE_CHECKING:
 #: a vocabulary read past its declaration is emitted once per value.
 _LOGGER = logging.getLogger(__name__)
 
-_ASCII16 = DataType("ascii16")
-_ASCII24 = DataType("ascii24")
-_ASCII32 = DataType("ascii32")
-_ASCII64 = DataType("ascii64")
-_ASCII96 = DataType("ascii96")
-_ASCII128 = DataType("ascii128")
 _COUNTRY = DataType("country")
 _CURRENCY = DataType("currency")
 _MIC = DataType("mic")
@@ -56,10 +53,10 @@ _CFI = DataType("cfi")
 
 
 class AsciiCode(enum.IntEnum):
-    """The shared base of the six ASCII widths and the four registered codes.
+    """The shared base of the fixed widths and the four registered codes.
 
-    Subclass one of those rather than this: each names the datatype the values
-    store as, and this base has none.
+    Subclass `fixed_ascii(width)` or one of the codes rather than this: each
+    names the datatype the values store as, and this base has none.
     """
 
     #: The ASCII value this member codes, held once at construction.
@@ -122,7 +119,7 @@ class AsciiCode(enum.IntEnum):
         # only ever built for bytes this vocabulary could carry.
         value = cls.dtype().ascii_value(code)
         member = int.__new__(cls, code)
-        member._name_ = AsciiDictionary.member_name(value)
+        member._name_ = AsciiEnum.member_name(value)
         member._value_ = code
         member._text = value
         # Cached under its code, so every later read of the same value is this
@@ -146,9 +143,8 @@ class AsciiCode(enum.IntEnum):
         """The datatype a column of these values stores as."""
 
         raise TypeError(
-            f"{cls.__name__} declares no datatype; subclass one of the widths "
-            "Ascii16, Ascii24, Ascii32, Ascii64, Ascii96, Ascii128 or one of "
-            "the codes CountryCode, CurrencyCode, MicCode, CfiCode"
+            f"{cls.__name__} declares no datatype; subclass fixed_ascii(width) "
+            "or one of the codes CountryCode, CurrencyCode, MicCode, CfiCode"
         )
 
     @classmethod
@@ -194,13 +190,13 @@ class AsciiCode(enum.IntEnum):
         declared = field.ascii_enum
         if declared is None:
             raise ValueError(f"the field {field.name!r} declares no enum")
-        # Keyed by the datatype id, not the width: `currency` and `ascii24`
-        # are three bytes each and are not the same vocabulary base.
-        base = _BASES.get(field.dtype.id)
+        # Read off the datatype, not the width alone: `currency` and
+        # `ascii(3)` are three bytes each and are not the same base.
+        base = _base_for(field.dtype)
         if base is None:
             raise ValueError(
-                f"expected an ASCII width or a registered code to declare an "
-                f"enum over, got {field.dtype}"
+                f"expected a fixed ASCII width or a registered code to "
+                f"declare an enum over, got {field.dtype}"
             )
         # The Enum functional API builds a class from names and values, and it
         # is spelled as a call on the base, which static typing reads as one
@@ -215,68 +211,37 @@ class AsciiCode(enum.IntEnum):
             ),
         )
 
-    @classmethod
-    def into_dictionary(cls, key: object | None = None) -> AsciiDictionary:
-        """The vocabulary this class names, as a dictionary over its datatype.
 
-        A dictionary code is a position in the column it encodes, which is a
-        different thing from a member: the member is the value's own bytes.
-        """
+@functools.lru_cache(maxsize=None)
+def fixed_ascii(width: int) -> type[AsciiCode]:
+    """The vocabulary base for values of exactly `width` bytes.
 
-        return cls.as_enum().into_dictionary(cls.dtype(), key)
+    One class per width, built once and cached, so two declarations of the
+    same width share a base and `from_field` answers that one class.
 
-
-class Ascii16(AsciiCode):
-    """A vocabulary of values of at most two bytes, packed into 16 bits."""
-
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII16
-
-
-class Ascii24(AsciiCode):
-    """A vocabulary of values of at most three bytes, packed into 24 bits."""
-
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII24
-
-
-class Ascii32(AsciiCode):
-    """A vocabulary of values of at most four bytes, packed into an `int32`."""
-
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII32
-
-
-class Ascii64(AsciiCode):
-    """A vocabulary of values of at most eight bytes, packed into an `int64`."""
-
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII64
-
-
-class Ascii96(AsciiCode):
-    """A vocabulary of values of at most twelve bytes, packed into 96 bits.
-
-    An ISIN is exactly this width, and its packed code needs more than an
-    `int64`, which is why every code crosses as the language's own wide
-    integer.
+    Raises:
+        ValueError: when `width` is not at least one byte, or is wider than
+            the sixteen bytes a packed code holds.
     """
 
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII96
+    dtype = DataType.ascii(width)
+    # A member *is* the packed integer, so a width with no packed integer
+    # names no vocabulary. Probing here refuses that width at the declaration
+    # rather than at the first value.
+    dtype.ascii_packed("")
 
+    class _FixedAscii(AsciiCode):
+        @classmethod
+        def dtype(cls) -> DataType:
+            return dtype
 
-class Ascii128(AsciiCode):
-    """A vocabulary of values of at most sixteen bytes, packed into an `int128`."""
-
-    @classmethod
-    def dtype(cls) -> DataType:
-        return _ASCII128
+    _FixedAscii.__name__ = f"FixedAscii{width}"
+    _FixedAscii.__qualname__ = _FixedAscii.__name__
+    _FixedAscii.__doc__ = (
+        f"A vocabulary of values of at most {width} bytes, packed into "
+        f"{width * 8} bits."
+    )
+    return _FixedAscii
 
 
 class CountryCode(AsciiCode):
@@ -311,14 +276,8 @@ class CfiCode(AsciiCode):
         return _CFI
 
 
-#: The base each datatype declares its values under, keyed by datatype id.
-_BASES: Mapping[str, type[AsciiCode]] = {
-    "ascii16": Ascii16,
-    "ascii24": Ascii24,
-    "ascii32": Ascii32,
-    "ascii64": Ascii64,
-    "ascii96": Ascii96,
-    "ascii128": Ascii128,
+#: The base each registered code declares its values under.
+_CODES: Mapping[str, type[AsciiCode]] = {
     "country": CountryCode,
     "currency": CurrencyCode,
     "mic": MicCode,
@@ -326,16 +285,23 @@ _BASES: Mapping[str, type[AsciiCode]] = {
 }
 
 
+def _base_for(dtype: DataType) -> type[AsciiCode] | None:
+    """The base one datatype declares its vocabulary under, if it has one."""
+
+    code = _CODES.get(dtype.id)
+    if code is not None:
+        return code
+    # A fixed width names a vocabulary; the variable shape has no packed
+    # integer, so it names none.
+    width = dtype.ascii_width
+    return None if width is None else fixed_ascii(width)
+
+
 __all__ = [
-    "Ascii16",
-    "Ascii24",
-    "Ascii32",
-    "Ascii64",
-    "Ascii96",
-    "Ascii128",
     "AsciiCode",
     "CfiCode",
     "CountryCode",
     "CurrencyCode",
     "MicCode",
+    "fixed_ascii",
 ]

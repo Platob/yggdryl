@@ -146,7 +146,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("ascii32", DataType::Ascii32, true),
+            Field::new("ascii(4)", DataType::FixedAscii(4), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
         ),
         (

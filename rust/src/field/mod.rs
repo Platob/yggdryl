@@ -132,18 +132,10 @@ pub type Utf8Field = TypedField<binary::Utf8>;
 pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
 /// A UTF-8-view-typed field.
 pub type Utf8ViewField = TypedField<binary::Utf8View>;
-/// An Ascii16-typed field.
-pub type Ascii16Field = TypedField<ascii::Ascii16>;
-/// An Ascii24-typed field.
-pub type Ascii24Field = TypedField<ascii::Ascii24>;
-/// An Ascii32-typed field.
-pub type Ascii32Field = TypedField<ascii::Ascii32>;
-/// An Ascii64-typed field.
-pub type Ascii64Field = TypedField<ascii::Ascii64>;
-/// An Ascii96-typed field.
-pub type Ascii96Field = TypedField<ascii::Ascii96>;
-/// An Ascii128-typed field.
-pub type Ascii128Field = TypedField<ascii::Ascii128>;
+/// A variable-width ASCII-typed field.
+pub type AsciiField = TypedField<ascii::Ascii>;
+/// A fixed-width ASCII-typed field.
+pub type FixedAsciiField = TypedField<ascii::FixedAscii>;
 /// A country-typed field: ISO 3166-1 alpha-2.
 pub type CountryField = TypedField<ascii::Country>;
 /// A currency-typed field: ISO 4217.
@@ -879,7 +871,7 @@ impl Field {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
-    /// let mut field = Field::new("side", DataType::Ascii32, false);
+    /// let mut field = Field::new("side", DataType::FixedAscii(4), false);
     /// field.set_ascii_enum(&side)?;
     ///
     /// // The declaration is metadata, so the Arrow round trip carries it.
@@ -889,7 +881,7 @@ impl Field {
     ///
     /// // A value the width could not store is refused at the declaration.
     /// let wide = AsciiEnum::from_members("Venue", [("LONG", "EUREX")])?;
-    /// assert!(Field::new("venue", DataType::Ascii32, false)
+    /// assert!(Field::new("venue", DataType::FixedAscii(4), false)
     ///     .set_ascii_enum(&wide)
     ///     .is_err());
     /// # Ok(())
@@ -2146,7 +2138,7 @@ mod tests {
     #[test]
     fn a_field_declares_the_enum_its_ascii_values_name() {
         let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")]).unwrap();
-        let field = Field::new("side", DataType::Ascii32, false)
+        let field = Field::new("side", DataType::FixedAscii(4), false)
             .try_with_ascii_enum(&side)
             .unwrap();
 
@@ -2174,7 +2166,7 @@ mod tests {
 
         // Metadata canonicalizes the document, so one enum is one stored text
         // whichever spelling reached the field.
-        let restated = Field::new("side", DataType::Ascii32, false)
+        let restated = Field::new("side", DataType::FixedAscii(4), false)
             .try_with_metadata(
                 "field:enum",
                 r#"{"name":"Side","members":{"SELL":"S","BUY":"B"}}"#,
@@ -2188,7 +2180,7 @@ mod tests {
 
         // A declaration the width could not store is refused whole.
         let wide = AsciiEnum::from_members("Venue", [("LONG", "EUREX")]).unwrap();
-        let mut narrow = Field::new("venue", DataType::Ascii32, false);
+        let mut narrow = Field::new("venue", DataType::FixedAscii(4), false);
         let refused = narrow.set_ascii_enum(&wide).unwrap_err().to_string();
         assert!(refused.contains("at most 4 bytes"), "{refused}");
         assert_eq!(narrow.ascii_enum().unwrap(), None);
@@ -2199,7 +2191,7 @@ mod tests {
         );
 
         // A stored document that is not one is refused where it is written.
-        let refused = Field::new("side", DataType::Ascii32, false)
+        let refused = Field::new("side", DataType::FixedAscii(4), false)
             .try_with_metadata("field:enum", "[]")
             .unwrap_err()
             .to_string();
@@ -2208,7 +2200,7 @@ mod tests {
         let mut removed = field.clone();
         assert_eq!(removed.remove_ascii_enum().unwrap(), Some(side));
         assert_eq!(removed.remove_ascii_enum().unwrap(), None);
-        assert_eq!(removed, Field::new("side", DataType::Ascii32, false));
+        assert_eq!(removed, Field::new("side", DataType::FixedAscii(4), false));
     }
 
     #[test]

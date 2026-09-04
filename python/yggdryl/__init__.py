@@ -7,7 +7,6 @@ underneath and nothing else.
 """
 
 from ._native import (
-    AsciiDictionary,
     AsciiEnum,
     Bound,
     BoundStatement,
@@ -46,7 +45,6 @@ from .fields import field
 from .scalar import Scalar, scalar
 
 __all__ = [
-    "AsciiDictionary",
     "AsciiEnum",
     "Bound",
     "BoundStatement",

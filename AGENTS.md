@@ -191,7 +191,7 @@ Canonical core spellings:
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
   `into_arrow`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `into_scheme_compat`, `dense_union`,
-  `decimal`, `time`, `ascii`, `ascii_width`, `code_name`.
+  `decimal`, `time`, `ascii`, `ascii_width`, `is_ascii`, `code_name`.
 - `Field`: `from_parts`, `from_str`, `from_arrow`, `from_arrow_ref`,
   `from_json`, `into_arrow`, `into_arrow_ref`, `into_json`, `default_value`,
   `into_scheme_compat`. Use `field`, never `schema`, in options and accessors.
@@ -379,9 +379,10 @@ Iceberg contract:
   back to: the FIX Latest datatype vocabulary plus `mic`, each name resolving to
   the closest core datatype and displaying as that datatype, so a name adds no
   variant and no second spelling. Never register a word the Arrow/SQL grammar
-  already owns. `AsciiDictionary::PREBUILT` keys the ISO code constants three of
-  those names seed; a prebuilt code is a constant and auto-registration
-  continues past it.
+  already owns. `AsciiEnum::PREBUILT` keys the ISO code constants three of
+  those names prebuild, and `AsciiEnum::from_logical_name` builds the enum a
+  field declares from one of them; a listing is a constant, so every reader
+  answers the same members.
 - Split only at top-level separators while honoring balanced wrappers,
   quoting, and escapes. Reject trailing tokens, duplicates, malformed numbers,
   and invalid nullability with byte position and context.

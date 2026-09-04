@@ -23,7 +23,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { AsciiDictionary, fields } = require('../node/binding.js')
+const { AsciiEnum, DataType, fields } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const MANIFEST = path.join(ROOT, 'docs', 'assets', 'playground.json')
@@ -34,26 +34,57 @@ const arrow = require(require.resolve('apache-arrow', {
   paths: [path.join(ROOT, 'node')],
 }))
 
-// The six widths and the four registered codes: every fixed-width ASCII
-// datatype, in the order the grammar lists them.
-const WIDTHS = [
-  'ascii16',
-  'ascii24',
-  'ascii32',
-  'ascii64',
-  'ascii96',
-  'ascii128',
-  'country',
-  'currency',
-  'mic',
-  'cfi',
+// Every ASCII datatype the grammar spells: the variable form, the widths a
+// commodity system actually declares, and the four registered codes.
+const TYPES = [
+  ['ascii', null],
+  ['ascii(2)', 2],
+  ['ascii(3)', 3],
+  ['ascii(4)', 4],
+  ['ascii(8)', 8],
+  ['ascii(12)', 12],
+  ['ascii(16)', 16],
+  ['country', 'country'],
+  ['currency', 'currency'],
+  ['mic', 'mic'],
+  ['cfi', 'cfi'],
+  // Not a case of its own: the text column every stored row is read back
+  // under, so it needs a factory here and no corpus.
+  ['utf8', 'utf8'],
 ]
+const FACTORY = new Map(TYPES)
+const WIDTHS = TYPES.map(([key]) => key).filter((key) => key !== 'utf8')
+
+/** The field factory call one ASCII datatype is declared with. */
+function fieldCall(key) {
+  const spec = FACTORY.get(key)
+  if (spec === null) return "fields.ascii('ccy')"
+  if (typeof spec === 'number') return `fields.fixedAscii('ccy', ${spec})`
+  return `fields.${spec}('ccy')`
+}
+
+/** That same call, made. */
+function fieldOf(key) {
+  const spec = FACTORY.get(key)
+  if (spec === null) return fields.ascii('ccy')
+  if (typeof spec === 'number') return fields.fixedAscii('ccy', spec)
+  return fields[spec]('ccy')
+}
 
 // One case per rule the datatype enforces, in its own vocabulary: currency
-// codes, tickers, ISINs. `USD` is both the typical `ascii32` value and the
+// codes, tickers, ISINs. `USD` is both the typical `ascii(4)` value and the
 // first of the ISO 4217 codes, so it is listed once.
 const ENCODE = {
-  ascii16: [
+  ascii: [
+    ['typical', 'USD'],
+    ['no width to fit', 'a note of any length at all'],
+    ['empty', ''],
+    ['non-ASCII', 'USÉ'],
+    ['an interior NUL', 'US\u0000D'],
+    ['trailing NULs', 'USD\u0000'],
+    ['lower case', 'usd'],
+  ],
+  'ascii(2)': [
     ['typical', 'US'],
     ['ISO 3166-1', 'FR'],
     ['ISO 3166-1', 'DE'],
@@ -65,7 +96,7 @@ const ENCODE = {
     ['trailing NULs', 'U\u0000'],
     ['lower case', 'us'],
   ],
-  ascii24: [
+  'ascii(3)': [
     ['typical', 'USD'],
     ['ISO 4217', 'EUR'],
     ['ISO 4217', 'JPY'],
@@ -77,7 +108,7 @@ const ENCODE = {
     ['trailing NULs', 'US\u0000'],
     ['lower case', 'usd'],
   ],
-  ascii32: [
+  'ascii(4)': [
     ['typical', 'USD'],
     ['ISO 4217', 'EUR'],
     ['ISO 4217', 'JPY'],
@@ -90,7 +121,7 @@ const ENCODE = {
     ['trailing NULs', 'USD\u0000'],
     ['lower case', 'usd'],
   ],
-  ascii64: [
+  'ascii(8)': [
     ['typical', 'AAPL'],
     ['empty', ''],
     ['exactly the width', 'GOOGL.US'],
@@ -100,7 +131,7 @@ const ENCODE = {
     ['trailing NULs', 'AAPL\u0000\u0000'],
     ['lower case', 'aapl'],
   ],
-  ascii96: [
+  'ascii(12)': [
     ['typical', 'US0378331005'],
     ['ISIN', 'GB0002634946'],
     ['empty', ''],
@@ -111,7 +142,7 @@ const ENCODE = {
     ['trailing NULs', 'US037833\u0000\u0000\u0000\u0000'],
     ['lower case', 'us0378331005'],
   ],
-  ascii128: [
+  'ascii(16)': [
     ['typical', 'US0378331005'],
     ['empty', ''],
     ['exactly the width', 'US0378331005XNAS'],
@@ -161,27 +192,32 @@ const ENCODE = {
 
 // The decode direction starts at storage, so its corpus is bytes.
 const DECODE = {
-  ascii16: [
+  ascii: [
+    ['the bytes it is', [0x55, 0x53, 0x44]],
+    ['longer than any width', [0x61, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20, 0x6e, 0x6f, 0x74, 0x65]],
+    ['no bytes at all', []],
+  ],
+  'ascii(2)': [
     ['exactly the width', [0x55, 0x53]],
     ['padded', [0x55, 0x00]],
     ['all NUL', [0x00, 0x00]],
   ],
-  ascii24: [
+  'ascii(3)': [
     ['exactly the width', [0x55, 0x53, 0x44]],
     ['padded', [0x55, 0x53, 0x00]],
     ['all NUL', [0x00, 0x00, 0x00]],
   ],
-  ascii32: [
+  'ascii(4)': [
     ['padded', [0x55, 0x53, 0x44, 0x00]],
     ['exactly the width', [0x55, 0x53, 0x44, 0x54]],
     ['all NUL', [0x00, 0x00, 0x00, 0x00]],
   ],
-  ascii64: [
+  'ascii(8)': [
     ['padded', [0x41, 0x41, 0x50, 0x4c, 0x00, 0x00, 0x00, 0x00]],
     ['exactly the width', [0x47, 0x4f, 0x4f, 0x47, 0x4c, 0x2e, 0x55, 0x53]],
     ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0]],
   ],
-  ascii96: [
+  'ascii(12)': [
     [
       'exactly the width',
       // "US0378331005" fills every one of the twelve bytes.
@@ -190,7 +226,7 @@ const DECODE = {
     ['padded', [0x55, 0x53, 0x30, 0x33, 0x37, 0x38, 0, 0, 0, 0, 0, 0]],
     ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
   ],
-  ascii128: [
+  'ascii(16)': [
     [
       'padded',
       // "US0378331005" and four bytes of padding.
@@ -227,11 +263,17 @@ const DECODE = {
   ],
 }
 
-const VOCABULARY = 'ascii32'
-// The stepper: a repeat answers the code of its first appearance, so `USD` and
-// `EUR` come back a second time.
-const PUSHED = ['USD', 'EUR', 'USD', 'JPY', 'GBP', 'EUR']
-const COLUMN = ['USD', null, 'JPY', 'EUR']
+// The declared vocabulary the section walks: the ISO 4217 listing the package
+// ships, over the `currency` datatype it is registered against.
+const VOCABULARY = 'currency'
+// The members the stepper walks, one per rule the naming applies.
+const DECLARED = [
+  ['USD', 'USD'],
+  ['EUR', 'EUR'],
+  ['JPY', 'JPY'],
+  ['N_A', 'n/a'],
+  ['_3M', '3M'],
+]
 const ENUM = 'Currency'
 
 /** Render a JavaScript string literal, with every control byte escaped. */
@@ -263,8 +305,8 @@ function escapedText(bytes) {
 }
 
 /** The one non-null row of one column that a record cast accepts. */
-const row = (dtype) => fields.struct('row', [fields[dtype]('ccy')], { nullable: false })
-const rowCall = (dtype) => `fields.struct('row', [fields.${dtype}('ccy')], { nullable: false })`
+const row = (dtype) => fields.struct('row', [fieldOf(dtype)], { nullable: false })
+const rowCall = (dtype) => `fields.struct('row', [${fieldCall(dtype)}], { nullable: false })`
 
 /** A one-element Arrow JS table of text, the input side of an encode. */
 const textTable = (value) =>
@@ -272,29 +314,36 @@ const textTable = (value) =>
 const textTableCall = (value) =>
   `new arrow.Table({ ccy: arrow.vectorFromArray([${literal(value)}], new arrow.Utf8()) })`
 
-/** A one-element Arrow JS table of storage bytes, the input side of a decode. */
-const storageTable = (bytes) =>
+/** A one-element Arrow JS table of storage bytes, the input side of a decode.
+ *
+ * The variable form stores its own bytes under Arrow's `Binary`, so its
+ * storage is that layout rather than a width's `FixedSizeBinary`.
+ */
+const storageTable = (dtype, bytes) =>
   new arrow.Table({
-    ccy: arrow.vectorFromArray(
-      [Uint8Array.from(bytes)],
-      new arrow.FixedSizeBinary(bytes.length),
-    ),
+    ccy: arrow.vectorFromArray([Uint8Array.from(bytes)], storageType(dtype, bytes)),
   })
-const storageTableCall = (bytes) =>
+const storageType = (dtype, bytes) =>
+  dtype === 'ascii' ? new arrow.Binary() : new arrow.FixedSizeBinary(bytes.length)
+const storageTableCall = (dtype, bytes) =>
   `new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(${bytes.join(', ')})], ` +
-  `new arrow.FixedSizeBinary(${bytes.length})) })`
+  `${dtype === 'ascii' ? 'new arrow.Binary()' : `new arrow.FixedSizeBinary(${bytes.length})`}) })`
 
 /** The storage of the single row of a cast table. */
 const stored = (table) => Array.from(table.getChild('ccy').get(0))
 
+/** What one ASCII datatype is, read off a field projected to Arrow. */
+const projectedField = (dtype) =>
+  row(dtype).castArrow(textTable('A')).schema.fields[0]
+
 /** The single row read back under a declared `utf8` field: the trimmed text. */
 const readBack = (table) => [...row('utf8').castArrow(table).getChild('ccy')][0]
 
-/** What the ten fixed ASCII types are, read off a field projected to Arrow. */
+/** What every ASCII datatype is, read off a field projected to Arrow. */
 function widths() {
   return WIDTHS.map((dtype) => {
     const declared = row(dtype)
-    const projected = declared.castArrow(textTable('A')).schema.fields[0]
+    const projected = projectedField(dtype)
     const type = declared.getField('ccy').dtype
     return {
       dtype: type.toString(),
@@ -344,7 +393,7 @@ function encodeCase(dtype, label, input) {
 
 /** One decode case: what the package answers for a run of storage bytes. */
 function decodeCase(dtype, label, bytes) {
-  const table = row(dtype).castArrow(storageTable(bytes))
+  const table = row(dtype).castArrow(storageTable(dtype, bytes))
   return {
     dtype,
     label,
@@ -354,52 +403,77 @@ function decodeCase(dtype, label, bytes) {
     text: readBack(table),
     call:
       `const stored = ${rowCall(dtype)}\n` +
-      `  .castArrow(${storageTableCall(bytes)})\n` +
+      `  .castArrow(${storageTableCall(dtype, bytes)})\n` +
       `${rowCall('utf8')}.castArrow(stored)`,
   }
 }
 
-/** The auto-registering vocabulary, step by step, then the column and the enum. */
-function dictionary() {
-  const currencies = new AsciiDictionary(VOCABULARY)
-  const steps = PUSHED.map((value) => {
-    const isNew = currencies.getCode(value) === null
-    const code = currencies.push(value)
+/** A declared vocabulary: the code each value packs into, then the enum. */
+function vocabulary() {
+  const dtype = new DataType(VOCABULARY)
+  const prebuilt = AsciiEnum.fromLogicalName(VOCABULARY)
+  const declared = new AsciiEnum(ENUM, Object.fromEntries(DECLARED))
+  const codes = declared.intoMembers(dtype)
+
+  // One step per declared member: the value, the integer its own bytes pack
+  // into big-endian, and the storage those bytes are.
+  const steps = DECLARED.map(([member, value]) => {
+    const code = dtype.asciiPacked(value)
+    const bytes = [...Buffer.from(dtype.asciiValue(code).padEnd(dtype.asciiWidth, '\0'), 'latin1')]
     return {
+      member,
       value,
-      code,
-      isNew,
-      vocabulary: currencies.values(),
-      dtype: currencies.dtype.toString(),
-      call: `currencies.push(${literal(value)})`,
+      code: String(code),
+      generated: AsciiEnum.memberName(value),
+      isPrebuilt: prebuilt.get(value) !== null,
+      storageHex: hex(bytes),
+      call: `${literal(VOCABULARY)} packs ${literal(value)} as ${code}n`,
     }
   })
 
-  const column = currencies.intoArrowArray(COLUMN)
-  const keys = Array.from(column.data[0].values)
-  const members = currencies.intoEnum(ENUM)
-  const inputCall = COLUMN.map((value) => (value === null ? 'null' : literal(value))).join(', ')
+  // The declaration rides on the field as ordinary metadata under one
+  // reserved key, so it crosses Arrow beside the extension identity and reads
+  // back as the enum that wrote it.
+  const field = fields.currency('ccy', { nullable: false })
+  field.setAsciiEnum(declared)
+  const projected = fields
+    .struct('row', [field], { nullable: false })
+    .castArrow(textTable('USD')).schema.fields[0]
 
   return {
-    dtype: currencies.dtype.toString(),
-    key: currencies.key.toString(),
-    values: currencies.valuesDtype.toString(),
-    call: `new AsciiDictionary(${literal(VOCABULARY)})`,
+    name: ENUM,
+    dtype: dtype.toString(),
+    prebuilt: {
+      name: VOCABULARY,
+      size: prebuilt.length,
+      // The native mapping has no order of its own, so the sample is sorted
+      // and a regeneration is byte-identical everywhere.
+      sample: Object.keys(prebuilt.members).sort().slice(0, 12),
+      call: `AsciiEnum.fromLogicalName(${literal(VOCABULARY)})`,
+    },
     steps,
-    column: {
-      input: COLUMN,
-      // A null key has no code, so the slot reads as null rather than as the
-      // zero the keys buffer happens to hold under it.
-      codes: COLUMN.map((_, index) => (column.get(index) === null ? null : keys[index])),
-      call: `currencies.intoArrowArray([${inputCall}])`,
+    declaration: {
+      json: declared.intoJson(),
+      extensionName: projected.metadata.get('ARROW:extension:name'),
+      // The reserved key the declaration travels under, read off the column
+      // the package projected.
+      carried: projected.metadata.get('field:enum'),
+      call:
+        `const ccy = ${fieldCall('currency')}\n` +
+        `ccy.setAsciiEnum(new AsciiEnum(${literal(ENUM)}, ` +
+        `${JSON.stringify(Object.fromEntries(DECLARED))}))\n` +
+        `fields.struct('row', [ccy], { nullable: false })\n` +
+        `  .castArrow(${textTableCall('USD')}).schema.fields[0].metadata`,
     },
     enum: {
       name: ENUM,
       // A member's code is its value packed big-endian, which reaches 128 bits,
       // so the manifest carries its decimal text: JSON has no bigint and a
       // number would round.
-      members: Object.entries(members).map(([member, code]) => [member, String(code)]),
-      call: `currencies.intoEnum(${literal(ENUM)})`,
+      members: Object.entries(codes)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([member, code]) => [member, String(code)]),
+      call: `declared.intoEnum(${literal(VOCABULARY)})`,
     },
   }
 }
@@ -417,7 +491,7 @@ function manifest() {
     widths: widths(),
     encode,
     decode,
-    dictionary: dictionary(),
+    vocabulary: vocabulary(),
   }
 }
 

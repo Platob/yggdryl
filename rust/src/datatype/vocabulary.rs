@@ -1,29 +1,24 @@
 //! The prebuilt ASCII vocabularies: the codes a common column starts from.
 //!
-//! An [`AsciiDictionary`] auto-registers, so an unseen value always takes the
-//! next code. That is the right default and a poor wire contract: two
-//! processes that met their values in different orders agree about no code. A
-//! prebuilt vocabulary fixes the head of the code space to a constant, so a
-//! code below that constant's length names the same value in every process
-//! reading this version, and auto-registration continues past it for whatever
-//! the constant does not hold.
+//! A [code](super::coded) column carries values from a published registry, and
+//! most of a stream is the handful of codes that registry actually assigns.
+//! These are those listings, one constant per registry: ISO 4217 currencies,
+//! ISO 3166-1 alpha-2 countries, and the ISO 10383 market identifier codes of
+//! the venues those trades reach. Each is sorted, so a reviewer can diff it
+//! and a repeat is visible. The MICs are a common set rather than the whole
+//! ISO 10383 registry, which is thousands of segment codes: a vocabulary
+//! holding all of them costs every column the whole registry and buys nothing
+//! a declaration does not already give.
 //!
-//! The three constants are the code sets a trading column actually carries:
-//! ISO 4217 currencies, ISO 3166-1 alpha-2 countries, and the ISO 10383
-//! market identifier codes of the venues those trades reach. Each is sorted,
-//! so a reviewer can diff it and a repeat is visible. The MICs are a common
-//! set rather than the whole ISO 10383 registry, which is thousands of
-//! segment codes: a vocabulary holding all of them costs every column the
-//! whole registry and buys nothing auto-registration does not already give.
-//!
-//! Every value fits its width, so a prebuilt vocabulary never refuses its own
-//! seed. Each of the three sits over the [code](super::coded) datatype whose
-//! name it prebuilds - `currency`, `country`, `mic` - so the vocabulary
-//! stores exactly the bytes its standard fixes and no padding at all.
+//! [`AsciiEnum::from_logical_name`] builds one as the enum a field declares,
+//! so the members a schema carries under `field:enum` come from one listing
+//! rather than from a copy per language. Every value fits the width its
+//! registered name resolves to, so a prebuilt vocabulary never refuses its own
+//! listing.
 
-use crate::{AsciiDictionary, DataType, Result};
+use crate::{AsciiEnum, DataType, Result};
 
-impl AsciiDictionary {
+impl AsciiEnum {
     /// The currently assigned ISO 4217 alphabetic currency codes, sorted.
     ///
     /// The whole active table rather than a major-currency subset: the fund
@@ -113,42 +108,36 @@ impl AsciiDictionary {
         ("exchange", Self::MICS),
     ];
 
-    /// Creates the vocabulary a registered logical name prebuilds.
+    /// Creates the enum a registered logical name prebuilds.
     ///
-    /// The width is whatever [`DataType::from_logical_name`] resolves and the
-    /// values are this name's constant, registered in its order. A registered
-    /// name over an ASCII width with no constant - `language`, `monthyear`,
-    /// `tenor` - answers the empty auto-registering vocabulary [`Self::new`]
-    /// builds, because the width is what it has to offer.
+    /// The enum is named for the registration and holds one member per value
+    /// of its constant, each named by [`AsciiEnum::member_name`] - which, for
+    /// an ISO code, is the code itself. A registered name with no constant -
+    /// `language`, `monthyear`, `tenor` - answers an enum of no members,
+    /// because a listing is what it has to offer and it has none.
     ///
     /// ```
-    /// use yggdryl::{AsciiDictionary, DataType};
+    /// use yggdryl::{AsciiEnum, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let venues = AsciiDictionary::from_logical_name("mic")?;
-    /// assert_eq!(venues.values_dtype(), &DataType::Mic);
-    /// assert_eq!(venues.len(), AsciiDictionary::MICS.len());
+    /// let venues = AsciiEnum::from_logical_name("mic")?;
+    /// assert_eq!(venues.len(), AsciiEnum::MICS.len());
+    /// assert_eq!(venues.get("XCME"), Some("XCME"));
     ///
-    /// // A prebuilt code is a constant: it is the position in the constant.
-    /// let xcme = venues.get_code("XCME").expect("a prebuilt venue");
-    /// assert_eq!(venues.get(xcme), Some("XCME"));
-    /// assert_eq!(AsciiDictionary::MICS[xcme as usize], "XCME");
-    ///
-    /// // `exchange` is FIX's name for the same list.
+    /// // A member's code is the value's own bytes under the resolved width.
     /// assert_eq!(
-    ///     AsciiDictionary::from_logical_name("Exchange")?,
-    ///     AsciiDictionary::from_logical_name("mic")?
+    ///     venues.into_members(&DataType::Mic)?[0].1,
+    ///     DataType::Mic.ascii_packed(AsciiEnum::MICS[0].as_bytes())?
     /// );
     ///
-    /// // Auto-registration continues past the constant: `ZZ` is ISO 3166's
-    /// // user-assigned range, so no assigned country holds it.
-    /// let mut countries = AsciiDictionary::from_logical_name("Country")?;
-    /// assert!(countries.get_code("FR").is_some());
-    /// assert_eq!(countries.push("ZZ")?, AsciiDictionary::COUNTRIES.len() as i64);
+    /// // `exchange` is FIX's name for the same list, under the same type.
+    /// assert_eq!(
+    ///     AsciiEnum::from_logical_name("Exchange")?.len(),
+    ///     AsciiEnum::from_logical_name("mic")?.len()
+    /// );
     ///
-    /// // A name that resolves to something else is refused by width.
-    /// let refused = AsciiDictionary::from_logical_name("price").unwrap_err().to_string();
-    /// assert!(refused.contains("decimal64(18,8)"), "{refused}");
+    /// // A name with no listing answers an enum of no members.
+    /// assert!(AsciiEnum::from_logical_name("tenor")?.is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -156,12 +145,16 @@ impl AsciiDictionary {
     /// # Errors
     ///
     /// Returns an error naming the vocabulary when `name` is not a registered
-    /// logical name, and one naming the datatype when that name resolves to
-    /// anything but an ASCII width.
+    /// logical name.
     pub fn from_logical_name(name: &str) -> Result<Self> {
-        Self::from_values(
-            DataType::from_logical_name(name)?,
-            Self::prebuilt_values(name),
+        // The name has to resolve, so a caller cannot prebuild a vocabulary
+        // for a registration that does not exist.
+        DataType::from_logical_name(name)?;
+        Self::from_members(
+            super::parser::normalized(name.trim()),
+            Self::prebuilt_values(name)
+                .iter()
+                .map(|value| (Self::member_name(value), *value)),
         )
     }
 
