@@ -111,10 +111,9 @@ pub use field::{
 pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
 pub use generic::{EnumScalar, Float, Integer, Scalar, TemporalFamily, TemporalRef};
 pub use i256::I256;
-pub use iobase::{
-    ArrowWriteSession, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
-    overwrite_arrow_reader_default, skip_absent,
-};
+#[cfg(feature = "arrow")]
+pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
+pub use iobase::{DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty, skip_absent};
 pub use iocursor::{Cursor, IOCursor};
 pub use iofile::IOFile;
 pub use iofolder::IOFolder;
