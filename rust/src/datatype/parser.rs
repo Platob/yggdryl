@@ -406,11 +406,12 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            // A registered logical name is one more spelling of an ASCII
-            // width, resolved through the registry and never a copied list.
-            _ => match DataType::from_logical_name(&word) {
-                Ok(dtype) => dtype,
-                Err(_) => {
+            // A registered logical name is one more spelling of the datatype
+            // it names, resolved through the registry and never a copied
+            // list. The keyword is already folded, so the lookup reuses it.
+            _ => match super::logical::folded_logical_name(&keyword) {
+                Some(dtype) => dtype,
+                None => {
                     return Err(
                         self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
                     );

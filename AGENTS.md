@@ -367,6 +367,13 @@ Iceberg contract:
 - `DataType::from_str` and `Field::from_str` are the recursive schema grammars;
   bindings pass expressions directly. Accept canonical plus common Arrow/SQL/
   Hive/Spark forms with an explicit recursion limit.
+- `DataType::LOGICAL_NAMES` is the one logical-name registry the grammar falls
+  back to: the FIX Latest datatype vocabulary plus `mic`, each name resolving to
+  the closest core datatype and displaying as that datatype, so a name adds no
+  variant and no second spelling. Never register a word the Arrow/SQL grammar
+  already owns. `AsciiDictionary::PREBUILT` keys the ISO code constants three of
+  those names seed; a prebuilt code is a constant and auto-registration
+  continues past it.
 - Split only at top-level separators while honoring balanced wrappers,
   quoting, and escapes. Reject trailing tokens, duplicates, malformed numbers,
   and invalid nullability with byte position and context.

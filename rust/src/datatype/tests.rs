@@ -774,7 +774,7 @@ mod semi_structured_and_geospatial {
     }
 }
 
-/// The ASCII widths and the currency registration.
+/// The ASCII widths and the vocabularies over them.
 mod ascii {
     use std::cmp::Ordering;
 
@@ -815,6 +815,10 @@ mod ascii {
             ("ascii(16)", DataType::Ascii128),
             ("currency", DataType::Ascii32),
             ("Currency", DataType::Ascii32),
+            ("MIC", DataType::Ascii32),
+            ("Country", DataType::Ascii32),
+            ("MonthYear", DataType::Ascii64),
+            ("TZTimeOnly", DataType::Ascii128),
         ] {
             let parsed: DataType = spelling
                 .parse()
@@ -857,26 +861,6 @@ mod ascii {
         let error = DataType::ascii(17).unwrap_err().to_string();
         assert!(error.contains("got 17"), "{error}");
         assert!(DataType::ascii(-1).is_err());
-    }
-
-    #[test]
-    fn a_registered_logical_name_resolves_case_insensitively_and_names_its_vocabulary() {
-        assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
-        assert_eq!(
-            DataType::from_logical_name("currency").unwrap(),
-            DataType::Ascii32
-        );
-        assert_eq!(
-            DataType::from_logical_name(" CURRENCY ").unwrap(),
-            DataType::Ascii32
-        );
-
-        let error = DataType::from_logical_name("isin").unwrap_err().to_string();
-        assert!(error.contains("currency"), "{error}");
-        assert!(error.contains("\"isin\""), "{error}");
-        // The grammar reports an unregistered word as unknown.
-        let error = "isin".parse::<DataType>().unwrap_err().to_string();
-        assert!(error.contains("unknown datatype \"isin\""), "{error}");
     }
 
     #[test]
@@ -1305,5 +1289,339 @@ mod ascii_dictionary {
             "{refused}"
         );
         assert!(refused.contains("got ascii128"), "{refused}");
+    }
+}
+
+/// The logical names: the FIX datatype vocabulary in front of the parser.
+mod logical {
+    use super::super::DataType;
+    use super::{TimeUnit, UnionMode};
+    use crate::{AsciiDictionary, Timezone};
+
+    /// The whole registry, as the module documents it. A change to a mapping
+    /// changes what a stored schema string means, so it changes here first.
+    fn registered() -> Vec<(&'static str, DataType)> {
+        let decimal64 = DataType::decimal64(18, 8).unwrap();
+        vec![
+            ("currency", DataType::Ascii32),
+            ("country", DataType::Ascii32),
+            ("mic", DataType::Ascii32),
+            ("exchange", DataType::Ascii32),
+            ("language", DataType::Ascii32),
+            ("monthyear", DataType::Ascii64),
+            ("tenor", DataType::Ascii64),
+            ("pattern", DataType::Utf8),
+            ("length", DataType::Int32),
+            ("tagnum", DataType::Int32),
+            ("seqnum", DataType::Int64),
+            ("numingroup", DataType::Int32),
+            ("dayofmonth", DataType::Int8),
+            ("reserved100plus", DataType::Int32),
+            ("reserved1000plus", DataType::Int32),
+            ("reserved4000plus", DataType::Int32),
+            ("qty", decimal64.clone()),
+            ("price", decimal64.clone()),
+            ("priceoffset", decimal64.clone()),
+            ("percentage", decimal64),
+            ("amt", DataType::decimal128(38, 8).unwrap()),
+            (
+                "utctimestamp",
+                DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            ),
+            (
+                "tztimestamp",
+                DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            ),
+            ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
+            ("localmkttime", DataType::Time32(TimeUnit::Second)),
+            ("utcdateonly", DataType::Date32),
+            ("localmktdate", DataType::Date32),
+            ("tztimeonly", DataType::Ascii128),
+            ("multiplecharvalue", DataType::Utf8),
+            ("multiplestringvalue", DataType::Utf8),
+            ("xid", DataType::Utf8),
+            ("xidref", DataType::Utf8),
+            ("data", DataType::Binary),
+            ("xmldata", DataType::Binary),
+        ]
+    }
+
+    #[test]
+    fn the_registry_is_the_documented_mapping_and_holds_no_repeat() {
+        assert_eq!(DataType::LOGICAL_NAMES, registered().as_slice());
+        let mut names: Vec<&str> = DataType::LOGICAL_NAMES
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        let registered = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), registered, "a name is registered twice");
+        // Every stored name is already folded, so a lookup finds it verbatim.
+        for name in names {
+            assert!(
+                name.bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()),
+                "{name} is not stored folded"
+            );
+            assert!(DataType::from_logical_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_name_folds_case_separators_and_surrounding_space() {
+        for spelling in [
+            "UTCTimestamp",
+            "utctimestamp",
+            " UTC_Timestamp ",
+            "utc-timestamp",
+            "UTC Timestamp",
+        ] {
+            assert_eq!(
+                DataType::from_logical_name(spelling).unwrap(),
+                DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
+        for (spelling, dtype) in [
+            ("Price", DataType::decimal64(18, 8).unwrap()),
+            ("Amt", DataType::decimal128(38, 8).unwrap()),
+            ("SeqNum", DataType::Int64),
+            ("DayOfMonth", DataType::Int8),
+            ("LocalMktDate", DataType::Date32),
+            ("LocalMktTime", DataType::Time32(TimeUnit::Second)),
+            ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
+            ("XMLData", DataType::Binary),
+            ("data", DataType::Binary),
+            ("Tenor", DataType::Ascii64),
+        ] {
+            let parsed: DataType = spelling.parse().unwrap();
+            assert_eq!(parsed, dtype, "{spelling}");
+            // One canonical spelling: a name displays as what it resolved to.
+            assert_eq!(parsed.to_string(), dtype.to_string(), "{spelling}");
+            assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
+        }
+
+        // A name types a column wherever a datatype is accepted, and a
+        // postfix list still applies to it.
+        let row: DataType = "struct<ccy: Currency, px: Price, legs: Qty[]>"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            row.get_field_by_path("px")
+                .map(|field| field.dtype().clone()),
+            Some(DataType::decimal64(18, 8).unwrap())
+        );
+        assert_eq!(
+            row.get_field_by_path("legs.item")
+                .map(|field| field.dtype().clone()),
+            Some(DataType::decimal64(18, 8).unwrap())
+        );
+    }
+
+    /// The five FIX base types the Arrow/SQL grammar already owns keep their
+    /// meaning: a stored schema string never changes what it means.
+    #[test]
+    fn the_shared_base_type_spellings_keep_their_grammar_meaning() {
+        for (spelling, dtype) in [
+            ("int", DataType::Int32),
+            ("float", DataType::Float32),
+            ("char", DataType::Utf8),
+            ("String", DataType::Utf8),
+            ("Boolean", DataType::Boolean),
+        ] {
+            assert_eq!(spelling.parse::<DataType>().unwrap(), dtype, "{spelling}");
+            assert!(
+                !DataType::LOGICAL_NAMES
+                    .iter()
+                    .any(|(name, _)| *name == spelling.to_ascii_lowercase()),
+                "{spelling} must not be registered"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unregistered_name_is_refused_by_both_entry_points() {
+        let error = DataType::from_logical_name("isin").unwrap_err().to_string();
+        assert!(error.contains("currency"), "{error}");
+        assert!(error.contains("\"isin\""), "{error}");
+        // The grammar reports an unregistered word as unknown.
+        let error = "isin".parse::<DataType>().unwrap_err().to_string();
+        assert!(error.contains("unknown datatype \"isin\""), "{error}");
+    }
+
+    /// A registered name is inert everywhere but the grammar: it adds no
+    /// variant, so identity, family, and union type ids are untouched.
+    #[test]
+    fn a_name_adds_no_datatype_of_its_own() {
+        let price = DataType::from_logical_name("price").unwrap();
+        assert_eq!(price.id(), DataType::decimal64(18, 8).unwrap().id());
+        assert_eq!(price.kind(), DataType::decimal64(18, 8).unwrap().kind());
+        let union: DataType = "union(dense,0=px: Price,1=ccy: Currency)".parse().unwrap();
+        let DataType::Union(_, mode) = &union else {
+            panic!("a union, got {union}");
+        };
+        assert_eq!(*mode, UnionMode::Dense);
+
+        // The prebuilt vocabularies are keyed by the same names.
+        for (name, _) in AsciiDictionary::PREBUILT {
+            assert!(
+                DataType::LOGICAL_NAMES
+                    .iter()
+                    .any(|(other, _)| other == name),
+                "{name} prebuilds nothing registered"
+            );
+        }
+    }
+}
+
+/// The prebuilt vocabularies: constant codes, then auto-registration.
+mod vocabulary {
+    use super::super::DataType;
+    use crate::AsciiDictionary;
+
+    fn lists() -> [(&'static str, &'static [&'static str]); 3] {
+        [
+            ("currency", AsciiDictionary::CURRENCIES),
+            ("country", AsciiDictionary::COUNTRIES),
+            ("mic", AsciiDictionary::MICS),
+        ]
+    }
+
+    #[test]
+    fn every_constant_is_sorted_unique_and_fits_its_width() {
+        for (name, values) in lists() {
+            assert!(!values.is_empty(), "{name} prebuilds nothing");
+            assert!(
+                values.windows(2).all(|pair| pair[0] < pair[1]),
+                "{name} is not sorted and deduplicated"
+            );
+            let width = DataType::from_logical_name(name)
+                .unwrap()
+                .ascii_width()
+                .unwrap();
+            for value in values {
+                assert!(
+                    value.is_ascii() && !value.is_empty() && value.len() <= width as usize,
+                    "{name} holds {value:?}, which does not fit {width} bytes"
+                );
+                assert!(
+                    value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit()),
+                    "{name} holds {value:?}, which is not an uppercase code"
+                );
+            }
+        }
+        // The code sets are the standards' own shapes.
+        assert!(
+            AsciiDictionary::CURRENCIES
+                .iter()
+                .all(|code| code.len() == 3)
+        );
+        assert!(
+            AsciiDictionary::COUNTRIES
+                .iter()
+                .all(|code| code.len() == 2)
+        );
+        assert!(AsciiDictionary::MICS.iter().all(|code| code.len() == 4));
+    }
+
+    #[test]
+    fn a_prebuilt_code_is_the_position_in_the_constant() {
+        for (name, values) in lists() {
+            let dictionary = AsciiDictionary::from_logical_name(name).unwrap();
+            assert_eq!(dictionary.len(), values.len(), "{name}");
+            assert_eq!(dictionary.as_values(), values, "{name}");
+            for (position, value) in values.iter().enumerate() {
+                assert_eq!(dictionary.get_code(value), Some(position as i64), "{value}");
+                assert_eq!(dictionary.get(position as i64), Some(*value), "{value}");
+            }
+            // Rebuilding answers the same value, so a code is a constant.
+            assert_eq!(
+                AsciiDictionary::from_logical_name(name).unwrap(),
+                dictionary
+            );
+        }
+    }
+
+    #[test]
+    fn the_two_names_of_one_list_prebuild_one_vocabulary() {
+        assert_eq!(
+            AsciiDictionary::from_logical_name("Exchange").unwrap(),
+            AsciiDictionary::from_logical_name("mic").unwrap()
+        );
+        assert_eq!(
+            AsciiDictionary::prebuilt_values(" MIC "),
+            AsciiDictionary::MICS
+        );
+        assert!(AsciiDictionary::prebuilt_values("isin").is_empty());
+    }
+
+    #[test]
+    fn auto_registration_continues_past_the_constant() {
+        let mut countries = AsciiDictionary::from_logical_name("country").unwrap();
+        let next = AsciiDictionary::COUNTRIES.len() as i64;
+        // `ZZ` is ISO 3166's user-assigned range, so no assigned code holds it.
+        assert_eq!(countries.get_code("ZZ"), None);
+        assert_eq!(countries.push("ZZ").unwrap(), next);
+        assert_eq!(countries.push("ZZ").unwrap(), next);
+        assert_eq!(countries.get(next), Some("ZZ"));
+        // A prebuilt code is untouched by what registered after it.
+        let france = countries.get_code("FR").expect("FR is prebuilt");
+        assert_eq!(AsciiDictionary::COUNTRIES[france as usize], "FR");
+    }
+
+    #[test]
+    fn a_registered_name_with_no_constant_prebuilds_the_empty_width() {
+        for name in ["language", "monthyear", "tenor"] {
+            let dictionary = AsciiDictionary::from_logical_name(name).unwrap();
+            assert!(dictionary.is_empty(), "{name}");
+            assert_eq!(
+                dictionary.values_dtype(),
+                &DataType::from_logical_name(name).unwrap(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_name_that_is_not_an_ascii_width_is_refused_by_width() {
+        let refused = AsciiDictionary::from_logical_name("price")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("decimal64(18,8)"), "{refused}");
+        let refused = AsciiDictionary::from_logical_name("isin")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("currency"), "{refused}");
+    }
+
+    /// The vocabulary encodes a column of its own codes without growing.
+    #[test]
+    fn a_prebuilt_column_encodes_against_the_constant_alone() {
+        use arrow_array::Array;
+        use arrow_array::types::Int32Type;
+
+        let mut venues = AsciiDictionary::from_logical_name("mic").unwrap();
+        let registered = venues.len();
+        let column = venues
+            .into_arrow_array([Some("XCME"), None, Some("XLON"), Some("XCME")])
+            .unwrap();
+        assert_eq!(venues.len(), registered, "an encode of prebuilt codes grew");
+        let column = column
+            .as_any()
+            .downcast_ref::<arrow_array::DictionaryArray<Int32Type>>()
+            .unwrap();
+        let xcme = i32::try_from(venues.get_code("XCME").unwrap()).unwrap();
+        let xlon = i32::try_from(venues.get_code("XLON").unwrap()).unwrap();
+        assert_eq!(
+            column.keys().iter().collect::<Vec<_>>(),
+            [Some(xcme), None, Some(xlon), Some(xcme)]
+        );
     }
 }
