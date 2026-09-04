@@ -33,6 +33,32 @@ Two facts of the current code constrain several phases:
 
 ---
 
+## Prior art: `Platob/yggfin`
+
+<https://github.com/Platob/yggfin> is a Python FIX stack (`rekep`) over the
+same problem, built further along. **Do not port its shapes.** It models
+components, repeating groups and namespaces as separate directories and
+carries a flat `comp` string on an entry, none of which yggdryl needs: here
+a component is a Struct field, a group is a List of an `item` Struct, and a
+branch is a folder - one tree, no second model. What it is worth reading for
+is the *use cases* it has already been forced to handle, which are cited in
+the phases below where they changed a rule.
+
+Read, in this order:
+
+| file | what it settles |
+| --- | --- |
+| `python/tests/fix/test_pairs.py` | every key and value shape `from_pairs` meets in production (Phase 7) |
+| `data/fix/sources.json` | per-source provenance: pinned commit, checksums, license, priority (Phase 6) |
+| `data/fix/versions.json` | the declared version list and the per-version session field order (Phases 3, 6) |
+| `python/tests/fix/test_registry.py`, `test_entries.py` | resolution and merge cases across namespaces |
+| `python/src/rekep/fix/orchestra.py`, `quickfix.py` | the two source formats read side by side |
+
+Clone it read-only; it is not a dependency and nothing here links against
+it.
+
+---
+
 ## Phase 1 - `Version`: a generic value, datatype, scalar and field
 
 A version is major, minor, further numeric parts, and an optional qualifier.
@@ -60,12 +86,18 @@ Contract:
 - **Canonical on parse.** Trailing zero components are trimmed, so `4.4.0`
   and `4.4` are one value with one spelling. `Display` re-renders exactly
   what `FromStr` accepts, and the round trip is a test.
-- **Grammar.** `major(.part)*` then an optional qualifier: appended directly
-  (`5.0SP2`) it is a *post*-release; introduced by `-` (`1.0.0-rc1`) it is a
-  *pre*-release. A component is decimal, at most `u16::MAX`, at most
-  `MAX_PARTS` of them; over-long input, a non-decimal component and an empty
-  qualifier are `Error::Parse` naming the byte position, the way every other
-  parser in the repo reports.
+- **Grammar.** `major(.part)*` then an optional qualifier, which may be
+  appended directly (`5.0SP2`), dot-introduced (`5.0.SP1`), or
+  hyphen-introduced (`1.0.0-rc1`). A hyphen means *pre*-release; a dot or
+  nothing means *post*-release. All three canonicalize to one spelling on
+  the way out, because the same version really is written four ways in the
+  wild and a value with four renderings is four values: Orchestra writes
+  `FIX.5.0SP2`, yggfin's `data/fix/versions.json` writes `5.0.SP1`, the
+  `ApplVerID` code set writes `FIX50SP1`, and the session line is `FIXT1.1`.
+  A component is decimal, at most `u16::MAX`, at most `MAX_PARTS` of them;
+  over-long input, a non-decimal component and an empty qualifier are
+  `Error::Parse` naming the byte position, the way every other parser in the
+  repo reports.
 - **Ordering.** Components numerically with an unstated component reading
   zero, then qualifier class `pre < none < post`, then the qualifier itself
   by ASCII-folded alphabetic prefix and *numeric* suffix, so `SP2 < SP10`.
@@ -120,6 +152,9 @@ Contract:
 grammar including every refusal with its byte position, canonicalization of
 trailing zeros, the full ordering table
 (`0 < 1.0 < 4.2 < 4.4 < 5.0-rc1 < 5.0 < 5.0SP1 < 5.0SP2 < 5.0SP10 < MAX`),
+the four spellings of one version all parsing equal (`5.0SP1`, `5.0.SP1`,
+`FIX.5.0SP1` through the FIX layer's prefix strip, and `FIX50SP1` through
+the `ApplVerID` code set),
 `Display`/`FromStr` round trip, serde round trip, the Arrow round trip
 through `Field`, and `DataType::scalar` rewriting a string. Add the
 allocation case. Bench parse and compare in `rust/benchmarks/datatype.rs`.
@@ -371,6 +406,12 @@ On `FixRegistry`:
 | --- | --- |
 | `field_at(&Version, key)` | the field, refusing a key not defined at that version |
 | `get_field_at(&Version, key)` | the same as an `Option` |
+| `versions()` | the sorted set of versions any lineage mentions |
+
+`versions()` is derived, not stored - it is what yggfin keeps as
+`versions.json`'s `declared` list, and deriving it means a dictionary cannot
+claim a version no field is dated in. Phase 7's inference and any
+"is this version covered" check read it.
 
 The registry itself stays version-agnostic: it holds every tag ever defined
 and a version is a **filter on the read**, which is what "defined in one
@@ -539,6 +580,13 @@ Everything else the merge must guarantee:
   `fix/field.rs`; walk it, never collect held names into `String`s.
 - **Atomic.** A refusal leaves the field exactly as it was, which is what
   every other mutation in this repo promises.
+- **Precedence is the caller's ordering, not a field on the merge.** Several
+  sources describe one tag - FIX Latest, a QuickFIX dictionary, a vendor
+  orchestration - and yggfin resolves that with a `priority` per source in
+  `sources.json`. Do not add a priority to the core: the generator merges
+  lowest priority first, so the highest-priority source is the last
+  `incoming` and wins by the rule already stated. One concept, in the one
+  place that knows about sources.
 - `FixRegistry::update` calls it and the private `merge` at `registry.rs:866`
   is deleted - no second merge path survives, per the no-compatibility rule.
 
@@ -638,18 +686,38 @@ core has no HTTP client and must not gain one; the dictionary is a build
 input, generated and committed, and the crate only ever reads
 `config/fix/**.json` through `FixRegistry::from_handle`.
 
+- **Every source URL is pinned to a commit, never `master`.** yggfin's
+  `data/fix/sources.json` does exactly this - the FIX Latest file at
+  `.../orchestrations/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml`
+  and the QuickFIX one at `.../quickfix/3536699e830e65f875df4a50b647a6d3bad3b884/spec/FIX50SP2.xml`
+  - because a dictionary regenerated from `master` is not reproducible and
+  its diff is unreviewable.
 - `--source` takes a local directory or a URL base so a run is reproducible
-  offline; the default is the raw GitHub base above.
+  offline; the default is the pinned set.
 - Output is exactly the shard layout `from_handle` reads:
   `config/fix/{primitive,nested}/<branch>/<tag/100>.json`, each a JSON array
   of core field documents ordered by canonical identifier - byte-identical
   to what `write_into` would produce, asserted by a test that loads the
   generated tree and writes it back.
-- Provenance goes in `config/fix/source.json` - source URLs, the EP number,
-  the retrieval date, and the per-version file list. `from_handle` descends
-  only `primitive/` and `nested/` (`store.rs:193`), so a leaf beside them is
-  never listed and never refused; it must not be named `records`, which is
-  the retired-layout tripwire at `store.rs:181`.
+- Provenance goes in `config/fix/sources.json`, one record per source,
+  modelled on yggfin's: `source_id`, `format` (`orchestra` or `quickfix`),
+  `url` (pinned), `sha256` of the bytes fetched, `sha256` of the definitions
+  produced from them, `branch` (yggfin calls it `namespace`), `version`
+  label, `priority`, and **`license_url`**. The licence field is not
+  bookkeeping: this commits a derived copy of the FIX Trading Community's
+  and QuickFIX's material into the repository, and the attribution has to
+  travel with it. The two checksums also give CI a drift test that needs no
+  network for the second half. `from_handle` descends only `primitive/` and
+  `nested/` (`store.rs:193`), so a leaf beside them is never listed and
+  never refused; it must not be named `records`, which is the retired-layout
+  tripwire at `store.rs:181`.
+- **A vendor branch is a first-class source, not a hypothetical.** Community
+  and vendor orchestrations are published through Orchestra Hub -
+  `https://orchestrahub.org/api/v3/repos/<owner>/<repo>/revisions/<id>/download`
+  - which is how yggfin loads its `fixtrading-udf` and `clear-street`
+  namespaces. Pull one such dictionary into a non-standard `FixBranch` in
+  the same run, so the branch machinery, Phase 2's digest table and Phase
+  7's branch inference all have real data under them rather than a fixture.
 - Datatypes resolve through `DataType::LOGICAL_NAMES`, which is already the
   FIX Latest datatype table (`docs/datatype.md`), so `Qty` is
   `decimal64(18,8)` and `SeqNum` is `int64` with no second mapping. A FIX
@@ -675,9 +743,19 @@ XmlDataLen, 213 XmlData, 347 MessageEncoding, 369 LastMsgSeqNumProcessed.
 `StandardTrailer` (component id 1025) is 10 CheckSum alone in FIX Latest -
 but 4.2 and 4.4 put 93 SignatureLength and 89 Signature ahead of it, so the
 **cross-version trailer is those three in that order** and each field's own
-lineage says which versions it existed in. The same rule covers the header:
-the constant is the union across every scraped version, in canonical order,
-and `defined_at` decides what a given version may carry.
+lineage says which versions it existed in. The same rule covers the header,
+and the union is wider than FIX Latest's 28: yggfin's `versions.json`
+records 90 SecureDataLen and 91 SecureData in the 4.0 through 4.4 headers,
+which FIX Latest no longer lists at all. Generating the constant from FIX
+Latest alone would silently drop them, so it is generated from **every**
+scraped version, in canonical order, with `defined_at` deciding what a given
+version may carry.
+
+yggfin also stores a `required` flag per session field per version. Do not
+add a parallel table for it: presence is already `nullable` on the field a
+version resolves to, so the flag belongs in the lineage entry Phase 3
+already writes, and a test asserts the generated header matches yggfin's
+`versions.json` ordering and required flags for 4.2 and 4.4.
 
 Both land as generated `const` tag lists in `rust/src/fix/header.rs`:
 
@@ -805,14 +883,44 @@ where
     I: IntoIterator<Item = (&'a str, &'a str)>;
 ```
 
-A key is a tag or a name and the two are told apart without guessing: all
-ASCII digits is a tag, through the strict `parse_tag` that already exists
-(`fix/field.rs:44`, which refuses `+35` and `3x`); anything else is a name,
-resolved to its tag through `get_primitive_field` in the chosen branch. An
-unresolvable **name** is a typed error naming it - a name exists only
-because a dictionary spelled it, so a miss is genuinely wrong. An
-unresolvable **tag** is kept under its rendered decimal name as a nullable
-`utf8` field, which is the rule `FixMsg` already documents for unknown tags.
+**What a key may be.** yggfin's `python/tests/fix/test_pairs.py` is the
+list, and every line of it is a shape a venue actually sends:
+
+| key | means |
+| --- | --- |
+| `54`, `"54"` | a tag, through the strict `parse_tag` at `fix/field.rs:44`, which refuses `+35` and `3x` |
+| `Side`, `side`, `SIDE`, `" Side "` | a name, trimmed and folded |
+| `msg_type`, `msg-type`, `Msg Type` | the same name: **separators fold away too** |
+| `Instrument.Symbol` | a path, resolved by the `get_field_by_path` that already exists |
+| `PartyID[0]`, `PartyID[1]` | one field, two occurrences, in order |
+| `NoPartyIDs[0].PartyID` | a group entry: which group, which occurrence, which member |
+| `VenueOwnThing` | an unknown name, **kept** |
+| `""`, `"   "` | dropped |
+
+Two of those change rules stated earlier in this brief:
+
+- **Separator folding.** The registry folds ASCII case only today
+  (`fix/mod.rs`). A renderer that emits `msg_type` or `Msg Type` then misses
+  a field that exists. Extend the FIX name fold to drop `_`, `-` and space -
+  which is not a new rule but the fold `DataType`'s logical names already use
+  (`datatype/parser.rs:1656`), so one folding rule serves both. No two FIX
+  fields differ only by a separator, so nothing collides; assert that over
+  the generated `config/fix` as the test that lets the change in.
+- **An unknown name is kept, not refused.** The earlier draft made it a
+  typed error. That is wrong for the reason yggfin states in one line:
+  every venue sends fields no dictionary has, and dropping them loses data.
+  Keep it as a nullable `utf8` field under its own spelling, exactly as an
+  unknown *tag* is already kept under its decimal one. Resolved fields come
+  first in the root, unknown ones after, so the schema stays stable when a
+  dictionary later learns the name.
+
+**An empty value drops its pair.** `54=` is a malformed message, not an
+absent side, so a pair whose value is empty never becomes a field.
+
+**Order and repetition are the message.** A tag appearing twice stays two
+entries in input order - a map keyed by tag would silently lose a repeating
+group - and Phase 3's duplicate-name suffix rule names the second and later
+children.
 
 **Inferring the version**, when the caller names none, in this order, and
 each step is a FIX rule rather than a heuristic:
@@ -857,10 +965,47 @@ all.
 - `FixMsg::with_registry` finishes it, so the existing validation and
   canonicalization are not bypassed.
 
-**Repeating groups are out of scope here.** Rebuilding a group from a flat
-tag stream needs the message type's grammar to know where a group's members
-end, and that grammar is the `.cfb` phase's. A counter tag and its members
-are emitted flat, in entry order, and the module docs state the limitation.
+**An empty dictionary is a supported input, not an error.** With nothing
+resolvable, every name stays a name, every tag stays its decimal spelling,
+and `by_name` still finds what was put in - which is what makes the function
+usable on a venue whose dictionary has not been loaded yet.
+
+**The wire spellings belong to the FIX layer, never to `DataType::scalar`.**
+The decode direction here takes text in; the encode direction that follows
+has to put FIX's own spellings back out, and yggfin pins them: a float is
+never exponent notation (`1e-7` writes as `0.0000001`), a `UTCTimestamp` is
+`20260821-10:30:00.123456`, a date is `20260821`, a time is
+`10:30:00.000000`, a boolean is `Y` or `N`. First **verify whether
+`DataType::scalar` accepts a `Scalar::String` for `Boolean` and the
+temporals at all** (`field/value.rs:112`); where it does not, the FIX layer
+parses the wire spelling into the right `Scalar` before calling `scalar`,
+and where it does, check the spelling it accepts is FIX's. Either way the
+generic value contract learns no FIX spelling - `LOGICAL_NAMES` is the FIX
+vocabulary yggdryl carries, and that is deliberately a *type* table, not a
+*value* one.
+
+**The two ways in must agree.** Whatever `from_pairs` builds has to read
+back identically once a wire parser exists - yggfin pins this as
+`from_text(built.into_text("|")) == built`. The wire parser is a later
+phase; write the invariant into the module docs now so it is not discovered
+as a contradiction later.
+
+**Repeating groups are in scope, because the key carries the location.**
+The earlier draft ruled them out on the grounds that finding a group's
+boundary needs the message type's grammar. That is true only of a *bare*
+tag stream. A key spelled `NoPartyIDs[0].PartyID` states the group, the
+occurrence and the member, so no grammar is needed - and yggdryl already
+has everything to build the result properly: a group is a List of a non-null
+`item` Struct, and `Field::set_field_by_path` writes into one. So
+`from_pairs` builds **real nesting** from indexed keys, where yggfin has to
+keep a flat `comp` string beside the entry because its field model has no
+list of structs to put it in.
+
+What stays out of scope is inferring a group from repetition alone: bare
+`448=A`, `448=B` with no index and no group key produces two sibling
+occurrences of `PartyID`, not a reconstructed `NoPartyIDs`. Reassembling
+*that* is the wire parser's job and it needs the grammar, which is the
+`.cfb` phase's. Say so in the module docs.
 
 ### Optimization the phase is judged on
 
@@ -884,6 +1029,15 @@ under its decimal name; an unknown name refused; tag 32 keyed as
 `LastShares` in a `4.2` message and as `LastQty` in a Latest one, both
 answering the same value; header and trailer ordering with a body field
 interleaved in the input.
+
+Then, straight from `test_pairs.py`, because they are the ones a first
+implementation gets wrong: `" Side "`, `msg_type`, `msg-type`, `MSG_TYPE`
+and `Msg Type` all reaching tag 35 or 54; `Instrument.Symbol` resolving
+through the path; `PartyID[0]` and `PartyID[1]` staying two ordered
+occurrences; `NoPartyIDs[0].PartyID` building a List of one `item` Struct
+rather than a flat name; an unknown name surviving beside a known one, with
+the known one first; an empty and a blank key dropped; an empty value
+dropped; the same pairs built against an empty registry.
 
 New bench group in `rust/benchmarks/fix/`: a NewOrderSingle of ~15 pairs, an
 ExecutionReport of ~30, and a 300-pair message; tag-keyed against
