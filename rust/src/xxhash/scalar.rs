@@ -269,7 +269,7 @@ impl Scalar {
     }
 }
 
-impl<K: crate::field::FieldType> crate::TypedScalar<K> {
+impl<K: crate::types::FieldType> crate::TypedScalar<K> {
     /// Return this value's digest under `algorithm`.
     ///
     /// The datatype marker is validation, not content: the digest is the

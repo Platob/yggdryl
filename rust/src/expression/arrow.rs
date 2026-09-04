@@ -47,7 +47,7 @@ use super::parser::{Direction, NullsOrder};
 use super::selector::Attributes;
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result};
-use crate::field::cast::cast_field_array;
+use crate::types::cast::cast_field_array;
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.

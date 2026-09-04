@@ -1,5 +1,5 @@
 use yggdryl::DataType;
-use yggdryl::field::decimal;
+use yggdryl::types::decimal;
 
 use crate::typed::assert_typed_marker;
 

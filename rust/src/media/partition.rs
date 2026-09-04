@@ -25,9 +25,9 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-use crate::field::cast::cast_field_array;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
+use crate::types::cast::cast_field_array;
 use crate::{ArrowCast, DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 

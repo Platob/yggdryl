@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::field::{RecognizedExtension, recognized_arrow_extension};
 use crate::generic::wkb;
 use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_free_text, ascii_padded, ascii_text,
     code_refusal, code_text, guid_parse, guid_text,
 };
+use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar, UnionMode};
 use arrow_array::types::{
     ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type,

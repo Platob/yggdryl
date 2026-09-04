@@ -6,8 +6,7 @@ use std::sync::OnceLock;
 
 use smol_str::SmolStr;
 
-use super::Field;
-use crate::{DataType, Error, Metadata, Result};
+use crate::{DataType, Error, Field, Metadata, Result};
 
 impl Field {
     /// Parses canonical, Arrow-like, SQL, Hive, or Spark field syntax.

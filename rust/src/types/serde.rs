@@ -1,5 +1,7 @@
 //! Stable structural serialization and deserialization.
 
+mod field;
+
 use ::serde::ser::SerializeSeq;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 

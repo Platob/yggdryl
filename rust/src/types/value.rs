@@ -12,21 +12,28 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::decimal::{validate_decimal_value, validate_decimal256_value};
+use crate::types::floating::{FloatWidth, canonical_float};
+use crate::types::integer::{
+    canonical_signed, canonical_unsigned, validate_integer_tuple, validate_signed,
+    validate_unsigned,
+};
+use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    ascii_bytes, ascii_free_text, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
-    value_is_logically_null,
+    ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field, guid_bytes,
+    guid_parse, guid_text, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
-struct ValidationFailure {
+pub(crate) struct ValidationFailure {
     path: Vec<PathSegment>,
     reason: SmolStr,
 }
 
 #[derive(Debug)]
-enum PathSegment {
+pub(crate) enum PathSegment {
     Field(SmolStr),
     Index(usize),
     MapKey(usize),
@@ -35,16 +42,143 @@ enum PathSegment {
 }
 
 impl ValidationFailure {
-    fn new(reason: impl Into<SmolStr>) -> Self {
+    pub(crate) fn new(reason: impl Into<SmolStr>) -> Self {
         Self {
             path: Vec::new(),
             reason: reason.into(),
         }
     }
 
-    fn prepend(mut self, segment: PathSegment) -> Self {
+    pub(crate) fn prepend(mut self, segment: PathSegment) -> Self {
         self.path.insert(0, segment);
         self
+    }
+}
+
+impl Field {
+    /// Materializes this field's bounded canonical scalar default.
+    ///
+    /// Nullable fields prefer logical null. Union and run-end layouts encode
+    /// that null through a physically nullable logical child when possible.
+    pub fn default_value(&self) -> Result<Scalar> {
+        default_value_for_field(self)
+    }
+
+    /// The canonical value this field holds, from any value it accepts.
+    ///
+    /// [`DataType::scalar`] with this field's nullability on top: the value is
+    /// checked and rewritten by the datatype, and a null is refused here when
+    /// the column cannot hold one. Every other value contract in the crate is
+    /// this one, so a value built here is a value every reader accepts.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let ccy = Field::new("ccy", DataType::Currency, false);
+    /// assert_eq!(ccy.scalar("USD\0")?, Scalar::from("USD"));
+    /// assert!(ccy.scalar(Scalar::Null).is_err());
+    /// assert_eq!(
+    ///     Field::new("ccy", DataType::Currency, true).scalar(Scalar::Null)?,
+    ///     Scalar::Null
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming this field when the value is not one its
+    /// datatype accepts, or is null under a field that is not nullable.
+    pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar> {
+        let value = value.into();
+        if !self.is_nullable() && value_is_logically_null(self.dtype(), &value) {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::from(root_path(self.name())),
+                reason: SmolStr::new_static("non-nullable field received null"),
+            });
+        }
+        dtype_scalar(self.dtype(), value).map_err(|error| rooted_at_field(error, self.name()))
+    }
+
+    /// Validates one row value against this struct root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root is not a struct, the row has the wrong
+    /// arity, or any value violates its field's datatype or nullability.
+    pub fn validate_value(&self, value: &Scalar) -> Result<()> {
+        self.require_struct()?;
+        validate_row(self, value)
+    }
+
+    /// Rewrites one row value into the exact representation this root declares.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value cannot be represented by its field.
+    pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar> {
+        self.validate_value(&value)?;
+        canonicalize_row(self, value)
+    }
+
+    /// Recovers this field's exact value from a natural text value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first value whose natural representation cannot satisfy
+    /// this field.
+    pub fn from_natural_value(&self, value: Scalar) -> Result<Scalar> {
+        crate::text::typed::with_field(value, self)
+    }
+
+    /// Validates that this field is a struct, without a nullability opinion.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype is not a struct.
+    pub fn require_struct(&self) -> Result<()> {
+        self.validate()?;
+        if !self.is_struct() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new("$"),
+                reason: format_smolstr!(
+                    "expected a struct root, got field {:?} of {}",
+                    self.name(),
+                    self.dtype()
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    /// Validates that this field can serve as a record schema root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming what the field is when it is not a usable root.
+    pub fn validate_struct_root(&self) -> Result<()> {
+        self.validate()?;
+        if self.is_nullable() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new("$"),
+                reason: format_smolstr!(
+                    "expected a non-null struct root, got nullable field {:?}",
+                    self.name()
+                ),
+            });
+        }
+        if !self.is_struct() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new("$"),
+                reason: format_smolstr!(
+                    "expected a struct root, got field {:?} of {}",
+                    self.name(),
+                    self.dtype()
+                ),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -417,87 +551,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     }
 }
 
-fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
-    let Some(integer) = value.as_i128() else {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            // Naming the kind is what tells a caller that the temporal they
-            // wrote was the wrong resolution rather than the wrong shape.
-            reason: format_smolstr!(
-                "validated signed value could not be canonicalized from {}",
-                value.kind()
-            ),
-        });
-    };
-    let canonical = match dtype {
-        DataType::Int8 => Scalar::I8(i8::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int16 => Scalar::I16(i16::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int32 => Scalar::I32(i32::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int64 | DataType::Interval(TimeUnit::YearMonth) => {
-            Scalar::I64(i64::try_from(integer).map_err(canonical_integer_error)?)
-        }
-        _ => unreachable!("signed canonicalization requires a signed datatype"),
-    };
-    let changed = match &canonical {
-        Scalar::I8(expected) => !matches!(value, Scalar::I8(current) if current == expected),
-        Scalar::I16(expected) => !matches!(value, Scalar::I16(current) if current == expected),
-        Scalar::I32(expected) => !matches!(value, Scalar::I32(current) if current == expected),
-        Scalar::I64(expected) => !matches!(value, Scalar::I64(current) if current == expected),
-        _ => unreachable!("signed canonical value has a signed kind"),
-    };
-    Ok((canonical, changed))
-}
-
-fn canonical_unsigned(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
-    let Some(integer) = value.as_u128() else {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static("validated unsigned value could not be canonicalized"),
-        });
-    };
-    let canonical = match dtype {
-        DataType::UInt8 => Scalar::U8(u8::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt16 => Scalar::U16(u16::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt32 => Scalar::U32(u32::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::UInt64 => Scalar::U64(u64::try_from(integer).map_err(canonical_integer_error)?),
-        _ => unreachable!("unsigned canonicalization requires an unsigned datatype"),
-    };
-    let changed = match &canonical {
-        Scalar::U8(expected) => !matches!(value, Scalar::U8(current) if current == expected),
-        Scalar::U16(expected) => !matches!(value, Scalar::U16(current) if current == expected),
-        Scalar::U32(expected) => !matches!(value, Scalar::U32(current) if current == expected),
-        Scalar::U64(expected) => !matches!(value, Scalar::U64(current) if current == expected),
-        _ => unreachable!("unsigned canonical value has an unsigned kind"),
-    };
-    Ok((canonical, changed))
-}
-
-fn canonical_integer_error(_error: impl std::fmt::Display) -> Error {
-    canonical_error("integer does not fit declared width")
-}
-
-enum FloatWidth {
-    Float16,
-    Float32,
-    Float64,
-}
-
-fn canonical_float(value: &Scalar, width: FloatWidth) -> Result<(Scalar, bool)> {
-    let Some(number) = value.as_f64() else {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static("validated float value could not be canonicalized"),
-        });
-    };
-    let canonical = match width {
-        FloatWidth::Float16 => Scalar::from(half::f16::from_f64(number)),
-        FloatWidth::Float32 => Scalar::from(number as f32),
-        FloatWidth::Float64 => Scalar::from(number),
-    };
-    let changed = value != &canonical;
-    Ok((canonical, changed))
-}
-
 fn temporal_or_integer(
     value: &Scalar,
     unit: TimeUnit,
@@ -520,7 +573,7 @@ fn temporal_or_integer(
         .ok_or_else(|| canonical_error("expected a signed 64-bit temporal count"))
 }
 
-fn canonical_error(reason: &'static str) -> Error {
+pub(crate) fn canonical_error(reason: &'static str) -> Error {
     Error::InvalidRecord {
         path: SmolStr::new_static("$"),
         reason: reason.into(),
@@ -905,10 +958,10 @@ fn validate_dtype_value(
         D::Struct(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
         D::Dictionary(dictionary) => validate_dtype_value(dictionary.value(), value, depth + 1),
-        D::Decimal32 { precision, .. } => validate_decimal(value, *precision, 32),
-        D::Decimal64 { precision, .. } => validate_decimal(value, *precision, 64),
-        D::Decimal128 { precision, .. } => validate_decimal(value, *precision, 128),
-        D::Decimal256 { precision, scale } => validate_decimal256(value, *precision, *scale),
+        D::Decimal32 { precision, .. } => validate_decimal_value(value, *precision, 32),
+        D::Decimal64 { precision, .. } => validate_decimal_value(value, *precision, 64),
+        D::Decimal128 { precision, .. } => validate_decimal_value(value, *precision, 128),
+        D::Decimal256 { precision, scale } => validate_decimal256_value(value, *precision, *scale),
         D::Map(map) => validate_map(map, value, depth + 1),
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)
@@ -927,88 +980,6 @@ fn validate_dtype_value(
             None => Err(expected(dtype.name(), value)),
         },
     }
-}
-
-fn validate_signed(
-    value: &Scalar,
-    minimum: i128,
-    maximum: i128,
-    expected_name: &str,
-) -> std::result::Result<(), ValidationFailure> {
-    match value.as_i128() {
-        Some(value) if (minimum..=maximum).contains(&value) => Ok(()),
-        _ => Err(expected(expected_name, value)),
-    }
-}
-
-fn validate_unsigned(
-    value: &Scalar,
-    maximum: u128,
-    expected_name: &str,
-) -> std::result::Result<(), ValidationFailure> {
-    match value.as_u128() {
-        Some(value) if value <= maximum => Ok(()),
-        _ => Err(expected(expected_name, value)),
-    }
-}
-
-fn validate_date64(value: &Scalar) -> std::result::Result<(), ValidationFailure> {
-    const MILLIS_PER_DAY: i128 = 86_400_000;
-    let Some(number) = value.as_i128() else {
-        return Err(expected("date64 whole-day milliseconds", value));
-    };
-    if i64::try_from(number).is_err() || number % MILLIS_PER_DAY != 0 {
-        return Err(ValidationFailure::new(
-            "date64 must be signed 64-bit whole-day milliseconds",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_time(value: &Scalar, unit: TimeUnit) -> std::result::Result<(), ValidationFailure> {
-    let maximum = match unit {
-        TimeUnit::Second => 86_400_i128,
-        TimeUnit::Millisecond => 86_400_000_i128,
-        TimeUnit::Microsecond => 86_400_000_000_i128,
-        TimeUnit::Nanosecond => 86_400_000_000_000_i128,
-        _ => return Err(ValidationFailure::new("invalid time-of-day unit")),
-    };
-    let Some(number) = value.as_i128() else {
-        return Err(expected("time-of-day integer", value));
-    };
-    if !(0..maximum).contains(&number) {
-        return Err(ValidationFailure::new(format_smolstr!(
-            "time-of-day value must be in 0..{maximum} for {unit}"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_integer_tuple(
-    value: &Scalar,
-    widths: &[u8],
-    expected_name: &str,
-) -> std::result::Result<(), ValidationFailure> {
-    let values = value
-        .as_sequence()
-        .ok_or_else(|| expected(expected_name, value))?;
-    if values.len() != widths.len() {
-        return Err(ValidationFailure::new(format_smolstr!(
-            "{expected_name} requires {} integer components, got {}",
-            widths.len(),
-            values.len()
-        )));
-    }
-    for (index, (value, width)) in values.iter().zip(widths).enumerate() {
-        let (minimum, maximum) = if *width == 32 {
-            (i128::from(i32::MIN), i128::from(i32::MAX))
-        } else {
-            (i128::from(i64::MIN), i128::from(i64::MAX))
-        };
-        validate_signed(value, minimum, maximum, expected_name)
-            .map_err(|failure| failure.prepend(PathSegment::Index(index)))?;
-    }
-    Ok(())
 }
 
 fn validate_sequence(
@@ -1137,49 +1108,6 @@ fn validate_union(
         .map_err(|failure| failure.prepend(PathSegment::Union(type_id)))
 }
 
-fn validate_decimal(
-    value: &Scalar,
-    precision: u8,
-    width: u16,
-) -> std::result::Result<(), ValidationFailure> {
-    let Some(integer) = value.as_i128() else {
-        return Err(expected("unscaled decimal integer", value));
-    };
-    let fits_width = match width {
-        32 => i32::try_from(integer).is_ok(),
-        64 => i64::try_from(integer).is_ok(),
-        _ => true,
-    };
-    if !fits_width || decimal_digits(integer.unsigned_abs()) > usize::from(precision) {
-        return Err(ValidationFailure::new(format_smolstr!(
-            "decimal value exceeds precision {precision} or physical width {width}"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_decimal256(
-    value: &Scalar,
-    precision: u8,
-    scale: i8,
-) -> std::result::Result<(), ValidationFailure> {
-    let Some(coefficient) = (if value.is_decimal() {
-        value.decimal256_unscaled_at(scale)
-    } else {
-        value.as_i128().map(crate::I256::from_i128)
-    }) else {
-        return Err(expected("d256", value));
-    };
-    let encoded = coefficient.to_string();
-    let digits = encoded.trim_start_matches('-');
-    if digits.len() > usize::from(precision) {
-        return Err(ValidationFailure::new(format_smolstr!(
-            "decimal256 value exceeds precision {precision}"
-        )));
-    }
-    Ok(())
-}
-
 /// The reason an ASCII refusal carries; the walk re-roots its path.
 fn ascii_failure(error: Error) -> ValidationFailure {
     ValidationFailure::new(match error {
@@ -1189,7 +1117,7 @@ fn ascii_failure(error: Error) -> ValidationFailure {
 }
 
 /// Report a value whose kind does not match what the schema declared.
-fn expected(expected_name: &str, value: &Scalar) -> ValidationFailure {
+pub(crate) fn expected(expected_name: &str, value: &Scalar) -> ValidationFailure {
     ValidationFailure::new(crate::text::expected_got(expected_name, value.kind()))
 }
 
@@ -1242,19 +1170,6 @@ fn validate_map(
             .map_err(|failure| failure.prepend(PathSegment::MapValue(index)))?;
     }
     Ok(())
-}
-
-/// Count the base-10 digits of an unsigned decimal coefficient.
-///
-/// Zero has one digit, which is what a precision check expects.
-fn decimal_digits(value: u128) -> usize {
-    let mut digits = 1;
-    let mut remaining = value / 10;
-    while remaining > 0 {
-        digits += 1;
-        remaining /= 10;
-    }
-    digits
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
-use yggdryl::field::{
-    self, FieldType, Int32Field, StructField, TimestampField, TypedField, TypedFieldRef,
+use yggdryl::types::{
+    FieldType, Int32Field, StructField, TimestampField, TypedField, TypedFieldRef, decimal, integer,
 };
 use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
@@ -45,7 +45,7 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
     assert_eq!(generic.dtype(), &DataType::Int32);
     assert_eq!(generic.get_metadata("version"), Some("1"));
 
-    assert!(generic.try_as_typed::<field::integer::Int64>().is_err());
+    assert!(generic.try_as_typed::<integer::Int64>().is_err());
     assert!(
         Field::new(
             "invalid",
@@ -55,7 +55,7 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
             },
             false,
         )
-        .try_as_typed::<field::decimal::Decimal128>()
+        .try_as_typed::<decimal::Decimal128>()
         .is_err()
     );
 }
@@ -89,7 +89,7 @@ fn struct_fields_have_the_return_typed_conversion_name() {
 }
 
 mod integer_marker {
-    pub use yggdryl::field::integer::Int32;
+    pub use yggdryl::types::integer::Int32;
 }
 
 #[test]
@@ -123,31 +123,29 @@ fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
     assert!(serde_json::from_str::<Int32Field>(&int64_json).is_err());
 
     let invalid_decimal = r#"{"name":"amount","dtype":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;
-    assert!(
-        serde_json::from_str::<TypedField<field::decimal::Decimal128>>(invalid_decimal).is_err()
-    );
+    assert!(serde_json::from_str::<TypedField<decimal::Decimal128>>(invalid_decimal).is_err());
 }
 
 #[test]
 fn the_extension_typed_markers_narrow_their_exact_variants() {
-    assert_typed_marker::<yggdryl::field::nested::Variant>(DataType::variant());
-    assert_typed_marker::<yggdryl::field::geospatial::Geometry>(DataType::geometry(None).unwrap());
-    assert_typed_marker::<yggdryl::field::geospatial::Geography>(
+    assert_typed_marker::<yggdryl::types::nested::Variant>(DataType::variant());
+    assert_typed_marker::<yggdryl::types::geospatial::Geometry>(DataType::geometry(None).unwrap());
+    assert_typed_marker::<yggdryl::types::geospatial::Geography>(
         DataType::geography(None, None).unwrap(),
     );
 
     // The static variant constructor exists because the datatype carries no
     // parameters; the geospatial pair always goes through validation.
-    let variant = yggdryl::field::VariantField::new("payload", true);
+    let variant = yggdryl::types::VariantField::new("payload", true);
     assert_eq!(variant.dtype(), &DataType::Variant);
 
     // A marker refuses the storage type and its geospatial sibling alike.
-    assert!(yggdryl::field::GeometryField::try_new("bad", DataType::Binary, true).is_err());
+    assert!(yggdryl::types::GeometryField::try_new("bad", DataType::Binary, true).is_err());
     assert!(
-        yggdryl::field::GeographyField::try_new("bad", DataType::geometry(None).unwrap(), true)
+        yggdryl::types::GeographyField::try_new("bad", DataType::geometry(None).unwrap(), true)
             .is_err()
     );
-    let geography = yggdryl::field::GeographyField::try_new(
+    let geography = yggdryl::types::GeographyField::try_new(
         "region",
         DataType::geography(None, None).unwrap(),
         false,

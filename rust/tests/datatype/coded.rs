@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::field::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::generic::{CurrencyScalar, MicScalar};
+use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -159,7 +159,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
     let plain = Field::new("ccy", DataType::FixedAscii(3), false);
     assert!(
         plain
-            .try_into_typed::<yggdryl::field::ascii::Currency>()
+            .try_into_typed::<yggdryl::types::ascii::Currency>()
             .is_err()
     );
     assert!(MicScalar::new(Scalar::from("XPARIS")).is_err());

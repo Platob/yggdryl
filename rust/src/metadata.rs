@@ -48,7 +48,7 @@ type MetadataMap = BTreeMap<String, String>;
 ///
 /// One list drives every generated accessor and every named view type, so a
 /// protocol added here appears on the metadata snapshot, on [`crate::Field`]
-/// and in [`crate::field::protocol`] in the same change rather than in
+/// and in [`crate::types::protocol`] in the same change rather than in
 /// whichever of them someone remembered. `https` is deliberately absent: it
 /// shares the canonical `http:` prefix, and one spelling of one namespace is
 /// what keeps a header from being stored twice.
@@ -207,7 +207,7 @@ macro_rules! metadata_protocol_accessor {
         /// This is [`Self::protocol`] with the protocol already chosen. A bare
         /// snapshot has no field behind it, so this answers a
         /// [`ProtocolMetadata`] rather than the specialized field view
-        #[doc = concat!("[`", stringify!($view), "`](crate::field::protocol::", stringify!($view), "),")]
+        #[doc = concat!("[`", stringify!($view), "`](crate::types::protocol::", stringify!($view), "),")]
         /// and a typed vocabulary that view would carry is a
         /// [`get`](ProtocolMetadata::get) by bare name here.
         pub fn $name(&self) -> ProtocolMetadata<'_> {

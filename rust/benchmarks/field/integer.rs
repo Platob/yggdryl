@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::field::{Int64Field, StructField, integer};
+use yggdryl::types::{Int64Field, StructField, integer};
 use yggdryl::{DataType, Field};
 
 pub fn benchmarks(criterion: &mut Criterion) {

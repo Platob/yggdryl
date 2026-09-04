@@ -88,9 +88,9 @@ use super::scan::{ScanPart, ScanPlan, ScanTask};
 use super::snapshot::{Snapshot, SnapshotRef};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
-use crate::field::cast::ArrowCast;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
+use crate::types::cast::ArrowCast;
 use crate::{DataType, Error, Field, IOKind, MimeType, Result, Scalar};
 use crate::{IOBase, IOMedia};
 

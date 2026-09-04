@@ -9,6 +9,7 @@ pub mod decimal;
 mod default;
 mod diff;
 mod dtype;
+mod field;
 pub mod floating;
 pub mod geospatial;
 pub mod guid;
@@ -16,33 +17,57 @@ pub mod integer;
 mod merge;
 pub mod nested;
 mod parser;
+mod pretty;
+pub mod protocol;
 pub(crate) mod serde;
 pub mod temporal;
 pub mod text;
+mod typed;
+mod value;
 mod vocabulary;
 
+#[cfg(feature = "arrow")]
+#[path = "../field/cast/mod.rs"]
+pub mod cast;
+
 pub use crate::{TimeUnit, UnionMode};
+#[cfg(feature = "arrow")]
+pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
-pub use ascii::AsciiEnum;
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::ascii_padded;
+pub use ascii::*;
 pub(crate) use ascii::{
     ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes,
     ascii_free_text, ascii_text, code_cell_text, code_for_extension, code_refusal, code_text,
 };
+pub use boolean::*;
+pub use bytes::*;
+pub use decimal::*;
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
 };
+pub(crate) use diff::push_field_name_path;
+pub use diff::{Differences, OwnedDifferences};
 pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
+pub use field::*;
+pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
-pub use geospatial::GeospatialType;
+pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+pub use guid::*;
 pub(crate) use guid::{GUID_EXTENSION_NAME, guid_bytes, guid_parse, guid_text};
+pub use integer::*;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
-pub use nested::{DictionaryType, FieldKey, Fields, MapType, RunEndEncodedType, UnionFields};
+pub use nested::*;
+pub use pretty::Pretty;
+pub use temporal::*;
+pub use text::*;
+pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef};
+pub(crate) use value::{dtype_scalar, validate_dtype_value_for};
 
 #[cfg(test)]
 mod tests;

@@ -4,7 +4,7 @@ use std::collections::TryReserveError;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::field::push_field_name_path;
+use crate::types::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;

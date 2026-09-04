@@ -605,7 +605,7 @@ impl Iterator for Cast {
     type Item = std::result::Result<arrow_array::RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        use crate::field::cast::ArrowCast;
+        use crate::types::cast::ArrowCast;
 
         let batch = match self.inner.next()? {
             Ok(batch) => batch,

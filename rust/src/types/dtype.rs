@@ -181,7 +181,7 @@ impl DataType {
     /// Returns an error naming the value's path when it is not a value this
     /// datatype accepts.
     pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar> {
-        crate::field::dtype_scalar(self, value.into())
+        crate::types::dtype_scalar(self, value.into())
     }
 
     /// Returns a deterministic cross-process hash of the canonical display.

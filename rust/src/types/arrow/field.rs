@@ -12,11 +12,11 @@ use arrow_schema::{
 };
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Field, FieldRef};
 use crate::types::{
     ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, GUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
     arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
+use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialType, Metadata, Result};
 
 impl Field {

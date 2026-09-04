@@ -215,6 +215,18 @@ pub struct TypedFieldRef<'field, K: FieldType> {
     marker: PhantomData<K>,
 }
 
+impl Field {
+    /// Checks this field's datatype and returns an allocation-free typed view.
+    pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>> {
+        TypedFieldRef::try_from_field(self)
+    }
+
+    /// Checks this field's datatype and consumes it into a typed field.
+    pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>> {
+        TypedField::try_from_field(self)
+    }
+}
+
 impl<'field, K: FieldType> TypedFieldRef<'field, K> {
     /// Checks and borrows a generic field without cloning it.
     pub fn try_from_field(field: &'field Field) -> Result<Self> {
@@ -424,9 +436,9 @@ macro_rules! define_field_types {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
 
-        impl super::typed::sealed::Sealed for $marker {}
+        impl $crate::types::typed::sealed::Sealed for $marker {}
 
-        impl super::typed::FieldType for $marker {
+        impl $crate::types::typed::FieldType for $marker {
             const NAME: &'static str = $name;
 
             fn matches(dtype: &crate::DataType) -> bool {
@@ -466,8 +478,8 @@ macro_rules! static_field_constructor {
     };
 }
 
-static_field_constructor!(super::scalar::Null, DataType::Null);
-static_field_constructor!(super::scalar::Boolean, DataType::Boolean);
+static_field_constructor!(super::boolean::Null, DataType::Null);
+static_field_constructor!(super::boolean::Boolean, DataType::Boolean);
 static_field_constructor!(super::integer::Int8, DataType::Int8);
 static_field_constructor!(super::integer::Int16, DataType::Int16);
 static_field_constructor!(super::integer::Int32, DataType::Int32);
@@ -481,16 +493,16 @@ static_field_constructor!(super::floating::Float32, DataType::Float32);
 static_field_constructor!(super::floating::Float64, DataType::Float64);
 static_field_constructor!(super::temporal::Date32, DataType::Date32);
 static_field_constructor!(super::temporal::Date64, DataType::Date64);
-static_field_constructor!(super::binary::Binary, DataType::Binary);
-static_field_constructor!(super::binary::LargeBinary, DataType::LargeBinary);
-static_field_constructor!(super::binary::BinaryView, DataType::BinaryView);
-static_field_constructor!(super::binary::Utf8, DataType::Utf8);
-static_field_constructor!(super::binary::LargeUtf8, DataType::LargeUtf8);
-static_field_constructor!(super::binary::Utf8View, DataType::Utf8View);
+static_field_constructor!(super::bytes::Binary, DataType::Binary);
+static_field_constructor!(super::bytes::LargeBinary, DataType::LargeBinary);
+static_field_constructor!(super::bytes::BinaryView, DataType::BinaryView);
+static_field_constructor!(super::text::Utf8, DataType::Utf8);
+static_field_constructor!(super::text::LargeUtf8, DataType::LargeUtf8);
+static_field_constructor!(super::text::Utf8View, DataType::Utf8View);
 static_field_constructor!(super::ascii::Ascii, DataType::Ascii);
 static_field_constructor!(super::ascii::Country, DataType::Country);
 static_field_constructor!(super::ascii::Currency, DataType::Currency);
 static_field_constructor!(super::ascii::Mic, DataType::Mic);
 static_field_constructor!(super::ascii::Cfi, DataType::Cfi);
 static_field_constructor!(super::nested::Variant, DataType::Variant);
-static_field_constructor!(super::nested::Guid, DataType::Guid);
+static_field_constructor!(super::guid::Guid, DataType::Guid);

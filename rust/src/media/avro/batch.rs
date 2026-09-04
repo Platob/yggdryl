@@ -315,7 +315,7 @@ where
         if batch.num_rows() == 0 {
             continue;
         }
-        let batch = crate::field::cast::cast_record_batch(&canonical, batch, false)?;
+        let batch = crate::types::cast::cast_record_batch(&canonical, batch, false)?;
         payload.clear();
         encode_batch(&schema.node, &schema, &batch, &mut payload)?;
         let compressed = coding.dump(&payload, options.level())?;

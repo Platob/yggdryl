@@ -447,16 +447,16 @@ pub trait IORecordOptions: Sized {
     ) -> Result<arrow_array::RecordBatch> {
         let safe = self.safe();
         let batch = match self.field() {
-            Some(declared) => crate::field::cast::cast_record_batch(&declared, batch, safe)?,
+            Some(declared) => crate::types::cast::cast_record_batch(&declared, batch, safe)?,
             None => batch,
         };
         let root = crate::arrow::field_from_arrow_schema(self.name(), batch.schema().as_ref())?;
         let batch = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())? {
-            Some(target) => crate::field::cast::cast_record_batch(&target, batch, safe)?,
+            Some(target) => crate::types::cast::cast_record_batch(&target, batch, safe)?,
             None => batch,
         };
         match existing {
-            Some(stored) => Ok(crate::field::cast::cast_record_batch(stored, batch, true)?),
+            Some(stored) => Ok(crate::types::cast::cast_record_batch(stored, batch, true)?),
             None => Ok(batch),
         }
     }

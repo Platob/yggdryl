@@ -8,10 +8,9 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use super::Field;
 use crate::generic::Scalar;
 use crate::types::serde::{integer, invalid, key};
-use crate::{DataType, Error, Metadata, Result};
+use crate::{DataType, Error, Field, Metadata, Result};
 
 impl Field {
     /// Deserializes and validates a field from structural JSON.

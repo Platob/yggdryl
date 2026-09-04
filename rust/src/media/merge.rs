@@ -24,7 +24,7 @@ use arrow_row::{RowConverter, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
-use crate::field::cast::ArrowCast;
+use crate::types::cast::ArrowCast;
 use crate::{Error, Field, Result};
 
 /// One key's positions in the held result, as `(batch, row)` pairs.

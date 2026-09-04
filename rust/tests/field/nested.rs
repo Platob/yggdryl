@@ -1,4 +1,4 @@
-use yggdryl::field::nested;
+use yggdryl::types::nested;
 use yggdryl::{DataType, Field, UnionMode};
 
 use crate::typed::assert_typed_marker;

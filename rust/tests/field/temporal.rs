@@ -1,4 +1,4 @@
-use yggdryl::field::temporal;
+use yggdryl::types::temporal;
 use yggdryl::{DataType, TimeUnit, Timezone};
 
 use crate::typed::assert_typed_marker;

@@ -2,6 +2,7 @@
 
 mod dictionary;
 mod dtypes;
+mod fields;
 mod vocabulary;
 
 pub use dictionary::AsciiEnum;
@@ -12,3 +13,4 @@ pub(crate) use dtypes::{
     ascii_free_text, ascii_text, code_cell_text, code_extension_name, code_for_extension,
     code_refusal, code_text,
 };
+pub use fields::*;

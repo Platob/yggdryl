@@ -1,6 +1,7 @@
 //! Null and Boolean field markers.
 
-use super::typed::define_field_types;
+use crate::TypedField;
+use crate::types::typed::define_field_types;
 
 define_field_types!(
     /// A field whose datatype is [`crate::DataType::Null`].
@@ -8,6 +9,11 @@ define_field_types!(
     "null",
     crate::DataType::Null
 );
+
+/// A null-typed field.
+pub type NullField = TypedField<Null>;
+/// A Boolean-typed field.
+pub type BooleanField = TypedField<Boolean>;
 define_field_types!(
     /// A field whose datatype is [`crate::DataType::Boolean`].
     Boolean,

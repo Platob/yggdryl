@@ -1,5 +1,11 @@
 //! Lossless Arrow datatype interoperability.
 
+mod field;
+
+pub(crate) use field::arrow_field_to_ffi;
+#[cfg(feature = "arrow")]
+pub(crate) use field::{RecognizedExtension, recognized_arrow_extension};
+
 use std::sync::Arc;
 
 use arrow_schema::{
@@ -9,7 +15,6 @@ use arrow_schema::{
 };
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::field::arrow_field_to_ffi;
 use crate::{Error, Field, Result};
 
 use super::ascii::{

@@ -3,7 +3,7 @@
 //! [`ArrowCast`] answers "make this array fit that field" for any
 //! field, and returns an [`ArrayRef`] because any field could be any datatype.
 //! A [`TypedField`] already knows its variant, so it can answer with the array
-//! type itself: [`Int64Field`](crate::field::Int64Field) casts to an
+//! type itself: [`Int64Field`](crate::types::Int64Field) casts to an
 //! [`Int64Array`](arrow_array::Int64Array), and the caller reads values without
 //! a downcast of its own.
 //!
@@ -14,7 +14,7 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{ArrayRef, StringArray};
-//! use yggdryl::field::Int64Field;
+//! use yggdryl::types::Int64Field;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let field = Int64Field::new("id", false);
@@ -96,8 +96,8 @@ macro_rules! opaque_array {
     };
 }
 
-typed_array!(super::scalar::Null, arrow_array::NullArray);
-typed_array!(super::scalar::Boolean, arrow_array::BooleanArray);
+typed_array!(super::boolean::Null, arrow_array::NullArray);
+typed_array!(super::boolean::Boolean, arrow_array::BooleanArray);
 typed_array!(super::integer::Int8, arrow_array::Int8Array);
 typed_array!(super::integer::Int16, arrow_array::Int16Array);
 typed_array!(super::integer::Int32, arrow_array::Int32Array);
@@ -115,16 +115,16 @@ typed_array!(super::decimal::Decimal32, arrow_array::Decimal32Array);
 typed_array!(super::decimal::Decimal64, arrow_array::Decimal64Array);
 typed_array!(super::decimal::Decimal128, arrow_array::Decimal128Array);
 typed_array!(super::decimal::Decimal256, arrow_array::Decimal256Array);
-typed_array!(super::binary::Binary, arrow_array::BinaryArray);
-typed_array!(super::binary::LargeBinary, arrow_array::LargeBinaryArray);
-typed_array!(super::binary::BinaryView, arrow_array::BinaryViewArray);
+typed_array!(super::bytes::Binary, arrow_array::BinaryArray);
+typed_array!(super::bytes::LargeBinary, arrow_array::LargeBinaryArray);
+typed_array!(super::bytes::BinaryView, arrow_array::BinaryViewArray);
 typed_array!(
-    super::binary::FixedSizeBinary,
+    super::bytes::FixedSizeBinary,
     arrow_array::FixedSizeBinaryArray
 );
-typed_array!(super::binary::Utf8, arrow_array::StringArray);
-typed_array!(super::binary::LargeUtf8, arrow_array::LargeStringArray);
-typed_array!(super::binary::Utf8View, arrow_array::StringViewArray);
+typed_array!(super::text::Utf8, arrow_array::StringArray);
+typed_array!(super::text::LargeUtf8, arrow_array::LargeStringArray);
+typed_array!(super::text::Utf8View, arrow_array::StringViewArray);
 // Variable ASCII stores as binary; a fixed width as fixed binary.
 typed_array!(super::ascii::Ascii, arrow_array::BinaryArray);
 typed_array!(super::ascii::FixedAscii, arrow_array::FixedSizeBinaryArray);
@@ -134,7 +134,7 @@ typed_array!(super::ascii::Currency, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Mic, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Cfi, arrow_array::FixedSizeBinaryArray);
 // A GUID stores as the fixed binary of its sixteen bytes.
-typed_array!(super::nested::Guid, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::guid::Guid, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::nested::List, arrow_array::ListArray);
 typed_array!(super::nested::ListView, arrow_array::ListViewArray);
 typed_array!(super::nested::LargeList, arrow_array::LargeListArray);

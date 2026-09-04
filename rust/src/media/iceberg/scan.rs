@@ -38,8 +38,8 @@ use super::partition::{PartitionSpec, Transform};
 use super::value::single_to_value;
 use crate::arrow::BatchReader;
 use crate::expression::{Bound, Bounds, Selector};
-use crate::field::cast::ArrowCast;
 use crate::holder::Holder;
+use crate::types::cast::ArrowCast;
 use crate::{DataType, Error, Expression, Field, Result, Scalar};
 
 /// One data file a scan reads, with everything a rewrite of it would need.

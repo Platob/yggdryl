@@ -1,5 +1,5 @@
 use yggdryl::DataType;
-use yggdryl::field::floating;
+use yggdryl::types::floating;
 
 use crate::typed::assert_typed_marker;
 

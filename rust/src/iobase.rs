@@ -61,13 +61,15 @@ pub(crate) use hierarchy::container_is_tabular;
 use hierarchy::{descend, no_children};
 pub(crate) use lifecycle::{coding_mime, oversized};
 pub use lifecycle::{not_empty, skip_absent};
+#[cfg(feature = "iceberg")]
+pub(crate) use transfer::prepare_arrow_write_onto;
 #[cfg(feature = "arrow")]
 pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
 #[cfg(feature = "arrow")]
 pub(crate) use transfer::{
     append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,
     merge_arrow_reader_default, non_empty_arrow_reader, overwrite_arrow_reader_default_with_field,
-    prepare_arrow_write_onto, select_reader, stored_field,
+    select_reader, stored_field,
 };
 /// Random-access byte storage addressed by explicit offsets.
 ///

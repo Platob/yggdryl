@@ -1,5 +1,7 @@
 //! Canonical display and recursive Arrow, SQL, Hive, and Spark parsing.
 
+mod field;
+
 use std::fmt;
 use std::fmt::Write as _;
 use std::str::FromStr;

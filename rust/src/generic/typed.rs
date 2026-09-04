@@ -52,8 +52,8 @@ use serde::de::Error as _;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::field::{
-    ascii, binary, decimal, floating, geospatial, integer, nested, scalar, temporal,
+use crate::types::{
+    ascii, boolean, bytes, decimal, floating, geospatial, guid, integer, nested, temporal, text,
 };
 use crate::{AnyType, DataType, Error, FieldType, Result, Scalar};
 
@@ -170,7 +170,7 @@ impl<K: FieldType> TypedScalar<K> {
 
     /// Build the pairing without re-checking the marker.
     fn from_checked_parts(dtype: DataType, value: Scalar) -> Result<Self> {
-        crate::field::validate_dtype_value_for(&dtype, &value)?;
+        crate::types::validate_dtype_value_for(&dtype, &value)?;
         Ok(Self {
             dtype,
             value,
@@ -456,8 +456,8 @@ macro_rules! typed_value_alias {
     };
 }
 
-typed_value_alias!(NullScalar, scalar::Null, "null");
-typed_value_alias!(BooleanScalar, scalar::Boolean, "boolean");
+typed_value_alias!(NullScalar, boolean::Null, "null");
+typed_value_alias!(BooleanScalar, boolean::Boolean, "boolean");
 typed_value_alias!(Int8Scalar, integer::Int8, "int8");
 typed_value_alias!(Int16Scalar, integer::Int16, "int16");
 typed_value_alias!(Int32Scalar, integer::Int32, "int32");
@@ -477,17 +477,17 @@ typed_value_alias!(Time64Scalar, temporal::Time64, "time64");
 typed_value_alias!(Duration32Scalar, temporal::Duration32, "duration32");
 typed_value_alias!(Duration64Scalar, temporal::Duration64, "duration64");
 typed_value_alias!(IntervalScalar, temporal::Interval, "interval");
-typed_value_alias!(BinaryScalar, binary::Binary, "binary");
+typed_value_alias!(BinaryScalar, bytes::Binary, "binary");
 typed_value_alias!(
     FixedSizeBinaryScalar,
-    binary::FixedSizeBinary,
+    bytes::FixedSizeBinary,
     "fixed_size_binary"
 );
-typed_value_alias!(LargeBinaryScalar, binary::LargeBinary, "large_binary");
-typed_value_alias!(BinaryViewScalar, binary::BinaryView, "binary_view");
-typed_value_alias!(Utf8Scalar, binary::Utf8, "utf8");
-typed_value_alias!(LargeUtf8Scalar, binary::LargeUtf8, "large_utf8");
-typed_value_alias!(Utf8ViewScalar, binary::Utf8View, "utf8_view");
+typed_value_alias!(LargeBinaryScalar, bytes::LargeBinary, "large_binary");
+typed_value_alias!(BinaryViewScalar, bytes::BinaryView, "binary_view");
+typed_value_alias!(Utf8Scalar, text::Utf8, "utf8");
+typed_value_alias!(LargeUtf8Scalar, text::LargeUtf8, "large_utf8");
+typed_value_alias!(Utf8ViewScalar, text::Utf8View, "utf8_view");
 typed_value_alias!(AsciiScalar, ascii::Ascii, "ascii");
 typed_value_alias!(FixedAsciiScalar, ascii::FixedAscii, "fixed_ascii");
 typed_value_alias!(CountryScalar, ascii::Country, "country");
@@ -516,7 +516,7 @@ typed_value_alias!(Decimal128Scalar, decimal::Decimal128, "decimal128");
 typed_value_alias!(Decimal256Scalar, decimal::Decimal256, "decimal256");
 typed_value_alias!(MapScalar, nested::Map, "map");
 typed_value_alias!(VariantScalar, nested::Variant, "variant");
-typed_value_alias!(GuidScalar, nested::Guid, "guid");
+typed_value_alias!(GuidScalar, guid::Guid, "guid");
 typed_value_alias!(GeometryScalar, geospatial::Geometry, "geometry");
 typed_value_alias!(GeographyScalar, geospatial::Geography, "geography");
 typed_value_alias!(
@@ -525,8 +525,8 @@ typed_value_alias!(
     "run_end_encoded"
 );
 
-static_value_constructor!(scalar::Null, DataType::Null);
-static_value_constructor!(scalar::Boolean, DataType::Boolean);
+static_value_constructor!(boolean::Null, DataType::Null);
+static_value_constructor!(boolean::Boolean, DataType::Boolean);
 static_value_constructor!(integer::Int8, DataType::Int8);
 static_value_constructor!(integer::Int16, DataType::Int16);
 static_value_constructor!(integer::Int32, DataType::Int32);
@@ -540,19 +540,19 @@ static_value_constructor!(floating::Float32, DataType::Float32);
 static_value_constructor!(floating::Float64, DataType::Float64);
 static_value_constructor!(temporal::Date32, DataType::Date32);
 static_value_constructor!(temporal::Date64, DataType::Date64);
-static_value_constructor!(binary::Binary, DataType::Binary);
-static_value_constructor!(binary::LargeBinary, DataType::LargeBinary);
-static_value_constructor!(binary::BinaryView, DataType::BinaryView);
-static_value_constructor!(binary::Utf8, DataType::Utf8);
-static_value_constructor!(binary::LargeUtf8, DataType::LargeUtf8);
-static_value_constructor!(binary::Utf8View, DataType::Utf8View);
+static_value_constructor!(bytes::Binary, DataType::Binary);
+static_value_constructor!(bytes::LargeBinary, DataType::LargeBinary);
+static_value_constructor!(bytes::BinaryView, DataType::BinaryView);
+static_value_constructor!(text::Utf8, DataType::Utf8);
+static_value_constructor!(text::LargeUtf8, DataType::LargeUtf8);
+static_value_constructor!(text::Utf8View, DataType::Utf8View);
 static_value_constructor!(ascii::Ascii, DataType::Ascii);
 static_value_constructor!(ascii::Country, DataType::Country);
 static_value_constructor!(ascii::Currency, DataType::Currency);
 static_value_constructor!(ascii::Mic, DataType::Mic);
 static_value_constructor!(ascii::Cfi, DataType::Cfi);
 static_value_constructor!(nested::Variant, DataType::Variant);
-static_value_constructor!(nested::Guid, DataType::Guid);
+static_value_constructor!(guid::Guid, DataType::Guid);
 
 #[cfg(test)]
 mod tests;

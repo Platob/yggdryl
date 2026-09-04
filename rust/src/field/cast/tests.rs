@@ -9,7 +9,7 @@ use arrow_array::{
 
 use super::ArrowCast;
 use crate::TimeUnit;
-use crate::field::{
+use crate::types::{
     GeometryField, Int64Field, StructField, TimestampField, Utf8Field, VariantField,
 };
 use crate::{DataType, EdgeAlgorithm, Field};

@@ -14,7 +14,7 @@ use arrow_array::{
     StringViewArray, StructArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
     TimestampSecondArray,
 };
-use yggdryl::field::cast::ArrowCast as _;
+use yggdryl::types::cast::ArrowCast as _;
 use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
 fn cast(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<ArrayRef> {

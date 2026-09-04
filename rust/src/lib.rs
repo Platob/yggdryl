@@ -21,7 +21,6 @@ mod digest;
 mod edge_algorithm;
 mod error;
 pub mod expression;
-pub mod field;
 pub mod fix;
 pub mod generic;
 pub mod holder;
@@ -63,21 +62,6 @@ pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
-#[cfg(feature = "arrow")]
-pub use field::cast::{ArrowCast, ArrowFieldType};
-pub use field::protocol::{
-    ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, FieldPropertiesField,
-    FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut, GlueField,
-    GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField, IcebergFieldMut,
-    MysqlField, MysqlFieldMut, PandasField, PandasFieldMut, PolarsField, PolarsFieldMut,
-    PostgresField, PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField,
-    ProtocolFieldMut, S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut,
-    UrnField, UrnFieldMut,
-};
-pub use field::{
-    AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
-    PartitionFields, Pretty, TypedField, TypedFieldRef,
-};
 pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
 pub use generic::{EnumScalar, Float, Integer, Scalar, TemporalFamily, TemporalRef};
 pub use i256::I256;
@@ -102,6 +86,21 @@ pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
+#[cfg(feature = "arrow")]
+pub use types::cast::{ArrowCast, ArrowFieldType};
+pub use types::protocol::{
+    ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, FieldPropertiesField,
+    FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut, GlueField,
+    GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField, IcebergFieldMut,
+    MysqlField, MysqlFieldMut, PandasField, PandasFieldMut, PolarsField, PolarsFieldMut,
+    PostgresField, PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField,
+    ProtocolFieldMut, S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut,
+    UrnField, UrnFieldMut,
+};
+pub use types::{
+    AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
+    PartitionFields, Pretty, TypedField, TypedFieldRef,
+};
 pub use types::{
     AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,
     UnionFields,

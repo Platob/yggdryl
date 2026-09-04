@@ -9,10 +9,10 @@ use arrow_array::{
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
-use yggdryl::field::{
+use yggdryl::generic::{CfiScalar, CurrencyScalar, FixedAsciiScalar};
+use yggdryl::types::{
     AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
 };
-use yggdryl::generic::{CfiScalar, CurrencyScalar, FixedAsciiScalar};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};
 
 use crate::typed::assert_typed_marker;
