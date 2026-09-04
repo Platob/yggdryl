@@ -384,6 +384,18 @@ def test_ascii_widths_select_once() -> None:
     assert DataType("ascii128").ascii_width == 16
     assert DataType("utf8").ascii_width is None
 
+    # A name is one more spelling of a datatype, and it folds case, `_`, `-`,
+    # and spaces the way the grammar folds them.
+    names = DataType.logical_names()
+    assert names["price"] == DataType("decimal64(18,8)")
+    assert DataType("Price") == names["price"]
+    assert DataType.from_logical_name("UTC_Timestamp") == DataType('timestamp(ns,"UTC")')
+    # The base-type spellings the Arrow/SQL grammar owns keep their meaning.
+    assert DataType("int") == DataType("int32")
+    assert DataType("float") == DataType("float32")
+
+    with pytest.raises(ValueError, match="currency"):
+        DataType.from_logical_name("isin")
     with pytest.raises(ValueError, match="from 1 to 16 bytes, got 17"):
         DataType.ascii(17)
     with pytest.raises(ValueError, match="from 1 to 16 bytes, got 0"):
@@ -395,7 +407,11 @@ def test_ascii_widths_select_once() -> None:
 def test_a_registered_code_is_its_own_datatype() -> None:
     # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, and ISO 10962
     # six: each is a datatype storing exactly that, not a name over a width.
-    currency = DataType("currency")
+    # The four are the registrations whose name answers a type of its own.
+    currency = DataType.from_logical_name("Currency")
+    assert currency == DataType("currency")
+    assert DataType.logical_names()["currency"] == currency
+    assert DataType.from_logical_name("Exchange") == DataType("mic")
 
     assert currency.id == "currency"
     assert currency.kind == "string"
@@ -530,6 +546,35 @@ def test_ascii_dictionary_registers_values_in_first_appearance_order() -> None:
     wide = AsciiDictionary("ascii64", key="int64")
     assert wide.push("SEDOL1") == 0
     assert wide.dtype == DataType("dictionary(int64,ascii64)")
+
+
+def test_ascii_dictionary_prebuilds_the_iso_vocabularies() -> None:
+    prebuilt = AsciiDictionary.prebuilt()
+    assert set(prebuilt) == {"currency", "country", "mic", "exchange"}
+    # `exchange` is FIX's name for the ISO 10383 code, so it is one list.
+    assert prebuilt["mic"] == prebuilt["exchange"]
+
+    countries = AsciiDictionary.from_logical_name("Country")
+    seed = prebuilt["country"]
+    assert countries.values == seed
+    # A country vocabulary sits over the `country` datatype, so it stores the
+    # two bytes ISO 3166-1 fixes rather than an ASCII width's padding.
+    assert countries.values_dtype == DataType("country")
+    assert seed[countries.get_code("FR")] == "FR"
+    # A prebuilt code is a constant, so a second build agrees on every code.
+    assert AsciiDictionary.from_logical_name("country") == countries
+    # `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
+    assert countries.get_code("ZZ") is None
+    assert countries.push("ZZ") == len(seed)
+
+    # A registered name with no prebuilt list answers the empty width, and one
+    # that resolves to anything but a width is refused by width.
+    assert len(AsciiDictionary.from_logical_name("tenor")) == 0
+    assert AsciiDictionary.from_logical_name("mic", key="int64").key == DataType("int64")
+    with pytest.raises(ValueError, match="decimal64"):
+        AsciiDictionary.from_logical_name("price")
+    with pytest.raises(ValueError, match="currency"):
+        AsciiDictionary.from_logical_name("isin")
 
 
 def test_ascii_dictionary_refuses_what_the_width_and_the_key_refuse() -> None:

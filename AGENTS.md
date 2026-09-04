@@ -93,9 +93,10 @@ pin an unsettled design by implementing a binding first.
   `PARQUET:field_id` is the reserved typed exception.
 - All shared and dispatch enums live directly in `rust/src/generic/` and are
   re-exported from `generic`: `Codec`, `DataTypeId`, `DataTypeKind`,
-  `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`,
-  `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No local copies or
-  top-level `enums` module.
+  `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  local copies or top-level `enums` module. `Digest` and `Digester` live beside
+  `DigestAlgorithm` there, as `Encoder` does beside `Codec`.
 - `rust/src/generic/` also owns `Scalar`, `Holder`, `Media`, `RecordOptions`,
   `IORecordOptions`, and `RecordSettings`. Dispatch enums delegate complete
   contracts and add no variant-specific public vocabulary.
@@ -110,6 +111,13 @@ pin an unsettled design by implementing a binding first.
   value, custom iterator, schema builder, or line-only read/write method.
 - `rust/src/{gzip,zlib,zstd}/` each own `load`, `dump`, `reader`, `writer`, and
   an `IOBase` wrapper. `Codec` is the only dispatcher.
+- `rust/src/xxhash/` owns the xxHash protocol vocabulary: one-shot digests, the
+  four resumable states, `reader`/`writer`, the `Hashed<H>` handle, the
+  canonical `Scalar` byte feed, and the Arrow row digests. `DigestAlgorithm` is
+  the only dispatcher. The protocol itself comes from a pinned dependency whose
+  types never appear in a public signature, a doc example, an error, or a
+  binding. `stable_hash` is XXH3-64 over that feed everywhere; there is no
+  second hash family and no second spelling of this one.
 - Storage backends are sibling module folders containing `Path`, `Folder`, and
   `File`. `rust/src/local/` is memory-mapped local storage; remote backends do
   not change `io` or `local`.
@@ -367,6 +375,13 @@ Iceberg contract:
 - `DataType::from_str` and `Field::from_str` are the recursive schema grammars;
   bindings pass expressions directly. Accept canonical plus common Arrow/SQL/
   Hive/Spark forms with an explicit recursion limit.
+- `DataType::LOGICAL_NAMES` is the one logical-name registry the grammar falls
+  back to: the FIX Latest datatype vocabulary plus `mic`, each name resolving to
+  the closest core datatype and displaying as that datatype, so a name adds no
+  variant and no second spelling. Never register a word the Arrow/SQL grammar
+  already owns. `AsciiDictionary::PREBUILT` keys the ISO code constants three of
+  those names seed; a prebuilt code is a constant and auto-registration
+  continues past it.
 - Split only at top-level separators while honoring balanced wrappers,
   quoting, and escapes. Reject trailing tokens, duplicates, malformed numbers,
   and invalid nullability with byte position and context.

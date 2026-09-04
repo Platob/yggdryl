@@ -36,6 +36,7 @@ mod record;
 mod scalar;
 mod timezone;
 mod uri;
+mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -229,7 +230,10 @@ impl PyDifferenceIterator {
 #[pyo3(name = "_enum_values")]
 fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
-    use yggdryl::{Codec, DataTypeId, DataTypeKind, IOKind, IOMode, Scheme, TimeUnit, UnionMode};
+    use yggdryl::{
+        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Scheme, TimeUnit,
+        UnionMode,
+    };
 
     let listing = PyDict::new(py);
     listing.set_item(
@@ -247,6 +251,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     )?;
     listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
+    listing.set_item(
+        "digest_algorithms",
+        DigestAlgorithm::ALL.map(DigestAlgorithm::as_str).to_vec(),
+    )?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
     listing.set_item(
         "compatibility_schemes",
@@ -326,6 +334,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iceberg::PySnapshot>()?;
     module.add_class::<iceberg::PyManifestFile>()?;
     module.add_class::<iceberg::PyDataFile>()?;
+    xxhash::register(module)?;
     module.add_function(wrap_pyfunction!(codings::gzip_loads, module)?)?;
     module.add_function(wrap_pyfunction!(codings::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(codings::zlib_loads, module)?)?;

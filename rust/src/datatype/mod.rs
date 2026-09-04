@@ -19,12 +19,14 @@ mod floating;
 mod geospatial;
 mod guid;
 mod integer;
+mod logical;
 mod merge;
 mod nested;
 mod parser;
 mod scalar;
 pub(crate) mod serde;
 mod temporal;
+mod vocabulary;
 
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
 #[cfg(feature = "arrow")]

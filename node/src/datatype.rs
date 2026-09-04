@@ -199,6 +199,26 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
+    /// Resolves a registered logical name such as `currency` or `Price` to
+    /// the datatype it spells, folding case, `_`, `-`, and spaces.
+    #[napi(factory)]
+    pub fn from_logical_name(name: String) -> Result<Self> {
+        CoreDataType::from_logical_name(&name)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The logical names, keyed by name in registration order, mapped to the
+    /// datatype each spells.
+    #[napi(ts_return_type = "Record<string, DataType>")]
+    pub fn logical_names(env: &Env) -> Result<Object<'_>> {
+        let mut names = Object::new(env)?;
+        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
+            names.set(*name, Self::from_core(dtype.clone()))?;
+        }
+        Ok(names)
+    }
+
     /// Internal direct exact-decimal constructor.
     #[napi(factory, js_name = "_decimal", skip_typescript)]
     pub fn decimal_kind(kind: String, precision: f64, scale: f64) -> Result<Self> {
@@ -690,7 +710,7 @@ impl JsDataType {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of canonical native display text.
+    /// Deterministic XXH3-64 hash of canonical native display text.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
@@ -818,6 +838,30 @@ impl JsAsciiDictionary {
         let dictionary = CoreAsciiDictionary::from_values(dtype_from_input(values)?, seen)
             .map_err(napi_error)?;
         Self::keyed(dictionary, key)
+    }
+
+    /// Create the vocabulary a registered logical name prebuilds, such as
+    /// `currency`, `country`, or `mic`.
+    ///
+    /// A registered name over an ASCII width with no prebuilt list answers an
+    /// empty vocabulary of that width.
+    #[napi(factory)]
+    pub fn from_logical_name(
+        name: String,
+        key: Option<Either<ClassInstance<'_, JsDataType>, String>>,
+    ) -> Result<Self> {
+        let dictionary = CoreAsciiDictionary::from_logical_name(&name).map_err(napi_error)?;
+        Self::keyed(dictionary, key)
+    }
+
+    /// The prebuilt vocabularies, keyed by the logical name that spells them.
+    #[napi(ts_return_type = "Record<string, string[]>")]
+    pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
+        let mut lists = Object::new(env)?;
+        for (name, values) in CoreAsciiDictionary::PREBUILT {
+            lists.set(*name, values.to_vec())?;
+        }
+        Ok(lists)
     }
 
     /// Register `value` and return its code, existing or newly appended.

@@ -144,6 +144,7 @@ nav:
       - gzip: gzip.md
       - zlib: zlib.md
       - zstd: zstd.md
+      - xxhash: xxhash.md
   - Medias:
       - text: text.md
       - json: json.md

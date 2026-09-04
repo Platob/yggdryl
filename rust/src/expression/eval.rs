@@ -503,29 +503,6 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
     }
 }
 
-fn parsed_time(count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match unit {
-        TimeUnit::Second | TimeUnit::Millisecond => Scalar::time32(
-            i32::try_from(count).map_err(|_| missing("a time32 count"))?,
-            unit,
-            Timezone::NAIVE,
-        ),
-        TimeUnit::Microsecond | TimeUnit::Nanosecond => {
-            Scalar::time64(count, unit, Timezone::NAIVE)
-        }
-        _ => Err(missing("a fixed-length time unit")),
-    }
-}
-
-fn parsed_duration(count: i64, unit: TimeUnit) -> Result<Scalar> {
-    match unit {
-        TimeUnit::Second | TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond => {
-            Scalar::duration64(count, unit)
-        }
-        _ => Err(missing("a fixed-length duration unit")),
-    }
-}
-
 /// Ten to a non-negative power, as the multiplier a rescale needs.
 fn pow10(scale: i8) -> Option<i128> {
     let places = u32::try_from(scale.max(0)).ok()?;
@@ -847,8 +824,6 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
 /// for [`Safety::Strict`].
 #[allow(clippy::too_many_lines)]
 pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Result<Scalar> {
-    use crate::generic::iso;
-
     if value.is_null() || matches!(target, DataType::Null) {
         return Ok(Scalar::Null);
     }
@@ -880,22 +855,12 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
     }
     if let Some((family, unit)) = temporal_parts(target) {
         if let Some(text) = value.as_str() {
-            let parsed = match family {
-                0 => iso::parse_date(text).map(Scalar::date32),
-                1 => iso::parse_time(text).and_then(|(count, unit)| parsed_time(count, unit)),
-                2 => match target {
-                    DataType::Timestamp(_, Some(_)) => iso::parse_timestamp(text)
-                        .and_then(|(count, unit, zone)| Scalar::datetime64(count, unit, zone)),
-                    _ => iso::parse_datetime(text)
-                        .and_then(|(count, unit)| Scalar::datetime64(count, unit, Timezone::NAIVE)),
-                },
-                _ => {
-                    iso::parse_duration(text).and_then(|(count, unit)| parsed_duration(count, unit))
-                }
-            };
-            return match parsed {
-                Ok(parsed) => convert(target, &parsed, safety),
-                Err(_) => refuse("an ISO 8601 temporal"),
+            // One text reading of a temporal serves both tiers: the Arrow
+            // cast leaf reads a column of spellings through the same call,
+            // so a row and a batch cannot answer differently.
+            return match Scalar::from_temporal_text(target, text) {
+                Ok(parsed) => Ok(parsed),
+                Err(_) => refuse("a temporal in its classic text spelling"),
             };
         }
         let Some(count) = temporal_at(value, family, unit) else {

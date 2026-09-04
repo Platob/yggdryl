@@ -632,6 +632,25 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
+    /// Resolves a registered logical name such as ``currency`` or ``Price``
+    /// to the datatype it spells, folding case, ``_``, ``-``, and spaces.
+    #[staticmethod]
+    fn from_logical_name(name: &str) -> PyResult<Self> {
+        let inner = CoreDataType::from_logical_name(name).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// The registered logical names mapped to the datatype each spells, in
+    /// registration order.
+    #[staticmethod]
+    fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let names = PyDict::new(py);
+        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
+            names.set_item(name, Self::from_validated(dtype.clone())?)?;
+        }
+        Ok(names)
+    }
+
     /// Internal Dictionary constructor preserving exact native datatypes.
     #[staticmethod]
     fn _dictionary(key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -1741,6 +1760,28 @@ impl PyAsciiDictionary {
             dictionary.push(&value?)?;
         }
         Ok(dictionary)
+    }
+
+    /// Creates the vocabulary a registered logical name prebuilds, such as
+    /// ``currency``, ``country``, or ``mic``.
+    ///
+    /// A registered name over an ASCII width with no prebuilt list answers an
+    /// empty vocabulary of that width.
+    #[staticmethod]
+    #[pyo3(signature = (name, key=None))]
+    fn from_logical_name(name: &str, key: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let inner = CoreAsciiDictionary::from_logical_name(name).map_err(value_error)?;
+        Self::keyed(inner, key)
+    }
+
+    /// The prebuilt vocabularies, keyed by the logical name that spells them.
+    #[staticmethod]
+    fn prebuilt(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let lists = PyDict::new(py);
+        for (name, values) in CoreAsciiDictionary::PREBUILT {
+            lists.set_item(name, PyList::new(py, *values)?)?;
+        }
+        Ok(lists)
     }
 
     /// Recovers the vocabulary of a `PyArrow` dictionary array over an ASCII

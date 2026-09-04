@@ -1922,11 +1922,9 @@ mod records {
             .and_then(crate::Scalar::as_sequence)
             .unwrap();
 
-        for index in 0..4 {
+        for (index, field) in fields.iter().take(4).enumerate() {
             assert_eq!(
-                fields[index]
-                    .get_key_str("type")
-                    .and_then(crate::Scalar::as_str),
+                field.get_key_str("type").and_then(crate::Scalar::as_str),
                 Some("string"),
                 "{index}"
             );

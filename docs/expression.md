@@ -315,7 +315,9 @@ The Arrow tier is an optimization of the row tier, never a second definition of 
 `arrow-ord`'s kernels, null tests read the validity buffer directly, and `and`/`or`/`not` are
 three-valued buffer arithmetic. Everything else runs the row evaluator and gathers the answers, which
 is slower and *cannot disagree*; a property test asserts the equality on every operator, nulls and
-`nan` included.
+`nan` included. A cast between text and a temporal is the one kernel with a reading in front of it:
+the column reads and spells through the same code a row does, and Arrow's kernel answers only the
+spellings this crate cannot read at all, which are the spellings a row refuses.
 
 A mask that keeps every row hands the input batch straight back, so its columns stay
 pointer-identical. A mask that keeps some rows must copy, because a `RecordBatch` is a dense

@@ -47,6 +47,7 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
 | `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
+| `xxhash` | [xxhash](../xxhash.md) |
 
 The three coding modules carry the whole-buffer pair - `loads` and `dumps`, plus `loads_raw` and
 `dumps_raw` on `zlib` - under the standard library's own module names, so swapping `import gzip`
@@ -54,6 +55,32 @@ for `from yggdryl import gzip` changes the engine and nothing else. Their stream
 `writer` and the transparent `Gzip<H>`-style handles stay Rust-only: both are built on Rust's
 `Read`/`Write`, which Python has no native spelling for. A handle still applies the coding its own
 name declares without being told, and `IOBase.codec` is what asks it which one that is.
+
+## Digests
+
+`yggdryl.xxhash` carries the four one-shot functions, the four resumable states, and
+`Digest`; `IOBase.read_digest` and `Scalar.digest` redirect to the same native path. The
+one-shot functions answer a plain `int` at the algorithm's native width and take `bytes`,
+`bytearray`, `memoryview`, any other buffer, or a `str` as its UTF-8.
+
+```python
+from yggdryl import Scalar, xxhash
+
+assert xxhash.xxh3_64(b"abc") == 0x78AF5F94892F3950
+assert xxhash.xxh3_64("abc") == xxhash.xxh3_64(memoryview(b"abc"))
+
+digest = xxhash.digest(b"abc", "xxh3-64")
+assert str(digest) == "xxh3-64:78af5f94892f3950"
+assert xxhash.Digest(str(digest)) == digest
+assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_hash()
+```
+
+A `bytes` or `str` is hashed in place; any other buffer is read through one bounded window,
+so a gigabyte `memoryview` costs one 64 KiB window rather than a gigabyte - and that window
+is a real cost the [boundary benchmark](../xxhash.md#benchmarks) reports rather than
+averages away. `Digest` is immutable and pickles, copies, orders, and hashes like every
+other immutable wrapper here. The streaming `reader`/`writer` pair and the `Hashed<H>`
+handle stay Rust-only, for the same `Read`/`Write` reason the codings do.
 
 ## Inference at the boundary
 

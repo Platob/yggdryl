@@ -107,6 +107,24 @@ pub enum Error {
         /// The location addressed, rendered canonically.
         path: SmolStr,
     },
+    /// An XXH3 custom secret is shorter than the algorithm requires.
+    InvalidSecret {
+        /// The digest algorithm the secret was offered to.
+        algorithm: &'static str,
+        /// The minimum byte length that algorithm requires.
+        required: usize,
+        /// The byte length offered.
+        actual: usize,
+    },
+    /// A whole-byte operation addressed a resource holding no bytes of its own.
+    NotAtomic {
+        /// The operation needing one whole byte value, such as `digest`.
+        operation: &'static str,
+        /// The resource kind addressed, such as `directory`.
+        kind: &'static str,
+        /// The location addressed, rendered canonically.
+        path: SmolStr,
+    },
     /// Reading or writing codec bytes failed.
     Io(std::io::Error),
     /// An Arrow schema value could not be converted.
@@ -190,6 +208,22 @@ impl fmt::Display for Error {
             } => write!(
                 formatter,
                 "expected to create a {expected} at {path:?}, got an existing {actual}"
+            ),
+            Self::InvalidSecret {
+                algorithm,
+                required,
+                actual,
+            } => write!(
+                formatter,
+                "expected an {algorithm} secret of at least {required} bytes, got {actual}"
+            ),
+            Self::NotAtomic {
+                operation,
+                kind,
+                path,
+            } => write!(
+                formatter,
+                "expected {operation} on a byte value at {path:?}, got a {kind}"
             ),
             Self::Io(error) => write!(formatter, "codec I/O error: {error}"),
             Self::Arrow(error) => write!(formatter, "Arrow schema error: {error}"),

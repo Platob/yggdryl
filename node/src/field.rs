@@ -1453,7 +1453,7 @@ impl JsField {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of canonical native display text.
+    /// Deterministic XXH3-64 hash of canonical native display text.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()

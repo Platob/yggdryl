@@ -35,7 +35,10 @@ fn ascii_markers_cover_the_widths_and_the_codes() {
 
     // The code/width boundary is the one the markers exist for: a currency
     // and an `ascii24` are the same three bytes and are not each other.
-    assert_eq!(CurrencyField::new("ccy", false).dtype(), &DataType::Currency);
+    assert_eq!(
+        CurrencyField::new("ccy", false).dtype(),
+        &DataType::Currency
+    );
     assert_eq!(CountryField::new("iso", true).dtype(), &DataType::Country);
     assert_eq!(MicField::new("venue", true).dtype(), &DataType::Mic);
     assert!(CurrencyField::try_new("ccy", DataType::Ascii24, false).is_err());

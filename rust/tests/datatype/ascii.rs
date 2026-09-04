@@ -453,7 +453,7 @@ mod dictionary {
             .unwrap_err()
             .to_string();
         assert!(
-            refused.contains("a dictionary array of int32 or int64 keys over an ASCII width"),
+            refused.contains("a dictionary array of int32 or int64 keys over one of the six"),
             "{refused}"
         );
         assert!(refused.contains("got Utf8"), "{refused}");
@@ -463,7 +463,7 @@ mod dictionary {
         let refused = AsciiDictionary::from_arrow_array(&utf8)
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("over an ASCII width"), "{refused}");
+        assert!(refused.contains("six ASCII"), "{refused}");
         assert!(refused.contains("Dictionary"), "{refused}");
     }
 }

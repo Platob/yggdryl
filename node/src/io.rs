@@ -31,6 +31,18 @@ use crate::text::JsTextOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
+/// Resolve the digest algorithm a handle read names, defaulting to XXH3-64.
+///
+/// XXH3-64 is the default because it is the algorithm every `stableHash` in
+/// the project answers, so a caller who expresses no preference gets the value
+/// the rest of the tree already agrees on.
+fn digest_algorithm(value: Option<&str>) -> Result<yggdryl::DigestAlgorithm> {
+    match value {
+        Some(value) => crate::xxhash::algorithm_from_str(value),
+        None => Ok(yggdryl::DigestAlgorithm::Xxh3_64),
+    }
+}
+
 /// Default byte-stream window, shared with the Rust core.
 const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::io::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
@@ -546,6 +558,37 @@ impl JsIOBase {
         self.inner
             .read_all_bytes()
             .map(Buffer::from)
+            .map_err(napi_error)
+    }
+
+    /// Digest every byte here, without holding the value in memory.
+    ///
+    /// The read streams in bounded chunks, so a multi-gigabyte object costs
+    /// one window rather than a copy. A resource that does not exist digests
+    /// as empty, per the laziness contract; a container throws.
+    #[napi]
+    pub fn read_digest(&self, algorithm: Option<String>) -> Result<crate::xxhash::JsDigest> {
+        let algorithm = digest_algorithm(algorithm.as_deref())?;
+        self.inner
+            .read_digest(algorithm)
+            .map(crate::xxhash::JsDigest::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Digest `length` bytes from `offset`, streaming the window.
+    #[napi]
+    pub fn read_range_digest(
+        &self,
+        offset: i64,
+        length: u32,
+        algorithm: Option<String>,
+    ) -> Result<crate::xxhash::JsDigest> {
+        let algorithm = digest_algorithm(algorithm.as_deref())?;
+        let offset =
+            u64::try_from(offset).map_err(|_| napi_error("offset must not be negative"))?;
+        self.inner
+            .read_range_digest(offset, length as usize, algorithm)
+            .map(crate::xxhash::JsDigest::from_core)
             .map_err(napi_error)
     }
 

@@ -364,12 +364,6 @@ impl<'a> Parser<'a> {
             // `uuid` is what every other system calls it, and there is no
             // parenthesized form to disambiguate, so both spellings parse.
             "guid" | "uuid" => DataType::Guid,
-            // A registered code is a datatype, not an alias: it parses to
-            // itself and displays as its own name.
-            "country" => DataType::Country,
-            "currency" => DataType::Currency,
-            "mic" => DataType::Mic,
-            "cfi" => DataType::Cfi,
             // Bare `ascii` names no width; `ascii(N)` lets the family
             // constructor select the physical width.
             "ascii" => {
@@ -426,11 +420,17 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            _ => {
-                return Err(
-                    self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
-                );
-            }
+            // A registered logical name is one more spelling of the datatype
+            // it names, resolved through the registry and never a copied
+            // list. The keyword is already folded, so the lookup reuses it.
+            _ => match super::logical::folded_logical_name(&keyword) {
+                Some(dtype) => dtype,
+                None => {
+                    return Err(
+                        self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
+                    );
+                }
+            },
         };
 
         self.parse_postfix_lists(value, depth)

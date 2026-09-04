@@ -20,7 +20,8 @@ they measure:
   opened-session metadata sections;
 - [expressions](expression.md#against-the-raw-arrow-kernels),
   [Arrow filesystem](arrowfs.md#what-the-wrapper-costs), and
-  [page buffering](buffered.md#what-the-cache-buys-and-what-it-costs).
+  [page buffering](buffered.md#what-the-cache-buys-and-what-it-costs);
+- [digests](xxhash.md#benchmarks).
 
 ## Running the benchmarks
 
@@ -36,6 +37,7 @@ they measure:
     cargo bench --bench toml
     cargo bench --bench yaml
     cargo bench --bench avro
+    cargo bench --bench xxhash
     cargo bench --bench io --features "parquet"
     cargo bench --bench io --features "parquet" -- io_pstream --noplot
     cargo bench --bench io --features "parquet" -- io_value --noplot
@@ -55,6 +57,7 @@ they measure:
     .venv/Scripts/python benchmarks/text.py --min-time 0.2 --repeat 7
     .venv/Scripts/python benchmarks/codecs.py --iterations 10000
     .venv/Scripts/python benchmarks/compression.py --min-time 0.2 --repeat 5
+    .venv/Scripts/python benchmarks/digests.py --min-time 0.2 --repeat 5
     .venv/Scripts/python benchmarks/iceberg.py --min-time 0.2 --repeat 5
     .venv/Scripts/python benchmarks/arrowfs.py --min-time 0.2 --repeat 7
     ```
@@ -71,6 +74,7 @@ they measure:
     npm run --prefix node bench:text
     npm run --prefix node bench:records
     npm run --prefix node bench:arrowfs
+    npm run --prefix node bench:xxhash
     ```
 
 Run on a quiet machine and compare identical release toolchains. Published
@@ -94,6 +98,8 @@ runs use one containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores,
 | `arrowfs` | foreign filesystem boundary beside the native handle |
 | `iceberg` | planning, metadata, manifests, partitioning, merge, compaction and commits |
 | `compression` (Python) | byte codings beside the standard library on the same wire |
+| `xxhash` | digest throughput per algorithm and size, wrapper overhead over the protocol crate, constant-memory handle reads, the canonical value feed, and Arrow row digests |
+| `digests` (Python) | the digest boundary beside C `libxxhash` on the same payload, with the conversion cost of each buffer shape visible |
 
 ## Rules
 

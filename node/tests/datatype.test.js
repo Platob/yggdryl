@@ -107,12 +107,22 @@ test('ASCII widths select their storage once', () => {
   assert.equal(new DataType('ascii128').asciiWidth, 16)
   assert.equal(new DataType('utf8').asciiWidth, null)
 
+  // A name folds case, `_`, `-`, and spaces the way the grammar folds them.
+  const names = DataType.logicalNames()
+  assert.equal(names.price.toString(), 'decimal64(18,8)')
+  assert.ok(DataType.from('Price').equals(names.price))
+  assert.equal(DataType.fromLogicalName('UTC_Timestamp').toString(), 'timestamp(ns,"UTC")')
+  // The base-type spellings the Arrow/SQL grammar owns keep their meaning.
+  assert.equal(DataType.from('int').id, 'int32')
+  assert.equal(DataType.from('float').id, 'float32')
+
   assert.throws(
     () => DataType.ascii(17),
     /expected an ASCII width from 1 to 16 bytes, got 17/,
   )
   assert.throws(() => DataType.ascii(0), /got 0/)
   assert.throws(() => DataType.ascii(2.5), /width must be a signed 32-bit integer/)
+  assert.throws(() => DataType.fromLogicalName('isin'), /currency/)
   assert.throws(() => DataType.fromString('ascii'))
 })
 
@@ -294,6 +304,32 @@ test('a seeded ASCII vocabulary is a value carried by its holder', () => {
   assert.equal(seeded.getCode('JPY'), null)
 })
 
+test('a prebuilt ASCII vocabulary seeds the ISO codes and auto-registers past them', () => {
+  const prebuilt = AsciiDictionary.prebuilt()
+  assert.deepEqual(Object.keys(prebuilt).sort(), ['country', 'currency', 'exchange', 'mic'])
+  // `exchange` is FIX's name for the ISO 10383 code, so it is one list.
+  assert.deepEqual(prebuilt.mic, prebuilt.exchange)
+
+  const countries = AsciiDictionary.fromLogicalName('Country')
+  assert.deepEqual(countries.values(), prebuilt.country)
+  // A country vocabulary sits over the `country` datatype, so it stores the
+  // two bytes ISO 3166-1 fixes and no padding at all.
+  assert.equal(countries.valuesDtype.toString(), 'country')
+  assert.equal(prebuilt.country[countries.getCode('FR')], 'FR')
+  // A prebuilt code is a constant, so a second build agrees on every code.
+  assert.ok(AsciiDictionary.fromLogicalName('country').equals(countries))
+  // `ZZ` is ISO 3166's user-assigned range, so it registers after the seed.
+  assert.equal(countries.getCode('ZZ'), null)
+  assert.equal(countries.push('ZZ'), prebuilt.country.length)
+
+  // A registered name with no prebuilt list answers the empty width, and one
+  // that resolves to anything but a width is refused by width.
+  assert.equal(AsciiDictionary.fromLogicalName('tenor').length, 0)
+  assert.equal(AsciiDictionary.fromLogicalName('mic', 'int64').key.toString(), 'int64')
+  assert.throws(() => AsciiDictionary.fromLogicalName('price'), /decimal64/)
+  assert.throws(() => AsciiDictionary.fromLogicalName('isin'), /currency/)
+})
+
 test('the generated enum names each value by the integer it packs into', () => {
   const venues = AsciiDictionary.fromValues('ascii32', ['XNAS', 'n/a', '3M'])
   const Venue = venues.intoEnum('Venue')
@@ -413,7 +449,7 @@ test('an ASCII vocabulary encodes Arrow columns whose codes continue', () => {
 
   assert.throws(
     () => AsciiDictionary.fromArrowArray(arrow.vectorFromArray(['USD'])),
-    /a dictionary array of int32 or int64 keys over an ASCII width/,
+    /a dictionary array of int32 or int64 keys over one of the six ASCII widths/,
   )
   assert.throws(
     () => AsciiDictionary.fromArrowArray('USD'),

@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::AsciiDictionary;
+use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::field::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::generic::{CurrencyScalar, MicScalar};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};

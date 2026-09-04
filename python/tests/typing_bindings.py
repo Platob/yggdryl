@@ -288,8 +288,11 @@ typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_value: bytes | None = typed_geography.default_pyvalue()
 ascii_dtype: DataType = DataType.ascii(3)
 ascii_width: int | None = ascii_dtype.ascii_width
-currency_dtype: DataType = DataType("currency")
+currency_dtype: DataType = DataType.from_logical_name("currency")
 currency_width: int | None = currency_dtype.ascii_width
+logical_names: dict[str, DataType] = DataType.logical_names()
+prebuilt_lists: dict[str, list[str]] = AsciiDictionary.prebuilt()
+prebuilt_mics: AsciiDictionary = AsciiDictionary.from_logical_name("mic")
 typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
 typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
 typed_ascii_narrow: Ascii24Field = fields.ascii24("ccy", nullable=False)

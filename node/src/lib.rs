@@ -32,6 +32,9 @@ mod timezone;
 // inventory rather than ordinary Rust call sites.
 #[allow(dead_code)]
 mod uri;
+// Discovered through NAPI's generated registration inventory, like `enums`.
+#[allow(dead_code)]
+mod xxhash;
 
 use std::cmp::Ordering;
 

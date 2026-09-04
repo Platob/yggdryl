@@ -39,6 +39,17 @@ pub enum DataTypeId {
     UInt32,
     /// Unsigned 64-bit integers.
     UInt64,
+    /// Signed 128-bit integers.
+    ///
+    /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
+    /// this identifier. It names the width [`crate::Scalar::I128`] stores and
+    /// the canonical identity a negative integer of any width carries into
+    /// [`crate::Scalar::write_bytes`].
+    Int128,
+    /// Unsigned 128-bit integers.
+    ///
+    /// The unsigned half of the pair [`Self::Int128`] documents.
+    UInt128,
     /// IEEE 16-bit floating point.
     Float16,
     /// IEEE 32-bit floating point.
@@ -135,7 +146,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 56] = [
+    pub const ALL: [Self; 58] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -146,6 +157,8 @@ impl DataTypeId {
         Self::UInt16,
         Self::UInt32,
         Self::UInt64,
+        Self::Int128,
+        Self::UInt128,
         Self::Float16,
         Self::Float32,
         Self::Float64,
@@ -221,6 +234,8 @@ impl DataTypeId {
             Self::UInt16 => "uint16",
             Self::UInt32 => "uint32",
             Self::UInt64 => "uint64",
+            Self::Int128 => "int128",
+            Self::UInt128 => "uint128",
             Self::Float16 => "float16",
             Self::Float32 => "float32",
             Self::Float64 => "float64",
@@ -270,6 +285,25 @@ impl DataTypeId {
         }
     }
 
+    /// Return this identifier's discriminant as one byte.
+    ///
+    /// The number is the variant's position in the declaration order
+    /// [`Self::ALL`] lists, and it is a wire contract:
+    /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
+    /// inserting a variant anywhere but the end changes stored digests. The
+    /// test pinning every value is what makes that a failure rather than a
+    /// surprise.
+    ///
+    /// ```
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::Null.as_u8(), 0);
+    /// assert_eq!(DataTypeId::Int128.as_u8(), 10);
+    /// ```
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+
     /// Return the coarse family this identifier belongs to.
     pub const fn kind(self) -> DataTypeKind {
         match self {
@@ -282,7 +316,9 @@ impl DataTypeId {
             | Self::UInt8
             | Self::UInt16
             | Self::UInt32
-            | Self::UInt64 => DataTypeKind::Integer,
+            | Self::UInt64
+            | Self::Int128
+            | Self::UInt128 => DataTypeKind::Integer,
             Self::Float16 | Self::Float32 | Self::Float64 => DataTypeKind::Floating,
             Self::Decimal32 | Self::Decimal64 | Self::Decimal128 | Self::Decimal256 => {
                 DataTypeKind::Decimal
@@ -370,14 +406,17 @@ impl DataTypeId {
 
     /// Return whether the variant is a signed integer.
     pub const fn is_signed_integer(self) -> bool {
-        matches!(self, Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64)
+        matches!(
+            self,
+            Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64 | Self::Int128
+        )
     }
 
     /// Return whether the variant is an unsigned integer.
     pub const fn is_unsigned_integer(self) -> bool {
         matches!(
             self,
-            Self::UInt8 | Self::UInt16 | Self::UInt32 | Self::UInt64
+            Self::UInt8 | Self::UInt16 | Self::UInt32 | Self::UInt64 | Self::UInt128
         )
     }
 
@@ -446,7 +485,9 @@ impl DataTypeId {
             Self::Ascii24 | Self::Currency => Some(3),
             Self::Cfi => Some(6),
             Self::Ascii96 => Some(12),
-            Self::Decimal128 | Self::Ascii128 | Self::Guid => Some(16),
+            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Ascii128 | Self::Guid => {
+                Some(16)
+            }
             Self::Decimal256 => Some(32),
             _ => None,
         }
@@ -531,7 +572,7 @@ mod tests {
 
     #[test]
     fn ascii_widths_and_codes_are_parameter_free_text() {
-        assert_eq!(DataTypeId::ALL.len(), 56);
+        assert_eq!(DataTypeId::ALL.len(), 58);
         for id in [
             DataTypeId::Ascii16,
             DataTypeId::Ascii24,
@@ -562,6 +603,62 @@ mod tests {
         assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
         assert_eq!(DataTypeId::Mic.fixed_byte_width(), Some(4));
         assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
+    }
+
+    #[test]
+    fn the_two_arrow_less_integer_widths_are_named_here_and_nowhere_in_datatype() {
+        // Arrow has no 128-bit integer layout, so these two identifiers name a
+        // width `Scalar` stores and `DataType` cannot. Every integer predicate
+        // still has to place them, and `DataType::id` still has to be able to
+        // produce every *other* identifier.
+        for id in [DataTypeId::Int128, DataTypeId::UInt128] {
+            assert!(id.is_integer());
+            assert_eq!(id.kind(), DataTypeKind::Integer);
+            assert_eq!(id.fixed_byte_width(), Some(16));
+            assert!(!id.is_parameterized());
+        }
+        assert!(DataTypeId::Int128.is_signed_integer());
+        assert!(DataTypeId::UInt128.is_unsigned_integer());
+        assert_eq!(DataTypeId::from_str("int128").unwrap(), DataTypeId::Int128);
+        assert_eq!(
+            DataTypeId::from_str("UINT128").unwrap(),
+            DataTypeId::UInt128
+        );
+        // The datatype grammar does not accept them, because no Arrow layout
+        // holds one.
+        assert!(crate::DataType::from_str("int128").is_err());
+    }
+
+    #[test]
+    fn discriminants_are_the_declaration_order_and_are_pinned() {
+        // The byte `Scalar::write_bytes` writes as a value's tag. Inserting a
+        // variant anywhere but the end moves every later number and changes
+        // stored digests, which is what this pins.
+        for (index, id) in DataTypeId::ALL.into_iter().enumerate() {
+            assert_eq!(usize::from(id.as_u8()), index, "{id}");
+        }
+        assert_eq!(DataTypeId::Null.as_u8(), 0);
+        assert_eq!(DataTypeId::Boolean.as_u8(), 1);
+        assert_eq!(DataTypeId::UInt64.as_u8(), 9);
+        assert_eq!(DataTypeId::Int128.as_u8(), 10);
+        assert_eq!(DataTypeId::UInt128.as_u8(), 11);
+        assert_eq!(DataTypeId::Float64.as_u8(), 14);
+        assert_eq!(DataTypeId::Timestamp.as_u8(), 15);
+        assert_eq!(DataTypeId::Date64.as_u8(), 17);
+        assert_eq!(DataTypeId::Time64.as_u8(), 19);
+        assert_eq!(DataTypeId::Duration64.as_u8(), 21);
+        assert_eq!(DataTypeId::Binary.as_u8(), 23);
+        assert_eq!(DataTypeId::Utf8.as_u8(), 27);
+        assert_eq!(DataTypeId::Country.as_u8(), 36);
+        assert_eq!(DataTypeId::Cfi.as_u8(), 39);
+        assert_eq!(DataTypeId::Guid.as_u8(), 40);
+        assert_eq!(DataTypeId::List.as_u8(), 41);
+        assert_eq!(DataTypeId::Struct.as_u8(), 46);
+        assert_eq!(DataTypeId::Dictionary.as_u8(), 48);
+        assert_eq!(DataTypeId::Decimal256.as_u8(), 52);
+        assert_eq!(DataTypeId::Map.as_u8(), 53);
+        assert_eq!(DataTypeId::Geometry.as_u8(), 56);
+        assert_eq!(DataTypeId::Geography.as_u8(), 57);
     }
 
     #[test]

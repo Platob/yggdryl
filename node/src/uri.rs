@@ -351,7 +351,7 @@ impl JsUri {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of the canonical URI.
+    /// Deterministic XXH3-64 hash of the canonical URI.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
@@ -881,7 +881,7 @@ impl JsUrl {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of the canonical URL.
+    /// Deterministic XXH3-64 hash of the canonical URL.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
@@ -1169,7 +1169,7 @@ impl JsUrn {
         ordering_value(self.inner.cmp(&other.inner))
     }
 
-    /// Deterministic FNV-1a hash of the canonical URN.
+    /// Deterministic XXH3-64 hash of the canonical URN.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()

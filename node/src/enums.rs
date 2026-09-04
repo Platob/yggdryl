@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use napi_derive::napi;
 use yggdryl::{
-    Codec, DataTypeId, DataTypeKind, IOKind, IOMode, Level, Scheme, TimeUnit, UnionMode,
+    Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Level, Scheme, TimeUnit,
+    UnionMode,
 };
 
 /// Every static enum vocabulary of the core, as canonical spellings.
@@ -38,6 +39,10 @@ pub fn enum_values_native() -> HashMap<String, Vec<String>> {
             spell(&IOMode::ALL.map(IOMode::as_str)),
         ),
         ("codecs".to_owned(), spell(&Codec::ALL.map(Codec::as_str))),
+        (
+            "digestAlgorithms".to_owned(),
+            spell(&DigestAlgorithm::ALL.map(DigestAlgorithm::as_str)),
+        ),
         (
             "ioKinds".to_owned(),
             spell(&IOKind::ALL.map(IOKind::as_str)),

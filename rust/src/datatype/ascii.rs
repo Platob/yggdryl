@@ -1062,7 +1062,9 @@ impl AsciiDictionary {
     /// a registered code, and the same errors [`Self::from_arrow_array`]
     /// returns for a layout, a null, or a repeated value.
     pub fn from_arrow_array_as(values: DataType, array: &dyn Array) -> Result<Self> {
-        let expected = values.ascii_width().ok_or_else(|| ascii_values_refusal(&values))?;
+        let expected = values
+            .ascii_width()
+            .ok_or_else(|| ascii_values_refusal(&values))?;
         let ArrowDataType::Dictionary(key, value) = array.data_type() else {
             return Err(layout_refusal(array.data_type()));
         };

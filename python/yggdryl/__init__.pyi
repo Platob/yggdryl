@@ -29,6 +29,7 @@ from . import (
     iceberg as iceberg,
     json as json,
     toml as toml,
+    xxhash as xxhash,
     yaml as yaml,
     zlib as zlib,
     zstd as zstd,
