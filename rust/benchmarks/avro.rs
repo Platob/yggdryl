@@ -1,3 +1,6 @@
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 #[path = "avro/codecs.rs"]
 mod codecs;
 #[path = "avro/container.rs"]

@@ -18,7 +18,7 @@ use yggdryl::io::Buffer;
 use yggdryl::zlib::Zlib;
 use yggdryl::zstd::Zstd;
 
-const FIXTURE: usize = 8 * 1024 * 1024;
+const FIXTURE: usize = crate::bench_profile::corpus(8 * 1024 * 1024, 512 * 1024);
 const BATCHES: [(&str, usize); 3] = [
     ("4kib", 4 * 1024),
     ("64kib", 64 * 1024),

@@ -1,3 +1,6 @@
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 #[path = "io/mod.rs"]
 mod benchmarks;
 

@@ -12,7 +12,7 @@ use yggdryl::io::Buffer;
 use yggdryl::{Limits, Scalar, avro, json};
 
 /// Rows per fixture.
-const ROWS: usize = 10_000;
+const ROWS: usize = crate::bench_profile::corpus(10_000, 512);
 
 /// A generator producing one row per index.
 type RowMaker = Box<dyn Fn(usize) -> Scalar>;
@@ -156,7 +156,9 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // Opening blocks parses only the header. The owning shape includes the
     // byte copy a language-runtime iterator needs in order to outlive its
     // factory call; neither path reads or decompresses the payload.
-    let rows = (0..10_000).map(Scalar::I64).collect::<Vec<_>>();
+    let rows = (0..ROWS)
+        .map(|value| Scalar::I64(i64::try_from(value).expect("the row index fits i64")))
+        .collect::<Vec<_>>();
     let mut stored = Buffer::new();
     avro::write_container(&mut stored, &Scalar::from("long"), &[], &rows)
         .expect("the streaming fixture encodes");

@@ -19,10 +19,10 @@ use yggdryl::generic::IORecordOptions;
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per record fixture, large enough that encoding dominates setup.
-pub(crate) const ROWS: i64 = 65_536;
+pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 1_024) as i64;
 
 /// Bytes per byte-level fixture, spanning several transfer chunks.
-pub(crate) const PAYLOAD: usize = 512 * 1024;
+pub(crate) const PAYLOAD: usize = crate::bench_profile::corpus(512 * 1024, 64 * 1024);
 
 /// The four-column root the record round trips carry.
 pub(crate) fn wide() -> Field {

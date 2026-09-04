@@ -10,6 +10,9 @@
 //! the price of the grammar. A regression that widens the gap is visible here
 //! before it is visible anywhere else.
 
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 use std::hint::black_box;
 use std::sync::Arc;
 
@@ -25,7 +28,7 @@ use yggdryl::expression::{Bound, Bounds};
 use yggdryl::{DataType, Expression, Field, Scalar};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
-const ROWS: usize = 65_536;
+const ROWS: usize = bench_profile::corpus(65_536, 16_384);
 
 /// The currencies the fixture cycles through, so a filter keeps a third.
 const CURRENCIES: [&str; 3] = ["EUR", "USD", "GBP"];

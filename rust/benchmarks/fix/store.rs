@@ -4,7 +4,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::local::Folder;
 use yggdryl::{DataType, FixRegistry, Url};
 
-use super::{scratch, seed, seed_root, two_branches};
+use super::{BRANCH_FIELDS, scratch, seed, seed_root, two_branches};
 
 /// A folder holding `shards` shards of ten fields each, built outside the
 /// timer.
@@ -31,7 +31,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     // Open and full load against shard count.
     let mut built = Vec::new();
-    for shards in [1_i32, 10, 100] {
+    let shard_counts = [
+        1_i32,
+        i32::try_from(crate::bench_profile::corpus(10, 3)).unwrap(),
+        i32::try_from(crate::bench_profile::corpus(100, 10)).unwrap(),
+    ];
+    for shards in shard_counts {
         let (path, folder) = sharded(shards);
         group.throughput(Throughput::Elements(u64::try_from(shards * 10).unwrap()));
         group.bench_function(format!("from_handle_{shards}_shards"), |bencher| {
@@ -50,13 +55,16 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let target = scratch("write");
     let mut target_folder = Folder::new(&target).expect("a local folder");
     group.throughput(Throughput::Elements(u64::try_from(hundred.len()).unwrap()));
-    group.bench_function("write_into_100_shards", |bencher| {
-        bencher.iter(|| black_box(&hundred).write_into(&mut target_folder).unwrap());
-    });
+    group.bench_function(
+        format!("write_into_{}_shards", shard_counts[2]),
+        |bencher| {
+            bencher.iter(|| black_box(&hundred).write_into(&mut target_folder).unwrap());
+        },
+    );
 
     // The branched layout: a registry holding two dictionaries opens, loads
     // and writes them as separate folders of shards.
-    let mixed = two_branches(1_000);
+    let mixed = two_branches(BRANCH_FIELDS);
     let mixed_root = scratch("two-branches");
     let mut mixed_folder = Folder::new(&mixed_root).expect("a local folder");
     mixed

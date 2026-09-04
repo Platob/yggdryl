@@ -3,6 +3,12 @@ use std::path::PathBuf;
 use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixBranch, FixId, FixRegistry};
 
+/// Large-dictionary size: reportable in release, quick to smoke-test in debug.
+pub(crate) const LARGE_FIELDS: usize = crate::bench_profile::corpus(4_000, 200);
+
+/// Second-branch size used by resolution and storage measurements.
+pub(crate) const BRANCH_FIELDS: usize = crate::bench_profile::corpus(1_000, 100);
+
 /// The tracked seed dictionary, relative to the crate manifest.
 pub(crate) fn seed_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

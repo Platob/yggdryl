@@ -14,7 +14,7 @@ use yggdryl::io::Buffer;
 use yggdryl::{Scalar, avro, json};
 
 /// Rows in the resolution fixture.
-const ROWS: usize = 10_000;
+const ROWS: usize = crate::bench_profile::corpus(10_000, 512);
 
 pub(crate) fn resolution_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("codec/avro_resolution");

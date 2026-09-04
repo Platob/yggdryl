@@ -1,3 +1,6 @@
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 #[path = "text/line.rs"]
 mod line;
 #[path = "text/placeholder.rs"]

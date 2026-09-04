@@ -4,7 +4,7 @@ use std::hint::black_box;
 use criterion::Criterion;
 use yggdryl::{Field, FixBranch, FixId, FixKey, FixRegistry};
 
-use super::{generated, mixed_nestedness, seed, two_branches, venue};
+use super::{BRANCH_FIELDS, LARGE_FIELDS, generated, mixed_nestedness, seed, two_branches, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
@@ -113,51 +113,60 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // Two branches in one registry: a venue identifier, a venue name, and
     // the cross-branch miss a bare tag must be.
     let venue = venue();
-    let mixed = two_branches(1_000);
-    let vendor_id = FixId::from_parts(venue.clone(), 5_500).expect("a vendor identifier");
+    let mixed = two_branches(BRANCH_FIELDS);
+    let branch_middle = BRANCH_FIELDS / 2;
+    let vendor_tag = i32::try_from(5_000 + branch_middle).expect("the vendor tag fits i32");
+    let vendor_name = format!("vendor{branch_middle:05}");
+    let vendor_alias = format!("VendorAlias{branch_middle:05}");
+    let vendor_id = FixId::from_parts(venue.clone(), vendor_tag).expect("a vendor identifier");
     group.bench_function("id_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(&vendor_id)));
     });
     group.bench_function("name_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box("vendor00500")));
+        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box(&vendor_name)));
     });
     group.bench_function("alias_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box("VendorAlias00500")));
+        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box(&vendor_alias)));
     });
     group.bench_function("cross_branch_miss", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(5_500)));
+        bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(vendor_tag)));
     });
     group.bench_function("tag_hit_two_branches", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(55)));
     });
 
     // The same hits over a few thousand fields.
-    let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(4_000)))
+    let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(LARGE_FIELDS)))
         .expect("the generated dictionary has no conflict");
-    group.bench_function("tag_hit_4000", |bencher| {
-        bencher.iter(|| black_box(&large).get_field_by_tag(black_box(7_000)));
+    let middle = LARGE_FIELDS / 2;
+    let middle_tag = i32::try_from(5_000 + middle).expect("the middle tag fits i32");
+    let middle_name = format!("generated{middle:05}");
+    let middle_alias = format!("GENERATEDALIAS{middle:05}");
+    group.bench_function(format!("tag_hit_{LARGE_FIELDS}"), |bencher| {
+        bencher.iter(|| black_box(&large).get_field_by_tag(black_box(middle_tag)));
     });
-    group.bench_function("name_hit_4000", |bencher| {
-        bencher
-            .iter(|| black_box(&large).get_field_by_name(&standard, black_box("generated02000")));
+    group.bench_function(format!("name_hit_{LARGE_FIELDS}"), |bencher| {
+        bencher.iter(|| black_box(&large).get_field_by_name(&standard, black_box(&middle_name)));
     });
-    group.bench_function("alias_hit_4000", |bencher| {
-        bencher.iter(|| {
-            black_box(&large).get_field_by_name(&standard, black_box("GENERATEDALIAS02000"))
-        });
+    group.bench_function(format!("alias_hit_{LARGE_FIELDS}"), |bencher| {
+        bencher.iter(|| black_box(&large).get_field_by_name(&standard, black_box(&middle_alias)));
     });
 
     // The realistic shape: a few thousand fields of which one in fifty is a
     // repeating group, so the primitive half holds nearly all of them. Tag
     // 7000 is one of the groups and 7001 the scalar beside it.
-    let realistic =
-        FixRegistry::from_fields(registry.iter().cloned().chain(mixed_nestedness(4_000)))
-            .expect("the generated dictionary has no conflict");
-    group.bench_function("primitive_tag_hit_4000", |bencher| {
-        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(7_001)));
+    let realistic = FixRegistry::from_fields(
+        registry
+            .iter()
+            .cloned()
+            .chain(mixed_nestedness(LARGE_FIELDS)),
+    )
+    .expect("the generated dictionary has no conflict");
+    group.bench_function(format!("primitive_tag_hit_{LARGE_FIELDS}"), |bencher| {
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(middle_tag + 1)));
     });
-    group.bench_function("nested_tag_hit_4000", |bencher| {
-        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(7_000)));
+    group.bench_function(format!("nested_tag_hit_{LARGE_FIELDS}"), |bencher| {
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(middle_tag)));
     });
     group.finish();
 }

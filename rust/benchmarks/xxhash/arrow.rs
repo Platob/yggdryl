@@ -16,7 +16,7 @@ use yggdryl::DigestAlgorithm;
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
 #[cfg(feature = "arrow")]
-const ROWS: usize = 65_536;
+const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
 
 /// A four-column batch whose columns all take the buffer path.
 #[cfg(feature = "arrow")]

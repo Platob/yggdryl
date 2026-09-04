@@ -15,7 +15,7 @@ use yggdryl::io::Buffer;
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per fixture, chosen so a column chunk is worth skipping.
-pub(crate) const ROWS: i64 = 65_536;
+pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 2_048) as i64;
 
 /// A four-column root: two cheap numeric columns and two wide string ones.
 ///

@@ -9,7 +9,7 @@ use yggdryl::generic::RecordOptions;
 use yggdryl::io::Buffer;
 use yggdryl::text::TextOptions;
 
-const ROWS: usize = 50_000;
+const ROWS: usize = crate::bench_profile::corpus(50_000, 2_000);
 const ROWHEADER: &str = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)";
 
 fn corpus() -> Vec<u8> {

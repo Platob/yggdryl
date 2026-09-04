@@ -16,8 +16,8 @@ pub(crate) const SIZES: [usize; 10] = [
     240,
     1024,
     64 * 1024,
-    1024 * 1024,
-    64 * 1024 * 1024,
+    crate::bench_profile::corpus(1024 * 1024, 256 * 1024),
+    crate::bench_profile::corpus(64 * 1024 * 1024, 1024 * 1024),
 ];
 
 /// A deterministic payload of `length` bytes.

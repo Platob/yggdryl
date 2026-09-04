@@ -1,3 +1,6 @@
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 use criterion::{criterion_group, criterion_main};
 
 #[path = "fix/mod.rs"]

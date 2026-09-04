@@ -11,7 +11,7 @@ use yggdryl::xxhash::{self, Hashed};
 use super::payload;
 
 /// The file every handle case reads, large enough that holding it shows.
-const FILE_BYTES: usize = 64 * 1024 * 1024;
+const FILE_BYTES: usize = crate::bench_profile::corpus(64 * 1024 * 1024, 1024 * 1024);
 
 /// A temporary root for the local file the handle cases read.
 fn root() -> std::path::PathBuf {
@@ -92,7 +92,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
 
     // `Hashed<H>` write-through against an unwrapped write plus a second pass.
     // The wrapper's whole claim is that the second pass disappears.
-    let written = payload(4 * 1024 * 1024);
+    let written = payload(crate::bench_profile::corpus(4 * 1024 * 1024, 256 * 1024));
     let mut group = criterion.benchmark_group("xxhash_hashed");
     group.sample_size(20);
     group.throughput(Throughput::Bytes(written.len() as u64));

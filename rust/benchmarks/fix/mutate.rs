@@ -3,11 +3,11 @@ use std::hint::black_box;
 use criterion::{BatchSize, Criterion};
 use yggdryl::{DataType, FixId, FixRegistry};
 
-use super::{generated, seed, venue};
+use super::{LARGE_FIELDS, generated, seed, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
-    let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(4_000)))
+    let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(LARGE_FIELDS)))
         .expect("the generated dictionary has no conflict");
     let mut group = criterion.benchmark_group("fix/mutate");
 
@@ -30,7 +30,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("insert_into_4000", |bencher| {
+    group.bench_function(format!("insert_into_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
             || (large.clone(), incoming.clone()),
             |(mut registry, field)| {
@@ -43,7 +43,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     // Building a whole dictionary, which is what a load costs above I/O.
     let fields: Vec<_> = large.iter().cloned().collect();
-    group.bench_function("from_fields_4000", |bencher| {
+    group.bench_function(format!("from_fields_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
             || fields.clone(),
             |fields| black_box(FixRegistry::from_fields(fields).unwrap()),
@@ -66,7 +66,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("update_in_4000", |bencher| {
+    group.bench_function(format!("update_in_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
             || (large.clone(), update.clone()),
             |(mut registry, field)| {
@@ -76,11 +76,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("remove_from_4000", |bencher| {
+    let middle_tag = i32::try_from(5_000 + LARGE_FIELDS / 2).expect("the middle tag fits i32");
+    group.bench_function(format!("remove_from_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
             || large.clone(),
             |mut registry| {
-                black_box(registry.remove(7_000).unwrap());
+                black_box(registry.remove(middle_tag).unwrap());
                 registry
             },
             BatchSize::SmallInput,

@@ -7,7 +7,7 @@ use yggdryl::IOBase;
 use yggdryl::io::Buffer;
 use yggdryl::{Scalar, Url};
 
-const ROWS: usize = 16_384;
+const ROWS: usize = crate::bench_profile::corpus(16_384, 1_024);
 
 fn value() -> Scalar {
     Scalar::from_sequence((0..ROWS).map(|id| {

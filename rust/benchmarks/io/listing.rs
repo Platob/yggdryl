@@ -13,7 +13,11 @@ use yggdryl::IOBase;
 use yggdryl::local::Folder;
 
 /// The folder widths the two legs are measured at.
-const WIDTHS: [usize; 3] = [10, 1_000, 100_000];
+const WIDTHS: [usize; 3] = [
+    10,
+    crate::bench_profile::corpus(1_000, 100),
+    crate::bench_profile::corpus(100_000, 1_000),
+];
 
 /// Build a folder of `width` leaves, and return it with its root path.
 fn wide(width: usize) -> (std::path::PathBuf, Folder) {

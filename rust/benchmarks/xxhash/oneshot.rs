@@ -41,7 +41,13 @@ pub(crate) fn size_benchmarks(criterion: &mut Criterion) {
 /// two rows should sit inside each other's noise.
 pub(crate) fn wrapper_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("xxhash_wrapper");
-    for length in [1_usize, 64, 240, 4096, 1024 * 1024] {
+    for length in [
+        1_usize,
+        64,
+        240,
+        4096,
+        crate::bench_profile::corpus(1024 * 1024, 256 * 1024),
+    ] {
         let data = payload(length);
         group.throughput(Throughput::Bytes(length as u64));
         let size = label(length);
@@ -65,7 +71,10 @@ pub(crate) fn wrapper_benchmarks(criterion: &mut Criterion) {
 pub(crate) fn streaming_benchmarks(criterion: &mut Criterion) {
     const WINDOW: usize = 64 * 1024;
     let mut group = criterion.benchmark_group("xxhash_streaming");
-    for length in [1024 * 1024_usize, 64 * 1024 * 1024] {
+    for length in [
+        crate::bench_profile::corpus(1024 * 1024, 256 * 1024),
+        crate::bench_profile::corpus(64 * 1024 * 1024, 1024 * 1024),
+    ] {
         let data = payload(length);
         group.throughput(Throughput::Bytes(length as u64));
         let size = label(length);
@@ -93,7 +102,7 @@ pub(crate) fn streaming_benchmarks(criterion: &mut Criterion) {
     }
 
     // The four states side by side at one size, so the widths compare.
-    let data = payload(1024 * 1024);
+    let data = payload(crate::bench_profile::corpus(1024 * 1024, 256 * 1024));
     group.throughput(Throughput::Bytes(data.len() as u64));
     group.bench_function("state/xxh32", |bencher| {
         bencher.iter(|| {

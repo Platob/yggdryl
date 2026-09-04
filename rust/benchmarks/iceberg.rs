@@ -8,6 +8,9 @@
 //! partition renderer is measured alone because both a table write and a
 //! folder write go through it for every directory name they spell.
 
+#[path = "bench_profile.rs"]
+mod bench_profile;
+
 use std::hint::black_box;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,6 +32,20 @@ use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// Distinct venue values the planning tables partition on.
 const VENUES: usize = 8;
+
+/// Workload dimensions; debug builds smoke-test the same paths at lower cost.
+const PLAN_LARGE_FILES: usize = bench_profile::corpus(200, 20);
+const COMPACT_FILES: usize = bench_profile::corpus(200, 16);
+const MERGE_FILES: usize = bench_profile::corpus(50, 16);
+const MANIFEST_BASE: usize = bench_profile::corpus(1_000, 100);
+const MANIFEST_SCALES: [usize; 3] = [
+    bench_profile::corpus(1_000, 100),
+    bench_profile::corpus(10_000, 500),
+    bench_profile::corpus(100_000, 1_000),
+];
+const READ_FILES: usize = 32;
+const READ_ROWS_PER_FILE: usize = bench_profile::corpus(100_000, 512);
+const READ_ROWS: usize = READ_FILES * READ_ROWS_PER_FILE;
 
 /// The filter the pruned plan asks for: one of the eight venue values.
 const PRUNED_FILTER: (&str, &str) = ("venue", "venue-2");
@@ -128,13 +145,21 @@ fn plan_table(label: &str, files: usize) -> Table<Folder> {
 fn plan_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("plan");
     let small = plan_table(SCRATCH_LABELS[0], 10);
-    let large = plan_table(SCRATCH_LABELS[1], 200);
+    let large = plan_table(SCRATCH_LABELS[1], PLAN_LARGE_FILES);
 
     // Proven once outside the timers, so no bench can silently measure an
     // empty table or a filter that prunes nothing.
     let whole = large.plan(&[]).expect("the whole-table plan reads");
-    assert_eq!(whole.tasks.len(), 200, "the large table holds 200 files");
-    assert_eq!(whole.manifests_read, 100, "one manifest per commit");
+    assert_eq!(
+        whole.tasks.len(),
+        PLAN_LARGE_FILES,
+        "the large table holds every file"
+    );
+    assert_eq!(
+        whole.manifests_read,
+        PLAN_LARGE_FILES / 2,
+        "one manifest per commit"
+    );
     let pruned = large.plan(&[PRUNED_FILTER]).expect("the pruned plan reads");
     assert!(pruned.manifests_skipped() > 0, "summaries must prune");
     assert!(pruned.files_skipped() > 0, "partition tuples must prune");
@@ -142,14 +167,14 @@ fn plan_benchmarks(criterion: &mut Criterion) {
     group.bench_function("files_10", |bencher| {
         bencher.iter(|| black_box(&small).plan(&[]).expect("the small plan reads"));
     });
-    group.bench_function("files_200", |bencher| {
+    group.bench_function(format!("files_{PLAN_LARGE_FILES}"), |bencher| {
         bencher.iter(|| black_box(&large).plan(&[]).expect("the large plan reads"));
     });
     // The full side of this comparison is `files_200` above: same table, same
     // snapshot, no filter. What this one adds is the summary check per
     // manifest-list row against what it saves - three quarters of the Avro
     // manifests never opened.
-    group.bench_function("pruned_vs_full_200", |bencher| {
+    group.bench_function(format!("pruned_vs_full_{PLAN_LARGE_FILES}"), |bencher| {
         bencher.iter(|| {
             black_box(&large)
                 .plan(black_box(&[PRUNED_FILTER]))
@@ -317,7 +342,7 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("manifest");
     let schema = plan_schema();
     let spec = PartitionSpec::identity(0, &schema, &["venue"]).expect("venue is a schema column");
-    let entries = manifest_entries(1_000);
+    let entries = manifest_entries(MANIFEST_BASE);
     let mut buffer = Buffer::new();
     buffer.set_media_type(MediaType::new(MimeType::AVRO));
     write_manifest(&mut buffer, FormatVersion::V2, &schema, &spec, &entries)
@@ -328,18 +353,18 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
         read_manifest(&buffer)
             .expect("the manifest reads back")
             .len(),
-        1_000
+        MANIFEST_BASE
     );
 
-    group.throughput(Throughput::Elements(1_000));
-    group.bench_function("decode_1000", |bencher| {
+    group.throughput(Throughput::Elements(MANIFEST_BASE as u64));
+    group.bench_function(format!("decode_{MANIFEST_BASE}"), |bencher| {
         bencher.iter(|| read_manifest(black_box(&buffer)).expect("the manifest decodes"));
     });
 
     // The planning fast path against the full decode, at manifest scale. The
     // filtered variant keeps counts and bounds - the lazy statistics a
     // filtered plan consults - and the unfiltered one skips even those.
-    for scale in [1_000_usize, 10_000, 100_000] {
+    for scale in MANIFEST_SCALES {
         let entries = manifest_entries(scale);
         let mut stored = Buffer::new();
         stored.set_media_type(MediaType::new(MimeType::AVRO));
@@ -374,8 +399,8 @@ fn manifest_benchmarks(criterion: &mut Criterion) {
                 read_manifest_for_plan(black_box(&stored), false).expect("the plan path decodes")
             });
         });
-        if scale == 100_000 {
-            group.bench_function("decode_spec_header/100000", |bencher| {
+        if scale == MANIFEST_SCALES[2] {
+            group.bench_function(format!("decode_spec_header/{scale}"), |bencher| {
                 bencher.iter(|| {
                     read_manifest_spec(black_box(&stored)).expect("the manifest header decodes")
                 });
@@ -532,17 +557,20 @@ fn identity_benchmarks(criterion: &mut Criterion) {
 /// against the same snapshot shape `plan/files_200` measures before folding.
 fn compact_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("compact");
-    let mut table = plan_table(SCRATCH_LABELS[2], 200);
+    let mut table = plan_table(SCRATCH_LABELS[2], COMPACT_FILES);
 
     // Proven once outside the timer: the fold really happened, so the plan
     // being measured reads 8 files where the uncompacted table read 200.
     let compaction = table.compact().expect("the table compacts");
-    assert_eq!(compaction.files_before, 200, "every small file rewrites");
+    assert_eq!(
+        compaction.files_before, COMPACT_FILES,
+        "every small file rewrites"
+    );
     assert_eq!(compaction.files_after, VENUES, "one merged file per venue");
     let plan = table.plan(&[]).expect("the compacted plan reads");
     assert_eq!(plan.tasks.len(), VENUES);
 
-    group.bench_function("plan_after_compact_200", |bencher| {
+    group.bench_function(format!("plan_after_compact_{COMPACT_FILES}"), |bencher| {
         bencher.iter(|| {
             black_box(&table)
                 .plan(&[])
@@ -591,7 +619,7 @@ fn merge_table(label: &str, files: usize) -> Table<Folder> {
 /// Upserting ten keyed rows into a table of fifty single-row files.
 fn merge_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("merge");
-    let mut table = merge_table(SCRATCH_LABELS[3], 50);
+    let mut table = merge_table(SCRATCH_LABELS[3], MERGE_FILES);
     let arrow = plan_schema()
         .into_arrow_schema()
         .expect("the schema projects to Arrow");
@@ -619,12 +647,16 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     let plan = table.plan(&[]).expect("the merged table plans");
     assert_eq!(
         plan.record_count().expect("the planned row count fits i64"),
-        50,
+        i64::try_from(MERGE_FILES).expect("the file count fits i64"),
         "an upsert of stored keys adds no row"
     );
-    assert_eq!(plan.tasks.len(), 41, "ten matched files fold into one");
+    assert_eq!(
+        plan.tasks.len(),
+        MERGE_FILES - 10 + 1,
+        "ten matched files fold into one"
+    );
 
-    group.bench_function("upsert_into_50_files", |bencher| {
+    group.bench_function(format!("upsert_into_{MERGE_FILES}_files"), |bencher| {
         bencher.iter(|| {
             table
                 .commit_merge(
@@ -718,7 +750,7 @@ fn scan_rows(table: &Table<Folder>) -> usize {
 fn read_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("read");
     group.sample_size(10);
-    let mut table = read_table(SCRATCH_LABELS[4], 32, 100_000);
+    let mut table = read_table(SCRATCH_LABELS[4], READ_FILES, READ_ROWS_PER_FILE);
 
     let sequential = IcebergOptions::new()
         .try_with_read_parallelism(1)
@@ -731,19 +763,30 @@ fn read_benchmarks(criterion: &mut Criterion) {
 
     // Proven once outside the timers: both paths read every row.
     table.set_options(sequential.clone());
-    assert_eq!(scan_rows(&table), 3_200_000);
+    assert_eq!(scan_rows(&table), READ_ROWS);
     table.set_options(parallel.clone());
-    assert_eq!(scan_rows(&table), 3_200_000);
+    assert_eq!(scan_rows(&table), READ_ROWS);
 
-    group.throughput(Throughput::Elements(3_200_000));
+    group.throughput(Throughput::Elements(READ_ROWS as u64));
+    let shape = if cfg!(debug_assertions) {
+        format!("{READ_FILES}x{READ_ROWS_PER_FILE}rows_smoke")
+    } else {
+        "32x4mb".to_owned()
+    };
     table.set_options(sequential);
-    group.bench_function("parallel_vs_sequential_32x4mb/parallelism-1", |bencher| {
-        bencher.iter(|| scan_rows(black_box(&table)));
-    });
+    group.bench_function(
+        format!("parallel_vs_sequential_{shape}/parallelism-1"),
+        |bencher| {
+            bencher.iter(|| scan_rows(black_box(&table)));
+        },
+    );
     table.set_options(parallel);
-    group.bench_function("parallel_vs_sequential_32x4mb/parallelism-4", |bencher| {
-        bencher.iter(|| scan_rows(black_box(&table)));
-    });
+    group.bench_function(
+        format!("parallel_vs_sequential_{shape}/parallelism-4"),
+        |bencher| {
+            bencher.iter(|| scan_rows(black_box(&table)));
+        },
+    );
     group.finish();
 }
 

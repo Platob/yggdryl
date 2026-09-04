@@ -18,7 +18,7 @@ use yggdryl::io::Buffer;
 use yggdryl::{DataType, Url, avro};
 
 /// Rows in the sweep fixture.
-const ROWS: usize = 65_536;
+const ROWS: usize = crate::bench_profile::corpus(65_536, 1_024);
 
 /// One canonical batch of `rows` trades starting at `base`.
 fn batch(base: usize, rows: usize) -> RecordBatch {
@@ -57,7 +57,11 @@ pub(crate) fn codec_benchmarks(criterion: &mut Criterion) {
         codecs.push("snappy");
     }
     for codec in codecs {
-        for block_rows in [1_024_usize, 8_192, 65_536] {
+        for block_rows in [
+            crate::bench_profile::corpus(1_024, 64),
+            crate::bench_profile::corpus(8_192, 256),
+            crate::bench_profile::corpus(65_536, 1_024),
+        ] {
             let mut stored = Buffer::new().with_media_type(
                 Url::from_str("file:///sweep.avro")
                     .expect("a url")

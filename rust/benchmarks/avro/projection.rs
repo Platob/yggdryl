@@ -16,7 +16,7 @@ use yggdryl::io::Buffer;
 use yggdryl::{DataType, Field, Url, avro};
 
 /// Rows in the wide fixture.
-const ROWS: usize = 8_192;
+const ROWS: usize = crate::bench_profile::corpus(8_192, 256);
 
 /// Columns in the wide fixture.
 const COLUMNS: usize = 40;

@@ -30,10 +30,10 @@ use super::{batch, handle, reader, stored_with, wide};
 
 /// The smaller stateful fixture keeps twelve format/method measurements
 /// practical while remaining large enough that encoding dominates dispatch.
-const STATEFUL_ROWS: usize = 4_096;
+const STATEFUL_ROWS: usize = crate::bench_profile::corpus(4_096, 512);
 
 /// Rows in the shaping fixtures.
-const SHAPE_ROWS: usize = 8_192;
+const SHAPE_ROWS: usize = crate::bench_profile::corpus(8_192, 1_024);
 
 /// Scalar columns before the nested columns in the wide fixture.
 const WIDE_COLUMNS: usize = 40;

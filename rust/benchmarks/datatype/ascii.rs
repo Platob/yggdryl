@@ -8,7 +8,7 @@ use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use yggdryl::{ArrowCast, AsciiEnum, DataType, Field};
 
-const ROWS: usize = 10_000;
+const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
