@@ -25,7 +25,7 @@ mod options;
 mod pairs;
 pub mod scalar;
 mod scheme;
-mod temporal;
+pub(crate) mod temporal;
 mod text;
 mod time_unit;
 pub(crate) mod timezone;

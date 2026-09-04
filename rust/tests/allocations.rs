@@ -22,7 +22,7 @@ use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yggdryl::{DataType, Field, MediaType, MimeType};
+use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// A pass-through allocator that counts allocations while armed.
 struct Counting;
@@ -362,5 +362,64 @@ fn writing_a_doc_string_costs_the_key_and_the_value_and_nothing_else() {
             effective, 2,
             "replacing the doc over {extra} unrelated keys grew"
         );
+    }
+}
+
+/// A value of each shape the canonical feed walks differently.
+///
+/// A leaf, a wide record, and a deep nest: the three the benchmark measures
+/// and the three where a stray allocation would hide.
+fn feed_corpus() -> Vec<(&'static str, Scalar)> {
+    let wide = Scalar::from_record(
+        (0..64).map(|index| (format!("column_{index:03}"), Scalar::I64(index))),
+    )
+    .expect("the generated record names are unique");
+    let mut deep = Scalar::from("leaf");
+    for _ in 0..32 {
+        deep = Scalar::from_sequence([deep, Scalar::I64(1)]);
+    }
+    vec![
+        ("a leaf", Scalar::from("AAPL")),
+        ("an integer", Scalar::I64(18_723)),
+        ("a decimal", Scalar::d128(18_723, 2)),
+        ("a wide record", wide),
+        ("a deep nest", deep),
+    ]
+}
+
+#[test]
+fn the_canonical_value_feed_allocates_nothing() {
+    // The feed is what every digest, row key, and `stable_hash` reads, so a
+    // stray allocation in it would be paid once per value in a batch. The
+    // state is built outside the counted section: XXH3 keeps its secret on the
+    // heap, and that is the algorithm's cost rather than the feed's.
+    for (label, value) in feed_corpus() {
+        let mut sink = yggdryl::xxhash::Xxh3_64::new();
+        free(&format!("feeding {label}"), || {
+            value.write_bytes(black_box(&mut sink));
+        });
+    }
+}
+
+#[test]
+fn borrowed_value_bytes_allocate_nothing() {
+    // The payload view borrows from the value or answers an inline array, so
+    // reading the bytes of a string or a 256-bit decimal copies neither.
+    for (label, value) in feed_corpus() {
+        if value.as_value_bytes().is_none() {
+            continue;
+        }
+        free(&format!("reading the payload of {label}"), || {
+            let bytes = value.as_value_bytes().expect("the payload is there");
+            black_box(bytes.len());
+        });
+    }
+    for value in [
+        Scalar::from("a symbol long enough to outgrow any inline string buffer"),
+        Scalar::D256(yggdryl::I256::from_i128(i128::MIN), -3),
+    ] {
+        free("reading a wide payload", || {
+            black_box(value.as_value_bytes().expect("the payload is there").len());
+        });
     }
 }

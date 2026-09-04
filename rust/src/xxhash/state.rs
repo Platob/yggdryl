@@ -78,6 +78,14 @@ impl Xxh32 {
         self.hasher.write(bytes);
     }
 
+    /// Feed one value's canonical byte representation.
+    ///
+    /// See [`Scalar::write_bytes`](crate::Scalar::write_bytes) for the
+    /// encoding and what it guarantees.
+    pub fn write_scalar(&mut self, value: &crate::Scalar) {
+        value.write_bytes(self);
+    }
+
     /// Feed a reader to exhaustion, returning the bytes consumed.
     ///
     /// # Errors
@@ -184,6 +192,14 @@ impl Xxh64 {
     /// Feed raw bytes.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.hasher.write(bytes);
+    }
+
+    /// Feed one value's canonical byte representation.
+    ///
+    /// See [`Scalar::write_bytes`](crate::Scalar::write_bytes) for the
+    /// encoding and what it guarantees.
+    pub fn write_scalar(&mut self, value: &crate::Scalar) {
+        value.write_bytes(self);
     }
 
     /// Feed a reader to exhaustion, returning the bytes consumed.
@@ -322,6 +338,14 @@ impl Xxh3_64 {
     /// Feed raw bytes.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.hasher.write(bytes);
+    }
+
+    /// Feed one value's canonical byte representation.
+    ///
+    /// See [`Scalar::write_bytes`](crate::Scalar::write_bytes) for the
+    /// encoding and what it guarantees.
+    pub fn write_scalar(&mut self, value: &crate::Scalar) {
+        value.write_bytes(self);
     }
 
     /// Feed a reader to exhaustion, returning the bytes consumed.
@@ -481,6 +505,14 @@ impl Xxh3_128 {
     /// Feed raw bytes.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
         self.hasher.write(bytes);
+    }
+
+    /// Feed one value's canonical byte representation.
+    ///
+    /// See [`Scalar::write_bytes`](crate::Scalar::write_bytes) for the
+    /// encoding and what it guarantees.
+    pub fn write_scalar(&mut self, value: &crate::Scalar) {
+        value.write_bytes(self);
     }
 
     /// Feed a reader to exhaustion, returning the bytes consumed.

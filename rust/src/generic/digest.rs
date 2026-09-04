@@ -33,7 +33,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
 use crate::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
-use crate::{Error, Result};
+use crate::{Error, Result, Scalar};
 
 /// One xxHash algorithm, and the only place a name selects an implementation.
 ///
@@ -480,6 +480,18 @@ impl Digester {
             DigesterKind::Xxh64(state) => state.write_bytes(bytes),
             DigesterKind::Xxh3_64(state) => state.write_bytes(bytes),
             DigesterKind::Xxh3_128(state) => state.write_bytes(bytes),
+        }
+    }
+
+    /// Feed one value's canonical byte representation.
+    ///
+    /// See [`Scalar::write_bytes`] for the encoding and what it guarantees.
+    pub fn write_scalar(&mut self, value: &Scalar) {
+        match &mut self.0 {
+            DigesterKind::Xxh32(state) => state.write_scalar(value),
+            DigesterKind::Xxh64(state) => state.write_scalar(value),
+            DigesterKind::Xxh3_64(state) => state.write_scalar(value),
+            DigesterKind::Xxh3_128(state) => state.write_scalar(value),
         }
     }
 

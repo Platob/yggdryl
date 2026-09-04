@@ -972,3 +972,426 @@ mod hashed {
         }
     }
 }
+
+mod values {
+    use std::hash::Hasher as _;
+    use std::sync::Arc;
+
+    use super::super::{Xxh3_64, xxh3_64};
+    use crate::{
+        Codec, DataTypeId, DigestAlgorithm, EnumScalar, Float16, Float32, Float64, I256, Scalar,
+        TimeUnit, Timezone,
+    };
+
+    /// A sink that keeps the feed so two values can be compared byte for byte.
+    #[derive(Default)]
+    struct Collected(Vec<u8>);
+
+    impl std::hash::Hasher for Collected {
+        fn finish(&self) -> u64 {
+            xxh3_64(&self.0)
+        }
+
+        fn write(&mut self, bytes: &[u8]) {
+            self.0.extend_from_slice(bytes);
+        }
+    }
+
+    /// Return one value's canonical feed.
+    fn feed(value: &Scalar) -> Vec<u8> {
+        let mut sink = Collected::default();
+        value.write_bytes(&mut sink);
+        sink.0
+    }
+
+    /// Every variant, plus the pairs that must agree and the pairs that must not.
+    fn corpus() -> Vec<Scalar> {
+        vec![
+            Scalar::Null,
+            Scalar::Bool(false),
+            Scalar::Bool(true),
+            Scalar::I8(-1),
+            Scalar::I8(0),
+            Scalar::I8(1),
+            Scalar::I16(-300),
+            Scalar::I32(0x31),
+            Scalar::I64(i64::MIN),
+            Scalar::I128(i128::MIN),
+            Scalar::U8(0x31),
+            Scalar::U16(u16::MAX),
+            Scalar::U32(u32::MAX),
+            Scalar::U64(u64::MAX),
+            Scalar::U128(u128::MAX),
+            Scalar::F16(Float16::from_f16(half::f16::from_f32(1.5))),
+            Scalar::F32(Float32::from_f32(1.5)),
+            Scalar::F64(Float64::from_f64(1.5)),
+            Scalar::F64(Float64::from_f64(-0.0)),
+            Scalar::F64(Float64::from_f64(0.0)),
+            Scalar::F64(Float64::from_f64(f64::NAN)),
+            Scalar::D128(100, 2),
+            Scalar::D128(-1, 0),
+            Scalar::D256(I256::from_i128(1), 0),
+            Scalar::from(""),
+            Scalar::from("1"),
+            Scalar::from("AAPL"),
+            Scalar::Enum(EnumScalar::Codec(Codec::Gzip)),
+            Scalar::Enum(EnumScalar::Codec(Codec::Zstd)),
+            Scalar::Enum(EnumScalar::DataTypeId(DataTypeId::Int128)),
+            Scalar::Bytes(Arc::from(b"".as_slice())),
+            Scalar::Bytes(Arc::from(b"1".as_slice())),
+            Scalar::Bytes(Arc::from(b"AAPL".as_slice())),
+            Scalar::Geospatial(Arc::from(b"AAPL".as_slice())),
+            Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
+            Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Scalar::time64(1_000_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+            Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+            Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+            Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Scalar::duration64_in(1_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            Scalar::from_sequence([]),
+            Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")]),
+            Scalar::from_sequence([Scalar::from("ab")]),
+            Scalar::from_mapping([(Scalar::from("a"), Scalar::I64(1))]).unwrap(),
+            Scalar::from_record([("a", Scalar::I64(1))]).unwrap(),
+            Scalar::from_record([("a", Scalar::I64(1)), ("b", Scalar::Null)]).unwrap(),
+        ]
+    }
+
+    #[test]
+    fn equal_values_feed_identical_bytes() {
+        // The pairs that make this non-trivial: `Scalar` compares across
+        // widths, so a feed keyed on the storage width would break here.
+        let equal: [(Scalar, Scalar); 8] = [
+            (Scalar::I8(1), Scalar::I64(1)),
+            (Scalar::U8(1), Scalar::I128(1)),
+            (Scalar::I64(-1), Scalar::I128(-1)),
+            (
+                Scalar::F32(Float32::from_f32(1.5)),
+                Scalar::F64(Float64::from_f64(1.5)),
+            ),
+            (
+                Scalar::F16(Float16::from_f16(half::f16::from_f32(1.5))),
+                Scalar::F64(Float64::from_f64(1.5)),
+            ),
+            (Scalar::D128(100, 2), Scalar::D256(I256::from_i128(1), 0)),
+            (
+                Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
+                Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            ),
+            (
+                Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::time64(1_000_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+            ),
+        ];
+        for (left, right) in equal {
+            assert_eq!(left, right, "the corpus pair is not equal to begin with");
+            assert_eq!(feed(&left), feed(&right), "{left:?} vs {right:?}");
+            assert_eq!(
+                left.digest(DigestAlgorithm::Xxh3_64),
+                right.digest(DigestAlgorithm::Xxh3_64)
+            );
+        }
+
+        // And over the whole corpus: equality and an identical feed agree in
+        // both directions.
+        let values = corpus();
+        for left in &values {
+            for right in &values {
+                assert_eq!(
+                    left == right,
+                    feed(left) == feed(right),
+                    "{left:?} vs {right:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn values_that_differ_feed_different_bytes() {
+        let values = corpus();
+        for (index, left) in values.iter().enumerate() {
+            for right in &values[index + 1..] {
+                if left == right {
+                    continue;
+                }
+                assert_ne!(feed(left), feed(right), "{left:?} vs {right:?}");
+            }
+        }
+
+        // The specific boundaries a tagless feed would collapse.
+        assert_ne!(feed(&Scalar::from("1")), feed(&Scalar::U8(0x31)));
+        assert_ne!(
+            feed(&Scalar::from("1")),
+            feed(&Scalar::Bytes(Arc::from(b"1".as_slice())))
+        );
+        assert_ne!(
+            feed(&Scalar::Bytes(Arc::from(b"AAPL".as_slice()))),
+            feed(&Scalar::Geospatial(Arc::from(b"AAPL".as_slice())))
+        );
+        assert_ne!(
+            feed(&Scalar::from_sequence([
+                Scalar::from("a"),
+                Scalar::from("b")
+            ])),
+            feed(&Scalar::from_sequence([Scalar::from("ab")]))
+        );
+        // A null and an empty string are not the same absence.
+        assert_ne!(feed(&Scalar::Null), feed(&Scalar::from("")));
+        assert_ne!(
+            feed(&Scalar::Null),
+            feed(&Scalar::Bytes(Arc::from(b"".as_slice())))
+        );
+    }
+
+    #[test]
+    fn the_feed_starts_with_the_pinned_datatype_id_byte() {
+        // The wire contract: a variant inserted into `DataTypeId` anywhere but
+        // the end moves these numbers and changes every stored digest.
+        let cases: [(Scalar, DataTypeId); 16] = [
+            (Scalar::Null, DataTypeId::Null),
+            (Scalar::Bool(true), DataTypeId::Boolean),
+            (Scalar::U8(1), DataTypeId::UInt128),
+            (Scalar::I8(-1), DataTypeId::Int128),
+            (Scalar::F32(Float32::from_f32(1.5)), DataTypeId::Float64),
+            (Scalar::D128(1, 0), DataTypeId::Decimal256),
+            (Scalar::from("AAPL"), DataTypeId::Utf8),
+            (
+                Scalar::Enum(EnumScalar::Codec(Codec::Gzip)),
+                DataTypeId::Dictionary,
+            ),
+            (
+                Scalar::Bytes(Arc::from(b"AAPL".as_slice())),
+                DataTypeId::Binary,
+            ),
+            (
+                Scalar::Geospatial(Arc::from(b"AAPL".as_slice())),
+                DataTypeId::Geometry,
+            ),
+            (
+                Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
+                DataTypeId::Date64,
+            ),
+            (
+                Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                DataTypeId::Time64,
+            ),
+            (
+                Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+                DataTypeId::Timestamp,
+            ),
+            (
+                Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                DataTypeId::Duration64,
+            ),
+            (Scalar::from_sequence([]), DataTypeId::List),
+            (
+                Scalar::from_record([] as [(&str, Scalar); 0]).unwrap(),
+                DataTypeId::Struct,
+            ),
+        ];
+        for (value, id) in cases {
+            assert_eq!(feed(&value)[0], id.as_u8(), "{value:?}");
+        }
+        assert_eq!(
+            feed(&Scalar::from_mapping([]).unwrap())[0],
+            DataTypeId::Map.as_u8()
+        );
+
+        // The exact bytes of a small value, so the layout itself is pinned and
+        // not only its first byte.
+        assert_eq!(feed(&Scalar::Null), vec![DataTypeId::Null.as_u8()]);
+        assert_eq!(
+            feed(&Scalar::Bool(true)),
+            vec![DataTypeId::Boolean.as_u8(), 1]
+        );
+        let mut expected = vec![DataTypeId::Utf8.as_u8()];
+        expected.extend_from_slice(&4_u64.to_le_bytes());
+        expected.extend_from_slice(b"AAPL");
+        assert_eq!(feed(&Scalar::from("AAPL")), expected);
+    }
+
+    #[test]
+    fn the_feed_does_not_depend_on_how_the_sink_batches_it() {
+        for value in corpus() {
+            let bytes = feed(&value);
+            let mut state = Xxh3_64::new();
+            state.write_scalar(&value);
+            assert_eq!(state.as_u64(), xxh3_64(&bytes), "{value:?}");
+
+            for split in [1_usize, 3, 7, 64] {
+                let mut chunked = Xxh3_64::new();
+                for chunk in bytes.chunks(split) {
+                    chunked.write_bytes(chunk);
+                }
+                assert_eq!(chunked.as_u64(), state.as_u64(), "{value:?} split {split}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_algorithm_digests_a_value_through_the_same_feed() {
+        for value in corpus() {
+            let bytes = feed(&value);
+            for algorithm in DigestAlgorithm::ALL {
+                assert_eq!(
+                    value.digest(algorithm),
+                    algorithm.digest(&bytes),
+                    "{value:?} under {algorithm}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_typed_scalar_digests_as_the_value_inside_it() {
+        let typed =
+            crate::TypedScalar::from_parts(crate::DataType::Utf8, Scalar::from("AAPL")).unwrap();
+        for algorithm in DigestAlgorithm::ALL {
+            assert_eq!(
+                typed.digest(algorithm),
+                Scalar::from("AAPL").digest(algorithm)
+            );
+        }
+    }
+
+    #[test]
+    fn nesting_past_the_shared_limit_is_bounded_rather_than_a_panic() {
+        // Caller input can nest as deeply as whoever built it chose, so the
+        // walk is bounded the way every other recursive descent here is.
+        let mut deep = Scalar::from("leaf");
+        for _ in 0..crate::DataType::PARSE_RECURSION_LIMIT * 4 {
+            deep = Scalar::from_sequence([deep]);
+        }
+        let bytes = feed(&deep);
+        assert_eq!(*bytes.last().unwrap(), 0xff, "the subtree was cut");
+        assert_eq!(
+            deep.digest(DigestAlgorithm::Xxh3_64),
+            DigestAlgorithm::Xxh3_64.digest(&bytes)
+        );
+        // Values differing only below the cut are indistinguishable, exactly
+        // as `dtype` refuses to name them.
+        let mut other = Scalar::from("other");
+        for _ in 0..crate::DataType::PARSE_RECURSION_LIMIT * 4 {
+            other = Scalar::from_sequence([other]);
+        }
+        assert_eq!(feed(&other), bytes);
+        assert!(deep.dtype().is_err());
+    }
+
+    #[test]
+    fn value_bytes_are_the_payload_alone() {
+        assert_eq!(&*Scalar::from("AAPL").as_value_bytes().unwrap(), b"AAPL");
+        assert_eq!(
+            &*Scalar::Bytes(Arc::from(b"\x00\xff".as_slice()))
+                .as_value_bytes()
+                .unwrap(),
+            &[0x00, 0xff]
+        );
+        assert_eq!(
+            &*Scalar::Geospatial(Arc::from(b"wkb".as_slice()))
+                .as_value_bytes()
+                .unwrap(),
+            b"wkb"
+        );
+        assert_eq!(&*Scalar::Bool(true).as_value_bytes().unwrap(), &[1]);
+        assert_eq!(&*Scalar::Bool(false).as_value_bytes().unwrap(), &[0]);
+        assert_eq!(&*Scalar::I32(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
+        assert_eq!(&*Scalar::U8(0x31).as_value_bytes().unwrap(), b"1");
+        assert_eq!(
+            &*Scalar::F64(Float64::from_f64(1.5))
+                .as_value_bytes()
+                .unwrap(),
+            &1.5_f64.to_bits().to_le_bytes()
+        );
+        assert_eq!(
+            Scalar::D256(I256::from_i128(1), 3)
+                .as_value_bytes()
+                .unwrap()
+                .len(),
+            32
+        );
+        assert_eq!(
+            &*Scalar::Enum(EnumScalar::Codec(Codec::Gzip))
+                .as_value_bytes()
+                .unwrap(),
+            b"gzip"
+        );
+        assert_eq!(
+            &*Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE)
+                .unwrap()
+                .as_value_bytes()
+                .unwrap(),
+            &[1, 0, 0, 0]
+        );
+
+        // The four variants with no payload of their own.
+        assert!(Scalar::Null.as_value_bytes().is_none());
+        assert!(Scalar::from_sequence([]).as_value_bytes().is_none());
+        assert!(Scalar::from_mapping([]).unwrap().as_value_bytes().is_none());
+        assert!(
+            Scalar::from_record([] as [(&str, Scalar); 0])
+                .unwrap()
+                .as_value_bytes()
+                .is_none()
+        );
+
+        // The widths a payload view keeps, which the canonical feed collapses.
+        assert_eq!(Scalar::I8(1).as_value_bytes().unwrap().len(), 1);
+        assert_eq!(Scalar::I64(1).as_value_bytes().unwrap().len(), 8);
+        assert_ne!(
+            Scalar::I8(1).as_value_bytes().unwrap(),
+            Scalar::I64(1).as_value_bytes().unwrap()
+        );
+        assert_eq!(feed(&Scalar::I8(1)), feed(&Scalar::I64(1)));
+    }
+
+    #[test]
+    fn a_value_byte_view_compares_and_hashes_as_its_bytes() {
+        let text = Scalar::from("1");
+        let number = Scalar::U8(0x31);
+        let borrowed = text.as_value_bytes().unwrap();
+        let inline = number.as_value_bytes().unwrap();
+        assert_eq!(borrowed, inline);
+        assert_eq!(format!("{borrowed:?}"), format!("{inline:?}"));
+        assert_eq!(borrowed.as_ref(), b"1");
+
+        let mut left = Xxh3_64::new();
+        std::hash::Hash::hash(&borrowed, &mut left);
+        let mut right = Xxh3_64::new();
+        std::hash::Hash::hash(&inline, &mut right);
+        assert_eq!(left.finish(), right.finish());
+    }
+
+    #[test]
+    fn a_record_feeds_its_fields_in_sorted_name_order() {
+        // The stored map is sorted, so two records built in different orders
+        // are one value and feed one way.
+        let left = Scalar::from_record([("b", Scalar::I64(2)), ("a", Scalar::I64(1))]).unwrap();
+        let right = Scalar::from_record([("a", Scalar::I64(1)), ("b", Scalar::I64(2))]).unwrap();
+        assert_eq!(feed(&left), feed(&right));
+
+        // A mapping is insertion-ordered, so its order is part of the value.
+        let left = Scalar::from_mapping([
+            (Scalar::from("b"), Scalar::I64(2)),
+            (Scalar::from("a"), Scalar::I64(1)),
+        ])
+        .unwrap();
+        let right = Scalar::from_mapping([
+            (Scalar::from("a"), Scalar::I64(1)),
+            (Scalar::from("b"), Scalar::I64(2)),
+        ])
+        .unwrap();
+        assert_ne!(left, right);
+        assert_ne!(feed(&left), feed(&right));
+    }
+
+    #[test]
+    fn a_record_name_cannot_be_confused_with_its_value() {
+        // Names are length-prefixed, so a field named "ab" with value "" and a
+        // field named "a" with value "b" are different feeds.
+        let left = Scalar::from_record([("ab", Scalar::from(""))]).unwrap();
+        let right = Scalar::from_record([("a", Scalar::from("b"))]).unwrap();
+        assert_ne!(feed(&left), feed(&right));
+    }
+}

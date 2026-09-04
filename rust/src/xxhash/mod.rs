@@ -45,11 +45,13 @@
 //! partitioning.
 
 mod handle;
+mod scalar;
 mod secret;
 mod state;
 pub(crate) mod stream;
 
 pub use handle::Hashed;
+pub use scalar::ValueBytes;
 pub use secret::SECRET_MINIMUM_LENGTH;
 pub use state::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
 pub use stream::{DigestReader, DigestWriter};
