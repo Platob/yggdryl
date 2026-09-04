@@ -408,8 +408,9 @@ export declare class DataType {
   /** Creates the physical time-of-day type selected by its resolution. */
   static time(unit: string): DataType
   /**
-   * Creates the ASCII width holding `width` bytes: 1 through 4 is
-   * `ascii32`, 5 through 8 `ascii64`, and 9 through 16 `ascii128`.
+   * Creates the ASCII width holding `width` bytes: 1 or 2 is `ascii16`, 3
+   * `ascii24`, 4 `ascii32`, 5 through 8 `ascii64`, 9 through 12 `ascii96`,
+   * and 13 through 16 `ascii128`.
    */
   static ascii(width: number): DataType
   /**

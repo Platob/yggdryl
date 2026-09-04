@@ -69,14 +69,15 @@ pub use text::Text;
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 pub use typed::{
-    Ascii32Scalar, Ascii64Scalar, Ascii128Scalar, BinaryScalar, BinaryViewScalar, BooleanScalar,
-    Date32Scalar, Date64Scalar, Decimal32Scalar, Decimal64Scalar, Decimal128Scalar,
-    Decimal256Scalar, DictionaryScalar, Duration32Scalar, Duration64Scalar, FixedSizeBinaryScalar,
-    FixedSizeListScalar, Float16Scalar, Float32Scalar, Float64Scalar, GeographyScalar,
-    GeometryScalar, Int8Scalar, Int16Scalar, Int32Scalar, Int64Scalar, IntervalScalar,
-    LargeBinaryScalar, LargeListScalar, LargeListViewScalar, LargeUtf8Scalar, ListScalar,
-    ListViewScalar, MapScalar, NullScalar, RunEndEncodedScalar, StructScalar, Time32Scalar,
-    Time64Scalar, TimestampScalar, TypedScalar, UInt8Scalar, UInt16Scalar, UInt32Scalar,
-    UInt64Scalar, UnionScalar, Utf8Scalar, Utf8ViewScalar, VariantScalar,
+    Ascii16Scalar, Ascii24Scalar, Ascii32Scalar, Ascii64Scalar, Ascii96Scalar, Ascii128Scalar,
+    BinaryScalar, BinaryViewScalar, BooleanScalar, Date32Scalar, Date64Scalar, Decimal32Scalar,
+    Decimal64Scalar, Decimal128Scalar, Decimal256Scalar, DictionaryScalar, Duration32Scalar,
+    Duration64Scalar, FixedSizeBinaryScalar, FixedSizeListScalar, Float16Scalar, Float32Scalar,
+    Float64Scalar, GeographyScalar, GeometryScalar, Int8Scalar, Int16Scalar, Int32Scalar,
+    Int64Scalar, IntervalScalar, LargeBinaryScalar, LargeListScalar, LargeListViewScalar,
+    LargeUtf8Scalar, ListScalar, ListViewScalar, MapScalar, NullScalar, RunEndEncodedScalar,
+    StructScalar, Time32Scalar, Time64Scalar, TimestampScalar, TypedScalar, UInt8Scalar,
+    UInt16Scalar, UInt32Scalar, UInt64Scalar, UnionScalar, Utf8Scalar, Utf8ViewScalar,
+    VariantScalar,
 };
 pub use union_mode::UnionMode;

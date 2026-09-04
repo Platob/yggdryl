@@ -71,8 +71,11 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii16
+            | DataType::Ascii24
             | DataType::Ascii32
             | DataType::Ascii64
+            | DataType::Ascii96
             | DataType::Ascii128
             | DataType::Binary
             | DataType::LargeBinary
@@ -116,8 +119,11 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => OfficialDatum::string(value.as_str()?),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialDatum::binary(value.as_bytes()?.iter().copied())
@@ -174,8 +180,11 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii16
+            | DataType::Ascii24
             | DataType::Ascii32
             | DataType::Ascii64
+            | DataType::Ascii96
             | DataType::Ascii128,
             OfficialPrimitiveLiteral::String(value),
         ) => Some(Scalar::from(value.as_str())),
@@ -220,8 +229,11 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => OfficialPrimitiveType::String,
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialPrimitiveType::Binary

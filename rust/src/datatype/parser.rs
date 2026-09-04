@@ -76,8 +76,11 @@ impl fmt::Display for DataType {
             D::Utf8 => formatter.write_str("utf8"),
             D::LargeUtf8 => formatter.write_str("large_utf8"),
             D::Utf8View => formatter.write_str("utf8_view"),
+            D::Ascii16 => formatter.write_str("ascii16"),
+            D::Ascii24 => formatter.write_str("ascii24"),
             D::Ascii32 => formatter.write_str("ascii32"),
             D::Ascii64 => formatter.write_str("ascii64"),
+            D::Ascii96 => formatter.write_str("ascii96"),
             D::Ascii128 => formatter.write_str("ascii128"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
@@ -347,8 +350,11 @@ impl<'a> Parser<'a> {
             }
             "largeutf8" | "largestring" => DataType::LargeUtf8,
             "utf8view" | "stringview" => DataType::Utf8View,
+            "ascii16" => DataType::Ascii16,
+            "ascii24" => DataType::Ascii24,
             "ascii32" => DataType::Ascii32,
             "ascii64" => DataType::Ascii64,
+            "ascii96" => DataType::Ascii96,
             "ascii128" => DataType::Ascii128,
             // Bare `ascii` names no width; `ascii(N)` lets the family
             // constructor select the physical width.

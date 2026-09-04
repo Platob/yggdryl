@@ -423,8 +423,11 @@ impl PyDataType {
             "utf8" => CoreDataType::Utf8,
             "large_utf8" => CoreDataType::LargeUtf8,
             "utf8_view" => CoreDataType::Utf8View,
+            "ascii16" => CoreDataType::Ascii16,
+            "ascii24" => CoreDataType::Ascii24,
             "ascii32" => CoreDataType::Ascii32,
             "ascii64" => CoreDataType::Ascii64,
+            "ascii96" => CoreDataType::Ascii96,
             "ascii128" => CoreDataType::Ascii128,
             _ => {
                 return Err(PyValueError::new_err(format!(
@@ -612,8 +615,9 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Creates the ASCII width holding ``width`` bytes: 1-4 is ``ascii32``,
-    /// 5-8 ``ascii64``, and 9-16 ``ascii128``.
+    /// Creates the ASCII width holding ``width`` bytes: 1-2 is ``ascii16``,
+    /// 3 ``ascii24``, 4 ``ascii32``, 5-8 ``ascii64``, 9-12 ``ascii96``, and
+    /// 13-16 ``ascii128``.
     #[staticmethod]
     fn ascii(width: i32) -> PyResult<Self> {
         let inner = CoreDataType::ascii(width).map_err(value_error)?;

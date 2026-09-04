@@ -247,8 +247,11 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => plain("string"),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
@@ -316,8 +319,11 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 DataType::Utf8
                     | DataType::LargeUtf8
                     | DataType::Utf8View
+                    | DataType::Ascii16
+                    | DataType::Ascii24
                     | DataType::Ascii32
                     | DataType::Ascii64
+                    | DataType::Ascii96
                     | DataType::Ascii128
             ) {
                 return Err(unspellable(dtype));

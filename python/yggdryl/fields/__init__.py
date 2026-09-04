@@ -8,13 +8,19 @@ dataclass schemas continue to have one native implementation.
 from ._classes import field
 from ._typing import TypedDataType, TypedField
 from .ascii import (
+    Ascii16Field,
+    Ascii24Field,
     Ascii32Field,
     Ascii64Field,
+    Ascii96Field,
     Ascii128Field,
     AsciiField,
     ascii,
+    ascii16,
+    ascii24,
     ascii32,
     ascii64,
+    ascii96,
     ascii128,
 )
 from .binary import (
@@ -127,8 +133,11 @@ from .temporal import (
 )
 
 __all__ = [
+    "Ascii16Field",
+    "Ascii24Field",
     "Ascii32Field",
     "Ascii64Field",
+    "Ascii96Field",
     "Ascii128Field",
     "AsciiField",
     "BinaryField",
@@ -182,8 +191,11 @@ __all__ = [
     "Utf8Field",
     "Utf8ViewField",
     "ascii",
+    "ascii16",
+    "ascii24",
     "ascii32",
     "ascii64",
+    "ascii96",
     "ascii128",
     "binary",
     "binary_view",

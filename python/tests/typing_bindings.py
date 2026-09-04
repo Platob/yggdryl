@@ -50,7 +50,9 @@ from yggdryl._native import (
 )
 from yggdryl.enums import Ascii32, AsciiCode
 from yggdryl.fields import (
+    Ascii24Field,
     Ascii32Field,
+    Ascii96Field,
     AsciiField,
     DenseUnionField,
     FixedSizeListField,
@@ -285,6 +287,10 @@ currency_dtype: DataType = DataType.from_logical_name("currency")
 logical_names: dict[str, DataType] = DataType.logical_names()
 typed_ascii: Ascii32Field = fields.ascii32("ccy", nullable=False)
 typed_ascii_kind: Literal["ascii32"] = typed_ascii.dtype.id
+typed_ascii_narrow: Ascii24Field = fields.ascii24("ccy", nullable=False)
+typed_ascii_narrow_kind: Literal["ascii24"] = typed_ascii_narrow.dtype.id
+typed_ascii_isin: Ascii96Field = fields.ascii96("isin")
+typed_ascii_isin_kind: Literal["ascii96"] = typed_ascii_isin.dtype.id
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
 typed_ascii_width: AsciiField = fields.ascii("isin", 12)
 typed_ascii_width_value: str | None = typed_ascii_width.default_pyvalue()

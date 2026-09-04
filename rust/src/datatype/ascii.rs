@@ -9,6 +9,12 @@
 //! carrying trailing NULs are accepted on the way in under the same rule and
 //! canonicalize to the trimmed string.
 //!
+//! The widths are 2, 3, 4, 8, 12 and 16 bytes - `ascii16`, `ascii24`,
+//! `ascii32`, `ascii64`, `ascii96` and `ascii128` - because those are the
+//! shapes the codes this type exists for actually take: a two-letter country,
+//! a three-letter currency, a four-letter MIC, a six-character CFI, a
+//! twelve-character ISIN.
+//!
 //! [`AsciiDictionary`] is the per-column vocabulary over one of those widths:
 //! an ordered set of values whose position is the code a `dictionary(key,
 //! ascii-N)` column stores.
@@ -39,22 +45,31 @@ impl DataType {
     /// A registration names a vocabulary that fits one width; it parses to that
     /// width and is otherwise not a type of its own: the ASCII widths are the
     /// whole type system, and a registration adds one spelling to the grammar.
-    /// `currency` is ISO 4217's three-letter code, stored `USD\0`.
-    pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] =
-        &[("currency", DataType::Ascii32)];
+    /// `country` is ISO 3166-1's two-letter code, which is exactly `ascii16`;
+    /// `currency` is ISO 4217's three-letter code, which is exactly `ascii24`;
+    /// `cfi` is ISO 10962's six-character classification, which is the
+    /// narrowest width holding six bytes.
+    pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[
+        ("country", DataType::Ascii16),
+        ("currency", DataType::Ascii24),
+        ("cfi", DataType::Ascii64),
+    ];
 
     /// Creates the ASCII width that holds `width` bytes.
     ///
-    /// The family constructor selects the physical width once: 1 through 4
-    /// bytes is [`Self::Ascii32`], 5 through 8 [`Self::Ascii64`], and 9
+    /// The family constructor selects the physical width once: 1 or 2 bytes
+    /// is [`Self::Ascii16`], 3 [`Self::Ascii24`], 4 [`Self::Ascii32`], 5
+    /// through 8 [`Self::Ascii64`], 9 through 12 [`Self::Ascii96`], and 13
     /// through 16 [`Self::Ascii128`].
     ///
     /// ```
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::ascii(3)?, DataType::Ascii32);
-    /// assert_eq!(DataType::ascii(12)?, DataType::Ascii128);
+    /// assert_eq!(DataType::ascii(2)?, DataType::Ascii16);
+    /// assert_eq!(DataType::ascii(3)?, DataType::Ascii24);
+    /// assert_eq!(DataType::ascii(6)?, DataType::Ascii64);
+    /// assert_eq!(DataType::ascii(12)?, DataType::Ascii96);
     /// assert!(DataType::ascii(17).is_err());
     /// # Ok(())
     /// # }
@@ -65,9 +80,12 @@ impl DataType {
     /// Returns an error when `width` is outside 1 through 16.
     pub fn ascii(width: i32) -> Result<Self> {
         match width {
-            1..=4 => Ok(Self::Ascii32),
+            1..=2 => Ok(Self::Ascii16),
+            3 => Ok(Self::Ascii24),
+            4 => Ok(Self::Ascii32),
             5..=8 => Ok(Self::Ascii64),
-            9..=16 => Ok(Self::Ascii128),
+            9..=12 => Ok(Self::Ascii96),
+            13..=16 => Ok(Self::Ascii128),
             _ => Err(Error::InvalidDataType {
                 kind: "ascii",
                 reason: format_smolstr!("expected an ASCII width from 1 to 16 bytes, got {width}"),
@@ -78,8 +96,11 @@ impl DataType {
     /// The storage width of an ASCII datatype in bytes, `None` for every other.
     pub const fn ascii_width(&self) -> Option<i32> {
         match self {
+            Self::Ascii16 => Some(2),
+            Self::Ascii24 => Some(3),
             Self::Ascii32 => Some(4),
             Self::Ascii64 => Some(8),
+            Self::Ascii96 => Some(12),
             Self::Ascii128 => Some(16),
             _ => None,
         }
@@ -99,17 +120,20 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// // `USD` stores as `USD\0`, which is that big-endian `i32`.
+    /// // `USD` stores as `USD\0` under `ascii32`, which is that big-endian
+    /// // `i32`; under `ascii24` it is the three bytes and nothing else.
     /// assert_eq!(DataType::Ascii32.ascii_packed(b"USD")?, 0x5553_4400);
     /// assert_eq!(DataType::Ascii32.ascii_packed(b"USD\0")?, 0x5553_4400);
     /// assert_eq!(DataType::Ascii32.ascii_value(0x5553_4400)?, "USD");
+    /// assert_eq!(DataType::Ascii24.ascii_packed(b"USD")?, 0x0055_5344);
     ///
     /// // The order of the integers is the order of the text.
     /// assert!(DataType::Ascii32.ascii_packed(b"EUR")? < DataType::Ascii32.ascii_packed(b"USD")?);
     ///
-    /// // Sixteen bytes need the whole `i128`.
-    /// let isin = DataType::Ascii128.ascii_packed(b"US0378331005")?;
-    /// assert_eq!(DataType::Ascii128.ascii_value(isin)?, "US0378331005");
+    /// // Twelve bytes need 96 bits, and sixteen the whole `i128`.
+    /// let isin = DataType::Ascii96.ascii_packed(b"US0378331005")?;
+    /// assert_eq!(DataType::Ascii96.ascii_value(isin)?, "US0378331005");
+    /// assert!(isin > i128::from(u64::MAX));
     ///
     /// assert!(DataType::Ascii32.ascii_packed(b"EURO!").is_err());
     /// assert!(DataType::Utf8.ascii_packed(b"USD").is_err());
@@ -168,14 +192,17 @@ impl DataType {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let currency = DataType::from_logical_name("Currency")?;
-    /// assert_eq!(currency, DataType::Ascii32);
+    /// assert_eq!(currency, DataType::Ascii24);
     /// assert_eq!(DataType::from_str("currency")?, currency);
+    /// assert_eq!(DataType::from_logical_name("cfi")?, DataType::Ascii64);
+    /// assert_eq!(DataType::from_str("country")?, DataType::Ascii16);
     ///
-    /// // Storage pads to the width; the scalar reads back trimmed.
+    /// // Storage pads to the width; the scalar reads back trimmed. ISO 4217
+    /// // is exactly three bytes, so a currency stores with no padding at all.
     /// let field = currency.required_field("ccy");
     /// let array = scalar_array(&field, &Scalar::from("USD"))?;
     /// let stored = array.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    /// assert_eq!(stored.value(0), b"USD\0");
+    /// assert_eq!(stored.value(0), b"USD");
     /// assert_eq!(scalar_value(&field, array.as_ref())?, Scalar::from("USD"));
     /// # Ok(())
     /// # }

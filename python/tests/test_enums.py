@@ -8,7 +8,15 @@ import pyarrow
 import pytest
 
 from yggdryl import AsciiDictionary, AsciiEnum, DataType, Field, enums
-from yggdryl.enums import Ascii32, Ascii64, Ascii128, AsciiCode
+from yggdryl.enums import (
+    Ascii16,
+    Ascii24,
+    Ascii32,
+    Ascii64,
+    Ascii96,
+    Ascii128,
+    AsciiCode,
+)
 
 
 def test_every_vocabulary_is_a_nonempty_tuple_of_strings() -> None:
@@ -73,22 +81,39 @@ def test_a_member_is_the_integer_its_ascii_value_packs_into() -> None:
 
 
 def test_the_widths_pack_into_the_integer_they_name() -> None:
+    class Country(Ascii16):
+        US = "US"
+
+    class Currency(Ascii24):
+        USD = "USD"
+
     class Venue(Ascii64):
         XNAS = "XNAS"
 
-    class Isin(Ascii128):
+    class Isin(Ascii96):
         SAMPLE = "US0378331005"
 
+    class Wide(Ascii128):
+        SAMPLE = "US0378331005XNAS"
+
+    # ISO 3166-1 is two bytes and ISO 4217 three, so each packs with no
+    # padding at all under the width its standard names.
+    assert Country.dtype() == DataType("ascii16")
+    assert int(Country.US) == 0x5553
+    assert Currency.dtype() == DataType("ascii24")
+    assert int(Currency.USD) == 0x555344
     assert Venue.dtype() == DataType("ascii64")
     assert int(Venue.XNAS) == DataType("ascii64").ascii_packed("XNAS")
 
-    # Sixteen bytes need the whole 128-bit integer, which Python holds natively.
-    assert int(Isin.SAMPLE) == 0x55533033373833333130303500000000
+    # Twelve bytes need 96 bits and sixteen the whole 128, both of which Python
+    # holds natively.
+    assert int(Isin.SAMPLE) == 0x555330333738333331303035
     assert int(Isin.SAMPLE).bit_length() > 64
     assert Isin.SAMPLE.into_str() == "US0378331005"
+    assert int(Wide.SAMPLE).bit_length() > 96
 
     # The base names no width, so it is not a vocabulary of its own.
-    with pytest.raises(TypeError, match="subclass Ascii32, Ascii64, or Ascii128"):
+    with pytest.raises(TypeError, match="subclass Ascii16, Ascii24"):
         AsciiCode.dtype()
 
 

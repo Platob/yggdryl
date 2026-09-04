@@ -347,7 +347,14 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
         // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
         // and the cast trims the padding.
-        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
+        D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -436,7 +443,14 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
         // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
         // and the cast trims the padding.
-        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
+        D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -515,7 +529,14 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
         // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
         // and the cast trims the padding.
-        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
+        D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -599,7 +620,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
         // Iceberg has `string` and `fixed[n]`; an ASCII column is text, so
         // every Iceberg reader must see `USD`, never the padded bytes.
-        D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => Ok((D::Utf8, true)),
+        D::LargeUtf8 | D::Utf8View | D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

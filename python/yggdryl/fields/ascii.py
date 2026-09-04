@@ -9,16 +9,39 @@ from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
+    Ascii16Field: TypeAlias = TypedField[Literal["ascii16"], str]
+    Ascii24Field: TypeAlias = TypedField[Literal["ascii24"], str]
     Ascii32Field: TypeAlias = TypedField[Literal["ascii32"], str]
     Ascii64Field: TypeAlias = TypedField[Literal["ascii64"], str]
+    Ascii96Field: TypeAlias = TypedField[Literal["ascii96"], str]
     Ascii128Field: TypeAlias = TypedField[Literal["ascii128"], str]
-    AsciiField: TypeAlias = Ascii32Field | Ascii64Field | Ascii128Field
+    AsciiField: TypeAlias = (
+        Ascii16Field
+        | Ascii24Field
+        | Ascii32Field
+        | Ascii64Field
+        | Ascii96Field
+        | Ascii128Field
+    )
 else:
-    Ascii32Field = Ascii64Field = Ascii128Field = AsciiField = Field
+    Ascii16Field = Ascii24Field = Ascii32Field = Ascii64Field = Ascii96Field = (
+        Ascii128Field
+    ) = AsciiField = Field
 
+_ASCII16 = simple_dtype("ascii16")
+_ASCII24 = simple_dtype("ascii24")
 _ASCII32 = simple_dtype("ascii32")
 _ASCII64 = simple_dtype("ascii64")
+_ASCII96 = simple_dtype("ascii96")
 _ASCII128 = simple_dtype("ascii128")
+
+
+def ascii16(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Ascii16Field:
+    return new_field(Ascii16Field, name, _ASCII16, nullable, metadata)
+
+
+def ascii24(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Ascii24Field:
+    return new_field(Ascii24Field, name, _ASCII24, nullable, metadata)
 
 
 def ascii32(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Ascii32Field:
@@ -27,6 +50,10 @@ def ascii32(name: str, *, nullable: bool = True, metadata: MetadataInput = None)
 
 def ascii64(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Ascii64Field:
     return new_field(Ascii64Field, name, _ASCII64, nullable, metadata)
+
+
+def ascii96(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Ascii96Field:
+    return new_field(Ascii96Field, name, _ASCII96, nullable, metadata)
 
 
 def ascii128(
@@ -51,12 +78,18 @@ def ascii(
 
 
 __all__ = [
+    "Ascii16Field",
+    "Ascii24Field",
     "Ascii32Field",
     "Ascii64Field",
+    "Ascii96Field",
     "Ascii128Field",
     "AsciiField",
     "ascii",
+    "ascii16",
+    "ascii24",
     "ascii32",
     "ascii64",
+    "ascii96",
     "ascii128",
 ]

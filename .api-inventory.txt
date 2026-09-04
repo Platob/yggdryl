@@ -129,7 +129,7 @@
   pub enum DataType
 
 ### yggdryl::datatype::ascii  [rust\src\datatype\ascii.rs]
-  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("currency", DataType::Ascii32)];
+  pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[("country", DataType::Ascii16), ("currency", DataType::Ascii24), ("cfi", DataType::Ascii64)];
   pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
   pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>
@@ -248,7 +248,7 @@
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (Ascii32Scalar, Ascii64Scalar, Ascii128Scalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (Ascii16Scalar, Ascii24Scalar, Ascii32Scalar, Ascii64Scalar, Ascii96Scalar, Ascii128Scalar included)
 
 ### yggdryl::datatype::parser  [rust\src\datatype\parser.rs]
   pub const PARSE_RECURSION_LIMIT: usize = 64;
@@ -849,8 +849,11 @@
   pub type Utf8Field = TypedField<binary::Utf8>;
   pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
   pub type Utf8ViewField = TypedField<binary::Utf8View>;
+  pub type Ascii16Field = TypedField<ascii::Ascii16>;
+  pub type Ascii24Field = TypedField<ascii::Ascii24>;
   pub type Ascii32Field = TypedField<ascii::Ascii32>;
   pub type Ascii64Field = TypedField<ascii::Ascii64>;
+  pub type Ascii96Field = TypedField<ascii::Ascii96>;
   pub type Ascii128Field = TypedField<ascii::Ascii128>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;

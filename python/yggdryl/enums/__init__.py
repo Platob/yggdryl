@@ -6,7 +6,9 @@ strings can be. Every tuple is unpacked from one native listing at import, so
 it can never drift from the Rust constants it mirrors.
 
 The vocabularies a caller declares are the other half: subclassing
-:class:`Ascii32`, :class:`Ascii64`, or :class:`Ascii128` names one open ASCII
+one of the six width bases - :class:`Ascii16`, :class:`Ascii24`,
+:class:`Ascii32`, :class:`Ascii64`, :class:`Ascii96`, :class:`Ascii128` - names
+one open ASCII
 vocabulary whose members are the integers their values pack into.
 """
 
@@ -15,7 +17,15 @@ from __future__ import annotations
 from typing import Mapping
 
 from .._native import _enum_values
-from .ascii import Ascii32, Ascii64, Ascii128, AsciiCode
+from .ascii import (
+    Ascii16,
+    Ascii24,
+    Ascii32,
+    Ascii64,
+    Ascii96,
+    Ascii128,
+    AsciiCode,
+)
 
 _LISTING = _enum_values()
 
@@ -47,8 +57,11 @@ COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"]
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
 
 __all__ = [
+    "Ascii16",
+    "Ascii24",
     "Ascii32",
     "Ascii64",
+    "Ascii96",
     "Ascii128",
     "AsciiCode",
     "CODECS",

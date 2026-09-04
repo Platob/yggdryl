@@ -34,12 +34,36 @@ const arrow = require(require.resolve('apache-arrow', {
   paths: [path.join(ROOT, 'node')],
 }))
 
-const WIDTHS = ['ascii32', 'ascii64', 'ascii128']
+const WIDTHS = ['ascii16', 'ascii24', 'ascii32', 'ascii64', 'ascii96', 'ascii128']
 
 // One case per rule the width enforces, in the width's own vocabulary:
 // currency codes, tickers, ISINs. `USD` is both the typical `ascii32` value and
 // the first of the ISO 4217 codes, so it is listed once.
 const ENCODE = {
+  ascii16: [
+    ['typical', 'US'],
+    ['ISO 3166-1', 'FR'],
+    ['ISO 3166-1', 'DE'],
+    ['empty', ''],
+    ['exactly the width', 'GB'],
+    ['one byte too long', 'USA'],
+    ['non-ASCII', 'FÉ'],
+    ['an interior NUL', 'U\u0000S'],
+    ['trailing NULs', 'U\u0000'],
+    ['lower case', 'us'],
+  ],
+  ascii24: [
+    ['typical', 'USD'],
+    ['ISO 4217', 'EUR'],
+    ['ISO 4217', 'JPY'],
+    ['empty', ''],
+    ['exactly the width', 'GBP'],
+    ['one byte too long', 'USDT'],
+    ['non-ASCII', 'USÉ'],
+    ['an interior NUL', 'U\u0000D'],
+    ['trailing NULs', 'US\u0000'],
+    ['lower case', 'usd'],
+  ],
   ascii32: [
     ['typical', 'USD'],
     ['ISO 4217', 'EUR'],
@@ -63,6 +87,17 @@ const ENCODE = {
     ['trailing NULs', 'AAPL\u0000\u0000'],
     ['lower case', 'aapl'],
   ],
+  ascii96: [
+    ['typical', 'US0378331005'],
+    ['ISIN', 'GB0002634946'],
+    ['empty', ''],
+    ['exactly the width', 'US0378331005'],
+    ['one byte too long', 'US0378331005X'],
+    ['non-ASCII', 'US037833100Ä'],
+    ['an interior NUL', 'US03783\u000031005'],
+    ['trailing NULs', 'US037833\u0000\u0000\u0000\u0000'],
+    ['lower case', 'us0378331005'],
+  ],
   ascii128: [
     ['typical', 'US0378331005'],
     ['empty', ''],
@@ -77,6 +112,16 @@ const ENCODE = {
 
 // The decode direction starts at storage, so its corpus is bytes.
 const DECODE = {
+  ascii16: [
+    ['exactly the width', [0x55, 0x53]],
+    ['padded', [0x55, 0x00]],
+    ['all NUL', [0x00, 0x00]],
+  ],
+  ascii24: [
+    ['exactly the width', [0x55, 0x53, 0x44]],
+    ['padded', [0x55, 0x53, 0x00]],
+    ['all NUL', [0x00, 0x00, 0x00]],
+  ],
   ascii32: [
     ['padded', [0x55, 0x53, 0x44, 0x00]],
     ['exactly the width', [0x55, 0x53, 0x44, 0x54]],
@@ -86,6 +131,15 @@ const DECODE = {
     ['padded', [0x41, 0x41, 0x50, 0x4c, 0x00, 0x00, 0x00, 0x00]],
     ['exactly the width', [0x47, 0x4f, 0x4f, 0x47, 0x4c, 0x2e, 0x55, 0x53]],
     ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0]],
+  ],
+  ascii96: [
+    [
+      'exactly the width',
+      // "US0378331005" fills every one of the twelve bytes.
+      [0x55, 0x53, 0x30, 0x33, 0x37, 0x38, 0x33, 0x33, 0x31, 0x30, 0x30, 0x35],
+    ],
+    ['padded', [0x55, 0x53, 0x30, 0x33, 0x37, 0x38, 0, 0, 0, 0, 0, 0]],
+    ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
   ],
   ascii128: [
     [
@@ -167,7 +221,7 @@ const stored = (table) => Array.from(table.getChild('ccy').get(0))
 /** The single row read back under a declared `utf8` field: the trimmed text. */
 const readBack = (table) => [...row('utf8').castArrow(table).getChild('ccy')][0]
 
-/** What the three widths are, read off a field actually projected to Arrow. */
+/** What the six widths are, read off a field actually projected to Arrow. */
 function widths() {
   return WIDTHS.map((dtype) => {
     const declared = row(dtype)
@@ -282,7 +336,10 @@ function dictionary() {
     },
     enum: {
       name: ENUM,
-      members: Object.entries(members),
+      // A member's code is its value packed big-endian, which reaches 128 bits,
+      // so the manifest carries its decimal text: JSON has no bigint and a
+      // number would round.
+      members: Object.entries(members).map(([member, code]) => [member, String(code)]),
       call: `currencies.intoEnum(${literal(ENUM)})`,
     },
   }

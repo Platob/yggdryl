@@ -206,11 +206,13 @@ test('typed field factories cover every native datatype variant', () => {
 test('the ascii factory selects the width through the native constructor', () => {
   const currency = fields.ascii('ccy', 3, { nullable: false })
 
-  assert.equal(currency.dtype.id, 'ascii32')
-  assert.equal(currency.dtype.asciiWidth, 4)
+  assert.equal(currency.dtype.id, 'ascii24')
+  assert.equal(currency.dtype.asciiWidth, 3)
   assert.equal(currency.nullable, false)
-  assert.ok(currency.dtype.equals(fields.ascii32('ccy').dtype))
-  assert.equal(fields.ascii('code', 12).dtype.id, 'ascii128')
+  assert.ok(currency.dtype.equals(fields.ascii24('ccy').dtype))
+  assert.equal(fields.ascii('iso', 2).dtype.id, 'ascii16')
+  assert.equal(fields.ascii('code', 6).dtype.id, 'ascii64')
+  assert.equal(fields.ascii('code', 12).dtype.id, 'ascii96')
   assert.equal(fields.ascii('code', 12).nullable, true)
   assert.equal(fields.ascii32('ccy').defaultJSValue(), null)
   assert.equal(fields.ascii32('ccy', { nullable: false }).defaultJSValue(), '')

@@ -1,8 +1,11 @@
 from typing import Mapping
 
 from .ascii import (
+    Ascii16 as Ascii16,
+    Ascii24 as Ascii24,
     Ascii32 as Ascii32,
     Ascii64 as Ascii64,
+    Ascii96 as Ascii96,
     Ascii128 as Ascii128,
     AsciiCode as AsciiCode,
 )
@@ -18,8 +21,11 @@ COMPATIBILITY_SCHEMES: tuple[str, ...]
 LEVELS: Mapping[str, int]
 
 __all__ = [
+    "Ascii16",
+    "Ascii24",
     "Ascii32",
     "Ascii64",
+    "Ascii96",
     "Ascii128",
     "AsciiCode",
     "CODECS",

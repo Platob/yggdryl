@@ -165,8 +165,11 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 *width,
             )?)
         }
+        DataType::Ascii16 => ascii_array(2, values)?,
+        DataType::Ascii24 => ascii_array(3, values)?,
         DataType::Ascii32 => ascii_array(4, values)?,
         DataType::Ascii64 => ascii_array(8, values)?,
+        DataType::Ascii96 => ascii_array(12, values)?,
         DataType::Ascii128 => ascii_array(16, values)?,
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
@@ -386,7 +389,12 @@ pub(crate) fn value_from_array(
                 .to_vec(),
         ),
         // Storage reads back trimmed: the padding is the layout, not the text.
-        DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => {
+        DataType::Ascii16
+        | DataType::Ascii24
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii96
+        | DataType::Ascii128 => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::from(ascii_text(fixed.value_length(), fixed.value(index))?)
         }
@@ -774,6 +782,9 @@ impl MaterializationBudget {
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
             | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
+            DataType::Ascii16 => self.add_fixed_rows(rows, 2)?,
+            DataType::Ascii24 => self.add_fixed_rows(rows, 3)?,
+            DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -873,6 +884,9 @@ impl MaterializationBudget {
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. }
             | DataType::Ascii32 => self.add_fixed_rows(rows, 4)?,
+            DataType::Ascii16 => self.add_fixed_rows(rows, 2)?,
+            DataType::Ascii24 => self.add_fixed_rows(rows, 3)?,
+            DataType::Ascii96 => self.add_fixed_rows(rows, 12)?,
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64

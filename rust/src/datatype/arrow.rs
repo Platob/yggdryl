@@ -375,8 +375,11 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::Ascii16 => Self::FixedSizeBinary(2),
+            R::Ascii24 => Self::FixedSizeBinary(3),
             R::Ascii32 => Self::FixedSizeBinary(4),
             R::Ascii64 => Self::FixedSizeBinary(8),
+            R::Ascii96 => Self::FixedSizeBinary(12),
             R::Ascii128 => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
             R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
@@ -504,8 +507,11 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::Ascii16 => Self::FixedSizeBinary(2),
+            R::Ascii24 => Self::FixedSizeBinary(3),
             R::Ascii32 => Self::FixedSizeBinary(4),
             R::Ascii64 => Self::FixedSizeBinary(8),
+            R::Ascii96 => Self::FixedSizeBinary(12),
             R::Ascii128 => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(into_arrow_field(field)?),
             R::ListView(field) => Self::ListView(into_arrow_field(field)?),
@@ -669,9 +675,12 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
-        DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => {
-            Some((ASCII_EXTENSION_NAME, String::new()))
-        }
+        DataType::Ascii16
+        | DataType::Ascii24
+        | DataType::Ascii32
+        | DataType::Ascii64
+        | DataType::Ascii96
+        | DataType::Ascii128 => Some((ASCII_EXTENSION_NAME, String::new())),
         _ => None,
     }
 }
@@ -832,8 +841,11 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         DataType::Variant
         | DataType::Geometry(_)
         | DataType::Geography(_)
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;

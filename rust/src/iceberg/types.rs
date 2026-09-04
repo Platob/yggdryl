@@ -167,8 +167,11 @@ impl PrimitiveType {
             DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii16
+            | DataType::Ascii24
             | DataType::Ascii32
             | DataType::Ascii64
+            | DataType::Ascii96
             | DataType::Ascii128 => Self::String,
             DataType::FixedSizeBinary(16) => Self::Fixed(16),
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),

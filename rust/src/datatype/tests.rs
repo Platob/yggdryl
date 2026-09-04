@@ -802,19 +802,29 @@ mod ascii {
     #[test]
     fn every_spelling_parses_and_displays_as_its_width() {
         for (spelling, dtype) in [
+            ("ascii16", DataType::Ascii16),
+            ("ascii24", DataType::Ascii24),
             ("ascii32", DataType::Ascii32),
             ("ascii64", DataType::Ascii64),
+            ("ascii96", DataType::Ascii96),
             ("ascii128", DataType::Ascii128),
             ("ASCII64", DataType::Ascii64),
-            ("ascii(1)", DataType::Ascii32),
-            ("ascii(3)", DataType::Ascii32),
+            ("ascii(1)", DataType::Ascii16),
+            ("ascii(2)", DataType::Ascii16),
+            ("ascii(3)", DataType::Ascii24),
             ("ascii(4)", DataType::Ascii32),
             ("ascii(5)", DataType::Ascii64),
+            ("ascii(6)", DataType::Ascii64),
             ("ascii(8)", DataType::Ascii64),
-            ("ascii(9)", DataType::Ascii128),
+            ("ascii(9)", DataType::Ascii96),
+            ("ascii(12)", DataType::Ascii96),
+            ("ascii(13)", DataType::Ascii128),
             ("ascii(16)", DataType::Ascii128),
-            ("currency", DataType::Ascii32),
-            ("Currency", DataType::Ascii32),
+            ("country", DataType::Ascii16),
+            ("currency", DataType::Ascii24),
+            ("Currency", DataType::Ascii24),
+            ("cfi", DataType::Ascii64),
+            ("CFI", DataType::Ascii64),
         ] {
             let parsed: DataType = spelling
                 .parse()
@@ -824,14 +834,24 @@ mod ascii {
             assert_eq!(parsed.to_string(), dtype.name(), "{spelling}");
             assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
         }
-        let row: DataType = "struct<ccy: currency, code: ascii(12)>".parse().unwrap();
+        let row: DataType = "struct<ccy: currency, isin: ascii(12), code: cfi, iso: country>"
+            .parse()
+            .unwrap();
         assert_eq!(
             row.get_field_by_path("ccy").map(Field::dtype),
-            Some(&DataType::Ascii32)
+            Some(&DataType::Ascii24)
+        );
+        assert_eq!(
+            row.get_field_by_path("isin").map(Field::dtype),
+            Some(&DataType::Ascii96)
         );
         assert_eq!(
             row.get_field_by_path("code").map(Field::dtype),
-            Some(&DataType::Ascii128)
+            Some(&DataType::Ascii64)
+        );
+        assert_eq!(
+            row.get_field_by_path("iso").map(Field::dtype),
+            Some(&DataType::Ascii16)
         );
     }
 
@@ -861,18 +881,37 @@ mod ascii {
 
     #[test]
     fn a_registered_logical_name_resolves_case_insensitively_and_names_its_vocabulary() {
-        assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
+        assert_eq!(
+            DataType::LOGICAL_NAMES,
+            &[
+                ("country", DataType::Ascii16),
+                ("currency", DataType::Ascii24),
+                ("cfi", DataType::Ascii64),
+            ]
+        );
         assert_eq!(
             DataType::from_logical_name("currency").unwrap(),
-            DataType::Ascii32
+            DataType::Ascii24
         );
         assert_eq!(
             DataType::from_logical_name(" CURRENCY ").unwrap(),
-            DataType::Ascii32
+            DataType::Ascii24
+        );
+        // ISO 10962 is six characters, so it registers over the narrowest
+        // width that holds six bytes.
+        assert_eq!(
+            DataType::from_logical_name("cfi").unwrap(),
+            DataType::Ascii64
+        );
+        // ISO 3166-1 alpha-2 is two letters, which is exactly `ascii16`.
+        assert_eq!(
+            DataType::from_logical_name("country").unwrap(),
+            DataType::Ascii16
         );
 
         let error = DataType::from_logical_name("isin").unwrap_err().to_string();
         assert!(error.contains("currency"), "{error}");
+        assert!(error.contains("cfi"), "{error}");
         assert!(error.contains("\"isin\""), "{error}");
         // The grammar reports an unregistered word as unknown.
         let error = "isin".parse::<DataType>().unwrap_err().to_string();
@@ -900,10 +939,13 @@ mod ascii {
     }
 
     #[test]
-    fn identity_kind_and_widths_answer_for_the_three() {
+    fn identity_kind_and_widths_answer_for_every_width() {
         for (dtype, id, width) in [
+            (DataType::Ascii16, DataTypeId::Ascii16, 2),
+            (DataType::Ascii24, DataTypeId::Ascii24, 3),
             (DataType::Ascii32, DataTypeId::Ascii32, 4),
             (DataType::Ascii64, DataTypeId::Ascii64, 8),
+            (DataType::Ascii96, DataTypeId::Ascii96, 12),
             (DataType::Ascii128, DataTypeId::Ascii128, 16),
         ] {
             assert_eq!(dtype.id(), id);
@@ -919,11 +961,14 @@ mod ascii {
     }
 
     #[test]
-    fn ordering_and_hashing_are_consistent_for_the_three() {
+    fn ordering_and_hashing_are_consistent_for_every_width() {
         // The widths sit after the variable text layouts, in width order.
-        assert!(DataType::Utf8View < DataType::Ascii32);
+        assert!(DataType::Utf8View < DataType::Ascii16);
+        assert!(DataType::Ascii16 < DataType::Ascii24);
+        assert!(DataType::Ascii24 < DataType::Ascii32);
         assert!(DataType::Ascii32 < DataType::Ascii64);
-        assert!(DataType::Ascii64 < DataType::Ascii128);
+        assert!(DataType::Ascii64 < DataType::Ascii96);
+        assert!(DataType::Ascii96 < DataType::Ascii128);
         assert!(DataType::Ascii128 < DataType::list(DataType::Utf8.nullable_field("item")));
         assert_eq!(DataType::Ascii64.cmp(&DataType::Ascii64), Ordering::Equal);
         assert_eq!(hash_of(&DataType::Ascii64), hash_of(&DataType::Ascii64));
@@ -935,7 +980,14 @@ mod ascii {
 
     #[test]
     fn the_default_is_the_empty_string_stored_as_all_nul() {
-        for dtype in [DataType::Ascii32, DataType::Ascii64, DataType::Ascii128] {
+        for dtype in [
+            DataType::Ascii16,
+            DataType::Ascii24,
+            DataType::Ascii32,
+            DataType::Ascii64,
+            DataType::Ascii96,
+            DataType::Ascii128,
+        ] {
             assert_eq!(dtype.default_value().unwrap(), Scalar::from(""));
             assert!(dtype.is_default_value(&Scalar::from("")).unwrap());
             assert!(!dtype.is_default_value(&Scalar::from("USD")).unwrap());

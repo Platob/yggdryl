@@ -31,7 +31,17 @@ _BINARY_KINDS = frozenset(
     ("binary", "fixed_size_binary", "large_binary", "binary_view")
 )
 _STRING_KINDS = frozenset(
-    ("utf8", "large_utf8", "utf8_view", "ascii32", "ascii64", "ascii128")
+    (
+        "utf8",
+        "large_utf8",
+        "utf8_view",
+        "ascii16",
+        "ascii24",
+        "ascii32",
+        "ascii64",
+        "ascii96",
+        "ascii128",
+    )
 )
 _LIST_KINDS = frozenset(
     ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")

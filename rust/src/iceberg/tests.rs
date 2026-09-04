@@ -854,7 +854,14 @@ mod types {
     #[test]
     fn an_ascii_width_is_an_iceberg_string() {
         // The padding is storage; every Iceberg reader sees the text.
-        for dtype in [DataType::Ascii32, DataType::Ascii64, DataType::Ascii128] {
+        for dtype in [
+            DataType::Ascii16,
+            DataType::Ascii24,
+            DataType::Ascii32,
+            DataType::Ascii64,
+            DataType::Ascii96,
+            DataType::Ascii128,
+        ] {
             assert_eq!(
                 PrimitiveType::from_dtype(&dtype).unwrap(),
                 PrimitiveType::String

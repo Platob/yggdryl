@@ -75,10 +75,16 @@ pub enum DataTypeId {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
+    /// ASCII text padded with trailing NUL to 2 bytes.
+    Ascii16,
+    /// ASCII text padded with trailing NUL to 3 bytes.
+    Ascii24,
     /// ASCII text padded with trailing NUL to 4 bytes.
     Ascii32,
     /// ASCII text padded with trailing NUL to 8 bytes.
     Ascii64,
+    /// ASCII text padded with trailing NUL to 12 bytes.
+    Ascii96,
     /// ASCII text padded with trailing NUL to 16 bytes.
     Ascii128,
     /// Variable list with 32-bit offsets.
@@ -119,7 +125,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 48] = [
+    pub const ALL: [Self; 51] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -148,8 +154,11 @@ impl DataTypeId {
         Self::Utf8,
         Self::LargeUtf8,
         Self::Utf8View,
+        Self::Ascii16,
+        Self::Ascii24,
         Self::Ascii32,
         Self::Ascii64,
+        Self::Ascii96,
         Self::Ascii128,
         Self::List,
         Self::ListView,
@@ -215,8 +224,11 @@ impl DataTypeId {
             Self::Utf8 => "utf8",
             Self::LargeUtf8 => "large_utf8",
             Self::Utf8View => "utf8_view",
+            Self::Ascii16 => "ascii16",
+            Self::Ascii24 => "ascii24",
             Self::Ascii32 => "ascii32",
             Self::Ascii64 => "ascii64",
+            Self::Ascii96 => "ascii96",
             Self::Ascii128 => "ascii128",
             Self::List => "list",
             Self::ListView => "list_view",
@@ -269,8 +281,11 @@ impl DataTypeId {
             Self::Utf8
             | Self::LargeUtf8
             | Self::Utf8View
+            | Self::Ascii16
+            | Self::Ascii24
             | Self::Ascii32
             | Self::Ascii64
+            | Self::Ascii96
             | Self::Ascii128 => DataTypeKind::String,
             Self::List
             | Self::ListView
@@ -399,6 +414,9 @@ impl DataTypeId {
             | Self::Decimal64
             | Self::Ascii64 => Some(8),
             Self::Duration32 => Some(4),
+            Self::Ascii16 => Some(2),
+            Self::Ascii24 => Some(3),
+            Self::Ascii96 => Some(12),
             Self::Decimal128 | Self::Ascii128 => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
@@ -484,10 +502,13 @@ mod tests {
 
     #[test]
     fn ascii_widths_are_parameter_free_text() {
-        assert_eq!(DataTypeId::ALL.len(), 48);
+        assert_eq!(DataTypeId::ALL.len(), 51);
         for id in [
+            DataTypeId::Ascii16,
+            DataTypeId::Ascii24,
             DataTypeId::Ascii32,
             DataTypeId::Ascii64,
+            DataTypeId::Ascii96,
             DataTypeId::Ascii128,
         ] {
             assert_eq!(id.kind(), DataTypeKind::String);
@@ -518,6 +539,9 @@ mod tests {
         assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
         assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
         assert_eq!(DataTypeId::Ascii32.fixed_byte_width(), Some(4));
+        assert_eq!(DataTypeId::Ascii16.fixed_byte_width(), Some(2));
+        assert_eq!(DataTypeId::Ascii24.fixed_byte_width(), Some(3));
+        assert_eq!(DataTypeId::Ascii96.fixed_byte_width(), Some(12));
         assert_eq!(DataTypeId::Ascii64.fixed_byte_width(), Some(8));
         assert_eq!(DataTypeId::Ascii128.fixed_byte_width(), Some(16));
         assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);

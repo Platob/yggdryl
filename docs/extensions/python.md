@@ -483,8 +483,8 @@ through annotation inference again.
 
 `yggdryl.enums` carries the core's static spellings - `DATA_TYPE_IDS`, `CODECS`, `LEVELS` and the
 rest, listed on the [generic page](../generic.md) - and the three enum bases a caller declares a
-vocabulary with. `Ascii32`, `Ascii64`, and `Ascii128` are the
-[ASCII widths](../datatype.md#ascii-widths-and-the-currency-registration); a subclass names its
+vocabulary with. `Ascii16`, `Ascii24`, `Ascii32`, `Ascii64`, `Ascii96`, and `Ascii128` are the
+[ASCII widths](../datatype.md#ascii-widths-and-the-registered-names); a subclass names its
 values as text and a member *is* the integer that value packs into, so the code is the same in
 every process, is exactly what the column stores, and orders as the text does.
 
@@ -590,7 +590,7 @@ The declared members are the declaration and a value read back is data, so `as_e
 `field()` carry only what the class body names. `into_dictionary()` is the other direction: an
 [`AsciiDictionary`](../datatype.md#the-dictionary-vocabulary-and-its-generated-enum) over the same
 values, whose codes are positions in the column it encodes rather than the values themselves. Only
-the leaf declares members - `AsciiCode` is the base the three widths share, and nothing subclasses
+the leaf declares members - `AsciiCode` is the base the six widths share, and nothing subclasses
 a vocabulary that already has members.
 
 ## Errors

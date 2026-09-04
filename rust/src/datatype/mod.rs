@@ -112,10 +112,16 @@ pub enum DataType {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
+    /// ASCII text padded with trailing NUL to 2 bytes.
+    Ascii16,
+    /// ASCII text padded with trailing NUL to 3 bytes.
+    Ascii24,
     /// ASCII text padded with trailing NUL to 4 bytes.
     Ascii32,
     /// ASCII text padded with trailing NUL to 8 bytes.
     Ascii64,
+    /// ASCII text padded with trailing NUL to 12 bytes.
+    Ascii96,
     /// ASCII text padded with trailing NUL to 16 bytes.
     Ascii128,
     /// Variable list with 32-bit offsets.

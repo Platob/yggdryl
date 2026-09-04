@@ -318,17 +318,19 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Utf8View => Ok((value.clone(), false)),
         // The canonical ASCII spelling is the trimmed string; bytes and a
         // string carrying trailing NULs are rewritten here.
-        D::Ascii32 | D::Ascii64 | D::Ascii128 => match (dtype.ascii_width(), ascii_bytes(value)) {
-            (Some(width), Some(bytes)) => {
-                let text = ascii_text(width, bytes)?;
-                if matches!(value, Scalar::String(current) if current == text) {
-                    Ok((value.clone(), false))
-                } else {
-                    Ok((Scalar::from(text), true))
+        D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => {
+            match (dtype.ascii_width(), ascii_bytes(value)) {
+                (Some(width), Some(bytes)) => {
+                    let text = ascii_text(width, bytes)?;
+                    if matches!(value, Scalar::String(current) if current == text) {
+                        Ok((value.clone(), false))
+                    } else {
+                        Ok((Scalar::from(text), true))
+                    }
                 }
+                _ => canonicalization_failure(dtype),
             }
-            _ => canonicalization_failure(dtype),
-        },
+        }
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -822,12 +824,14 @@ fn validate_dtype_value(
             require(matches!(value, Scalar::String(_)), dtype.name(), value)
         }
         // Text or bytes, both under the one ASCII rule naming the width.
-        D::Ascii32 | D::Ascii64 | D::Ascii128 => match (dtype.ascii_width(), ascii_bytes(value)) {
-            (Some(width), Some(bytes)) => {
-                ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure)
+        D::Ascii16 | D::Ascii24 | D::Ascii32 | D::Ascii64 | D::Ascii96 | D::Ascii128 => {
+            match (dtype.ascii_width(), ascii_bytes(value)) {
+                (Some(width), Some(bytes)) => {
+                    ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure)
+                }
+                _ => Err(expected(dtype.name(), value)),
             }
-            _ => Err(expected(dtype.name(), value)),
-        },
+        }
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }

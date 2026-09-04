@@ -467,7 +467,7 @@ fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
 }
 
 /// The rank of `utf8`: the narrowest text a non-text side re-encodes into.
-const UTF8_RANK: u8 = 3;
+const UTF8_RANK: u8 = 6;
 
 /// How wide a text layout is, if it is one.
 ///
@@ -475,12 +475,15 @@ const UTF8_RANK: u8 = 3;
 /// variable text answers the variable text and narrowing the ASCII width.
 const fn text_rank(dtype: &DataType) -> Option<u8> {
     match dtype {
-        DataType::Ascii32 => Some(0),
-        DataType::Ascii64 => Some(1),
-        DataType::Ascii128 => Some(2),
+        DataType::Ascii16 => Some(0),
+        DataType::Ascii24 => Some(1),
+        DataType::Ascii32 => Some(2),
+        DataType::Ascii64 => Some(3),
+        DataType::Ascii96 => Some(4),
+        DataType::Ascii128 => Some(5),
         DataType::Utf8 => Some(UTF8_RANK),
-        DataType::Utf8View => Some(4),
-        DataType::LargeUtf8 => Some(5),
+        DataType::Utf8View => Some(7),
+        DataType::LargeUtf8 => Some(8),
         _ => None,
     }
 }
@@ -488,11 +491,14 @@ const fn text_rank(dtype: &DataType) -> Option<u8> {
 /// Rebuild a text layout from a width rank.
 const fn rebuild_text(rank: u8) -> DataType {
     match rank {
-        0 => DataType::Ascii32,
-        1 => DataType::Ascii64,
-        2 => DataType::Ascii128,
-        4 => DataType::Utf8View,
-        5 => DataType::LargeUtf8,
+        0 => DataType::Ascii16,
+        1 => DataType::Ascii24,
+        2 => DataType::Ascii32,
+        3 => DataType::Ascii64,
+        4 => DataType::Ascii96,
+        5 => DataType::Ascii128,
+        7 => DataType::Utf8View,
+        8 => DataType::LargeUtf8,
         _ => DataType::Utf8,
     }
 }

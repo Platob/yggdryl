@@ -219,7 +219,7 @@ pub(crate) enum RecognizedExtension {
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
     Geospatial(GeospatialType),
-    /// The `yggdryl.ascii` extension over `FixedSizeBinary(4 | 8 | 16)`,
+    /// The `yggdryl.ascii` extension over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)`,
     /// holding the exact width the storage names.
     Ascii(DataType),
 }
@@ -244,7 +244,7 @@ impl RecognizedExtension {
 /// Recognizes the Arrow extension spellings the first-class datatypes ride:
 /// `geoarrow.wkb` over Binary storage, the canonical `arrow.parquet.variant`
 /// over its exact storage struct with an empty extension metadata document,
-/// and `yggdryl.ascii` over `FixedSizeBinary(4 | 8 | 16)` with an empty or
+/// and `yggdryl.ascii` over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)` with an empty or
 /// absent document.
 ///
 /// Any other pairing keeps today's behavior exactly - a foreign extension
@@ -282,7 +282,7 @@ pub(crate) fn recognized_arrow_extension(
             Ok(Some(RecognizedExtension::Variant))
         }
         ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width @ (4 | 8 | 16)) => {
+            ArrowDataType::FixedSizeBinary(width @ (2 | 3 | 4 | 8 | 12 | 16)) => {
                 Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
             }
             _ => None,
@@ -608,8 +608,11 @@ mod tests {
     #[test]
     fn an_ascii_field_projects_the_yggdryl_extension_and_reimports_itself() {
         for (dtype, width) in [
+            (DataType::Ascii16, 2),
+            (DataType::Ascii24, 3),
             (DataType::Ascii32, 4),
             (DataType::Ascii64, 8),
+            (DataType::Ascii96, 12),
             (DataType::Ascii128, 16),
         ] {
             let field = Field::new("ccy", dtype, false);

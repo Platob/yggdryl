@@ -312,7 +312,12 @@ impl ArrayCastPlan {
         // same width, already validated when it was written.
         let ingest_validated = match field.dtype() {
             DataType::Geometry(_) | DataType::Geography(_) => true,
-            DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128 => !matches!(
+            DataType::Ascii16
+            | DataType::Ascii24
+            | DataType::Ascii32
+            | DataType::Ascii64
+            | DataType::Ascii96
+            | DataType::Ascii128 => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Ascii(source)) if source == field.dtype()
             ),
@@ -405,7 +410,15 @@ impl ArrayCastPlan {
             // An ASCII width takes fixed binary directly and everything the
             // kernel renders as text through one Utf8 temporary; the width
             // rule is checked per value either way.
-            (DataType::Ascii32 | DataType::Ascii64 | DataType::Ascii128, source) => {
+            (
+                DataType::Ascii16
+                | DataType::Ascii24
+                | DataType::Ascii32
+                | DataType::Ascii64
+                | DataType::Ascii96
+                | DataType::Ascii128,
+                source,
+            ) => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
@@ -3085,8 +3098,11 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
         DataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
         DataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
         DataType::FixedSizeBinary(_)
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
         DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
@@ -4413,8 +4429,11 @@ fn byte_array_storage_ptr_eq(
         DataType::Utf8 => shared!(StringArray),
         DataType::LargeUtf8 => shared!(LargeStringArray),
         DataType::FixedSizeBinary(_)
+        | DataType::Ascii16
+        | DataType::Ascii24
         | DataType::Ascii32
         | DataType::Ascii64
+        | DataType::Ascii96
         | DataType::Ascii128 => {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;

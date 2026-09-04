@@ -1445,9 +1445,15 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             })?),
             *scale,
         ),
-        D::Utf8 | D::LargeUtf8 | D::Utf8View | D::Ascii32 | D::Ascii64 | D::Ascii128 => {
-            Scalar::String(SmolStr::new(text))
-        }
+        D::Utf8
+        | D::LargeUtf8
+        | D::Utf8View
+        | D::Ascii16
+        | D::Ascii24
+        | D::Ascii32
+        | D::Ascii64
+        | D::Ascii96
+        | D::Ascii128 => Scalar::String(SmolStr::new(text)),
         D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => {
             Scalar::Bytes(Arc::from(
                 bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,

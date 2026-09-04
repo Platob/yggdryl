@@ -126,8 +126,11 @@ typed_array!(super::binary::Utf8, arrow_array::StringArray);
 typed_array!(super::binary::LargeUtf8, arrow_array::LargeStringArray);
 typed_array!(super::binary::Utf8View, arrow_array::StringViewArray);
 // An ASCII width stores as the fixed binary of its width.
+typed_array!(super::ascii::Ascii16, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::ascii::Ascii24, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii32, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii64, arrow_array::FixedSizeBinaryArray);
+typed_array!(super::ascii::Ascii96, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::ascii::Ascii128, arrow_array::FixedSizeBinaryArray);
 typed_array!(super::nested::List, arrow_array::ListArray);
 typed_array!(super::nested::ListView, arrow_array::ListViewArray);

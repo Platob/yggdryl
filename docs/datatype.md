@@ -45,7 +45,7 @@ type, with Arrow itself kept out of the value model.
     ```
 
 There are 48 variants: one per Arrow logical type, plus Variant, the geospatial pair, and the
-three ASCII widths, which cross Arrow as extension-typed storage. The parser accepts the Arrow,
+six ASCII widths, which cross Arrow as extension-typed storage. The parser accepts the Arrow,
 SQL, Hive, and Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`,
 `row(...)`, `double precision` - and normalizes to one canonical form, so `to_string` is a
 losslessly re-parseable value rather than a debug rendering. `into_json` is a separate, structural
@@ -533,7 +533,7 @@ none. The algorithm vocabulary is the five canonical lowercase names of
 strings.
 
 Across an Arrow boundary the three are extension-typed storage, as are the
-[ASCII widths](#ascii-widths-and-the-currency-registration) below: a variant is a struct of
+[ASCII widths](#ascii-widths-and-the-registered-names) below: a variant is a struct of
 non-nullable `metadata` and `value` binaries under the canonical `arrow.parquet.variant` extension
 name, and both geospatial types are WKB bytes under the community `geoarrow.wkb` name, whose
 GeoArrow JSON document carries the CRS and, for a geography, the edge algorithm. The identities
@@ -543,7 +543,7 @@ community choice that may be revisited when it stabilizes. The geospatial *value
 Well-Known Binary through [`Scalar::Geospatial`](generic.md#the-wkb-reader), read back for display
 and bounds by the one WKB reader documented there.
 
-## ASCII widths and the currency registration
+## ASCII widths and the registered names
 
 === "Rust"
 
@@ -555,20 +555,34 @@ and bounds by the one WKB reader documented there.
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{ArrowCast, DataType, DataTypeKind, Field, Scalar};
 
-    // Three widths named by their bits; the family constructor selects one.
-    assert_eq!(DataType::ascii(3)?, DataType::Ascii32);
-    assert_eq!(DataType::from_str("ascii(12)")?, DataType::Ascii128);
+    // Six widths named by their bits; the family constructor selects the
+    // narrowest one that holds the bytes.
+    assert_eq!(DataType::ascii(2)?, DataType::Ascii16);
+    assert_eq!(DataType::ascii(3)?, DataType::Ascii24);
+    assert_eq!(DataType::ascii(6)?, DataType::Ascii64);
+    assert_eq!(DataType::from_str("ascii(12)")?, DataType::Ascii96);
     assert_eq!(DataType::Ascii32.kind(), DataTypeKind::String);
     assert_eq!(DataType::Ascii64.ascii_width(), Some(8));
     assert_eq!(DataType::Utf8.ascii_width(), None);
     assert!(DataType::ascii(17).is_err());
 
-    // `currency` is a registered name over `ascii32`, and displays as the width.
+    // A registered name is a width, and displays as the width: ISO 3166-1's
+    // two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
+    // six `ascii64`.
     let currency = DataType::from_logical_name("Currency")?;
-    assert_eq!(currency, DataType::Ascii32);
+    assert_eq!(currency, DataType::Ascii24);
     assert_eq!(DataType::from_str("currency")?, currency);
-    assert_eq!(currency.to_string(), "ascii32");
-    assert_eq!(DataType::LOGICAL_NAMES, &[("currency", DataType::Ascii32)]);
+    assert_eq!(currency.to_string(), "ascii24");
+    assert_eq!(DataType::from_str("cfi")?, DataType::Ascii64);
+    assert_eq!(DataType::from_str("country")?, DataType::Ascii16);
+    assert_eq!(
+        DataType::LOGICAL_NAMES,
+        &[
+            ("country", DataType::Ascii16),
+            ("currency", DataType::Ascii24),
+            ("cfi", DataType::Ascii64),
+        ]
+    );
 
     // Storage pads to the width; every string rendering trims the padding.
     let ccy = Field::new("ccy", DataType::Ascii32, false);
@@ -612,20 +626,31 @@ and bounds by the one WKB reader documented there.
     from yggdryl import DataType, Field, fields
 
     ascii32 = DataType("ascii32")
-    assert DataType.ascii(3) == ascii32
-    assert DataType("ascii(12)") == DataType("ascii128")
+    assert DataType.ascii(2) == DataType("ascii16")
+    assert DataType.ascii(3) == DataType("ascii24")
+    assert DataType.ascii(6) == DataType("ascii64")
+    assert DataType("ascii(12)") == DataType("ascii96")
     assert ascii32.kind == "string"
     assert ascii32.ascii_width == 4
-    assert DataType("ascii64").ascii_width == 8
+    assert DataType("ascii24").ascii_width == 3
+    assert DataType("ascii96").ascii_width == 12
     assert DataType("utf8").ascii_width is None
-    assert fields.ascii("ccy", 3).dtype == ascii32
+    assert fields.ascii("ccy", 3).dtype == DataType("ascii24")
 
-    # `currency` is a registered name over `ascii32`, and displays as the width.
+    # A registered name is a width, and displays as the width: ISO 3166-1's
+    # two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
+    # six `ascii64`.
     currency = DataType.from_logical_name("Currency")
-    assert currency == ascii32
+    assert currency == DataType("ascii24")
     assert DataType("currency") == currency
-    assert str(currency) == "ascii32"
-    assert DataType.logical_names() == {"currency": ascii32}
+    assert str(currency) == "ascii24"
+    assert DataType("cfi") == DataType("ascii64")
+    assert DataType("country") == DataType("ascii16")
+    assert DataType.logical_names() == {
+        "country": DataType("ascii16"),
+        "currency": DataType("ascii24"),
+        "cfi": DataType("ascii64"),
+    }
 
     # Storage pads to the width; every string rendering trims the padding.
     ccy = Field("ccy", "ascii32", nullable=False)
@@ -664,20 +689,27 @@ and bounds by the one WKB reader documented there.
     const { DataType, fields } = require('yggdryl')
 
     const ascii32 = new DataType('ascii32')
-    assert.ok(DataType.ascii(3).equals(ascii32))
-    assert.equal(DataType.from('ascii(12)').id, 'ascii128')
+    assert.equal(DataType.ascii(2).id, 'ascii16')
+    assert.equal(DataType.ascii(3).id, 'ascii24')
+    assert.equal(DataType.ascii(6).id, 'ascii64')
+    assert.equal(DataType.from('ascii(12)').id, 'ascii96')
     assert.equal(ascii32.kind, 'string')
     assert.equal(ascii32.asciiWidth, 4)
-    assert.equal(new DataType('ascii64').asciiWidth, 8)
+    assert.equal(new DataType('ascii24').asciiWidth, 3)
+    assert.equal(new DataType('ascii96').asciiWidth, 12)
     assert.equal(new DataType('utf8').asciiWidth, null)
-    assert.ok(fields.ascii('ccy', 3).dtype.equals(ascii32))
+    assert.equal(fields.ascii('ccy', 3).dtype.id, 'ascii24')
 
-    // `currency` is a registered name over `ascii32`, and displays as the width.
+    // A registered name is a width, and displays as the width: ISO 3166-1's
+    // two letters are `ascii16`, ISO 4217's three `ascii24`, and ISO 10962's
+    // six `ascii64`.
     const currency = DataType.fromLogicalName('Currency')
-    assert.ok(currency.equals(ascii32))
+    assert.equal(currency.id, 'ascii24')
     assert.ok(DataType.from('currency').equals(currency))
-    assert.equal(currency.toString(), 'ascii32')
-    assert.deepEqual(Object.keys(DataType.logicalNames()), ['currency'])
+    assert.equal(currency.toString(), 'ascii24')
+    assert.equal(DataType.from('cfi').id, 'ascii64')
+    assert.equal(DataType.from('country').id, 'ascii16')
+    assert.deepEqual(Object.keys(DataType.logicalNames()), ['country', 'currency', 'cfi'])
 
     // Storage pads to the width; every string rendering trims the padding.
     const row = fields.struct('row', [fields.ascii32('ccy', { nullable: false })], {

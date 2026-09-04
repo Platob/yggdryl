@@ -1,8 +1,9 @@
 """Open ASCII vocabularies declared as enums over one fixed width.
 
-A subclass of `Ascii32`, `Ascii64`, or `Ascii128` declares its values as ASCII
-text, and a member *is* the integer that value packs into: the value's own
-storage bytes read big-endian. The code is therefore the same in every process,
+A subclass of one of the six widths - `Ascii16`, `Ascii24`, `Ascii32`,
+`Ascii64`, `Ascii96`, `Ascii128` - declares its values as ASCII text, and a member *is*
+the integer that value packs into: the value's own storage bytes read
+big-endian. The code is therefore the same in every process,
 is exactly what an ASCII column stores, and is what a stable hash hashes -
 never a position in some column's vocabulary. The order of the integers is the
 order of the text.
@@ -35,13 +36,16 @@ if TYPE_CHECKING:
 #: a vocabulary read past its declaration is emitted once per value.
 _LOGGER = logging.getLogger(__name__)
 
+_ASCII16 = DataType("ascii16")
+_ASCII24 = DataType("ascii24")
 _ASCII32 = DataType("ascii32")
 _ASCII64 = DataType("ascii64")
+_ASCII96 = DataType("ascii96")
 _ASCII128 = DataType("ascii128")
 
 
 class AsciiCode(enum.IntEnum):
-    """The shared base of the three ASCII widths.
+    """The shared base of the six ASCII widths.
 
     Subclass one of the widths rather than this: a width names the datatype the
     values store as, and this base has none.
@@ -131,8 +135,8 @@ class AsciiCode(enum.IntEnum):
         """The ASCII width a column of these values stores as."""
 
         raise TypeError(
-            f"{cls.__name__} declares no ASCII width; "
-            "subclass Ascii32, Ascii64, or Ascii128"
+            f"{cls.__name__} declares no ASCII width; subclass Ascii16, "
+            "Ascii24, Ascii32, Ascii64, Ascii96, or Ascii128"
         )
 
     @classmethod
@@ -208,6 +212,29 @@ class AsciiCode(enum.IntEnum):
         return cls.as_enum().into_dictionary(cls.dtype(), key)
 
 
+class Ascii16(AsciiCode):
+    """A vocabulary of values of at most two bytes, packed into 16 bits.
+
+    ISO 3166-1's country code is exactly this width.
+    """
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _ASCII16
+
+
+class Ascii24(AsciiCode):
+    """A vocabulary of values of at most three bytes, packed into 24 bits.
+
+    ISO 4217's currency code is exactly this width, so a currency stores with
+    no padding at all.
+    """
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _ASCII24
+
+
 class Ascii32(AsciiCode):
     """A vocabulary of values of at most four bytes, packed into an `int32`."""
 
@@ -224,6 +251,19 @@ class Ascii64(AsciiCode):
         return _ASCII64
 
 
+class Ascii96(AsciiCode):
+    """A vocabulary of values of at most twelve bytes, packed into 96 bits.
+
+    An ISIN is exactly this width, and its packed code needs more than an
+    `int64`, which is why every code crosses as the language's own wide
+    integer.
+    """
+
+    @classmethod
+    def dtype(cls) -> DataType:
+        return _ASCII96
+
+
 class Ascii128(AsciiCode):
     """A vocabulary of values of at most sixteen bytes, packed into an `int128`."""
 
@@ -234,15 +274,21 @@ class Ascii128(AsciiCode):
 
 #: The width base each storage width declares its values under.
 _WIDTHS: Mapping[int | None, type[AsciiCode]] = {
+    2: Ascii16,
+    3: Ascii24,
     4: Ascii32,
     8: Ascii64,
+    12: Ascii96,
     16: Ascii128,
 }
 
 
 __all__ = [
+    "Ascii16",
+    "Ascii24",
     "Ascii32",
     "Ascii64",
+    "Ascii96",
     "Ascii128",
     "AsciiCode",
 ]

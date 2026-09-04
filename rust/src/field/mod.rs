@@ -132,10 +132,16 @@ pub type Utf8Field = TypedField<binary::Utf8>;
 pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
 /// A UTF-8-view-typed field.
 pub type Utf8ViewField = TypedField<binary::Utf8View>;
+/// An Ascii16-typed field.
+pub type Ascii16Field = TypedField<ascii::Ascii16>;
+/// An Ascii24-typed field.
+pub type Ascii24Field = TypedField<ascii::Ascii24>;
 /// An Ascii32-typed field.
 pub type Ascii32Field = TypedField<ascii::Ascii32>;
 /// An Ascii64-typed field.
 pub type Ascii64Field = TypedField<ascii::Ascii64>;
+/// An Ascii96-typed field.
+pub type Ascii96Field = TypedField<ascii::Ascii96>;
 /// An Ascii128-typed field.
 pub type Ascii128Field = TypedField<ascii::Ascii128>;
 /// A list-typed field.

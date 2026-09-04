@@ -110,8 +110,11 @@ impl JsDataType {
             "utf8" => CoreDataType::Utf8,
             "large_utf8" => CoreDataType::LargeUtf8,
             "utf8_view" => CoreDataType::Utf8View,
+            "ascii16" => CoreDataType::Ascii16,
+            "ascii24" => CoreDataType::Ascii24,
             "ascii32" => CoreDataType::Ascii32,
             "ascii64" => CoreDataType::Ascii64,
+            "ascii96" => CoreDataType::Ascii96,
             "ascii128" => CoreDataType::Ascii128,
             _ => {
                 return Err(Error::from_reason(format!(
@@ -181,8 +184,9 @@ impl JsDataType {
         Ok(Self::from_core(inner))
     }
 
-    /// Creates the ASCII width holding `width` bytes: 1 through 4 is
-    /// `ascii32`, 5 through 8 `ascii64`, and 9 through 16 `ascii128`.
+    /// Creates the ASCII width holding `width` bytes: 1 or 2 is `ascii16`, 3
+    /// `ascii24`, 4 `ascii32`, 5 through 8 `ascii64`, 9 through 12 `ascii96`,
+    /// and 13 through 16 `ascii128`.
     #[napi(factory)]
     pub fn ascii(width: f64) -> Result<Self> {
         CoreDataType::ascii(exact_i32(width, "width")?)

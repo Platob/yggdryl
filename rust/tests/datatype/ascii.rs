@@ -192,12 +192,13 @@ fn an_ascii_literal_has_a_text_form() {
         )
     );
     // The literal prints in its own width and re-parses; a registered name
-    // spells the same literal.
+    // spells the literal of the width it registers over, which for ISO 4217's
+    // three letters is `ascii24`.
     assert_eq!(parsed.to_string(), "ccy = ascii32 'USD'");
     assert_eq!(parsed.to_string().parse::<Expression>().unwrap(), parsed);
     assert_eq!(
         "ccy = currency 'USD'".parse::<Expression>().unwrap(),
-        parsed
+        "ccy = ascii24 'USD'".parse::<Expression>().unwrap()
     );
 
     let message = "ccy = ascii32 'EURO!'"

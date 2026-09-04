@@ -319,24 +319,39 @@ def test_dtype_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> No
 
 
 def test_ascii_widths_select_once_and_register_currency() -> None:
-    ascii32 = DataType("ascii32")
+    ascii24 = DataType("ascii24")
 
-    assert DataType.ascii(3) == ascii32
+    # The family constructor selects the narrowest width that holds the bytes.
+    assert DataType.ascii(2) == DataType("ascii16")
+    assert DataType.ascii(3) == ascii24
+    assert DataType.ascii(4) == DataType("ascii32")
+    assert DataType.ascii(6) == DataType("ascii64")
     assert DataType.ascii(8) == DataType("ascii64")
-    assert DataType.ascii(12) == DataType("ascii128")
-    assert DataType("ascii(3)") == ascii32
-    assert DataType("currency") == ascii32
-    assert str(ascii32) == "ascii32"
-    assert eval(repr(ascii32), {"DataType": DataType}) == ascii32
-    assert ascii32.id == "ascii32"
-    assert ascii32.kind == "string"
-    assert ascii32.ascii_width == 4
+    assert DataType.ascii(12) == DataType("ascii96")
+    assert DataType.ascii(16) == DataType("ascii128")
+    assert DataType("ascii(3)") == ascii24
+    assert DataType("currency") == ascii24
+    assert str(ascii24) == "ascii24"
+    assert eval(repr(ascii24), {"DataType": DataType}) == ascii24
+    assert ascii24.id == "ascii24"
+    assert ascii24.kind == "string"
+    assert ascii24.ascii_width == 3
+    assert DataType("ascii16").ascii_width == 2
+    assert DataType("ascii96").ascii_width == 12
     assert DataType("ascii128").ascii_width == 16
     assert DataType("utf8").ascii_width is None
 
-    assert DataType.from_logical_name("Currency") == ascii32
-    assert DataType.logical_names() == {"currency": ascii32}
-    assert list(DataType.logical_names()) == ["currency"]
+    # ISO 3166-1 is two letters, ISO 4217 three, and ISO 10962 six, so each
+    # registers over the narrowest width that holds it.
+    assert DataType.from_logical_name("Currency") == ascii24
+    assert DataType.from_logical_name("cfi") == DataType("ascii64")
+    assert DataType.from_logical_name("country") == DataType("ascii16")
+    assert DataType.logical_names() == {
+        "country": DataType("ascii16"),
+        "currency": ascii24,
+        "cfi": DataType("ascii64"),
+    }
+    assert list(DataType.logical_names()) == ["country", "currency", "cfi"]
 
     with pytest.raises(ValueError, match="currency"):
         DataType.from_logical_name("isin")
