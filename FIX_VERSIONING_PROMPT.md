@@ -7,6 +7,59 @@ place. No new binding surface anywhere here - the only binding work in the
 whole brief is the two mechanical call sites Phase 2's `Copy` identifier
 forces, and it is named there.
 
+## How to run this brief
+
+**One phase per session, one phase per PR.** A phase is complete work: it
+compiles, its tests pass, its docs are written, and the repository is
+shippable at its end. Do not start a phase whose dependencies are not
+merged.
+
+**Dependency order.** `1 → 3 → 4 → 5`, `1 + 3 + 4 → 6`, `2 + 3 + 6 → 7`.
+Phase 2 depends on nothing and can run first or in parallel.
+
+**Before writing code in a phase:** read the files its *Files* list names,
+and re-read `AGENTS.md`. Every anchor in this brief is `path:line` against
+the tree at the time of writing; if a line has moved, find the symbol and
+carry on - do not assume the rule changed.
+
+**Conflicts.** `AGENTS.md` outranks this brief. This brief outranks your
+priors about how FIX is usually done. Where a rule here says "decided",
+implement it and do not relitigate; the alternative is recorded so you do
+not have to rediscover why it lost. Where a rule says "verify", the check
+comes before the code.
+
+**Never, in any phase:**
+
+- add a public symbol this brief does not name;
+- add a dependency this brief does not name;
+- add backward compatibility, a deprecated alias, a shim, or a second path
+  to an existing behaviour - the repository has one current contract;
+- store a fact that is already derivable, unless a rule here says to and
+  says why;
+- widen a phase because the next one would need it;
+- leave a `TODO`, a `#[allow]`, an ignored test, or a doc example that does
+  not run under `scripts/check_docs_examples.py`.
+
+**A phase is done when**, in this order:
+
+```console
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo test --workspace --features "parquet iceberg"
+cargo check -p yggdryl --no-default-features --lib
+RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps
+python scripts/check_docs_examples.py
+python -m mkdocs build --strict
+```
+
+all pass, plus the benches the phase names, and you have reported the exact
+results - including anything you skipped and why. A phase that cannot meet
+a number it promised reports the measurement; it does not quietly drop the
+promise.
+
+---
+
 ## What is landed
 
 | what | where |
@@ -64,6 +117,17 @@ it.
 A version is major, minor, further numeric parts, and an optional qualifier.
 It is generic: no FIX spelling, no `FIX.` prefix, no `Latest`. The FIX layer
 maps its own spellings onto it in Phase 3.
+
+**Files.** Create `rust/src/generic/version.rs` (+ its `tests`). Edit
+`generic/{mod,datatype_id,typed}.rs`, `generic/scalar.rs`,
+`datatype/{mod,parser,arrow,serde,scalar,default,merge,compatibility,tests}.rs`,
+`field/{mod,typed,value,ascii}.rs`, `field/cast/{mod,plan}.rs`,
+`arrow/value.rs`, `expression/{eval,parser}.rs`, `lib.rs`,
+`rust/tests/allocations.rs`, `rust/benchmarks/datatype.rs`,
+`docs/{generic,datatype}.md`.
+
+**Do not** touch anything under `rust/src/fix/` in this phase; `Version`
+must be usable by a caller who has never heard of FIX.
 
 ### The value
 
@@ -167,6 +231,15 @@ Document the value on `docs/generic.md` and the datatype row on
 ## Phase 2 - `FixId` is one `i64`
 
 Independent of every other phase; do it first if two people are working.
+
+**Files.** Edit `rust/src/fix/{mod,field,registry,store,msg}.rs`,
+`rust/src/fix/tests.rs`, `python/src/fix.rs`, `node/src/fix.rs`,
+`rust/tests/allocations.rs`, `rust/benchmarks/fix/resolve.rs`,
+`docs/fix.md`.
+
+**Do not** change any serialized shape: `FixId` is derived and never
+stored, so a shard written before this phase must load and round-trip
+byte-identically after it. That is the test that says the phase is safe.
 
 ### The representation
 
@@ -336,6 +409,12 @@ quietly.
 
 Needs Phase 1.
 
+**Files.** Edit `rust/src/fix/{mod,field,registry}.rs`, `rust/src/fix/tests.rs`,
+`docs/fix.md`.
+
+**Do not** add a second version key, a registry-wide default version, or a
+message transcoder. This phase carries facts; it does not move values.
+
 ### What a FIX version is here
 
 The FIX layer maps its spellings onto `Version` in `rust/src/fix/`:
@@ -367,7 +446,11 @@ value:
   stays readable.
 - Optional per-entry `deprecated: true` and `removed: true` mark the states
   the specification gives them; a `removed` entry ends the field's life at
-  that version.
+  that version. A version that simply stops naming a field has removed it,
+  which is a `removed` entry the generator writes - not an absence a reader
+  has to infer.
+- Entries are **oldest first**, so the newest reading is the last one
+  written and resolution is a scan that stops, not a sort.
 - Every key beyond `since` is optional: an entry that states only `since` is
   "present, unchanged", which is what most versions are.
 
@@ -445,6 +528,13 @@ to the property table at the top of `rust/src/fix/mod.rs`.
 ## Phase 4 - code sets: `FixEnumValue` and `fix:codes`
 
 Needs Phase 1 for the pedigree versions, Phase 3 for the version filter.
+
+**Files.** Create `rust/src/fix/enums.rs`. Edit `rust/src/fix/{mod,field}.rs`,
+`rust/src/fix/tests.rs`, `rust/tests/allocations.rs`,
+`rust/benchmarks/fix/` (new group), `docs/fix.md`.
+
+**Do not** touch `AsciiEnum` or the `field:enum` document; they carry a
+different fact and neither derives from the other.
 
 ### Why not `field:enum`
 
@@ -614,6 +704,12 @@ scan is defended with a number. Document on `docs/fix.md`.
 
 Needs Phases 3 and 4 to know what it is merging.
 
+**Files.** Edit `rust/src/fix/{field,registry}.rs`, `rust/src/fix/tests.rs`,
+`rust/tests/allocations.rs`, `rust/benchmarks/fix/mutate.rs`, `docs/fix.md`.
+
+**Do not** leave the private `merge` at `registry.rs:866` in place, and do
+not add a priority or source field to any core type.
+
 `registry.rs:866`'s private `merge` is the whole current story and it is
 expensive: `Metadata::merge_with` builds a new `Metadata`, `set_metadata`
 walks it into the field, then `fix:tags` and `fix:aliases` are each read
@@ -677,6 +773,13 @@ group comparing the new merge against the deleted one's behaviour over the
 
 Needs Phases 1, 3 and 4. This is the phase that fills the dictionary the
 other five describe.
+
+**Files.** Create `scripts/build_fix_registry.py` and
+`rust/src/fix/header.rs`. Write `config/fix/**` and `config/fix/sources.json`.
+Edit `rust/src/fix/{mod,registry}.rs`, `rust/src/fix/tests.rs`, `docs/fix.md`.
+
+**Do not** add an HTTP client, or any dependency, to `rust/Cargo.toml`. The
+generator is a script; the crate only ever reads the committed output.
 
 ### Where the data comes from
 
@@ -796,6 +899,14 @@ input, generated and committed, and the crate only ever reads
   `decimal64(18,8)` and `SeqNum` is `int64` with no second mapping. A FIX
   datatype the table does not hold is a hard failure of the script, not a
   silent `utf8`.
+- **The generator narrows nothing the standard did not.** `CheckSum(10)` is
+  three digits with leading zeros and stays `String`; `BodyLength(9)` is
+  `Length`, so a malformed one nulls a field rather than costing a batch
+  (Phase 7); `MonthYear` stays `ascii(8)` because `202608` is a month and
+  `202608w2` a week, neither of which is a point in time; and
+  `SecureData(91)`, `XmlData(213)` and `Signature(89)` are `binary` even
+  though the wire carries them as text. Each of these is a case in yggfin's
+  `test_fields.py` because each was got wrong once.
 - Repeating groups become the nested tree exactly as they do today: a List
   of a non-null `item` Struct whose `fix:tag` is the counter's.
 
@@ -876,6 +987,16 @@ regeneration command on `docs/fix.md`.
 
 Needs Phase 2 for the identifier, Phase 3 for the version, and Phase 6 for a
 dictionary to resolve against.
+
+**Files.** Create `rust/src/fix/entry.rs`. Edit
+`rust/src/fix/{mod,registry,msg}.rs`, `rust/src/fix/tests.rs`,
+`rust/tests/allocations.rs`, `rust/benchmarks/fix/` (new group),
+`docs/fix.md`.
+
+**Do not** write a second parser for anything: the readers split and
+delegate, `from_pairs` is the only builder, `Field::scalar` is the only
+value contract, and the fold is the one Phase 4 and the registry already
+use.
 
 ### The registry's two halves become public
 
@@ -1082,8 +1203,10 @@ all.
   so `CommType=PercentageWaivedCashDiscount` stores `4` and
   `MsgType=NewOrderSingle` stores `D`, while a spelling no code set explains
   is carried through untouched (Phase 4 has the full rule);
-- then the value is `field.scalar(Scalar::from(translated))?` and nothing
-  re-checks what `scalar` already answered;
+- then the value is `field.scalar(Scalar::from(translated))`, and a refusal
+  makes the row's field null rather than failing the message (see **A value
+  that will not type is null, not a failure**); nothing re-checks what
+  `scalar` already answered;
 - order is `STANDARD_HEADER_TAGS`, then the body in entry order, then
   `STANDARD_TRAILER_TAGS` - flat, no `StandardHeader` Struct, which is what
   Phase 6 generates those constants for;
@@ -1214,6 +1337,66 @@ verbatim under tag 452. yggfin's doc records both outcomes on the same
 payload, and it is the reason the fall-through rule in Phase 4 is not an
 error path.
 
+#### Token rules both readers obey
+
+Every rule below is a case in yggfin's `test_message.py` or
+`test_transcribe.py`, which is to say a line some venue really sent. They
+are listed as rules because an implementation that discovers them one
+production incident at a time is the expensive way to learn them.
+
+| rule | why |
+| --- | --- |
+| A token splits at its **first** `=` only. | `Text=a;b` is one value with a semicolon in it, not two fields. |
+| `G[0]=M=v` and `G[0].M=v` are one field, two prints. | A group has one shape; the two spellings must not produce two. |
+| A `#` marks where a key **starts**, not which field it is. | `#54=x` is a rendered key spelled with digits, **not** tag 54. |
+| `#A=1#B=2` has no separator: the next `#` ends the previous value. | ULBridge omits separators; the marker is the boundary. |
+| Tag mode is ASCII digits only. | A bracket, a dot or a `#` means a rendered key, so `453[0]` is never tag 453. |
+| A digit key that overflows `i32` is not a tag. | An epoch-millis key looks like digits and must take the drop path, which `parse_tag` (`fix/field.rs:44`) already does. |
+| Trim ASCII whitespace only. | A non-breaking space is part of the value; trimming Unicode hands back a tag that was never sent. |
+| Nothing after `10=<checksum>` is part of the message. | Log lines carry pair-shaped noise after the trailer. |
+| One `a=b` alone is a sentence, not a message. | Prose in a log must not parse as a one-field message. Require at least two tokens, or a `8=`/`35=` lead. |
+| Two values under one key stay two. | It is a repeating group or a rewrite; collapsing picks one and picking is a guess. |
+| "Not a message" and "a message that said nothing" are different answers. | Both are legitimate and a caller must be able to tell them apart, so the empty message is `Ok` with no entries and unparseable input is an error. |
+
+#### `data` fields are read by length, not by separator
+
+FIX types a field `data` **because its value may contain the separator**.
+`RawData(96)`, `XmlData(213)`, `SecureData(91)` and `Signature(89)` each
+follow a length field - `RawDataLength(95)`, `XmlDataLen(212)`,
+`SecureDataLen(90)`, `SignatureLength(93)` - and that length, not the next
+SOH, says where the value ends. A reader that tokenizes first loses the
+message.
+
+- The length field's own value is what the reader consumes; the registry
+  says which tags are `data` (`DataType::Binary` after Phase 6, since
+  `LOGICAL_NAMES` already maps `data` and `XMLData` to `binary`), so nothing
+  hard-codes the four pairs.
+- **When the stated length and the next separator disagree, take the
+  separator.** A writer that miscounted has stated two things and the
+  delimiter is the safer of them; record the disagreement through
+  `anomalies()`.
+- Venues put `NAME=VALUE` pairs inside `XmlData(213)` even though the
+  standard calls it an XML stream. Parsing that is not this phase's job -
+  the value is kept whole - but a nested pair addressed as
+  `XmlData.ClOrdID` must resolve the same way `NoPartyIDs.PartyID` does when
+  a later phase does read it.
+
+#### A value that will not type is null, not a failure
+
+`field.scalar(...)` refuses a value the datatype cannot hold - a
+`BodyLength` that is not digits, a timestamp a venue mangled. **That must
+not cost the message.** The rule, and it is the same rule as everywhere
+else in this phase:
+
+1. the row's field for that tag is **null**;
+2. the raw text stays in `entries`, exactly as it arrived;
+3. the refusal is reported through `anomalies()`;
+4. `from_pairs` still answers `Ok`.
+
+A parse error is only ever raised for input that is not a message at all.
+"A null nobody can explain is worse than the value that actually arrived" is
+why the raw text survives - a reader can always see what was really sent.
+
 #### Anomalies are derived, never a second state
 
 A counter that disagrees with the number of entries it introduces - and a
@@ -1278,6 +1461,16 @@ under its decimal name; an unknown name refused; tag 32 keyed as
 `LastShares` in a `4.2` message and as `LastQty` in a Latest one, both
 answering the same value; header and trailer ordering with a body field
 interleaved in the input.
+
+Then every row of **Token rules both readers obey**, one case each, plus:
+`#54=x` reaching the field whose *rendered key* is `54` and never tag 54;
+`G[0]=M=v` and `G[0].M=v` answering equal messages; a lone `a=b` line
+refused as not-a-message while an empty-but-valid message answers `Ok` with
+no entries; a `data` field whose value contains the separator read by its
+length field, and a miscounted length taking the separator and showing up
+in `anomalies()`; a `BodyLength` of `abc` nulling that field while the raw
+text stays in `entries`; and tag 555 appearing at two nesting levels in one
+TradeCaptureReport without either being guessed.
 
 Then the code-set translation end to end: `("CommType", "PercentageWaivedCashDiscount")`
 and `("13", "percentage_waived_cash_discount")` both storing `4`;
