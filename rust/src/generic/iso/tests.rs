@@ -55,7 +55,58 @@ fn times_print_the_fraction_at_the_unit_width() {
     // A reading outside its day has no clock spelling.
     assert_eq!(format_time(-1, TimeUnit::Second), None);
     assert_eq!(format_time(86_400, TimeUnit::Second), None);
-    assert!(parse_time("24:00:00").is_err());
+}
+
+#[test]
+fn a_time_of_day_folds_an_hour_past_the_end_of_its_day() {
+    // Midnight closing a shift is the midnight that opens the next day.
+    assert_eq!(parse_time("24:00:00").unwrap(), (0, TimeUnit::Second));
+    assert_eq!(parse_time("25:30:00").unwrap(), (5_400, TimeUnit::Second));
+    // Hours run to the two digits the field holds: 99:59:59 is 03:59:59.
+    assert_eq!(parse_time("99:59:59").unwrap(), (14_399, TimeUnit::Second));
+    assert!(parse_time("100:00:00").is_err());
+
+    // The fold is on the count, so it keeps the fraction and its unit.
+    assert_eq!(
+        parse_time("24:00:00.500").unwrap(),
+        (500, TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        parse_time("48:00:00.000_001").unwrap(),
+        (1, TimeUnit::Microsecond)
+    );
+
+    // Minutes and seconds are calendar fields and stay under sixty.
+    assert!(parse_time("10:60:00").is_err());
+    assert!(parse_time("10:00:60").is_err());
+
+    // Folding is not round-tripping: the spelling comes back inside the day.
+    assert_eq!(
+        format_time(parse_time("25:30:00").unwrap().0, TimeUnit::Second).as_deref(),
+        Some("01:30:00")
+    );
+}
+
+#[test]
+fn a_datetime_carries_an_hour_past_the_end_of_its_day() {
+    // A datetime is a point on the line, so the hour carries into the date.
+    assert_eq!(
+        parse_datetime("2026-08-17T24:00:00").unwrap(),
+        parse_datetime("2026-08-18T00:00:00").unwrap()
+    );
+    assert_eq!(
+        parse_datetime("2026-08-17T25:30:00.250").unwrap(),
+        parse_datetime("2026-08-18T01:30:00.250").unwrap()
+    );
+    // Across a month end, the carry uses the calendar rather than a guess.
+    assert_eq!(
+        parse_datetime("2026-02-28T30:00:00").unwrap(),
+        parse_datetime("2026-03-01T06:00:00").unwrap()
+    );
+    assert_eq!(
+        parse_timestamp("2026-08-17T24:00:00Z").unwrap(),
+        parse_timestamp("2026-08-18T00:00:00Z").unwrap()
+    );
 }
 
 #[test]
@@ -217,4 +268,86 @@ fn durations_spell_seconds_and_read_any_decomposition() {
     );
     assert!(parse_duration("P").is_err());
     assert!(parse_duration("PT1.5M").is_err());
+}
+
+#[test]
+fn durations_also_read_a_plain_clock_whose_hours_never_fold() {
+    // The hours are elapsed hours, so they stay whole where a time of day
+    // would fold: 25:00:00 is twenty-five hours, not one o'clock.
+    assert_eq!(
+        parse_duration("01:30:00").unwrap(),
+        (5_400, TimeUnit::Second)
+    );
+    assert_eq!(
+        parse_duration("25:00:00").unwrap(),
+        (90_000, TimeUnit::Second)
+    );
+    assert_eq!(parse_duration("00:00:00").unwrap(), (0, TimeUnit::Second));
+    // A count takes the width it needs, and the sign leads it.
+    assert_eq!(
+        parse_duration("1:00:00").unwrap(),
+        (3_600, TimeUnit::Second)
+    );
+    assert_eq!(
+        parse_duration("100:00:00").unwrap(),
+        (360_000, TimeUnit::Second)
+    );
+    assert_eq!(
+        parse_duration("-01:30:00").unwrap(),
+        (-5_400, TimeUnit::Second)
+    );
+    assert_eq!(parse_duration("+00:00:01").unwrap(), (1, TimeUnit::Second));
+
+    // The fraction rules are the clock's own, grouping separators included.
+    assert_eq!(
+        parse_duration("00:00:01.500").unwrap(),
+        (1_500, TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        parse_duration("-00:01:00.000_001").unwrap(),
+        (-60_000_001, TimeUnit::Microsecond)
+    );
+    assert_eq!(
+        parse_duration("00:00:00.5").unwrap(),
+        parse_duration("PT0.5S").unwrap()
+    );
+    // Both spellings of the same elapsed time read the same count.
+    assert_eq!(
+        parse_duration("26:03:04").unwrap(),
+        parse_duration("P1DT2H3M4S").unwrap()
+    );
+
+    // Minutes and seconds keep the clock's two-digit fields under sixty.
+    assert!(parse_duration("01:60:00").is_err());
+    assert!(parse_duration("01:00:60").is_err());
+    assert!(parse_duration("01:0:00").is_err());
+    assert!(parse_duration("01:30").is_err());
+    assert!(parse_duration(":30:00").is_err());
+    assert!(parse_duration("01:30:00Z").is_err());
+    assert!(parse_duration("").is_err());
+    assert!(parse_duration("later").is_err());
+    // An hour count beyond the unit's reach is out of range, not a wrap.
+    assert!(parse_duration("9999999999:00:00.000000001").is_err());
+    assert!(parse_duration("99999999999999999999:00:00").is_err());
+}
+
+#[test]
+fn malformed_durations_name_the_byte_that_breaks_them() {
+    let position = |text: &str| match parse_duration(text).unwrap_err() {
+        Error::Parse {
+            target, position, ..
+        } => {
+            assert_eq!(target, "duration");
+            position
+        }
+        other => panic!("expected a parse error, got {other}"),
+    };
+
+    // Positions are byte offsets into the text as written, sign included.
+    assert_eq!(position("-PT1.5M"), 6);
+    assert_eq!(position("PT1.5M"), 5);
+    assert_eq!(position("P1Y"), 2);
+    assert_eq!(position("PT1"), 3);
+    assert_eq!(position("-01:60:00"), 4);
+    assert_eq!(position("-x"), 1);
 }

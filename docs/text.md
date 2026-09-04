@@ -366,6 +366,14 @@ envelopes. Exact values without native syntax use interoperable strings: scaled
 decimals, base64 bytes, and ISO temporal text. A schemaless read returns only
 what the grammar proves.
 
+An hour past the end of the day is read, not refused, and what it means is
+whose day it is. A time of day folds it modulo the day, with hours to `99`, so
+`25:30:00` is `01:30:00`. A datetime carries it into the following date, so
+`2026-08-17T24:00:00` is the 18th at midnight. A duration keeps it plain and
+also reads the clock spelling beside the ISO one, so `26:03:04`, `P1DT2H3M4S`,
+and `PT93784S` are one count; minutes and seconds stay under sixty everywhere,
+and a duration writes back as `PT<seconds>S`.
+
 Pass a `Field` when exact types are required. Parsing happens first, optional
 placeholder substitution happens second, and the Field interprets and
 canonicalizes the resulting natural value last.

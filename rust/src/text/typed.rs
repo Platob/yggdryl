@@ -353,7 +353,7 @@ fn duration32(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
         return Ok(value);
     };
     let (count, source) = crate::generic::iso::parse_duration(&text)
-        .map_err(|_| invalid(field, "expected an ISO duration"))?;
+        .map_err(|_| invalid(field, "expected an ISO duration or a plain clock"))?;
     let count = rescale(count, source, unit)
         .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
     Scalar::duration32(
@@ -367,7 +367,7 @@ fn duration64(value: Scalar, unit: TimeUnit, field: &Field) -> Result<Scalar> {
         return Ok(value);
     };
     let (count, source) = crate::generic::iso::parse_duration(&text)
-        .map_err(|_| invalid(field, "expected an ISO duration"))?;
+        .map_err(|_| invalid(field, "expected an ISO duration or a plain clock"))?;
     let count = rescale(count, source, unit)
         .ok_or_else(|| invalid(field, "duration does not fit its declared unit"))?;
     Scalar::duration64(count, unit)
