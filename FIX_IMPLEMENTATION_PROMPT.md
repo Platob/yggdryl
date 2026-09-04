@@ -16,11 +16,13 @@ the next session.
 - A FIX field is a core `Field` read through its `fix:` protocol view, so it
   already has a name, a `DataType`, nullability, metadata, Arrow projection,
   casting, and serde.
-- `FixRegistry` does CRUD over those fields, keyed uniquely by tag and name.
-- Tag and name resolution are indexed and allocate nothing on a hit. A caller
-  that already knows which key it holds calls the specialized accessor and pays
-  no dispatch.
-- The registry persists through `IOBase` into JSON shards of 100 tags each.
+- `FixRegistry` does CRUD over those fields, keyed uniquely by identifier and by
+  namespaced name.
+- Identifier and name resolution are indexed and allocate nothing on a hit. A
+  caller that already knows which key it holds calls the specialized accessor and
+  pays no dispatch.
+- The registry persists through `IOBase` into JSON shards of 100 tags each,
+  under one folder per namespace.
 - One process-wide registry autoloads once and is the default every other type
   resolves against, from `~/.config/fix` on a real machine. The repository tracks
   its seed dictionary at `config/fix`.
@@ -193,7 +195,7 @@ Create `rust/src/fix/`:
 
 | File | Responsibility |
 | --- | --- |
-| `mod.rs` | `FixKey`, re-exports, module docs |
+| `mod.rs` | `FixNamespace`, `FixId`, `FixKey`, re-exports, module docs |
 | `field.rs` | `impl FixField` / `impl FixFieldMut` typed vocabulary |
 | `registry.rs` | `FixRegistry`: CRUD, indexes, merge, accessors |
 | `global.rs` | the autoloaded process-wide default registry |
@@ -297,6 +299,7 @@ callers never spell `fix:` at a call site.
 
 | Property | Key | Type | Meaning |
 | --- | --- | --- | --- |
+| namespace | `fix:namespace` | `FixNamespace` | the dictionary this field belongs to; absent is `FixNamespace::STANDARD`, and setting the standard one removes the key |
 | tag | `fix:tag` | `i32` | canonical FIX tag |
 | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
@@ -314,6 +317,8 @@ Accessors, following `AGENTS.md` vocabulary:
 
 ```rust
 impl FixField<'_> {
+    pub fn namespace(&self) -> Result<FixNamespace>;   // absent is STANDARD
+    pub fn id(&self) -> Result<Option<FixId>>;         // derived, never stored
     pub fn tag(&self) -> Result<Option<i32>>;
     pub fn tags(&self) -> Result<Vec<i32>>;      // empty when absent
     pub fn aliases(&self) -> FixAliases<'_>;     // lazy, allocation-free
@@ -321,6 +326,8 @@ impl FixField<'_> {
 }
 
 impl FixFieldMut<'_> {
+    pub fn set_namespace(&mut self, namespace: &FixNamespace) -> Result<()>;
+    pub fn set_id(&mut self, id: &FixId) -> Result<()>;   // both halves, atomically
     pub fn set_tag(&mut self, tag: i32) -> Result<()>;
     pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>;
     pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()>;
@@ -343,38 +350,57 @@ model change.
 
 ## Keys and resolution
 
+Identity is `FixId`: a `FixNamespace` and a tag, rendered and parsed
+`namespace:tag`, derived on every read from `fix:namespace` and `fix:tag` and
+never stored. `FixId::from_parts` is the one place the standard-tag rule lives:
+a tag below `FixId::STANDARD_TAG_LIMIT` (5000) is one the FIX specification
+assigns, so it forces `FixNamespace::STANDARD`; the standard namespace holds
+any tag. Every producer of an identity reaches the rule through that
+constructor and none re-checks it.
+
 ```rust
 pub enum FixKey<'a> {
-    Tag(i32),
-    Name(&'a str),
+    Tag(i32),        // the standard namespace
+    Id(&'a FixId),   // any namespace, exactly
+    Name(&'a str),   // the standard namespace, folded
 }
 ```
 
-With `From<i32>`, `From<&'a str>`, and `From<&'a String>`, exactly as `FieldKey`
-does, so `registry.field(35)` and `registry.field("MsgType")` are both one call.
+With `From<i32>`, `From<&'a FixId>`, `From<&'a str>`, and `From<&'a String>`,
+exactly as `FieldKey` does, so `registry.field(35)` and
+`registry.field("MsgType")` are both one call. A colon-bearing string is a name,
+never an identifier: `From` cannot fail, so parsing there would need a silent
+fallback.
 
-Resolution order is fixed and documented:
+Resolution order is fixed and documented, and never leaves one namespace:
 
-1. canonical tag, then alternate tags in stored order;
+1. canonical identifier, then alternate identifiers in stored order;
 2. canonical name folded, then aliases in stored order.
 
 A tag query never consults names and a name query never consults tags. Either
-answers the canonical field.
+answers the canonical field. A bare tag and a bare name are the standard
+namespace, stated rather than resolved by walking whichever dictionaries happen
+to be loaded.
 
 ## Registry
 
-Unique identity is the pair `(tag, name)`. Two fields may share neither.
+Unique identity is the `FixId` and, separately, the pair
+`(namespace, folded name)`. Two fields may share neither. Two namespaces may
+define the same name and the same tag; a conflict is only ever within one
+namespace, and every conflict message names it.
 
 ```rust
 impl FixRegistry {
     // Specialized: the caller already knows which key it holds. No enum, no
     // dispatch, no `Into` conversion. These carry the implementation.
-    pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>;
+    pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field>;  // carries the implementation
+    pub fn field_by_id(&self, id: &FixId) -> Result<&Field>;
+    pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>;   // = by_id(&FixId::standard(tag))
     pub fn field_by_tag(&self, tag: i32) -> Result<&Field>;
-    pub fn get_field_by_name(&self, name: &str) -> Option<&Field>;
-    pub fn field_by_name(&self, name: &str) -> Result<&Field>;
-    pub fn get_field_by_path(&self, path: &str) -> Option<&Field>;
-    pub fn field_by_path(&self, path: &str) -> Result<&Field>;
+    pub fn get_field_by_name(&self, namespace: &FixNamespace, name: &str) -> Option<&Field>;
+    pub fn field_by_name(&self, namespace: &FixNamespace, name: &str) -> Result<&Field>;
+    pub fn get_field_by_path(&self, namespace: &FixNamespace, path: &str) -> Option<&Field>;
+    pub fn field_by_path(&self, namespace: &FixNamespace, path: &str) -> Result<&Field>;
 
     // Generic: the key is only known at runtime. Matches `FixKey` once and
     // redirects to the specialized method. It adds no behavior of its own.
@@ -432,8 +458,14 @@ failure.
 
 The registry reads and writes through `IOBase` alone; no direct filesystem.
 
-- Root is a folder handle. Shards live at `<root>/records/<shard>.json`. The
-  root already names FIX, so no `fix` segment is repeated inside it.
+- Root is a folder handle. Shards live at
+  `<root>/records/<namespace>/<shard>.json`: the namespace level sits above the
+  shard level because a shard index is only unique inside one dictionary. The
+  root already names FIX, so no `fix` segment is repeated inside it. The record
+  is authoritative and the folder is layout; a field whose `fix:namespace`
+  contradicts its folder is a typed error naming both, and a leaf directly under
+  `records/` is the stale flat layout and a typed error rather than a folder
+  skipped into an empty load.
 - Two roots are conventional, and they are different things:
   - `config/fix/` in this repository, tracked in git. This is the seed
     dictionary: the field definitions the project ships, and what the tests,
@@ -553,8 +585,11 @@ pub struct FixMsg {
   `Scalar::Sequence` against the root field exactly as every other row does.
 - Accessors mirror the registry's: `get_by_tag`/`by_tag`, `get_by_name`/
   `by_name`, `get_by_path`/`by_path`, each answering a `&Scalar`, plus the
-  generic `get`/`value` over `FixKey`. Resolution goes through the linked
-  registry, never through a private copy of the rules.
+  generic `get`/`value` over `FixKey`, plus `get_by_id`/`by_id` and a derived
+  `namespace()`. Resolution goes through the linked registry, never through a
+  private copy of the rules. A bare tag or name resolves in a two-step tier -
+  the message's own namespace, when the identifier that would name is legal at
+  all, then the standard one - and an identifier does not tier.
 - An unknown tag is retained, not dropped: keep it under its rendered tag name
   with the registry's fallback datatype. Losing an unknown tag loses the message.
 
@@ -588,9 +623,10 @@ resolution, folding, merging, sharding and validation stay native.
   Python expects: `__len__`, `__contains__`, `__iter__`, `__getitem__` raising
   `KeyError` for absence. `__getitem__` accepts an `int` tag or a `str` name and
   coerces to `FixKey` once, at the boundary.
-- Both accessor halves keep their names: `get_field_by_tag`, `field_by_tag`,
-  `get_field_by_name`, `field_by_name`, `get_field_by_path`, `field_by_path`,
-  `get_field`, `field`. Preserve argument order, defaults and error semantics.
+- Both accessor halves keep their names: `get_field_by_id`, `field_by_id`,
+  `get_field_by_tag`, `field_by_tag`, `get_field_by_name`, `field_by_name`,
+  `get_field_by_path`, `field_by_path`, `get_field`, `field`. `FixNamespace` and
+  `FixId` cross as strings, coerced once at the boundary; no new binding class. Preserve argument order, defaults and error semantics.
 - The FIX vocabulary reaches Python through the existing protocol view class the
   `fix` accessor already returns, so `field.fix.tag` and `field.fix.aliases` are
   the spellings. Do not add a second field wrapper.
@@ -647,7 +683,7 @@ Cover:
   a temporary directory rather than touching the developer's real one.
 - the tracked `config/fix` seed loads: open it with `from_handle`, resolve a tag,
   a name and an alias, and assert the shard layout is exactly
-  `config/fix/records/<shard>.json`.
+  `config/fix/records/standard/<shard>.json`.
 - `FixMsg` links the global registry by default, keeps an explicitly supplied one,
   retains an unknown tag, and rejects a value its field refuses;
 - isolation: a check that nothing under `rust/src/fix/` is referenced from

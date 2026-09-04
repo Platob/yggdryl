@@ -1,9 +1,9 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, FixRegistry};
+use yggdryl::{DataType, FixId, FixRegistry};
 
-use super::{generated, seed};
+use super::{generated, seed, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
@@ -82,6 +82,58 @@ pub fn benchmarks(criterion: &mut Criterion) {
             |mut registry| {
                 black_box(registry.remove(7_000).unwrap());
                 registry
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    // The identity setters, and the refusal path a caller pays for a tag the
+    // FIX specification assigns.
+    let venue = venue();
+    let vendor = FixId::from_parts(venue.clone(), 9_000).expect("a vendor identifier");
+    let mut movable = DataType::Utf8.nullable_field("Movable");
+    movable.as_fix_mut().set_tag(9_000).unwrap();
+    group.bench_function("set_namespace", |bencher| {
+        bencher.iter_batched(
+            || movable.clone(),
+            |mut field| {
+                field.as_fix_mut().set_namespace(&venue).unwrap();
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_id", |bencher| {
+        bencher.iter_batched(
+            || movable.clone(),
+            |mut field| {
+                field.as_fix_mut().set_id(&vendor).unwrap();
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    let mut reserved = DataType::Utf8.nullable_field("Reserved");
+    reserved.as_fix_mut().set_tag(35).unwrap();
+    group.bench_function("set_namespace_refused", |bencher| {
+        bencher.iter_batched(
+            || reserved.clone(),
+            |mut field| {
+                black_box(field.as_fix_mut().set_namespace(&venue).unwrap_err());
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_id_standard", |bencher| {
+        bencher.iter_batched(
+            || reserved.clone(),
+            |mut field| {
+                field
+                    .as_fix_mut()
+                    .set_id(&FixId::standard(35))
+                    .expect("the standard namespace holds any tag");
+                field
             },
             BatchSize::SmallInput,
         );

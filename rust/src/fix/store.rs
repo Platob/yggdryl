@@ -5,27 +5,32 @@
 //! the whole `fix:` namespace persists with no serializer here. The file is
 //! the one thing this module composes, and it is rendered indented so the
 //! tracked seed reads in a diff.
+//!
+//! The layout is `<root>/records/<namespace>/<shard>.json`, because a shard
+//! index is only unique inside one dictionary. The record is authoritative
+//! and the folder is layout: a field whose `fix:namespace` contradicts the
+//! folder it was read from is a typed error naming both.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
-use super::FixRegistry;
-use super::registry::canonical_tag;
+use super::registry::canonical_id;
+use super::{FixNamespace, FixRegistry};
 use crate::generic::Holder;
 use crate::io::IOBase;
 use crate::text::Formatting;
 use crate::{Error, Field, Result, Scalar, Url};
 
-/// The folder under a registry root that holds its shards.
+/// The folder under a registry root that holds its namespace folders.
 const RECORDS: &str = "records";
 /// How many consecutive tags one shard holds.
 const SHARD_WIDTH: i32 = 100;
 /// The extension every shard carries.
 const EXTENSION: &str = "json";
 
-/// The one shard that can hold `tag`.
+/// The one shard that can hold `tag`, within its namespace.
 ///
 /// Tags are non-negative, which [`FixFieldMut::set_tag`](crate::FixFieldMut)
 /// and the parse behind [`FixField::tag`](crate::FixField) guarantee, so the
@@ -38,6 +43,8 @@ pub(super) const fn shard_of(tag: i32) -> i32 {
 ///
 /// A shard is a leaf named `<n>.json` with a decimal `n`; any other entry is
 /// not one and is left alone by both the reader and the writer's cleanup.
+/// This tolerance holds only *inside* a namespace folder: the level above it
+/// admits nothing but namespace folders.
 fn shard_index(entry: &Holder) -> Option<i32> {
     if entry.is_container() {
         return None;
@@ -53,20 +60,25 @@ fn shard_index(entry: &Holder) -> Option<i32> {
     stem.parse().ok()
 }
 
-/// Where a shard was read from, for the failure that names it.
-struct Shard<'entry>(Option<&'entry Url>);
+/// The namespace a folder under `records/` names.
+fn namespace_of(entry: &Holder) -> Result<FixNamespace> {
+    FixNamespace::from_str(entry.url().and_then(Url::file_name).unwrap_or_default())
+}
 
-impl fmt::Display for Shard<'_> {
+/// Where something was read from, for the failure that names it.
+struct At<'entry>(&'static str, Option<&'entry Url>);
+
+impl fmt::Display for At<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Some(url) => write!(formatter, "shard {url}"),
-            None => formatter.write_str("an unnamed shard"),
+        match self.1 {
+            Some(url) => write!(formatter, "{} {url}", self.0),
+            None => write!(formatter, "an unnamed {}", self.0),
         }
     }
 }
 
-/// Attach the shard's location to a failure raised while reading it.
-fn in_shard(error: Error, url: Shard<'_>) -> Error {
+/// Attach the location to a failure raised while reading it.
+fn in_shard(error: Error, at: At<'_>) -> Error {
     match error {
         Error::Codec {
             format,
@@ -75,7 +87,16 @@ fn in_shard(error: Error, url: Shard<'_>) -> Error {
         } => Error::Codec {
             format,
             position,
-            reason: format_smolstr!("{reason} in {url}"),
+            reason: format_smolstr!("{reason} in {at}"),
+        },
+        Error::Parse {
+            target,
+            position,
+            reason,
+        } => Error::Parse {
+            target,
+            position,
+            reason: format_smolstr!("{reason} in {at}"),
         },
         Error::Conflict {
             expected,
@@ -84,24 +105,24 @@ fn in_shard(error: Error, url: Shard<'_>) -> Error {
         } => Error::Conflict {
             expected,
             actual,
-            path: format_smolstr!("{path} in {url}"),
+            path: format_smolstr!("{path} in {at}"),
         },
         Error::Absent { expected, path } => Error::Absent {
             expected,
-            path: format_smolstr!("{path} in {url}"),
+            path: format_smolstr!("{path} in {at}"),
         },
         Error::InvalidRecord { path, reason } => Error::InvalidRecord {
             path,
-            reason: format_smolstr!("{reason} in {url}"),
+            reason: format_smolstr!("{reason} in {at}"),
         },
         Error::InvalidMetadataValue { key, reason } => Error::InvalidMetadataValue {
             key,
-            reason: format_smolstr!("{reason} in {url}"),
+            reason: format_smolstr!("{reason} in {at}"),
         },
         other => Error::Codec {
             format: "json",
             position: 0,
-            reason: format_smolstr!("{other} in {url}"),
+            reason: format_smolstr!("{other} in {at}"),
         },
     }
 }
@@ -115,25 +136,48 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns a typed error naming the shard's URL when a shard is not a
-    /// JSON array of field documents, holds a field without a `fix:tag` or
-    /// with a tag another shard owns, or holds a field the registry refuses.
+    /// Returns a typed error naming the URL when `records/` holds a leaf
+    /// rather than only namespace folders, when a folder's name is not a
+    /// namespace, or when a shard is not a JSON array of field documents,
+    /// holds a field without a `fix:tag`, with a tag another shard owns, with
+    /// a namespace its folder contradicts, or that the registry refuses.
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
         let mut registry = Self::new();
-        for entry in handle.child_by_path(RECORDS)?.ls(false, false) {
-            let entry = entry?;
-            let Some(shard) = shard_index(&entry) else {
-                continue;
-            };
-            registry
-                .load_shard(&entry, shard)
-                .map_err(|error| in_shard(error, Shard(entry.url())))?;
+        let records = handle.child_by_path(RECORDS)?;
+        for folder in records.ls(false, false) {
+            let folder = folder?;
+            if !folder.is_container() {
+                return Err(Error::InvalidRecord {
+                    path: records.url().map_or_else(
+                        || SmolStr::new_static(RECORDS),
+                        |url| format_smolstr!("{url}"),
+                    ),
+                    reason: crate::text::expected_got(
+                        "only namespace folders",
+                        format_args!(
+                            "the leaf {:?}",
+                            folder.url().and_then(Url::file_name).unwrap_or_default()
+                        ),
+                    ),
+                });
+            }
+            let namespace = namespace_of(&folder)
+                .map_err(|error| in_shard(error, At("folder", folder.url())))?;
+            for entry in folder.ls(false, false) {
+                let entry = entry?;
+                let Some(shard) = shard_index(&entry) else {
+                    continue;
+                };
+                registry
+                    .load_shard(&entry, &namespace, shard)
+                    .map_err(|error| in_shard(error, At("shard", entry.url())))?;
+            }
         }
         Ok(registry)
     }
 
     /// Read one shard's fields into this registry.
-    fn load_shard(&mut self, entry: &Holder, shard: i32) -> Result<()> {
+    fn load_shard(&mut self, entry: &Holder, namespace: &FixNamespace, shard: i32) -> Result<()> {
         let document = crate::from_json_scalar(entry.read_all_bytes()?)?;
         let Some(fields) = document.as_sequence() else {
             return Err(Error::Codec {
@@ -147,8 +191,8 @@ impl FixRegistry {
         };
         for value in fields {
             let field = Field::from_value(value.clone())?;
-            let tag = canonical_tag(&field)?;
-            if shard_of(tag) != shard {
+            let id = canonical_id(&field)?;
+            if shard_of(id.tag()) != shard {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
                     reason: crate::text::expected_got(
@@ -157,7 +201,16 @@ impl FixRegistry {
                             shard * SHARD_WIDTH,
                             shard * SHARD_WIDTH + SHARD_WIDTH - 1
                         ),
-                        format_args!("tag {tag}"),
+                        format_args!("tag {}", id.tag()),
+                    ),
+                });
+            }
+            if id.namespace() != namespace {
+                return Err(Error::InvalidRecord {
+                    path: field.name().into(),
+                    reason: crate::text::expected_got(
+                        format_args!("the namespace {:?} its folder names", namespace.as_str()),
+                        format_args!("{:?}", id.namespace().as_str()),
                     ),
                 });
             }
@@ -166,8 +219,8 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Writes every populated shard under `<root>/records` and removes the
-    /// shards no field populates any more.
+    /// Writes every populated shard under `<root>/records/<namespace>` and
+    /// removes the shards and namespace folders no field populates any more.
     ///
     /// Each shard is written whole through the handle's ordinary byte write,
     /// creating the file and its parents, so a failed write leaves the prior
@@ -176,28 +229,48 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns the handle's write, listing or removal failure, or the
-    /// encoder's.
+    /// Returns the handle's write, listing or removal failure, the parse
+    /// failure when a stored `fix:` property is malformed, or the encoder's.
     pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()> {
-        let mut shards: BTreeMap<i32, Vec<&Field>> = BTreeMap::new();
+        let mut shards: BTreeMap<(FixNamespace, i32), Vec<&Field>> = BTreeMap::new();
         for field in self {
+            let id = canonical_id(field)?;
             shards
-                .entry(shard_of(canonical_tag(field)?))
+                .entry((id.namespace().clone(), shard_of(id.tag())))
                 .or_default()
                 .push(field);
         }
-        for (shard, fields) in &shards {
+        for ((namespace, shard), fields) in &shards {
             let document =
                 Scalar::from_sequence(fields.iter().map(|field| (*field).clone().into_value()));
             let bytes =
                 crate::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
-            root.child_by_path(&format!("{RECORDS}/{shard}.{EXTENSION}"))?
+            root.child_by_path(&format!("{RECORDS}/{namespace}/{shard}.{EXTENSION}"))?
                 .write_all_bytes(&bytes)?;
         }
-        for entry in root.child_by_path(RECORDS)?.ls(false, false) {
-            let mut entry = entry?;
-            if shard_index(&entry).is_some_and(|shard| !shards.contains_key(&shard)) {
-                entry.remove(false)?;
+        let held: BTreeSet<&FixNamespace> = shards.keys().map(|(namespace, _)| namespace).collect();
+        for folder in root.child_by_path(RECORDS)?.ls(false, false) {
+            let mut folder = folder?;
+            // A leaf here is what `from_handle` refuses, and a folder whose
+            // name is not a namespace is nothing this registry wrote: the
+            // writer neither owns either nor deletes them.
+            if !folder.is_container() {
+                continue;
+            }
+            let Ok(namespace) = namespace_of(&folder) else {
+                continue;
+            };
+            if !held.contains(&namespace) {
+                folder.remove(true)?;
+                continue;
+            }
+            for entry in folder.ls(false, false) {
+                let mut entry = entry?;
+                if shard_index(&entry)
+                    .is_some_and(|shard| !shards.contains_key(&(namespace.clone(), shard)))
+                {
+                    entry.remove(false)?;
+                }
             }
         }
         Ok(())

@@ -32,7 +32,7 @@ fn the_configuration_directory_seeds_the_default() {
         .expect("one field")
         .write_into(&mut Folder::new(home.join(".config").join("fix")).expect("a local folder"))
         .expect("the shard written");
-    assert!(home.join(".config/fix/records/0.json").is_file());
+    assert!(home.join(".config/fix/records/standard/0.json").is_file());
 
     // SAFETY: `set_var` is `unsafe` because another thread reading the
     // environment concurrently is a data race. This binary holds only this

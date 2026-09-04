@@ -76,7 +76,7 @@ pub use field::{
     AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
-pub use fix::{FixAliases, FixFieldIter, FixKey, FixMsg, FixRegistry};
+pub use fix::{FixAliases, FixFieldIter, FixId, FixKey, FixMsg, FixNamespace, FixRegistry};
 pub use generic::{
     Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, EnumScalar, Float, IOKind, IOMode,
     Integer, Level, MediaType, MimeType, Scheme, TemporalFamily, TemporalRef, TimeUnit, Timezone,

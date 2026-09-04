@@ -12,8 +12,13 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::{FixId, FixNamespace};
 use crate::{Error, FixField, FixFieldMut, Result};
 
+/// The dictionary a field belongs to; absent means the standard one.
+const NAMESPACE: &str = "namespace";
+/// The full key the namespace is stored under, spelled once.
+pub(super) const NAMESPACE_KEY: &str = "fix:namespace";
 /// The canonical tag.
 const TAG: &str = "tag";
 /// The alternate tags, comma-separated, highest priority first.
@@ -28,11 +33,15 @@ const SEPARATOR: char = ',';
 /// What a tag is, spelled once for every refusal.
 const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 0 to 2147483647";
 
+/// What a namespace is, spelled once for every refusal.
+const NAMESPACE_SHAPE: &str = "a FIX namespace, at most 23 ASCII letters, digits, hyphen, dot or underscore, starting with a letter";
+
 /// Parse one tag strictly: decimal digits only, never negative, never signed.
 ///
 /// `i32::from_str` would also accept `+35`, which the writer never emits, so
-/// the digits are checked first and the width second.
-fn parse_tag(text: &str) -> Option<i32> {
+/// the digits are checked first and the width second. [`FixId::from_str`]
+/// parses the tail of an identifier through this same one strict parse.
+pub(super) fn parse_tag(text: &str) -> Option<i32> {
     if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
@@ -40,6 +49,42 @@ fn parse_tag(text: &str) -> Option<i32> {
 }
 
 impl<'field> FixField<'field> {
+    /// Parses the dictionary this field belongs to.
+    ///
+    /// An absent property is [`FixNamespace::STANDARD`]: the FIX
+    /// specification's own fields are the common case and state nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `fix:namespace` key when the stored
+    /// text is not a namespace: [`FixFieldMut::set_namespace`] never writes
+    /// one, so this can only come from externally edited state.
+    pub fn namespace(&self) -> Result<FixNamespace> {
+        match self.get(NAMESPACE) {
+            Some(stored) => FixNamespace::from_str(stored)
+                .map_err(|_| self.invalid(NAMESPACE, NAMESPACE_SHAPE, stored)),
+            None => Ok(FixNamespace::STANDARD),
+        }
+    }
+
+    /// Builds this field's identity, absent exactly when `fix:tag` is.
+    ///
+    /// Derived from the namespace and the canonical tag on every ask; nothing
+    /// stores it. Building it through [`FixId::from_parts`] is what refuses a
+    /// hand-edited record that claims a specification tag for another
+    /// dictionary at the door rather than after it is indexed.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failure [`Self::tag`] or [`Self::namespace`] raises, or
+    /// [`FixId::from_parts`]'s refusal.
+    pub fn id(&self) -> Result<Option<FixId>> {
+        let Some(tag) = self.tag()? else {
+            return Ok(None);
+        };
+        FixId::from_parts(self.namespace()?, tag).map(Some)
+    }
+
     /// Parses the canonical FIX tag.
     ///
     /// # Errors
@@ -106,17 +151,70 @@ impl<'field> FixField<'field> {
 }
 
 impl FixFieldMut<'_> {
+    /// Records the dictionary this field belongs to.
+    ///
+    /// [`FixNamespace::STANDARD`] removes the property rather than writing
+    /// `"standard"`, exactly as an empty tag or alias list removes its own, so
+    /// one declaration has one stored form. The canonical tag and every
+    /// alternate tag are held to the standard-tag rule against the new
+    /// namespace before anything is written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FixId::from_parts`]'s refusal when a tag this field holds is
+    /// one the FIX specification assigns, the parse failure when a stored
+    /// `fix:` property is malformed, or the property write's refusal. Any of
+    /// them leaves the field unchanged.
+    pub fn set_namespace(&mut self, namespace: &FixNamespace) -> Result<()> {
+        let view = self.as_protocol();
+        if let Some(tag) = view.tag()? {
+            FixId::from_parts(namespace.clone(), tag)?;
+        }
+        for tag in view.tags()? {
+            FixId::from_parts(namespace.clone(), tag)?;
+        }
+        self.put_namespace(namespace)?;
+        Ok(())
+    }
+
+    /// Records both halves of an identity at once.
+    ///
+    /// Moving a field between namespaces one property at a time works in only
+    /// one order and refuses the other, because each setter holds the field to
+    /// the standard-tag rule as it stands. This writes the namespace, then the
+    /// tag, and restores the prior namespace entry if the tag write fails, so
+    /// either move succeeds and a failure leaves the field unchanged. A
+    /// [`FixId`] is already legal, so nothing beyond the tag's own shape is
+    /// re-checked.
+    ///
+    /// # Errors
+    ///
+    /// Returns the tag write's refusal, having restored the namespace.
+    pub fn set_id(&mut self, id: &FixId) -> Result<()> {
+        let prior = self.put_namespace(id.namespace())?;
+        match self.set_tag(id.tag()) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.restore_namespace(prior);
+                Err(error)
+            }
+        }
+    }
+
     /// Records the canonical FIX tag.
     ///
     /// # Errors
     ///
-    /// Returns an error when the tag is negative, or when the property write
-    /// fails the validation every metadata write goes through. Either way the
-    /// field is unchanged.
+    /// Returns an error when the tag is negative, when this field's namespace
+    /// may not claim it - a tag below [`FixId::STANDARD_TAG_LIMIT`] is the FIX
+    /// specification's own - or when the property write fails the validation
+    /// every metadata write goes through. Any of them leaves the field
+    /// unchanged.
     pub fn set_tag(&mut self, tag: i32) -> Result<()> {
         if tag < 0 {
             return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
+        FixId::from_parts(self.as_protocol().namespace()?, tag)?;
         self.store(TAG, tag.to_string())
     }
 
@@ -126,18 +224,22 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when a tag is negative or repeated, leaving the field
-    /// unchanged.
+    /// Returns an error when a tag is negative, repeated, or one this field's
+    /// namespace may not claim, leaving the field unchanged. An alternate tag
+    /// resolves exactly as a canonical one does, so it is held to the same
+    /// standard-tag rule.
     pub fn set_tags(&mut self, tags: &[i32]) -> Result<()> {
         if tags.is_empty() {
             self.remove(TAGS);
             return Ok(());
         }
+        let namespace = self.as_protocol().namespace()?;
         let mut rendered = String::new();
         for (index, tag) in tags.iter().enumerate() {
             if *tag < 0 {
                 return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
             }
+            FixId::from_parts(namespace.clone(), *tag)?;
             if tags[..index].contains(tag) {
                 return Err(self.rejected(
                     TAGS,
@@ -216,6 +318,32 @@ impl FixFieldMut<'_> {
     fn store(&mut self, name: &str, value: impl Into<String>) -> Result<()> {
         self.insert(name, value)?;
         Ok(())
+    }
+
+    /// Put the namespace entry in the one form that declaration has, and
+    /// answer what stood there before.
+    fn put_namespace(&mut self, namespace: &FixNamespace) -> Result<Option<String>> {
+        if namespace.is_standard() {
+            Ok(self.remove(NAMESPACE))
+        } else {
+            self.insert(NAMESPACE, namespace.as_str())
+        }
+    }
+
+    /// Put back what [`Self::put_namespace`] answered.
+    ///
+    /// The value was read out of this very field, so re-inserting it cannot
+    /// fail validation; a failure here would be reported instead of the one
+    /// being unwound, which is why the result is dropped.
+    fn restore_namespace(&mut self, prior: Option<String>) {
+        match prior {
+            Some(value) => {
+                let _ = self.insert(NAMESPACE, value);
+            }
+            None => {
+                self.remove(NAMESPACE);
+            }
+        }
     }
 
     /// Name the full key a value was refused under.

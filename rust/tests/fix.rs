@@ -8,8 +8,14 @@ use std::sync::Arc;
 use yggdryl::io::IOBase;
 use yggdryl::local::Folder;
 use yggdryl::{
-    DataType, Field, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar,
+    DataType, Field, FixId, FixMsg, FixNamespace, FixRegistry, Scalar, from_json_scalar_with_field,
+    into_json_scalar,
 };
+
+/// The venue dictionary the namespaced cases are written against.
+fn cme() -> FixNamespace {
+    FixNamespace::from_str("cme").expect("a valid namespace")
+}
 
 /// A fresh directory of this test's own under the platform temporary root.
 fn scratch(label: &str) -> PathBuf {
@@ -37,9 +43,9 @@ fn seed_root() -> PathBuf {
         .join("fix")
 }
 
-/// The sorted names under `root/records`.
-fn shard_files(root: &Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(root.join("records"))
+/// The sorted names under `root/records/<namespace>`.
+fn shard_files(root: &Path, namespace: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root.join("records").join(namespace))
         .map(|entries| {
             entries
                 .map(|entry| {
@@ -94,7 +100,10 @@ fn shards_round_trip_through_a_temporary_folder() {
     ])
     .unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root), ["0.json", "1.json", "100.json"]);
+    assert_eq!(
+        shard_files(&root, "standard"),
+        ["0.json", "1.json", "100.json"]
+    );
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
@@ -106,7 +115,13 @@ fn shards_round_trip_through_a_temporary_folder() {
         (10_000, "TenThousand"),
     ] {
         assert_eq!(reloaded.field_by_tag(tag).unwrap().name(), name);
-        assert_eq!(reloaded.field_by_name(name).unwrap().name(), name);
+        assert_eq!(
+            reloaded
+                .field_by_name(&FixNamespace::STANDARD, name)
+                .unwrap()
+                .name(),
+            name
+        );
     }
 
     // An alternate tag in another hundred is an index entry, never a shard.
@@ -115,22 +130,61 @@ fn shards_round_trip_through_a_temporary_folder() {
     let mut registry = registry;
     registry.insert(exec_type).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root), ["0.json", "1.json", "100.json"]);
-    let zero = std::fs::read_to_string(root.join("records").join("0.json")).unwrap();
+    assert_eq!(
+        shard_files(&root, "standard"),
+        ["0.json", "1.json", "100.json"]
+    );
+    let zero =
+        std::fs::read_to_string(root.join("records").join("standard").join("0.json")).unwrap();
     assert!(!zero.contains("ExecType"), "{zero}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded.field_by_tag(20).unwrap().name(), "ExecType");
     assert_eq!(reloaded.field_by_tag(150).unwrap().name(), "ExecType");
 
     // A removed field's emptied shard disappears on the next write, so a
-    // reload cannot resurrect it; a leaf that is not a shard is left alone.
-    std::fs::write(root.join("records").join("README.md"), b"notes").unwrap();
+    // reload cannot resurrect it; a leaf that is not a shard is left alone
+    // inside a namespace folder.
+    std::fs::write(
+        root.join("records").join("standard").join("README.md"),
+        b"notes",
+    )
+    .unwrap();
     assert_eq!(registry.remove(10_000).unwrap().name(), "TenThousand");
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root), ["0.json", "1.json", "README.md"]);
+    assert_eq!(
+        shard_files(&root, "standard"),
+        ["0.json", "1.json", "README.md"]
+    );
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert!(reloaded.get_field_by_tag(10_000).is_none());
     assert_eq!(reloaded, registry);
+
+    // A leaf directly under `records/` is the stale pre-namespace layout, and
+    // it is a typed error rather than a folder skipped into an empty load.
+    std::fs::write(root.join("records").join("0.json"), b"[]").unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("only namespace folders"), "{message}");
+    assert!(message.contains("the leaf \"0.json\""), "{message}");
+    std::fs::remove_file(root.join("records").join("0.json")).unwrap();
+
+    // A folder whose name is no namespace keeps its typed parse failure and
+    // its byte position, with the folder named.
+    std::fs::create_dir_all(root.join("records").join("2bad")).unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            yggdryl::Error::Parse {
+                target: "fix namespace",
+                position: 0,
+                ..
+            }
+        ),
+        "{error}"
+    );
+    assert!(error.to_string().contains("2bad"), "{error}");
+    std::fs::remove_dir_all(root.join("records").join("2bad")).unwrap();
 
     // An absent folder loads as the empty registry.
     let absent = Folder::new(root.join("absent")).unwrap();
@@ -147,12 +201,17 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     let (group, instrument) = nested();
     let registry = FixRegistry::from_fields([group.clone(), instrument.clone()]).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root), ["10.json", "4.json"]);
+    assert_eq!(shard_files(&root, "standard"), ["10.json", "4.json"]);
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.field_by_tag(453).unwrap(), &group);
-    assert_eq!(reloaded.field_by_name("parties").unwrap(), &group);
+    assert_eq!(
+        reloaded
+            .field_by_name(&FixNamespace::STANDARD, "parties")
+            .unwrap(),
+        &group
+    );
     assert_eq!(reloaded.field_by_tag(1001).unwrap(), &instrument);
     for (path, tag) in [
         ("NoPartyIDs.PartyID", 448),
@@ -163,7 +222,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     ] {
         assert_eq!(
             reloaded
-                .field_by_path(path)
+                .field_by_path(&FixNamespace::STANDARD, path)
                 .unwrap()
                 .as_fix()
                 .tag()
@@ -178,7 +237,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
 #[test]
 fn a_malformed_shard_names_its_location() {
     let root = scratch("malformed");
-    let records = root.join("records");
+    let records = root.join("records").join("standard");
     std::fs::create_dir_all(&records).unwrap();
     let folder = Folder::new(&root).unwrap();
 
@@ -237,6 +296,109 @@ fn a_malformed_shard_names_its_location() {
         "{message}"
     );
 
+    // The record is authoritative and the folder is layout, so a field whose
+    // own namespace contradicts the folder it sits in names both.
+    let mut venue = DataType::Utf8.nullable_field("TradeID");
+    venue
+        .as_fix_mut()
+        .set_id(&FixId::from_parts(cme(), 5001).unwrap())
+        .unwrap();
+    let elsewhere = Scalar::from_sequence([venue.clone().into_value()]);
+    std::fs::create_dir_all(root.join("records").join("cme")).unwrap();
+    std::fs::remove_file(records.join("0.json")).unwrap();
+    std::fs::write(
+        root.join("records").join("cme").join("0.json"),
+        yggdryl::json::into_bytes(&elsewhere).unwrap(),
+    )
+    .unwrap();
+    let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+    assert!(
+        message.contains("a tag of shard 0, from 0 to 99"),
+        "{message}"
+    );
+    std::fs::remove_file(root.join("records").join("cme").join("0.json")).unwrap();
+    std::fs::write(
+        root.join("records").join("standard").join("50.json"),
+        yggdryl::json::into_bytes(&elsewhere).unwrap(),
+    )
+    .unwrap();
+    let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+    assert!(
+        message.contains("the namespace \"standard\" its folder names"),
+        "{message}"
+    );
+    assert!(message.contains("\"cme\""), "{message}");
+    assert!(message.contains("50.json"), "{message}");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn two_namespaces_write_their_own_shards_and_a_dropped_one_disappears() {
+    let root = scratch("namespaces");
+    let mut folder = Folder::new(&root).unwrap();
+    let cme = cme();
+
+    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    trade
+        .as_fix_mut()
+        .set_id(&FixId::from_parts(cme.clone(), 5001).unwrap())
+        .unwrap();
+    let mut venue = DataType::Utf8.nullable_field("VenueID");
+    venue
+        .as_fix_mut()
+        .set_id(&FixId::from_parts(cme.clone(), 9000).unwrap())
+        .unwrap();
+    let mut registry =
+        FixRegistry::from_fields([tagged("Symbol", 55), trade.clone(), venue.clone()]).unwrap();
+    registry.write_into(&mut folder).unwrap();
+
+    // Each namespace owns its own shard arithmetic: 5001 is shard 50 and
+    // 9000 is shard 90 inside `cme`, and 55 is shard 0 inside `standard`.
+    assert_eq!(shard_files(&root, "standard"), ["0.json"]);
+    assert_eq!(shard_files(&root, "cme"), ["50.json", "90.json"]);
+
+    let reloaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(reloaded, registry);
+    assert_eq!(reloaded.len(), 3);
+    assert_eq!(reloaded.field_by_tag(55).unwrap().name(), "Symbol");
+    assert_eq!(
+        reloaded
+            .field_by_id(&FixId::from_parts(cme.clone(), 5001).unwrap())
+            .unwrap(),
+        &trade
+    );
+    assert_eq!(
+        reloaded.field_by_name(&cme, "venueid").unwrap().name(),
+        "VenueID"
+    );
+    assert!(reloaded.get_field_by_tag(5001).is_none());
+
+    // Dropping every field of one namespace removes its folder whole, so a
+    // reload cannot resurrect it.
+    assert_eq!(
+        registry
+            .remove(&FixId::from_parts(cme.clone(), 5001).unwrap())
+            .unwrap()
+            .name(),
+        "TradeID"
+    );
+    registry.write_into(&mut folder).unwrap();
+    assert_eq!(shard_files(&root, "cme"), ["90.json"]);
+    assert_eq!(
+        registry
+            .remove(&FixId::from_parts(cme, 9000).unwrap())
+            .unwrap()
+            .name(),
+        "VenueID"
+    );
+    registry.write_into(&mut folder).unwrap();
+    assert!(!root.join("records").join("cme").exists());
+    assert_eq!(shard_files(&root, "standard"), ["0.json"]);
+    let reloaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(reloaded, registry);
+    assert_eq!(reloaded.len(), 1);
+
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -249,18 +411,45 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
 
     // A tag, a name, an alias, an alternate tag, and a group member.
     assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
-    assert_eq!(registry.field_by_name("msgtype").unwrap().name(), "MsgType");
-    assert_eq!(registry.field_by_name("TICKER").unwrap().name(), "Symbol");
     assert_eq!(
-        registry.field_by_name("ClientOrderID").unwrap().name(),
+        registry
+            .field_by_name(&FixNamespace::STANDARD, "msgtype")
+            .unwrap()
+            .name(),
+        "MsgType"
+    );
+    assert_eq!(
+        registry
+            .field_by_name(&FixNamespace::STANDARD, "TICKER")
+            .unwrap()
+            .name(),
+        "Symbol"
+    );
+    assert_eq!(
+        registry
+            .field_by_name(&FixNamespace::STANDARD, "ClientOrderID")
+            .unwrap()
+            .name(),
         "ClOrdID"
     );
-    assert_eq!(registry.field_by_name("qty").unwrap().name(), "OrderQty");
-    assert_eq!(registry.field_by_name("px").unwrap().name(), "Price");
+    assert_eq!(
+        registry
+            .field_by_name(&FixNamespace::STANDARD, "qty")
+            .unwrap()
+            .name(),
+        "OrderQty"
+    );
+    assert_eq!(
+        registry
+            .field_by_name(&FixNamespace::STANDARD, "px")
+            .unwrap()
+            .name(),
+        "Price"
+    );
     assert_eq!(registry.field_by_tag(20).unwrap().name(), "ExecType");
     assert_eq!(
         registry
-            .field_by_path("NoPartyIDs.PartyID")
+            .field_by_path(&FixNamespace::STANDARD, "NoPartyIDs.PartyID")
             .unwrap()
             .as_fix()
             .tag()
@@ -285,7 +474,7 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
         &DataType::decimal128(20, 8).unwrap()
     );
 
-    // The layout is exactly `records/<shard>.json`, nothing else.
+    // The layout is exactly `records/<namespace>/<shard>.json`, nothing else.
     let mut entries: Vec<String> = folder
         .ls(true, true)
         .map(|entry| {
@@ -303,9 +492,10 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
         entries,
         [
             "records",
-            "records/0.json",
-            "records/1.json",
-            "records/4.json"
+            "records/standard",
+            "records/standard/0.json",
+            "records/standard/1.json",
+            "records/standard/4.json"
         ]
     );
 
@@ -313,10 +503,13 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     let copy = scratch("seed-copy");
     let mut target = Folder::new(&copy).unwrap();
     registry.write_into(&mut target).unwrap();
-    assert_eq!(shard_files(&copy), ["0.json", "1.json", "4.json"]);
+    assert_eq!(
+        shard_files(&copy, "standard"),
+        ["0.json", "1.json", "4.json"]
+    );
     for name in ["0.json", "1.json", "4.json"] {
-        let tracked = std::fs::read(root.join("records").join(name)).unwrap();
-        let emitted = std::fs::read(copy.join("records").join(name)).unwrap();
+        let tracked = std::fs::read(root.join("records").join("standard").join(name)).unwrap();
+        let emitted = std::fs::read(copy.join("records").join("standard").join(name)).unwrap();
         // The checkout may carry CRLF; the emitted document never does.
         let tracked: Vec<u8> = tracked.into_iter().filter(|byte| *byte != b'\r').collect();
         assert_eq!(tracked, emitted, "{name} differs from what the store emits");

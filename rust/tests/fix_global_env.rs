@@ -21,10 +21,14 @@ fn a_malformed_location_errors_and_a_valid_one_settles_the_default() {
         .join(format!("yggdryl-fix-global-env-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
-    // A folder holding a shard that does not parse.
+    // A folder holding a shard that does not parse, under its namespace.
     let bad = root.join("bad");
-    std::fs::create_dir_all(bad.join("records")).expect("a fresh folder");
-    std::fs::write(bad.join("records").join("0.json"), b"not json").expect("a malformed shard");
+    std::fs::create_dir_all(bad.join("records").join("standard")).expect("a fresh folder");
+    std::fs::write(
+        bad.join("records").join("standard").join("0.json"),
+        b"not json",
+    )
+    .expect("a malformed shard");
 
     // SAFETY: `set_var` is `unsafe` because another thread reading the
     // environment concurrently is a data race. This binary holds only this

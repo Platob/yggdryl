@@ -4,7 +4,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use super::{FixKey, FixRegistry};
+use super::{FixId, FixKey, FixNamespace, FixRegistry};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// A FIX message value, resolved against one registry.
@@ -17,11 +17,21 @@ use crate::{DataType, Error, Field, Result, Scalar};
 /// carries the dictionary it was resolved against and a later lookup cannot
 /// silently use a different one.
 ///
-/// A value is reached by tag, by name, or by path, each answering
-/// `Option<&Scalar>` with a failing twin; resolution goes through the linked
-/// registry, never through a private copy of its rules. An unknown tag is
-/// retained rather than dropped: it is looked for under its rendered decimal
-/// name, which is where a transcriber keeps a tag no dictionary explains.
+/// A message has a namespace, and it is derived rather than declared: it is
+/// the root field's own `fix:namespace`, resolved once at construction, so
+/// nothing can disagree with it. A bare tag or name then resolves in a fixed
+/// two-step tier - this message's namespace first, when the identifier that
+/// would name is legal at all, then the standard one - because a message
+/// transcribed against a venue dictionary names its own fields by the
+/// venue's spellings while still carrying `MsgType` and every other
+/// specification field.
+///
+/// A value is reached by tag, by identifier, by name, or by path, each
+/// answering `Option<&Scalar>` with a failing twin; resolution goes through
+/// the linked registry, never through a private copy of its rules. An unknown
+/// tag is retained rather than dropped: it is looked for under its rendered
+/// decimal name, which is where a transcriber keeps a tag no dictionary
+/// explains.
 ///
 /// Serialization is inherited, not written: `field.clone().into_json()`
 /// renders the schema, [`into_json_scalar`](crate::into_json_scalar) the
@@ -66,6 +76,11 @@ use crate::{DataType, Error, Field, Result, Scalar};
 #[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
+    /// The root field's own namespace, resolved once so a lookup stays total
+    /// and allocation-free and corruption is reported at construction. It is
+    /// derived from `field`, which is what equality, hashing and
+    /// serialization already carry, so it is not state of its own.
+    namespace: FixNamespace,
     field: Field,
     value: Scalar,
 }
@@ -89,12 +104,15 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns an error when the root is not a Struct field or the value
-    /// violates it, naming the path of the first value that does not fit.
+    /// Returns an error when the root's `fix:namespace` is malformed, when
+    /// the root is not a Struct field, or when the value violates it, naming
+    /// the path of the first value that does not fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
+        let namespace = field.as_fix().namespace()?;
         let value = field.canonicalize_value(value)?;
         Ok(Self {
             registry,
+            namespace,
             field,
             value,
         })
@@ -103,6 +121,11 @@ impl FixMsg {
     /// Returns the registry this message resolves against.
     pub const fn registry(&self) -> &Arc<FixRegistry> {
         &self.registry
+    }
+
+    /// Returns the dictionary this message is spelled in.
+    pub const fn namespace(&self) -> &FixNamespace {
+        &self.namespace
     }
 
     /// Returns the root Struct field: the message's resolved schema.
@@ -115,14 +138,36 @@ impl FixMsg {
         &self.value
     }
 
+    /// Returns the value of the root child an identifier names.
+    ///
+    /// An identifier is exact and does not tier: it names one dictionary, and
+    /// a dictionary this message does not speak simply misses.
+    pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar> {
+        let known = self.registry.get_field_by_id(id)?;
+        let index = self.field.index_of(known.name())?;
+        self.value.get(index)
+    }
+
+    /// Returns the value of the root child an identifier names, raising
+    /// absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed absence naming the identifier.
+    pub fn by_id(&self, id: &FixId) -> Result<&Scalar> {
+        self.get_by_id(id).ok_or_else(|| absent(FixKey::Id(id)))
+    }
+
     /// Returns the value of the root child a tag names.
     ///
     /// The registry resolves the tag to its canonical name, and that name
-    /// picks the root child. A tag the registry does not know is looked for
-    /// under its decimal rendering, so an unknown tag a transcriber retained
-    /// is still reachable.
+    /// picks the root child. The tag is looked for in this message's own
+    /// namespace first and then in the standard one, so a venue field and
+    /// `MsgType` are both reachable from a venue message. A tag neither
+    /// answers is looked for under its decimal rendering, so an unknown tag a
+    /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        let index = match self.registry.get_field_by_tag(tag) {
+        let index = match self.known_by_tag(tag) {
             Some(known) => self.field.index_of(known.name()),
             None => {
                 let mut rendered = Decimal::default();
@@ -144,12 +189,11 @@ impl FixMsg {
 
     /// Returns the value of the root child a name reaches.
     ///
-    /// The name folds through the registry to its canonical spelling first,
-    /// and an exact root-child match is the fallback when the registry does
-    /// not know it.
+    /// The name folds through the registry to its canonical spelling in this
+    /// message's namespace first and then in the standard one, and an exact
+    /// root-child match is the fallback when neither knows it.
     pub fn get_by_name(&self, name: &str) -> Option<&Scalar> {
-        self.value
-            .get(child_index(&self.registry, &self.field, name)?)
+        self.value.get(self.child_index(&self.field, name)?)
     }
 
     /// Returns the value of the root child a name reaches, raising absence.
@@ -176,7 +220,7 @@ impl FixMsg {
             return Some(value);
         }
         let mut segments = path.split('.');
-        let index = child_index(&self.registry, &self.field, segments.next()?)?;
+        let index = self.child_index(&self.field, segments.next()?)?;
         let mut field = self.field.fields().get(index)?;
         let mut value = self.value.get(index)?;
         for segment in segments {
@@ -195,28 +239,69 @@ impl FixMsg {
             .ok_or_else(|| absent(format_args!("path {path:?}")))
     }
 
-    /// Returns the value a tag or a name reaches.
+    /// Returns the value a tag, an identifier or a name reaches.
     ///
-    /// Matches the key once and redirects: a tag to [`Self::get_by_tag`], a
-    /// name to [`Self::get_by_path`].
+    /// Matches the key once and redirects: a tag to [`Self::get_by_tag`], an
+    /// identifier to [`Self::get_by_id`], a name to [`Self::get_by_path`].
     pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar> {
         match key.into() {
             FixKey::Tag(tag) => self.get_by_tag(tag),
+            FixKey::Id(id) => self.get_by_id(id),
             FixKey::Name(name) => self.get_by_path(name),
         }
     }
 
-    /// Returns the value a tag or a name reaches, raising absence.
+    /// Returns the value a tag, an identifier or a name reaches, raising
+    /// absence.
     ///
     /// # Errors
     ///
-    /// Returns the error [`Self::by_tag`] or [`Self::by_path`] raises,
-    /// whichever the key selects.
+    /// Returns the error [`Self::by_tag`], [`Self::by_id`] or
+    /// [`Self::by_path`] raises, whichever the key selects.
     pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar> {
         match key.into() {
             FixKey::Tag(tag) => self.by_tag(tag),
+            FixKey::Id(id) => self.by_id(id),
             FixKey::Name(name) => self.by_path(name),
         }
+    }
+
+    /// The field a bare tag names: this message's namespace, then the
+    /// standard one.
+    ///
+    /// Step one is skipped when this message is already standard, because the
+    /// two probes would be the same one, and when the identifier it would
+    /// build is inadmissible - a specification tag belongs to the standard
+    /// namespace and to no other.
+    fn known_by_tag(&self, tag: i32) -> Option<&Field> {
+        let own = if self.namespace.is_standard() || !FixId::is_admissible(&self.namespace, tag) {
+            None
+        } else {
+            FixId::from_parts(self.namespace.clone(), tag)
+                .ok()
+                .and_then(|id| self.registry.get_field_by_id(&id))
+        };
+        own.or_else(|| self.registry.get_field_by_id(&FixId::standard(tag)))
+    }
+
+    /// The field a bare name reaches: this message's namespace, then the
+    /// standard one.
+    fn known_by_name(&self, name: &str) -> Option<&Field> {
+        if !self.namespace.is_standard() {
+            if let Some(field) = self.registry.get_field_by_name(&self.namespace, name) {
+                return Some(field);
+            }
+        }
+        self.registry
+            .get_field_by_name(&FixNamespace::STANDARD, name)
+    }
+
+    /// The position of the child `name` reaches under `parent`: the
+    /// registry's canonical spelling first, then an exact match.
+    fn child_index(&self, parent: &Field, name: &str) -> Option<usize> {
+        self.known_by_name(name)
+            .and_then(|known| parent.index_of(known.name()))
+            .or_else(|| parent.index_of(name))
     }
 
     /// One step of a path: into a Struct child by name, or into a List entry
@@ -229,7 +314,7 @@ impl FixMsg {
     ) -> Option<(&'value Field, &'value Scalar)> {
         match field.dtype() {
             DataType::Struct(_) => {
-                let index = child_index(&self.registry, field, segment)?;
+                let index = self.child_index(field, segment)?;
                 Some((field.fields().get(index)?, value.get(index)?))
             }
             DataType::List(item)
@@ -245,15 +330,6 @@ impl FixMsg {
             _ => None,
         }
     }
-}
-
-/// The position of the child `name` reaches under `parent`: the registry's
-/// canonical spelling first, then an exact match.
-fn child_index(registry: &FixRegistry, parent: &Field, name: &str) -> Option<usize> {
-    registry
-        .get_field_by_name(name)
-        .and_then(|known| parent.index_of(known.name()))
-        .or_else(|| parent.index_of(name))
 }
 
 /// Report that nothing in the message is reached by `what`.
