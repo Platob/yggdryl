@@ -1665,6 +1665,9 @@
 
 ### yggdryl::json  [rust\src\json\mod.rs]
   pub const MAX_PARSER_DEPTH: usize = 384;
+  pub fn from_json_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_json_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub fn from_utf8(input: &str) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
   pub fn from_bytes(input: &[u8]) -> Result<Scalar>
@@ -1733,6 +1736,9 @@
   pub struct Folder
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
+  pub fn temporary() -> Result<Self>
+  pub fn home() -> Result<Self>
+  pub fn config() -> Result<Self>
   pub const fn url(&self) -> &Url
   pub fn path(&self) -> Result<PathBuf>
   pub fn exists(&self) -> bool
@@ -2098,6 +2104,9 @@
   pub fn temporal_dtype(&self) -> Option<DataType>
 
 ### yggdryl::toml  [rust\src\toml\mod.rs]
+  pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_toml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub const MAX_PARSER_DEPTH: usize = 64;
   pub fn from_utf8(input: &str) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
@@ -2298,6 +2307,9 @@
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::yaml  [rust\src\yaml\mod.rs]
+  pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_yaml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
   pub const MAX_FLOW_DEPTH: usize = 255;
   pub const MAX_PARSER_DEPTH: usize = 384;
   pub fn from_utf8(input: &str) -> Result<Scalar>
