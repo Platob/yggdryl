@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::global::autoload;
-use super::registry::{Folded, NamespacedName};
+use super::registry::{BranchedName, Folded};
 use super::store::shard_of;
 use crate::local::Folder;
-use crate::{DataType, Error, Field, FixId, FixKey, FixMsg, FixNamespace, FixRegistry, Scalar};
+use crate::{DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, Scalar};
 
-/// The venue dictionary every namespaced case is written against.
-fn cme() -> FixNamespace {
-    FixNamespace::from_str("cme").unwrap()
+/// The venue dictionary every branched case is written against.
+fn cme() -> FixBranch {
+    FixBranch::from_str("cme").unwrap()
 }
 
 /// A nullable text field carrying one canonical tag.
@@ -59,7 +59,7 @@ fn probe<'registry>(
     name: &str,
     alias: &str,
 ) -> [Option<&'registry str>; 4] {
-    let standard = FixNamespace::STANDARD;
+    let standard = FixBranch::STANDARD;
     [
         registry.get_field_by_tag(tag).map(Field::name),
         registry.get_field_by_tag(alternate).map(Field::name),
@@ -84,55 +84,52 @@ fn folded_text_compares_and_hashes_without_case() {
     // Folding is ASCII only: a non-ASCII byte is compared as it is.
     assert_ne!(Folded::probe("Größe"), Folded::probe("GRÖSSE"));
 
-    // A name index key is that folding inside one namespace: the name still
-    // folds, the namespace is compared exactly, and the separator between
+    // A name index key is that folding inside one branch: the name still
+    // folds, the branch is compared exactly, and the separator between
     // them keeps the concatenation unambiguous.
-    let standard = FixNamespace::STANDARD;
+    let standard = FixBranch::STANDARD;
     let cme = cme();
     assert_eq!(
-        NamespacedName::probe(&cme, "MsgType"),
-        NamespacedName::probe(&cme, "MSGTYPE")
+        BranchedName::probe(&cme, "MsgType"),
+        BranchedName::probe(&cme, "MSGTYPE")
     );
     assert_eq!(
-        state.hash_one(NamespacedName::probe(&cme, "MsgType")),
-        state.hash_one(NamespacedName::probe(&cme, "msgtype"))
+        state.hash_one(BranchedName::probe(&cme, "MsgType")),
+        state.hash_one(BranchedName::probe(&cme, "msgtype"))
     );
     assert_ne!(
-        NamespacedName::probe(&cme, "MsgType"),
-        NamespacedName::probe(&standard, "MsgType")
+        BranchedName::probe(&cme, "MsgType"),
+        BranchedName::probe(&standard, "MsgType")
     );
     assert_ne!(
-        state.hash_one(NamespacedName::probe(&cme, "MsgType")),
-        state.hash_one(NamespacedName::probe(&standard, "MsgType"))
+        state.hash_one(BranchedName::probe(&cme, "MsgType")),
+        state.hash_one(BranchedName::probe(&standard, "MsgType"))
     );
     // `cme` + `x` and `cm` + `ex` are two keys, not one.
-    let cm = FixNamespace::from_str("cm").unwrap();
+    let cm = FixBranch::from_str("cm").unwrap();
     assert_ne!(
-        NamespacedName::probe(&cme, "x"),
-        NamespacedName::probe(&cm, "ex")
+        BranchedName::probe(&cme, "x"),
+        BranchedName::probe(&cm, "ex")
     );
     assert_ne!(
-        state.hash_one(NamespacedName::probe(&cme, "x")),
-        state.hash_one(NamespacedName::probe(&cm, "ex"))
+        state.hash_one(BranchedName::probe(&cme, "x")),
+        state.hash_one(BranchedName::probe(&cm, "ex"))
     );
 }
 
 #[test]
-fn a_namespace_folds_once_and_refuses_what_it_cannot_hold() {
-    assert_eq!(FixNamespace::from_str("CME").unwrap().as_str(), "cme");
-    assert_eq!(FixNamespace::from_str("cme").unwrap(), cme());
+fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
+    assert_eq!(FixBranch::from_str("CME").unwrap().as_str(), "cme");
+    assert_eq!(FixBranch::from_str("cme").unwrap(), cme());
     assert_eq!(
-        FixNamespace::from_str("STANDARD").unwrap(),
-        FixNamespace::STANDARD
+        FixBranch::from_str("STANDARD").unwrap(),
+        FixBranch::STANDARD
     );
-    assert!(FixNamespace::STANDARD.is_standard());
+    assert!(FixBranch::STANDARD.is_standard());
     assert!(!cme().is_standard());
-    assert_eq!(FixNamespace::default(), FixNamespace::STANDARD);
-    assert_eq!(FixNamespace::STANDARD.to_string(), "standard");
-    assert_eq!(
-        FixNamespace::from_str("a-b.c_9").unwrap().as_str(),
-        "a-b.c_9"
-    );
+    assert_eq!(FixBranch::default(), FixBranch::STANDARD);
+    assert_eq!(FixBranch::STANDARD.to_string(), "standard");
+    assert_eq!(FixBranch::from_str("a-b.c_9").unwrap().as_str(), "a-b.c_9");
 
     let cases = [
         ("", 0_usize),
@@ -143,13 +140,13 @@ fn a_namespace_folds_once_and_refuses_what_it_cannot_hold() {
         ("cm e", 2),
         ("cm,e", 2),
         ("cme/x", 3),
-        ("aaaaaaaaaaaaaaaaaaaaaaaa", FixNamespace::MAX_LENGTH),
+        ("aaaaaaaaaaaaaaaaaaaaaaaa", FixBranch::MAX_LENGTH),
     ];
     for (text, position) in cases {
-        let error = FixNamespace::from_str(text).unwrap_err();
+        let error = FixBranch::from_str(text).unwrap_err();
         match &error {
             Error::Parse {
-                target: "fix namespace",
+                target: "fix branch",
                 position: at,
                 ..
             } => assert_eq!(*at, position, "{text:?}"),
@@ -158,12 +155,12 @@ fn a_namespace_folds_once_and_refuses_what_it_cannot_hold() {
     }
     // The bound is exactly `smol_str`'s inline capacity, which is what the
     // allocation test holds it to.
-    assert_eq!(FixNamespace::MAX_LENGTH, 23);
-    assert!(FixNamespace::from_str(&"a".repeat(FixNamespace::MAX_LENGTH)).is_ok());
+    assert_eq!(FixBranch::MAX_LENGTH, 23);
+    assert!(FixBranch::from_str(&"a".repeat(FixBranch::MAX_LENGTH)).is_ok());
 }
 
 #[test]
-fn an_identifier_renders_and_parses_namespace_colon_tag() {
+fn an_identifier_renders_and_parses_branch_colon_tag() {
     assert_eq!(FixId::standard(35).to_string(), "standard:35");
     assert_eq!(
         FixId::from_parts(cme(), 5001).unwrap().to_string(),
@@ -180,12 +177,12 @@ fn an_identifier_renders_and_parses_namespace_colon_tag() {
         FixId::from_parts(cme(), 5001).unwrap()
     );
     let id = FixId::from_str("cme:5001").unwrap();
-    assert_eq!(id.namespace(), &cme());
+    assert_eq!(id.branch(), &cme());
     assert_eq!(id.tag(), 5001);
     assert!(!id.is_standard());
     assert!(FixId::standard(35).is_standard());
 
-    // Ordering is namespace-major, then by tag.
+    // Ordering is branch-major, then by tag.
     let mut ids = [
         FixId::from_str("standard:1").unwrap(),
         FixId::from_str("cme:9000").unwrap(),
@@ -214,15 +211,15 @@ fn an_identifier_renders_and_parses_namespace_colon_tag() {
             other => panic!("{text:?}: {other}"),
         }
     }
-    // An over-long namespace is refused as a namespace, in the identifier's
-    // own coordinates because the namespace is its prefix.
+    // An over-long branch is refused as a branch, in the identifier's
+    // own coordinates because the branch is its prefix.
     let long = format!("{}:5001", "a".repeat(24));
     match FixId::from_str(&long).unwrap_err() {
         Error::Parse {
-            target: "fix namespace",
+            target: "fix branch",
             position,
             ..
-        } => assert_eq!(position, FixNamespace::MAX_LENGTH),
+        } => assert_eq!(position, FixBranch::MAX_LENGTH),
         other => panic!("{other}"),
     }
     // Parsed text is held to the same rule as constructed parts.
@@ -230,7 +227,7 @@ fn an_identifier_renders_and_parses_namespace_colon_tag() {
         FixId::from_str("cme:35")
             .unwrap_err()
             .to_string()
-            .contains("fix:namespace")
+            .contains("fix:branch")
     );
 }
 
@@ -313,18 +310,18 @@ fn a_property_write_rejects_bad_elements_and_leaves_the_field_unchanged() {
 }
 
 #[test]
-fn the_namespace_round_trips_and_the_standard_one_is_never_stored() {
+fn the_branch_round_trips_and_the_standard_one_is_never_stored() {
     let cme = cme();
     let mut field = DataType::Utf8.nullable_field("TradeID");
 
     // Absent means standard, and no identity without a tag.
-    assert_eq!(field.as_fix().namespace().unwrap(), FixNamespace::STANDARD);
+    assert_eq!(field.as_fix().branch().unwrap(), FixBranch::STANDARD);
     assert_eq!(field.as_fix().id().unwrap(), None);
-    assert!(!field.has_metadata("fix:namespace"));
+    assert!(!field.has_metadata("fix:branch"));
 
-    field.as_fix_mut().set_namespace(&cme).unwrap();
-    assert_eq!(field.as_fix().namespace().unwrap(), cme);
-    assert_eq!(field.get_metadata("fix:namespace"), Some("cme"));
+    field.as_fix_mut().set_branch(&cme).unwrap();
+    assert_eq!(field.as_fix().branch().unwrap(), cme);
+    assert_eq!(field.get_metadata("fix:branch"), Some("cme"));
     assert_eq!(field.as_fix().id().unwrap(), None, "still no tag");
 
     field.as_fix_mut().set_tag(5001).unwrap();
@@ -336,18 +333,15 @@ fn the_namespace_round_trips_and_the_standard_one_is_never_stored() {
     let mut shouted = DataType::Utf8.nullable_field("TradeID");
     shouted
         .as_fix_mut()
-        .set_namespace(&FixNamespace::from_str("CME").unwrap())
+        .set_branch(&FixBranch::from_str("CME").unwrap())
         .unwrap();
-    assert_eq!(shouted.get_metadata("fix:namespace"), Some("cme"));
+    assert_eq!(shouted.get_metadata("fix:branch"), Some("cme"));
 
-    // Setting the standard namespace removes the property rather than
+    // Setting the standard branch removes the property rather than
     // storing "standard", so one declaration has one stored form.
-    field
-        .as_fix_mut()
-        .set_namespace(&FixNamespace::STANDARD)
-        .unwrap();
-    assert!(!field.has_metadata("fix:namespace"));
-    assert_eq!(field.as_fix().namespace().unwrap(), FixNamespace::STANDARD);
+    field.as_fix_mut().set_branch(&FixBranch::STANDARD).unwrap();
+    assert!(!field.has_metadata("fix:branch"));
+    assert_eq!(field.as_fix().branch().unwrap(), FixBranch::STANDARD);
     assert_eq!(
         field.as_fix().id().unwrap(),
         Some(FixId::standard(5001)),
@@ -356,13 +350,13 @@ fn the_namespace_round_trips_and_the_standard_one_is_never_stored() {
 }
 
 #[test]
-fn a_specification_tag_belongs_to_the_standard_namespace_at_every_door() {
+fn a_specification_tag_belongs_to_the_standard_branch_at_every_door() {
     let cme = cme();
     let refusal = |error: &Error| {
         let Error::InvalidMetadataValue { key, reason } = error else {
             panic!("{error}");
         };
-        assert_eq!(key, "fix:namespace");
+        assert_eq!(key, "fix:branch");
         assert!(reason.contains("5000"), "{reason}");
         assert!(reason.contains("\"cme\""), "{reason}");
     };
@@ -372,14 +366,14 @@ fn a_specification_tag_belongs_to_the_standard_namespace_at_every_door() {
     refusal(&FixId::from_parts(cme.clone(), 4_999).unwrap_err());
     assert!(FixId::from_parts(cme.clone(), 5_000).is_ok());
     assert_eq!(FixId::STANDARD_TAG_LIMIT, 5_000);
-    // The rule is one-way: the standard namespace holds any tag.
-    assert!(FixId::from_parts(FixNamespace::STANDARD, 10_000).is_ok());
-    assert!(FixId::from_parts(FixNamespace::STANDARD, 0).is_ok());
+    // The rule is one-way: the standard branch holds any tag.
+    assert!(FixId::from_parts(FixBranch::STANDARD, 10_000).is_ok());
+    assert!(FixId::from_parts(FixBranch::STANDARD, 0).is_ok());
 
-    // `set_namespace` on a field whose canonical tag is a specification one.
+    // `set_branch` on a field whose canonical tag is a specification one.
     let mut field = tagged("Symbol", 55);
     let before = field.clone();
-    refusal(&field.as_fix_mut().set_namespace(&cme).unwrap_err());
+    refusal(&field.as_fix_mut().set_branch(&cme).unwrap_err());
     assert_eq!(field, before, "a refusal changes nothing");
 
     // The same for a field whose *alternate* tag is one: an alternate
@@ -390,10 +384,10 @@ fn a_specification_tag_belongs_to_the_standard_namespace_at_every_door() {
     standard.as_fix_mut().set_tag(5001).unwrap();
     standard.as_fix_mut().set_tags(&[35, 5002]).unwrap();
     let before = standard.clone();
-    refusal(&standard.as_fix_mut().set_namespace(&cme).unwrap_err());
+    refusal(&standard.as_fix_mut().set_branch(&cme).unwrap_err());
     assert_eq!(standard, before);
 
-    // `set_tag` in a vendor namespace: refused, never a silent renamespacing.
+    // `set_tag` in a vendor branch: refused, never a silent renamespacing.
     let mut vendor = identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap());
     let before = vendor.clone();
     refusal(&vendor.as_fix_mut().set_tag(35).unwrap_err());
@@ -406,7 +400,7 @@ fn a_specification_tag_belongs_to_the_standard_namespace_at_every_door() {
     // Read back from raw metadata a hand edit could have written: refused at
     // the door, so nothing corrupt is ever indexed.
     let mut edited = tagged("MsgType", 35);
-    edited.insert_metadata("fix:namespace", "cme").unwrap();
+    edited.insert_metadata("fix:branch", "cme").unwrap();
     refusal(&edited.as_fix().id().unwrap_err());
     let error = FixRegistry::new().insert(edited).unwrap_err();
     refusal(&error);
@@ -417,21 +411,21 @@ fn set_id_moves_both_halves_in_either_direction_and_atomically() {
     let cme = cme();
     let vendor = FixId::from_parts(cme.clone(), 5001).unwrap();
 
-    // Standard to vendor: the order `set_tag` then `set_namespace` refuses.
+    // Standard to vendor: the order `set_tag` then `set_branch` refuses.
     let mut field = tagged("Symbol", 55);
-    assert!(field.as_fix_mut().set_namespace(&cme).is_err());
+    assert!(field.as_fix_mut().set_branch(&cme).is_err());
     field.as_fix_mut().set_id(&vendor).unwrap();
     assert_eq!(field.as_fix().id().unwrap(), Some(vendor.clone()));
-    assert_eq!(field.get_metadata("fix:namespace"), Some("cme"));
+    assert_eq!(field.get_metadata("fix:branch"), Some("cme"));
     assert_eq!(field.get_metadata("fix:tag"), Some("5001"));
 
     // Vendor back to standard, which the other single setter refuses too.
     assert!(field.as_fix_mut().set_tag(35).is_err());
     field.as_fix_mut().set_id(&FixId::standard(35)).unwrap();
     assert_eq!(field.as_fix().id().unwrap(), Some(FixId::standard(35)));
-    assert!(!field.has_metadata("fix:namespace"));
+    assert!(!field.has_metadata("fix:branch"));
 
-    // A refused tag restores the namespace entry it had already written.
+    // A refused tag restores the branch entry it had already written.
     let mut vendored = identified("TradeID", &vendor);
     let before = vendored.clone();
     let error = vendored
@@ -439,18 +433,18 @@ fn set_id_moves_both_halves_in_either_direction_and_atomically() {
         .set_id(&FixId::standard(-1))
         .unwrap_err();
     assert!(error.to_string().contains("fix:tag"), "{error}");
-    assert_eq!(vendored, before, "the namespace came back");
-    assert_eq!(vendored.get_metadata("fix:namespace"), Some("cme"));
+    assert_eq!(vendored, before, "the branch came back");
+    assert_eq!(vendored.get_metadata("fix:branch"), Some("cme"));
 
-    // The same unwinding from a field that declared no namespace: the
+    // The same unwinding from a field that declared no branch: the
     // removal is undone by leaving the property absent. The tag's own shape
     // is the only half of a legal `FixId` that can still be refused, because
-    // the identifier carries the namespace rule already.
+    // the identifier carries the branch rule already.
     let mut plain = tagged("Symbol", 55);
     let before = plain.clone();
     assert!(plain.as_fix_mut().set_id(&FixId::standard(-1)).is_err());
     assert_eq!(plain, before);
-    assert!(!plain.has_metadata("fix:namespace"));
+    assert!(!plain.has_metadata("fix:branch"));
     assert!(
         FixId::from_parts(cme, -1).is_err(),
         "and never in a vendor one"
@@ -458,9 +452,9 @@ fn set_id_moves_both_halves_in_either_direction_and_atomically() {
 }
 
 #[test]
-fn two_namespaces_may_hold_the_same_tag_and_the_same_name() {
+fn two_branches_may_hold_the_same_tag_and_the_same_name() {
     let cme = cme();
-    let standard = FixNamespace::STANDARD;
+    let standard = FixBranch::STANDARD;
     let mut venue = identified("Symbol", &FixId::from_parts(cme.clone(), 5055).unwrap());
     venue.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     venue.as_fix_mut().set_tags(&[9055]).unwrap();
@@ -485,14 +479,14 @@ fn two_namespaces_may_hold_the_same_tag_and_the_same_name() {
             .field_by_id(&FixId::from_parts(cme.clone(), 9055).unwrap())
             .unwrap(),
         &venue,
-        "an alternate identifier resolves in its namespace too"
+        "an alternate identifier resolves in its branch too"
     );
     assert_eq!(registry.field_by_name(&cme, "SYMBOL").unwrap(), &venue);
     assert_eq!(registry.field_by_name(&standard, "symbol").unwrap(), &spec);
     assert_eq!(registry.field_by_name(&cme, "ticker").unwrap(), &venue);
     assert_eq!(registry.field_by_name(&standard, "ticker").unwrap(), &spec);
 
-    // A bare tag and a bare name are the standard namespace and never reach
+    // A bare tag and a bare name are the standard branch and never reach
     // the venue field.
     assert_eq!(registry.get_field_by_tag(5055), Some(&spec));
     assert_eq!(registry.get_field_by_tag(9055), Some(&spec));
@@ -507,15 +501,15 @@ fn two_namespaces_may_hold_the_same_tag_and_the_same_name() {
             .is_none()
     );
 
-    // A conflict inside one namespace is still a conflict, and it names that
-    // namespace; the same key in the other namespace is not.
+    // A conflict inside one branch is still a conflict, and it names that
+    // branch; the same key in the other branch is not.
     let mut twice = identified("VenueSym", &FixId::from_parts(cme.clone(), 5099).unwrap());
     twice.as_fix_mut().set_aliases(["TICKER"]).unwrap();
     let mut probed = registry.clone();
     let error = probed.insert(twice.clone()).unwrap_err();
     assert!(
         matches!(&error, Error::Conflict { path, .. }
-            if path == "alias \"TICKER\" in namespace \"cme\" of VenueSym, held by Symbol"),
+            if path == "alias \"TICKER\" in branch \"cme\" of VenueSym, held by Symbol"),
         "{error}"
     );
     assert_eq!(probed, registry);
@@ -524,7 +518,7 @@ fn two_namespaces_may_hold_the_same_tag_and_the_same_name() {
     let error = probed.insert(moved).unwrap_err();
     assert!(
         matches!(&error, Error::Conflict { path, .. }
-            if path.contains("in namespace \"standard\"")),
+            if path.contains("in branch \"standard\"")),
         "{error}"
     );
     assert_eq!(probed, registry);
@@ -551,11 +545,11 @@ fn two_namespaces_may_hold_the_same_tag_and_the_same_name() {
 #[test]
 fn a_corrupt_stored_property_is_reported_under_its_full_key() {
     let cases = [
-        ("fix:namespace", "2cme"),
-        ("fix:namespace", ""),
-        ("fix:namespace", "c me"),
-        ("fix:namespace", "cme:1"),
-        ("fix:namespace", "aaaaaaaaaaaaaaaaaaaaaaaa"),
+        ("fix:branch", "2cme"),
+        ("fix:branch", ""),
+        ("fix:branch", "c me"),
+        ("fix:branch", "cme:1"),
+        ("fix:branch", "aaaaaaaaaaaaaaaaaaaaaaaa"),
         ("fix:tag", "3x"),
         ("fix:tag", "+35"),
         ("fix:tag", "-35"),
@@ -569,7 +563,7 @@ fn a_corrupt_stored_property_is_reported_under_its_full_key() {
         let mut field = tagged("Symbol", 55);
         field.insert_metadata(key, stored).unwrap();
         let error = match key {
-            "fix:namespace" => field.as_fix().namespace().unwrap_err(),
+            "fix:branch" => field.as_fix().branch().unwrap_err(),
             "fix:tag" => field.as_fix().tag().unwrap_err(),
             _ => field.as_fix().tags().unwrap_err(),
         };
@@ -633,7 +627,7 @@ fn a_name_or_alias_resolves_in_any_case_to_the_canonical_spelling() {
     ] {
         assert_eq!(
             registry
-                .field_by_name(&FixNamespace::STANDARD, query)
+                .field_by_name(&FixBranch::STANDARD, query)
                 .unwrap()
                 .name(),
             "Symbol",
@@ -644,14 +638,14 @@ fn a_name_or_alias_resolves_in_any_case_to_the_canonical_spelling() {
     }
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "clientorderid")
+            .field_by_name(&FixBranch::STANDARD, "clientorderid")
             .unwrap()
             .name(),
         "ClOrdID"
     );
     assert!(
         registry
-            .get_field_by_name(&FixNamespace::STANDARD, "Symbols")
+            .get_field_by_name(&FixBranch::STANDARD, "Symbols")
             .is_none()
     );
     assert!(!registry.contains("Symbols"));
@@ -669,21 +663,21 @@ fn tier_order_never_lets_an_alternate_key_shadow_a_canonical_one() {
         let registry = FixRegistry::from_fields(order).unwrap();
         assert_eq!(
             registry
-                .field_by_name(&FixNamespace::STANDARD, "px")
+                .field_by_name(&FixBranch::STANDARD, "px")
                 .unwrap()
                 .name(),
             "Px"
         );
         assert_eq!(
             registry
-                .field_by_name(&FixNamespace::STANDARD, "Price")
+                .field_by_name(&FixBranch::STANDARD, "Price")
                 .unwrap()
                 .name(),
             "Px"
         );
         assert_eq!(
             registry
-                .field_by_name(&FixNamespace::STANDARD, "LastPrice")
+                .field_by_name(&FixBranch::STANDARD, "LastPrice")
                 .unwrap()
                 .name(),
             "LastPx"
@@ -700,14 +694,14 @@ fn a_tag_query_never_consults_names_and_a_name_query_never_consults_tags() {
     assert_eq!(registry.field_by_tag(1).unwrap().name(), "35");
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "35")
+            .field_by_name(&FixBranch::STANDARD, "35")
             .unwrap()
             .name(),
         "35"
     );
     assert!(
         registry
-            .get_field_by_name(&FixNamespace::STANDARD, "1")
+            .get_field_by_name(&FixBranch::STANDARD, "1")
             .is_none()
     );
     assert!(registry.get_field_by_tag(2).is_none());
@@ -721,7 +715,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
         (full("SymbolSfx", 55, &[], &[]), "identifier standard:55"),
         (
             full("symbol", 56, &[], &[]),
-            "name \"symbol\" in namespace \"standard\"",
+            "name \"symbol\" in branch \"standard\"",
         ),
         (
             full("SymbolSfx", 56, &[65], &[]),
@@ -729,7 +723,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
         ),
         (
             full("SymbolSfx", 56, &[], &["TICKER"]),
-            "alias \"TICKER\" in namespace \"standard\"",
+            "alias \"TICKER\" in branch \"standard\"",
         ),
     ];
     for (incoming, key) in cases {
@@ -759,14 +753,14 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "Ticker")
+            .field_by_name(&FixBranch::STANDARD, "Ticker")
             .unwrap()
             .name(),
         "Ticker"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "Symbol")
+            .field_by_name(&FixBranch::STANDARD, "Symbol")
             .unwrap()
             .name(),
         "Symbol"
@@ -791,7 +785,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert_eq!(registry.field_by_tag(55).unwrap(), &replacement);
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "symbol")
+            .field_by_name(&FixBranch::STANDARD, "symbol")
             .unwrap()
             .name(),
         "SYMBOL"
@@ -799,7 +793,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert_eq!(registry.field_by_tag(66).unwrap().name(), "SYMBOL");
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "Sym")
+            .field_by_name(&FixBranch::STANDARD, "Sym")
             .unwrap()
             .name(),
         "SYMBOL"
@@ -807,7 +801,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert!(registry.get_field_by_tag(65).is_none());
     assert!(
         registry
-            .get_field_by_name(&FixNamespace::STANDARD, "Ticker")
+            .get_field_by_name(&FixBranch::STANDARD, "Ticker")
             .is_none()
     );
     assert_eq!(registry.len(), 2);
@@ -821,7 +815,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
         .insert(full("Symbol", 55, &[], &["px"]))
         .unwrap_err();
     assert!(
-        matches!(&error, Error::Conflict { path, .. } if path == "alias \"px\" in namespace \"standard\" of Symbol, held by Price"),
+        matches!(&error, Error::Conflict { path, .. } if path == "alias \"px\" in branch \"standard\" of Symbol, held by Price"),
         "{error}"
     );
     assert_eq!(registry, before);
@@ -877,7 +871,7 @@ fn a_merge_follows_the_truth_table() {
     for name in ["symbol", "ticker", "SYM", "instrument"] {
         assert_eq!(
             registry
-                .field_by_name(&FixNamespace::STANDARD, name)
+                .field_by_name(&FixBranch::STANDARD, name)
                 .unwrap()
                 .name(),
             "SYMBOL",
@@ -945,7 +939,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
         "{error}"
     );
 
-    // A namespace disagreement is that same absence: the namespace is half
+    // A branch disagreement is that same absence: the branch is half
     // of the identity, so the incoming field names no stored one.
     let error = registry
         .update(identified(
@@ -1047,24 +1041,24 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
     for name in ["symbol", "TICKER", "price", "absent"] {
         assert_eq!(
             registry.get_field(name),
-            registry.get_field_by_name(&FixNamespace::STANDARD, name),
+            registry.get_field_by_name(&FixBranch::STANDARD, name),
             "{name}"
         );
         assert_eq!(
             registry.get_field(&name.to_owned()),
-            registry.get_field_by_name(&FixNamespace::STANDARD, name)
+            registry.get_field_by_name(&FixBranch::STANDARD, name)
         );
         assert_eq!(
             registry.field(name).map(Field::name).ok(),
             registry
-                .field_by_name(&FixNamespace::STANDARD, name)
+                .field_by_name(&FixBranch::STANDARD, name)
                 .map(Field::name)
                 .ok()
         );
         assert_eq!(
             registry.contains(name),
             registry
-                .get_field_by_name(&FixNamespace::STANDARD, name)
+                .get_field_by_name(&FixBranch::STANDARD, name)
                 .is_some()
         );
     }
@@ -1073,11 +1067,11 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
     let by_tag = registry.field_by_tag(1).unwrap_err();
     assert!(matches!(&by_tag, Error::Absent { expected: "fix field", path } if path == "tag 1"));
     let by_name = registry
-        .field_by_name(&FixNamespace::STANDARD, "absent")
+        .field_by_name(&FixBranch::STANDARD, "absent")
         .unwrap_err();
     assert!(matches!(&by_name, Error::Absent { path, .. } if path == "name \"absent\""));
     let by_path = registry
-        .field_by_path(&FixNamespace::STANDARD, "Symbol.absent")
+        .field_by_path(&FixBranch::STANDARD, "Symbol.absent")
         .unwrap_err();
     assert!(matches!(&by_path, Error::Absent { path, .. } if path == "path \"Symbol.absent\""));
     assert_eq!(
@@ -1112,7 +1106,7 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     let registry = FixRegistry::from_fields([group, instrument]).unwrap();
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "NoPartyIDs")
+            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs")
             .unwrap()
             .as_fix()
             .tag()
@@ -1121,56 +1115,56 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "NoPartyIDs.PartyID")
+            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs.PartyID")
             .unwrap(),
         &party_id
     );
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "nopartyids.item.PartyRole")
+            .field_by_path(&FixBranch::STANDARD, "nopartyids.item.PartyRole")
             .unwrap()
             .name(),
         "PartyRole"
     );
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "Instrument.Symbol")
+            .field_by_path(&FixBranch::STANDARD, "Instrument.Symbol")
             .unwrap()
             .name(),
         "Symbol"
     );
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "instr.SecurityID")
+            .field_by_path(&FixBranch::STANDARD, "instr.SecurityID")
             .unwrap()
             .name(),
         "SecurityID"
     );
     assert_eq!(
         registry.get_field("Instrument.Symbol"),
-        registry.get_field_by_path(&FixNamespace::STANDARD, "Instrument.Symbol")
+        registry.get_field_by_path(&FixBranch::STANDARD, "Instrument.Symbol")
     );
     assert!(registry.contains("NoPartyIDs.PartyID"));
     // A member is reached through its parent only: the registry does not
     // index it, and the remainder of a path is an exact child name.
     assert!(
         registry
-            .get_field_by_name(&FixNamespace::STANDARD, "PartyID")
+            .get_field_by_name(&FixBranch::STANDARD, "PartyID")
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixNamespace::STANDARD, "NoPartyIDs.partyid")
+            .get_field_by_path(&FixBranch::STANDARD, "NoPartyIDs.partyid")
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixNamespace::STANDARD, "Instrument.Absent")
+            .get_field_by_path(&FixBranch::STANDARD, "Instrument.Absent")
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixNamespace::STANDARD, "Absent.Symbol")
+            .get_field_by_path(&FixBranch::STANDARD, "Absent.Symbol")
             .is_none()
     );
 }
@@ -1242,7 +1236,7 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
 }
 
 #[test]
-fn iteration_and_the_cursor_are_namespace_major() {
+fn iteration_and_the_cursor_are_branch_major() {
     let cme = cme();
     let registry = FixRegistry::from_fields([
         tagged("Account", 1),
@@ -1251,7 +1245,7 @@ fn iteration_and_the_cursor_are_namespace_major() {
         identified("Venue", &FixId::from_parts(cme.clone(), 9000).unwrap()),
     ])
     .unwrap();
-    // `cme` sorts before `standard`, and each namespace ascends by tag.
+    // `cme` sorts before `standard`, and each branch ascends by tag.
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         ["TradeID", "Venue", "Account", "MsgType"]
@@ -1505,7 +1499,7 @@ fn a_message_rejects_a_value_its_field_refuses() {
 }
 
 #[test]
-fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
+fn a_message_resolves_a_bare_tag_in_its_own_branch_then_the_standard_one() {
     let cme = cme();
     // Tag 5001 is defined in both dictionaries; 35 only in the standard one.
     let mut venue_trade = identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap());
@@ -1518,23 +1512,23 @@ fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
             .unwrap(),
     );
 
-    // The root declares the venue's namespace, so the message speaks it.
+    // The root declares the venue's branch, so the message speaks it.
     let mut root = DataType::from_fields([venue_trade.clone(), msg_type.clone()])
         .unwrap()
         .required_field("VenueExecutionReport");
-    root.as_fix_mut().set_namespace(&cme).unwrap();
+    root.as_fix_mut().set_branch(&cme).unwrap();
     let value = Scalar::from_record([
         ("TradeID", Scalar::from("T-1")),
         ("MsgType", Scalar::from("8")),
     ])
     .unwrap();
     let msg = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
-    assert_eq!(msg.namespace(), &cme);
+    assert_eq!(msg.branch(), &cme);
 
-    // Step one: the message's own namespace.
+    // Step one: the message's own branch.
     assert_eq!(msg.by_tag(5001).unwrap(), &Scalar::from("T-1"));
     assert_eq!(msg.by_name("tid").unwrap(), &Scalar::from("T-1"));
-    // Step two: the standard namespace, so MsgType stays reachable.
+    // Step two: the standard branch, so MsgType stays reachable.
     assert_eq!(msg.by_tag(35).unwrap(), &Scalar::from("8"));
     assert_eq!(msg.by_name("msgtype").unwrap(), &Scalar::from("8"));
     // The standard field 5001 names a root child this message does not hold,
@@ -1546,7 +1540,7 @@ fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
     assert_eq!(msg.by_id(&venue_id).unwrap(), &Scalar::from("T-1"));
     assert!(
         msg.get_by_id(&FixId::standard(5001)).is_none(),
-        "a foreign namespace misses"
+        "a foreign branch misses"
     );
     assert_eq!(msg.get(&venue_id), msg.get_by_id(&venue_id));
     assert_eq!(msg.value(&venue_id).unwrap(), msg.by_id(&venue_id).unwrap());
@@ -1556,7 +1550,7 @@ fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
         "{error}"
     );
 
-    // A standard message resolves only in the standard namespace.
+    // A standard message resolves only in the standard branch.
     let plain_root = DataType::from_fields([spec_trade, msg_type])
         .unwrap()
         .required_field("ExecutionReport");
@@ -1570,7 +1564,7 @@ fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
         .unwrap(),
     )
     .unwrap();
-    assert_eq!(plain.namespace(), &FixNamespace::STANDARD);
+    assert_eq!(plain.branch(), &FixBranch::STANDARD);
     assert_eq!(plain.by_tag(5001).unwrap(), &Scalar::from("S-1"));
     assert_eq!(plain.by_name("stid").unwrap(), &Scalar::from("S-1"));
     assert!(plain.get_by_name("tid").is_none());
@@ -1578,11 +1572,11 @@ fn a_message_resolves_a_bare_tag_in_its_own_namespace_then_the_standard_one() {
 }
 
 #[test]
-fn a_message_rejects_a_root_whose_namespace_is_corrupt() {
+fn a_message_rejects_a_root_whose_branch_is_corrupt() {
     let mut root = DataType::from_fields([tagged("MsgType", 35)])
         .unwrap()
         .required_field("row");
-    root.insert_metadata("fix:namespace", "2cme").unwrap();
+    root.insert_metadata("fix:branch", "2cme").unwrap();
     let error = FixMsg::with_registry(
         Arc::new(FixRegistry::new()),
         root,
@@ -1590,7 +1584,7 @@ fn a_message_rejects_a_root_whose_namespace_is_corrupt() {
     )
     .unwrap_err();
     assert!(
-        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:namespace"),
+        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:branch"),
         "{error}"
     );
 }

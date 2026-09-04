@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use yggdryl::local::Folder;
-use yggdryl::{DataType, Field, FixId, FixNamespace, FixRegistry};
+use yggdryl::{DataType, Field, FixBranch, FixId, FixRegistry};
 
 /// The tracked seed dictionary, relative to the crate manifest.
 pub(crate) fn seed_root() -> PathBuf {
@@ -11,12 +11,12 @@ pub(crate) fn seed_root() -> PathBuf {
         .join("fix")
 }
 
-/// The venue dictionary the namespaced measurements resolve against.
-pub(crate) fn venue() -> FixNamespace {
-    FixNamespace::from_str("cme").expect("a valid namespace")
+/// The venue dictionary the branched measurements resolve against.
+pub(crate) fn venue() -> FixBranch {
+    FixBranch::from_str("cme").expect("a valid branch")
 }
 
-/// `count` generated fields in the venue namespace, tags from 5000 up.
+/// `count` generated fields in the venue branch, tags from 5000 up.
 fn vendored(count: usize) -> Vec<Field> {
     let venue = venue();
     (0..count)
@@ -38,7 +38,7 @@ fn vendored(count: usize) -> Vec<Field> {
 }
 
 /// The tracked seed beside a venue dictionary of `count` fields.
-pub(crate) fn two_namespaces(count: usize) -> FixRegistry {
+pub(crate) fn two_branches(count: usize) -> FixRegistry {
     FixRegistry::from_fields(seed().iter().cloned().chain(vendored(count)))
         .expect("the generated dictionary has no conflict")
 }

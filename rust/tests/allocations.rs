@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl::{
-    DataType, Field, FixId, FixMsg, FixNamespace, FixRegistry, MediaType, MimeType, Scalar,
+    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -168,19 +168,19 @@ fn iceberg_field(extra: usize) -> Field {
     field
 }
 
-/// The venue namespace the namespaced cases probe, at exactly the length
-/// `FixNamespace::MAX_LENGTH` allows.
+/// The venue branch the branched cases probe, at exactly the length
+/// `FixBranch::MAX_LENGTH` allows.
 ///
-/// A namespace at the bound must still be inline, because every identifier
+/// A branch at the bound must still be inline, because every identifier
 /// probe clones one. If the bound ever exceeds `smol_str`'s inline capacity,
 /// the cases below start allocating and fail here rather than silently
 /// costing the documented hot path a heap round trip.
-fn venue() -> FixNamespace {
-    FixNamespace::from_str(&"v".repeat(FixNamespace::MAX_LENGTH)).expect("a namespace at the bound")
+fn venue() -> FixBranch {
+    FixBranch::from_str(&"v".repeat(FixBranch::MAX_LENGTH)).expect("a branch at the bound")
 }
 
 /// A FIX registry of `extra` generated fields around two fully keyed fields,
-/// one in the standard namespace and one in a venue's.
+/// one in the standard branch and one in a venue's.
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
 /// ones are what every hit lands on.
@@ -222,7 +222,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
 fn a_fix_registry_lookup_allocates_nothing() {
     // A wide dictionary: a hit must cost the same however much it walks past.
     let registry = fix_registry(512);
-    let standard = FixNamespace::STANDARD;
+    let standard = FixBranch::STANDARD;
     let venue = venue();
     let vendor = FixId::from_parts(venue.clone(), 5_001).expect("a vendor identifier");
 
@@ -235,7 +235,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("get_field_by_tag miss", || {
         let _ = black_box(registry.get_field_by_tag(7));
     });
-    // An identifier probe is an inline namespace clone plus an `i32`, so the
+    // An identifier probe is an inline branch clone plus an `i32`, so the
     // vendor tiers cost what the standard ones do.
     free("get_field_by_id vendor hit", || {
         let _ = black_box(registry.get_field_by_id(&vendor));
@@ -292,7 +292,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         .expect("three children")
         .required_field("row");
     root.as_fix_mut()
-        .set_namespace(&venue)
+        .set_branch(&venue)
         .expect("a venue message");
     let value = Scalar::from_sequence([
         Scalar::from("AAPL"),
@@ -301,7 +301,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     ]);
     let msg = FixMsg::with_registry(registry, root, value).expect("a valid message");
 
-    // The two-step tier: the message's own namespace, then the standard one.
+    // The two-step tier: the message's own branch, then the standard one.
     free("get_by_tag vendor", || {
         let _ = black_box(msg.get_by_tag(5_001));
     });

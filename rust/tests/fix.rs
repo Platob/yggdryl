@@ -8,13 +8,13 @@ use std::sync::Arc;
 use yggdryl::io::IOBase;
 use yggdryl::local::Folder;
 use yggdryl::{
-    DataType, Field, FixId, FixMsg, FixNamespace, FixRegistry, Scalar, from_json_scalar_with_field,
+    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field,
     into_json_scalar,
 };
 
-/// The venue dictionary the namespaced cases are written against.
-fn cme() -> FixNamespace {
-    FixNamespace::from_str("cme").expect("a valid namespace")
+/// The venue dictionary the branched cases are written against.
+fn cme() -> FixBranch {
+    FixBranch::from_str("cme").expect("a valid branch")
 }
 
 /// A fresh directory of this test's own under the platform temporary root.
@@ -43,9 +43,9 @@ fn seed_root() -> PathBuf {
         .join("fix")
 }
 
-/// The sorted names under `root/records/<namespace>`.
-fn shard_files(root: &Path, namespace: &str) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(root.join("records").join(namespace))
+/// The sorted names under `root/records/<branch>`.
+fn shard_files(root: &Path, branch: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root.join("records").join(branch))
         .map(|entries| {
             entries
                 .map(|entry| {
@@ -117,7 +117,7 @@ fn shards_round_trip_through_a_temporary_folder() {
         assert_eq!(reloaded.field_by_tag(tag).unwrap().name(), name);
         assert_eq!(
             reloaded
-                .field_by_name(&FixNamespace::STANDARD, name)
+                .field_by_name(&FixBranch::STANDARD, name)
                 .unwrap()
                 .name(),
             name
@@ -143,7 +143,7 @@ fn shards_round_trip_through_a_temporary_folder() {
 
     // A removed field's emptied shard disappears on the next write, so a
     // reload cannot resurrect it; a leaf that is not a shard is left alone
-    // inside a namespace folder.
+    // inside a branch folder.
     std::fs::write(
         root.join("records").join("standard").join("README.md"),
         b"notes",
@@ -159,16 +159,16 @@ fn shards_round_trip_through_a_temporary_folder() {
     assert!(reloaded.get_field_by_tag(10_000).is_none());
     assert_eq!(reloaded, registry);
 
-    // A leaf directly under `records/` is the stale pre-namespace layout, and
+    // A leaf directly under `records/` is the stale pre-branch layout, and
     // it is a typed error rather than a folder skipped into an empty load.
     std::fs::write(root.join("records").join("0.json"), b"[]").unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
     let message = error.to_string();
-    assert!(message.contains("only namespace folders"), "{message}");
+    assert!(message.contains("only branch folders"), "{message}");
     assert!(message.contains("the leaf \"0.json\""), "{message}");
     std::fs::remove_file(root.join("records").join("0.json")).unwrap();
 
-    // A folder whose name is no namespace keeps its typed parse failure and
+    // A folder whose name is no branch keeps its typed parse failure and
     // its byte position, with the folder named.
     std::fs::create_dir_all(root.join("records").join("2bad")).unwrap();
     let error = FixRegistry::from_handle(&folder).unwrap_err();
@@ -176,7 +176,7 @@ fn shards_round_trip_through_a_temporary_folder() {
         matches!(
             &error,
             yggdryl::Error::Parse {
-                target: "fix namespace",
+                target: "fix branch",
                 position: 0,
                 ..
             }
@@ -208,7 +208,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     assert_eq!(reloaded.field_by_tag(453).unwrap(), &group);
     assert_eq!(
         reloaded
-            .field_by_name(&FixNamespace::STANDARD, "parties")
+            .field_by_name(&FixBranch::STANDARD, "parties")
             .unwrap(),
         &group
     );
@@ -222,7 +222,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     ] {
         assert_eq!(
             reloaded
-                .field_by_path(&FixNamespace::STANDARD, path)
+                .field_by_path(&FixBranch::STANDARD, path)
                 .unwrap()
                 .as_fix()
                 .tag()
@@ -297,7 +297,7 @@ fn a_malformed_shard_names_its_location() {
     );
 
     // The record is authoritative and the folder is layout, so a field whose
-    // own namespace contradicts the folder it sits in names both.
+    // own branch contradicts the folder it sits in names both.
     let mut venue = DataType::Utf8.nullable_field("TradeID");
     venue
         .as_fix_mut()
@@ -324,7 +324,7 @@ fn a_malformed_shard_names_its_location() {
     .unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
     assert!(
-        message.contains("the namespace \"standard\" its folder names"),
+        message.contains("the branch \"standard\" its folder names"),
         "{message}"
     );
     assert!(message.contains("\"cme\""), "{message}");
@@ -334,8 +334,8 @@ fn a_malformed_shard_names_its_location() {
 }
 
 #[test]
-fn two_namespaces_write_their_own_shards_and_a_dropped_one_disappears() {
-    let root = scratch("namespaces");
+fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
+    let root = scratch("branches");
     let mut folder = Folder::new(&root).unwrap();
     let cme = cme();
 
@@ -353,7 +353,7 @@ fn two_namespaces_write_their_own_shards_and_a_dropped_one_disappears() {
         FixRegistry::from_fields([tagged("Symbol", 55), trade.clone(), venue.clone()]).unwrap();
     registry.write_into(&mut folder).unwrap();
 
-    // Each namespace owns its own shard arithmetic: 5001 is shard 50 and
+    // Each branch owns its own shard arithmetic: 5001 is shard 50 and
     // 9000 is shard 90 inside `cme`, and 55 is shard 0 inside `standard`.
     assert_eq!(shard_files(&root, "standard"), ["0.json"]);
     assert_eq!(shard_files(&root, "cme"), ["50.json", "90.json"]);
@@ -374,7 +374,7 @@ fn two_namespaces_write_their_own_shards_and_a_dropped_one_disappears() {
     );
     assert!(reloaded.get_field_by_tag(5001).is_none());
 
-    // Dropping every field of one namespace removes its folder whole, so a
+    // Dropping every field of one branch removes its folder whole, so a
     // reload cannot resurrect it.
     assert_eq!(
         registry
@@ -413,35 +413,35 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "msgtype")
+            .field_by_name(&FixBranch::STANDARD, "msgtype")
             .unwrap()
             .name(),
         "MsgType"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "TICKER")
+            .field_by_name(&FixBranch::STANDARD, "TICKER")
             .unwrap()
             .name(),
         "Symbol"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "ClientOrderID")
+            .field_by_name(&FixBranch::STANDARD, "ClientOrderID")
             .unwrap()
             .name(),
         "ClOrdID"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "qty")
+            .field_by_name(&FixBranch::STANDARD, "qty")
             .unwrap()
             .name(),
         "OrderQty"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixNamespace::STANDARD, "px")
+            .field_by_name(&FixBranch::STANDARD, "px")
             .unwrap()
             .name(),
         "Price"
@@ -449,7 +449,7 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     assert_eq!(registry.field_by_tag(20).unwrap().name(), "ExecType");
     assert_eq!(
         registry
-            .field_by_path(&FixNamespace::STANDARD, "NoPartyIDs.PartyID")
+            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs.PartyID")
             .unwrap()
             .as_fix()
             .tag()
@@ -474,7 +474,7 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
         &DataType::decimal128(20, 8).unwrap()
     );
 
-    // The layout is exactly `records/<namespace>/<shard>.json`, nothing else.
+    // The layout is exactly `records/<branch>/<shard>.json`, nothing else.
     let mut entries: Vec<String> = folder
         .ls(true, true)
         .map(|entry| {

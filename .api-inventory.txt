@@ -1197,27 +1197,27 @@
   pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
 
 ### yggdryl::fix  [rust\src\fix\mod.rs]
-  pub struct FixNamespace(SmolStr)  (re-exported at the crate root beside FixAliases, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry)
+  pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry)
   pub const STANDARD: Self
   pub const MAX_LENGTH: usize
   pub fn from_str(value: &str) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default for FixNamespace
-  impl FromStr for FixNamespace  (Err = Error)
-  impl AsRef<str> for FixNamespace
-  impl fmt::Display for FixNamespace
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default for FixBranch
+  impl FromStr for FixBranch  (Err = Error)
+  impl AsRef<str> for FixBranch
+  impl fmt::Display for FixBranch
   pub struct FixId
   pub const STANDARD_TAG_LIMIT: i32
   pub fn standard(tag: i32) -> Self
-  pub fn from_parts(namespace: FixNamespace, tag: i32) -> Result<Self>
+  pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self>
   pub fn from_str(text: &str) -> Result<Self>
-  pub const fn namespace(&self) -> &FixNamespace
+  pub const fn branch(&self) -> &FixBranch
   pub const fn tag(&self) -> i32
   pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is namespace-major)
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is branch-major)
   impl FromStr for FixId  (Err = Error)
-  impl fmt::Display for FixId  (always "<namespace>:<tag>")
+  impl fmt::Display for FixId  (always "<branch>:<tag>")
   pub enum FixKey<'a>  (Tag(i32) | Id(&'a FixId) | Name(&'a str))
   impl From<i32> for FixKey<'_>
   impl<'a> From<&'a FixId> for FixKey<'a>
@@ -1227,14 +1227,14 @@
 
 ### yggdryl::fix::field  [rust\src\fix\field.rs]
   impl<'field> FixField<'field>
-  pub fn namespace(&self) -> Result<FixNamespace>
+  pub fn branch(&self) -> Result<FixBranch>
   pub fn id(&self) -> Result<Option<FixId>>
   pub fn tag(&self) -> Result<Option<i32>>
   pub fn tags(&self) -> Result<Vec<i32>>
   pub fn aliases(&self) -> FixAliases<'field>
   pub fn description(&self) -> Option<&'field str>
   impl FixFieldMut<'_>
-  pub fn set_namespace(&mut self, namespace: &FixNamespace) -> Result<()>
+  pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
   pub fn set_id(&mut self, id: &FixId) -> Result<()>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
@@ -1251,10 +1251,10 @@
   pub fn field_by_id(&self, id: &FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
-  pub fn get_field_by_name(&self, namespace: &FixNamespace, name: &str) -> Option<&Field>
-  pub fn field_by_name(&self, namespace: &FixNamespace, name: &str) -> Result<&Field>
-  pub fn get_field_by_path(&self, namespace: &FixNamespace, path: &str) -> Option<&Field>
-  pub fn field_by_path(&self, namespace: &FixNamespace, path: &str) -> Result<&Field>
+  pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
+  pub fn field_by_name(&self, branch: &FixBranch, name: &str) -> Result<&Field>
+  pub fn get_field_by_path(&self, branch: &FixBranch, path: &str) -> Option<&Field>
+  pub fn field_by_path(&self, branch: &FixBranch, path: &str) -> Result<&Field>
   pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
   pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
@@ -1285,7 +1285,7 @@
   pub fn new(field: Field, value: Scalar) -> Result<Self>
   pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>
   pub const fn registry(&self) -> &Arc<FixRegistry>
-  pub const fn namespace(&self) -> &FixNamespace
+  pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
   pub const fn as_value(&self) -> &Scalar
   pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar>

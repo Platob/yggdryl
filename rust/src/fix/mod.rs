@@ -11,7 +11,7 @@
 //!
 //! | property | key | type | meaning |
 //! | --- | --- | --- | --- |
-//! | namespace | `fix:namespace` | [`FixNamespace`] | the dictionary this field belongs to; absent is [`FixNamespace::STANDARD`] |
+//! | branch | `fix:branch` | [`FixBranch`] | the dictionary this field belongs to; absent is [`FixBranch::STANDARD`] |
 //! | tag | `fix:tag` | `i32` | canonical FIX tag |
 //! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
@@ -23,19 +23,19 @@
 //!
 //! # Identity
 //!
-//! [`FixId`] is a namespace and a tag, rendered `namespace:tag`. It is derived
-//! on every read from `fix:namespace` and `fix:tag` and never stored: there is
+//! [`FixId`] is a branch and a tag, rendered `branch:tag`. It is derived
+//! on every read from `fix:branch` and `fix:tag` and never stored: there is
 //! no `fix:id` key, on disk or in the map, so the two facts it is computed
 //! from cannot disagree with a third. [`FixId::from_parts`] is the one place
 //! the standard-tag rule lives - a tag below [`FixId::STANDARD_TAG_LIMIT`] is
 //! assigned by the FIX specification, so it forces
-//! [`FixNamespace::STANDARD`] - which makes an inadmissible identifier
+//! [`FixBranch::STANDARD`] - which makes an inadmissible identifier
 //! unconstructible rather than refused in several places.
 //!
 //! # Resolution
 //!
 //! [`FixRegistry`] answers an identifier or a name through two tiers within
-//! one namespace, and a later tier is consulted only when every earlier one
+//! one branch, and a later tier is consulted only when every earlier one
 //! missed:
 //!
 //! 1. canonical identifier, then alternate identifiers;
@@ -45,9 +45,9 @@
 //! finds the field and the answer is always the canonical spelling. A tag
 //! query never consults names and a name query never consults tags, an alias
 //! can never take a name away from a field that claims it canonically, and no
-//! query ever crosses a namespace: a bare tag and a bare name are the standard
-//! namespace, and a vendor field is reached by [`FixId`] or through the
-//! namespace-qualified name accessors. [`FixKey`] carries any of the three
+//! query ever crosses a branch: a bare tag and a bare name are the standard
+//! branch, and a vendor field is reached by [`FixId`] or through the
+//! branch-qualified name accessors. [`FixKey`] carries any of the three
 //! kinds of key through the generic [`FixRegistry::get_field`] /
 //! [`FixRegistry::field`] pair, which match once and redirect to the
 //! specialized accessor for that kind.
@@ -55,17 +55,17 @@
 //! # Storage
 //!
 //! A registry reads and writes through one [`IOBase`](crate::io::IOBase)
-//! folder handle. Shards live at `<root>/records/<namespace>/<shard>.json`
+//! folder handle. Shards live at `<root>/records/<branch>/<shard>.json`
 //! with `shard = tag / 100`, each a JSON array of the core field document
 //! ordered by canonical identifier, so a tag reaches exactly one shard by
 //! arithmetic and an alternate tag never fans a field across shards. Every
 //! shard is loaded on open: [`FixRegistry::from_handle`] lists `records/`,
-//! reads each namespace folder and inserts every shard's fields, because a
+//! reads each branch folder and inserts every shard's fields, because a
 //! name has no numeric structure to pick a shard with, and a dictionary is
 //! small enough that loading it whole costs less than the machinery of
 //! loading it lazily. A folder that does not exist loads as the empty
 //! registry, which is the laziness contract of every handle; a leaf directly
-//! under `records/`, a folder whose name is not a namespace, and a shard that
+//! under `records/`, a folder whose name is not a branch, and a shard that
 //! exists but does not parse are all typed errors naming their URL.
 //!
 //! # The process default
@@ -79,7 +79,7 @@
 //! Every other failure is loud.
 //!
 //! ```
-//! use yggdryl::{DataType, FixId, FixNamespace, FixRegistry};
+//! use yggdryl::{DataType, FixId, FixBranch, FixRegistry};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut symbol = DataType::Utf8.required_field("Symbol");
@@ -91,7 +91,7 @@
 //!
 //! let registry = FixRegistry::from_fields([symbol, trade])?;
 //! assert_eq!(registry.field_by_tag(55)?.name(), "Symbol");
-//! assert_eq!(registry.field_by_name(&FixNamespace::STANDARD, "ticker")?.name(), "Symbol");
+//! assert_eq!(registry.field_by_name(&FixBranch::STANDARD, "ticker")?.name(), "Symbol");
 //! assert_eq!(registry.field("SYMBOL")?.as_fix().id()?, Some(FixId::standard(55)));
 //! // A vendor field is addressed by its identifier, never by a bare tag.
 //! assert_eq!(registry.field(&FixId::from_str("cme:5001")?)?.name(), "TradeID");
@@ -121,43 +121,43 @@ pub use registry::{FixFieldIter, FixRegistry};
 
 /// The dictionary one FIX field belongs to.
 ///
-/// A namespace separates the FIX specification's own fields from a venue's:
+/// A branch separates the FIX specification's own fields from a venue's:
 /// `standard` is the specification, and any other spelling names a dictionary
 /// that defines its own tags and names beside it. The type exists rather than
 /// a bare string because it enforces what a string cannot - a leading ASCII
 /// letter, a grammar with no `:` or `,` to confuse an identifier or a list,
 /// ASCII case folded exactly once on the way in, and a length that keeps every
-/// clone a `memcpy` - so `CME` and `cme` are one namespace and a registry
+/// clone a `memcpy` - so `CME` and `cme` are one branch and a registry
 /// probe carrying one allocates nothing.
 ///
 /// ```
-/// use yggdryl::FixNamespace;
+/// use yggdryl::FixBranch;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// assert_eq!(FixNamespace::from_str("CME")?.as_str(), "cme");
-/// assert_eq!(FixNamespace::default(), FixNamespace::STANDARD);
-/// assert!(FixNamespace::from_str("standard")?.is_standard());
-/// assert!(FixNamespace::from_str("2cme").is_err());
+/// assert_eq!(FixBranch::from_str("CME")?.as_str(), "cme");
+/// assert_eq!(FixBranch::default(), FixBranch::STANDARD);
+/// assert!(FixBranch::from_str("standard")?.is_standard());
+/// assert!(FixBranch::from_str("2cme").is_err());
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FixNamespace(SmolStr);
+pub struct FixBranch(SmolStr);
 
-impl FixNamespace {
+impl FixBranch {
     /// The FIX specification's own dictionary, and what an absent
-    /// `fix:namespace` means.
+    /// `fix:branch` means.
     pub const STANDARD: Self = Self(SmolStr::new_static("standard"));
 
-    /// The longest a namespace may be, in bytes.
+    /// The longest a branch may be, in bytes.
     ///
-    /// This is `smol_str`'s inline capacity, which is what makes a namespace
+    /// This is `smol_str`'s inline capacity, which is what makes a branch
     /// clone a `memcpy` and keeps the registry's identifier and name probes
     /// allocation-free. Raising it past that bound would move the hot lookup
     /// path onto the heap.
     pub const MAX_LENGTH: usize = 23;
 
-    /// Parses and validates a namespace, folding ASCII case.
+    /// Parses and validates a branch, folding ASCII case.
     ///
     /// # Errors
     ///
@@ -180,16 +180,16 @@ impl FixNamespace {
     }
 }
 
-impl FromStr for FixNamespace {
+impl FromStr for FixBranch {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
         let bytes = value.as_bytes();
         if bytes.first().is_none_or(|byte| !byte.is_ascii_alphabetic()) {
             return Err(Error::Parse {
-                target: "fix namespace",
+                target: "fix branch",
                 position: 0,
-                reason: "a fix namespace must start with an ASCII letter".into(),
+                reason: "a fix branch must start with an ASCII letter".into(),
             });
         }
         if let Some(position) = bytes
@@ -197,18 +197,18 @@ impl FromStr for FixNamespace {
             .position(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_')))
         {
             return Err(Error::Parse {
-                target: "fix namespace",
+                target: "fix branch",
                 position,
                 reason:
-                    "a fix namespace may contain only ASCII letters, digits, hyphen, dot, or underscore"
+                    "a fix branch may contain only ASCII letters, digits, hyphen, dot, or underscore"
                         .into(),
             });
         }
         if value.len() > Self::MAX_LENGTH {
             return Err(Error::Parse {
-                target: "fix namespace",
+                target: "fix branch",
                 position: Self::MAX_LENGTH,
-                reason: format_smolstr!("a fix namespace is at most {} bytes", Self::MAX_LENGTH),
+                reason: format_smolstr!("a fix branch is at most {} bytes", Self::MAX_LENGTH),
             });
         }
         if value.eq_ignore_ascii_case(Self::STANDARD.as_str()) {
@@ -225,41 +225,41 @@ impl FromStr for FixNamespace {
     }
 }
 
-impl Default for FixNamespace {
-    /// The standard namespace, which is what an absent `fix:namespace` means.
+impl Default for FixBranch {
+    /// The standard branch, which is what an absent `fix:branch` means.
     fn default() -> Self {
         Self::STANDARD
     }
 }
 
-impl AsRef<str> for FixNamespace {
+impl AsRef<str> for FixBranch {
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl fmt::Display for FixNamespace {
+impl fmt::Display for FixBranch {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-/// What separates a namespace from a tag in a rendered identifier.
+/// What separates a branch from a tag in a rendered identifier.
 const IDENTIFIER_SEPARATOR: char = ':';
 
 /// What an identifier is, spelled once for every refusal.
-const IDENTIFIER_SHAPE: &str = "a fix identifier is a namespace, a colon, and a decimal tag";
+const IDENTIFIER_SHAPE: &str = "a fix identifier is a branch, a colon, and a decimal tag";
 
 /// One FIX field's identity: the dictionary it belongs to and its tag.
 ///
-/// Derived from `fix:namespace` and `fix:tag` on every read and never stored,
+/// Derived from `fix:branch` and `fix:tag` on every read and never stored,
 /// so the identity cannot drift from the two facts it is computed from. It
-/// renders and parses as `namespace:tag` - `standard:35`, `cme:5001` - and
-/// orders namespace-major, which is the order a registry iterates and a store
+/// renders and parses as `branch:tag` - `standard:35`, `cme:5001` - and
+/// orders branch-major, which is the order a registry iterates and a store
 /// writes in.
 ///
 /// ```
-/// use yggdryl::{FixId, FixNamespace};
+/// use yggdryl::{FixId, FixBranch};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let id = FixId::from_str("CME:5001")?;
@@ -268,16 +268,16 @@ const IDENTIFIER_SHAPE: &str = "a fix identifier is a namespace, a colon, and a 
 /// assert_eq!(FixId::standard(35).to_string(), "standard:35");
 /// assert!(!id.is_standard());
 ///
-/// // A tag the FIX specification assigns belongs to the standard namespace.
-/// let refused = FixId::from_parts(FixNamespace::from_str("cme")?, 35).unwrap_err();
-/// assert!(refused.to_string().contains("fix:namespace"), "{refused}");
+/// // A tag the FIX specification assigns belongs to the standard branch.
+/// let refused = FixId::from_parts(FixBranch::from_str("cme")?, 35).unwrap_err();
+/// assert!(refused.to_string().contains("fix:branch"), "{refused}");
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FixId {
-    // Declared first so the derived `Ord` is namespace-major.
-    namespace: FixNamespace,
+    // Declared first so the derived `Ord` is branch-major.
+    branch: FixBranch,
     tag: i32,
 }
 
@@ -286,16 +286,16 @@ impl FixId {
     ///
     /// Tags 0-4999 are assigned by the FIX specification; 5000-9999 is its
     /// user-defined range and everything above is vendor space. Only the
-    /// first of those three belongs to the standard namespace by rule.
+    /// first of those three belongs to the standard branch by rule.
     pub const STANDARD_TAG_LIMIT: i32 = 5_000;
 
-    /// The identifier of `tag` in the standard namespace.
+    /// The identifier of `tag` in the standard branch.
     ///
-    /// Not a `const fn`: [`FixNamespace`] holds a `SmolStr`, which has a
+    /// Not a `const fn`: [`FixBranch`] holds a `SmolStr`, which has a
     /// `Drop` impl, and nothing needs this in a const context.
     pub fn standard(tag: i32) -> Self {
         Self {
-            namespace: FixNamespace::STANDARD,
+            branch: FixBranch::STANDARD,
             tag,
         }
     }
@@ -305,33 +305,33 @@ impl FixId {
     ///
     /// This is the one place that rule lives: a tag below
     /// [`Self::STANDARD_TAG_LIMIT`] is the FIX specification's own, so it
-    /// forces [`FixNamespace::STANDARD`]. The standard namespace itself holds
+    /// forces [`FixBranch::STANDARD`]. The standard branch itself holds
     /// any tag. Every producer of an identity reaches the rule through here
     /// and none re-checks it, which is what makes an inadmissible identifier
     /// unconstructible.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidMetadataValue`] naming `fix:namespace`, the
+    /// Returns [`Error::InvalidMetadataValue`] naming `fix:branch`, the
     /// limit and both sides when a specification tag is claimed by another
     /// dictionary.
-    pub fn from_parts(namespace: FixNamespace, tag: i32) -> Result<Self> {
-        if !Self::is_admissible(&namespace, tag) {
+    pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self> {
+        if !Self::is_admissible(&branch, tag) {
             return Err(Error::InvalidMetadataValue {
-                key: SmolStr::new_static(field::NAMESPACE_KEY),
+                key: SmolStr::new_static(field::BRANCH_KEY),
                 reason: format_smolstr!(
-                    "expected the standard namespace for tag {tag}, which the FIX specification assigns below {}, got {:?}",
+                    "expected the standard branch for tag {tag}, which the FIX specification assigns below {}, got {:?}",
                     Self::STANDARD_TAG_LIMIT,
-                    namespace.as_str()
+                    branch.as_str()
                 ),
             });
         }
-        Ok(Self { namespace, tag })
+        Ok(Self { branch, tag })
     }
 
-    /// Parses `namespace:tag`.
+    /// Parses `branch:tag`.
     ///
-    /// The namespace grammar forbids `:`, so the split is unambiguous, and
+    /// The branch grammar forbids `:`, so the split is unambiguous, and
     /// the tag is decimal digits only - `+35`, `-35`, whitespace and an empty
     /// tail are all refused. A bare `35` is not an identifier. The parsed
     /// parts then go through [`Self::from_parts`], so text is held to the same
@@ -340,17 +340,17 @@ impl FixId {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] naming the byte position when the text has no
-    /// colon or its tail is not a tag, [`FixNamespace::from_str`]'s failure
+    /// colon or its tail is not a tag, [`FixBranch::from_str`]'s failure
     /// for a bad head - whose positions are already this text's, because the
-    /// namespace is its prefix - or [`Self::from_parts`]'s refusal.
+    /// branch is its prefix - or [`Self::from_parts`]'s refusal.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Result<Self> {
         <Self as FromStr>::from_str(text)
     }
 
     /// Returns the dictionary this identifier belongs to.
-    pub const fn namespace(&self) -> &FixNamespace {
-        &self.namespace
+    pub const fn branch(&self) -> &FixBranch {
+        &self.branch
     }
 
     /// Returns the tag.
@@ -358,9 +358,9 @@ impl FixId {
         self.tag
     }
 
-    /// Returns whether this identifier is in the standard namespace.
+    /// Returns whether this identifier is in the standard branch.
     pub fn is_standard(&self) -> bool {
-        self.namespace.is_standard()
+        self.branch.is_standard()
     }
 
     /// The standard-tag rule as a predicate: [`Self::from_parts`] is this
@@ -369,8 +369,8 @@ impl FixId {
     /// A caller that would discard the refusal asks this instead, because
     /// building the refusal's text allocates and the message tier consults it
     /// on every lookup. The rule itself still lives in exactly one place.
-    pub(super) fn is_admissible(namespace: &FixNamespace, tag: i32) -> bool {
-        tag >= Self::STANDARD_TAG_LIMIT || namespace.is_standard()
+    pub(super) fn is_admissible(branch: &FixBranch, tag: i32) -> bool {
+        tag >= Self::STANDARD_TAG_LIMIT || branch.is_standard()
     }
 }
 
@@ -385,23 +385,23 @@ impl FromStr for FixId {
                 reason: IDENTIFIER_SHAPE.into(),
             });
         };
-        let namespace = FixNamespace::from_str(head)?;
+        let branch = FixBranch::from_str(head)?;
         let tag = field::parse_tag(tail).ok_or(Error::Parse {
             target: "fix identifier",
             position: head.len() + IDENTIFIER_SEPARATOR.len_utf8(),
             reason: IDENTIFIER_SHAPE.into(),
         })?;
-        Self::from_parts(namespace, tag)
+        Self::from_parts(branch, tag)
     }
 }
 
 impl fmt::Display for FixId {
-    /// Always `namespace:tag`, the standard namespace included.
+    /// Always `branch:tag`, the standard branch included.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
             "{}{IDENTIFIER_SEPARATOR}{}",
-            self.namespace, self.tag
+            self.branch, self.tag
         )
     }
 }
@@ -411,18 +411,18 @@ impl fmt::Display for FixId {
 /// [`From`] carries every spelling a caller reaches for, exactly as the key
 /// of [`Field::get_field`](crate::Field::get_field) does, so
 /// `registry.field(35)` and `registry.field("MsgType")` are one call rather
-/// than two. A bare tag and a bare name are the standard namespace; a
+/// than two. A bare tag and a bare name are the standard branch; a
 /// colon-bearing string is a name, never an identifier, because a `From`
 /// conversion cannot fail and a silent fallback to a name lookup would be two
 /// behaviors under one spelling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FixKey<'a> {
-    /// A canonical or alternate tag in the standard namespace.
+    /// A canonical or alternate tag in the standard branch.
     Tag(i32),
-    /// A canonical or alternate identity in any namespace.
+    /// A canonical or alternate identity in any branch.
     Id(&'a FixId),
     /// A canonical name, an alias, or a dotted path, in the standard
-    /// namespace, matched with ASCII case folded.
+    /// branch, matched with ASCII case folded.
     Name(&'a str),
 }
 

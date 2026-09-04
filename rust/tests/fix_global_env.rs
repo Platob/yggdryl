@@ -21,7 +21,7 @@ fn a_malformed_location_errors_and_a_valid_one_settles_the_default() {
         .join(format!("yggdryl-fix-global-env-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
-    // A folder holding a shard that does not parse, under its namespace.
+    // A folder holding a shard that does not parse, under its branch.
     let bad = root.join("bad");
     std::fs::create_dir_all(bad.join("records").join("standard")).expect("a fresh folder");
     std::fs::write(

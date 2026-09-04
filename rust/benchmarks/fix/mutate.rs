@@ -93,11 +93,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let vendor = FixId::from_parts(venue.clone(), 9_000).expect("a vendor identifier");
     let mut movable = DataType::Utf8.nullable_field("Movable");
     movable.as_fix_mut().set_tag(9_000).unwrap();
-    group.bench_function("set_namespace", |bencher| {
+    group.bench_function("set_branch", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_namespace(&venue).unwrap();
+                field.as_fix_mut().set_branch(&venue).unwrap();
                 field
             },
             BatchSize::SmallInput,
@@ -115,11 +115,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let mut reserved = DataType::Utf8.nullable_field("Reserved");
     reserved.as_fix_mut().set_tag(35).unwrap();
-    group.bench_function("set_namespace_refused", |bencher| {
+    group.bench_function("set_branch_refused", |bencher| {
         bencher.iter_batched(
             || reserved.clone(),
             |mut field| {
-                black_box(field.as_fix_mut().set_namespace(&venue).unwrap_err());
+                black_box(field.as_fix_mut().set_branch(&venue).unwrap_err());
                 field
             },
             BatchSize::SmallInput,
@@ -132,7 +132,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 field
                     .as_fix_mut()
                     .set_id(&FixId::standard(35))
-                    .expect("the standard namespace holds any tag");
+                    .expect("the standard branch holds any tag");
                 field
             },
             BatchSize::SmallInput,

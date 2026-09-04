@@ -2,7 +2,7 @@
 //!
 //! Every index holds a position into the vector, so a lookup is one map
 //! probe plus one slice index; the two identifier indexes are ordered maps
-//! keyed by [`FixId`], and the two name indexes are keyed by a namespace
+//! keyed by [`FixId`], and the two name indexes are keyed by a branch
 //! beside ASCII-case-folded text that is folded once, at insert. A rejected
 //! insert or merge touches neither the vector nor any index: every key the
 //! change would claim is checked free before anything is written.
@@ -16,7 +16,7 @@ use std::ops::Bound;
 
 use smol_str::format_smolstr;
 
-use super::{FixId, FixKey, FixNamespace};
+use super::{FixBranch, FixId, FixKey};
 use crate::{Error, Field, Result};
 
 /// Text compared and hashed with ASCII case folded, without being rewritten.
@@ -75,76 +75,76 @@ impl Hash for Folded<'_> {
 
 /// One name inside one dictionary: what a name index is keyed by.
 ///
-/// A name is unique per namespace rather than registry-wide, because a venue
-/// dictionary reusing `Symbol` or `TradeID` is the normal case. The namespace
-/// is an inline [`FixNamespace`] compared exactly - it is already canonical
+/// A name is unique per branch rather than registry-wide, because a venue
+/// dictionary reusing `Symbol` or `TradeID` is the normal case. The branch
+/// is an inline [`FixBranch`] compared exactly - it is already canonical
 /// lowercase - and the name keeps folding as it hashes, so the proven
 /// [`Folded`] machinery is wrapped rather than rebuilt and a probe still
 /// allocates nothing.
 #[derive(Clone, Debug)]
-pub(super) struct NamespacedName<'a> {
-    namespace: FixNamespace,
+pub(super) struct BranchedName<'a> {
+    branch: FixBranch,
     name: Folded<'a>,
 }
 
-impl<'a> NamespacedName<'a> {
+impl<'a> BranchedName<'a> {
     /// Probe an index with a caller's text, folding as it is read.
-    pub(super) fn probe(namespace: &FixNamespace, name: &'a str) -> Self {
+    pub(super) fn probe(branch: &FixBranch, name: &'a str) -> Self {
         Self {
-            namespace: namespace.clone(),
+            branch: branch.clone(),
             name: Folded::probe(name),
         }
     }
 }
 
-impl NamespacedName<'static> {
+impl BranchedName<'static> {
     /// Own a copy of `name`, for the key an index stores.
-    fn owned(namespace: FixNamespace, name: &str) -> Self {
+    fn owned(branch: FixBranch, name: &str) -> Self {
         Self {
-            namespace,
+            branch,
             name: Folded::owned(name),
         }
     }
 }
 
-impl PartialEq for NamespacedName<'_> {
+impl PartialEq for BranchedName<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.namespace == other.namespace && self.name == other.name
+        self.branch == other.branch && self.name == other.name
     }
 }
 
-impl Eq for NamespacedName<'_> {}
+impl Eq for BranchedName<'_> {}
 
-impl Hash for NamespacedName<'_> {
-    /// Hashes the namespace, a separator its grammar cannot hold, then the
+impl Hash for BranchedName<'_> {
+    /// Hashes the branch, a separator its grammar cannot hold, then the
     /// folded name, so the concatenation of the two is unambiguous.
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(self.namespace.as_str().as_bytes());
+        state.write(self.branch.as_str().as_bytes());
         state.write_u8(0x00);
         self.name.hash(state);
     }
 }
 
 /// The owned key a name index stores, probed with a borrowed
-/// [`NamespacedName`].
+/// [`BranchedName`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct NamespacedKey(NamespacedName<'static>);
+struct BranchedKey(BranchedName<'static>);
 
-impl<'query> Borrow<NamespacedName<'query>> for NamespacedKey {
-    fn borrow(&self) -> &NamespacedName<'query> {
+impl<'query> Borrow<BranchedName<'query>> for BranchedKey {
+    fn borrow(&self) -> &BranchedName<'query> {
         &self.0
     }
 }
 
 /// One key a field can hold, rendered the way a conflict names it.
 ///
-/// Every rendering names the namespace, because a key is only ever unique
+/// Every rendering names the branch, because a key is only ever unique
 /// inside one.
 enum Held<'a> {
     Id(FixId),
     AlternateId(FixId),
-    Name(&'a FixNamespace, &'a str),
-    Alias(&'a FixNamespace, &'a str),
+    Name(&'a FixBranch, &'a str),
+    Alias(&'a FixBranch, &'a str),
 }
 
 impl fmt::Display for Held<'_> {
@@ -152,16 +152,12 @@ impl fmt::Display for Held<'_> {
         match self {
             Self::Id(id) => write!(formatter, "identifier {id}"),
             Self::AlternateId(id) => write!(formatter, "alternate identifier {id}"),
-            Self::Name(namespace, name) => write!(
-                formatter,
-                "name {name:?} in namespace {:?}",
-                namespace.as_str()
-            ),
-            Self::Alias(namespace, alias) => write!(
-                formatter,
-                "alias {alias:?} in namespace {:?}",
-                namespace.as_str()
-            ),
+            Self::Name(branch, name) => {
+                write!(formatter, "name {name:?} in branch {:?}", branch.as_str())
+            }
+            Self::Alias(branch, alias) => {
+                write!(formatter, "alias {alias:?} in branch {:?}", branch.as_str())
+            }
         }
     }
 }
@@ -196,12 +192,12 @@ pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
 }
 
 /// The alternate identities a field lists, in stored priority order.
-fn alternate_ids(field: &Field, namespace: &FixNamespace) -> Result<Vec<FixId>> {
+fn alternate_ids(field: &Field, branch: &FixBranch) -> Result<Vec<FixId>> {
     field
         .as_fix()
         .tags()?
         .into_iter()
-        .map(|tag| FixId::from_parts(namespace.clone(), tag))
+        .map(|tag| FixId::from_parts(branch.clone(), tag))
         .collect()
 }
 
@@ -209,15 +205,15 @@ fn alternate_ids(field: &Field, namespace: &FixNamespace) -> Result<Vec<FixId>> 
 ///
 /// Fields live in one vector at positions the four indexes point at:
 /// canonical and alternate identifiers in two ordered maps, canonical names
-/// and aliases in two maps keyed by namespace plus folded text. A lookup
+/// and aliases in two maps keyed by branch plus folded text. A lookup
 /// probes the canonical tier first and the alternate tier only on a miss, so
 /// an alias can never take a name away from a field that claims it
 /// canonically, and either answers the canonical field itself - never the
 /// spelling the query used.
 ///
-/// Identity is the [`FixId`] and, separately, the pair of namespace and
+/// Identity is the [`FixId`] and, separately, the pair of branch and
 /// folded canonical name. Two fields may share neither, nor an alternate
-/// identifier, nor an alias in one namespace; two *namespaces* may define the
+/// identifier, nor an alias in one branch; two *branches* may define the
 /// same name and the same tag, and a conflict is only ever within one.
 /// Overlap *across* tiers is allowed and resolved by tier order.
 /// [`Self::insert`] never replaces a different field and [`Self::update`]
@@ -225,11 +221,11 @@ fn alternate_ids(field: &Field, namespace: &FixNamespace) -> Result<Vec<FixId>> 
 /// untouched when they refuse.
 ///
 /// ```
-/// use yggdryl::{DataType, FixId, FixKey, FixNamespace, FixRegistry};
+/// use yggdryl::{DataType, FixId, FixKey, FixBranch, FixRegistry};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut registry = FixRegistry::new();
-/// let cme = FixNamespace::from_str("cme")?;
+/// let cme = FixBranch::from_str("cme")?;
 ///
 /// let mut symbol = DataType::Utf8.required_field("Symbol");
 /// symbol.as_fix_mut().set_tag(55)?;
@@ -242,7 +238,7 @@ fn alternate_ids(field: &Field, namespace: &FixNamespace) -> Result<Vec<FixId>> 
 /// assert_eq!(registry.insert(venue)?, None);
 ///
 /// // Any spelling finds the field; the answer is the canonical one.
-/// assert_eq!(registry.field_by_name(&FixNamespace::STANDARD, "TICKER")?.name(), "Symbol");
+/// assert_eq!(registry.field_by_name(&FixBranch::STANDARD, "TICKER")?.name(), "Symbol");
 /// assert_eq!(registry.get_field(55), registry.get_field("symbol"));
 /// assert!(registry.contains(FixKey::Tag(55)));
 /// assert!(!registry.contains("55"));
@@ -259,10 +255,10 @@ pub struct FixRegistry {
     ids: BTreeMap<FixId, usize>,
     /// Alternate identifier to position.
     alternate_ids: BTreeMap<FixId, usize>,
-    /// Namespace and folded canonical name to position.
-    names: HashMap<NamespacedKey, usize>,
-    /// Namespace and folded alias to position.
-    aliases: HashMap<NamespacedKey, usize>,
+    /// Branch and folded canonical name to position.
+    names: HashMap<BranchedKey, usize>,
+    /// Branch and folded alias to position.
+    aliases: HashMap<BranchedKey, usize>,
 }
 
 impl FixRegistry {
@@ -293,7 +289,7 @@ impl FixRegistry {
     ///
     /// This carries the implementation the tag pair redirects to: an
     /// identifier is the exact address of one field in one dictionary, and a
-    /// tag is that address in the standard namespace.
+    /// tag is that address in the standard branch.
     pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field> {
         self.position_by_id(id)
             .map(|position| &self.fields[position])
@@ -311,11 +307,11 @@ impl FixRegistry {
     }
 
     /// Returns the field a canonical or alternate tag names in the standard
-    /// namespace.
+    /// branch.
     ///
     /// A bare tag is always `standard:<tag>`, never whichever dictionary
     /// happens to be loaded: below [`FixId::STANDARD_TAG_LIMIT`] no other
-    /// namespace may hold it, and above it a vendor field is addressed by its
+    /// branch may hold it, and above it a vendor field is addressed by its
     /// [`FixId`].
     pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field> {
         self.get_field_by_id(&FixId::standard(tag))
@@ -333,8 +329,8 @@ impl FixRegistry {
 
     /// Returns the field a canonical name or alias names inside one
     /// dictionary, ASCII case folded.
-    pub fn get_field_by_name(&self, namespace: &FixNamespace, name: &str) -> Option<&Field> {
-        self.position_by_name(namespace, name)
+    pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field> {
+        self.position_by_name(branch, name)
             .map(|position| &self.fields[position])
     }
 
@@ -343,8 +339,8 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns a typed absence naming the name.
-    pub fn field_by_name(&self, namespace: &FixNamespace, name: &str) -> Result<&Field> {
-        self.get_field_by_name(namespace, name)
+    pub fn field_by_name(&self, branch: &FixBranch, name: &str) -> Result<&Field> {
+        self.get_field_by_name(branch, name)
             .ok_or_else(|| absent(FixKey::Name(name)))
     }
 
@@ -356,13 +352,13 @@ impl FixRegistry {
     /// and the remainder is [`Field::get_field_by_path`]'s to resolve, so
     /// nesting has one path resolver: `NoPartyIDs.PartyID` reaches the group
     /// member and `NoPartyIDs` the group itself. The whole path resolves in
-    /// one namespace.
-    pub fn get_field_by_path(&self, namespace: &FixNamespace, path: &str) -> Option<&Field> {
-        if let Some(field) = self.get_field_by_name(namespace, path) {
+    /// one branch.
+    pub fn get_field_by_path(&self, branch: &FixBranch, path: &str) -> Option<&Field> {
+        if let Some(field) = self.get_field_by_name(branch, path) {
             return Some(field);
         }
         let (head, rest) = path.split_once('.')?;
-        self.get_field_by_name(namespace, head)?
+        self.get_field_by_name(branch, head)?
             .get_field_by_path(rest)
     }
 
@@ -371,8 +367,8 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns a typed absence naming the path.
-    pub fn field_by_path(&self, namespace: &FixNamespace, path: &str) -> Result<&Field> {
-        self.get_field_by_path(namespace, path)
+    pub fn field_by_path(&self, branch: &FixBranch, path: &str) -> Result<&Field> {
+        self.get_field_by_path(branch, path)
             .ok_or_else(|| absent(format_args!("path {path:?}")))
     }
 
@@ -380,13 +376,13 @@ impl FixRegistry {
     ///
     /// The generic form matches the key once and redirects: a tag goes to
     /// [`Self::get_field_by_tag`], an identifier to [`Self::get_field_by_id`],
-    /// and a name to [`Self::get_field_by_path`] in the standard namespace,
+    /// and a name to [`Self::get_field_by_path`] in the standard branch,
     /// which is the name lookup plus the dotted descent.
     pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
         match key.into() {
             FixKey::Tag(tag) => self.get_field_by_tag(tag),
             FixKey::Id(id) => self.get_field_by_id(id),
-            FixKey::Name(name) => self.get_field_by_path(&FixNamespace::STANDARD, name),
+            FixKey::Name(name) => self.get_field_by_path(&FixBranch::STANDARD, name),
         }
     }
 
@@ -401,7 +397,7 @@ impl FixRegistry {
         match key.into() {
             FixKey::Tag(tag) => self.field_by_tag(tag),
             FixKey::Id(id) => self.field_by_id(id),
-            FixKey::Name(name) => self.field_by_path(&FixNamespace::STANDARD, name),
+            FixKey::Name(name) => self.field_by_path(&FixBranch::STANDARD, name),
         }
     }
 
@@ -413,13 +409,13 @@ impl FixRegistry {
     /// Adds a field, answering the one it replaced.
     ///
     /// A field enters only with a `fix:tag`. A fresh insert answers `None`.
-    /// Re-inserting the same identity - canonical identifier *and* namespaced
+    /// Re-inserting the same identity - canonical identifier *and* branched
     /// folded canonical name both equal to one stored field's - replaces that
     /// field wholesale and answers the prior one. Anything in between is
-    /// refused: an identifier or a namespaced folded name another field holds
+    /// refused: an identifier or a branched folded name another field holds
     /// canonically, an alternate identifier another field lists, or an alias
-    /// another field declares in the same namespace. Overlap across tiers, and
-    /// any overlap across namespaces, is not a conflict; the tier order
+    /// another field declares in the same branch. Overlap across tiers, and
+    /// any overlap across branches, is not a conflict; the tier order
     /// decides the first and nothing crosses the second.
     ///
     /// # Errors
@@ -431,11 +427,11 @@ impl FixRegistry {
     /// registry unchanged.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
         let id = canonical_id(&field)?;
-        let alternate = alternate_ids(&field, id.namespace())?;
+        let alternate = alternate_ids(&field, id.branch())?;
         let replacing = match (
             self.ids.get(&id),
             self.names
-                .get(&NamespacedName::probe(id.namespace(), field.name())),
+                .get(&BranchedName::probe(id.branch(), field.name())),
         ) {
             (Some(by_id), Some(by_name)) if by_id == by_name => Some(*by_id),
             _ => None,
@@ -470,7 +466,7 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns a typed absence when no field holds the identifier - a
-    /// namespace disagreement is exactly that, because the namespace is half
+    /// branch disagreement is exactly that, because the branch is half
     /// of it - a typed refusal naming both spellings when the folded names
     /// disagree or both datatypes when they do - a disagreement is never
     /// widened silently - and a typed conflict when a merged alternate
@@ -500,7 +496,7 @@ impl FixRegistry {
             });
         }
         let merged = merge(stored, &field)?;
-        let alternate = alternate_ids(&merged, id.namespace())?;
+        let alternate = alternate_ids(&merged, id.branch())?;
         self.check_free(&merged, &id, &alternate, Some(position))?;
         self.unindex(position, position);
         self.fields[position] = merged;
@@ -510,7 +506,7 @@ impl FixRegistry {
 
     /// Removes the field a tag, an identifier or a name reaches, answering it.
     ///
-    /// A name here is a canonical name or an alias in the standard namespace,
+    /// A name here is a canonical name or an alias in the standard branch,
     /// never a dotted path: a member of a component is not a registry entry.
     /// The last field moves into the gap and every index entry follows it, so
     /// positions stay consistent without tombstones.
@@ -518,7 +514,7 @@ impl FixRegistry {
         let position = match key.into() {
             FixKey::Tag(tag) => self.position_by_id(&FixId::standard(tag)),
             FixKey::Id(id) => self.position_by_id(id),
-            FixKey::Name(name) => self.position_by_name(&FixNamespace::STANDARD, name),
+            FixKey::Name(name) => self.position_by_name(&FixBranch::STANDARD, name),
         }?;
         self.unindex(position, position);
         let removed = self.fields.swap_remove(position);
@@ -570,7 +566,7 @@ impl FixRegistry {
     }
 
     /// Iterates the fields in ascending canonical-identifier order, which is
-    /// namespace-major and then by tag.
+    /// branch-major and then by tag.
     pub fn iter(&self) -> FixFieldIter<'_> {
         FixFieldIter {
             positions: self.ids.values(),
@@ -597,8 +593,8 @@ impl FixRegistry {
     }
 
     /// The canonical tier first, the alternate tier only on a miss.
-    fn position_by_name(&self, namespace: &FixNamespace, name: &str) -> Option<usize> {
-        let probe = NamespacedName::probe(namespace, name);
+    fn position_by_name(&self, branch: &FixBranch, name: &str) -> Option<usize> {
+        let probe = BranchedName::probe(branch, name);
         self.names
             .get(&probe)
             .or_else(|| self.aliases.get(&probe))
@@ -614,18 +610,18 @@ impl FixRegistry {
         alternate: &[FixId],
         owner: Option<usize>,
     ) -> Result<()> {
-        let namespace = id.namespace();
+        let branch = id.branch();
         let other = |position: &usize| Some(*position) != owner;
         if let Some(holder) = self.ids.get(id).filter(|position| other(position)) {
             return Err(conflict(Held::Id(id.clone()), field, &self.fields[*holder]));
         }
         if let Some(holder) = self
             .names
-            .get(&NamespacedName::probe(namespace, field.name()))
+            .get(&BranchedName::probe(branch, field.name()))
             .filter(|position| other(position))
         {
             return Err(conflict(
-                Held::Name(namespace, field.name()),
+                Held::Name(branch, field.name()),
                 field,
                 &self.fields[*holder],
             ));
@@ -646,11 +642,11 @@ impl FixRegistry {
         for alias in field.as_fix().aliases() {
             if let Some(holder) = self
                 .aliases
-                .get(&NamespacedName::probe(namespace, alias))
+                .get(&BranchedName::probe(branch, alias))
                 .filter(|position| other(position))
             {
                 return Err(conflict(
-                    Held::Alias(namespace, alias),
+                    Held::Alias(branch, alias),
                     field,
                     &self.fields[*holder],
                 ));
@@ -667,22 +663,22 @@ impl FixRegistry {
     fn index(&mut self, position: usize) {
         let field = &self.fields[position];
         let view = field.as_fix();
-        let namespace = view.namespace().unwrap_or_default();
+        let branch = view.branch().unwrap_or_default();
         if let Ok(Some(id)) = view.id() {
             self.ids.insert(id, position);
         }
         for tag in view.tags().unwrap_or_default() {
-            if let Ok(id) = FixId::from_parts(namespace.clone(), tag) {
+            if let Ok(id) = FixId::from_parts(branch.clone(), tag) {
                 self.alternate_ids.insert(id, position);
             }
         }
         self.names.insert(
-            NamespacedKey(NamespacedName::owned(namespace.clone(), field.name())),
+            BranchedKey(BranchedName::owned(branch.clone(), field.name())),
             position,
         );
         for alias in view.aliases() {
             self.aliases.insert(
-                NamespacedKey(NamespacedName::owned(namespace.clone(), alias)),
+                BranchedKey(BranchedName::owned(branch.clone(), alias)),
                 position,
             );
         }
@@ -693,26 +689,26 @@ impl FixRegistry {
     fn unindex(&mut self, position: usize, pointing_at: usize) {
         let field = &self.fields[position];
         let view = field.as_fix();
-        let namespace = view.namespace().unwrap_or_default();
+        let branch = view.branch().unwrap_or_default();
         if let Ok(Some(id)) = view.id() {
             if self.ids.get(&id) == Some(&pointing_at) {
                 self.ids.remove(&id);
             }
         }
         for tag in view.tags().unwrap_or_default() {
-            let Ok(id) = FixId::from_parts(namespace.clone(), tag) else {
+            let Ok(id) = FixId::from_parts(branch.clone(), tag) else {
                 continue;
             };
             if self.alternate_ids.get(&id) == Some(&pointing_at) {
                 self.alternate_ids.remove(&id);
             }
         }
-        let name = NamespacedName::probe(&namespace, field.name());
+        let name = BranchedName::probe(&branch, field.name());
         if self.names.get(&name) == Some(&pointing_at) {
             self.names.remove(&name);
         }
         for alias in view.aliases() {
-            let alias = NamespacedName::probe(&namespace, alias);
+            let alias = BranchedName::probe(&branch, alias);
             if self.aliases.get(&alias) == Some(&pointing_at) {
                 self.aliases.remove(&alias);
             }
@@ -785,7 +781,7 @@ impl<'registry> IntoIterator for &'registry FixRegistry {
 /// The fields of a registry in ascending canonical-identifier order.
 ///
 /// Answered by [`FixRegistry::iter`]. It walks the canonical-identifier
-/// index, which is namespace-major and then by tag, so the order is
+/// index, which is branch-major and then by tag, so the order is
 /// deterministic whatever order the fields entered in.
 #[derive(Clone, Debug)]
 pub struct FixFieldIter<'registry> {

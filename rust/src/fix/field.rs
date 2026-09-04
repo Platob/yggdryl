@@ -12,13 +12,13 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{FixId, FixNamespace};
+use super::{FixBranch, FixId};
 use crate::{Error, FixField, FixFieldMut, Result};
 
 /// The dictionary a field belongs to; absent means the standard one.
-const NAMESPACE: &str = "namespace";
-/// The full key the namespace is stored under, spelled once.
-pub(super) const NAMESPACE_KEY: &str = "fix:namespace";
+const BRANCH: &str = "branch";
+/// The full key the branch is stored under, spelled once.
+pub(super) const BRANCH_KEY: &str = "fix:branch";
 /// The canonical tag.
 const TAG: &str = "tag";
 /// The alternate tags, comma-separated, highest priority first.
@@ -33,8 +33,8 @@ const SEPARATOR: char = ',';
 /// What a tag is, spelled once for every refusal.
 const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 0 to 2147483647";
 
-/// What a namespace is, spelled once for every refusal.
-const NAMESPACE_SHAPE: &str = "a FIX namespace, at most 23 ASCII letters, digits, hyphen, dot or underscore, starting with a letter";
+/// What a branch is, spelled once for every refusal.
+const BRANCH_SHAPE: &str = "a FIX branch, at most 23 ASCII letters, digits, hyphen, dot or underscore, starting with a letter";
 
 /// Parse one tag strictly: decimal digits only, never negative, never signed.
 ///
@@ -51,38 +51,39 @@ pub(super) fn parse_tag(text: &str) -> Option<i32> {
 impl<'field> FixField<'field> {
     /// Parses the dictionary this field belongs to.
     ///
-    /// An absent property is [`FixNamespace::STANDARD`]: the FIX
+    /// An absent property is [`FixBranch::STANDARD`]: the FIX
     /// specification's own fields are the common case and state nothing.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `fix:namespace` key when the stored
-    /// text is not a namespace: [`FixFieldMut::set_namespace`] never writes
+    /// Returns an error naming the full `fix:branch` key when the stored
+    /// text is not a branch: [`FixFieldMut::set_branch`] never writes
     /// one, so this can only come from externally edited state.
-    pub fn namespace(&self) -> Result<FixNamespace> {
-        match self.get(NAMESPACE) {
-            Some(stored) => FixNamespace::from_str(stored)
-                .map_err(|_| self.invalid(NAMESPACE, NAMESPACE_SHAPE, stored)),
-            None => Ok(FixNamespace::STANDARD),
+    pub fn branch(&self) -> Result<FixBranch> {
+        match self.get(BRANCH) {
+            Some(stored) => {
+                FixBranch::from_str(stored).map_err(|_| self.invalid(BRANCH, BRANCH_SHAPE, stored))
+            }
+            None => Ok(FixBranch::STANDARD),
         }
     }
 
     /// Builds this field's identity, absent exactly when `fix:tag` is.
     ///
-    /// Derived from the namespace and the canonical tag on every ask; nothing
+    /// Derived from the branch and the canonical tag on every ask; nothing
     /// stores it. Building it through [`FixId::from_parts`] is what refuses a
     /// hand-edited record that claims a specification tag for another
     /// dictionary at the door rather than after it is indexed.
     ///
     /// # Errors
     ///
-    /// Returns the failure [`Self::tag`] or [`Self::namespace`] raises, or
+    /// Returns the failure [`Self::tag`] or [`Self::branch`] raises, or
     /// [`FixId::from_parts`]'s refusal.
     pub fn id(&self) -> Result<Option<FixId>> {
         let Some(tag) = self.tag()? else {
             return Ok(None);
         };
-        FixId::from_parts(self.namespace()?, tag).map(Some)
+        FixId::from_parts(self.branch()?, tag).map(Some)
     }
 
     /// Parses the canonical FIX tag.
@@ -153,11 +154,11 @@ impl<'field> FixField<'field> {
 impl FixFieldMut<'_> {
     /// Records the dictionary this field belongs to.
     ///
-    /// [`FixNamespace::STANDARD`] removes the property rather than writing
+    /// [`FixBranch::STANDARD`] removes the property rather than writing
     /// `"standard"`, exactly as an empty tag or alias list removes its own, so
     /// one declaration has one stored form. The canonical tag and every
     /// alternate tag are held to the standard-tag rule against the new
-    /// namespace before anything is written.
+    /// branch before anything is written.
     ///
     /// # Errors
     ///
@@ -165,37 +166,37 @@ impl FixFieldMut<'_> {
     /// one the FIX specification assigns, the parse failure when a stored
     /// `fix:` property is malformed, or the property write's refusal. Any of
     /// them leaves the field unchanged.
-    pub fn set_namespace(&mut self, namespace: &FixNamespace) -> Result<()> {
+    pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()> {
         let view = self.as_protocol();
         if let Some(tag) = view.tag()? {
-            FixId::from_parts(namespace.clone(), tag)?;
+            FixId::from_parts(branch.clone(), tag)?;
         }
         for tag in view.tags()? {
-            FixId::from_parts(namespace.clone(), tag)?;
+            FixId::from_parts(branch.clone(), tag)?;
         }
-        self.put_namespace(namespace)?;
+        self.put_branch(branch)?;
         Ok(())
     }
 
     /// Records both halves of an identity at once.
     ///
-    /// Moving a field between namespaces one property at a time works in only
+    /// Moving a field between branches one property at a time works in only
     /// one order and refuses the other, because each setter holds the field to
-    /// the standard-tag rule as it stands. This writes the namespace, then the
-    /// tag, and restores the prior namespace entry if the tag write fails, so
+    /// the standard-tag rule as it stands. This writes the branch, then the
+    /// tag, and restores the prior branch entry if the tag write fails, so
     /// either move succeeds and a failure leaves the field unchanged. A
     /// [`FixId`] is already legal, so nothing beyond the tag's own shape is
     /// re-checked.
     ///
     /// # Errors
     ///
-    /// Returns the tag write's refusal, having restored the namespace.
+    /// Returns the tag write's refusal, having restored the branch.
     pub fn set_id(&mut self, id: &FixId) -> Result<()> {
-        let prior = self.put_namespace(id.namespace())?;
+        let prior = self.put_branch(id.branch())?;
         match self.set_tag(id.tag()) {
             Ok(()) => Ok(()),
             Err(error) => {
-                self.restore_namespace(prior);
+                self.restore_branch(prior);
                 Err(error)
             }
         }
@@ -205,7 +206,7 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the tag is negative, when this field's namespace
+    /// Returns an error when the tag is negative, when this field's branch
     /// may not claim it - a tag below [`FixId::STANDARD_TAG_LIMIT`] is the FIX
     /// specification's own - or when the property write fails the validation
     /// every metadata write goes through. Any of them leaves the field
@@ -214,7 +215,7 @@ impl FixFieldMut<'_> {
         if tag < 0 {
             return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
-        FixId::from_parts(self.as_protocol().namespace()?, tag)?;
+        FixId::from_parts(self.as_protocol().branch()?, tag)?;
         self.store(TAG, tag.to_string())
     }
 
@@ -225,7 +226,7 @@ impl FixFieldMut<'_> {
     /// # Errors
     ///
     /// Returns an error when a tag is negative, repeated, or one this field's
-    /// namespace may not claim, leaving the field unchanged. An alternate tag
+    /// branch may not claim, leaving the field unchanged. An alternate tag
     /// resolves exactly as a canonical one does, so it is held to the same
     /// standard-tag rule.
     pub fn set_tags(&mut self, tags: &[i32]) -> Result<()> {
@@ -233,13 +234,13 @@ impl FixFieldMut<'_> {
             self.remove(TAGS);
             return Ok(());
         }
-        let namespace = self.as_protocol().namespace()?;
+        let branch = self.as_protocol().branch()?;
         let mut rendered = String::new();
         for (index, tag) in tags.iter().enumerate() {
             if *tag < 0 {
                 return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
             }
-            FixId::from_parts(namespace.clone(), *tag)?;
+            FixId::from_parts(branch.clone(), *tag)?;
             if tags[..index].contains(tag) {
                 return Err(self.rejected(
                     TAGS,
@@ -320,28 +321,28 @@ impl FixFieldMut<'_> {
         Ok(())
     }
 
-    /// Put the namespace entry in the one form that declaration has, and
+    /// Put the branch entry in the one form that declaration has, and
     /// answer what stood there before.
-    fn put_namespace(&mut self, namespace: &FixNamespace) -> Result<Option<String>> {
-        if namespace.is_standard() {
-            Ok(self.remove(NAMESPACE))
+    fn put_branch(&mut self, branch: &FixBranch) -> Result<Option<String>> {
+        if branch.is_standard() {
+            Ok(self.remove(BRANCH))
         } else {
-            self.insert(NAMESPACE, namespace.as_str())
+            self.insert(BRANCH, branch.as_str())
         }
     }
 
-    /// Put back what [`Self::put_namespace`] answered.
+    /// Put back what [`Self::put_branch`] answered.
     ///
     /// The value was read out of this very field, so re-inserting it cannot
     /// fail validation; a failure here would be reported instead of the one
     /// being unwound, which is why the result is dropped.
-    fn restore_namespace(&mut self, prior: Option<String>) {
+    fn restore_branch(&mut self, prior: Option<String>) {
         match prior {
             Some(value) => {
-                let _ = self.insert(NAMESPACE, value);
+                let _ = self.insert(BRANCH, value);
             }
             None => {
-                self.remove(NAMESPACE);
+                self.remove(BRANCH);
             }
         }
     }

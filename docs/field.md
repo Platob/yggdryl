@@ -730,7 +730,7 @@ its prefix.
 A protocol that has a typed vocabulary carries it on its own view and nowhere else. The `http:`
 headers are on `HttpField` and `HttpFieldMut`, Iceberg's `doc`, `schema_id`, `spec_id` and
 `transform` are on [`IcebergField` and `IcebergFieldMut`](iceberg.md#a-field-carries-its-own-iceberg-vocabulary),
-and FIX's `namespace`, `id`, `tag`, `tags`, `aliases` and `description` are on
+and FIX's `branch`, `id`, `tag`, `tags`, `aliases` and `description` are on
 [`FixField` and `FixFieldMut`](fix.md),
 which is why deleting a protocol's namespace never touches `Field`. `Field` keeps only what is its
 own state - `field:init`, `field:partition`, `alias`, `comment`, `display`, `location`, and the

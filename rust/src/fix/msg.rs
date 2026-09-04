@@ -4,7 +4,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use super::{FixId, FixKey, FixNamespace, FixRegistry};
+use super::{FixBranch, FixId, FixKey, FixRegistry};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// A FIX message value, resolved against one registry.
@@ -17,10 +17,10 @@ use crate::{DataType, Error, Field, Result, Scalar};
 /// carries the dictionary it was resolved against and a later lookup cannot
 /// silently use a different one.
 ///
-/// A message has a namespace, and it is derived rather than declared: it is
-/// the root field's own `fix:namespace`, resolved once at construction, so
+/// A message has a branch, and it is derived rather than declared: it is
+/// the root field's own `fix:branch`, resolved once at construction, so
 /// nothing can disagree with it. A bare tag or name then resolves in a fixed
-/// two-step tier - this message's namespace first, when the identifier that
+/// two-step tier - this message's branch first, when the identifier that
 /// would name is legal at all, then the standard one - because a message
 /// transcribed against a venue dictionary names its own fields by the
 /// venue's spellings while still carrying `MsgType` and every other
@@ -76,11 +76,11 @@ use crate::{DataType, Error, Field, Result, Scalar};
 #[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
-    /// The root field's own namespace, resolved once so a lookup stays total
+    /// The root field's own branch, resolved once so a lookup stays total
     /// and allocation-free and corruption is reported at construction. It is
     /// derived from `field`, which is what equality, hashing and
     /// serialization already carry, so it is not state of its own.
-    namespace: FixNamespace,
+    branch: FixBranch,
     field: Field,
     value: Scalar,
 }
@@ -104,15 +104,15 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns an error when the root's `fix:namespace` is malformed, when
+    /// Returns an error when the root's `fix:branch` is malformed, when
     /// the root is not a Struct field, or when the value violates it, naming
     /// the path of the first value that does not fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
-        let namespace = field.as_fix().namespace()?;
+        let branch = field.as_fix().branch()?;
         let value = field.canonicalize_value(value)?;
         Ok(Self {
             registry,
-            namespace,
+            branch,
             field,
             value,
         })
@@ -124,8 +124,8 @@ impl FixMsg {
     }
 
     /// Returns the dictionary this message is spelled in.
-    pub const fn namespace(&self) -> &FixNamespace {
-        &self.namespace
+    pub const fn branch(&self) -> &FixBranch {
+        &self.branch
     }
 
     /// Returns the root Struct field: the message's resolved schema.
@@ -162,7 +162,7 @@ impl FixMsg {
     ///
     /// The registry resolves the tag to its canonical name, and that name
     /// picks the root child. The tag is looked for in this message's own
-    /// namespace first and then in the standard one, so a venue field and
+    /// branch first and then in the standard one, so a venue field and
     /// `MsgType` are both reachable from a venue message. A tag neither
     /// answers is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
@@ -190,7 +190,7 @@ impl FixMsg {
     /// Returns the value of the root child a name reaches.
     ///
     /// The name folds through the registry to its canonical spelling in this
-    /// message's namespace first and then in the standard one, and an exact
+    /// message's branch first and then in the standard one, and an exact
     /// root-child match is the fallback when neither knows it.
     pub fn get_by_name(&self, name: &str) -> Option<&Scalar> {
         self.value.get(self.child_index(&self.field, name)?)
@@ -266,34 +266,33 @@ impl FixMsg {
         }
     }
 
-    /// The field a bare tag names: this message's namespace, then the
+    /// The field a bare tag names: this message's branch, then the
     /// standard one.
     ///
     /// Step one is skipped when this message is already standard, because the
     /// two probes would be the same one, and when the identifier it would
     /// build is inadmissible - a specification tag belongs to the standard
-    /// namespace and to no other.
+    /// branch and to no other.
     fn known_by_tag(&self, tag: i32) -> Option<&Field> {
-        let own = if self.namespace.is_standard() || !FixId::is_admissible(&self.namespace, tag) {
+        let own = if self.branch.is_standard() || !FixId::is_admissible(&self.branch, tag) {
             None
         } else {
-            FixId::from_parts(self.namespace.clone(), tag)
+            FixId::from_parts(self.branch.clone(), tag)
                 .ok()
                 .and_then(|id| self.registry.get_field_by_id(&id))
         };
         own.or_else(|| self.registry.get_field_by_id(&FixId::standard(tag)))
     }
 
-    /// The field a bare name reaches: this message's namespace, then the
+    /// The field a bare name reaches: this message's branch, then the
     /// standard one.
     fn known_by_name(&self, name: &str) -> Option<&Field> {
-        if !self.namespace.is_standard() {
-            if let Some(field) = self.registry.get_field_by_name(&self.namespace, name) {
+        if !self.branch.is_standard() {
+            if let Some(field) = self.registry.get_field_by_name(&self.branch, name) {
                 return Some(field);
             }
         }
-        self.registry
-            .get_field_by_name(&FixNamespace::STANDARD, name)
+        self.registry.get_field_by_name(&FixBranch::STANDARD, name)
     }
 
     /// The position of the child `name` reaches under `parent`: the

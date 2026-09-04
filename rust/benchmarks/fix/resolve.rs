@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{Field, FixId, FixKey, FixNamespace, FixRegistry};
+use yggdryl::{Field, FixBranch, FixId, FixKey, FixRegistry};
 
-use super::{generated, seed, two_namespaces, venue};
+use super::{generated, seed, two_branches, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
-    let standard = FixNamespace::STANDARD;
+    let standard = FixBranch::STANDARD;
     let mut group = criterion.benchmark_group("fix/resolve");
 
     // The four outcomes a lookup has, over the tracked seed.
@@ -85,8 +85,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .collect();
     // The equivalent baseline: the same composite key in a hash map, which is
     // what the ordered map has to earn itself against now that it carries a
-    // namespace. `HashMap<i32, Field>` above answers a strictly weaker
-    // question - it cannot hold two namespaces at all.
+    // branch. `HashMap<i32, Field>` above answers a strictly weaker
+    // question - it cannot hold two branches at all.
     let by_id: HashMap<FixId, Field> = registry
         .iter()
         .map(|field| (field.as_fix().id().unwrap().unwrap(), field.clone()))
@@ -101,10 +101,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&by_name).get(&black_box("SYMBOL").to_ascii_lowercase()));
     });
 
-    // Two namespaces in one registry: a venue identifier, a venue name, and
-    // the cross-namespace miss a bare tag must be.
+    // Two branches in one registry: a venue identifier, a venue name, and
+    // the cross-branch miss a bare tag must be.
     let venue = venue();
-    let mixed = two_namespaces(1_000);
+    let mixed = two_branches(1_000);
     let vendor_id = FixId::from_parts(venue.clone(), 5_500).expect("a vendor identifier");
     group.bench_function("id_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(&vendor_id)));
@@ -115,10 +115,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("alias_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box("VendorAlias00500")));
     });
-    group.bench_function("cross_namespace_miss", |bencher| {
+    group.bench_function("cross_branch_miss", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(5_500)));
     });
-    group.bench_function("tag_hit_two_namespaces", |bencher| {
+    group.bench_function("tag_hit_two_branches", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(55)));
     });
 

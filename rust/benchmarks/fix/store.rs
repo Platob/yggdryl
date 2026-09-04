@@ -4,7 +4,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::local::Folder;
 use yggdryl::{DataType, FixRegistry, Url};
 
-use super::{scratch, seed, seed_root, two_namespaces};
+use super::{scratch, seed, seed_root, two_branches};
 
 /// A folder holding `shards` shards of ten fields each, built outside the
 /// timer.
@@ -54,21 +54,21 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&hundred).write_into(&mut target_folder).unwrap());
     });
 
-    // The namespaced layout: a registry holding two dictionaries opens, loads
+    // The branched layout: a registry holding two dictionaries opens, loads
     // and writes them as separate folders of shards.
-    let mixed = two_namespaces(1_000);
-    let mixed_root = scratch("two-namespaces");
+    let mixed = two_branches(1_000);
+    let mixed_root = scratch("two-branches");
     let mut mixed_folder = Folder::new(&mixed_root).expect("a local folder");
     mixed
         .write_into(&mut mixed_folder)
         .expect("the shards written");
     group.throughput(Throughput::Elements(u64::try_from(mixed.len()).unwrap()));
-    group.bench_function("from_handle_two_namespaces", |bencher| {
+    group.bench_function("from_handle_two_branches", |bencher| {
         bencher.iter(|| black_box(FixRegistry::from_handle(black_box(&mixed_folder)).unwrap()));
     });
-    let mixed_target = scratch("two-namespaces-write");
+    let mixed_target = scratch("two-branches-write");
     let mut mixed_target_folder = Folder::new(&mixed_target).expect("a local folder");
-    group.bench_function("write_into_two_namespaces", |bencher| {
+    group.bench_function("write_into_two_branches", |bencher| {
         bencher.iter(|| {
             black_box(&mixed)
                 .write_into(&mut mixed_target_folder)
