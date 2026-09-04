@@ -1,32 +1,33 @@
 # FIX versioning — the contract every phase obeys
 
-Seven prompts, run in order. Each is complete work: it compiles, its
-tests pass, its docs are written, and the repository ships at its end.
+Seven phases across three prompt files, run in order. Each phase is complete
+work: it compiles, its tests pass, its docs are written, and the repository
+ships at its end.
 
-| # | prompt | phase |
+| file | phases | what |
 | --- | --- | --- |
-| 1 | `01-version.md` | `Version`: a generic value, datatype, scalar and field |
-| 2 | `02-fixid.md` | `FixId` is one `i64` |
-| 3 | `03-lineage.md` | FIX version handling: `fix:lineage` |
-| 4 | `04-codesets.md` | code sets: `FixEnumValue`, `fix:codes`, and spelling translation |
-| 5 | `05-merge.md` | `FixFieldMut::merge_with` |
-| 6 | `06-source.md` | the source: FIX Latest into the committed dictionary |
-| 7 | `07-message.md` | explicit halves, `FixEntry`, `from_pairs`, and the text readers |
+| `01-foundations.md` | 1, 2 | the `Version` value and its datatype; `FixId` packed into an `i64`, with the branch table |
+| `02-dictionary.md` | 3, 4, 5, 6 | `fix:lineage`; code sets and spelling translation; the one merge; the generator |
+| `03-messages.md` | 7 | the registry's explicit halves, `FixEntry`, `from_pairs`, and the three text readers |
+
+Each `## Phase` inside a file is one PR. Rule ids (`P4-R8`) are stable across
+the whole brief and are cited between files.
 
 **Dependency order.** `1 → 3 → 4 → 5`; `1 + 3 + 4 → 6`; `2 + 3 + 6 → 7`.
-Phase 2 depends on nothing and may run first or in parallel.
+Phase 2 depends on nothing and may run first or in parallel, so
+`01-foundations.md` holds the two phases that block on nobody.
 
 ## How to run each prompt
 
-**One phase per session, one phase per PR.** Do not start a phase whose
-dependencies are not merged.
+**One phase per session, one phase per PR** - not one *file* per PR: the
+files group phases that share a subject, and each `## Phase` inside one is
+its own piece of work. Do not start a phase whose dependencies are not
+merged.
 
-**Dependency order.** `1 → 3 → 4 → 5`; `1 + 3 + 4 → 6`; `2 + 3 + 6 → 7`.
-Phase 2 depends on nothing.
-
-**Before writing code:** read the files the phase's *Files* list names, then
-re-read `AGENTS.md`. Every anchor here is `path:line` against the tree at
-writing time; if a line moved, find the symbol - the rule did not change.
+**Before writing code:** read what the phase's *Surface* block names, then
+re-read `AGENTS.md`. Nothing here gives a path: the tree was refactored
+after this brief was written, so everything is named by what it does and
+found by symbol.
 
 **Precedence.** `AGENTS.md` > this brief > your priors about how FIX is
 usually done. A rule marked **Decided** is settled: implement it, and do not

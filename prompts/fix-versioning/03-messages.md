@@ -1,9 +1,10 @@
-# Phase 7 — explicit halves, `FixEntry`, `from_pairs`, and the text readers
+# Messages — explicit halves, entries, and the readers
 
-**Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
-text, or from a ULBridge body.
+**Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX text, or
+from a ULBridge body.
 
-**Depends.** Phases 2, 3 and 6.
+**Depends.** Phase 2 (the identifier and the branch table), Phase 3 (the version) and
+Phase 6 (a dictionary to resolve against).
 
 > **Read `00-contract.md` first.** It is short and binding: the never-list
 > `N1`–`N7`, the landed facts `L1`–`L2`, the precedence rule, and the command
@@ -14,8 +15,16 @@ text, or from a ULBridge body.
 > derivable; no widening for the next phase; no `TODO`, `#[allow]` or ignored
 > test; and never guess where a rule says refuse, or refuse where it says
 > fall through.
+>
+> **Each `## Phase` below is one PR.** Rule ids (`P4-R8`) are stable across
+> the whole brief and are cited from the other files.
 
 ---
+
+## Phase 7 — explicit halves, `FixEntry`, `from_pairs`, and the text readers
+
+**Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
+text, or from a ULBridge body.
 
 **Surface.** A new entry module inside the FIX module; the registry (the
 public halves); the message (its entries, the builder and the three
@@ -168,19 +177,37 @@ impl FixMsg {
   2. **Tag 8 `BeginString`** - `FIX.4.0` … `FIX.4.4` give `4.0` … `4.4`.
      `FIXT.1.1` is a session version and names no application version, so it
      **falls through** rather than being taken literally.
-  3. Otherwise the dictionary's `newest()` - the real newest version and
+  3. **The branch's own default version**, once the branch is known
+     (P2-R9b). A dialect that declares it is stating what its counterparty
+     speaks, which is better evidence than a dictionary-wide default.
+  4. Otherwise the dictionary's `newest()` - the real newest version and
      extension pack it holds, which is what a message carrying no version
      marker means. Never `Version::MAX`: a sentinel compares wrongly against
      a field genuinely dated at the newest version, and is wrong again the
      next time an extension pack lands.
-- **P7-R16. Branch, when the caller names none.** Resolve every entry in
-  `FixBranch::STANDARD`; nothing missed means standard and there is no
-  second pass - the common case costs one probe per entry. Otherwise retry
-  only the *missed* tags against each branch the registry holds
-  (`branches()`, free from P2-R9) and take the branch resolving the most; a
-  tie goes to the lowest branch name, so the answer is deterministic; a
-  branch resolving none is never chosen and its tags stay unknown. A caller
-  who passes a branch gets it, with no guessing at all.
+
+  Branch resolution therefore runs **before** step 3, and the two are one
+  pass: read tags 49 and 56 while reading 1128 and 8, since all four are in
+  the header.
+- **P7-R16. Branch, when the caller names none.** In this order, and the
+  first two are identity rather than inference:
+  1. **The session names the dialect.** `SenderCompID(49)` and
+     `TargetCompID(56)` are in the standard header of every message, and
+     P2-R9b bundles that pair onto the branch. If a dialect declares it,
+     `branch_for_session` answers exactly - no counting, no guessing, one
+     lookup. **Try both orders**: a dictionary declares the session from its
+     own side, so an inbound message carries the declared pair reversed, and
+     matching only one order silently misses half the traffic.
+  2. Resolve every entry in `FixBranch::STANDARD`; nothing missed means
+     standard, and there is no second pass - the common case costs one probe
+     per entry.
+  3. Otherwise retry only the *missed* tags against each branch the registry
+     holds (`branches()`, free from P2-R9) and take the branch resolving the
+     most; a tie goes to the lowest branch name, so the answer is
+     deterministic; a branch resolving none is never chosen and its tags
+     stay unknown.
+
+  A caller who passes a branch gets it, with no guessing at all.
 
 ### Building the message
 
@@ -382,6 +409,10 @@ a line some venue really sent.
     through to Latest; an explicit `version` overriding both (P7-R15).
 11. Branch inference picking the vendor dictionary that resolves the misses,
     the tie rule, and an explicit branch suppressing inference (P7-R16).
+11b. A declared `(sender, target)` pair selecting its dialect directly, in
+     the declared order and reversed, and folded (P7-R16.1, P2-R9d).
+11c. A branch's declared default version losing to a message's own
+     `ApplVerID` and winning over the dictionary's `newest()` (P7-R15.3).
 12. Tag 32 keyed `LastShares` in a `4.2` message and `LastQty` in a Latest
     one, both answering the same value.
 13. Header and trailer ordering with a body field interleaved in the input.
@@ -441,6 +472,8 @@ three reserved vectors and nothing per entry (P7-R54, P7-R55).
 ---
 
 ## Handoff
+
+### From Phase 7
 
 Last phase of this brief.
 
