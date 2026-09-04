@@ -5,6 +5,7 @@ export {
   BoundStatement,
   ByteIterator,
   DataType,
+  Digest,
   Expression,
   Field,
   IOBase,
@@ -21,6 +22,10 @@ export {
   Url,
   Urn,
   Scalar,
+  Xxh3_64,
+  Xxh3_128,
+  Xxh32,
+  Xxh64,
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
@@ -34,6 +39,7 @@ import type {
   BoundStatement,
   ByteIterator,
   DataType,
+  Digest,
   Field,
   IOBase,
   IOCursor,
@@ -51,6 +57,10 @@ import type {
   Url,
   Urn,
   Scalar,
+  Xxh3_64,
+  Xxh3_128,
+  Xxh32,
+  Xxh64,
 } from './index'
 // The Iceberg values are reached through the `iceberg` namespace, so they are
 // imported here as values to type it and re-exported as types only.
@@ -164,6 +174,8 @@ export type DataTypeId =
   | 'uint16'
   | 'uint32'
   | 'uint64'
+  | 'int128'
+  | 'uint128'
   | 'float16'
   | 'float32'
   | 'float64'
@@ -238,6 +250,8 @@ interface DataTypeKindById {
   uint16: 'integer'
   uint32: 'integer'
   uint64: 'integer'
+  int128: 'integer'
+  uint128: 'integer'
   float16: 'floating'
   float32: 'floating'
   float64: 'floating'
@@ -1358,6 +1372,8 @@ export declare const enums: {
   readonly ioKinds: readonly string[]
   /** The compatibility targets `intoSchemeCompat` accepts, e.g. `'arrow'`. */
   readonly compatibilitySchemes: readonly CompatibilityScheme[]
+  /** Every digest algorithm, e.g. `'xxh3-64'`, `'xxh3-128'`. */
+  readonly digestAlgorithms: readonly DigestAlgorithm[]
   /** The named points of the shared 0-to-9 compression scale. */
   readonly levels: {
     readonly none: number
@@ -1368,6 +1384,52 @@ export declare const enums: {
 }
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
+
+/** One xxHash algorithm, spelled the same way in every language. */
+export type DigestAlgorithm = 'xxh32' | 'xxh64' | 'xxh3-64' | 'xxh3-128'
+
+/** Anything a digest reads bytes from. */
+export type DigestContent = Buffer | Uint8Array | ArrayBuffer | SharedArrayBuffer | string
+
+/** How one digest call is seeded, and - for XXH3 - which secret it uses. */
+export interface DigestOptions {
+  /** The seed, as a bigint or an exact non-negative number. */
+  readonly seed?: bigint | number
+  /** A custom secret, at least `SECRET_MINIMUM_LENGTH` bytes. XXH3 only. */
+  readonly secret?: DigestContent
+}
+
+/**
+ * XXH32, XXH64, XXH3-64, and XXH3-128 over bytes, values, and handles.
+ *
+ * The one-shot functions answer a `number` for XXH32 - a 32-bit value always
+ * fits one exactly - and a `bigint` for the wider results. `Digest` is the
+ * answer that carries its algorithm with it, which is what keeps `xxh64` and
+ * `xxh3-64`, both 64 bits wide, from being confused for one another.
+ *
+ * xxHash is not a cryptographic hash: a digest detects accidental change,
+ * never an adversary who chooses the input. It is also not Iceberg's `bucket`
+ * transform, which the specification pins to murmur3 x86_32.
+ */
+export declare const xxhash: {
+  /** The shortest custom secret XXH3 accepts, in bytes. */
+  readonly SECRET_MINIMUM_LENGTH: number
+  readonly Digest: typeof Digest
+  readonly Xxh32: typeof Xxh32
+  readonly Xxh64: typeof Xxh64
+  readonly Xxh3_64: typeof Xxh3_64
+  readonly Xxh3_128: typeof Xxh3_128
+  /** Digest a complete value with XXH32. */
+  xxh32(data: DigestContent, options?: DigestOptions | bigint | number): number
+  /** Digest a complete value with XXH64. */
+  xxh64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+  /** Digest a complete value with XXH3, answering 64 bits. */
+  xxh3_64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+  /** Digest a complete value with XXH3, answering 128 bits. */
+  xxh3_128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+  /** Digest a complete value, carrying the algorithm with the answer. */
+  digest(data: DigestContent, algorithm: DigestAlgorithm): Digest
+}
 
 export interface ArrowStringCompatible {
   toString(): string

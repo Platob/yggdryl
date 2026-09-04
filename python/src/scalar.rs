@@ -884,6 +884,19 @@ impl PyScalar {
         self.inner.stable_hash()
     }
 
+    /// Digest this value's canonical byte representation.
+    ///
+    /// Equal values answer equal digests across integer, float, decimal, and
+    /// temporal widths, because the feed writes each family's canonical form
+    /// rather than its storage width.
+    #[pyo3(signature = (algorithm = "xxh3-64"))]
+    fn digest(&self, algorithm: &str) -> PyResult<crate::xxhash::PyDigest> {
+        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
+        Ok(crate::xxhash::PyDigest::from_core(
+            self.inner.digest(algorithm),
+        ))
+    }
+
     fn as_bytes<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
         self.inner.as_bytes().map(|value| PyBytes::new(py, value))
     }

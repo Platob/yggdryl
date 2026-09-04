@@ -582,7 +582,7 @@ const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     }
 }
 
-pub(super) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
+pub(crate) fn temporal_key(count: i64, unit: TimeUnit) -> (u8, i128) {
     let count = i128::from(count);
     match unit {
         TimeUnit::Day => (0, count * 86_400_000_000_000),

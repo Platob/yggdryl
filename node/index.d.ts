@@ -491,7 +491,7 @@ export declare class DataType {
   showDiff(other: DataType, withMetadata?: boolean | undefined | null, returnEqual?: boolean | undefined | null): string
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: DataType): number
-  /** Deterministic FNV-1a hash of canonical native display text. */
+  /** Deterministic XXH3-64 hash of canonical native display text. */
   stableHash(): bigint
   /** Make an allocation-free or shared-state native clone. */
   clone(): DataType
@@ -523,6 +523,48 @@ export declare class DifferenceIterator {
 
 }
 export type JsDifferenceIterator = DifferenceIterator
+
+/**
+ * One digest: the algorithm that produced it and the value it produced.
+ *
+ * Two digests of different algorithms are never equal, whatever their
+ * payloads. `toString()` is the `<algorithm>:<hex>` spelling `Digest.from`
+ * reads back, and `bytes()` the canonical big-endian representation.
+ */
+export declare class Digest {
+  /** Parse the canonical `<algorithm>:<hex>` spelling. */
+  constructor(value: string)
+  /** Parse the canonical spelling, or clone a native digest. */
+  static from(value: string | Digest): Digest
+  /** Rebuild a digest from its canonical big-endian bytes. */
+  static fromBytes(algorithm: string, data: Uint8Array): Digest
+  /** The canonical algorithm token. */
+  get algorithm(): string
+  /** The digest width in bytes. */
+  get width(): number
+  /** The digest width in bits. */
+  get bits(): number
+  /** The native value: a `number` for XXH32, a `bigint` otherwise. */
+  value(): number | bigint
+  /** The canonical big-endian bytes at the algorithm's exact width. */
+  bytes(): Uint8Array
+  /** Exact equality: a different algorithm is a different digest. */
+  equals(other: Digest): boolean
+  /** Total native ordering: `-1`, `0`, or `1`. */
+  compare(other: Digest): number
+  /** A deterministic cross-language hash of this digest. */
+  stableHash(): bigint
+  /** Make a cheap native clone. */
+  clone(): Digest
+  /** Return the canonical spelling, accepted losslessly by `Digest.from`. */
+  toString(): string
+  /**
+   * Serialize as the canonical spelling, so a digest survives
+   * `JSON.stringify`.
+   */
+  toJSON(): string
+}
+export type JsDigest = Digest
 
 /** One recursive, typed filter and projection tree. */
 export declare class Expression {
@@ -954,7 +996,7 @@ export declare class Field {
   showDiff(other: Field, withMetadata?: boolean | undefined | null, returnEqual?: boolean | undefined | null): string
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Field): number
-  /** Deterministic FNV-1a hash of canonical native display text. */
+  /** Deterministic XXH3-64 hash of canonical native display text. */
   stableHash(): bigint
   /** Make a cheap clone preserving shared nested state and Arrow cache. */
   clone(): Field
@@ -1291,6 +1333,16 @@ export declare class IOBase {
    * the laziness contract.
    */
   readBytes(): Buffer
+  /**
+   * Digest every byte here, without holding the value in memory.
+   *
+   * The read streams in bounded chunks, so a multi-gigabyte object costs
+   * one window rather than a copy. A resource that does not exist digests
+   * as empty, per the laziness contract; a container throws.
+   */
+  readDigest(algorithm?: string | undefined | null): JsDigest
+  /** Digest `length` bytes from `offset`, streaming the window. */
+  readRangeDigest(offset: number, length: number, algorithm?: string | undefined | null): JsDigest
   /** Read every byte here as UTF-8 text. */
   readText(): string
   /** Replace what is here with `data`, as `fs.writeFileSync`. */
@@ -2204,6 +2256,14 @@ export declare class Scalar {
   /** Return deterministic hash bits shared with Rust and Python. */
   stableHash(): bigint
   /**
+   * Digest this value's canonical byte representation.
+   *
+   * Equal values answer equal digests across integer, float, decimal, and
+   * temporal widths, because the feed writes each family's canonical form
+   * rather than its storage width.
+   */
+  digest(algorithm?: string | undefined | null): JsDigest
+  /**
    * Compare two native values by the core's total value order.
    *
    * Numeric widths compare by value, as equality does: `i8(1)` and
@@ -2987,7 +3047,7 @@ export declare class Timezone {
   equals(other: Timezone): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Timezone): number
-  /** Deterministic FNV-1a hash of the canonical name. */
+  /** Deterministic XXH3-64 hash of the canonical name. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Timezone
@@ -3081,7 +3141,7 @@ export declare class Uri {
   equals(other: Uri): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Uri): number
-  /** Deterministic FNV-1a hash of the canonical URI. */
+  /** Deterministic XXH3-64 hash of the canonical URI. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Uri
@@ -3234,7 +3294,7 @@ export declare class Url {
   equals(other: Url): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Url): number
-  /** Deterministic FNV-1a hash of the canonical URL. */
+  /** Deterministic XXH3-64 hash of the canonical URL. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Url
@@ -3311,7 +3371,7 @@ export declare class Urn {
   equals(other: Urn): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
   compare(other: Urn): number
-  /** Deterministic FNV-1a hash of the canonical URN. */
+  /** Deterministic XXH3-64 hash of the canonical URN. */
   stableHash(): bigint
   /** Make a cheap native clone. */
   clone(): Urn
@@ -3321,6 +3381,136 @@ export declare class Urn {
   toJSON(): any
 }
 export type JsUrn = Urn
+
+/** A resumable XXH3 state answering 128 bits. */
+export declare class Xxh3_128 {
+  /** The canonical algorithm token. */
+  get algorithm(): string
+  /** Feed raw bytes or a string's UTF-8. */
+  writeBytes(data: Buffer | Uint8Array | string): void
+  /** Feed one value's canonical byte representation. */
+  writeScalar(value: Scalar): void
+  /**
+   * Answer the digest of everything fed so far.
+   *
+   * Answering never consumes the state, so a running digest can be
+   * read at every commit boundary rather than only at the end.
+   */
+  asDigest(): Digest
+  /** Reset to the constructed seed and secret, not to a fresh state. */
+  clear(): void
+  /** Make a cheap native clone, carrying everything fed so far. */
+  clone(): Xxh3_128
+  /**
+   * Start a state, optionally seeded and with a custom secret.
+   *
+   * A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
+   * length whatever the payload, for the reason `Xxh3_64` states.
+   */
+  constructor(seed?: bigint | undefined | null, secret?: Uint8Array | undefined | null)
+  /** The seed this state was constructed with. */
+  get seed(): bigint
+  /** The custom secret this state was constructed with, if any. */
+  get secret(): Uint8Array | null
+}
+export type JsXxh3_128 = Xxh3_128
+
+/** A resumable XXH3 state answering 64 bits. */
+export declare class Xxh3_64 {
+  /** The canonical algorithm token. */
+  get algorithm(): string
+  /** Feed raw bytes or a string's UTF-8. */
+  writeBytes(data: Buffer | Uint8Array | string): void
+  /** Feed one value's canonical byte representation. */
+  writeScalar(value: Scalar): void
+  /**
+   * Answer the digest of everything fed so far.
+   *
+   * Answering never consumes the state, so a running digest can be
+   * read at every commit boundary rather than only at the end.
+   */
+  asDigest(): Digest
+  /** Reset to the constructed seed and secret, not to a fresh state. */
+  clear(): void
+  /** Make a cheap native clone, carrying everything fed so far. */
+  clone(): Xxh3_64
+  /**
+   * Start a state, optionally seeded and with a custom secret.
+   *
+   * A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
+   * length whatever the payload: the reference only consults a secret past
+   * its 240-byte cutoff, and a secret that is sometimes used is worse than
+   * one that is refused.
+   */
+  constructor(seed?: bigint | undefined | null, secret?: Uint8Array | undefined | null)
+  /** The seed this state was constructed with. */
+  get seed(): bigint
+  /** The custom secret this state was constructed with, if any. */
+  get secret(): Uint8Array | null
+}
+export type JsXxh3_64 = Xxh3_64
+
+/** A resumable XXH32 state. */
+export declare class Xxh32 {
+  /** The canonical algorithm token. */
+  get algorithm(): string
+  /** Feed raw bytes or a string's UTF-8. */
+  writeBytes(data: Buffer | Uint8Array | string): void
+  /** Feed one value's canonical byte representation. */
+  writeScalar(value: Scalar): void
+  /**
+   * Answer the digest of everything fed so far.
+   *
+   * Answering never consumes the state, so a running digest can be
+   * read at every commit boundary rather than only at the end.
+   */
+  asDigest(): Digest
+  /** Reset to the constructed seed and secret, not to a fresh state. */
+  clear(): void
+  /** Make a cheap native clone, carrying everything fed so far. */
+  clone(): Xxh32
+  /**
+   * Start a state, optionally seeded.
+   *
+   * XXH32 takes a seed and never a secret; only the XXH3 pair is
+   * secretable.
+   */
+  constructor(seed?: number | undefined | null)
+  /** The seed this state was constructed with. */
+  get seed(): number
+}
+export type JsXxh32 = Xxh32
+
+/** A resumable XXH64 state. */
+export declare class Xxh64 {
+  /** The canonical algorithm token. */
+  get algorithm(): string
+  /** Feed raw bytes or a string's UTF-8. */
+  writeBytes(data: Buffer | Uint8Array | string): void
+  /** Feed one value's canonical byte representation. */
+  writeScalar(value: Scalar): void
+  /**
+   * Answer the digest of everything fed so far.
+   *
+   * Answering never consumes the state, so a running digest can be
+   * read at every commit boundary rather than only at the end.
+   */
+  asDigest(): Digest
+  /** Reset to the constructed seed and secret, not to a fresh state. */
+  clear(): void
+  /** Make a cheap native clone, carrying everything fed so far. */
+  clone(): Xxh64
+  /**
+   * Start a state, optionally seeded.
+   *
+   * XXH64 takes a seed and never a secret; only the XXH3 pair is
+   * secretable.
+   */
+  constructor(seed?: bigint | undefined | null)
+  /** The seed this state was constructed with. */
+  get seed(): bigint
+}
+export type JsXxh64 = Xxh64
 
 /**
  * What a file system handler reports about one path.
