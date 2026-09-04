@@ -466,6 +466,9 @@ pub struct FixEnumValue {
     name: SmolStr,                 // symbolic name, "Buy"
     value: SmolStr,                // wire value, "1"
     description: Option<SmolStr>,
+    /// Spellings beside `name` that also reach this value: a venue's own,
+    /// and whatever the generator recorded from a per-version source.
+    aliases: Vec<SmolStr>,
     since: Option<Version>,        // Orchestra `added`
     deprecated: Option<Version>,   // Orchestra `deprecated`
     ep: Option<u32>,               // Orchestra `updatedEP`, pedigree only
@@ -504,7 +507,8 @@ whole map or allocate:
 - `FixField::code(value: &str) -> Option<FixCode<'field>>` - scans for the
   wire value and stops, using `memchr` (already a dependency) to find record
   boundaries rather than parsing JSON structurally.
-- `FixField::code_by_name(name: &str)`, ASCII-folded.
+- `FixField::code_by_name(name: &str)` - the same scan against `name` and
+  every alias, folded.
 - `FixField::code_at(&Version, value: &str)` - the same scan, skipping a
   code whose `since` is later or whose `deprecated` is at or before the
   version asked for.
@@ -512,6 +516,75 @@ whole map or allocate:
   `ep`, `sort`, `group` and an owning `to_owned() -> FixEnumValue`.
 - `FixFieldMut::set_codes(&[FixEnumValue])`, `remove_codes`, and a
   `try_with_codes` mirroring the existing `try_with_ascii_enum` shape.
+
+### Translating a spelling into a value
+
+A value arrives spelled as the wire code (`4`) or as the symbolic name
+(`PercentageWaivedCashDiscount`, tag 13 `CommTypeCodeSet`), and both have to
+reach `4`. yggfin's `test_entries.py::test_a_value_resolves_from_its_prose_its_symbol_or_itself`
+is the specification; these are its rules, and each is a case:
+
+```rust
+/// The wire value any spelling of a code names, or `None` when nothing
+/// this field declares does - or when more than one does.
+pub fn code_value(&self, text: &str) -> Option<&'field str>;
+/// The symbolic spelling one wire value carries.
+pub fn code_name(&self, value: &str) -> Option<&'field str>;
+```
+
+`code_value` composes the two scans - `code(text)` first, then
+`code_by_name(text)` - the same way `get_field` composes the two halves, and
+resolves in this order:
+
+1. **The text as a wire value, exactly.** `4` is `4`. A spelling that is
+   already a legal code is never reinterpreted as somebody's name, and this
+   is the early-exit fast path.
+2. **The folded symbolic name, then any alias.** The fold is the one Phase 7
+   uses for keys - casefold, then drop everything that is not a letter or a
+   digit - so `PercentageWaivedCashDiscount`,
+   `percentage_waived_cash_discount`, `PERCENTAGE WAIVED CASH DISCOUNT` and
+   `percentage-waived-cash-discount` are one spelling. One fold in the
+   crate, used for names, keys and codes alike.
+3. **The leading parenthesized abbreviation of the description**, if any:
+   `"Good Till Date (GTD)"` answers `gtd`. Two traps yggfin already hit and
+   both are cases: a *numeric* parenthesization is a tag cross-reference and
+   never a spelling (`"Broken date; SettlDate (64) is required"` must leave
+   `64` alone), and only the abbreviation attached to the leading phrase
+   counts (`"Swap Value Factor (SVP) through a central counterparty (CCP)"`
+   answers `svp` and not `ccp`). This tier is the one that may be dropped if
+   it proves noisy on the generated dictionary; the two cases decide.
+
+**Nothing else is inferred.** yggfin also expands `identifier` to `id` so
+`shortcodeid` reaches `"Short code identifier"`. Do not: it is a guess about
+English, not about FIX, and it is exactly the kind of too-specific rule this
+brief keeps out of the core.
+
+**An unresolved spelling falls through unchanged - it is never an error.**
+`code_value` answers `None` and the caller keeps the text it had, because a
+venue sends codes no dictionary lists, exactly as it sends fields no
+dictionary names.
+
+**An ambiguous spelling resolves to nothing.** Two codes folding to one
+spelling (`Cross` and `cross!`) make that spelling answer `None` rather than
+whichever the scan met first: picking one silently is worse than declining.
+The name scan therefore does not early-exit - it runs the whole code set and
+answers only on exactly one match. That is affordable because the wire-value
+tier at step 1 is the hot path and does early-exit; a spelling lookup comes
+from human or JSON input, not from a wire stream.
+
+**Version-scoped.** `code_value_at(&Version, text)` and
+`code_name_at(&Version, value)` skip a code not defined at that version, so
+a 4.2 message cannot resolve a name added in 4.4.
+
+Cases, on `CommTypeCodeSet` (tag 13, `char`) as the fixture: `PerUnit`=1,
+`Percent`=2, `Absolute`=3, `PercentageWaivedCashDiscount`=4,
+`PercentageWaivedEnhancedUnits`=5, `PointsPerBondOrContract`=6,
+`BasisPoints`=7 (added EP208), `AmountPerContract`=8. Assert `4` to `4`;
+all four foldings of `PercentageWaivedCashDiscount` to `4`;
+`PercentageWaivedEnhancedUnits` to `5`, so a shared prefix does not collide;
+`code_name("4")` back to `PercentageWaivedCashDiscount`; an unknown spelling
+falling through; an ambiguous pair answering `None`; and `BasisPoints`
+unresolvable at a version before it existed.
 
 The borrowed scan is only safe because the writer's rendering is canonical
 and validated on the way in; say so in the doc comment, and pin it with a
@@ -957,7 +1030,12 @@ all.
   `dtype_at(version)` when a lineage exists and the field's own name and
   datatype when it does not;
 - it is non-null in this message's schema, because the value is present;
-- the value is `field.scalar(Scalar::from(entry.value))?` and nothing
+- the value passes through the field's code set first, when it has one:
+  `field.as_fix().code_value_at(&version, entry.value).unwrap_or(entry.value)`,
+  so `CommType=PercentageWaivedCashDiscount` stores `4` and
+  `MsgType=NewOrderSingle` stores `D`, while a spelling no code set explains
+  is carried through untouched (Phase 4 has the full rule);
+- then the value is `field.scalar(Scalar::from(translated))?` and nothing
   re-checks what `scalar` already answered;
 - order is `STANDARD_HEADER_TAGS`, then the body in entry order, then
   `STANDARD_TRAILER_TAGS` - flat, no `StandardHeader` Struct, which is what
@@ -1029,6 +1107,12 @@ under its decimal name; an unknown name refused; tag 32 keyed as
 `LastShares` in a `4.2` message and as `LastQty` in a Latest one, both
 answering the same value; header and trailer ordering with a body field
 interleaved in the input.
+
+Then the code-set translation end to end: `("CommType", "PercentageWaivedCashDiscount")`
+and `("13", "percentage_waived_cash_discount")` both storing `4`;
+`("MsgType", "NewOrderSingle")` storing `D`; `("CommType", "4")` unchanged;
+a spelling no code set explains stored verbatim; and a name added after the
+message's inferred version refusing to translate.
 
 Then, straight from `test_pairs.py`, because they are the ones a first
 implementation gets wrong: `" Side "`, `msg_type`, `msg-type`, `MSG_TYPE`
