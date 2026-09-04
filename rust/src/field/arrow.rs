@@ -294,23 +294,64 @@ pub(crate) fn recognized_arrow_extension(
         {
             Ok(Some(RecognizedExtension::Variant))
         }
-        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width @ (2 | 3 | 4 | 8 | 12 | 16)) => {
-                Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
-            }
-            _ => None,
-        }),
+        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            let (values, key) = encoded_values(storage)?;
+            Ok(match values {
+                ArrowDataType::FixedSizeBinary(width @ (2 | 3 | 4 | 8 | 12 | 16)) => Some(
+                    RecognizedExtension::Ascii(re_encoded(DataType::ascii(*width)?, key)?),
+                ),
+                _ => None,
+            })
+        }
         GUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Guid))
         }
-        code if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width) => {
-                code_for_extension(code, *width).map(RecognizedExtension::Code)
-            }
-            _ => None,
-        }),
+        code if document.unwrap_or("").is_empty() => {
+            let (values, key) = encoded_values(storage)?;
+            Ok(match values {
+                ArrowDataType::FixedSizeBinary(width) => match code_for_extension(code, *width) {
+                    Some(dtype) => Some(RecognizedExtension::Code(re_encoded(dtype, key)?)),
+                    None => None,
+                },
+                _ => None,
+            })
+        }
         _ => Ok(None),
+    }
+}
+
+/// The storage one extension describes, and the dictionary key it sits under.
+///
+/// Arrow's `Dictionary` carries a bare datatype for its values rather than a
+/// field, so a dictionary-encoded extension column has nowhere but the field
+/// itself to declare its identity. Peeling here is what lets a
+/// dictionary-encoded currency import as `dictionary(int32, currency)` rather
+/// than as anonymous bytes - and a low-cardinality code column is exactly the
+/// one a writer dictionary-encodes.
+///
+/// # Errors
+///
+/// Returns an error when the dictionary key is not an Arrow type this crate
+/// imports.
+fn encoded_values(storage: &ArrowDataType) -> Result<(&ArrowDataType, Option<DataType>)> {
+    match storage {
+        ArrowDataType::Dictionary(key, value) => {
+            Ok((value.as_ref(), Some(DataType::from_arrow(key.as_ref())?)))
+        }
+        other => Ok((other, None)),
+    }
+}
+
+/// One recognized values type, put back under the key it was found beneath.
+///
+/// # Errors
+///
+/// Returns an error when the key is not an integer a dictionary may use.
+fn re_encoded(values: DataType, key: Option<DataType>) -> Result<DataType> {
+    match key {
+        Some(key) => DataType::dictionary(key, values),
+        None => Ok(values),
     }
 }
 

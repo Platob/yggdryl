@@ -1021,6 +1021,18 @@ mod ascii {
             DataType::Ascii32.stable_hash(),
             DataType::Ascii64.stable_hash()
         );
+        // A code and the width that holds it are two identities over one
+        // storage, and the hash is the only thing telling three of the four
+        // pairs apart at all.
+        for (code, width) in [
+            (DataType::Country, DataType::Ascii16),
+            (DataType::Currency, DataType::Ascii24),
+            (DataType::Mic, DataType::Ascii32),
+            (DataType::Cfi, DataType::Ascii64),
+        ] {
+            assert_ne!(code.stable_hash(), width.stable_hash(), "{code}");
+            assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{code}");
+        }
     }
 
     #[test]

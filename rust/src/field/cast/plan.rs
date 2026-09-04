@@ -3418,7 +3418,12 @@ fn projected_byte_len(array: &dyn Array, source_type: &DataType, index: usize) -
         | DataType::Ascii32
         | DataType::Ascii64
         | DataType::Ascii96
-        | DataType::Ascii128 => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
+        | DataType::Ascii128
+        | DataType::Country
+        | DataType::Currency
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Guid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
         DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
         DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
@@ -4749,7 +4754,12 @@ fn byte_array_storage_ptr_eq(
         | DataType::Ascii32
         | DataType::Ascii64
         | DataType::Ascii96
-        | DataType::Ascii128 => {
+        | DataType::Ascii128
+        | DataType::Country
+        | DataType::Currency
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Guid => {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;
             byte_slices_ptr_eq(left.value_data(), right.value_data())

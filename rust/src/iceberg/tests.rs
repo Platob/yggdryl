@@ -852,8 +852,10 @@ mod types {
     }
 
     #[test]
-    fn an_ascii_width_is_an_iceberg_string() {
-        // The padding is storage; every Iceberg reader sees the text.
+    fn an_ascii_width_or_a_code_is_an_iceberg_string() {
+        // The padding is storage; every Iceberg reader sees the text. Iceberg
+        // has nothing that carries a code's identity, so a code is a string
+        // there exactly as a width is.
         for dtype in [
             DataType::Ascii16,
             DataType::Ascii24,
@@ -861,10 +863,37 @@ mod types {
             DataType::Ascii64,
             DataType::Ascii96,
             DataType::Ascii128,
+            DataType::Country,
+            DataType::Currency,
+            DataType::Mic,
+            DataType::Cfi,
         ] {
             assert_eq!(
                 PrimitiveType::from_dtype(&dtype).unwrap(),
                 PrimitiveType::String
+            );
+        }
+    }
+
+    #[test]
+    fn a_code_bound_is_portable_and_round_trips_as_a_string_datum() {
+        // Bounds are what a planner prunes with, and a missed arm in the
+        // value layer drops them silently rather than failing.
+        for (dtype, value) in [
+            (DataType::Country, "FR"),
+            (DataType::Currency, "USD"),
+            (DataType::Mic, "XPAR"),
+            (DataType::Cfi, "ESVUFR"),
+        ] {
+            assert!(crate::iceberg::value::is_portable(&dtype), "{dtype}");
+            let scalar = crate::Scalar::from(value);
+            let bytes = crate::iceberg::value::single_value(&scalar, &dtype)
+                .unwrap_or_else(|| panic!("{dtype} must encode a bound"));
+            assert_eq!(bytes, value.as_bytes(), "{dtype}");
+            assert_eq!(
+                crate::iceberg::value::single_to_value(&bytes, &dtype),
+                Some(scalar),
+                "{dtype}"
             );
         }
     }

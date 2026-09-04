@@ -731,10 +731,11 @@ fn field_with_dtype(
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
 /// The extensions this workspace owns never reach here: `arrow.parquet.variant`,
-/// `geoarrow.wkb`, and `yggdryl.ascii` import as the first-class `variant`,
-/// `geometry`, `geography`, and ASCII-width datatypes with their
-/// `ARROW:extension:*` keys stripped, so a field carrying these keys names an
-/// extension the workspace does not model.
+/// `geoarrow.wkb`, `yggdryl.ascii`, `arrow.uuid`, and each registered code's
+/// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
+/// `variant`, `geometry`, `geography`, ASCII-width, `guid` and code datatypes
+/// with their `ARROW:extension:*` keys stripped, so a field carrying these
+/// keys names an extension the workspace does not model.
 /// Rewriting its storage would silently relabel that foreign type, so the
 /// walker rejects the rewrite instead.
 fn has_extension_storage(field: &Field) -> bool {

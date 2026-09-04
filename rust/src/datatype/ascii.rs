@@ -642,7 +642,10 @@ fn ascii_values_refusal(values: &DataType) -> Error {
     Error::InvalidDataType {
         kind: "ascii-dictionary",
         reason: crate::text::expected_got(
-            format_args!("an ASCII width (ascii32, ascii64, or ascii128)"),
+            format_args!(
+                "an ASCII width (ascii16, ascii24, ascii32, ascii64, ascii96, ascii128) \
+                 or a registered code (country, currency, mic, cfi)"
+            ),
             format_args!("{values}"),
         ),
     }
@@ -1011,6 +1014,15 @@ impl AsciiDictionary {
     /// The values keep the array's own order, so a code read from that array
     /// names the same value here.
     ///
+    /// An array carries storage and no identity, so this reads the values
+    /// datatype off the storage width: two, three, four, eight, twelve and
+    /// sixteen bytes are the six ASCII widths. A [registered
+    /// code](super::coded) shares that storage - a `mic` and an `ascii32`
+    /// vocabulary are both `FixedSizeBinary(4)` - so a width cannot name one,
+    /// and a vocabulary declared over a code is recovered by naming it:
+    /// [`Self::from_arrow_array_as`]. A `cfi`'s six bytes are no ASCII width
+    /// at all and are refused here rather than guessed at.
+    ///
     /// # Errors
     ///
     /// Returns an error naming the layout it was given when `array` is not a
@@ -1019,18 +1031,54 @@ impl AsciiDictionary {
     /// and both positions when its vocabulary repeats a value - a repeat would
     /// give one code away and shift every later one.
     pub fn from_arrow_array(array: &dyn Array) -> Result<Self> {
-        let ArrowDataType::Dictionary(key, value) = array.data_type() else {
+        let ArrowDataType::Dictionary(_, value) = array.data_type() else {
             return Err(layout_refusal(array.data_type()));
         };
         let ArrowDataType::FixedSizeBinary(width) = **value else {
             return Err(layout_refusal(array.data_type()));
         };
         let values_dtype = match width {
+            2 => DataType::Ascii16,
+            3 => DataType::Ascii24,
             4 => DataType::Ascii32,
             8 => DataType::Ascii64,
+            12 => DataType::Ascii96,
             16 => DataType::Ascii128,
             _ => return Err(layout_refusal(array.data_type())),
         };
+        Self::from_arrow_array_as(values_dtype, array)
+    }
+
+    /// Recovers the vocabulary of a dictionary array over a declared datatype.
+    ///
+    /// The reader that names its own vocabulary: `values` says which ASCII
+    /// width or [registered code](super::coded) the storage holds, which is
+    /// the half an array cannot carry. The array's storage width has to be
+    /// that datatype's, so a `currency` vocabulary is not read as a `mic` one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `values` when it is neither an ASCII width nor
+    /// a registered code, and the same errors [`Self::from_arrow_array`]
+    /// returns for a layout, a null, or a repeated value.
+    pub fn from_arrow_array_as(values: DataType, array: &dyn Array) -> Result<Self> {
+        let expected = values.ascii_width().ok_or_else(|| ascii_values_refusal(&values))?;
+        let ArrowDataType::Dictionary(key, value) = array.data_type() else {
+            return Err(layout_refusal(array.data_type()));
+        };
+        let ArrowDataType::FixedSizeBinary(width) = **value else {
+            return Err(layout_refusal(array.data_type()));
+        };
+        if width != expected {
+            return Err(Error::InvalidDataType {
+                kind: "ascii-dictionary",
+                reason: crate::text::expected_got(
+                    format_args!("a vocabulary of {expected} bytes for {values}"),
+                    format_args!("{width}"),
+                ),
+            });
+        }
+        let values_dtype = values;
         let (key_dtype, vocabulary) = match **key {
             ArrowDataType::Int32 => (
                 DataType::Int32,
@@ -1108,7 +1156,10 @@ fn layout_refusal(actual: &ArrowDataType) -> Error {
     Error::InvalidDataType {
         kind: "ascii-dictionary",
         reason: crate::text::expected_got(
-            format_args!("a dictionary array of int32 or int64 keys over an ASCII width"),
+            format_args!(
+                "a dictionary array of int32 or int64 keys over one of the six ASCII \
+                 widths, or over the datatype `from_arrow_array_as` was given"
+            ),
             format_args!("{actual}"),
         ),
     }

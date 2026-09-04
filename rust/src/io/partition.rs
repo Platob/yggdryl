@@ -458,8 +458,11 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 ),
             });
         };
-        // An ASCII width is stored as fixed bytes, which the formatter would
-        // spell as hex; the directory carries the trimmed text the value is.
+        // An ASCII width, and a registered code over one, is stored as fixed
+        // bytes, which the formatter would spell as hex; the directory
+        // carries the trimmed text the value is. `ascii_width` is the one
+        // oracle for both families, so a `currency` column spells `ccy=USD`
+        // and the read casts that text back through the code's own path.
         let schema = batch.schema();
         let column = if Field::from_arrow(schema.field(index))?
             .dtype()

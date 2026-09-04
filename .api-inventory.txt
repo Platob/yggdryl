@@ -322,7 +322,7 @@
 
 ### yggdryl::generic::datatype_id  [rust\src\generic\datatype_id.rs]
   pub enum DataTypeId
-  pub const ALL: [Self; 48] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 56] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn kind(self) -> DataTypeKind
@@ -341,7 +341,7 @@
 
 ### yggdryl::generic::datatype_kind  [rust\src\generic\datatype_kind.rs]
   pub enum DataTypeKind
-  pub const ALL: [Self; 16] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Binary,
+  pub const ALL: [Self; 17] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Binary,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn is_nested(self) -> bool

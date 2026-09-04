@@ -886,7 +886,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     assert.equal(at.dtype.toString(), 'timestamp(us)')
     ```
 
-`Int64Field` and the forty-seven aliases beside it are `TypedField<K>`, one `Field` plus a
+`Int64Field` and the fifty-five aliases beside it are `TypedField<K>`, one `Field` plus a
 zero-sized sealed marker, `repr(transparent)` and exactly the size of the field it holds. The
 marker constrains the variant only: a decimal's precision, a timestamp's unit, a list's child all
 stay in the wrapped field, so the typed view never duplicates schema state. `try_as_typed`

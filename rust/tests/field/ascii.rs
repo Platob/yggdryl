@@ -1,4 +1,4 @@
-//! The ASCII widths: typed markers, and the cast plan around their storage.
+//! The fixed ASCII types: typed markers, and the cast plan around storage.
 
 use std::sync::Arc;
 
@@ -9,27 +9,52 @@ use arrow_array::{
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
-use yggdryl::field::{Ascii32Field, Ascii64Field, ascii};
-use yggdryl::generic::Ascii64Scalar;
+use yggdryl::field::{
+    Ascii24Field, Ascii32Field, Ascii64Field, CfiField, CountryField, CurrencyField, MicField,
+    ascii,
+};
+use yggdryl::generic::{Ascii64Scalar, CfiScalar, CurrencyScalar};
 use yggdryl::{ArrowCast, DataType, Field, Scalar};
 
 use crate::typed::assert_typed_marker;
 
 #[test]
-fn ascii_markers_cover_the_three_widths() {
+fn ascii_markers_cover_the_widths_and_the_codes() {
     assert_typed_marker::<ascii::Ascii32>(DataType::Ascii32);
     assert_typed_marker::<ascii::Ascii64>(DataType::Ascii64);
     assert_typed_marker::<ascii::Ascii128>(DataType::Ascii128);
+    assert_typed_marker::<ascii::Country>(DataType::Country);
+    assert_typed_marker::<ascii::Currency>(DataType::Currency);
+    assert_typed_marker::<ascii::Mic>(DataType::Mic);
+    assert_typed_marker::<ascii::Cfi>(DataType::Cfi);
 
     // A unit variant has a static constructor; a marker refuses its siblings.
-    let currency = Ascii32Field::new("ccy", false);
-    assert_eq!(currency.dtype(), &DataType::Ascii32);
+    let ccy = Ascii32Field::new("ccy", false);
+    assert_eq!(ccy.dtype(), &DataType::Ascii32);
     assert!(Ascii64Field::try_new("ccy", DataType::Ascii32, false).is_err());
+
+    // The code/width boundary is the one the markers exist for: a currency
+    // and an `ascii24` are the same three bytes and are not each other.
+    assert_eq!(CurrencyField::new("ccy", false).dtype(), &DataType::Currency);
+    assert_eq!(CountryField::new("iso", true).dtype(), &DataType::Country);
+    assert_eq!(MicField::new("venue", true).dtype(), &DataType::Mic);
+    assert!(CurrencyField::try_new("ccy", DataType::Ascii24, false).is_err());
+    assert!(Ascii24Field::try_new("ccy", DataType::Currency, false).is_err());
+    // Six bytes against eight: the confusion a width/code mix-up produces.
+    assert!(CfiField::try_new("code", DataType::Ascii64, false).is_err());
 
     // The typed value is checked under the one ASCII rule for its width.
     let code = Ascii64Scalar::new(Scalar::from("ABC")).unwrap();
     assert_eq!(code.value(), &Scalar::from("ABC"));
     assert!(Ascii64Scalar::new(Scalar::from("ABCDEFGHI")).is_err());
+
+    // A typed code value is checked at the width its own standard fixes.
+    assert_eq!(
+        CurrencyScalar::new(Scalar::from("USD")).unwrap().value(),
+        &Scalar::from("USD")
+    );
+    assert!(CurrencyScalar::new(Scalar::from("EURO")).is_err());
+    assert!(CfiScalar::new(Scalar::from("ESVUFR")).is_ok());
 }
 
 // ---------------------------------------------------------------------------

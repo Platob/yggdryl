@@ -151,8 +151,12 @@ def _build_ascii_field() -> Field:
     return fields.ascii32("ccy", nullable=False)
 
 
-def _resolve_logical_name() -> DataType:
-    return DataType.from_logical_name("currency")
+def _build_code_datatype() -> DataType:
+    return DataType("currency")
+
+
+def _build_code_field() -> Field:
+    return fields.currency("ccy", nullable=False)
 
 
 def _build_variant_datatype() -> DataType:
@@ -305,7 +309,8 @@ def main() -> None:
         _measure("generic time field", _build_generic_time_field, args.iterations)
         _measure("ascii width datatype", _build_ascii_datatype, args.iterations)
         _measure("ascii width field", _build_ascii_field, args.iterations)
-        _measure("logical name lookup", _resolve_logical_name, args.iterations)
+        _measure("code datatype", _build_code_datatype, args.iterations)
+        _measure("code field", _build_code_field, args.iterations)
         _measure("native variant datatype", _build_variant_datatype, args.iterations)
         _measure("native variant field", _build_variant_field, args.iterations)
         _measure("inferred variant datatype", _infer_variant_datatype, args.iterations)

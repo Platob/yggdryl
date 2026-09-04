@@ -681,8 +681,14 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
 ///
 /// An ASCII width projects an empty document: the storage width says the
 /// width, so there is nothing else to carry.
+///
+/// A dictionary projects what its values would. Arrow's `Dictionary` holds a
+/// bare datatype for its values rather than a field, so a dictionary-encoded
+/// currency has nowhere but the field itself to carry its identity - and a
+/// dictionary-encoded code is the ordinary case, not an edge one.
 pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, String)> {
     match dtype {
+        DataType::Dictionary(dictionary) => arrow_extension_parts(dictionary.value()),
         DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))

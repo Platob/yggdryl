@@ -67,7 +67,7 @@
     return block
   }
 
-  /** A `<select>` over the three widths, labelled for a screen reader. */
+  /** A `<select>` over the fixed ASCII types, labelled for a screen reader. */
   const chooser = (id, widths, onChange) => {
     const holder = make('div', 'ygg-pg__controls')
     const label = make('label', null, 'Width')
@@ -106,7 +106,7 @@
     return { items, press }
   }
 
-  /** The three widths, what they store, and the extension identity they carry. */
+  /** Each fixed ASCII type, what it stores, and the extension identity it carries. */
   const renderWidths = (root, data) => {
     const table = make('table', 'ygg-pg__widths')
     const head = make('thead')

@@ -673,6 +673,69 @@ mod lake {
     }
 
     #[test]
+    fn a_code_partition_column_keeps_its_identity_through_the_path() {
+        let (root, mut handle) = lake("code");
+        let field = DataType::from_fields([
+            DataType::Currency.required_field("ccy"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap()
+        .required_field("row")
+        .with_partition_fields(&["ccy"])
+        .unwrap();
+        let incoming = RecordBatch::try_from_iter([
+            (
+                "ccy",
+                std::sync::Arc::new(StringArray::from(vec!["USD", "EUR", "USD"]))
+                    as arrow_array::ArrayRef,
+            ),
+            (
+                "qty",
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![1, 2, 3])),
+            ),
+        ])
+        .unwrap();
+
+        handle
+            .overwrite_arrow_reader(
+                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                &options(Some(field.clone())),
+            )
+            .unwrap();
+
+        // A code renders as its text in the path exactly as a width does.
+        assert!(root.join("ccy=USD").is_dir());
+        assert!(root.join("ccy=EUR").is_dir());
+
+        let mut found = Vec::new();
+        for batch in handle.read_arrow_reader(&options(Some(field))).unwrap() {
+            let batch = batch.unwrap();
+            // ISO 4217 is exactly three bytes, so the restored storage holds
+            // no padding at all, and the column reads back a currency.
+            let restored = crate::Field::from_arrow(batch.schema().field(0)).unwrap();
+            assert_eq!(restored.dtype(), &DataType::Currency);
+            let ccy = batch
+                .column_by_name("ccy")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+                .unwrap()
+                .clone();
+            assert_eq!(ccy.value_length(), 3);
+            for row in 0..batch.num_rows() {
+                found.push(ccy.value(row).to_vec());
+            }
+        }
+        found.sort_unstable();
+        assert_eq!(
+            found,
+            vec![b"EUR".to_vec(), b"USD".to_vec(), b"USD".to_vec()]
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_partitioned_folder_keeps_only_complete_commit_prefixes() {
         let (root, mut handle) = lake("commit-prefix");
         let field = schema().with_partition_fields(&["year", "month"]).unwrap();
