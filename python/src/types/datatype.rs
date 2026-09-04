@@ -1073,9 +1073,9 @@ impl PyDataType {
     #[getter]
     fn timezone(&self) -> Option<crate::types::timezone::PyTimezone> {
         match &self.inner {
-            CoreDataType::Timestamp(_, timezone) => timezone
-                .clone()
-                .map(crate::types::timezone::PyTimezone::from_core),
+            CoreDataType::Timestamp(_, timezone) => {
+                (*timezone).map(crate::types::timezone::PyTimezone::from_core)
+            }
             _ => None,
         }
     }

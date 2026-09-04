@@ -194,7 +194,7 @@ impl Scalar {
                 resolution(*unit, "datetime64")?;
                 Ok(DataType::Timestamp(
                     *unit,
-                    (!zone.is_naive()).then(|| zone.clone()),
+                    (!zone.is_naive()).then_some(*zone),
                 ))
             }
             Self::Duration32(_, unit, zone) => {

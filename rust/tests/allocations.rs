@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl::{
-    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar,
+    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar, Timezone,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -545,6 +545,29 @@ fn writing_a_doc_string_costs_the_key_and_the_value_and_nothing_else() {
             "replacing the doc over {extra} unrelated keys grew"
         );
     }
+}
+
+#[test]
+fn timezone_handle_hits_and_copies_allocate_nothing() {
+    let dynamic = Timezone::from_str("Custom/AllocationProbe").expect("a dynamic zone");
+    let _ = dynamic.as_smol_str();
+
+    for (label, spelling) in [
+        ("registered zone", "Europe/Paris"),
+        ("registered alias", "US/Eastern"),
+        ("fixed offset", "+05:30"),
+        ("interned dynamic zone", "Custom/AllocationProbe"),
+    ] {
+        free(label, || {
+            let zone = Timezone::from_str(black_box(spelling)).expect("a valid zone");
+            black_box(zone.as_str());
+        });
+    }
+
+    free("copying and reading a timezone handle", || {
+        let copied = black_box(dynamic);
+        black_box(copied.as_str());
+    });
 }
 
 /// A value of each shape the canonical feed walks differently.

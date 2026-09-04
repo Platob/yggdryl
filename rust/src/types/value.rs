@@ -430,8 +430,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Timestamp(unit, zone) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::DateTime, zone.as_ref())?;
-            let canonical =
-                Scalar::datetime64(count, *unit, zone.clone().unwrap_or(Timezone::NAIVE))?;
+            let canonical = Scalar::datetime64(count, *unit, (*zone).unwrap_or(Timezone::NAIVE))?;
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Duration32(unit) => {

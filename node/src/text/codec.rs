@@ -2385,7 +2385,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 id,
                 temporal.count(),
                 temporal.unit(),
-                temporal.timezone(),
+                *temporal.timezone(),
                 date,
             ))
         }
@@ -2570,7 +2570,7 @@ fn temporal_transport(
     kind: &str,
     count: i64,
     unit: TimeUnit,
-    zone: &Timezone,
+    zone: Timezone,
     date: Option<i64>,
 ) -> JsonValue {
     marker(

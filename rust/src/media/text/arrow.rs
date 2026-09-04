@@ -76,7 +76,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
         raw,
         prefetched,
         capture_dtypes,
-        timezone: options.timezone().cloned(),
+        timezone: options.timezone().copied(),
     };
     Ok(crate::arrow::rows::result_reader(
         &field,
@@ -296,10 +296,10 @@ fn infer(value: &str, timezone: Option<&Timezone>) -> Inferred {
         return Inferred::Float;
     }
     if let Ok((_, unit, zone)) = iso::parse_timestamp(value) {
-        return Inferred::Timestamp(unit, Some(timezone.cloned().unwrap_or(zone)));
+        return Inferred::Timestamp(unit, Some(timezone.copied().unwrap_or(zone)));
     }
     if let Ok((_, unit)) = iso::parse_datetime(value) {
-        return Inferred::Timestamp(unit, timezone.cloned());
+        return Inferred::Timestamp(unit, timezone.copied());
     }
     if iso::parse_date(value).is_ok() {
         return Inferred::Date;
@@ -441,7 +441,7 @@ fn parse_capture(
             let count =
                 zoned_count(local, source, timezone.unwrap_or(zone)).map_err(|_| invalid())?;
             let count = rescale(count, source, *unit).ok_or_else(invalid)?;
-            Scalar::datetime64(count, *unit, zone.clone()).map_err(|_| invalid())
+            Scalar::datetime64(count, *unit, *zone).map_err(|_| invalid())
         }
         DataType::Timestamp(..) => Scalar::from_temporal_text(dtype, value).map_err(|_| invalid()),
         _ => Err(format_smolstr!(
@@ -457,7 +457,7 @@ fn zoned_count(local: i64, unit: TimeUnit, zone: &Timezone) -> Result<i64> {
     })?;
     let seconds = local.div_euclid(per);
     let fraction = local.rem_euclid(per);
-    zone.clone()
+    (*zone)
         .into_utc(seconds)?
         .checked_mul(per)
         .and_then(|seconds| seconds.checked_add(fraction))

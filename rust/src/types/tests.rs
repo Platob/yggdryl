@@ -448,9 +448,8 @@ fn arrow_import_preserves_nested_field_projection_arcs() {
 }
 
 #[test]
-fn long_timezones_share_heap_storage_across_arrow_conversions() {
+fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     let timezone: Arc<str> = Arc::from("America/Argentina/Buenos_Aires");
-    let expected = timezone.as_ptr();
     let arrow = ArrowDataType::Timestamp(
         arrow_schema::TimeUnit::Nanosecond,
         Some(Arc::clone(&timezone)),
@@ -460,25 +459,28 @@ fn long_timezones_share_heap_storage_across_arrow_conversions() {
     let DataType::Timestamp(_, Some(borrowed_timezone)) = &borrowed else {
         panic!("timestamp import changed variant");
     };
-    assert_eq!(borrowed_timezone.as_str().as_ptr(), expected);
+    let borrowed_timezone = *borrowed_timezone;
 
     let borrowed_arrow = borrowed.into_arrow().unwrap();
     let ArrowDataType::Timestamp(_, Some(borrowed_arrow_timezone)) = borrowed_arrow else {
         panic!("timestamp projection changed variant");
     };
-    assert_eq!(borrowed_arrow_timezone.as_ptr(), expected);
+    assert_eq!(borrowed_arrow_timezone.as_ref(), timezone.as_ref());
 
     let owned = DataType::try_from(arrow).unwrap();
     let DataType::Timestamp(_, Some(owned_timezone)) = &owned else {
         panic!("timestamp import changed variant");
     };
-    assert_eq!(owned_timezone.as_str().as_ptr(), expected);
+    assert!(std::ptr::eq(
+        borrowed_timezone.as_smol_str(),
+        owned_timezone.as_smol_str()
+    ));
 
     let owned_arrow = owned.into_arrow().unwrap();
     let ArrowDataType::Timestamp(_, Some(owned_arrow_timezone)) = owned_arrow else {
         panic!("timestamp projection changed variant");
     };
-    assert_eq!(owned_arrow_timezone.as_ptr(), expected);
+    assert_eq!(owned_arrow_timezone.as_ref(), timezone.as_ref());
 }
 
 #[test]

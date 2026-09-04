@@ -1662,7 +1662,7 @@ pub struct Timezone
   pub fn from_str(value: &str) -> Result<Self>
   pub fn from_offset(seconds: i32) -> Result<Self>
   pub fn as_str(&self) -> &str
-  pub const fn as_smol_str(&self) -> &SmolStr
+  pub fn as_smol_str(&self) -> &SmolStr
   pub fn into_smol_str(self) -> SmolStr
   pub fn is_utc(&self) -> bool
   pub fn is_naive(&self) -> bool

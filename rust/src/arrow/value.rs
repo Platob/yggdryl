@@ -307,16 +307,16 @@ pub(crate) fn value_from_array(
         // serializes losslessly and compares across resolutions.
         DataType::Timestamp(unit, zone) => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
-                Scalar::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Millisecond => primitive!(TimestampMillisecondArray, |value| {
-                Scalar::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Microsecond => primitive!(TimestampMicrosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
             }),
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, zone.clone().unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
             }),
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },

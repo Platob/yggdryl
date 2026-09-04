@@ -123,32 +123,24 @@ impl<'a> TemporalRef<'a> {
     /// Rebuild and validate the exact scalar variant this view came from.
     pub fn into_scalar(self) -> Result<Scalar> {
         match (self.family, self.bit_width) {
-            (TemporalFamily::Date, 32) => Scalar::date32_in(
-                narrow_i32(self.count, "date32")?,
-                self.unit,
-                self.timezone.clone(),
-            ),
-            (TemporalFamily::Date, 64) => {
-                Scalar::date64_in(self.count, self.unit, self.timezone.clone())
+            (TemporalFamily::Date, 32) => {
+                Scalar::date32_in(narrow_i32(self.count, "date32")?, self.unit, *self.timezone)
             }
-            (TemporalFamily::Time, 32) => Scalar::time32(
-                narrow_i32(self.count, "time32")?,
-                self.unit,
-                self.timezone.clone(),
-            ),
-            (TemporalFamily::Time, 64) => {
-                Scalar::time64(self.count, self.unit, self.timezone.clone())
+            (TemporalFamily::Date, 64) => Scalar::date64_in(self.count, self.unit, *self.timezone),
+            (TemporalFamily::Time, 32) => {
+                Scalar::time32(narrow_i32(self.count, "time32")?, self.unit, *self.timezone)
             }
+            (TemporalFamily::Time, 64) => Scalar::time64(self.count, self.unit, *self.timezone),
             (TemporalFamily::DateTime, 64) => {
-                Scalar::datetime64(self.count, self.unit, self.timezone.clone())
+                Scalar::datetime64(self.count, self.unit, *self.timezone)
             }
             (TemporalFamily::Duration, 32) => Scalar::duration32_in(
                 narrow_i32(self.count, "duration32")?,
                 self.unit,
-                self.timezone.clone(),
+                *self.timezone,
             ),
             (TemporalFamily::Duration, 64) => {
-                Scalar::duration64_in(self.count, self.unit, self.timezone.clone())
+                Scalar::duration64_in(self.count, self.unit, *self.timezone)
             }
             _ => Err(invalid("invalid temporal family width")),
         }
@@ -477,7 +469,7 @@ impl Scalar {
             DataType::Timestamp(unit, Some(zone)) => {
                 let (count, source, _) = iso::parse_timestamp(text)?;
                 let count = restated((count, source), *unit, "datetime64")?;
-                Self::datetime64(count, *unit, zone.clone())
+                Self::datetime64(count, *unit, *zone)
             }
             DataType::Duration32(unit) => {
                 let count = restated(iso::parse_duration(text)?, *unit, "duration32")?;
@@ -775,14 +767,14 @@ pub(crate) struct TemporalParts {
 pub(crate) fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
     let temporal = value.as_temporal()?;
     let unit = temporal.unit();
-    let zone = temporal.timezone().clone();
+    let zone = *temporal.timezone();
     let dtype = match (temporal.family(), temporal.bit_width()) {
         (TemporalFamily::Date, 32) => DataType::Date32,
         (TemporalFamily::Date, 64) => DataType::Date64,
         (TemporalFamily::Time, 32) => DataType::Time32(unit),
         (TemporalFamily::Time, 64) => DataType::Time64(unit),
         (TemporalFamily::DateTime, 64) => {
-            DataType::Timestamp(unit, (!zone.is_naive()).then(|| zone.clone()))
+            DataType::Timestamp(unit, (!zone.is_naive()).then_some(zone))
         }
         (TemporalFamily::Duration, 32) => DataType::Duration32(unit),
         (TemporalFamily::Duration, 64) => DataType::Duration64(unit),
@@ -1100,7 +1092,7 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
             Scalar::time64(count, unit, Timezone::NAIVE)
         }
         DataType::Timestamp(expected, zone) if *expected == unit => {
-            Scalar::datetime64(count, unit, zone.clone().unwrap_or(Timezone::NAIVE))
+            Scalar::datetime64(count, unit, (*zone).unwrap_or(Timezone::NAIVE))
         }
         DataType::Duration32(expected) if *expected == unit => Scalar::duration32(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {

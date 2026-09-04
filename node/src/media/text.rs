@@ -335,7 +335,7 @@ impl JsTextOptions {
     /// Return the timezone for offset-free autotyped timestamps.
     #[napi(getter)]
     pub fn timezone(&self) -> Option<JsTimezone> {
-        self.inner.timezone().cloned().map(JsTimezone::from_core)
+        self.inner.timezone().copied().map(JsTimezone::from_core)
     }
 
     /// Set or clear the autotyping timezone.

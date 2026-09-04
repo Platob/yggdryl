@@ -1199,7 +1199,7 @@ impl PyRecordOptions {
             state.set_item("autotype", options.autotype())?;
             state.set_item(
                 "timezone",
-                options.timezone().cloned().map(PyTimezone::from_core),
+                options.timezone().copied().map(PyTimezone::from_core),
             )?;
         }
         if let Some(block_codec) = self.inner.avro_block_codec() {
@@ -1549,7 +1549,7 @@ impl PyRecordOptions {
     /// The timezone applied while autotyping offset-free timestamps.
     #[getter]
     fn timezone(&self) -> Option<PyTimezone> {
-        self.inner.timezone().cloned().map(PyTimezone::from_core)
+        self.inner.timezone().copied().map(PyTimezone::from_core)
     }
 
     #[setter]
@@ -1978,7 +1978,7 @@ impl PyTextOptions {
 
     #[getter]
     fn timezone(&self) -> Option<PyTimezone> {
-        self.inner.timezone().cloned().map(PyTimezone::from_core)
+        self.inner.timezone().copied().map(PyTimezone::from_core)
     }
 
     #[setter]

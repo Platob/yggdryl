@@ -7,9 +7,9 @@
 //! is the single answer to all four.
 //!
 //! [`Self::NAIVE`] gives every native temporal value a non-optional zone while
-//! `DataType::Timestamp(unit, None)` retains Arrow's schema spelling. Named
-//! zones share their allocation with Arrow, and [`Self::offset_at`] applies
-//! the registry rules bundled by this build.
+//! `DataType::Timestamp(unit, None)` retains Arrow's schema spelling. A zone is
+//! a process-lifetime interned handle; [`Self::offset_at`] applies the registry
+//! rules bundled by this build.
 //!
 //! ```
 //! use yggdryl::Timezone;
@@ -33,7 +33,7 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use serde::de::Error as _;
@@ -53,17 +53,21 @@ const DAY: i64 = 86_400;
 ///
 /// The name is canonical on arrival: an alias resolves to what it stands for,
 /// a fixed offset normalizes to `+HH:MM`, and a registered name normalizes its
-/// case. Two values are equal exactly when they name the same zone.
-#[derive(Clone, Debug)]
-pub struct Timezone(SmolStr);
+/// case. The four-byte handle is process-local and never serialized; names are
+/// retained for the process lifetime, so copying a zone never allocates.
+#[repr(transparent)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct Timezone(NonZeroU32);
+
+const _: () = assert!(std::mem::size_of::<Timezone>() == 4);
 
 impl Timezone {
     /// A wall-clock value with no time-zone interpretation.
-    pub const NAIVE: Self = Self(SmolStr::new_inline("NAIVE"));
+    pub const NAIVE: Self = Self(registry::NAIVE_HANDLE);
 
     /// Coordinated Universal Time, the zero point every other zone offsets
     /// from and the one zone that is always registered.
-    pub const UTC: Self = Self(SmolStr::new_inline("UTC"));
+    pub const UTC: Self = Self(registry::UTC_HANDLE);
 
     /// Parse and canonicalize a time zone name.
     ///
@@ -103,36 +107,36 @@ impl Timezone {
         if seconds == 0 {
             return Ok(Self::UTC);
         }
-        Ok(Self(SmolStr::new(format_offset(seconds))))
+        Ok(Self(registry::fixed_handle(seconds)))
     }
 
     /// Return the canonical name without allocating.
     pub fn as_str(&self) -> &str {
-        self.0.as_str()
+        registry::name(self.0)
     }
 
-    /// Borrow the canonical name as the shared string it is stored in.
+    /// Borrow the canonical name as a shared string.
     ///
-    /// This is the accessor the Arrow projection uses, because handing back
-    /// the stored `SmolStr` is what keeps a long name's heap allocation shared
-    /// with Arrow rather than copied.
-    pub const fn as_smol_str(&self) -> &SmolStr {
-        &self.0
+    /// The interner retains this value for the process lifetime. Arrow
+    /// projection can therefore clone a long name's shared allocation rather
+    /// than copy its bytes.
+    pub fn as_smol_str(&self) -> &SmolStr {
+        registry::smol_str(self.0)
     }
 
     /// Consume this zone and return the shared name.
     pub fn into_smol_str(self) -> SmolStr {
-        self.0
+        self.as_smol_str().clone()
     }
 
     /// Return whether this zone is UTC itself.
     pub fn is_utc(&self) -> bool {
-        self.0 == "UTC"
+        *self == Self::UTC
     }
 
     /// Return whether this is the explicit zone-free marker.
     pub fn is_naive(&self) -> bool {
-        self.0 == "NAIVE"
+        *self == Self::NAIVE
     }
 
     /// Return whether this build knows the rules for this zone.
@@ -256,7 +260,8 @@ impl Timezone {
     pub fn registered() -> impl ExactSizeIterator<Item = Self> {
         registry::ZONES
             .iter()
-            .map(|zone| Self(SmolStr::new(zone.name)))
+            .enumerate()
+            .map(|(index, _)| Self(registry::registered_handle(index)))
     }
 
     /// Return every alias and the canonical name it resolves to.
@@ -271,18 +276,12 @@ impl Timezone {
 
     /// Look this zone up in the registry.
     fn entry(&self) -> Option<&'static Zone> {
-        registry::zone(self.as_str())
+        registry::zone_for_handle(self.0)
     }
 
     /// Read a fixed offset out of the name, when the name is one.
     fn fixed_offset(&self) -> Option<i32> {
-        if self.is_naive() {
-            return None;
-        }
-        if self.is_utc() {
-            return Some(0);
-        }
-        parse_offset(self.as_str()).ok().flatten()
+        registry::fixed_offset(self.0)
     }
 
     /// Return the saving in force at an instant, in seconds.
@@ -326,13 +325,6 @@ fn parse_error(position: usize, reason: &'static str) -> Error {
         position,
         reason: SmolStr::new_static(reason),
     }
-}
-
-/// Format a fixed offset as the canonical `+HH:MM`.
-fn format_offset(seconds: i32) -> String {
-    let sign = if seconds < 0 { '-' } else { '+' };
-    let total = seconds.abs();
-    format!("{sign}{:02}:{:02}", total / 3_600, (total % 3_600) / 60)
 }
 
 /// Read a fixed-offset spelling, returning `None` when it is not one.
@@ -510,54 +502,46 @@ impl FromStr for Timezone {
             return Self::from_offset(offset);
         }
 
-        // A registered name wins, and keeps the caller's allocation when it is
-        // already spelled canonically.
-        if let Some(zone) = registry::zone(value) {
-            return Ok(Self(if zone.name == value {
-                SmolStr::new(value)
-            } else {
-                SmolStr::new(zone.name)
-            }));
+        // A registered name wins without consulting the dynamic interner.
+        if let Some(handle) = registry::registered(value) {
+            return Ok(Self(handle));
         }
         if let Some(canonical) = registry::alias(value) {
-            return Ok(Self(SmolStr::new(canonical)));
+            return Ok(Self(registry::intern(canonical)?));
         }
-        if let Some(zone) = registry::zone_ignoring_case(value) {
-            return Ok(Self(SmolStr::new(zone.name)));
+        if let Some(handle) = registry::registered_ignoring_case(value) {
+            return Ok(Self(handle));
         }
 
         // An unregistered name is kept as written: this build has no rules for
         // it, but a schema that names it must still round-trip unchanged.
-        Ok(Self(SmolStr::new(value)))
+        Ok(Self(registry::intern(value)?))
     }
 }
 
 impl Timezone {
-    /// Build a zone from a name that is already canonical, without copying.
+    /// Build a zone from a shared name.
     ///
-    /// This is the Arrow import path: the `SmolStr` arrives sharing Arrow's
-    /// own allocation, and canonicalizing a name that is already registered
-    /// would throw that sharing away. A name needing canonicalization still
-    /// takes the slow path.
+    /// This is the Arrow import path. Interning canonicalizes it through the
+    /// same path as every other spelling; the process registry then owns the
+    /// one retained copy.
     ///
     /// # Errors
     ///
     /// Returns an error for an empty name or one holding a control character.
     pub fn from_smol_str(value: SmolStr) -> Result<Self> {
-        if registry::zone(value.as_str()).is_some() {
-            return Ok(Self(value));
-        }
         Self::from_str(value.as_str())
     }
 }
 
-impl PartialEq for Timezone {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
+impl fmt::Debug for Timezone {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("Timezone")
+            .field(&self.as_str())
+            .finish()
     }
 }
-
-impl Eq for Timezone {}
 
 impl PartialOrd for Timezone {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -568,12 +552,6 @@ impl PartialOrd for Timezone {
 impl Ord for Timezone {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_str().cmp(other.as_str())
-    }
-}
-
-impl Hash for Timezone {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state);
     }
 }
 

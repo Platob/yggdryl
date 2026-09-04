@@ -207,8 +207,8 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::UTC).unwrap(),
         ),
         (
-            DataType::Timestamp(TimeUnit::Second, Some(paris.clone())),
-            Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris.clone()).unwrap(),
+            DataType::Timestamp(TimeUnit::Second, Some(paris)),
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris).unwrap(),
         ),
         (
             DataType::duration64(TimeUnit::Second).unwrap(),

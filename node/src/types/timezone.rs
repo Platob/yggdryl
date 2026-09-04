@@ -19,7 +19,7 @@ pub(crate) type TimezoneInput<'a> = Either<ClassInstance<'a, JsTimezone>, String
 /// Read a core zone out of anything JavaScript uses to name one.
 pub(crate) fn timezone_from_input(value: TimezoneInput<'_>) -> Result<Timezone> {
     match value {
-        Either::A(value) => Ok(value.inner.clone()),
+        Either::A(value) => Ok(value.inner),
         Either::B(value) => Timezone::from_str(&value).map_err(napi_error),
     }
 }
@@ -41,7 +41,7 @@ pub struct JsTimezone {
 
 impl Clone for JsTimezone {
     fn clone(&self) -> Self {
-        Self::from_core(self.inner.clone())
+        Self::from_core(self.inner)
     }
 }
 
@@ -164,7 +164,6 @@ impl JsTimezone {
     #[napi]
     pub fn into_local(&self, epoch: f64) -> Result<i64> {
         self.inner
-            .clone()
             .into_local(exact_i64(epoch, "epoch")?)
             .map_err(napi_error)
     }
@@ -173,7 +172,6 @@ impl JsTimezone {
     #[napi]
     pub fn into_utc(&self, local: f64) -> Result<i64> {
         self.inner
-            .clone()
             .into_utc(exact_i64(local, "local")?)
             .map_err(napi_error)
     }

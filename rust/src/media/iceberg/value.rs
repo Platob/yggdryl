@@ -171,7 +171,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()
         }
         (DataType::Timestamp(unit, Some(zone)), OfficialPrimitiveLiteral::Long(value)) => {
-            Scalar::datetime64(*value, *unit, zone.clone()).ok()
+            Scalar::datetime64(*value, *unit, *zone).ok()
         }
         (DataType::Timestamp(unit, None), OfficialPrimitiveLiteral::Long(value)) => {
             Scalar::datetime64(*value, *unit, crate::Timezone::NAIVE).ok()

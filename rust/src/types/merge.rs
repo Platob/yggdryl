@@ -685,7 +685,7 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
             // column loses the offset, which is not a merge but a cast.
             let zone = match (left, right) {
                 (DataType::Timestamp(_, Some(zone)), _)
-                | (_, DataType::Timestamp(_, Some(zone))) => Some(zone.clone()),
+                | (_, DataType::Timestamp(_, Some(zone))) => Some(*zone),
                 _ => None,
             };
             DataType::Timestamp(unit, zone)

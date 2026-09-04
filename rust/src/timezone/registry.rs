@@ -12,6 +12,55 @@
 //! and reports its offset as unknown. Refusing to answer is recoverable; a
 //! plausible wrong answer is not.
 
+use std::collections::HashMap;
+use std::num::NonZeroU32;
+use std::sync::{OnceLock, RwLock};
+
+use smol_str::SmolStr;
+
+use crate::{Error, Result};
+
+const NAIVE_ID: u32 = 1;
+const UTC_ID: u32 = 2;
+const FIXED_BASE: u32 = 3;
+const MIN_OFFSET_MINUTES: i32 = -(24 * 60 - 1);
+const MAX_OFFSET_MINUTES: i32 = 24 * 60 - 1;
+const FIXED_COUNT: u32 = (MAX_OFFSET_MINUTES - MIN_OFFSET_MINUTES + 1) as u32;
+const FIXED_COUNT_USIZE: usize = FIXED_COUNT as usize;
+const REGISTERED_BASE: u32 = FIXED_BASE + FIXED_COUNT;
+
+const fn fixed_name_bytes() -> [[u8; 6]; FIXED_COUNT_USIZE] {
+    let mut names = [[0; 6]; FIXED_COUNT_USIZE];
+    let mut index = 0;
+    while index < FIXED_COUNT_USIZE {
+        let minutes = MIN_OFFSET_MINUTES + index as i32;
+        let sign = if minutes < 0 { b'-' } else { b'+' };
+        let absolute = minutes.abs();
+        let hours = absolute / 60;
+        let minute = absolute % 60;
+        names[index] = [
+            sign,
+            b'0' + (hours / 10) as u8,
+            b'0' + (hours % 10) as u8,
+            b':',
+            b'0' + (minute / 10) as u8,
+            b'0' + (minute % 10) as u8,
+        ];
+        index += 1;
+    }
+    names
+}
+
+const fn nonzero(value: u32) -> NonZeroU32 {
+    match NonZeroU32::new(value) {
+        Some(value) => value,
+        None => panic!("a time-zone handle must be nonzero"),
+    }
+}
+
+pub(super) const NAIVE_HANDLE: NonZeroU32 = nonzero(NAIVE_ID);
+pub(super) const UTC_HANDLE: NonZeroU32 = nonzero(UTC_ID);
+
 /// Which clock a transition time is measured against.
 ///
 /// The three bases are not interchangeable, and picking the wrong one moves a
@@ -339,12 +388,194 @@ pub(super) static ALIASES: &[(&str, &str)] = &[
     ("Zulu", "UTC"),
 ];
 
+static NAIVE_NAME: SmolStr = SmolStr::new_inline("NAIVE");
+static UTC_NAME: SmolStr = SmolStr::new_inline("UTC");
+static FIXED_NAME_BYTES: [[u8; 6]; FIXED_COUNT_USIZE] = fixed_name_bytes();
+static FIXED_NAMES: [OnceLock<SmolStr>; FIXED_COUNT_USIZE] =
+    [const { OnceLock::new() }; FIXED_COUNT_USIZE];
+static REGISTERED_NAMES: OnceLock<Box<[OnceLock<SmolStr>]>> = OnceLock::new();
+static INTERNED_NAMES: OnceLock<RwLock<InternedNames>> = OnceLock::new();
+
+#[derive(Default)]
+struct InternedNames {
+    by_name: HashMap<&'static str, NonZeroU32>,
+    names: Vec<&'static SmolStr>,
+}
+
+fn dynamic_base() -> u32 {
+    REGISTERED_BASE
+        + u32::try_from(ZONES.len()).expect("the built-in time-zone table fits in a u32")
+}
+
+fn registered_names() -> &'static [OnceLock<SmolStr>] {
+    REGISTERED_NAMES.get_or_init(|| {
+        (0..ZONES.len())
+            .map(|_| OnceLock::new())
+            .collect::<Box<[_]>>()
+    })
+}
+
+fn interner() -> &'static RwLock<InternedNames> {
+    INTERNED_NAMES.get_or_init(|| RwLock::new(InternedNames::default()))
+}
+
+fn capacity_error() -> Error {
+    Error::Parse {
+        target: "timezone",
+        position: 0,
+        reason: SmolStr::new_static("the process time-zone registry is full"),
+    }
+}
+
+fn zone_index(name: &str) -> Option<usize> {
+    ZONES.binary_search_by(|entry| entry.name.cmp(name)).ok()
+}
+
+pub(super) fn registered_handle(index: usize) -> NonZeroU32 {
+    if ZONES[index].name == "UTC" {
+        return UTC_HANDLE;
+    }
+    let index = u32::try_from(index).expect("the built-in time-zone table fits in a u32");
+    nonzero(REGISTERED_BASE + index)
+}
+
+pub(super) fn registered(name: &str) -> Option<NonZeroU32> {
+    zone_index(name).map(registered_handle)
+}
+
+pub(super) fn registered_ignoring_case(name: &str) -> Option<NonZeroU32> {
+    zone_index(name)
+        .or_else(|| {
+            ZONES
+                .iter()
+                .position(|entry| entry.name.eq_ignore_ascii_case(name))
+        })
+        .map(registered_handle)
+}
+
+pub(super) fn fixed_handle(seconds: i32) -> NonZeroU32 {
+    let minutes = seconds / 60;
+    debug_assert!((MIN_OFFSET_MINUTES..=MAX_OFFSET_MINUTES).contains(&minutes));
+    let index = u32::try_from(minutes - MIN_OFFSET_MINUTES)
+        .expect("a validated fixed offset has a non-negative index");
+    nonzero(FIXED_BASE + index)
+}
+
+pub(super) fn fixed_offset(handle: NonZeroU32) -> Option<i32> {
+    let value = handle.get();
+    if value == UTC_ID {
+        return Some(0);
+    }
+    if !(FIXED_BASE..REGISTERED_BASE).contains(&value) {
+        return None;
+    }
+    let index = i32::try_from(value - FIXED_BASE).expect("the fixed-offset range fits in i32");
+    Some((MIN_OFFSET_MINUTES + index) * 60)
+}
+
+fn fixed_str(handle: NonZeroU32) -> &'static str {
+    let index =
+        usize::try_from(handle.get() - FIXED_BASE).expect("the fixed-offset range fits in usize");
+    std::str::from_utf8(&FIXED_NAME_BYTES[index]).expect("the generated fixed-offset name is ASCII")
+}
+
+fn fixed_name(handle: NonZeroU32) -> &'static SmolStr {
+    let index =
+        usize::try_from(handle.get() - FIXED_BASE).expect("the fixed-offset range fits in usize");
+    FIXED_NAMES[index].get_or_init(|| SmolStr::new(fixed_str(handle)))
+}
+
+fn registered_name(index: usize) -> &'static SmolStr {
+    registered_names()[index].get_or_init(|| SmolStr::new_static(ZONES[index].name))
+}
+
+fn dynamic_name(handle: NonZeroU32) -> &'static SmolStr {
+    let index = usize::try_from(handle.get() - dynamic_base())
+        .expect("a dynamic time-zone handle index fits in usize");
+    let names = interner().read().unwrap_or_else(|error| error.into_inner());
+    names
+        .names
+        .get(index)
+        .copied()
+        .expect("time-zone handles are minted only after their names are retained")
+}
+
+pub(super) fn smol_str(handle: NonZeroU32) -> &'static SmolStr {
+    let value = handle.get();
+    match value {
+        NAIVE_ID => &NAIVE_NAME,
+        UTC_ID => &UTC_NAME,
+        value if (FIXED_BASE..REGISTERED_BASE).contains(&value) => fixed_name(handle),
+        value if value < dynamic_base() => {
+            let index = usize::try_from(value - REGISTERED_BASE)
+                .expect("a registered time-zone handle index fits in usize");
+            registered_name(index)
+        }
+        _ => dynamic_name(handle),
+    }
+}
+
+pub(super) fn name(handle: NonZeroU32) -> &'static str {
+    let value = handle.get();
+    match value {
+        NAIVE_ID => "NAIVE",
+        UTC_ID => "UTC",
+        value if (FIXED_BASE..REGISTERED_BASE).contains(&value) => fixed_str(handle),
+        value if value < dynamic_base() => {
+            let index = usize::try_from(value - REGISTERED_BASE)
+                .expect("a registered time-zone handle index fits in usize");
+            ZONES[index].name
+        }
+        _ => dynamic_name(handle).as_str(),
+    }
+}
+
+pub(super) fn intern(name: &str) -> Result<NonZeroU32> {
+    if let Some(handle) = registered(name) {
+        return Ok(handle);
+    }
+
+    {
+        let names = interner().read().unwrap_or_else(|error| error.into_inner());
+        if let Some(handle) = names.by_name.get(name) {
+            return Ok(*handle);
+        }
+    }
+
+    let mut names = interner()
+        .write()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(handle) = names.by_name.get(name) {
+        return Ok(*handle);
+    }
+
+    let index = u32::try_from(names.names.len()).map_err(|_| capacity_error())?;
+    let value = dynamic_base()
+        .checked_add(index)
+        .ok_or_else(capacity_error)?;
+    let handle = NonZeroU32::new(value).ok_or_else(capacity_error)?;
+    let stored: &'static SmolStr = Box::leak(Box::new(SmolStr::new(name)));
+    names.by_name.insert(stored.as_str(), handle);
+    names.names.push(stored);
+    Ok(handle)
+}
+
+pub(super) fn zone_for_handle(handle: NonZeroU32) -> Option<&'static Zone> {
+    let value = handle.get();
+    if value == UTC_ID {
+        return zone("UTC");
+    }
+    if !(REGISTERED_BASE..dynamic_base()).contains(&value) {
+        return None;
+    }
+    let index = usize::try_from(value - REGISTERED_BASE)
+        .expect("a registered time-zone handle index fits in usize");
+    Some(&ZONES[index])
+}
+
 /// Find a registered zone by its exact canonical name.
 pub(super) fn zone(name: &str) -> Option<&'static Zone> {
-    ZONES
-        .binary_search_by(|entry| entry.name.cmp(name))
-        .ok()
-        .map(|index| &ZONES[index])
+    zone_index(name).map(|index| &ZONES[index])
 }
 
 /// Resolve an alias to the canonical name it stands for.
@@ -364,13 +595,4 @@ pub(super) fn alias(name: &str) -> Option<&'static str> {
                 .find(|(from, _)| from.eq_ignore_ascii_case(name))
                 .map(|(_, to)| *to)
         })
-}
-
-/// Find a registered zone by name, ignoring ASCII case.
-pub(super) fn zone_ignoring_case(name: &str) -> Option<&'static Zone> {
-    zone(name).or_else(|| {
-        ZONES
-            .iter()
-            .find(|entry| entry.name.eq_ignore_ascii_case(name))
-    })
 }

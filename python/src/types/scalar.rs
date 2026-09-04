@@ -235,7 +235,7 @@ fn temporal_i32_pickle_state(
     tag: &str,
     count: i32,
     unit: TimeUnit,
-    zone: &Timezone,
+    zone: Timezone,
 ) -> PyResult<Py<PyAny>> {
     let count = count.into_pyobject(py)?.clone().into_any().unbind();
     let unit = PyString::new(py, unit.as_str()).into_any().unbind();
@@ -248,7 +248,7 @@ fn temporal_i64_pickle_state(
     tag: &str,
     count: i64,
     unit: TimeUnit,
-    zone: &Timezone,
+    zone: Timezone,
 ) -> PyResult<Py<PyAny>> {
     let count = count.into_pyobject(py)?.clone().into_any().unbind();
     let unit = PyString::new(py, unit.as_str()).into_any().unbind();
@@ -315,25 +315,25 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             Some(PyBytes::new(py, value).into_any().unbind()),
         ),
         Scalar::Date32(count, unit, zone) => {
-            temporal_i32_pickle_state(py, "date32", *count, *unit, zone)
+            temporal_i32_pickle_state(py, "date32", *count, *unit, *zone)
         }
         Scalar::Date64(count, unit, zone) => {
-            temporal_i64_pickle_state(py, "date64", *count, *unit, zone)
+            temporal_i64_pickle_state(py, "date64", *count, *unit, *zone)
         }
         Scalar::Time32(count, unit, zone) => {
-            temporal_i32_pickle_state(py, "time32", *count, *unit, zone)
+            temporal_i32_pickle_state(py, "time32", *count, *unit, *zone)
         }
         Scalar::Time64(count, unit, zone) => {
-            temporal_i64_pickle_state(py, "time64", *count, *unit, zone)
+            temporal_i64_pickle_state(py, "time64", *count, *unit, *zone)
         }
         Scalar::DateTime64(count, unit, zone) => {
-            temporal_i64_pickle_state(py, "datetime64", *count, *unit, zone)
+            temporal_i64_pickle_state(py, "datetime64", *count, *unit, *zone)
         }
         Scalar::Duration32(count, unit, zone) => {
-            temporal_i32_pickle_state(py, "duration32", *count, *unit, zone)
+            temporal_i32_pickle_state(py, "duration32", *count, *unit, *zone)
         }
         Scalar::Duration64(count, unit, zone) => {
-            temporal_i64_pickle_state(py, "duration64", *count, *unit, zone)
+            temporal_i64_pickle_state(py, "duration64", *count, *unit, *zone)
         }
         Scalar::Sequence(values) => {
             let values = values
@@ -2142,7 +2142,7 @@ fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             .map(Bound::unbind);
     }
     let kwargs = PyDict::new(py);
-    kwargs.set_item("tzinfo", zone_to_tzinfo(py, zone, 0)?)?;
+    kwargs.set_item("tzinfo", zone_to_tzinfo(py, *zone, 0)?)?;
     datetime
         .getattr("time")?
         .call((hour, minute, second, microsecond), Some(&kwargs))
@@ -2238,18 +2238,18 @@ fn datetime_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let instant = datetime
         .getattr("datetime")?
         .call(arguments, Some(&kwargs))?;
-    let tzinfo = zone_to_tzinfo(py, zone, count.div_euclid(1_000_000))?;
+    let tzinfo = zone_to_tzinfo(py, *zone, count.div_euclid(1_000_000))?;
     instant
         .call_method1("astimezone", (tzinfo,))
         .map(Bound::unbind)
 }
 
 /// Return the Python `tzinfo` that answers for one core zone.
-fn zone_to_tzinfo<'py>(
-    py: Python<'py>,
-    zone: &Timezone,
+fn zone_to_tzinfo(
+    py: Python<'_>,
+    zone: Timezone,
     epoch_seconds: i64,
-) -> PyResult<Bound<'py, PyAny>> {
+) -> PyResult<Bound<'_, PyAny>> {
     let datetime = py.import("datetime")?;
     if zone.is_utc() {
         return datetime.getattr("timezone")?.getattr("utc");

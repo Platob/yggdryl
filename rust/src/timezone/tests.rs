@@ -12,6 +12,14 @@ fn zone(value: &str) -> Timezone {
 }
 
 #[test]
+fn a_timezone_is_one_copyable_four_byte_handle() {
+    fn assert_copy<T: Copy>() {}
+
+    assert_copy::<Timezone>();
+    assert_eq!(std::mem::size_of::<Timezone>(), 4);
+}
+
+#[test]
 fn naive_is_a_canonical_non_zoned_marker() {
     assert_eq!(zone("naive"), Timezone::NAIVE);
     assert!(Timezone::NAIVE.is_naive());
@@ -95,7 +103,15 @@ mod the_registry {
 }
 
 mod canonicalization {
-    use super::{Timezone, zone};
+    use std::hash::{DefaultHasher, Hash, Hasher};
+
+    use super::{Timezone, registry, zone};
+
+    fn hash(value: Timezone) -> u64 {
+        let mut state = DefaultHasher::new();
+        value.hash(&mut state);
+        state.finish()
+    }
 
     #[test]
     fn an_alias_resolves_to_what_it_stands_for() {
@@ -103,6 +119,18 @@ mod canonicalization {
         assert_eq!(zone("US/Eastern"), zone("America/New_York"));
         assert_eq!(zone("Europe/Kiev"), zone("Europe/Kyiv"));
         assert_eq!(zone("Japan").as_str(), "Asia/Tokyo");
+    }
+
+    #[test]
+    fn every_alias_interns_to_its_canonical_handle() {
+        for &(alias, canonical) in registry::ALIASES {
+            let alias = zone(alias);
+            let canonical = zone(canonical);
+
+            assert_eq!(alias, canonical);
+            assert_eq!(hash(alias), hash(canonical));
+            assert!(std::ptr::eq(alias.as_smol_str(), canonical.as_smol_str()));
+        }
     }
 
     #[test]
@@ -139,6 +167,16 @@ mod canonicalization {
     }
 
     #[test]
+    fn every_fixed_offset_round_trips_through_its_reserved_handle() {
+        for minutes in -(24 * 60 - 1)..=(24 * 60 - 1) {
+            let from_count = Timezone::from_offset(minutes * 60).unwrap();
+            let from_name = zone(from_count.as_str());
+
+            assert_eq!(from_count, from_name, "{minutes}");
+        }
+    }
+
+    #[test]
     fn an_unregistered_name_is_kept_exactly_as_written() {
         // A schema naming a zone this build has no rules for must still round
         // trip unchanged, or importing a foreign schema would corrupt it.
@@ -147,6 +185,15 @@ mod canonicalization {
         assert_eq!(custom.as_str(), "Custom/Accepted");
         assert!(!custom.is_known());
         assert_eq!(custom.offset_at(0), None);
+    }
+
+    #[test]
+    fn an_unregistered_name_is_retained_once_for_the_process() {
+        let first = zone("Custom/Interned");
+        let second = zone("Custom/Interned");
+
+        assert_eq!(first, second);
+        assert!(std::ptr::eq(first.as_smol_str(), second.as_smol_str()));
     }
 
     #[test]
@@ -334,7 +381,7 @@ mod conversions {
 
         // 16:00 UTC in July is 12:00 in New York, which is EDT.
         assert_eq!(
-            new_york.clone().into_local(instant).unwrap(),
+            new_york.into_local(instant).unwrap(),
             utc(2024, 7, 4, 12, 0)
         );
         // In January the same reading is one hour further back.
@@ -348,17 +395,11 @@ mod conversions {
         let local = utc(2024, 7, 4, 14, 0);
 
         // 14:00 in Paris in July is 12:00 UTC.
-        assert_eq!(
-            paris.clone().into_utc(local).unwrap(),
-            utc(2024, 7, 4, 12, 0)
-        );
+        assert_eq!(paris.into_utc(local).unwrap(), utc(2024, 7, 4, 12, 0));
         // A round trip through both directions is the identity.
         let instant = utc(2024, 7, 4, 12, 0);
         assert_eq!(
-            paris
-                .clone()
-                .into_utc(paris.into_local(instant).unwrap())
-                .unwrap(),
+            paris.into_utc(paris.into_local(instant).unwrap()).unwrap(),
             instant
         );
     }
@@ -367,7 +408,7 @@ mod conversions {
     fn a_conversion_refuses_a_zone_it_has_no_rules_for() {
         let unknown = zone("Custom/Unknown");
 
-        let message = unknown.clone().into_local(0).unwrap_err().to_string();
+        let message = unknown.into_local(0).unwrap_err().to_string();
         assert!(message.contains("Custom/Unknown"), "{message}");
         assert!(unknown.into_utc(0).is_err());
     }

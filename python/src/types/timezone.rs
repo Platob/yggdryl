@@ -21,7 +21,7 @@ use crate::value_error;
 /// `utcoffset(None)` is a fixed offset.
 pub(crate) fn core_timezone_from_value(value: &Bound<'_, PyAny>) -> PyResult<Timezone> {
     if let Ok(zone) = value.extract::<PyRef<'_, PyTimezone>>() {
-        return Ok(zone.inner.clone());
+        return Ok(zone.inner);
     }
     if let Ok(name) = value.extract::<String>() {
         return Timezone::from_str(&name).map_err(value_error);
@@ -165,13 +165,13 @@ impl PyTimezone {
     /// The local reading, in epoch seconds, of a UTC instant.
     #[allow(clippy::wrong_self_convention)]
     fn into_local(&self, epoch: i64) -> PyResult<i64> {
-        self.inner.clone().into_local(epoch).map_err(value_error)
+        self.inner.into_local(epoch).map_err(value_error)
     }
 
     /// The UTC instant a local reading names.
     #[allow(clippy::wrong_self_convention)]
     fn into_utc(&self, local: i64) -> PyResult<i64> {
-        self.inner.clone().into_utc(local).map_err(value_error)
+        self.inner.into_utc(local).map_err(value_error)
     }
 
     /// The offset as a `datetime.timedelta`, as `tzinfo.utcoffset` returns.

@@ -204,7 +204,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_utc",
-                DataType::Timestamp(TimeUnit::Microsecond, Some(utc.clone())),
+                DataType::Timestamp(TimeUnit::Microsecond, Some(utc)),
                 true,
             ),
             Scalar::from_sequence([
