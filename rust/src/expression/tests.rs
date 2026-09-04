@@ -189,6 +189,9 @@ fn rows_schema() -> Field {
                 DataType::from_fields([Field::new("leg", DataType::Utf8, true)]).unwrap(),
                 true,
             ),
+            // Temporal text, so a cast into and out of a temporal is one of
+            // the pairs the two tiers are compared on.
+            Field::new("clock", DataType::Utf8, true),
         ])
         .unwrap(),
         false,
@@ -210,6 +213,7 @@ fn rows() -> Vec<Scalar> {
             stamp(1_700_000_000_000_000),
             Scalar::I32(2024),
             nested(Some("EUR")),
+            Scalar::from("10:23:45"),
         ]),
         Scalar::from_sequence([
             Scalar::I64(-3),
@@ -220,6 +224,7 @@ fn rows() -> Vec<Scalar> {
             stamp(0),
             Scalar::I32(2024),
             nested(None),
+            Scalar::from("25:30:00"),
         ]),
         Scalar::from_sequence([
             Scalar::Null,
@@ -229,6 +234,7 @@ fn rows() -> Vec<Scalar> {
             Scalar::Null,
             Scalar::Null,
             Scalar::I32(2024),
+            Scalar::Null,
             Scalar::Null,
         ]),
         Scalar::from_sequence([
@@ -240,6 +246,7 @@ fn rows() -> Vec<Scalar> {
             stamp(-1_000_000),
             Scalar::I32(2023),
             nested(Some("USD")),
+            Scalar::from("99:59:59"),
         ]),
         Scalar::from_sequence([
             Scalar::I64(0),
@@ -250,12 +257,13 @@ fn rows() -> Vec<Scalar> {
             stamp(1_700_000_000_000_001),
             Scalar::I32(2025),
             nested(Some("eur")),
+            Scalar::from("00:00:00.500"),
         ]),
     ]
 }
 
 /// The expressions the two tiers are compared on, all evaluable per row.
-const AGREEMENT: [&str; 22] = [
+const AGREEMENT: [&str; 26] = [
     "i = 1",
     "i <> 1",
     "i < 0",
@@ -278,6 +286,13 @@ const AGREEMENT: [&str; 22] = [
     "i between 0 and 100",
     "i = 1 or s = 'beta'",
     "not (i = 1) and s is not null",
+    // Text entering a temporal and a temporal leaving as text: the vectorized
+    // tier reads and spells with the code the row tier reads and spells with,
+    // a zone name and an hour past the end of the day included.
+    "cast(clock as time64(microsecond))",
+    "cast(clock as duration64(millisecond))",
+    "cast(t as string)",
+    "try_cast(clock as time32(second))",
 ];
 
 #[test]

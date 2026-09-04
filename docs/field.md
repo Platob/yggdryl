@@ -1269,6 +1269,17 @@ key type decide the physical array, so there is no single concrete type to name.
 a non-nullable field then replaces that null with its canonical default (`Field::default_value`);
 when it is false the failure is an error. A nullable field keeps the null either way.
 
+Text and temporals cross through this crate's own spellings rather than Arrow's, so a column and a
+row answer alike. Reading text into a `Date32`, `Date64`, `Time32`, `Time64`, `Timestamp`,
+`Duration32` or `Duration64` accepts everything [text](text.md#field-directed-parsing) accepts - a
+grouped fraction, an hour past the end of the day, a bracketed zone name, a duration in either
+spelling, which Arrow reads into no duration at all - and a reading this crate takes but the
+declared unit or width cannot hold exactly is null, never a rounded value. Arrow's kernel answers
+only the spellings this crate cannot read at all, such as a bare date entering a timestamp, a
+twelve-hour clock or a compact `YYYYMMDD`, so nothing that read before stops reading. The other
+direction spells the classic form back, a zoned instant included, which Arrow's own formatter
+refuses without its timezone database.
+
 The same trait reconciles a whole record batch to a struct root.
 
 === "Rust"

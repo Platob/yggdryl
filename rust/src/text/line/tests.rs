@@ -150,6 +150,33 @@ fn autotype_can_be_disabled_and_is_fixed_after_the_first_batch() {
 }
 
 #[test]
+fn autotyping_reads_a_session_clock_past_the_end_of_its_day() {
+    // Extended session hours spell the small hours as 24 and up; the capture
+    // is a time of day, so each reading folds into its day.
+    let batch = named("session.log", b"08:00:00\n25:30:00\n")
+        .read_arrow_reader(&options(r"(?<clock>\S+)").into())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        batch.schema().field(3).data_type(),
+        &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
+    );
+    assert_eq!(
+        batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<arrow_array::Time32SecondArray>()
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        [Some(28_800), Some(5_400)]
+    );
+}
+
+#[test]
 fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     let source = named(
         "execution.log",
