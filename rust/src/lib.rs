@@ -24,6 +24,7 @@ mod datatype;
 mod error;
 pub mod expression;
 pub mod field;
+pub mod fix;
 pub mod generic;
 pub mod gzip;
 #[cfg(feature = "iceberg")]
@@ -75,6 +76,7 @@ pub use field::{
     AnyType, Differences, Field, FieldRef, FieldType, OwnedDifferences, PartitionFieldNames,
     PartitionFields, Pretty, TypedField, TypedFieldRef,
 };
+pub use fix::{FixAliases, FixFieldIter, FixKey, FixMsg, FixRegistry};
 pub use generic::{
     Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Encoder, EnumScalar, Float, IOKind, IOMode,
     Integer, Level, MediaType, MimeType, Scheme, TemporalFamily, TemporalRef, TimeUnit, Timezone,

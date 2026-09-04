@@ -130,6 +130,7 @@ nav:
   - Schema:
       - datatype: datatype.md
       - field: field.md
+      - fix: fix.md
       - arrow: arrow.md
       - playground: playground.md
   - Generic:

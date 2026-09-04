@@ -29,6 +29,7 @@ they measure:
     ```console
     cargo bench --bench datatype
     cargo bench --bench field
+    cargo bench --bench fix
     cargo bench --bench enums
     cargo bench --bench uri
     cargo bench --bench text

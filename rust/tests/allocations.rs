@@ -22,7 +22,9 @@ use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yggdryl::{DataType, Field, MediaType, MimeType};
+use std::sync::Arc;
+
+use yggdryl::{DataType, Field, FixMsg, FixRegistry, MediaType, MimeType, Scalar};
 
 /// A pass-through allocator that counts allocations while armed.
 struct Counting;
@@ -162,6 +164,107 @@ fn iceberg_field(extra: usize) -> Field {
         .update_metadata((0..extra).map(|index| (format!("zz-key-{index:04}"), index.to_string())))
         .expect("the generated metadata keys are valid");
     field
+}
+
+/// A FIX registry of `extra` generated fields around one fully keyed field.
+///
+/// The generated fields are what a probe walks past in the maps; the keyed
+/// one is what every hit lands on.
+fn fix_registry(extra: usize) -> FixRegistry {
+    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    symbol.as_fix_mut().set_tag(55).expect("a static tag");
+    symbol
+        .as_fix_mut()
+        .set_tags(&[65])
+        .expect("a static alternate tag");
+    symbol
+        .as_fix_mut()
+        .set_aliases(["Ticker", "SecuritySymbolIdentifier"])
+        .expect("static aliases");
+    let generated = (0..extra).map(|index| {
+        let mut field = DataType::Int64.nullable_field(format!("Generated{index:04}"));
+        let tag = i32::try_from(1_000 + index).expect("a small tag");
+        field.as_fix_mut().set_tag(tag).expect("a generated tag");
+        field
+            .as_fix_mut()
+            .set_aliases([format!("GeneratedAlias{index:04}")])
+            .expect("a generated alias");
+        field
+    });
+    FixRegistry::from_fields(std::iter::once(symbol).chain(generated))
+        .expect("the generated dictionary has no conflict")
+}
+
+#[test]
+fn a_fix_registry_lookup_allocates_nothing() {
+    // A wide dictionary: a hit must cost the same however much it walks past.
+    let registry = fix_registry(512);
+
+    free("get_field_by_tag hit", || {
+        let _ = black_box(registry.get_field_by_tag(55));
+    });
+    free("get_field_by_tag alternate hit", || {
+        let _ = black_box(registry.get_field_by_tag(65));
+    });
+    free("get_field_by_tag miss", || {
+        let _ = black_box(registry.get_field_by_tag(7));
+    });
+    // The name index is probed with the caller's text folded as it is
+    // hashed, so a differently cased query builds no folded copy.
+    free("get_field_by_name differently cased hit", || {
+        let _ = black_box(registry.get_field_by_name("sYmBoL"));
+    });
+    free("get_field_by_name alias hit", || {
+        let _ = black_box(registry.get_field_by_name("TICKER"));
+    });
+    free("get_field_by_name long alias hit", || {
+        let _ = black_box(registry.get_field_by_name("securitysymbolidentifier"));
+    });
+    free("get_field_by_name miss", || {
+        let _ = black_box(registry.get_field_by_name("absent"));
+    });
+    free("get_field generic", || {
+        let _ = black_box(registry.get_field("ticker"));
+        let _ = black_box(registry.get_field(65));
+    });
+    free("get_field_by_path member", || {
+        let _ = black_box(registry.get_field_by_path("Symbol.absent"));
+    });
+    free("contains", || {
+        let _ = black_box(registry.contains("Symbol"));
+    });
+    free("iter", || {
+        let _ = black_box(registry.iter().count());
+    });
+}
+
+#[test]
+fn a_fix_message_tag_lookup_allocates_nothing() {
+    let registry = Arc::new(fix_registry(64));
+    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    symbol.as_fix_mut().set_tag(55).expect("a static tag");
+    let root = DataType::from_fields([symbol, DataType::Utf8.nullable_field("9999")])
+        .expect("two children")
+        .required_field("row");
+    let value = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("custom")]);
+    let msg = FixMsg::with_registry(registry, root, value).expect("a valid message");
+
+    free("get_by_tag known", || {
+        let _ = black_box(msg.get_by_tag(55));
+    });
+    // An unknown tag is rendered on the stack and looked up by that name.
+    free("get_by_tag unknown retained", || {
+        let _ = black_box(msg.get_by_tag(9999));
+    });
+    free("get_by_tag unknown absent", || {
+        let _ = black_box(msg.get_by_tag(1234));
+    });
+    free("get_by_name", || {
+        let _ = black_box(msg.get_by_name("ticker"));
+    });
+    free("get_by_path", || {
+        let _ = black_box(msg.get_by_path("Symbol.absent"));
+    });
 }
 
 #[test]

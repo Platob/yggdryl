@@ -1,0 +1,96 @@
+[
+  {
+    "name": "PartyIDSource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party ID source",
+      "fix:description": "Identifies the class or source of the PartyID value.",
+      "fix:tag": "447"
+    }
+  },
+  {
+    "name": "PartyID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party ID",
+      "fix:description": "Party identifier or identity value, as specified by PartyIDSource.",
+      "fix:tag": "448"
+    }
+  },
+  {
+    "name": "PartyRole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party role",
+      "fix:description": "Identifies the type or role of the PartyID specified.",
+      "fix:tag": "452"
+    }
+  },
+  {
+    "name": "NoPartyIDs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "PartyID",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "display": "Party ID",
+                "fix:description": "Party identifier or identity value, as specified by PartyIDSource.",
+                "fix:tag": "448"
+              }
+            },
+            {
+              "name": "PartyIDSource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "display": "Party ID source",
+                "fix:description": "Identifies the class or source of the PartyID value.",
+                "fix:tag": "447"
+              }
+            },
+            {
+              "name": "PartyRole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "display": "Party role",
+                "fix:description": "Identifies the type or role of the PartyID specified.",
+                "fix:tag": "452"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Parties",
+      "fix:description": "Number of party identifier entries in the repeating group; each entry carries PartyID, PartyIDSource and PartyRole under their own tags.",
+      "fix:tag": "453"
+    }
+  }
+]
