@@ -85,7 +85,8 @@ pub enum DataType {
     Floating(FloatingType),
     Decimal(DecimalType),
     Text(TextType),
-    Binary(BinaryType),
+    Ascii(AsciiType),
+    Bytes(BytesType),
     Temporal(TemporalType),
     Nested(NestedType),
     Geospatial(GeospatialType),
@@ -99,7 +100,7 @@ pub enum DataType {
 | `DecimalType` | 4 | `DecimalParams { precision: u8, scale: i8 }` |
 | `TextType` | 3 | `Utf8`, `LargeUtf8`, `Utf8View` |
 | `AsciiType` | 3 | `Ascii32`, `Ascii64`, `Ascii128` |
-| `BinaryType` | 4 | `FixedSizeBinary(i32)` carries its width |
+| `BytesType` | 4 | `FixedSizeBinary(i32)` carries its width; the family is `Bytes`, not `Binary`, because `Binary` is one of its own members |
 | `TemporalType` | 8 | `DateTime64 { unit, timezone }`, `Time32(TimeUnit)`, … carried inline |
 | `NestedType` | 11 | `List(Arc<Field>)`, `Struct(Fields)`, `Union(UnionFields, UnionMode)`, `Arc<DictionaryType>`, `Arc<MapType>`, `Arc<RunEndEncodedType>`, `Variant` |
 | `GeospatialType` | 2 | `Geometry(Arc<GeospatialParams>)`, `Geography(…)` |

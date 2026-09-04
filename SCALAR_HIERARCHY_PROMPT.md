@@ -19,7 +19,8 @@ already exists.
   `Temporal`, `Text`, `Ascii`, `Binary`, `Geospatial`, `Nested`. No `Scalar`
   suffix — see *Naming law*.
 - Every family owns a matching datatype enum, marker set, and value enum — see
-  *Symmetry law*. `Scalar::dtype()` becomes exact for every value.
+  *Symmetry law*. `Scalar::dtype()` becomes exact for every scalar value;
+  nested values keep a most-general answer that a `Field` narrows.
 - Each width is a concrete final struct: `Int32`, `Decimal128`, `DateTime64`,
   `Date32`. Small, `Copy` where the payload allows, `repr(transparent)` where
   it is one field.
@@ -216,8 +217,8 @@ eleven families:
 | `temporal/` | 8 | `TemporalType` | `Temporal` | `Temporal(Temporal)` |
 | `text/` | `Utf8`, `LargeUtf8`, `Utf8View` | `TextType` | `Text` | `Text(Text)` |
 | `ascii/` | `Ascii32`, `Ascii64`, `Ascii128` | `AsciiType` | `Ascii` | `Ascii(Ascii)` |
-| `binary/` | `Binary`, `FixedSizeBinary`, `LargeBinary`, `BinaryView` | `BinaryType` | `Binary` | `Binary(Binary)` |
-| `nested/` | 11 | `NestedType` | `Nested` | `Nested(Nested)` |
+| `bytes/` | `Binary`, `FixedSizeBinary`, `LargeBinary`, `BinaryView` | `BytesType` | `Bytes` | `Bytes(Bytes)` |
+| `nested/` | 11 | `NestedType` | `Nested` (3 shapes) | `Nested(Nested)` |
 | `geospatial/` | `Geometry`, `Geography` | `GeospatialType` | `Geospatial` | `Geospatial(Geospatial)` |
 
 Three exceptions, and only three. Each is stated in its module doc:
@@ -234,6 +235,17 @@ Three exceptions, and only three. Each is stated in its module doc:
   over an integer or dictionary column — like nullability, it rides on the
   datatype the column already has. It stays a tier-1 variant with no
   `<F>Type` counterpart.
+- **`nested/` cannot be symmetric, and must not be forced.** Eleven datatype
+  members sit over three value shapes — `Sequence`, `Mapping`, `Record` — and
+  no fourth shape exists to give the other eight. This is not an accident of
+  the current code: a sequence of two values is a `List` *or* a `Struct` *or* a
+  `FixedSizeList`, undecidably, which is why `generic/inference.rs` guesses
+  `DataType::list` and why its own comment notes that "a struct in this project
+  is described by a sequence". `AGENTS.md` also requires schema-free structured
+  text to return "only types proven by the document", and a JSON array proves a
+  sequence, never a struct. So `Nested` keeps three leaves, `dtype()` answers
+  the most general datatype for the shape, and a `Field` is what narrows it.
+  Eleven nested leaves would be false precision.
 
 ### This fixes a correctness bug
 
@@ -250,7 +262,12 @@ as `Binary`; and a geometry comes back as `Binary` under a comment claiming
 `DataType::Geometry` and `DataType::Geography` both exist.
 
 Once every member has its own leaf, `dtype()` reads the leaf and is exact for
-every value. Delete the three lossy arms; do not keep a fallback.
+every **scalar** value. Delete the three lossy arms; do not keep a fallback.
+
+Nested values are the stated exception and keep their most-general answer: a
+`Sequence` still infers `List`, because nothing in the value can distinguish a
+list from a struct. That answer is correct as a floor, and `Field` is what
+narrows it — it is not one of the three bugs.
 
 ### Symmetry is free
 
@@ -306,21 +323,22 @@ pub enum Scalar {
     Temporal(Temporal),
     Text(Text),
     Ascii(Ascii),
-    Binary(Binary),
+    Bytes(Bytes),
     Geospatial(Geospatial),
     Nested(Nested),
     Enum(Enum),
 }
 ```
 
-A family with exactly one representation carries the concrete struct directly
-and has no tier-2 enum — `Binary` and `Boolean` are the two.
+`Null` and `Boolean` have no tier-2 enum: one member each, so the leaf sits at
+tier 1 directly. Every other family has one, per the *Symmetry law*.
 
-Datatype families and value families are **not** 1:1, and the code says so
-once: `Utf8`, `LargeUtf8`, `Utf8View`, and `Ascii32/64/128` are seven datatypes
-over one `Utf8` value; `Dictionary` and `RunEndEncoded` are encodings of their
-value type and have no value family at all. `types/<family>/scalars.rs` is
-where a datatype family contributes its arms, which is why the two lists differ.
+`Bytes` is the one family whose name differs from a member's. `DataType::Binary`
+is itself a member, so the family cannot also be `Binary` without colliding with
+its own leaf; the folder, the datatype enum, and the value enum are therefore
+`bytes/`, `BytesType`, and `Bytes`, and the four leaves keep the datatype names
+`Binary`, `FixedSizeBinary`, `LargeBinary`, `BinaryView`. This is also what the
+variant is called today.
 
 ### Tier 2 — family enums
 
@@ -336,9 +354,9 @@ One variant per member of the datatype family, per the *Symmetry law*.
 | `Temporal` | 8 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` `Interval` |
 | `Text` | 3 | `Utf8` `LargeUtf8` `Utf8View` |
 | `Ascii` | 3 | `Ascii32` `Ascii64` `Ascii128` |
-| `Binary` | 4 | `Binary` `FixedSizeBinary` `LargeBinary` `BinaryView` |
+| `Bytes` | 4 | `Binary` `FixedSizeBinary` `LargeBinary` `BinaryView` |
 | `Geospatial` | 2 | `Geometry` `Geography` |
-| `Nested` | 11 | `List` `ListView` `FixedSizeList` `LargeList` `LargeListView` `Struct` `Union` `Variant` `Dictionary` `Map` `RunEndEncoded` |
+| `Nested` | 3 | `Sequence` `Mapping` `Record` — see the nested exception |
 
 Two family names already exist in the tree and are absorbed rather than
 duplicated. `Float { F16, F32, F64 }` is today's copyable width view and is
@@ -349,10 +367,8 @@ the variant, so cross-width comparison keeps its normalized key and one public
 type disappears.
 
 `Decimal32` and `Decimal64` values are `i32` and `i64` coefficients, not
-narrowed `i128`. `Nested`'s eleven leaves share three storage shapes —
-`Sequence`, `Mapping`, `Record` — so its leaves are newtypes over those three,
-each naming its own datatype. That is what makes `Scalar::dtype()` exact for a
-`ListView` or a `Map` instead of collapsing both to a sequence.
+narrowed `i128`. `Nested` is the one family that stays at three leaves, for the
+reason the *Symmetry law* records.
 
 ### Tier 3 — concrete final structs
 
@@ -366,7 +382,7 @@ pub struct Decimal128 { coefficient: i128, scale: i8 }
 pub struct DateTime64 { count: i64, unit: TimeUnit, timezone: Timezone }
 pub struct Date32     { count: i32, unit: TimeUnit, timezone: Timezone }
 #[repr(transparent)] pub struct Utf8(SmolStr);
-#[repr(transparent)] pub struct Binary(Arc<[u8]>);
+#[repr(transparent)] pub struct Binary(Arc<[u8]>);   // a Bytes leaf, not the family
 #[repr(transparent)] pub struct Sequence(Arc<[Scalar]>);
 ```
 
@@ -466,7 +482,7 @@ half of `TemporalValue` directly. `Scalar::as_temporal` returns
 | `Integer` (sign/magnitude struct) | `Integer` (family enum) | the enum takes the name and the methods; the struct is deleted |
 | `Float` (width view) | `Floating` (family enum) | already the right shape; rename to the folder and reuse |
 | `Scalar::String(SmolStr)` | `Scalar::Text(Text)` / `Scalar::Ascii(Ascii)` | the width class stops being lost |
-| `Scalar::Bytes(Arc<[u8]>)` | `Scalar::Binary(Binary)` | four members, exact `dtype()` |
+| `Scalar::Bytes(Arc<[u8]>)` | `Scalar::Bytes(Bytes)` | same variant name, four members, exact `dtype()` |
 | `DataTypeKind::String` | `DataTypeKind::Text` | the kind list becomes the family list |
 | `DataTypeKind::{List, Struct, Union, Map, Dictionary, RunEndEncoded, Variant}` | `DataTypeKind::Nested` | `NestedType` answers the shape; `is_wrapper` moves onto it |
 
@@ -554,7 +570,7 @@ const _: () = assert!(size_of::<Timezone>() == 4);
 const _: () = assert!(size_of::<Scalar>() == 48);
 const _: () = assert!(size_of::<DateTime64>() == 16);
 const _: () = assert!(size_of::<Temporal>() == 24);
-const _: () = assert!(size_of::<Binary>() == 24);
+const _: () = assert!(size_of::<Bytes>() == 24);
 const _: () = assert!(size_of::<Floating>() == 16);
 const _: () = assert!(size_of::<Int32>() == 4);
 ```
@@ -585,7 +601,8 @@ Behavioral invariants, each with a test:
   `casts.rs`, and the three names agree: `<F>Type`, `<F>`, `<Member>Type`.
 - `Scalar::dtype()` is exact for every value: the three lossy arms in
   `generic/inference.rs` are gone with no fallback, and a round trip through
-  `Scalar` preserves `LargeUtf8`, `BinaryView`, `Geometry`, and `Map`.
+  `Scalar` preserves `LargeUtf8`, `BinaryView`, and `Geometry`. Nested values
+  keep their documented most-general answer.
 - `DataTypeKind::ALL` is the family list and nothing else.
 - No type, trait, class, or enum variant name in the workspace contains an
   underscore: `rg -n "(struct|enum|trait|class) [A-Z][A-Za-z0-9]*_" rust python node`
