@@ -104,18 +104,18 @@ impl DigestAlgorithm {
         self.width() as u32 * 8
     }
 
+    /// Return whether this algorithm accepts a custom secret.
+    ///
+    /// Only the XXH3 pair does. XXH32 and XXH64 take a seed and nothing else.
+    pub const fn is_secretable(self) -> bool {
+        matches!(self, Self::Xxh3_64 | Self::Xxh3_128)
+    }
+
     /// Return whether this algorithm accepts a seed.
     ///
     /// Every xxHash algorithm does. The question exists beside
     /// [`Self::is_secretable`] so a caller asks both the same way rather than
     /// remembering which of the two is the narrow one.
-    pub const fn is_secretable(self) -> bool {
-        matches!(self, Self::Xxh3_64 | Self::Xxh3_128)
-    }
-
-    /// Return whether this algorithm accepts a custom secret.
-    ///
-    /// Only the XXH3 pair does. XXH32 and XXH64 take a seed and nothing else.
     pub const fn is_seedable(self) -> bool {
         true
     }

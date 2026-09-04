@@ -77,6 +77,18 @@ test('a custom secret changes the XXH3 pair and is validated by length', () => {
   assert.notEqual(xxhash.xxh3_64(PAYLOAD, { secret: custom }), xxhash.xxh3_64(PAYLOAD))
   assert.notEqual(xxhash.xxh3_128(PAYLOAD, { secret: custom }), xxhash.xxh3_128(PAYLOAD))
 
+  // XXH3's own rule for the seed-and-secret family: at or below 240 bytes the
+  // derived secret and the seed decide, which is what keeps the one-shot and
+  // the streaming state answering one value.
+  for (const length of [0, 1, 64, 240]) {
+    const short = corpus(length)
+    assert.equal(xxhash.xxh3_64(short, { secret: custom }), xxhash.xxh3_64(short))
+  }
+  for (const length of [241, 1024]) {
+    const long = corpus(length)
+    assert.notEqual(xxhash.xxh3_64(long, { secret: custom }), xxhash.xxh3_64(long))
+  }
+
   const short = secret(xxhash.SECRET_MINIMUM_LENGTH - 1)
   assert.throws(() => xxhash.xxh3_64(PAYLOAD, { secret: short }), /at least 136 bytes, got 135/)
   assert.throws(() => new xxhash.Xxh3_128(0n, short), /at least 136 bytes, got 135/)

@@ -145,6 +145,18 @@ class TestStates:
         assert int(state.as_digest()) == xxhash.xxh3_64(PAYLOAD, seed=5, secret=custom)
         assert int(state.as_digest()) != xxhash.xxh3_64(PAYLOAD, seed=5)
 
+    def test_a_secret_is_consulted_only_past_the_cutoff(self) -> None:
+        # XXH3's own rule for the seed-and-secret family: at or below 240 bytes
+        # the derived secret and the seed decide, which is what keeps the
+        # one-shot and the streaming state answering one value.
+        custom = secret(xxhash.SECRET_MINIMUM_LENGTH)
+        for length in (0, 1, 64, 240):
+            short = corpus(length)
+            assert xxhash.xxh3_64(short, secret=custom) == xxhash.xxh3_64(short)
+        for length in (241, 1024):
+            long = corpus(length)
+            assert xxhash.xxh3_64(long, secret=custom) != xxhash.xxh3_64(long)
+
     def test_a_short_secret_is_rejected_by_length(self) -> None:
         short = secret(xxhash.SECRET_MINIMUM_LENGTH - 1)
         with pytest.raises(ValueError, match="at least 136 bytes, got 135"):

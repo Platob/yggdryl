@@ -284,6 +284,37 @@
   pub fn writer_with_level<'target, W: Write + 'target>( self, target: W, level: Level, ) -> Encoder<'target>
   pub fn finish(self) -> Result<()>
 
+### yggdryl::generic::digest  [rust\src\generic\digest.rs]
+  pub enum DigestAlgorithm
+  pub const ALL: [Self; 4] = [Self::Xxh32, Self::Xxh64, Self::Xxh3_64, Self::Xxh3_128];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn width(self) -> usize
+  pub const fn bits(self) -> u32
+  pub const fn is_secretable(self) -> bool
+  pub const fn is_seedable(self) -> bool
+  pub fn digester(self) -> Digester
+  pub fn digester_with_seed(self, seed: u64) -> Digester
+  pub fn digest(self, input: &[u8]) -> Digest
+  pub struct Digest
+  pub const fn new(algorithm: DigestAlgorithm, payload: u128) -> Self
+  pub const fn algorithm(self) -> DigestAlgorithm
+  pub const fn as_u32(self) -> Option<u32>
+  pub const fn as_u64(self) -> Option<u64>
+  pub const fn as_u128(self) -> Option<u128>
+  pub const fn into_bytes(self) -> DigestBytes
+  pub fn from_bytes(algorithm: DigestAlgorithm, bytes: &[u8]) -> Result<Self>
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn stable_hash(&self) -> u64
+  pub struct DigestBytes
+  pub struct Digester(DigesterKind);
+  pub const fn algorithm(&self) -> DigestAlgorithm
+  pub fn write_bytes(&mut self, bytes: &[u8])
+  pub fn write_scalar(&mut self, value: &Scalar)
+  pub fn write_reader(&mut self, source: &mut impl Read) -> Result<u64>
+  pub fn as_digest(&self) -> Digest
+  pub fn clear(&mut self)
+
 ### yggdryl::generic::edge_algorithm  [rust\src\generic\edge_algorithm.rs]
   pub enum EdgeAlgorithm
   pub const ALL: [Self; 5] = [Self::Spherical, Self::Vincenty, Self::Thomas, Self::Andoyer, Self::Karney];
@@ -292,9 +323,10 @@
 
 ### yggdryl::generic::datatype_id  [rust\src\generic\datatype_id.rs]
   pub enum DataTypeId
-  pub const ALL: [Self; 48] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 50] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
+  pub const fn as_u8(self) -> u8
   pub const fn kind(self) -> DataTypeKind
   pub const fn is_parameterized(self) -> bool
   pub const fn is_integer(self) -> bool
@@ -1278,6 +1310,71 @@
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
+### yggdryl::xxhash  [rust\src\xxhash\mod.rs]
+  pub const SECRET_MINIMUM_LENGTH: usize = 136;
+  pub fn xxh32(input: &[u8]) -> u32
+  pub fn xxh32_with_seed(input: &[u8], seed: u32) -> u32
+  pub fn xxh64(input: &[u8]) -> u64
+  pub fn xxh64_with_seed(input: &[u8], seed: u64) -> u64
+  pub fn xxh3_64(input: &[u8]) -> u64
+  pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64
+  pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> Result<u64>
+  pub fn xxh3_64_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u64>
+  pub fn xxh3_128(input: &[u8]) -> u128
+  pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128
+  pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> Result<u128>
+  pub fn xxh3_128_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u128>
+  pub fn digest(input: &[u8], algorithm: DigestAlgorithm) -> Digest
+  pub fn reader<R: std::io::Read>(source: R, algorithm: DigestAlgorithm) -> DigestReader<R>
+  pub fn writer<W: std::io::Write>(target: W, algorithm: DigestAlgorithm) -> DigestWriter<W>
+
+### yggdryl::xxhash::state  [rust\src\xxhash\state.rs]
+  pub struct Xxh32
+  pub struct Xxh64
+  pub struct Xxh3_64
+  pub struct Xxh3_128
+  pub fn new() -> Self
+  pub fn with_seed(seed: u32) -> Self
+  pub fn from_secret(secret: &[u8]) -> Result<Self>
+  pub fn from_seed_and_secret(seed: u64, secret: &[u8]) -> Result<Self>
+  pub const fn seed(&self) -> u32
+  pub fn secret(&self) -> Option<&[u8]>
+  pub fn write_bytes(&mut self, bytes: &[u8])
+  pub fn write_scalar(&mut self, value: &crate::Scalar)
+  pub fn write_reader(&mut self, source: &mut impl Read) -> Result<u64>
+  pub fn as_u32(&self) -> u32
+  pub fn as_u64(&self) -> u64
+  pub fn as_u128(&self) -> u128
+  pub fn as_digest(&self) -> Digest
+  pub fn clear(&mut self)
+
+### yggdryl::xxhash::stream  [rust\src\xxhash\stream.rs]
+  pub struct DigestReader<R: Read>
+  pub struct DigestWriter<W: Write>
+  pub fn new(source: R, algorithm: DigestAlgorithm) -> Self
+  pub const fn algorithm(&self) -> DigestAlgorithm
+  pub fn as_digest(&self) -> Digest
+  pub fn into_inner(self) -> R
+
+### yggdryl::xxhash::handle  [rust\src\xxhash\handle.rs]
+  pub struct Hashed<H: IOBase>
+  pub fn new(handle: H, algorithm: DigestAlgorithm) -> Self
+  pub fn with_seed(mut self, seed: u64) -> Self
+  pub const fn algorithm(&self) -> DigestAlgorithm
+  pub const fn seed(&self) -> u64
+  pub const fn handle(&self) -> &H
+  pub fn into_handle(self) -> H
+
+### yggdryl::xxhash::scalar  [rust\src\xxhash\scalar.rs]
+  pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
+  pub fn write_bytes(&self, sink: &mut impl Hasher)
+  pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest
+  pub struct ValueBytes<'a>
+
+### yggdryl::xxhash::arrow  [rust\src\xxhash\arrow.rs]
+  pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn column_digests(array: &dyn Array, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+
 ### yggdryl::iceberg::manifest  [rust\src\iceberg\manifest.rs]
   pub enum ManifestContent
   pub const fn code(self) -> i32
@@ -1583,6 +1680,8 @@
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
   fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
+  fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
+  fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>

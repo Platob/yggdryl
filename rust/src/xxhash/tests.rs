@@ -128,7 +128,7 @@ fn every_size_branch_agrees_under_a_custom_secret() {
 }
 
 #[test]
-fn a_custom_secret_changes_the_answer() {
+fn a_custom_secret_changes_the_answer_past_the_cutoff() {
     let custom = secret(SECRET_MINIMUM_LENGTH);
     let payload = corpus(4096);
     assert_ne!(
@@ -139,6 +139,33 @@ fn a_custom_secret_changes_the_answer() {
         xxh3_128_with_secret(&payload, &custom).unwrap(),
         xxh3_128(&payload)
     );
+
+    // XXH3 consults a custom secret only past 240 bytes. Below that the
+    // algorithm uses its derived secret and the seed, which is the protocol's
+    // own rule for the seed-and-secret family and what keeps a one-shot and a
+    // streaming state answering one value for the same bytes. Pinned here so
+    // the boundary is a stated contract rather than a surprise.
+    for length in [0_usize, 1, 64, 240] {
+        let short = corpus(length);
+        assert_eq!(
+            xxh3_64_with_secret(&short, &custom).unwrap(),
+            xxh3_64(&short),
+            "length {length}"
+        );
+        assert_eq!(
+            xxh3_128_with_secret(&short, &custom).unwrap(),
+            xxh3_128(&short),
+            "length {length}"
+        );
+    }
+    for length in [241_usize, 1024] {
+        let long = corpus(length);
+        assert_ne!(
+            xxh3_64_with_secret(&long, &custom).unwrap(),
+            xxh3_64(&long),
+            "length {length}"
+        );
+    }
 }
 
 #[test]

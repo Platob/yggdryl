@@ -5,7 +5,7 @@
 //! rather than one materialized value per cell.
 //!
 //! The answer is defined by the value model, not by the layout: a row digest
-//! equals feeding that row's [`Scalar`] through
+//! equals feeding that row's [`Scalar`](crate::Scalar) through
 //! [`Scalar::write_bytes`](crate::Scalar::write_bytes), and a column digest
 //! equals feeding that cell's value. Where the layout allows it the bytes are
 //! read straight from the Arrow buffer into the same encoding; everything else

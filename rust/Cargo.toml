@@ -152,6 +152,16 @@ path = "benchmarks/io.rs"
 harness = false
 required-features = ["parquet"]
 
+# The digest surface: throughput per algorithm and size, this module's
+# overhead over the protocol crate it wraps, the constant-memory handle read,
+# the canonical value feed, and the Arrow row-digest column. The value codec
+# needs no Arrow, so the target compiles in a default build; the row-digest
+# group is compiled in only when that feature is.
+[[bench]]
+name = "xxhash"
+path = "benchmarks/xxhash.rs"
+harness = false
+
 # Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against
 # the handle each backend wraps, record round trips, and listing. The vtable
 # adds no dependency, so this target compiles in a default build; the Parquet

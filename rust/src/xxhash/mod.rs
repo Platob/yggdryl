@@ -49,6 +49,31 @@
 //! streaming feed to any value, and is what `stable_hash` and every row digest
 //! read.
 //!
+//! # Custom secrets past the 240-byte cutoff
+//!
+//! XXH3 consults a custom secret only for inputs longer than 240 bytes. At or
+//! below that length the algorithm uses its derived secret and the seed, which
+//! is what [`SECRET_MINIMUM_LENGTH`]'s own specification says of the
+//! seed-and-secret family and what keeps a one-shot and a streaming state
+//! answering one value for the same bytes. A short secret is still rejected by
+//! length whatever the payload, so a secret is never *silently* the wrong one -
+//! but a caller hashing short values with a secret is hashing them with the
+//! default secret, by the protocol's design.
+//!
+//! ```
+//! use yggdryl::xxhash::{self, SECRET_MINIMUM_LENGTH};
+//!
+//! # fn main() -> yggdryl::Result<()> {
+//! let secret = vec![0x5a_u8; SECRET_MINIMUM_LENGTH];
+//! let short = b"AAPL";
+//! let long = vec![0x11_u8; 241];
+//!
+//! assert_eq!(xxhash::xxh3_64_with_secret(short, &secret)?, xxhash::xxh3_64(short));
+//! assert_ne!(xxhash::xxh3_64_with_secret(&long, &secret)?, xxhash::xxh3_64(&long));
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # This is not a cryptographic hash
 //!
 //! xxHash is a fast non-cryptographic hash. A [`Digest`] detects accidental
@@ -132,9 +157,6 @@ pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> Result<u64> {
 /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
 /// [`SECRET_MINIMUM_LENGTH`].
 pub fn xxh3_64_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u64> {
-    // The dependency only consults the secret past its 240-byte cutoff, so a
-    // short secret would pass unnoticed on a short input. Validating here
-    // makes a secret either accepted or rejected, never conditionally used.
     secret::validate(DigestAlgorithm::Xxh3_64, secret)?;
     match twox_hash::xxhash3_64::Hasher::oneshot_with_seed_and_secret(seed, secret, input) {
         Ok(digest) => Ok(digest),
