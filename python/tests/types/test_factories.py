@@ -37,7 +37,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "float16": types.float16("value"),
         "float32": types.float32("value"),
         "float64": types.float64("value"),
-        "timestamp": types.timestamp("value", "us", "Europe/Paris"),
+        "datetime64": types.datetime64("value", "us", "Europe/Paris"),
         "date32": types.date32("value"),
         "date64": types.date64("value"),
         "time32": types.time32("value", "ms"),
@@ -151,14 +151,14 @@ def test_typed_factory_parameters_use_native_validation() -> None:
     )
     assert types.time("coarse", "ms").dtype == DataType("time32(ms)")
     assert types.time("precise", "us").dtype == DataType("time64(us)")
-    assert types.timestamp("event", "us", "Custom/Accepted").dtype.id == (
-        "timestamp"
+    assert types.datetime64("event", "us", "Custom/Accepted").dtype.id == (
+        "datetime64"
     )
 
     with pytest.raises(ValueError, match="temporal resolution"):
         types.time("clock", "day_time")
     with pytest.raises(ValueError, match="temporal resolution"):
-        types.timestamp("event", "year_month")
+        types.datetime64("event", "year_month")
     with pytest.raises(ValueError, match="interval layout"):
         types.interval("window", "us")
     with pytest.raises(ValueError, match="precision"):

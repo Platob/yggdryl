@@ -39,10 +39,10 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
     assert_eq!(Field::from_arrow_schema("row", &schema).unwrap(), row);
     assert_eq!(
         row.dtype().get_field_by_path("at").map(Field::dtype),
-        Some(&DataType::Timestamp(
-            TimeUnit::Nanosecond,
-            Some(Timezone::UTC)
-        ))
+        Some(&DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC
+        })
     );
     // A row declared in the resolved spellings is the same row.
     let resolved = Field::new(

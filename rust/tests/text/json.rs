@@ -51,7 +51,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Second,
+                    timezone: Timezone::UTC,
+                },
                 false,
             ),
             Field::new(
@@ -157,7 +160,10 @@ fn a_field_folds_an_out_of_day_clock_and_reads_an_elapsed_one() {
     // A datetime carries the hour into the next date instead of folding it.
     let at = Field::new(
         "at",
-        DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+        DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        },
         false,
     );
     assert_eq!(

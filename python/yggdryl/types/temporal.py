@@ -11,7 +11,7 @@ from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
-    TimestampField: TypeAlias = TypedField[Literal["timestamp"], datetime]
+    DateTime64Field: TypeAlias = TypedField[Literal["datetime64"], datetime]
     Date32Field: TypeAlias = TypedField[Literal["date32"], date]
     Date64Field: TypeAlias = TypedField[Literal["date64"], date]
     Time32Field: TypeAlias = TypedField[Literal["time32"], TimeValue]
@@ -21,23 +21,23 @@ if TYPE_CHECKING:
     Duration64Field: TypeAlias = TypedField[Literal["duration64"], timedelta]
     IntervalField: TypeAlias = TypedField[Literal["interval"], object]
 else:
-    TimestampField = Date32Field = Date64Field = Field
+    DateTime64Field = Date32Field = Date64Field = Field
     Time32Field = Time64Field = TimeField = Duration32Field = Duration64Field = IntervalField = Field
 
 _DATE32 = simple_dtype("date32")
 _DATE64 = simple_dtype("date64")
 
 
-def timestamp(
+def datetime64(
     name: str,
     unit: str = "microsecond",
-    timezone: str | None = None,
+    timezone: str = "NAIVE",
     *,
     nullable: bool = True,
     metadata: MetadataInput = None,
-) -> TimestampField:
-    value = DataType._temporal("timestamp", unit, timezone)
-    return new_field(TimestampField, name, value, nullable, metadata)
+) -> DateTime64Field:
+    value = DataType._temporal("datetime64", unit, timezone)
+    return new_field(DateTime64Field, name, value, nullable, metadata)
 
 
 def date32(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> Date32Field:
@@ -140,7 +140,7 @@ __all__ = [
     "Time32Field",
     "Time64Field",
     "TimeField",
-    "TimestampField",
+    "DateTime64Field",
     "date32",
     "date64",
     "duration32",
@@ -149,5 +149,5 @@ __all__ = [
     "time",
     "time32",
     "time64",
-    "timestamp",
+    "datetime64",
 ]

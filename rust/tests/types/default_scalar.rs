@@ -15,7 +15,10 @@ fn representative_types() -> Vec<DataType> {
         DataType::Int8,
         DataType::UInt64,
         DataType::Float16,
-        DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        },
         DataType::Date32,
         DataType::Date64,
         DataType::Time32(TimeUnit::Second),

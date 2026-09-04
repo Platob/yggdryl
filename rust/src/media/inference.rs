@@ -27,7 +27,10 @@
 //! assert_eq!(Scalar::d128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
 //!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.dtype()?,
-//!     DataType::Timestamp(TimeUnit::Microsecond, None),
+//!     DataType::DateTime64 {
+//!         unit: TimeUnit::Microsecond,
+//!         timezone: Timezone::NAIVE,
+//!     },
 //! );
 //! assert_eq!(
 //!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
@@ -192,10 +195,10 @@ impl Scalar {
             }
             Self::DateTime64(_, unit, zone) => {
                 resolution(*unit, "datetime64")?;
-                Ok(DataType::Timestamp(
-                    *unit,
-                    (!zone.is_naive()).then_some(*zone),
-                ))
+                Ok(DataType::DateTime64 {
+                    unit: *unit,
+                    timezone: *zone,
+                })
             }
             Self::Duration32(_, unit, zone) => {
                 require(

@@ -353,7 +353,7 @@ pub(super) fn write_temporal(
     let tag = match family {
         crate::TemporalFamily::Date => DataTypeId::Date64,
         crate::TemporalFamily::Time => DataTypeId::Time64,
-        crate::TemporalFamily::DateTime => DataTypeId::Timestamp,
+        crate::TemporalFamily::DateTime => DataTypeId::DateTime64,
         crate::TemporalFamily::Duration => DataTypeId::Duration64,
     };
     let (class, count) = temporal_key(count, unit);

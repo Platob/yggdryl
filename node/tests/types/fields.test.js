@@ -128,7 +128,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['float16', fields.float16('value')],
     ['float32', fields.float32('value')],
     ['float64', fields.float64('value')],
-    ['timestamp', fields.timestamp('value', 'us', 'Europe/Paris')],
+    ['datetime64', fields.datetime64('value', 'us', 'Europe/Paris')],
     ['date32', fields.date32('value')],
     ['date64', fields.date64('value')],
     ['time32', fields.time32('value', 'ms')],
@@ -316,11 +316,11 @@ test('typed factory parameters delegate native validation', () => {
   assert.equal(fields.time('coarse', 'ms').dtype.toString(), 'time32(ms)')
   assert.equal(fields.time('precise', 'ns').dtype.toString(), 'time64(ns)')
   assert.equal(
-    fields.timestamp('event', 'us', 'Custom/Accepted').dtype.toString(),
-    'timestamp(us,"Custom/Accepted")',
+    fields.datetime64('event', 'us', 'Custom/Accepted').dtype.toString(),
+    'datetime64(us,"Custom/Accepted")',
   )
 
-  assert.throws(() => fields.timestamp('event', 'year_month'))
+  assert.throws(() => fields.datetime64('event', 'year_month'))
   assert.throws(() => fields.interval('window', 'us'))
   assert.throws(() => fields.time('clock', 'day_time'))
   assert.throws(() => fields.time('clock'))

@@ -828,11 +828,17 @@ mod types {
     fn iceberg_temporal_types_are_microsecond_precision_unless_v3_says_otherwise() {
         assert_eq!(
             PrimitiveType::Timestamp.into_dtype().unwrap(),
-            DataType::Timestamp(TimeUnit::Microsecond, None)
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE
+            }
         );
         assert_eq!(
             PrimitiveType::TimestampNs.into_dtype().unwrap(),
-            DataType::Timestamp(TimeUnit::Nanosecond, None)
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: crate::Timezone::NAIVE
+            }
         );
         assert_eq!(
             PrimitiveType::Time.into_dtype().unwrap(),
@@ -1042,7 +1048,10 @@ mod partition_specs {
 
     #[test]
     fn transform_result_types_and_validation_are_owned_by_apache_iceberg() {
-        let timestamp = DataType::Timestamp(crate::TimeUnit::Microsecond, None);
+        let timestamp = DataType::DateTime64 {
+            unit: crate::TimeUnit::Microsecond,
+            timezone: crate::Timezone::NAIVE,
+        };
         assert_eq!(
             Transform::Day.result_type(&timestamp).unwrap(),
             DataType::Date32
@@ -1992,10 +2001,26 @@ mod tables {
         let mut schema = DataType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::Utf8.required_field("text"),
-            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_year"),
-            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_month"),
-            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_day"),
-            DataType::Timestamp(TimeUnit::Microsecond, None).required_field("ts_hour"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            }
+            .required_field("ts_year"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            }
+            .required_field("ts_month"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            }
+            .required_field("ts_day"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            }
+            .required_field("ts_hour"),
             DataType::Int64.required_field("retired"),
         ])
         .unwrap()
@@ -5026,7 +5051,11 @@ mod datatype_coverage {
             .nullable_field("price"),
             DataType::Date32.nullable_field("day"),
             DataType::Time64(TimeUnit::Microsecond).nullable_field("tod"),
-            DataType::Timestamp(TimeUnit::Microsecond, None).nullable_field("at"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            }
+            .nullable_field("at"),
             DataType::Utf8.nullable_field("name"),
             DataType::Binary.nullable_field("raw"),
             DataType::FixedSizeBinary(4).nullable_field("tag"),

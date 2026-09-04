@@ -1,9 +1,23 @@
 //! Temporal units and validated time-of-day construction.
 
 use crate::types::invalid;
-use crate::{DataType, Result, TimeUnit};
+use crate::{DataType, Result, TimeUnit, Timezone};
 
 impl DataType {
+    /// Creates a 64-bit datetime with an explicit timezone marker.
+    ///
+    /// Use [`Timezone::NAIVE`] for a wall-clock column without timezone
+    /// interpretation.
+    pub fn datetime64(unit: TimeUnit, timezone: Timezone) -> Result<Self> {
+        if !unit.is_arrow_time() {
+            return Err(invalid(
+                "DateTime64",
+                "unit must be second, millisecond, microsecond, or nanosecond",
+            ));
+        }
+        Ok(Self::DateTime64 { unit, timezone })
+    }
+
     /// Creates the Arrow time-of-day type selected by the requested unit.
     ///
     /// Seconds and milliseconds use [`Self::Time32`], while microseconds and

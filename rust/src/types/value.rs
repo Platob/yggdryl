@@ -324,8 +324,8 @@ fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
         {
             value.decimal_unscaled_at(*scale)
         }
-        D::Timestamp(unit, zone)
-            if temporal_matches(value, TemporalFamily::DateTime, zone.as_ref()) =>
+        D::DateTime64 { unit, timezone }
+            if temporal_matches(value, TemporalFamily::DateTime, Some(timezone)) =>
         {
             value.temporal_count_at(*unit).map(i128::from)
         }
@@ -428,9 +428,10 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
             return Ok((canonical.clone(), value != &canonical));
         }
-        D::Timestamp(unit, zone) => {
-            let count = temporal_or_integer(value, *unit, TemporalFamily::DateTime, zone.as_ref())?;
-            let canonical = Scalar::datetime64(count, *unit, (*zone).unwrap_or(Timezone::NAIVE))?;
+        D::DateTime64 { unit, timezone } => {
+            let count =
+                temporal_or_integer(value, *unit, TemporalFamily::DateTime, Some(timezone))?;
+            let canonical = Scalar::datetime64(count, *unit, *timezone)?;
             return Ok((canonical.clone(), value != &canonical));
         }
         D::Duration32(unit) => {
@@ -529,7 +530,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
         | D::Decimal256 { .. }
-        | D::Timestamp(..)
+        | D::DateTime64 { .. }
         | D::Date32
         | D::Date64
         | D::Time32(_)
@@ -879,7 +880,7 @@ fn validate_dtype_value(
         D::Float16 | D::Float32 | D::Float64 => {
             require(value.as_f64().is_some(), dtype.name(), value)
         }
-        D::Timestamp(..) | D::Duration64(_) => validate_signed(
+        D::DateTime64 { .. } | D::Duration64(_) => validate_signed(
             value,
             i128::from(i64::MIN),
             i128::from(i64::MAX),

@@ -292,7 +292,7 @@ impl MaterializationBudget {
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
-            | DataType::Timestamp(..)
+            | DataType::DateTime64 { .. }
             | DataType::Date64
             | DataType::Time64(_)
             | DataType::Duration32(_)
@@ -398,7 +398,7 @@ impl MaterializationBudget {
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
-            | DataType::Timestamp(..)
+            | DataType::DateTime64 { .. }
             | DataType::Date64
             | DataType::Time64(_)
             | DataType::Duration32(_)

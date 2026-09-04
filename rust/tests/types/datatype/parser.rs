@@ -101,16 +101,25 @@ fn variant_parser_enforces_member_and_nesting_limits() {
 fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
     for (source, expected) in [
         (
-            "timestamp(Second)",
-            DataType::Timestamp(TimeUnit::Second, None),
+            "datetime64(Second)",
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::NAIVE,
+            },
         ),
         (
-            "timestamp(Nanoseconds,UTC)",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            "datetime64(Nanoseconds,UTC)",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         (
             "timestamp(nano seconds,UTC)",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         ("time32(seconds)", DataType::Time32(TimeUnit::Second)),
         (
@@ -151,12 +160,17 @@ fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
     ] {
         assert_eq!(DataType::from_str(source).unwrap(), expected, "{source:?}");
     }
+
+    assert_eq!(
+        DataType::from_str("timestamp(us,UTC)").unwrap().to_string(),
+        "datetime64(us,\"UTC\")"
+    );
 }
 
 #[test]
 fn datatype_parser_rejects_time_unit_category_mismatches() {
     for source in [
-        "timestamp(year_month)",
+        "datetime64(year_month)",
         "time32(day_time)",
         "time64(month_day_nano)",
         "duration32(year_month)",
@@ -173,7 +187,7 @@ fn datatype_parser_rejects_time_unit_category_mismatches() {
 #[test]
 fn datatype_unit_errors_point_at_the_original_unit_token() {
     for (source, expected_position) in [
-        ("timestamp(fortnight)", 10),
+        ("datetime64(fortnight)", 11),
         ("interval(fortnight)", 9),
         ("time(day_time)", 5),
     ] {

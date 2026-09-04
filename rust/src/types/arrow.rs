@@ -89,13 +89,14 @@ impl DataType {
             A::Float16 => Self::Float16,
             A::Float32 => Self::Float32,
             A::Float64 => Self::Float64,
-            A::Timestamp(unit, timezone) => Self::Timestamp(
+            A::Timestamp(unit, timezone) => Self::datetime64(
                 (*unit).into(),
                 timezone
                     .as_ref()
-                    .map(|value| crate::Timezone::from_smol_str(SmolStr::from(Arc::clone(value))))
-                    .transpose()?,
-            ),
+                    .map_or(Ok(crate::Timezone::NAIVE), |value| {
+                        crate::Timezone::from_smol_str(SmolStr::from(Arc::clone(value)))
+                    })?,
+            )?,
             A::Date32 => Self::Date32,
             A::Date64 => Self::Date64,
             A::Time32(unit) => Self::time32((*unit).into())?,
@@ -178,12 +179,12 @@ impl DataType {
             A::Float16 => Self::Float16,
             A::Float32 => Self::Float32,
             A::Float64 => Self::Float64,
-            A::Timestamp(unit, timezone) => Self::Timestamp(
+            A::Timestamp(unit, timezone) => Self::datetime64(
                 unit.into(),
-                timezone
-                    .map(|value| crate::Timezone::from_smol_str(SmolStr::from(value)))
-                    .transpose()?,
-            ),
+                timezone.map_or(Ok(crate::Timezone::NAIVE), |value| {
+                    crate::Timezone::from_smol_str(SmolStr::from(value))
+                })?,
+            )?,
             A::Date32 => Self::Date32,
             A::Date64 => Self::Date64,
             A::Time32(unit) => Self::time32(unit.into())?,
@@ -347,11 +348,9 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Float16 => Self::Float16,
             R::Float32 => Self::Float32,
             R::Float64 => Self::Float64,
-            R::Timestamp(unit, timezone) => Self::Timestamp(
+            R::DateTime64 { unit, timezone } => Self::Timestamp(
                 unit.into_arrow_time()?,
-                timezone
-                    .as_ref()
-                    .map(|value| Arc::<str>::from(value.as_smol_str().clone())),
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.as_smol_str().clone())),
             ),
             R::Date32 => Self::Date32,
             R::Date64 => Self::Date64,
@@ -485,9 +484,9 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Float16 => Self::Float16,
             R::Float32 => Self::Float32,
             R::Float64 => Self::Float64,
-            R::Timestamp(unit, timezone) => Self::Timestamp(
+            R::DateTime64 { unit, timezone } => Self::Timestamp(
                 unit.into_arrow_time()?,
-                timezone.map(|value| Arc::<str>::from(value.into_smol_str())),
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.into_smol_str())),
             ),
             R::Date32 => Self::Date32,
             R::Date64 => Self::Date64,

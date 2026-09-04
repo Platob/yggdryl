@@ -146,7 +146,7 @@ pub(crate) fn projected_byte_len(
         DataType::Float64 => 32,
         DataType::Decimal128 { .. } => 41,
         DataType::Decimal256 { .. } => 78,
-        DataType::Timestamp(..)
+        DataType::DateTime64 { .. }
         | DataType::Date32
         | DataType::Date64
         | DataType::Time32(_)

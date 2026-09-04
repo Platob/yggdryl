@@ -3,7 +3,11 @@
 use crate::TypedField;
 use crate::types::typed::define_field_types;
 
-define_field_types!(Timestamp, "timestamp", crate::DataType::Timestamp(..));
+define_field_types!(
+    DateTime64Type,
+    "datetime64",
+    crate::DataType::DateTime64 { .. }
+);
 define_field_types!(Date32, "date32", crate::DataType::Date32);
 define_field_types!(Date64, "date64", crate::DataType::Date64);
 define_field_types!(Time32, "time32", crate::DataType::Time32(_));
@@ -12,8 +16,8 @@ define_field_types!(Duration32, "duration32", crate::DataType::Duration32(_));
 define_field_types!(Duration64, "duration64", crate::DataType::Duration64(_));
 define_field_types!(Interval, "interval", crate::DataType::Interval(_));
 
-/// A timestamp-typed field.
-pub type TimestampField = TypedField<Timestamp>;
+/// A DateTime64-typed field.
+pub type DateTime64Field = TypedField<DateTime64Type>;
 /// A Date32-typed field.
 pub type Date32Field = TypedField<Date32>;
 /// A Date64-typed field.

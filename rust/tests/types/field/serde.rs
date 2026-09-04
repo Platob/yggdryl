@@ -64,8 +64,11 @@ fn shapes() -> Vec<Field> {
         DataType::decimal128(38, 6)
             .unwrap()
             .nullable_field("amount"),
-        DataType::Timestamp(TimeUnit::Microsecond, Some("Europe/Paris".parse().unwrap()))
-            .nullable_field("at"),
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: "Europe/Paris".parse().unwrap(),
+        }
+        .nullable_field("at"),
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
             DataType::Utf8.nullable_field("values"),

@@ -37,7 +37,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::Date64
         | DataType::Time32(_)
         | DataType::Time64(_)
-        | DataType::Timestamp(..)
+        | DataType::DateTime64 { .. }
         | DataType::Duration32(_)
         | DataType::Duration64(_) => temporal(value, field),
         DataType::List(child)

@@ -99,14 +99,22 @@ impl PrimitiveType {
             Self::Date => DataType::Date32,
             // Iceberg fixes every temporal resolution at microseconds.
             Self::Time => DataType::time(TimeUnit::Microsecond)?,
-            Self::Timestamp => DataType::Timestamp(TimeUnit::Microsecond, None),
-            Self::Timestamptz => {
-                DataType::Timestamp(TimeUnit::Microsecond, Some(crate::Timezone::UTC))
-            }
-            Self::TimestampNs => DataType::Timestamp(TimeUnit::Nanosecond, None),
-            Self::TimestamptzNs => {
-                DataType::Timestamp(TimeUnit::Nanosecond, Some(crate::Timezone::UTC))
-            }
+            Self::Timestamp => DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::NAIVE,
+            },
+            Self::Timestamptz => DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::UTC,
+            },
+            Self::TimestampNs => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: crate::Timezone::NAIVE,
+            },
+            Self::TimestamptzNs => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: crate::Timezone::UTC,
+            },
             // An unknown column always reads as null, which is exactly Arrow's
             // null datatype rather than a placeholder of some other width.
             Self::Unknown => DataType::Null,
@@ -156,14 +164,26 @@ impl PrimitiveType {
             }
             DataType::Date32 => Self::Date,
             DataType::Time64(TimeUnit::Microsecond) => Self::Time,
-            DataType::Timestamp(TimeUnit::Microsecond, zone) => match zone {
-                Some(_) => Self::Timestamptz,
-                None => Self::Timestamp,
-            },
-            DataType::Timestamp(TimeUnit::Nanosecond, zone) => match zone {
-                Some(_) => Self::TimestamptzNs,
-                None => Self::TimestampNs,
-            },
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone,
+            } => {
+                if timezone.is_naive() {
+                    Self::Timestamp
+                } else {
+                    Self::Timestamptz
+                }
+            }
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone,
+            } => {
+                if timezone.is_naive() {
+                    Self::TimestampNs
+                } else {
+                    Self::TimestamptzNs
+                }
+            }
             DataType::Null => Self::Unknown,
             // An ASCII width is text; the padding is storage, never a value.
             DataType::Utf8

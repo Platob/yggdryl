@@ -122,10 +122,10 @@ mod scalars {
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Timestamp(
-                TimeUnit::Microsecond,
-                Some(crate::Timezone::from_str("Asia/Kolkata").unwrap())
-            )
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: crate::Timezone::from_str("Asia/Kolkata").unwrap()
+            }
         );
     }
 }

@@ -275,7 +275,7 @@ impl JsScalar {
                 Scalar::time32(i32::try_from(count).map_err(napi_error)?, unit, zone)
             }
             DataTypeId::Time64 => Scalar::time64(count, unit, zone),
-            DataTypeId::Timestamp => Scalar::datetime64(count, unit, zone),
+            DataTypeId::DateTime64 => Scalar::datetime64(count, unit, zone),
             DataTypeId::Duration32 => {
                 Scalar::duration32_in(i32::try_from(count).map_err(napi_error)?, unit, zone)
             }
@@ -2371,7 +2371,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 (TemporalFamily::Date, 64) => "date64",
                 (TemporalFamily::Time, 32) => "time32",
                 (TemporalFamily::Time, 64) => "time64",
-                (TemporalFamily::DateTime, 64) => "timestamp",
+                (TemporalFamily::DateTime, 64) => "datetime64",
                 (TemporalFamily::Duration, 32) => "duration32",
                 (TemporalFamily::Duration, 64) => "duration64",
                 _ => return Err(napi_error("invalid native temporal family width")),

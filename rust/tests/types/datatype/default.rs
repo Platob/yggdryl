@@ -16,7 +16,10 @@ fn all_variants() -> Vec<DataType> {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::Timestamp(TimeUnit::Microsecond, Some(Timezone::UTC)),
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::UTC,
+        },
         DataType::Date32,
         DataType::Date64,
         DataType::Time32(TimeUnit::Millisecond),

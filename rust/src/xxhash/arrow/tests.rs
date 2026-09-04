@@ -204,7 +204,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_utc",
-                DataType::Timestamp(TimeUnit::Microsecond, Some(utc)),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: utc,
+                },
                 true,
             ),
             Scalar::from_sequence([
@@ -215,7 +218,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_naive",
-                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Nanosecond,
+                    timezone: Timezone::NAIVE,
+                },
                 true,
             ),
             Scalar::from_sequence([

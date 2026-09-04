@@ -56,8 +56,8 @@ pub enum DataTypeId {
     Float32,
     /// IEEE 64-bit floating point.
     Float64,
-    /// Timestamp with a resolution and optional timezone.
-    Timestamp,
+    /// A 64-bit datetime with a resolution and explicit timezone marker.
+    DateTime64,
     /// Days since the Unix epoch.
     Date32,
     /// Milliseconds since the Unix epoch representing whole days.
@@ -154,7 +154,7 @@ impl DataTypeId {
         Self::Float16,
         Self::Float32,
         Self::Float64,
-        Self::Timestamp,
+        Self::DateTime64,
         Self::Date32,
         Self::Date64,
         Self::Time32,
@@ -227,7 +227,7 @@ impl DataTypeId {
             Self::Float16 => "float16",
             Self::Float32 => "float32",
             Self::Float64 => "float64",
-            Self::Timestamp => "timestamp",
+            Self::DateTime64 => "datetime64",
             Self::Date32 => "date32",
             Self::Date64 => "date64",
             Self::Time32 => "time32",
@@ -307,7 +307,7 @@ impl DataTypeId {
             Self::Decimal32 | Self::Decimal64 | Self::Decimal128 | Self::Decimal256 => {
                 DataTypeKind::Decimal
             }
-            Self::Timestamp
+            Self::DateTime64
             | Self::Date32
             | Self::Date64
             | Self::Time32
@@ -353,7 +353,7 @@ impl DataTypeId {
     pub const fn is_parameterized(self) -> bool {
         matches!(
             self,
-            Self::Timestamp
+            Self::DateTime64
                 | Self::Time32
                 | Self::Time64
                 | Self::Duration32
@@ -411,7 +411,7 @@ impl DataTypeId {
         matches!(self.kind(), DataTypeKind::Decimal)
     }
 
-    /// Return whether the variant is a date, time, timestamp, duration, or interval.
+    /// Return whether the variant is a date, time, datetime, duration, or interval.
     pub const fn is_temporal(self) -> bool {
         matches!(self.kind(), DataTypeKind::Temporal)
     }
@@ -453,7 +453,7 @@ impl DataTypeId {
             | Self::Float64
             | Self::Date64
             | Self::Duration64
-            | Self::Timestamp
+            | Self::DateTime64
             | Self::Decimal64 => Some(8),
             Self::Duration32 | Self::Mic => Some(4),
             Self::Country => Some(2),
@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(DataTypeId::Int128.as_u8(), 10);
         assert_eq!(DataTypeId::UInt128.as_u8(), 11);
         assert_eq!(DataTypeId::Float64.as_u8(), 14);
-        assert_eq!(DataTypeId::Timestamp.as_u8(), 15);
+        assert_eq!(DataTypeId::DateTime64.as_u8(), 15);
         assert_eq!(DataTypeId::Date64.as_u8(), 17);
         assert_eq!(DataTypeId::Time64.as_u8(), 19);
         assert_eq!(DataTypeId::Duration64.as_u8(), 21);

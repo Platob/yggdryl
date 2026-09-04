@@ -39,7 +39,10 @@ pub(crate) fn typed() -> (Scalar, Field) {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Second,
+                    timezone: Timezone::UTC,
+                },
                 false,
             ),
             Field::new("payload", DataType::Binary, false),

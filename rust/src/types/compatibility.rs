@@ -307,8 +307,11 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
         D::Float16 => Ok((D::Float32, true)),
-        D::Timestamp(TimeUnit::Microsecond, _) => Ok((dtype.clone(), false)),
-        D::Timestamp(unit, _) => unit_mismatch(Target::Spark, path, "timestamp", *unit, "us"),
+        D::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            ..
+        } => Ok((dtype.clone(), false)),
+        D::DateTime64 { unit, .. } => unit_mismatch(Target::Spark, path, "timestamp", *unit, "us"),
         D::Date64 => incompatible(
             Target::Spark,
             path,
@@ -415,10 +418,11 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Utf8 => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // Polars datetimes are millisecond, microsecond, or nanosecond.
-        D::Timestamp(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond, _) => {
-            Ok((dtype.clone(), false))
-        }
-        D::Timestamp(unit, _) => {
+        D::DateTime64 {
+            unit: TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond,
+            ..
+        } => Ok((dtype.clone(), false)),
+        D::DateTime64 { unit, .. } => {
             unit_mismatch(Target::Polars, path, "timestamp", *unit, "ms, us, or ns")
         }
         D::Date64 => incompatible(
@@ -503,8 +507,11 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Utf8 => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // `datetime64[ns]` is the pandas timestamp representation.
-        D::Timestamp(TimeUnit::Nanosecond, _) => Ok((dtype.clone(), false)),
-        D::Timestamp(unit, _) => unit_mismatch(Target::Pandas, path, "timestamp", *unit, "ns"),
+        D::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            ..
+        } => Ok((dtype.clone(), false)),
+        D::DateTime64 { unit, .. } => unit_mismatch(Target::Pandas, path, "timestamp", *unit, "ns"),
         D::Date64 => incompatible(
             Target::Pandas,
             path,
@@ -612,10 +619,13 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
             unit_mismatch(Target::Iceberg, path, "time-of-day", *unit, "us")
         }
         // `timestamp`/`timestamptz` are microseconds; the `_ns` pair is nanoseconds.
-        D::Timestamp(TimeUnit::Microsecond | TimeUnit::Nanosecond, _) => {
+        D::DateTime64 {
+            unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
+            ..
+        } => {
             Ok((dtype.clone(), false))
         }
-        D::Timestamp(unit, _) => {
+        D::DateTime64 { unit, .. } => {
             unit_mismatch(Target::Iceberg, path, "timestamp", *unit, "us or ns")
         }
         D::Duration32(unit) | D::Duration64(unit) => incompatible(

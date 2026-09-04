@@ -123,7 +123,7 @@ from .temporal import (
     Time32Field,
     Time64Field,
     TimeField,
-    TimestampField,
+    DateTime64Field,
     date32,
     date64,
     duration32,
@@ -132,7 +132,7 @@ from .temporal import (
     time,
     time32,
     time64,
-    timestamp,
+    datetime64,
 )
 
 __all__ = [
@@ -188,7 +188,7 @@ __all__ = [
     "Time32Field",
     "Time64Field",
     "TimeField",
-    "TimestampField",
+    "DateTime64Field",
     "TypedDataType",
     "TypedField",
     "UInt8Field",
@@ -247,7 +247,7 @@ __all__ = [
     "time",
     "time32",
     "time64",
-    "timestamp",
+    "datetime64",
     "uint8",
     "uint16",
     "uint32",

@@ -115,8 +115,14 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
     let item = || Field::new("item", DataType::Utf8, true);
     let pairs = vec![
         (
-            DataType::Timestamp(TimeUnit::Second, None),
-            DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::NAIVE,
+            },
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::UTC,
+            },
         ),
         (
             DataType::Time32(TimeUnit::Second),

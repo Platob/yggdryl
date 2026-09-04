@@ -116,7 +116,7 @@ pub(crate) fn holds_temporal(target: &DataType) -> bool {
         | DataType::Date64
         | DataType::Time32(_)
         | DataType::Time64(_)
-        | DataType::Timestamp(..)
+        | DataType::DateTime64 { .. }
         | DataType::Duration32(_)
         | DataType::Duration64(_) => true,
         DataType::Dictionary(dictionary) => holds_temporal(dictionary.value()),

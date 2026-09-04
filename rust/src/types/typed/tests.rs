@@ -21,7 +21,10 @@ fn a_null_is_accepted_by_every_datatype_because_that_is_what_a_column_stores() {
         DataType::Int64,
         DataType::Utf8,
         DataType::Binary,
-        DataType::Timestamp(TimeUnit::Nanosecond, None),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::NAIVE,
+        },
     ] {
         let typed = TypedScalar::from_parts(dtype.clone(), Scalar::Null).unwrap();
         assert!(typed.is_null());
@@ -185,7 +188,7 @@ fn the_newest_markers_narrow_their_pairings_like_every_other() {
 
 #[test]
 fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
-    use crate::types::{Int64Scalar, TimestampScalar};
+    use crate::types::{DateTime64Scalar, Int64Scalar};
 
     assert_eq!(
         std::mem::size_of::<Int64Scalar>(),
@@ -205,17 +208,23 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
     assert_eq!(narrowed.into_value(), Scalar::I64(7));
 
     // A parameterized datatype keeps its parameters in the pairing, not the marker.
-    let stamp = TimestampScalar::try_from_parts(
-        DataType::Timestamp(TimeUnit::Microsecond, None),
+    let stamp = DateTime64Scalar::try_from_parts(
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        },
         Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
     )
     .unwrap();
     assert_eq!(
         stamp.dtype(),
-        &DataType::Timestamp(TimeUnit::Microsecond, None)
+        &DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE
+        }
     );
     assert!(
-        TimestampScalar::try_from_parts(DataType::Date32, Scalar::date32(0)).is_err(),
+        DateTime64Scalar::try_from_parts(DataType::Date32, Scalar::date32(0)).is_err(),
         "a date is not a timestamp"
     );
 }

@@ -1181,7 +1181,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
-        Some(DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)))
+        Some(DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC })
     );
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
@@ -1210,7 +1210,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     # The same lookup backs the grammar, so a FIX declaration types a row.
     row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
     assert row["venue"].dtype == DataType("mic")
-    assert row["at"].dtype == DataType('timestamp(ns,"UTC")')
+    assert row["at"].dtype == DataType('datetime64(ns,"UTC")')
 
     # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     assert DataType("utc_date_only") == DataType("date32")
@@ -1239,7 +1239,7 @@ the one rule that field validation, Arrow ingest, and every cast tier all call.
     // The same lookup backs the grammar, so a FIX declaration types a row.
     const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
     assert.equal(row.getField('venue').dtype.id, 'mic')
-    assert.equal(row.getField('at').dtype.toString(), 'timestamp(ns,"UTC")')
+    assert.equal(row.getField('at').dtype.toString(), 'datetime64(ns,"UTC")')
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     assert.equal(DataType.from('utc_date_only').id, 'date32')
@@ -1287,8 +1287,8 @@ for two codes FIX itself carries as plain `String` fields.
 | `PriceOffset` | float | `decimal64(18,8)` | exact and signed |
 | `Percentage` | float | `decimal64(18,8)` | `0.0525` is 5.25% |
 | `Amt` | float | `decimal128(38,8)` | a notional outgrows 10 integer digits |
-| `UTCTimestamp` | String | `timestamp(ns,"UTC")` | the instant, at the finest FIX width |
-| `TZTimestamp` | String | `timestamp(ns,"UTC")` | the offset resolves into the instant |
+| `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
+| `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 | `UTCDateOnly` | String | `date32` | a calendar day |
@@ -1312,7 +1312,7 @@ beside the 8 fractional ones a listed venue's tick fits in; a notional needs mor
 `Amt` widens to `decimal128`. A venue outside those bounds declares its own `decimal(p,s)`, which
 is why these are names over the ordinary constructors rather than a second numeric model.
 `TZTimestamp` keeps the instant and drops the local offset, because an Arrow column carries one
-zone for every row; read it under `timestamp(ns,"<zone>")` when the local reading is the value.
+zone for every row; read it under `datetime64(ns,"<zone>")` when the local reading is the value.
 
 `currency`, `country`, and `mic` also name a [prebuilt vocabulary](#the-declared-vocabulary-and-its-generated-enum):
 `AsciiEnum::from_logical_name` builds the enum of the codes those standards assign, in sorted
@@ -1327,15 +1327,18 @@ common venues rather than the whole ISO 10383 registry, which is thousands of se
     ```rust
     use yggdryl::{DataType, DataTypeId, DataTypeKind};
 
-    let stamp = DataType::from_str("timestamp(ns, Europe/Paris)")?;
-    assert_eq!(stamp.id(), DataTypeId::Timestamp);
+    let stamp = DataType::from_str("datetime64(ns, Europe/Paris)")?;
+    assert_eq!(stamp.id(), DataTypeId::DateTime64);
     assert_eq!(stamp.kind(), DataTypeKind::Temporal);
-    assert_eq!(stamp.name(), "timestamp");
+    assert_eq!(stamp.name(), "datetime64");
 
     // The id drops parameters, so two resolutions share one identity ...
-    assert_eq!(DataType::from_str("timestamp(s)")?.id(), stamp.id());
+    assert_eq!(DataType::from_str("datetime64(s)")?.id(), stamp.id());
     // ... while the values themselves stay distinct.
-    assert_ne!(DataType::from_str("timestamp(s)")?, stamp);
+    assert_ne!(DataType::from_str("datetime64(s)")?, stamp);
+
+    // Foreign Arrow/SQL input canonicalizes to the core spelling.
+    assert_eq!(DataType::from_str("timestamp(us)")?.to_string(), "datetime64(us)");
 
     assert_eq!(DataType::decimal(38, 4)?.id(), DataTypeId::Decimal128);
     assert_eq!(DataType::decimal(38, 4)?.kind(), DataTypeKind::Decimal);
@@ -1346,12 +1349,13 @@ common venues rather than the whole ISO 10383 registry, which is thousands of se
     ```python
     from yggdryl import DataType
 
-    stamp = DataType("timestamp(ns, Europe/Paris)")
-    assert stamp.id == "timestamp"
+    stamp = DataType("datetime64(ns, Europe/Paris)")
+    assert stamp.id == "datetime64"
     assert stamp.kind == "temporal"
 
-    assert DataType("timestamp(s)").id == stamp.id
-    assert DataType("timestamp(s)") != stamp
+    assert DataType("datetime64(s)").id == stamp.id
+    assert DataType("datetime64(s)") != stamp
+    assert str(DataType("timestamp(us)")) == "datetime64(us)"
 
     assert DataType.decimal(38, 4).id == "decimal128"
     assert DataType.decimal(38, 4).kind == "decimal"
@@ -1363,12 +1367,13 @@ common venues rather than the whole ISO 10383 registry, which is thousands of se
     const assert = require('node:assert/strict')
     const { DataType, fields } = require('yggdryl')
 
-    const stamp = DataType.from('timestamp(ns, Europe/Paris)')
-    assert.equal(stamp.id, 'timestamp')
+    const stamp = DataType.from('datetime64(ns, Europe/Paris)')
+    assert.equal(stamp.id, 'datetime64')
     assert.equal(stamp.kind, 'temporal')
 
-    assert.equal(DataType.from('timestamp(s)').id, stamp.id)
-    assert.equal(DataType.from('timestamp(s)').equals(stamp), false)
+    assert.equal(DataType.from('datetime64(s)').id, stamp.id)
+    assert.equal(DataType.from('datetime64(s)').equals(stamp), false)
+    assert.equal(DataType.from('timestamp(us)').toString(), 'datetime64(us)')
 
     assert.equal(fields.decimal('amount', 38, 4).dtype.id, 'decimal128')
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
@@ -1673,7 +1678,7 @@ The output is stable across runs; nothing in it iterates a hash map.
     // A rewrite that would reinterpret values is refused, and the path is named.
     let error = DataType::from_fields([Field::new(
         "created",
-        DataType::Timestamp(TimeUnit::Nanosecond, None),
+        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE },
         false,
     )])?
     .into_scheme_compat(&Scheme::SPARK)
@@ -1702,7 +1707,7 @@ The output is stable across runs; nothing in it iterates a hash map.
     assert DataType("uint32").into_scheme_compat("polars") == DataType("uint32")
 
     with pytest.raises(ValueError, match="got ns"):
-        DataType("timestamp(ns)").into_scheme_compat("spark")
+        DataType("datetime64(ns)").into_scheme_compat("spark")
     with pytest.raises(ValueError, match="arrow, spark, polars, pandas"):
         DataType("int32").into_scheme_compat("duckdb")
     ```
@@ -1725,7 +1730,7 @@ The output is stable across runs; nothing in it iterates a hash map.
     assert.ok(source.intoSchemeCompat('arrow').equals(source))
     assert.ok(DataType.from('uint32').intoSchemeCompat('polars').equals(DataType.from('uint32')))
 
-    assert.throws(() => DataType.from('timestamp(ns)').intoSchemeCompat('spark'), /got ns/)
+    assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /got ns/)
     assert.throws(
       () => DataType.from('int32').intoSchemeCompat('duckdb'),
       /arrow, spark, polars, pandas/,
@@ -1745,7 +1750,7 @@ its microsecond and nanosecond timestamps, and it has no elapsed-time or calenda
 all.
 
 Anything that would change what a value means is an error rather than a rewrite. A nanosecond
-timestamp is not silently truncated to Spark's microseconds, a negative decimal scale is not
+datetime is not silently truncated to Spark's microseconds, a negative decimal scale is not
 clamped, and a node carrying Arrow extension metadata is not physically relabeled - the message
 names the offending node with a path like `$["a.b"]` or `$[].item`. Applied to a
 [`Field`](types.md), the same call keeps the name, nullability, and metadata, and rebuilds the Arrow
@@ -2019,7 +2024,7 @@ The rules are tried in order:
    when narrowing;
 6. numbers meet by width, and temporals by unit.
 
-Anything left is refused rather than guessed: a boolean and a timestamp have no
+Anything left is refused rather than guessed: a boolean and a datetime have no
 meeting point that is not a re-encoding, and an exact decimal beside an
 approximate float would trade exactness for range without saying so.
 
@@ -2618,17 +2623,17 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
 === "Rust"
 
     ```rust
-    use yggdryl::types::{Int64Field, TimestampField, Utf8Field, integer};
-    use yggdryl::{DataType, Field, TimeUnit};
+    use yggdryl::types::{Int64Field, DateTime64Field, Utf8Field, integer};
+    use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
     let id = Int64Field::new("id", false);
     let symbol = Utf8Field::from_parts("symbol", true, [("source", "feed")])?;
-    let at = TimestampField::try_new("at", DataType::Timestamp(TimeUnit::Microsecond, None), false)?;
+    let at = DateTime64Field::try_new("at", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }, false)?;
 
     // A typed field derefs to the field it wraps.
     assert_eq!(id.name(), "id");
     assert_eq!(symbol.get_metadata("source"), Some("feed"));
-    assert_eq!(at.dtype().to_string(), "timestamp(us)");
+    assert_eq!(at.dtype().to_string(), "datetime64(us)");
 
     // The marker is checked, never assumed.
     assert!(
@@ -2646,12 +2651,12 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
 
     id_field = types.int64("id", nullable=False)
     symbol = types.utf8("symbol", metadata={"source": "feed"})
-    at = types.timestamp("at", "us", nullable=False)
+    at = types.datetime64("at", "us", nullable=False)
 
     assert isinstance(id_field, Field)
     assert str(id_field.dtype) == "int64"
     assert symbol.metadata["source"] == "feed"
-    assert str(at.dtype) == "timestamp(us)"
+    assert str(at.dtype) == "datetime64(us)"
     ```
 
 === "JavaScript"
@@ -2662,17 +2667,17 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
 
     const id = fields.int64('id')
     const symbol = fields.utf8('symbol', { nullable: true, metadata: { source: 'feed' } })
-    const at = fields.timestamp('at', 'us')
+    const at = fields.datetime64('at', 'us')
 
     assert.ok(id instanceof Field)
     assert.equal(id.dtype.toString(), 'int64')
     assert.equal(symbol.get('source'), 'feed')
-    assert.equal(at.dtype.toString(), 'timestamp(us)')
+    assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
 `Int64Field` and the fifty-five aliases beside it are `TypedField<K>`, one `Field` plus a
 zero-sized sealed marker, `repr(transparent)` and exactly the size of the field it holds. The
-marker constrains the variant only: a decimal's precision, a timestamp's unit, a list's child all
+marker constrains the variant only: a decimal's precision, a datetime's unit, a list's child all
 stay in the wrapped field, so the typed view never duplicates schema state. `try_as_typed`
 borrows a `TypedFieldRef` without allocating, `try_into_typed` consumes, and there is no
 `DerefMut` - replacing the datatype through a generic reference could violate `K`, so `set_dtype`
@@ -3052,7 +3057,7 @@ nullability, never the other way around. `ArrowCast` is implemented for both `Fi
 [`DataType`](types.md) and returns an `ArrayRef`, because a generic field could be any datatype.
 A `TypedField` has already committed to a variant, so `Int64Field::cast_arrow_array` returns an
 `Int64Array` and the caller reads values without a downcast; `cast_arrow_scalar` does the same for a
-one-element array. A few variants keep an `ArrayRef` return - a timestamp's unit and a dictionary's
+one-element array. A few variants keep an `ArrayRef` return - a datetime's unit and a dictionary's
 key type decide the physical array, so there is no single concrete type to name.
 
 `safe` is Arrow's own cast option. When it is true a supported conversion failure becomes null, and
@@ -3060,12 +3065,12 @@ a non-nullable field then replaces that null with its canonical default (`Field:
 when it is false the failure is an error. A nullable field keeps the null either way.
 
 Text and temporals cross through this crate's own spellings rather than Arrow's, so a column and a
-row answer alike. Reading text into a `Date32`, `Date64`, `Time32`, `Time64`, `Timestamp`,
+row answer alike. Reading text into a `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`,
 `Duration32` or `Duration64` accepts everything [text](text.md#field-directed-parsing) accepts - a
 grouped fraction, an hour past the end of the day, a bracketed zone name, a duration in either
 spelling, which Arrow reads into no duration at all - and a reading this crate takes but the
 declared unit or width cannot hold exactly is null, never a rounded value. Arrow's kernel answers
-only the spellings this crate cannot read at all, such as a bare date entering a timestamp, a
+only the spellings this crate cannot read at all, such as a bare date entering a datetime, a
 twelve-hour clock or a compact `YYYYMMDD`, so nothing that read before stops reading. The other
 direction spells the classic form back, a zoned instant included, which Arrow's own formatter
 refuses without its timezone database.

@@ -3,14 +3,17 @@
 use smol_str::format_smolstr;
 
 use crate::types::parser::{Parser, Token, TokenKind, is_closing_or_separator, precision_to_unit};
-use crate::{DataType, Error, Result, TimeUnit};
+use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 impl Parser<'_> {
-    pub(crate) fn parse_timestamp(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
+    pub(crate) fn parse_datetime64(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
         self.check_depth(depth)?;
         let mut unit = TimeUnit::Microsecond;
-        let mut timezone = (keyword == "timestampltz" || keyword == "timestampwithtimezone")
-            .then_some(crate::Timezone::UTC);
+        let mut timezone = if keyword == "timestampltz" || keyword == "timestampwithtimezone" {
+            Timezone::UTC
+        } else {
+            Timezone::NAIVE
+        };
 
         if let Some(close) = self.consume_opening() {
             if self.peek_symbol() != Some(close) {
@@ -20,22 +23,22 @@ impl Parser<'_> {
                     unit = precision_to_unit(precision, precision_start)?;
                 } else if self.peek_word_is("none") {
                     self.index += 1;
-                    timezone = None;
+                    timezone = Timezone::NAIVE;
                 } else if self.peek_word_is("some") {
                     self.index += 1;
                     let inner_close = self
                         .consume_opening()
                         .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                    timezone = Some(self.parse_timezone()?);
+                    timezone = self.parse_timezone()?;
                     self.expect_symbol(inner_close)?;
                 } else {
                     let (parsed, unit_start) =
-                        self.parse_time_unit_span(Some(close), "timestamp unit")?;
+                        self.parse_time_unit_span(Some(close), "datetime64 unit")?;
                     unit = parsed;
                     if !unit.is_arrow_time() {
                         return Err(self.error_at(
                             unit_start,
-                            "timestamp requires a temporal resolution unit",
+                            "datetime64 requires a temporal resolution unit",
                         ));
                     }
                 }
@@ -44,16 +47,16 @@ impl Parser<'_> {
                     self.consume_label("timezone");
                     if self.peek_word_is("none") {
                         self.index += 1;
-                        timezone = None;
+                        timezone = Timezone::NAIVE;
                     } else if self.peek_word_is("some") {
                         self.index += 1;
                         let inner_close = self
                             .consume_opening()
                             .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                        timezone = Some(self.parse_timezone()?);
+                        timezone = self.parse_timezone()?;
                         self.expect_symbol(inner_close)?;
                     } else {
-                        timezone = Some(self.parse_timezone()?);
+                        timezone = self.parse_timezone()?;
                     }
                 }
             }
@@ -63,14 +66,14 @@ impl Parser<'_> {
         if self.consume_word("with") {
             self.expect_word("time")?;
             self.expect_word("zone")?;
-            timezone.get_or_insert(crate::Timezone::UTC);
+            timezone = Timezone::UTC;
         } else if self.consume_word("without") {
             self.expect_word("time")?;
             self.expect_word("zone")?;
-            timezone = None;
+            timezone = Timezone::NAIVE;
         }
 
-        Ok(DataType::Timestamp(unit, timezone))
+        DataType::datetime64(unit, timezone)
     }
 
     pub(crate) fn parse_sql_time(&mut self, depth: usize) -> Result<DataType> {

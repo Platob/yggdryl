@@ -58,9 +58,11 @@ impl fmt::Display for DataType {
             D::Float16 => formatter.write_str("float16"),
             D::Float32 => formatter.write_str("float32"),
             D::Float64 => formatter.write_str("float64"),
-            D::Timestamp(unit, None) => write!(formatter, "timestamp({unit})"),
-            D::Timestamp(unit, Some(timezone)) => {
-                write!(formatter, "timestamp({unit},")?;
+            D::DateTime64 { unit, timezone } if timezone.is_naive() => {
+                write!(formatter, "datetime64({unit})")
+            }
+            D::DateTime64 { unit, timezone } => {
+                write!(formatter, "datetime64({unit},")?;
                 fmt_quoted(formatter, timezone.as_str())?;
                 formatter.write_char(')')
             }
@@ -308,9 +310,11 @@ impl<'a> Parser<'a> {
                 self.consume_word("precision");
                 DataType::Float64
             }
-            "timestamp" | "timestampntz" | "timestampltz" | "timestampwithtimezone" => {
-                self.parse_timestamp(&keyword, depth)?
-            }
+            "datetime64"
+            | "timestamp"
+            | "timestampntz"
+            | "timestampltz"
+            | "timestampwithtimezone" => self.parse_datetime64(&keyword, depth)?,
             "date" | "date32" => DataType::Date32,
             "date64" | "datemillisecond" => DataType::Date64,
             "time" => self.parse_sql_time(depth)?,

@@ -142,6 +142,7 @@ mod bulk {
 
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
+    use crate::Timezone;
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -166,7 +167,10 @@ mod restating {
 
     #[test]
     fn a_temporal_is_written_at_the_unit_its_column_declares() {
-        let micros = DataType::Timestamp(TimeUnit::Microsecond, None);
+        let micros = DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        };
         let at =
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, crate::Timezone::NAIVE).unwrap();
 
@@ -209,7 +213,14 @@ mod restating {
         );
 
         // Coarsening that would drop a digit is refused, naming the kind.
-        let seconds = Field::new("at", DataType::Timestamp(TimeUnit::Second, None), true);
+        let seconds = Field::new(
+            "at",
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::NAIVE,
+            },
+            true,
+        );
         let error = scalar_array(
             &seconds,
             &Scalar::datetime64(1_500, TimeUnit::Millisecond, crate::Timezone::NAIVE).unwrap(),

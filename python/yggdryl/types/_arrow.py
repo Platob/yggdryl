@@ -181,7 +181,7 @@ def _hint_from_datatype(
         return float
     if kind in _DECIMAL_KINDS:
         return Decimal
-    if kind == "timestamp":
+    if kind == "datetime64":
         return dt.datetime
     if kind in ("date32", "date64"):
         return dt.date

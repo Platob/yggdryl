@@ -22,7 +22,7 @@ pub(crate) mod sealed {
 /// A sealed compile-time marker for exactly one [`DataType`] variant.
 ///
 /// Marker implementations validate the variant only. Parameters such as a
-/// decimal precision, timestamp unit, or list child remain in the wrapped
+/// decimal precision, datetime unit, or list child remain in the wrapped
 /// [`Field`], so the typed view never duplicates schema state.
 ///
 /// [`AnyType`] is the one marker that names no variant: it accepts every

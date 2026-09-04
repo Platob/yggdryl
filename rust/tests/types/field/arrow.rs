@@ -6,7 +6,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::{DataType, Field, TimeUnit};
+use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
     assert!(schema.flags().unwrap().contains(flag));
@@ -116,9 +116,16 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
 
     assert!(DataType::FixedSizeBinary(-1).into_arrow_ffi().is_err());
     assert!(
-        Field::new("bad", DataType::Timestamp(TimeUnit::YearMonth, None), false,)
-            .into_arrow_ffi()
-            .is_err()
+        Field::new(
+            "bad",
+            DataType::DateTime64 {
+                unit: TimeUnit::YearMonth,
+                timezone: Timezone::NAIVE
+            },
+            false,
+        )
+        .into_arrow_ffi()
+        .is_err()
     );
 }
 

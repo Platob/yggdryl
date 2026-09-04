@@ -7661,7 +7661,7 @@ Three things the field model spells differently, all of which survive the round 
 
 ```rust
 use yggdryl::media::iceberg::PrimitiveType;
-use yggdryl::{DataType, TimeUnit};
+use yggdryl::{DataType, TimeUnit, Timezone};
 
 // Every Iceberg primitive name has exactly one physical datatype.
 assert_eq!(PrimitiveType::from_str("long")?.into_dtype()?, DataType::Int64);
@@ -7675,11 +7675,11 @@ assert_eq!(
 // nanosecond pair.
 assert_eq!(
     PrimitiveType::from_str("timestamp")?.into_dtype()?,
-    DataType::Timestamp(TimeUnit::Microsecond, None)
+    DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }
 );
 assert_eq!(
     PrimitiveType::from_str("timestamp_ns")?.into_dtype()?,
-    DataType::Timestamp(TimeUnit::Nanosecond, None)
+    DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE }
 );
 assert_eq!(
     PrimitiveType::from_str("time")?.into_dtype()?,
@@ -7706,10 +7706,10 @@ metadata JSON:
 | `decimal(p, s)` | `Decimal128 { precision: p, scale: s }` | v1 |
 | `date` | `Date32` | v1 |
 | `time` | `Time64(Microsecond)` | v1 |
-| `timestamp` | `Timestamp(Microsecond, None)` | v1 |
-| `timestamptz` | `Timestamp(Microsecond, Some("UTC"))` | v1 |
-| `timestamp_ns` | `Timestamp(Nanosecond, None)` | v3 |
-| `timestamptz_ns` | `Timestamp(Nanosecond, Some("UTC"))` | v3 |
+| `timestamp` | `DateTime64 { unit: Microsecond, timezone: NAIVE }` | v1 |
+| `timestamptz` | `DateTime64 { unit: Microsecond, timezone: UTC }` | v1 |
+| `timestamp_ns` | `DateTime64 { unit: Nanosecond, timezone: NAIVE }` | v3 |
+| `timestamptz_ns` | `DateTime64 { unit: Nanosecond, timezone: UTC }` | v3 |
 | `string` | `Utf8` | v1 |
 | `uuid` | `FixedSizeBinary(16)` | v1 |
 | `fixed[n]` | `FixedSizeBinary(n)` | v1 |

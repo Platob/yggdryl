@@ -310,7 +310,7 @@ fn feed_cell(
                 &Timezone::NAIVE,
             );
         }
-        DataType::Timestamp(unit, zone) => {
+        DataType::DateTime64 { unit, timezone } => {
             let count = match unit {
                 TimeUnit::Second => array.as_primitive::<TimestampSecondType>().value(index),
                 TimeUnit::Millisecond => array
@@ -324,13 +324,7 @@ fn feed_cell(
                 }
                 _ => return fallback(digester, dtype, array, index),
             };
-            temporal(
-                digester,
-                TemporalFamily::DateTime,
-                count,
-                *unit,
-                zone.as_ref().unwrap_or(&Timezone::NAIVE),
-            );
+            temporal(digester, TemporalFamily::DateTime, count, *unit, timezone);
         }
         DataType::Duration64(unit) => {
             let count = match unit {

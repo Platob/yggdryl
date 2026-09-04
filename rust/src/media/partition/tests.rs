@@ -199,15 +199,24 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
             Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::Timestamp(TimeUnit::Second, None),
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::NAIVE,
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: Timezone::UTC,
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::UTC).unwrap(),
         ),
         (
-            DataType::Timestamp(TimeUnit::Second, Some(paris)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Second,
+                timezone: paris,
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris).unwrap(),
         ),
         (

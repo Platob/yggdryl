@@ -393,7 +393,7 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
     names = DataType.logical_names()
     assert names["price"] == DataType("decimal64(18,8)")
     assert DataType("Price") == names["price"]
-    assert DataType.from_logical_name("UTC_Timestamp") == DataType('timestamp(ns,"UTC")')
+    assert DataType.from_logical_name("UTC_Timestamp") == DataType('datetime64(ns,"UTC")')
     # The base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert DataType("int") == DataType("int32")
     assert DataType("float") == DataType("float32")

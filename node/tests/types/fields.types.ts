@@ -13,7 +13,7 @@ import {
   type ListField,
   type MapField,
   type TimeField,
-  type TimestampField,
+  type DateTime64Field,
   type VariantField,
 } from '../..'
 
@@ -24,7 +24,7 @@ const idId: 'int32' = id.dtype.id
 // The exported aliases describe non-null fields, so a factory call that wants
 // one has to say so now that the factories default to nullable.
 const ids: ListField<number> = fields.list('ids', id, { nullable: false })
-const eventTime: TimestampField = fields.timestamp(
+const eventTime: DateTime64Field = fields.datetime64(
   'event_time',
   'us',
   'Europe/Paris',

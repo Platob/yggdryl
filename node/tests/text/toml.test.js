@@ -95,7 +95,7 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   assert.equal(decoded.price, '-10.50')
 
   const field = fields.struct('root', [
-    fields.timestamp('at', 's', 'UTC', { nullable: false }),
+    fields.datetime64('at', 's', 'UTC', { nullable: false }),
     fields.date32('on', { nullable: false }),
     fields.decimal128('price', 10, 2, { nullable: false }),
     fields.time32('since', 's', { nullable: false }),

@@ -455,13 +455,14 @@ impl PyDataType {
             .transpose()?;
         let unit = CoreTimeUnit::from_str(unit).map_err(value_error)?;
         let inner = match kind {
-            "timestamp" => {
+            "datetime64" => {
                 if !unit.is_temporal() {
                     return Err(PyValueError::new_err(
-                        "timestamp requires a temporal resolution unit",
+                        "datetime64 requires a temporal resolution unit",
                     ));
                 }
-                CoreDataType::Timestamp(unit, timezone)
+                CoreDataType::datetime64(unit, timezone.unwrap_or(yggdryl::Timezone::NAIVE))
+                    .map_err(value_error)?
             }
             "time32" => CoreDataType::time32(unit).map_err(value_error)?,
             "time64" => CoreDataType::time64(unit).map_err(value_error)?,
@@ -1047,7 +1048,7 @@ impl PyDataType {
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
-            CoreDataType::Timestamp(unit, _)
+            CoreDataType::DateTime64 { unit, .. }
             | CoreDataType::Time32(unit)
             | CoreDataType::Time64(unit)
             | CoreDataType::Duration32(unit)
@@ -1056,25 +1057,20 @@ impl PyDataType {
         }
     }
 
-    /// Internal field-class conversion view of a timestamp timezone.
+    /// Internal field-class conversion view of a `DateTime64` timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
-            CoreDataType::Timestamp(_, timezone) => {
-                timezone.as_ref().map(yggdryl::Timezone::as_str)
-            }
+            CoreDataType::DateTime64 { timezone, .. } => Some(timezone.as_str()),
             _ => None,
         }
     }
 
-    /// The canonical time zone of a timestamp, as a `Timezone`.
-    ///
-    /// A naive timestamp - one with no zone at all - answers `None`, which is
-    /// how the absence of a zone is spelled everywhere in the project.
+    /// The explicit time zone of a `DateTime64`, including `NAIVE`.
     #[getter]
     fn timezone(&self) -> Option<crate::types::timezone::PyTimezone> {
         match &self.inner {
-            CoreDataType::Timestamp(_, timezone) => {
-                (*timezone).map(crate::types::timezone::PyTimezone::from_core)
+            CoreDataType::DateTime64 { timezone, .. } => {
+                Some(crate::types::timezone::PyTimezone::from_core(*timezone))
             }
             _ => None,
         }

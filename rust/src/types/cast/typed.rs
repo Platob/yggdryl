@@ -151,7 +151,7 @@ typed_array!(
 
 // A unit decides the physical width of a temporal value, and a key type decides
 // the physical width of a dictionary index, so these have no single array type.
-opaque_array!(crate::types::temporal::Timestamp);
+opaque_array!(crate::types::temporal::DateTime64Type);
 opaque_array!(crate::types::temporal::Time32);
 opaque_array!(crate::types::temporal::Time64);
 opaque_array!(crate::types::temporal::Duration32);

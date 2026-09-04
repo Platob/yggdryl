@@ -89,8 +89,8 @@ pub use nested::{
 pub use pretty::Pretty;
 pub use scalar::Scalar;
 pub use temporal::scalars::{
-    Date32Scalar, Date64Scalar, Duration32Scalar, Duration64Scalar, IntervalScalar, TemporalFamily,
-    TemporalRef, Time32Scalar, Time64Scalar, TimestampScalar,
+    Date32Scalar, Date64Scalar, DateTime64Scalar, Duration32Scalar, Duration64Scalar,
+    IntervalScalar, TemporalFamily, TemporalRef, Time32Scalar, Time64Scalar,
 };
 pub use temporal::*;
 pub use text::*;

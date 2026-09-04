@@ -511,7 +511,7 @@ pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
         DataType::Date32 => Some((0, TimeUnit::Day)),
         DataType::Date64 => Some((0, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::Timestamp(unit, _) => Some((2, *unit)),
+        DataType::DateTime64 { unit, .. } => Some((2, *unit)),
         DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
         _ => None,
     }

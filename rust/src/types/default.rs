@@ -208,7 +208,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::Timestamp(..)
+            | DataType::DateTime64 { .. }
             | DataType::Date32
             | DataType::Date64
             | DataType::Time32(_)
@@ -290,7 +290,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Int16
         | D::Int32
         | D::Int64
-        | D::Timestamp(..)
+        | D::DateTime64 { .. }
         | D::Date32
         | D::Date64
         | D::Time32(_)

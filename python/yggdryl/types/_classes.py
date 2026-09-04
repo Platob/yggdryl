@@ -1028,19 +1028,19 @@ def _validate_physical_temporal(
     if unit is None:
         return
 
-    if dtype.id == "timestamp" and isinstance(value, dt.datetime):
+    if dtype.id == "datetime64" and isinstance(value, dt.datetime):
         timezone = dtype._timezone()
         offset = _temporal_offset(value, path)
         aware = offset is not None
-        if timezone is not None and not aware and timezone != "UTC":
+        if timezone != "NAIVE" and not aware and timezone != "UTC":
             raise TypeError(
                 f"{path}: naive datetime is incompatible with zoned "
-                f"timestamp[{unit}, {timezone}]"
+                f"datetime64[{unit}, {timezone}]"
             )
-        if timezone is None and aware:
+        if timezone == "NAIVE" and aware:
             raise TypeError(
                 f"{path}: timezone-aware datetime is incompatible with "
-                f"timezone-less timestamp[{unit}]"
+                f"NAIVE datetime64[{unit}]"
             )
         nanoseconds = value.microsecond * 1_000
         if offset is not None:

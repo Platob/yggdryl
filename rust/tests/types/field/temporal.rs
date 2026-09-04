@@ -5,10 +5,10 @@ use super::typed::assert_typed_marker;
 
 #[test]
 fn temporal_markers_cover_clock_calendar_and_interval_types() {
-    assert_typed_marker::<temporal::Timestamp>(DataType::Timestamp(
-        TimeUnit::Nanosecond,
-        Some(Timezone::UTC),
-    ));
+    assert_typed_marker::<temporal::DateTime64Type>(DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    });
     assert_typed_marker::<temporal::Date32>(DataType::Date32);
     assert_typed_marker::<temporal::Date64>(DataType::Date64);
     assert_typed_marker::<temporal::Time32>(DataType::time32(TimeUnit::Second).unwrap());

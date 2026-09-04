@@ -8,11 +8,11 @@ use arrow_array::{
 };
 
 use super::ArrowCast;
-use crate::TimeUnit;
 use crate::types::{
-    GeometryField, Int64Field, StructField, TimestampField, Utf8Field, VariantField,
+    DateTime64Field, GeometryField, Int64Field, StructField, Utf8Field, VariantField,
 };
 use crate::{DataType, EdgeAlgorithm, Field};
+use crate::{TimeUnit, Timezone};
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
@@ -96,9 +96,12 @@ fn a_struct_field_casts_children_by_name() {
 #[test]
 fn a_parameterized_temporal_field_casts_to_a_shared_array() {
     // A unit decides the physical width, so the result stays an ArrayRef.
-    let field = TimestampField::try_new(
+    let field = DateTime64Field::try_new(
         "at",
-        DataType::Timestamp(TimeUnit::Millisecond, None),
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::NAIVE,
+        },
         false,
     )
     .unwrap();

@@ -55,8 +55,13 @@ pub enum DataType {
     Float32,
     /// IEEE 64-bit floating point.
     Float64,
-    /// Timestamp unit and optional IANA timezone or fixed offset.
-    Timestamp(TimeUnit, Option<crate::Timezone>),
+    /// A 64-bit datetime count with an explicit timezone marker.
+    DateTime64 {
+        /// The count's temporal resolution.
+        unit: TimeUnit,
+        /// An IANA zone, fixed offset, or [`crate::Timezone::NAIVE`].
+        timezone: crate::Timezone,
+    },
     /// Days since the Unix epoch.
     Date32,
     /// Milliseconds since the Unix epoch representing whole days.
@@ -208,7 +213,7 @@ impl DataType {
             Self::Float16 => DataTypeId::Float16,
             Self::Float32 => DataTypeId::Float32,
             Self::Float64 => DataTypeId::Float64,
-            Self::Timestamp(..) => DataTypeId::Timestamp,
+            Self::DateTime64 { .. } => DataTypeId::DateTime64,
             Self::Date32 => DataTypeId::Date32,
             Self::Date64 => DataTypeId::Date64,
             Self::Time32(_) => DataTypeId::Time32,
@@ -314,7 +319,7 @@ impl DataType {
     /// enum variants cannot bypass an interop boundary.
     pub fn validate(&self) -> Result<()> {
         match self {
-            Self::Timestamp(unit, _) if !unit.is_arrow_time() => {
+            Self::DateTime64 { unit, .. } if !unit.is_arrow_time() => {
                 Err(invalid(self.name(), "unit must be a temporal resolution"))
             }
             Self::Time32(unit) => validate_time32_unit(*unit),
@@ -377,9 +382,16 @@ impl Ord for DataType {
 
         use DataType as D;
         match (self, other) {
-            (D::Timestamp(left_unit, left_zone), D::Timestamp(right_unit, right_zone)) => {
-                (left_unit, left_zone).cmp(&(right_unit, right_zone))
-            }
+            (
+                D::DateTime64 {
+                    unit: left_unit,
+                    timezone: left_zone,
+                },
+                D::DateTime64 {
+                    unit: right_unit,
+                    timezone: right_zone,
+                },
+            ) => (left_unit, left_zone).cmp(&(right_unit, right_zone)),
             (D::Time32(left), D::Time32(right))
             | (D::Time64(left), D::Time64(right))
             | (D::Duration32(left), D::Duration32(right))
@@ -471,7 +483,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Float16 => 10,
         DataType::Float32 => 11,
         DataType::Float64 => 12,
-        DataType::Timestamp(..) => 13,
+        DataType::DateTime64 { .. } => 13,
         DataType::Date32 => 14,
         DataType::Date64 => 15,
         DataType::Time32(_) => 16,

@@ -289,7 +289,16 @@ impl DiffEngine {
         }
         use DataType as D;
         match (&left, &right) {
-            (D::Timestamp(left_unit, left_zone), D::Timestamp(right_unit, right_zone)) => {
+            (
+                D::DateTime64 {
+                    unit: left_unit,
+                    timezone: left_zone,
+                },
+                D::DateTime64 {
+                    unit: right_unit,
+                    timezone: right_zone,
+                },
+            ) => {
                 if left_unit != right_unit {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "unit"),

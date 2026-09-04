@@ -1,5 +1,6 @@
 use yggdryl::types::{
-    FieldType, Int32Field, StructField, TimestampField, TypedField, TypedFieldRef, decimal, integer,
+    DateTime64Field, FieldType, Int32Field, StructField, TypedField, TypedFieldRef, decimal,
+    integer,
 };
 use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
@@ -94,9 +95,12 @@ mod integer_marker {
 
 #[test]
 fn typed_datatype_replacement_is_transactional_and_same_variant_only() {
-    let mut field = TimestampField::try_new(
+    let mut field = DateTime64Field::try_new(
         "created_at",
-        DataType::Timestamp(TimeUnit::Millisecond, None),
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::NAIVE,
+        },
         false,
     )
     .unwrap();
@@ -104,14 +108,17 @@ fn typed_datatype_replacement_is_transactional_and_same_variant_only() {
     assert!(field.set_dtype(DataType::Int64).is_err());
     assert_eq!(field, original);
     field
-        .set_dtype(DataType::Timestamp(
-            TimeUnit::Nanosecond,
-            Some(Timezone::UTC),
-        ))
+        .set_dtype(DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        })
         .unwrap();
     assert_eq!(
         field.dtype(),
-        &DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC))
+        &DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC
+        }
     );
 }
 

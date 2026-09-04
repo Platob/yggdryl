@@ -35,7 +35,7 @@ function datatypeFixtures() {
     ['float16', fields.float16('value')],
     ['float32', fields.float32('value')],
     ['float64', fields.float64('value')],
-    ['timestamp', fields.timestamp('value', 'us', 'Europe/Paris')],
+    ['datetime64', fields.datetime64('value', 'us', 'Europe/Paris')],
     ['date32', fields.date32('value')],
     ['date64', fields.date64('value')],
     ['time32', fields.time32('value', 'ms')],
@@ -95,7 +95,7 @@ const DATATYPE_KINDS = new Map(
     floating: ['float16', 'float32', 'float64'],
     decimal: ['decimal32', 'decimal64', 'decimal128', 'decimal256'],
     temporal: [
-      'timestamp',
+      'datetime64',
       'date32',
       'date64',
       'time32',
@@ -150,7 +150,7 @@ test('all 42 datatypes use canonical schema-directed JavaScript defaults', () =>
   for (const id of [
     'int64',
     'uint64',
-    'timestamp',
+    'datetime64',
     'date64',
     'time64',
     'duration64',
@@ -620,7 +620,7 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
     ),
   )
   assert.throws(
-    () => fields.timestamp('created', 'nanosecond').intoSchemeCompat('spark'),
+    () => fields.datetime64('created', 'nanosecond').intoSchemeCompat('spark'),
     /expected timestamp of us, got ns.*not a schema normalization/,
   )
   const extension = fields.largeUtf8('logical', {

@@ -2243,8 +2243,11 @@ mod records {
             "row",
             DataType::from_fields([
                 DataType::Date32.required_field("day"),
-                DataType::Timestamp(crate::TimeUnit::Microsecond, Some(crate::Timezone::UTC))
-                    .nullable_field("at"),
+                DataType::DateTime64 {
+                    unit: crate::TimeUnit::Microsecond,
+                    timezone: crate::Timezone::UTC,
+                }
+                .nullable_field("at"),
                 DataType::decimal128(10, 2).unwrap().required_field("cost"),
             ])
             .unwrap(),

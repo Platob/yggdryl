@@ -67,7 +67,10 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Float64
             | DataType::Date32
             | DataType::Time64(TimeUnit::Microsecond)
-            | DataType::Timestamp(TimeUnit::Microsecond | TimeUnit::Nanosecond, _)
+            | DataType::DateTime64 {
+                unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
+                ..
+            }
             | DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
@@ -103,18 +106,22 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         DataType::Time64(TimeUnit::Microsecond) => {
             OfficialDatum::time_micros(count(value)?).ok()?
         }
-        DataType::Timestamp(TimeUnit::Microsecond, None) => {
-            OfficialDatum::timestamp_micros(count(value)?)
-        }
-        DataType::Timestamp(TimeUnit::Microsecond, Some(_)) => {
-            OfficialDatum::timestamptz_micros(count(value)?)
-        }
-        DataType::Timestamp(TimeUnit::Nanosecond, None) => {
-            OfficialDatum::timestamp_nanos(count(value)?)
-        }
-        DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) => {
-            OfficialDatum::timestamptz_nanos(count(value)?)
-        }
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone,
+        } if timezone.is_naive() => OfficialDatum::timestamp_micros(count(value)?),
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            ..
+        } => OfficialDatum::timestamptz_micros(count(value)?),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone,
+        } if timezone.is_naive() => OfficialDatum::timestamp_nanos(count(value)?),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            ..
+        } => OfficialDatum::timestamptz_nanos(count(value)?),
         // A bound over an ASCII column is a string bound: the value is the
         // trimmed text.
         DataType::Utf8
@@ -170,11 +177,8 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
             Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()
         }
-        (DataType::Timestamp(unit, Some(zone)), OfficialPrimitiveLiteral::Long(value)) => {
-            Scalar::datetime64(*value, *unit, *zone).ok()
-        }
-        (DataType::Timestamp(unit, None), OfficialPrimitiveLiteral::Long(value)) => {
-            Scalar::datetime64(*value, *unit, crate::Timezone::NAIVE).ok()
+        (DataType::DateTime64 { unit, timezone }, OfficialPrimitiveLiteral::Long(value)) => {
+            Scalar::datetime64(*value, *unit, *timezone).ok()
         }
         (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => {
             Some(Scalar::F32(crate::Float32::from_f32((*value).into_inner())))
@@ -223,18 +227,22 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,
         DataType::Float64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Double,
         DataType::Time64(TimeUnit::Microsecond) if bytes.len() == 8 => OfficialPrimitiveType::Time,
-        DataType::Timestamp(TimeUnit::Microsecond, None) if bytes.len() == 8 => {
-            OfficialPrimitiveType::Timestamp
-        }
-        DataType::Timestamp(TimeUnit::Microsecond, Some(_)) if bytes.len() == 8 => {
-            OfficialPrimitiveType::Timestamptz
-        }
-        DataType::Timestamp(TimeUnit::Nanosecond, None) if bytes.len() == 8 => {
-            OfficialPrimitiveType::TimestampNs
-        }
-        DataType::Timestamp(TimeUnit::Nanosecond, Some(_)) if bytes.len() == 8 => {
-            OfficialPrimitiveType::TimestamptzNs
-        }
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone,
+        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::Timestamp,
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            ..
+        } if bytes.len() == 8 => OfficialPrimitiveType::Timestamptz,
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone,
+        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::TimestampNs,
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            ..
+        } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
         DataType::Utf8
         | DataType::LargeUtf8
         | DataType::Utf8View

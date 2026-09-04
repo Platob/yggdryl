@@ -183,7 +183,7 @@ export type DataTypeId =
   | 'float16'
   | 'float32'
   | 'float64'
-  | 'timestamp'
+  | 'datetime64'
   | 'date32'
   | 'date64'
   | 'time32'
@@ -264,7 +264,7 @@ interface DataTypeKindById {
   float16: 'floating'
   float32: 'floating'
   float64: 'floating'
-  timestamp: 'temporal'
+  datetime64: 'temporal'
   date32: 'temporal'
   date64: 'temporal'
   time32: 'temporal'
@@ -507,7 +507,7 @@ export type UInt64Field = FieldOf<'uint64', bigint>
 export type Float16Field = FieldOf<'float16', number>
 export type Float32Field = FieldOf<'float32', number>
 export type Float64Field = FieldOf<'float64', number>
-export type TimestampField = FieldOf<'timestamp', bigint>
+export type DateTime64Field = FieldOf<'datetime64', bigint>
 export type Date32Field = FieldOf<'date32', number>
 export type Date64Field = FieldOf<'date64', bigint>
 export type Time32Field = FieldOf<'time32', number>
@@ -612,7 +612,7 @@ type NullableValue<V, O extends FieldOptionsInput> = true extends NullableSettin
 type DefaultFieldInput<K extends DataTypeId, V> =
   K extends 'int8' | 'int16' | 'int32' | 'int64' | 'uint8' | 'uint16' | 'uint32' | 'uint64'
     ? number | bigint
-    : K extends 'timestamp' | 'date32' | 'date64'
+    : K extends 'datetime64' | 'date32' | 'date64'
       ? number | bigint | Date
       : K extends 'time32' | 'time64' | 'duration32' | 'duration64'
         ? number | bigint
@@ -646,13 +646,13 @@ export interface FieldsNamespace {
   float16(name: string, options?: FieldOptions): Float16Field
   float32(name: string, options?: FieldOptions): Float32Field
   float64(name: string, options?: FieldOptions): Float64Field
-  timestamp(
+  datetime64(
     name: string,
     unit?: string,
     timezone?: string,
     options?: FieldOptions,
-  ): TimestampField
-  timestamp(name: string, unit: string, options: FieldOptions): TimestampField
+  ): DateTime64Field
+  datetime64(name: string, unit: string, options: FieldOptions): DateTime64Field
   date32(name: string, options?: FieldOptions): Date32Field
   date64(name: string, options?: FieldOptions): Date64Field
   time(name: string, unit: string, options?: FieldOptions): TimeField
@@ -894,8 +894,8 @@ export interface FieldsNamespace {
   float16<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float16', number, N, O>
   float32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float32', number, N, O>
   float64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float64', number, N, O>
-  timestamp<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, timezone?: string, options?: O): NamedField<'timestamp', bigint, N, O>
-  timestamp<const N extends string, const O extends FieldOptionsInput>(name: N, unit: string, options: O): NamedField<'timestamp', bigint, N, O>
+  datetime64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, timezone?: string, options?: O): NamedField<'datetime64', bigint, N, O>
+  datetime64<const N extends string, const O extends FieldOptionsInput>(name: N, unit: string, options: O): NamedField<'datetime64', bigint, N, O>
   date32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'date32', number, N, O>
   date64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'date64', bigint, N, O>
   time<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit: string, options?: O): NamedField<'time32', number, N, O> | NamedField<'time64', bigint, N, O>
@@ -1158,7 +1158,7 @@ export interface JsonLinesCodecOptions extends Omit<CodecOptions, 'format'> {
   format: JsonLinesCodecFormat
 }
 
-/** The canonical resolution a native time, timestamp, or duration counts in. */
+/** The canonical resolution a native time, datetime, or duration counts in. */
 export type CodecTimeUnit =
   | 's'
   | 'ms'

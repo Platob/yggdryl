@@ -99,7 +99,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             .map(f16::from_f64)),
         DataType::Float32 => primitive!(Float32Array, narrow_f32),
         DataType::Float64 => primitive!(Float64Array, |value: &&Scalar| exact_f64(value)),
-        DataType::Timestamp(unit, _) => match unit {
+        DataType::DateTime64 { unit, .. } => match unit {
             TimeUnit::Second => physical_primitive!(TimestampSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => {
                 physical_primitive!(TimestampMillisecondArray, temporal_i64(*unit))
@@ -305,18 +305,18 @@ pub(crate) fn value_from_array(
         // Every temporal reads as its typed value: the count alone is not
         // the datum, the unit and zone are, and the typed spelling is what
         // serializes losslessly and compares across resolutions.
-        DataType::Timestamp(unit, zone) => match unit {
+        DataType::DateTime64 { unit, timezone } => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
-                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, *timezone)
             }),
             TimeUnit::Millisecond => primitive!(TimestampMillisecondArray, |value| {
-                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, *timezone)
             }),
             TimeUnit::Microsecond => primitive!(TimestampMicrosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, *timezone)
             }),
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, (*zone).unwrap_or(Timezone::NAIVE))
+                Scalar::DateTime64(value, *unit, *timezone)
             }),
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },

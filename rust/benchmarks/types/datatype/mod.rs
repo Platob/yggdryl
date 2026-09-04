@@ -9,7 +9,7 @@ pub(crate) mod temporal;
 pub(crate) mod value;
 
 pub(crate) const NESTED_SQL: &str = concat!(
-    "struct<id:bigint,events:array<struct<timestamp:timestamp(us,UTC),",
+    "struct<id:bigint,events:array<struct<timestamp:datetime64(us,UTC),",
     "attributes:map<string,string>,amount:decimal(38,18)>>,",
     "source:string>"
 );

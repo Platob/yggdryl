@@ -56,6 +56,10 @@ impl DataType {
     }
 }
 
+const fn naive_timezone() -> crate::Timezone {
+    crate::Timezone::NAIVE
+}
+
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum DataTypeRef<'a> {
@@ -72,7 +76,8 @@ enum DataTypeRef<'a> {
     Float16 {},
     Float32 {},
     Float64 {},
-    Timestamp {
+    #[serde(rename = "datetime64")]
+    DateTime64 {
         unit: TimeUnit,
         #[serde(skip_serializing_if = "Option::is_none")]
         timezone: Option<&'a str>,
@@ -213,9 +218,9 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Float16 => Self::Float16 {},
             D::Float32 => Self::Float32 {},
             D::Float64 => Self::Float64 {},
-            D::Timestamp(unit, timezone) => Self::Timestamp {
+            D::DateTime64 { unit, timezone } => Self::DateTime64 {
                 unit: *unit,
-                timezone: timezone.as_ref().map(crate::Timezone::as_str),
+                timezone: (!timezone.is_naive()).then(|| timezone.as_str()),
             },
             D::Date32 => Self::Date32 {},
             D::Date64 => Self::Date64 {},
@@ -311,10 +316,11 @@ enum DataTypeValue {
     Float16 {},
     Float32 {},
     Float64 {},
-    Timestamp {
+    #[serde(rename = "datetime64")]
+    DateTime64 {
         unit: TimeUnit,
-        #[serde(default)]
-        timezone: Option<crate::Timezone>,
+        #[serde(default = "naive_timezone")]
+        timezone: crate::Timezone,
     },
     Date32 {},
     Date64 {},
@@ -439,7 +445,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Float16 {} => Self::Float16,
             DataTypeValue::Float32 {} => Self::Float32,
             DataTypeValue::Float64 {} => Self::Float64,
-            DataTypeValue::Timestamp { unit, timezone } => Self::Timestamp(unit, timezone),
+            DataTypeValue::DateTime64 { unit, timezone } => Self::datetime64(unit, timezone)?,
             DataTypeValue::Date32 {} => Self::Date32,
             DataTypeValue::Date64 {} => Self::Date64,
             DataTypeValue::Time32 { unit } => Self::time32(unit)?,
@@ -588,12 +594,12 @@ impl DataType {
             D::Mic => tag("mic"),
             D::Cfi => tag("cfi"),
             D::Guid => tag("guid"),
-            D::Timestamp(unit, timezone) => {
-                tag("timestamp");
+            D::DateTime64 { unit, timezone } => {
+                tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
-                // Omitted rather than null when absent, exactly as the JSON
-                // path skips it - a naive timestamp carries no zone at all.
-                if let Some(timezone) = timezone {
+                // Omitted for the explicit NAIVE marker, exactly as the JSON
+                // path skips it for an Arrow-compatible wall-clock type.
+                if !timezone.is_naive() {
                     entries.push((
                         key("timezone"),
                         Scalar::String(SmolStr::new(timezone.as_str())),
@@ -822,17 +828,17 @@ impl DataType {
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
             "guid" => Self::Guid,
-            "timestamp" => {
+            "datetime64" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {
                         let text = held.as_str().ok_or_else(|| {
                             invalid("$.timezone", "a time zone name", "a non-string value")
                         })?;
-                        Some(text.parse()?)
+                        text.parse()?
                     }
-                    None => None,
+                    None => crate::Timezone::NAIVE,
                 };
-                Self::Timestamp(unit("unit")?, timezone)
+                Self::datetime64(unit("unit")?, timezone)?
             }
             "time32" => Self::time32(unit("unit")?)?,
             "time64" => Self::time64(unit("unit")?)?,

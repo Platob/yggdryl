@@ -812,7 +812,7 @@ test('reserved transport keys and non-string map keys do not collide', () => {
   const value = {}
   Object.defineProperty(value, '__yggdryl_codec__', {
     enumerable: true,
-    value: 'timestamp',
+    value: 'datetime64',
   })
   Object.defineProperty(value, '__proto__', {
     enumerable: true,
@@ -826,7 +826,7 @@ test('reserved transport keys and non-string map keys do not collide', () => {
 
   const decoded = json.loads(json.dumps(value))
   assert.equal(Object.getPrototypeOf(decoded), Object.prototype)
-  assert.equal(decoded.__yggdryl_codec__, 'timestamp')
+  assert.equal(decoded.__yggdryl_codec__, 'datetime64')
   assert.equal(decoded.__proto__, 'data')
   assert.equal(decoded.unit, 'ms')
   assert.equal(decoded.value, '0')

@@ -1210,7 +1210,7 @@ mod values {
             ),
             (
                 Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
-                DataTypeId::Timestamp,
+                DataTypeId::DateTime64,
             ),
             (
                 Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),

@@ -73,7 +73,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // 64-bit and wider integers exceed the safe-integer range.
         D::Int64
         | D::UInt64
-        | D::Timestamp(..)
+        | D::DateTime64 { .. }
         | D::Date64
         | D::Time64(_)
         | D::Duration64(_)
@@ -250,7 +250,7 @@ fn temporal_to_js<'env>(
         }
         D::Time32(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 32)?,
         D::Time64(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 64)?,
-        D::Timestamp(unit, _) => {
+        D::DateTime64 { unit, .. } => {
             temporal_value_to_js(env, value, TemporalFamily::DateTime, *unit, 64)?
         }
         D::Duration32(unit) => {

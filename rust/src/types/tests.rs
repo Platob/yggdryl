@@ -266,14 +266,17 @@ fn sql_hive_spark_and_arrow_spellings_parse_recursively() {
 fn temporal_decimal_and_wrapper_forms_are_validated() {
     assert_eq!(
         DataType::from_str("timestamp(9,'Europe/Paris')").unwrap(),
-        DataType::Timestamp(
-            TimeUnit::Nanosecond,
-            Some(crate::Timezone::from_str("Europe/Paris").unwrap())
-        )
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: crate::Timezone::from_str("Europe/Paris").unwrap()
+        }
     );
     assert_eq!(
         DataType::from_str("TIMESTAMP WITH TIME ZONE").unwrap(),
-        DataType::Timestamp(TimeUnit::Microsecond, Some(crate::Timezone::UTC))
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: crate::Timezone::UTC
+        }
     );
     assert_eq!(
         DataType::from_str("interval year to month").unwrap(),
@@ -352,10 +355,10 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::Timestamp(
-            TimeUnit::Nanosecond,
-            Some(crate::Timezone::from_str("Europe/Paris").unwrap()),
-        ),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: crate::Timezone::from_str("Europe/Paris").unwrap(),
+        },
         DataType::Date32,
         DataType::Date64,
         DataType::time32(TimeUnit::Millisecond).unwrap(),
@@ -456,7 +459,11 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     );
 
     let borrowed = DataType::from_arrow(&arrow).unwrap();
-    let DataType::Timestamp(_, Some(borrowed_timezone)) = &borrowed else {
+    let DataType::DateTime64 {
+        unit: _,
+        timezone: borrowed_timezone,
+    } = &borrowed
+    else {
         panic!("timestamp import changed variant");
     };
     let borrowed_timezone = *borrowed_timezone;
@@ -468,7 +475,11 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     assert_eq!(borrowed_arrow_timezone.as_ref(), timezone.as_ref());
 
     let owned = DataType::try_from(arrow).unwrap();
-    let DataType::Timestamp(_, Some(owned_timezone)) = &owned else {
+    let DataType::DateTime64 {
+        unit: _,
+        timezone: owned_timezone,
+    } = &owned
+    else {
         panic!("timestamp import changed variant");
     };
     assert!(std::ptr::eq(

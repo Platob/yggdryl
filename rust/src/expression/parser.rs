@@ -1419,7 +1419,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::Date64
         | D::Time32(_)
         | D::Time64(_)
-        | D::Timestamp(..)
+        | D::DateTime64 { .. }
         | D::Duration32(_)
         | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text

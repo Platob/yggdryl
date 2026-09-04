@@ -123,15 +123,15 @@ function createFields(DataType, Field, native) {
     float32: simple('float32'),
     float64: simple('float64'),
 
-    timestamp(name, unit = 'microsecond', timezone, value) {
+    datetime64(name, unit = 'microsecond', timezone = 'NAIVE', value) {
       // Omitting timezone makes the third argument the options object.
       if (isOptions(timezone)) {
         value = timezone
-        timezone = undefined
+        timezone = 'NAIVE'
       }
       return field(
         name,
-        native.temporal('timestamp', unit, timezone),
+        native.temporal('datetime64', unit, timezone),
         value,
       )
     },

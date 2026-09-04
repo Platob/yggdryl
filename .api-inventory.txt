@@ -1809,7 +1809,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type Float16Field = TypedField<floating::Float16>;
   pub type Float32Field = TypedField<floating::Float32>;
   pub type Float64Field = TypedField<floating::Float64>;
-  pub type TimestampField = TypedField<temporal::Timestamp>;
+  pub type DateTime64Field = TypedField<temporal::DateTime64Type>;
   pub type Date32Field = TypedField<temporal::Date32>;
   pub type Date64Field = TypedField<temporal::Date64>;
   pub type Time32Field = TypedField<temporal::Time32>;
@@ -2401,7 +2401,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
   pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, GuidScalar included)
-pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, timestamp unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
+pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>
   pub fn try_from_field(field: Field) -> Result<Self>

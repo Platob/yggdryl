@@ -44,13 +44,22 @@ fn direct_arrow_values_round_trip_through_core() {
 #[test]
 fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
     let values = [
-        DataType::Timestamp(TimeUnit::Second, None),
-        DataType::Timestamp(TimeUnit::Millisecond, Some(Timezone::UTC)),
-        DataType::Timestamp(
-            TimeUnit::Microsecond,
-            Some(Timezone::from_str("Europe/Paris").unwrap()),
-        ),
-        DataType::Timestamp(TimeUnit::Nanosecond, None),
+        DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::NAIVE,
+        },
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::UTC,
+        },
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::from_str("Europe/Paris").unwrap(),
+        },
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::NAIVE,
+        },
         DataType::Time32(TimeUnit::Second),
         DataType::Time32(TimeUnit::Millisecond),
         DataType::Time64(TimeUnit::Microsecond),
@@ -128,10 +137,10 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::Timestamp(
-            TimeUnit::Nanosecond,
-            Some(Timezone::from_str("Europe/Paris").unwrap()),
-        ),
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::from_str("Europe/Paris").unwrap(),
+        },
         DataType::Date32,
         DataType::Date64,
         DataType::Time32(TimeUnit::Millisecond),
@@ -198,7 +207,10 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
     assert!(DataType::Time32(TimeUnit::Nanosecond).validate().is_err());
     assert!(DataType::Time64(TimeUnit::Second).validate().is_err());
     for invalid in [
-        DataType::Timestamp(TimeUnit::YearMonth, None),
+        DataType::DateTime64 {
+            unit: TimeUnit::YearMonth,
+            timezone: Timezone::NAIVE,
+        },
         DataType::Duration32(TimeUnit::DayTime),
         DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),

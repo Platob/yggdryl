@@ -260,7 +260,7 @@ enum Inferred {
     Float,
     Date,
     Time(TimeUnit),
-    Timestamp(TimeUnit, Option<Timezone>),
+    DateTime64(TimeUnit, Timezone),
     Text,
 }
 
@@ -296,10 +296,10 @@ fn infer(value: &str, timezone: Option<&Timezone>) -> Inferred {
         return Inferred::Float;
     }
     if let Ok((_, unit, zone)) = iso::parse_timestamp(value) {
-        return Inferred::Timestamp(unit, Some(timezone.copied().unwrap_or(zone)));
+        return Inferred::DateTime64(unit, timezone.copied().unwrap_or(zone));
     }
     if let Ok((_, unit)) = iso::parse_datetime(value) {
-        return Inferred::Timestamp(unit, timezone.copied());
+        return Inferred::DateTime64(unit, timezone.copied().unwrap_or(Timezone::NAIVE));
     }
     if iso::parse_date(value).is_ok() {
         return Inferred::Date;
@@ -311,7 +311,7 @@ fn infer(value: &str, timezone: Option<&Timezone>) -> Inferred {
 }
 
 fn merge_inferred(left: Inferred, right: Inferred) -> Inferred {
-    use Inferred::{Bool, Date, Float, Int, Text, Time, Timestamp};
+    use Inferred::{Bool, Date, DateTime64, Float, Int, Text, Time};
     match (left, right) {
         (Text, _) | (_, Text) => Text,
         (Bool, Bool) => Bool,
@@ -319,8 +319,8 @@ fn merge_inferred(left: Inferred, right: Inferred) -> Inferred {
         (Int | Float, Int | Float) => Float,
         (Date, Date) => Date,
         (Time(left), Time(right)) => Time(finer_unit(left, right)),
-        (Timestamp(left, left_zone), Timestamp(right, right_zone)) if left_zone == right_zone => {
-            Timestamp(finer_unit(left, right), left_zone)
+        (DateTime64(left, left_zone), DateTime64(right, right_zone)) if left_zone == right_zone => {
+            DateTime64(finer_unit(left, right), left_zone)
         }
         _ => Text,
     }
@@ -351,7 +351,7 @@ fn inferred_dtype(kind: Inferred) -> Result<DataType> {
         Inferred::Float => DataType::Float64,
         Inferred::Date => DataType::Date32,
         Inferred::Time(unit) => DataType::time(unit)?,
-        Inferred::Timestamp(unit, zone) => DataType::Timestamp(unit, zone),
+        Inferred::DateTime64(unit, timezone) => DataType::DateTime64 { unit, timezone },
         Inferred::Text => DataType::Utf8,
     })
 }
@@ -431,7 +431,10 @@ fn parse_capture(
         DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }
-        DataType::Timestamp(unit, Some(zone)) => {
+        DataType::DateTime64 {
+            unit,
+            timezone: zone,
+        } if !zone.is_naive() => {
             // A reading that names its own offset is the crate's; a naive one
             // is autotyping's own rule, a wall clock in the column's zone.
             if let Ok(instant) = Scalar::from_temporal_text(dtype, value) {
@@ -443,7 +446,9 @@ fn parse_capture(
             let count = rescale(count, source, *unit).ok_or_else(invalid)?;
             Scalar::datetime64(count, *unit, *zone).map_err(|_| invalid())
         }
-        DataType::Timestamp(..) => Scalar::from_temporal_text(dtype, value).map_err(|_| invalid()),
+        DataType::DateTime64 { .. } => {
+            Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
+        }
         _ => Err(format_smolstr!(
             "autotype produced unsupported datatype {dtype}"
         )),

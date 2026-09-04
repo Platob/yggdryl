@@ -225,7 +225,7 @@
   {
     "name": "SendingTime",
     "dtype": {
-      "type": "timestamp",
+      "type": "datetime64",
       "unit": "microsecond",
       "timezone": "UTC"
     },
@@ -295,7 +295,7 @@
   {
     "name": "TransactTime",
     "dtype": {
-      "type": "timestamp",
+      "type": "datetime64",
       "unit": "microsecond",
       "timezone": "UTC"
     },

@@ -47,8 +47,8 @@
 //! | `PriceOffset` | float | `decimal64(18,8)` | exact and signed |
 //! | `Percentage` | float | `decimal64(18,8)` | `0.0525` is 5.25% |
 //! | `Amt` | float | `decimal128(38,8)` | a notional outgrows 10 integer digits |
-//! | `UTCTimestamp` | String | `timestamp(ns,"UTC")` | the instant, at the finest FIX width |
-//! | `TZTimestamp` | String | `timestamp(ns,"UTC")` | the offset resolves into the instant |
+//! | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
+//! | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 //! | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 //! | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 //! | `UTCDateOnly` | String | `date32` | a calendar day |
@@ -71,7 +71,7 @@
 //!
 //! `TZTimestamp` keeps the instant and drops the local offset, because an
 //! Arrow column carries one zone for every row. Read it under
-//! `timestamp(ns,"<zone>")` when the local reading is the value.
+//! `datetime64(ns,"<zone>")` when the local reading is the value.
 
 use smol_str::format_smolstr;
 
@@ -148,11 +148,17 @@ impl DataType {
         // The temporals.
         (
             "utctimestamp",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         (
             "tztimestamp",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
         ("localmkttime", DataType::Time32(TimeUnit::Second)),
@@ -192,7 +198,10 @@ impl DataType {
     /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Currency));
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
-    ///     Some(DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)))
+    ///     Some(DataType::DateTime64 {
+    ///         unit: TimeUnit::Nanosecond,
+    ///         timezone: Timezone::UTC,
+    ///     })
     /// );
     ///
     /// // Separators and case are folded, exactly as elsewhere in the grammar.

@@ -31,11 +31,17 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("amt", DataType::decimal128(38, 8).unwrap()),
         (
             "utctimestamp",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         (
             "tztimestamp",
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
         ),
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
         ("localmkttime", DataType::Time32(TimeUnit::Second)),
@@ -84,7 +90,10 @@ fn a_name_folds_case_separators_and_surrounding_space() {
     ] {
         assert_eq!(
             DataType::from_logical_name(spelling).unwrap(),
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC
+            },
             "{spelling}"
         );
     }

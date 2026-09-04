@@ -128,15 +128,17 @@ impl JsDataType {
     pub fn temporal(kind: String, unit: String, timezone: Option<String>) -> Result<Self> {
         let unit = CoreTimeUnit::from_str(&unit).map_err(napi_error)?;
         let inner = match kind.as_str() {
-            "timestamp" if unit.is_temporal() => CoreDataType::Timestamp(
+            "datetime64" if unit.is_temporal() => CoreDataType::datetime64(
                 unit,
                 // The zone is canonicalized by the core, so an alias or a
                 // differently cased spelling names the same datatype.
                 timezone
                     .map(|value| yggdryl::Timezone::from_str(&value))
                     .transpose()
-                    .map_err(napi_error)?,
-            ),
+                    .map_err(napi_error)?
+                    .unwrap_or(yggdryl::Timezone::NAIVE),
+            )
+            .map_err(napi_error)?,
             "time32" => CoreDataType::time32(unit).map_err(napi_error)?,
             "time64" => CoreDataType::time64(unit).map_err(napi_error)?,
             "duration32" if unit.is_temporal() => {
@@ -146,7 +148,7 @@ impl JsDataType {
                 CoreDataType::duration64(unit).map_err(napi_error)?
             }
             "interval" if unit.is_interval() => CoreDataType::Interval(unit),
-            "timestamp" | "duration32" | "duration64" => {
+            "datetime64" | "duration32" | "duration64" => {
                 return Err(Error::from_reason(format!(
                     "{kind} requires a temporal resolution unit"
                 )));

@@ -65,7 +65,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::Timestamp(TimeUnit::Second, Some(Timezone::UTC)),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Second,
+                    timezone: Timezone::UTC,
+                },
                 false,
             ),
             Field::new(

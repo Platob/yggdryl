@@ -478,11 +478,14 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
             }
             Scalar::time64(count, unit, Timezone::NAIVE)
         }
-        DataType::Timestamp(expected, zone) => {
+        DataType::DateTime64 {
+            unit: expected,
+            timezone,
+        } => {
             if *expected != unit {
                 return Err(missing("a datetime64 count in its declared unit"));
             }
-            Scalar::datetime64(count, unit, (*zone).unwrap_or(Timezone::NAIVE))
+            Scalar::datetime64(count, unit, *timezone)
         }
         DataType::Duration32(expected) => {
             if *expected != unit {

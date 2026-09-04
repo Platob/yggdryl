@@ -180,7 +180,10 @@ fn rows_schema() -> Field {
             Field::new("b", DataType::Boolean, true),
             Field::new(
                 "t",
-                DataType::Timestamp(TimeUnit::Microsecond, Some(Timezone::UTC)),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::UTC,
+                },
                 true,
             ),
             Field::new("n", DataType::Int32, true).with_partition(true),

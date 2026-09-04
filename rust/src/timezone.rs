@@ -1,15 +1,12 @@
 //! One way to name a time zone, everywhere in the project.
 //!
-//! A zone used to be an unvalidated `Option<SmolStr>` sitting in the second
-//! slot of a timestamp datatype. That meant `Asia/Calcutta` and `Asia/Kolkata`
-//! were different zones, `utc` and `UTC` were different zones, nothing could
-//! say what offset any of them implied, and nothing rejected a typo. This type
-//! is the single answer to all four.
+//! Registered names, aliases, fixed offsets, and the explicit zone-free marker
+//! all resolve through this one value.
 //!
-//! [`Self::NAIVE`] gives every native temporal value a non-optional zone while
-//! `DataType::Timestamp(unit, None)` retains Arrow's schema spelling. A zone is
-//! a process-lifetime interned handle; [`Self::offset_at`] applies the registry
-//! rules bundled by this build.
+//! [`Self::NAIVE`] gives every native temporal value and datatype a
+//! non-optional zone while Arrow projects that marker as an absent timezone. A
+//! zone is a process-lifetime interned handle; [`Self::offset_at`] applies the
+//! registry rules bundled by this build.
 //!
 //! ```
 //! use yggdryl::Timezone;

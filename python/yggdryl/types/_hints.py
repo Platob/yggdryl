@@ -536,7 +536,7 @@ class _Inference:
         if numpy_type is not None:
             return numpy_type
         if issubclass(hint, datetime_module.datetime):
-            return _native_datatype('timestamp(microsecond,"UTC")')
+            return _native_datatype('datetime64(microsecond,"UTC")')
         if issubclass(hint, datetime_module.date):
             return _native_datatype("date32")
         if issubclass(hint, datetime_module.time):
@@ -1596,7 +1596,7 @@ def _numpy_datatype(hint: type[Any]) -> DataType | None:
         "str_": "utf8",
         "bytes_": "binary",
         "void": "binary",
-        "datetime64": "timestamp(nanosecond)",
+        "datetime64": "datetime64(nanosecond)",
         "timedelta64": "duration64(nanosecond)",
     }
     if name == "complex64":
@@ -1843,7 +1843,7 @@ _DIRECT_CLASS_TYPES: dict[type[Any], str] = {
     bytes: "binary",
     bytearray: "binary",
     memoryview: "binary",
-    datetime_module.datetime: "timestamp(microsecond,\"UTC\")",
+    datetime_module.datetime: "datetime64(microsecond,\"UTC\")",
     datetime_module.date: "date32",
     datetime_module.time: "time64(microsecond)",
     datetime_module.timedelta: "duration64(microsecond)",

@@ -93,20 +93,47 @@ fn dtype_from(
         Node::TimeMillis => (DataType::Time32(TimeUnit::Millisecond), false),
         Node::TimeMicros => (DataType::Time64(TimeUnit::Microsecond), false),
         Node::TimestampMillis => (
-            DataType::Timestamp(TimeUnit::Millisecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Millisecond,
+                timezone: Timezone::UTC,
+            },
             false,
         ),
         Node::TimestampMicros => (
-            DataType::Timestamp(TimeUnit::Microsecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            },
             false,
         ),
         Node::TimestampNanos => (
-            DataType::Timestamp(TimeUnit::Nanosecond, Some(Timezone::UTC)),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
             false,
         ),
-        Node::LocalTimestampMillis => (DataType::Timestamp(TimeUnit::Millisecond, None), false),
-        Node::LocalTimestampMicros => (DataType::Timestamp(TimeUnit::Microsecond, None), false),
-        Node::LocalTimestampNanos => (DataType::Timestamp(TimeUnit::Nanosecond, None), false),
+        Node::LocalTimestampMillis => (
+            DataType::DateTime64 {
+                unit: TimeUnit::Millisecond,
+                timezone: Timezone::NAIVE,
+            },
+            false,
+        ),
+        Node::LocalTimestampMicros => (
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::NAIVE,
+            },
+            false,
+        ),
+        Node::LocalTimestampNanos => (
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+            false,
+        ),
         Node::Decimal(decimal) => (
             DataType::decimal128(
                 u8::try_from(decimal.precision).unwrap_or(38),
@@ -260,8 +287,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
         DataType::Time64(TimeUnit::Microsecond) => logical("long", "time-micros"),
-        DataType::Timestamp(unit, zone) => {
-            let annotation = match (unit, zone.is_some()) {
+        DataType::DateTime64 { unit, timezone } => {
+            let annotation = match (unit, !timezone.is_naive()) {
                 (TimeUnit::Millisecond, true) => "timestamp-millis",
                 (TimeUnit::Microsecond, true) => "timestamp-micros",
                 (TimeUnit::Nanosecond, true) => "timestamp-nanos",

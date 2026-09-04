@@ -19,7 +19,7 @@ use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{DataType, Error, I256, Result, Scalar, TimeUnit, Timezone};
 
-define_scalar_type!(TimestampScalar, super::Timestamp, "timestamp");
+define_scalar_type!(DateTime64Scalar, super::DateTime64Type, "datetime64");
 define_scalar_type!(
     Date32Scalar,
     super::Date32,
@@ -236,7 +236,7 @@ impl Scalar {
         Ok(Self::Time64(count, unit, zone))
     }
 
-    /// Build a timestamp or wall-clock datetime at 64-bit width.
+    /// Build an instant or wall-clock datetime at 64-bit width.
     pub fn datetime64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
         require(
             unit.is_arrow_time(),
@@ -440,8 +440,8 @@ impl Scalar {
     /// here, so a spelling reads the same count wherever it is met. The unit
     /// the spelling names is restated in the declared one and has to land
     /// exactly - `10:00:00.500` is no `time32(second)` - and the zone is the
-    /// datatype's: a timestamp that declares one wants an offset in the text,
-    /// and one that declares none refuses it.
+    /// datatype's: a zoned datetime wants an offset in the text, while a
+    /// `NAIVE` datetime refuses one.
     ///
     /// # Errors
     ///
@@ -462,14 +462,14 @@ impl Scalar {
                 let count = restated(clock_of_day(text)?, *unit, "time64")?;
                 Self::time64(count, *unit, Timezone::NAIVE)
             }
-            DataType::Timestamp(unit, None) => {
+            DataType::DateTime64 { unit, timezone } if timezone.is_naive() => {
                 let count = restated(iso::parse_datetime(text)?, *unit, "datetime64")?;
                 Self::datetime64(count, *unit, Timezone::NAIVE)
             }
-            DataType::Timestamp(unit, Some(zone)) => {
+            DataType::DateTime64 { unit, timezone } => {
                 let (count, source, _) = iso::parse_timestamp(text)?;
                 let count = restated((count, source), *unit, "datetime64")?;
-                Self::datetime64(count, *unit, *zone)
+                Self::datetime64(count, *unit, *timezone)
             }
             DataType::Duration32(unit) => {
                 let count = restated(iso::parse_duration(text)?, *unit, "duration32")?;
@@ -773,9 +773,10 @@ pub(crate) fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
         (TemporalFamily::Date, 64) => DataType::Date64,
         (TemporalFamily::Time, 32) => DataType::Time32(unit),
         (TemporalFamily::Time, 64) => DataType::Time64(unit),
-        (TemporalFamily::DateTime, 64) => {
-            DataType::Timestamp(unit, (!zone.is_naive()).then_some(zone))
-        }
+        (TemporalFamily::DateTime, 64) => DataType::DateTime64 {
+            unit,
+            timezone: zone,
+        },
         (TemporalFamily::Duration, 32) => DataType::Duration32(unit),
         (TemporalFamily::Duration, 64) => DataType::Duration64(unit),
         _ => return None,
@@ -793,7 +794,7 @@ pub(crate) fn temporal_target(dtype: &DataType) -> Option<(TemporalFamily, TimeU
         DataType::Date32 => Some((TemporalFamily::Date, TimeUnit::Day)),
         DataType::Date64 => Some((TemporalFamily::Date, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((TemporalFamily::Time, *unit)),
-        DataType::Timestamp(unit, _) => Some((TemporalFamily::DateTime, *unit)),
+        DataType::DateTime64 { unit, .. } => Some((TemporalFamily::DateTime, *unit)),
         DataType::Duration32(unit) | DataType::Duration64(unit) => {
             Some((TemporalFamily::Duration, *unit))
         }
@@ -1091,9 +1092,10 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
         DataType::Time64(expected) if *expected == unit => {
             Scalar::time64(count, unit, Timezone::NAIVE)
         }
-        DataType::Timestamp(expected, zone) if *expected == unit => {
-            Scalar::datetime64(count, unit, (*zone).unwrap_or(Timezone::NAIVE))
-        }
+        DataType::DateTime64 {
+            unit: expected,
+            timezone,
+        } if *expected == unit => Scalar::datetime64(count, unit, *timezone),
         DataType::Duration32(expected) if *expected == unit => Scalar::duration32(
             i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
                 operation: "temporal arithmetic",
@@ -1117,7 +1119,7 @@ const fn temporal_kind_name(dtype: &DataType) -> &'static str {
         DataType::Date64 => "date64",
         DataType::Time32(_) => "time32",
         DataType::Time64(_) => "time64",
-        DataType::Timestamp(_, _) => "datetime64",
+        DataType::DateTime64 { .. } => "datetime64",
         DataType::Duration32(_) => "duration32",
         DataType::Duration64(_) => "duration64",
         _ => "temporal",

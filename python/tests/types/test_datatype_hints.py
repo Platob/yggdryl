@@ -73,7 +73,7 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         bytes: "binary",
         bytearray: "binary",
         memoryview: "binary",
-        datetime.datetime: "timestamp",
+        datetime.datetime: "datetime64",
         datetime.date: "date32",
         datetime.time: "time64",
         datetime.timedelta: "duration64",
@@ -105,7 +105,7 @@ def test_scalar_subclasses_keep_their_physical_type() -> None:
         pass
 
     assert DataType.from_pyhint(Count).id == "int64"
-    assert DataType.from_pyhint(EventTime).id == "timestamp"
+    assert DataType.from_pyhint(EventTime).id == "datetime64"
     assert DataType.from_pyhint(Price).id == "decimal128"
 
 

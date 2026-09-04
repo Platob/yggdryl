@@ -978,7 +978,7 @@ function fromTypedMarker(value) {
     'date64',
     'time32',
     'time64',
-    'timestamp',
+    'datetime64',
     'duration32',
     'duration64',
   ])
@@ -986,7 +986,7 @@ function fromTypedMarker(value) {
   if (!temporalKinds.has(kind) || !markerShape(value, kind, temporalKeys)) {
     return undefined
   }
-  if (value.date !== null && kind === 'timestamp') {
+  if (value.date !== null && kind === 'datetime64') {
     return new Date(value.date)
   }
   return nativeScalarFromTemporalParts(

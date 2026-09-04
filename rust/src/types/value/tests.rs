@@ -80,7 +80,11 @@ fn year_month_interval_keeps_its_signed_64_bit_component_spelling() {
 #[test]
 fn temporal_casts_preserve_family_and_timezone() {
     let schema = root([
-        DataType::Timestamp(TimeUnit::Millisecond, Some(Timezone::UTC)).required_field("at"),
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::UTC,
+        }
+        .required_field("at"),
         DataType::Time32(TimeUnit::Second).required_field("clock"),
         DataType::Duration32(TimeUnit::Millisecond).required_field("elapsed"),
     ]);

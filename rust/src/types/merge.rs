@@ -683,12 +683,12 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
         2 => {
             // A zone one side declares is kept: a naive reading of a zoned
             // column loses the offset, which is not a merge but a cast.
-            let zone = match (left, right) {
-                (DataType::Timestamp(_, Some(zone)), _)
-                | (_, DataType::Timestamp(_, Some(zone))) => Some(*zone),
-                _ => None,
+            let timezone = match (left, right) {
+                (DataType::DateTime64 { timezone, .. }, _) if !timezone.is_naive() => *timezone,
+                (_, DataType::DateTime64 { timezone, .. }) if !timezone.is_naive() => *timezone,
+                _ => crate::Timezone::NAIVE,
             };
-            DataType::Timestamp(unit, zone)
+            DataType::DateTime64 { unit, timezone }
         }
         _ => {
             if matches!(left, DataType::Duration64(_)) || matches!(right, DataType::Duration64(_)) {
@@ -706,7 +706,7 @@ const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
         DataType::Date32 => Some((0, TimeUnit::Day)),
         DataType::Date64 => Some((0, TimeUnit::Millisecond)),
         DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::Timestamp(unit, _) => Some((2, *unit)),
+        DataType::DateTime64 { unit, .. } => Some((2, *unit)),
         DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
         _ => None,
     }
