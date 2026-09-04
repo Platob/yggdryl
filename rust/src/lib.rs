@@ -49,9 +49,12 @@ pub mod iceberg;
 pub mod io;
 mod iobase;
 mod iocursor;
+mod iofile;
+mod iofolder;
 mod iokind;
 mod iomedia;
 mod iomode;
+mod iopath;
 #[cfg(feature = "arrow")]
 pub mod ipc;
 pub mod json;
@@ -63,7 +66,6 @@ mod mime_type;
 #[cfg(feature = "parquet")]
 pub mod parquet;
 mod path;
-mod roles;
 mod scheme;
 pub mod text;
 mod time_unit;
@@ -114,15 +116,17 @@ pub use iobase::{
     overwrite_arrow_reader_default, skip_absent,
 };
 pub use iocursor::{Cursor, IOCursor};
+pub use iofile::IOFile;
+pub use iofolder::IOFolder;
 pub use iokind::IOKind;
 pub use iomedia::IOMedia;
 pub use iomode::IOMode;
+pub use iopath::IOPath;
 pub use json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use listing::Listing;
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
 pub use mime_type::MimeType;
-pub use roles::{IOFile, IOFolder, IOPath};
 pub use scheme::Scheme;
 pub use text::{Children, Float16, Float32, Float64, Format, Limits, ScalarIter, TypedScalar};
 pub(crate) use text::{stable_hash_display, stable_hash_of};
