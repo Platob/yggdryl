@@ -484,6 +484,22 @@ impl JsScalar {
         self.inner.stable_hash()
     }
 
+    /// Digest this value's canonical byte representation.
+    ///
+    /// Equal values answer equal digests across integer, float, decimal, and
+    /// temporal widths, because the feed writes each family's canonical form
+    /// rather than its storage width.
+    #[napi]
+    pub fn digest(&self, algorithm: Option<String>) -> Result<crate::xxhash::JsDigest> {
+        let algorithm = match algorithm.as_deref() {
+            Some(algorithm) => crate::xxhash::algorithm_from_str(algorithm)?,
+            None => yggdryl::DigestAlgorithm::Xxh3_64,
+        };
+        Ok(crate::xxhash::JsDigest::from_core(
+            self.inner.digest(algorithm),
+        ))
+    }
+
     /// Compare two native values by the core's total value order.
     ///
     /// Numeric widths compare by value, as equality does: `i8(1)` and

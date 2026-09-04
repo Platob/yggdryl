@@ -32,6 +32,9 @@ IO_MODES: tuple[str, ...] = tuple(_LISTING["io_modes"])
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
+#: Every digest algorithm, e.g. ``"xxh3-64"``, ``"xxh3-128"``.
+DIGEST_ALGORITHMS: tuple[str, ...] = tuple(_LISTING["digest_algorithms"])
+
 #: Every answer a handle gives about what it addresses, e.g. ``"file"``.
 IO_KINDS: tuple[str, ...] = tuple(_LISTING["io_kinds"])
 
@@ -46,6 +49,7 @@ __all__ = [
     "COMPATIBILITY_SCHEMES",
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
+    "DIGEST_ALGORITHMS",
     "IO_KINDS",
     "LEVELS",
     "TIME_UNITS",

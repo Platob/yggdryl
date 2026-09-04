@@ -3099,6 +3099,80 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   binding[name] = Object.freeze({ loads, dumps, ...raw })
 }
 
+// The digest surface, grouped the way the documentation names it. The native
+// halves carry a leading underscore so only this namespace is the public
+// spelling, and every one of them takes bytes the wrapper has already narrowed
+// to a window over the caller's own memory.
+{
+  const xxh32Native = binding._xxh32Native
+  const xxh64Native = binding._xxh64Native
+  const xxh3_64Native = binding._xxh3_64Native
+  const xxh3_128Native = binding._xxh3_128Native
+  const digestNative = binding._xxhashDigestNative
+  const secretMinimumLength = binding._xxhashSecretMinimumLengthNative()
+  delete binding._xxh32Native
+  delete binding._xxh64Native
+  delete binding._xxh3_64Native
+  delete binding._xxh3_128Native
+  delete binding._xxhashDigestNative
+  delete binding._xxhashSecretMinimumLengthNative
+
+  const seedOf = (options) => {
+    if (options == null) return undefined
+    if (typeof options === 'bigint' || typeof options === 'number') return options
+    return options.seed
+  }
+  const secretOf = (options) =>
+    options == null || typeof options !== 'object' ? undefined : options.secret
+
+  const asSeed = (seed) => {
+    if (seed == null) return undefined
+    if (typeof seed === 'bigint') return seed
+    if (typeof seed === 'number') {
+      if (!Number.isSafeInteger(seed) || seed < 0) {
+        throw new TypeError('seed must be a non-negative safe integer or a bigint')
+      }
+      return BigInt(seed)
+    }
+    throw new TypeError('seed must be a number or a bigint')
+  }
+
+  const asSecret = (secret) => (secret == null ? undefined : new Uint8Array(toBytes(secret)))
+
+  binding.xxhash = Object.freeze({
+    SECRET_MINIMUM_LENGTH: secretMinimumLength,
+    Digest: binding.Digest,
+    Xxh32: binding.Xxh32,
+    Xxh64: binding.Xxh64,
+    Xxh3_64: binding.Xxh3_64,
+    Xxh3_128: binding.Xxh3_128,
+    xxh32(data, options) {
+      const seed = seedOf(options)
+      return xxh32Native(toNativeContent(data), seed == null ? undefined : Number(seed))
+    },
+    xxh64(data, options) {
+      return xxh64Native(toNativeContent(data), asSeed(seedOf(options)))
+    },
+    xxh3_64(data, options) {
+      return xxh3_64Native(
+        toNativeContent(data),
+        asSeed(seedOf(options)),
+        asSecret(secretOf(options)),
+      )
+    },
+    xxh3_128(data, options) {
+      return xxh3_128Native(
+        toNativeContent(data),
+        asSeed(seedOf(options)),
+        asSecret(secretOf(options)),
+      )
+    },
+    digest(data, algorithm) {
+      return digestNative(toNativeContent(data), algorithm)
+    },
+  })
+}
+
 binding.codec = codec
 binding.avro = avro
 binding.fields = fields
@@ -3122,6 +3196,7 @@ binding.yaml = yaml
     unionModes: Object.freeze(listing.unionModes),
     ioModes: Object.freeze(listing.ioModes),
     codecs: Object.freeze(listing.codecs),
+    digestAlgorithms: Object.freeze(listing.digestAlgorithms),
     ioKinds: Object.freeze(listing.ioKinds),
     compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
     levels: Object.freeze(levels),

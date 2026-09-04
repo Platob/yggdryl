@@ -608,6 +608,36 @@ impl PyIOBase {
         Ok(PyBytes::new(py, &bytes))
     }
 
+    /// Digest every byte here, without holding the value in memory.
+    ///
+    /// The read streams in bounded chunks, so a multi-gigabyte object costs
+    /// one window rather than a copy. A resource that does not exist digests
+    /// as empty, per the laziness contract; a container raises.
+    #[pyo3(signature = (algorithm = "xxh3-64"))]
+    fn read_digest(&self, py: Python<'_>, algorithm: &str) -> PyResult<crate::xxhash::PyDigest> {
+        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
+        let digest = py
+            .detach(|| self.inner.read_digest(algorithm))
+            .map_err(value_error)?;
+        Ok(crate::xxhash::PyDigest::from_core(digest))
+    }
+
+    /// Digest `length` bytes from `offset`, streaming the window.
+    #[pyo3(signature = (offset, length, algorithm = "xxh3-64"))]
+    fn read_range_digest(
+        &self,
+        py: Python<'_>,
+        offset: u64,
+        length: usize,
+        algorithm: &str,
+    ) -> PyResult<crate::xxhash::PyDigest> {
+        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
+        let digest = py
+            .detach(|| self.inner.read_range_digest(offset, length, algorithm))
+            .map_err(value_error)?;
+        Ok(crate::xxhash::PyDigest::from_core(digest))
+    }
+
     /// Read every byte here as text, as `Path.read_text`.
     fn read_text(&self) -> PyResult<String> {
         let bytes = self.inner.read_all_bytes().map_err(value_error)?;
