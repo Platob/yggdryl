@@ -1063,10 +1063,9 @@ vocabulary yggdryl carries, and that is deliberately a *type* table, not a
 *value* one.
 
 **The two ways in must agree.** Whatever `from_pairs` builds has to read
-back identically once a wire parser exists - yggfin pins this as
-`from_text(built.into_text("|")) == built`. The wire parser is a later
-phase; write the invariant into the module docs now so it is not discovered
-as a contradiction later.
+back identically through the text readers below - yggfin pins this as
+`from_text(built.into_text("|")) == built` - so the invariant is a test in
+this phase, not a note for a later one.
 
 **Repeating groups are in scope, because the key carries the location.**
 The earlier draft ruled them out on the grounds that finding a group's
@@ -1085,6 +1084,119 @@ occurrences of `PartyID`, not a reconstructed `NoPartyIDs`. Reassembling
 *that* is the wire parser's job and it needs the grammar, which is the
 `.cfb` phase's. Say so in the module docs.
 
+### The three readers, one builder
+
+`from_pairs` takes `(&str, &str)` and borrows both halves, so a splitting
+iterator feeds it with no copy and no allocation. That is what makes the
+text readers thin: each one splits, rewrites its dialect's spellings into
+the key forms `from_pairs` already understands, and hands the iterator over.
+There is one nesting builder, one folding rule and one code translation
+underneath all three.
+
+```rust
+/// Reads a message from text, choosing the dialect by its first key.
+pub fn from_text(text: &str) -> Result<Self>;
+
+/// `tag=value` pairs separated by `sep`: SOH on the wire, `|` in a log.
+pub fn from_fixtext(
+    registry: Arc<FixRegistry>, text: &str, sep: char,
+    branch: Option<&FixBranch>, version: Option<Version>,
+) -> Result<Self>;
+
+/// A ULBridge body: `NAME=VALUE` pairs, `#` counters, indexed entries.
+pub fn from_ultext(
+    registry: Arc<FixRegistry>, body: &[u8],
+    branch: Option<&FixBranch>, version: Option<Version>,
+) -> Result<Self>;
+```
+
+`from_text` is the convenience over `FixRegistry::global()` with everything
+inferred, and **the dialect is decided by one token, not by sniffing**: take
+the bytes before the first `=`; all ASCII digits means `from_fixtext`, and
+the separator is SOH when the text holds one and `|` otherwise; anything
+else means `from_ultext`. State the rule, and refuse an empty text with a
+typed error rather than answering an empty message.
+
+#### `from_fixtext`
+
+Split on `sep` with `memchr`, then each segment at its first `=`. A trailing
+empty segment is tolerated - a wire message ends with the separator. A
+segment with no `=` is dropped, the way an empty key already is. Duplicate
+tags stay in arrival order. Every key and value is a slice of the input;
+nothing is copied before `from_pairs` types it.
+
+#### `from_ultext`
+
+ULBridge writes names, not tags, and packs a repeating group into one pair.
+The shape, from yggfin's `docs/fix/repeating-groups.md`:
+
+```text
+#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=SYNTH-01<sub>PARTYIDSOURCE=shortcodeid<sub>PARTYROLE=executingsystem|
+```
+
+where `<sub>` is `\x04\x03`, EOT followed by ETX. The rules:
+
+- Pairs split on `|`, then at the first `=`. Keys are names in any case
+  (`PARTYID`, `NoPartyIDs`) and reach their field through the fold Phase 7
+  already defines.
+- A key opening with `#` names a group. `#NOPARTYIDS=1` is the counter;
+  `#NOPARTYIDS[0]=…` is entry 0, and its *value* is a run of member pairs.
+- Members inside an entry split on `\x04\x03`.
+- **And sometimes on nothing at all.** ULBridge may omit the separator after
+  the first member while keeping the index:
+  `#NoPartyIDs[0]=PartyID=P-1PartyIDSource=DPartyRole=3`. Split it by
+  scanning for the next member name the group's own field declares, taking
+  the **longest declared match** so `PartyIDSource` wins over `PartyID`.
+  Only that group's declared members are candidates, which is what keeps the
+  scan bounded and the result explainable.
+- Whatever will not split stays as one unknown key, verbatim. Residue is
+  never dropped and never fatal.
+- Indices may be partial or out of order: `[2]` before `[0]`, with gaps.
+  Occurrences are built by index, not by arrival, and a gap is a null
+  occurrence.
+
+Then it rewrites into the key forms `from_pairs` already takes -
+`#NOPARTYIDS[0]=PARTYID=…` becomes `("NoPartyIDs[0].PartyID", "…")` - and
+hands them over. `from_ultext` builds no tree of its own.
+
+Values translate through the code set exactly as any other value does, so
+`PARTYIDSOURCE=shortcodeid` stores `P` and
+`PARTYROLE=executingsystem` stores `16`, while
+`PARTYROLE=orderoriginatorsystem`, which no code set explains, is stored
+verbatim under tag 452. yggfin's doc records both outcomes on the same
+payload, and it is the reason the fall-through rule in Phase 4 is not an
+error path.
+
+#### Anomalies are derived, never a second state
+
+A counter that disagrees with the number of entries it introduces - and a
+group whose members would not split cleanly - is real and must not be
+swallowed. It is also not a failure: yggfin keeps the row and records the
+dispute, because a trading message that half-parses is worth more than an
+exception. Do the same **without adding an error channel to `FixMsg`**:
+the counter is an ordinary value at its own tag, the entries are the List's
+length, and
+
+```rust
+pub fn anomalies(&self) -> impl Iterator<Item = FixAnomaly<'_>>;
+```
+
+derives the disagreements on demand by comparing the two - the same way
+`FixId` is derived rather than stored. No new field, nothing to keep in
+step, and a caller that never asks pays nothing.
+
+#### Tests
+
+The payload above verbatim, with `\x04\x03` and with the separator omitted,
+both producing one `NoPartyIDs` occurrence of four members; `PARTYIDSOURCE`
+translating and `PARTYROLE=orderoriginatorsystem` surviving untranslated;
+out-of-order and gapped indices; a counter of `2` against one entry showing
+up in `anomalies` while the message still reads; `from_fixtext` over a
+SOH-separated and a `|`-separated capture of the same message answering
+equal messages; `from_text` picking the dialect from `35=D|…` against
+`MSGTYPE=D|…`; and the round trip that closes the loop -
+`from_text(built.into_text('|'))` equal to `built`.
+
 ### Optimization the phase is judged on
 
 - One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each reserved
@@ -1095,6 +1207,10 @@ occurrences of `PartyID`, not a reconstructed `NoPartyIDs`. Reassembling
   reached only for a counter tag.
 - Header ordering reads a precomputed tag-to-position table, not a scan of
   `STANDARD_HEADER_TAGS` per entry.
+- The text readers copy nothing: every key and value handed to `from_pairs`
+  is a slice of the input, and splitting uses `memchr`. Bench them beside
+  `from_pairs` over the same messages, so the cost of the split is visible
+  separately from the cost of the build.
 
 ### Tests, benchmark, docs
 
