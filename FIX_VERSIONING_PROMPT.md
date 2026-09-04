@@ -918,30 +918,77 @@ rows.
 `rust/src/fix/entry.rs`:
 
 ```rust
-pub struct FixEntry<'a> {
-    /// The decimal FIX tag.
-    pub tag: i32,
+pub struct FixEntry {
+    /// The decimal FIX tag, or `None` when the key named no field.
+    pub tag: Option<i32>,
     /// `xxh32` of the branch name, or `None` for the standard branch.
     pub branch: Option<i32>,
+    /// The key exactly as it arrived, kept only when it is not the tag.
+    pub key: Option<SmolStr>,
     /// The value exactly as it arrived. Never absent - an absent field is an
     /// entry that does not exist.
-    pub value: &'a str,
+    pub value: SmolStr,
 }
 ```
 
 - The digest is the same `xxh32` Phase 2's `FixBranch` already caches,
-  reinterpreted to `i32`; `FixEntry::id()` folds it into a `FixId` with one
-  shift-or, so an entry addresses the registry without hashing anything.
-- `None` is the standard branch *and* "not resolved yet", which is what
-  makes the type usable before `from_pairs` has decided a branch. That is
-  the whole reason it is not simply a `FixId`.
-- 32 bytes: `Option<i32>` costs 8, not 4, because `0` is a legal digest and
-  the niche is therefore unavailable. A bare `i32` defaulting to the
-  standard digest would be 24 and lose the unresolved state; the extra word
-  buys that state and is worth it here.
-- The value stays `&'a str` and is never typed inside the entry. Typing
-  happens once, in `from_pairs`, through `Field::scalar` - the one value
-  contract - so no FIX value parser is written twice.
+  reinterpreted to `i32`; `FixEntry::id()` folds tag and branch into a
+  `FixId` with one shift-or, so a resolved entry addresses the registry
+  without hashing anything.
+- `branch: None` is the standard branch *and* "not resolved yet", which is
+  what makes the type usable before `from_pairs` has decided a branch. That
+  is the whole reason it is not simply a `FixId`. `Option<i32>` costs 8
+  bytes, not 4, because `0` is a legal digest so there is no niche; a bare
+  `i32` defaulting to the standard digest would be smaller and lose that
+  state.
+- **The value owns, and that is a change from the borrowed sketch.** A
+  `FixMsg` holds its entries (below) and outlives the text it was read from,
+  so a borrowed value would force `FixMsg<'a>` on every caller and on both
+  bindings, which hold one across an FFI boundary. `SmolStr` is the answer
+  the rest of the crate already uses: 23 bytes inline covers a side, a
+  price, a symbol and a 21-byte `UTCTimestamp`, so the common entry
+  allocates nothing. The readers still split into borrowed `(&str, &str)`
+  pairs; the single materialization happens in `from_pairs`.
+- **`tag` is optional and `key` exists because an unresolved key has no
+  tag.** `VenueOwnThing=x` must survive - Phase 7 already keeps it in the
+  tree - and `entries` is the wire record, so it has to hold it too. The
+  alternative, dropping unresolvable pairs from `entries`, loses data for
+  the third time in this brief and is refused for the same reason. `key` is
+  `None` for the overwhelmingly common resolved pair, so nothing is stored
+  twice.
+- The value is never typed inside the entry. Typing happens once, in
+  `from_pairs`, through `Field::scalar` - the one value contract - so no FIX
+  value parser is written twice.
+
+### `FixMsg` carries its entries
+
+`FixMsg` today is a registry, a derived branch, a root `Field` and a
+`Scalar` row. It gains one field:
+
+```rust
+entries: Vec<FixEntry>,
+```
+
+populated by `from_pairs` and therefore by all three readers, and empty for
+a message built through `new` or `with_registry` from a schema and a value.
+`FixMsg::entries()` hands out the slice.
+
+This is not the row restated. The row is the *interpretation*: values typed
+through `Field::scalar`, codes translated from spellings, names canonical,
+groups nested, header ordered. `entries` is what *arrived*: raw text,
+arrival order, untranslated, including the pairs no dictionary explained.
+Both facts are real and neither derives from the other - a translated `4`
+cannot say whether `4` or `PercentageWaivedCashDiscount` was on the wire, so
+lossless re-emission is impossible from the row alone. That is what makes
+`into_text(sep)` and the `from_text(built.into_text('|')) == built` round
+trip work at all, and it is why the duplication is admissible where this
+brief refuses it elsewhere. Say exactly that in the doc comment, because a
+reader will otherwise assume one of the two is redundant.
+
+`anomalies()` reads the same slice: it is where the counter value and the
+occurrences it introduces sit side by side. With no entries - a message
+built from a schema - both `into_text` and `anomalies` fall back to the row
+and say so.
 
 ### `FixMsg::from_pairs`
 
@@ -1191,7 +1238,10 @@ The payload above verbatim, with `\x04\x03` and with the separator omitted,
 both producing one `NoPartyIDs` occurrence of four members; `PARTYIDSOURCE`
 translating and `PARTYROLE=orderoriginatorsystem` surviving untranslated;
 out-of-order and gapped indices; a counter of `2` against one entry showing
-up in `anomalies` while the message still reads; `from_fixtext` over a
+up in `anomalies` while the message still reads; `entries()` holding every
+pair in arrival order with the untranslated spelling that arrived, beside a
+row holding the translated code; an unresolved key present in `entries` with
+`tag` `None` and `key` set; `from_fixtext` over a
 SOH-separated and a `|`-separated capture of the same message answering
 equal messages; `from_text` picking the dialect from `35=D|…` against
 `MSGTYPE=D|…`; and the round trip that closes the loop -
@@ -1201,7 +1251,12 @@ equal messages; `from_text` picking the dialect from `35=D|…` against
 
 - One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each reserved
   from the iterator's `size_hint` before the walk. No per-entry `String`, no
-  per-entry map.
+  per-entry map. The `Vec<FixEntry>` is not scratch - it is the one the
+  message keeps - so it is built once and moved in, never cloned.
+- A resolved entry allocates nothing: `tag` and `branch` are integers, `key`
+  is `None`, and a value inside `SmolStr`'s 23-byte inline buffer stays on
+  the stack. Pin that in the allocation case: a 30-pair tag-keyed build of
+  short values allocates the three vectors and nothing per entry.
 - A tag-keyed entry allocates nothing before the value is typed.
 - Only `get_primitive_field` is probed for scalars; the nested half is
   reached only for a counter tag.
