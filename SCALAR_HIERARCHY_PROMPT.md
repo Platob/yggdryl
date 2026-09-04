@@ -15,9 +15,8 @@ already exists.
 ## Outcome
 
 - `Scalar` is an enum over families, one variant per value family.
-- Each family is an enum over its widths: `TemporalScalar`, `IntegerScalar`,
-  `DecimalScalar`, `FloatingScalar`, `TextScalar`, `GeospatialScalar`,
-  `NestedScalar`.
+- Each family is an enum over its widths: `Temporal`, `Integer`, `Decimal`,
+  `Float`, `Geospatial`, `Nested`. No `Scalar` suffix — see *Naming law*.
 - Each width is a concrete final struct: `Int32`, `Decimal128`, `DateTime64`,
   `Date32`. Small, `Copy` where the payload allows, `repr(transparent)` where
   it is one field.
@@ -60,7 +59,7 @@ Nesting is not free. Payload layouts modeled with `rustc -O` on 1.94, with
 Two conclusions, both binding:
 
 1. **Naive nesting costs 33% per value.** Each family enum carries its own
-   discriminant and `Timezone(SmolStr)` at 24 bytes makes `TemporalScalar` 48
+   discriminant and `Timezone(SmolStr)` at 24 bytes makes `Temporal` 48
    on its own, so the root grows to 64. Interning `Timezone` is a
    **prerequisite**, not an optimization — see the phase below.
 2. **The 32-byte row is rejected.** It requires boxing `Decimal128` and
@@ -75,13 +74,59 @@ per family:
 | Type | Today | After |
 | --- | --- | --- |
 | `Scalar` | 48 | 48 |
-| a temporal value | 48 (the whole `Scalar`) | `TemporalScalar` 24 |
+| a temporal value | 48 (the whole `Scalar`) | `Temporal` 24 |
 | a datetime | 48 (the whole `Scalar`) | `DateTime64` 16, `Copy` |
 | a date | 48 (the whole `Scalar`) | `Date32` 12, `Copy` |
 | an `i32` | 48 (the whole `Scalar`) | `Int32` 4, `Copy` |
 
 That is the point of the drill-down: code that knows it holds a datetime moves
 16 bytes, not 48, and never matches a discriminant.
+
+## Naming law
+
+Four suffixes, one meaning each. The bare name is always the value; a suffix
+always means "paired with something".
+
+| Spelling | Means | Examples |
+| --- | --- | --- |
+| bare name | **the value itself** | `Int32`, `DateTime64`, `Decimal128`, `Utf8`, `Temporal`, `Integer` |
+| `*Type` | **the datatype**, and the zero-sized marker naming it | `DateTime64Type`, `Decimal128Type`, `TemporalType` |
+| `*Scalar` | **a convenience builder**: `TypedScalar<K>` with the marker chosen | `Int64Scalar`, `DateTime64Scalar` |
+| `*Field` | **a convenience builder**: `TypedField<K>` with the marker chosen | `Int64Field`, `DateTime64Field` |
+
+**A scalar type is never suffixed `Scalar`.** The module path already says what
+it is — `types::temporal::DateTime64` is unambiguous, and
+`types::temporal::DateTime64Scalar` for the same value would be noise. The
+suffix is reserved for the pairing aliases, whose whole job is terse
+construction:
+
+```rust
+let value: DateTime64 = DateTime64::new(epoch, TimeUnit::Microsecond, Timezone::UTC)?;
+let built = DateTime64Scalar::new(value)?;   // TypedScalar<DateTime64Type>
+assert_eq!(built.dtype(), &value.dtype());
+```
+
+This reverses the scalar brief's earlier line about retiring the `*Scalar`
+aliases: **keep all of them**, and keep the `*Field` aliases they mirror. They
+are the builders, not duplicates of the value types. What is retired is only
+the *marker* spelling they used to point at, which gains the `Type` suffix.
+
+Consequences to apply everywhere:
+
+- Family enums lose the suffix: `Temporal`, `Integer`, `Float`, `Decimal`,
+  `Geospatial`, `Nested`.
+- `EnumScalar` is a value, so it becomes `Enum` in `types/enumeration.rs`.
+- `TypedScalar<K>` and `arrow::StructScalar` already conform: both are
+  pairings, which is what the suffix means.
+- The `*Type` suffix on the datatype side becomes load-bearing rather than
+  decorative — it is the only thing separating `types::temporal::Temporal`
+  (the value family) from `types::temporal::TemporalType` (the datatype
+  family). Do not drop it there.
+- Traits take a prefix or a `*Value` / `*Family` suffix and are unaffected:
+  `ScalarValue`, `ScalarFamily`, `TemporalValue`, `IntegerValue`.
+
+Sweep at the end: every remaining `*Scalar` name in the tree is either a
+pairing builder or a bug.
 
 ## Tiers
 
@@ -101,15 +146,15 @@ value struct: `Int8Type`, `DateTime64Type`, `Utf8Type`, `Decimal128Type`.
 pub enum Scalar {
     Null,
     Boolean(bool),
-    Integer(IntegerScalar),
-    Floating(FloatingScalar),
-    Decimal(DecimalScalar),
-    Text(TextScalar),
+    Integer(Integer),
+    Float(Float),
+    Decimal(Decimal),
+    Utf8(Utf8),
     Binary(Binary),
-    Temporal(TemporalScalar),
-    Geospatial(GeospatialScalar),
-    Enum(EnumScalar),
-    Nested(NestedScalar),
+    Temporal(Temporal),
+    Geospatial(Geospatial),
+    Enum(Enum),
+    Nested(Nested),
 }
 ```
 
@@ -118,7 +163,7 @@ and has no tier-2 enum — `Binary` and `Boolean` are the two.
 
 Datatype families and value families are **not** 1:1, and the code says so
 once: `Utf8`, `LargeUtf8`, `Utf8View`, and `Ascii32/64/128` are seven datatypes
-over one `TextScalar`; `Dictionary` and `RunEndEncoded` are encodings of their
+over one `Utf8` value; `Dictionary` and `RunEndEncoded` are encodings of their
 value type and have no value family at all. `types/<family>/scalars.rs` is
 where a datatype family contributes its arms, which is why the two lists differ.
 
@@ -128,13 +173,24 @@ where a datatype family contributes its arms, which is why the two lists differ.
 
 | Family enum | Variants | Concrete structs |
 | --- | --- | --- |
-| `IntegerScalar` | 10 | `Int8` `Int16` `Int32` `Int64` `UInt8` `UInt16` `UInt32` `UInt64` `Int128` `UInt128` |
-| `FloatingScalar` | 3 | `Float16` `Float32` `Float64` |
-| `DecimalScalar` | 2 | `Decimal128` `Decimal256` |
-| `TemporalScalar` | 7 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` |
-| `TextScalar` | 2 | `Utf8` `Ascii` |
-| `GeospatialScalar` | 2 | `Geometry` `Geography` |
-| `NestedScalar` | 3 | `Sequence` `Mapping` `Record` |
+| `Integer` | 10 | `Int8` `Int16` `Int32` `Int64` `UInt8` `UInt16` `UInt32` `UInt64` `Int128` `UInt128` |
+| `Float` | 3 | `Float16` `Float32` `Float64` |
+| `Decimal` | 2 | `Decimal128` `Decimal256` |
+| `Temporal` | 7 | `Date32` `Date64` `Time32` `Time64` `DateTime64` `Duration32` `Duration64` |
+| `Geospatial` | 2 | `Geometry` `Geography` |
+| `Nested` | 3 | `Sequence` `Mapping` `Record` |
+
+Two of these already exist under the right name. `Float { F16, F32, F64 }` is
+today's copyable width view and is exactly the tier-2 floating family — reuse
+it, do not add a second type. `Integer` is today a sign-and-magnitude struct;
+the family enum takes the name and absorbs `is_negative`, `magnitude`, and
+`as_i128` as methods computed from the variant, so cross-width comparison keeps
+its normalized key and one public type disappears.
+
+There is no text family. `Utf8` and `Ascii32/64/128` share one representation —
+a `SmolStr` — so by the earned-family test in `HIERARCHY_PROMPT.md` this is one
+leaf, not a family of two. ASCII width is a datatype property, not a value
+representation, exactly as `Scalar::String` already treats it.
 
 ### Tier 3 — concrete final structs
 
@@ -152,8 +208,9 @@ pub struct Date32     { count: i32, unit: TimeUnit, timezone: Timezone }
 #[repr(transparent)] pub struct Sequence(Arc<[Scalar]>);
 ```
 
-`Float16`, `Float32`, `Float64`, `I256`, and `EnumScalar` already exist and
-keep their definitions; they only gain the trait impls.
+`Float16`, `Float32`, `Float64`, and `I256` already exist and keep their
+definitions; they only gain the trait impls. `EnumScalar` keeps its definition
+and is renamed `Enum` in `types/enumeration.rs`, per the naming law.
 
 ## Traits
 
@@ -220,16 +277,16 @@ The drill-down, all three floors, no allocation and no `dyn`:
 ```rust
 let value: Scalar = /* … */;
 let Scalar::Temporal(temporal) = &value else { return };   // tier 1 -> 2
-let TemporalScalar::DateTime64(at) = temporal else { return }; // tier 2 -> 3
+let Temporal::DateTime64(at) = temporal else { return };        // tier 2 -> 3
 let epoch: i64 = at.count();                                // tier 3, 16 bytes, Copy
 
 fn round<T: TemporalValue>(value: T, unit: TimeUnit) -> Result<T> { value.with_unit(unit) }
 ```
 
 `TemporalRef<'a>` is retired. It existed only because there was no concrete
-struct to borrow; `TemporalScalar` is that value now, and it implements the
-family half of `TemporalValue` directly. `Scalar::as_temporal` returns
-`Option<&TemporalScalar>`.
+struct to borrow; `Temporal` is that value now, and it implements the family
+half of `TemporalValue` directly. `Scalar::as_temporal` returns
+`Option<&Temporal>`.
 
 ## Renames
 
@@ -238,10 +295,12 @@ family half of `TemporalValue` directly. `Scalar::as_temporal` returns
 | `DataType::Timestamp(TimeUnit, Option<Timezone>)` | `DataType::DateTime64 { unit, timezone }` | matches `Scalar::DateTime64`, and drops an `Option` the value side never had |
 | `DataTypeId::Timestamp` | `DataTypeId::DateTime64` | follows the variant |
 | `field::temporal::Timestamp` (marker) | `types::temporal::DateTime64Type` | marker suffix; frees `DateTime64` for the value |
-| `TimestampScalar` (alias) | `types::temporal::DateTime64` | the concrete struct replaces the alias |
-| `TemporalRef<'a>` | — | retired; `&TemporalScalar` |
-| `Scalar::I8(i8)` … and 29 siblings | `Scalar::Integer(IntegerScalar::I8(Int8))` … | the hierarchy |
-| every `*Scalar` `TypedScalar` alias | — | retired where a concrete struct now names the same thing |
+| `TimestampScalar` (builder alias) | `DateTime64Scalar` | follows the variant; the alias itself is kept |
+| `TemporalRef<'a>` | — | retired; `&Temporal` |
+| `Scalar::I8(i8)` … and 29 siblings | `Scalar::Integer(Integer::I8(Int8))` … | the hierarchy |
+| `EnumScalar` | `Enum` | a value, so no `Scalar` suffix |
+| `Integer` (sign/magnitude struct) | `Integer` (family enum) | the enum takes the name and the methods; the struct is deleted |
+| `Float` (width view) | `Float` (family enum) | already the right shape; reuse, do not duplicate |
 
 `Timezone` becomes non-optional on the datatype, exactly as it already is on
 the scalar: `Timezone::NAIVE` is the explicit spelling for a wall-clock column,
@@ -325,7 +384,7 @@ Assertions to add and keep:
 const _: () = assert!(size_of::<Timezone>() == 4);
 const _: () = assert!(size_of::<Scalar>() == 48);
 const _: () = assert!(size_of::<DateTime64>() == 16);
-const _: () = assert!(size_of::<TemporalScalar>() == 24);
+const _: () = assert!(size_of::<Temporal>() == 24);
 const _: () = assert!(size_of::<Int32>() == 4);
 ```
 
@@ -355,7 +414,9 @@ Behavioral invariants, each with a test:
   `ScalarValue` and its family trait.
 - `rg -n "Timestamp" rust/src` matches only Arrow's own foreign type and the
   grammar's foreign-spelling table.
-- `TemporalRef` and every retired `*Scalar` alias are gone, with no shim.
+- `TemporalRef` is gone with no shim, and the `*Scalar` / `*Field` builder
+  aliases are all present and pointing at `*Type` markers.
+- `rg -n "(struct|enum) [A-Za-z0-9_]+Scalar" rust/src` matches only pairings.
 - The size assertions above are in the tree and passing.
 - `AGENTS.md` *Generic scalar* describes the three tiers and names
   `DateTime64` on both the datatype and the value.

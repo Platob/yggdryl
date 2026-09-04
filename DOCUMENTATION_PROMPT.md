@@ -240,9 +240,16 @@ throughout. Sweep every page, every example, and every prose mention:
 | `io::Coded` | `coding::Coding` |
 | `generic::Coded` | `coding::Coded` |
 | `generic::Text` | `text::Structured` |
-| `TemporalRef` | `&TemporalScalar` |
-| `Int8Scalar` and the `*Scalar` aliases | the concrete structs |
+| `TemporalRef` | `&Temporal` |
 | `field::temporal::Timestamp` | `types::temporal::DateTime64Type` |
+| `TimestampScalar` | `DateTime64Scalar` |
+| `EnumScalar` | `Enum` |
+
+The `*Scalar` and `*Field` builder aliases stay. Per the naming law in
+`SCALAR_HIERARCHY_PROMPT.md`, a bare name is the value and the suffix is the
+`TypedScalar` / `TypedField` pairing, so a page shows `DateTime64` when it
+means the value and `DateTime64Scalar` only when it means the builder. Do not
+mix them in one example.
 
 `timestamp` stays in exactly one place: the table of accepted foreign spellings
 on `types/datatype.md`, where it is listed beside the SQL, Hive, and Spark

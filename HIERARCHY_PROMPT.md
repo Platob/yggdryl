@@ -9,6 +9,12 @@ Land `REORGANIZATION_PROMPT.md` first. This brief and the scalar brief can land
 in either order, except that `DataType::DateTime64` and the interned `Timezone`
 come from the scalar brief and are assumed here.
 
+`SCALAR_HIERARCHY_PROMPT.md`'s *Naming law* governs every name introduced here:
+bare name is the value, `*Type` is the datatype, `*Scalar` and `*Field` are the
+convenience builders. On this side the `*Type` suffix is load-bearing — it is
+what separates `types::temporal::Temporal` (the value family) from
+`types::temporal::TemporalType` (the datatype family).
+
 ## The rule
 
 > Every notion has exactly three floors.
@@ -118,18 +124,15 @@ pub trait DataTypeFamily: Clone + Debug + Display + Eq + Ord + Hash {
     fn from_dtype(dtype: &DataType) -> Option<&Self>;
 }
 
-pub trait TemporalType_: DataTypeValue { const FAMILY: TemporalFamily;
-                                         fn unit(&self) -> TimeUnit;
-                                         fn timezone(&self) -> Timezone; }
-pub trait IntegerType_:  DataTypeValue { const SIGNED: bool; const BIT_WIDTH: u8; }
-pub trait DecimalType_:  DataTypeValue { fn precision(&self) -> u8; fn scale(&self) -> i8; }
-pub trait NestedType_:   DataTypeValue { fn children(&self) -> &Fields; }
 ```
 
-Name the traits without the trailing underscore; it is written that way here
-only to keep the family enum and its trait distinguishable in this table.
-Settle the pair as `TemporalType` (enum) and `TemporalTyping` (trait), or
-`TemporalKind`/`TemporalType` — pick one convention and use it for all seven.
+**No per-family traits on the datatype side.** The family enums are 1-to-12
+byte `Copy` values whose accessors — `unit()`, `timezone()`, `precision()`,
+`children()` — are inherent methods on the enum and on each leaf. A trait would
+abstract over nothing: the generic code that matters is `T: TemporalValue` on
+the *value* side, and it reaches the datatype through `Self::Type`. `AGENTS.md`
+allows an abstraction only when it removes real duplication; this one would
+not, and it would also force an awkward second name beside `TemporalType`.
 
 `DataTypeKind` becomes exactly the tier-1 discriminant and stops being a
 hand-maintained parallel list. Derive it: `DataType::kind()` matches ten arms,
@@ -278,8 +281,8 @@ Revisit the family tier when a second columnar encoding exists. Not before.
 
 | Notion | Trait | Enum | Leaves | Work |
 | --- | --- | --- | --- | --- |
-| value | `ScalarValue` + 7 family traits | `Scalar` → family enums | `Int32`, `DateTime64`, … | `SCALAR_HIERARCHY_PROMPT.md` |
-| datatype | `DataTypeValue` + 7 family traits | `DataType` → family enums | `DateTime64Type`, `DecimalParams`, … | this brief |
+| value | `ScalarValue` + 6 family traits | `Scalar` → `Temporal`, `Integer`, `Float`, `Decimal`, `Geospatial`, `Nested` | `Int32`, `DateTime64`, … | `SCALAR_HIERARCHY_PROMPT.md` |
+| datatype | `DataTypeValue`, `DataTypeFamily` | `DataType` → `TemporalType`, `IntegerType`, … | `DateTime64Type`, `DecimalParams`, … | this brief |
 | schema unit | `FieldValue` + family traits | — (by design) | `Field`, `TypedField<K>` | this brief |
 | storage | `IOBase`, roles, `StorageBackend` | `Holder` → backend enums | `Buffer`, `local::File`, … | this brief |
 | record encoding | `IOMedia` + capability traits | `Media` (flat, deliberately) | `Ipc`, `Parquet`, `Avro`, `Text` | this brief |
@@ -335,6 +338,8 @@ Behavioral invariants, each with a test:
 - Every notion in the sweep table conforms or is documented as deliberately
   flat, with the reason in its module doc.
 - No family enum exists with one member.
+- Every name obeys the naming law: `rg -n "(struct|enum) [A-Za-z0-9_]+Scalar" rust/src`
+  matches only pairings, and every family enum is bare-named.
 - The size assertions are in the tree and passing.
 - `AGENTS.md` states the three-floor rule and the earned-family test once, and
   every notion-specific layout rule it replaces is deleted.
