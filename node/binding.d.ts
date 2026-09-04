@@ -164,7 +164,7 @@ export type CodecSource = CodecSyncSource | CodecReadable
 /**
  * The parameter-free identity of one datatype variant.
  *
- * Mirrors `rust/src/generic/datatype_id.rs` and is what `DataType.id` returns.
+ * Mirrors `rust/src/datatype_id.rs` and is what `DataType.id` returns.
  * Use it whenever the question is "which variant is this".
  */
 export type DataTypeId =
@@ -226,7 +226,7 @@ export type DataTypeId =
 /**
  * The coarse family one datatype variant belongs to.
  *
- * Mirrors `rust/src/generic/datatype_kind.rs` and is what `DataType.kind`
+ * Mirrors `rust/src/datatype_kind.rs` and is what `DataType.kind`
  * returns. Only behavior that is uniform across a whole family reads it.
  */
 export type DataTypeKind =

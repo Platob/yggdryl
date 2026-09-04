@@ -105,18 +105,18 @@ assert price.parquet_field_id == 7
 ```
 
 ```python
-from yggdryl import Field, fields
-from yggdryl.fields import Int32Field, ListField
+from yggdryl import Field, types
+from yggdryl.types import Int32Field, ListField
 
-trade_id: Int32Field = fields.int32("trade_id", nullable=False)
-tags: ListField[str] = fields.list("tags", fields.utf8("item"))
+trade_id: Int32Field = types.int32("trade_id", nullable=False)
+tags: ListField[str] = types.list("tags", types.utf8("item"))
 
 assert type(trade_id) is Field
 assert tags.dtype.kind == "list"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```
 
-The categorized `yggdryl.fields` package covers every native datatype variant.
+The categorized `yggdryl.types` package covers every native datatype variant.
 Its aliases preserve kind/value information for static typing while factories
 return the same generic native `Field`. `equals(..., with_metadata=False)` can
 ignore metadata recursively; `show_diffs` returns readable UTF-8 difference
@@ -125,7 +125,8 @@ lines and `show_diff` joins them.
 ```python
 from decimal import Decimal
 
-from yggdryl import scalar, toml
+from yggdryl import scalar
+from yggdryl.text import toml
 
 @scalar
 class Order:
@@ -139,7 +140,7 @@ assert Order.field().name == "Order"
 assert toml.loads(payload, cls=Order) == order
 ```
 
-`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` expose byte-first `dumps`/`loads`
+`yggdryl.text.json`, `yggdryl.text.toml`, and `yggdryl.text.yaml` expose byte-first `dumps`/`loads`
 plus declared `os.PathLike` and typed text/binary file-object `dump`/`load`.
 A source `str` is always document content; use `pathlib.Path` to name a source
 location. String destinations remain paths because output has no content/path
@@ -240,8 +241,8 @@ their operational state.
 Bare `DataType.variant()` is the self-describing semi-structured Variant
 datatype; `DataType.variant(fields)` stays the dense-union sugar building the
 canonical dense Union with sequential native type IDs - the parenthesis
-disambiguates. `fields.variant` builds the bare Variant field,
-`fields.dense_union` the union one, and explicit `fields.union` remains
+disambiguates. `types.variant` builds the bare Variant field,
+`types.dense_union` the union one, and explicit `types.union` remains
 available for custom IDs or sparse layout.
 
 Start with the [Python guide](https://platob.github.io/yggdryl/extensions/python/)

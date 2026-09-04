@@ -36,18 +36,18 @@ declarations are checked against the tests that use them.
 
 | Name | Documented in |
 | --- | --- |
-| `DataType` | [datatype](../datatype.md) |
-| `Field`, `fields` | [field](../field.md) |
+| `DataType` | [datatype](../types.md) |
+| `Field`, `fields` | [field](../types.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
-| `IOBase` | [io](../io.md) |
-| `BatchReader`, `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
-| `iceberg` | [iceberg](../iceberg.md) |
+| `IOBase` | [io](../holder.md) |
+| `BatchReader`, `RecordOptions` | [io](../holder.md), [ipc](../media.md), [parquet](../media.md) |
+| `iceberg` | [iceberg](../media.md) |
 | `fix` | [fix](../fix.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../types.md) |
 | `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |
-| `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
-| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
+| `avro` | [Avro](../media.md) schema, container, single-object, and batch media |
+| `gzip`, `zlib`, `zstd` | [gzip](../coding.md), [zlib](../coding.md), [zstd](../coding.md) |
 | `xxhash`, `Digest` | [xxhash](../xxhash.md) |
 
 Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
@@ -92,7 +92,7 @@ exists, JavaScript supplies the vtable itself: a plain object whose methods are 
 `FileSystem` calls in camelCase - `fileInfo`, `list`, `readRange`, `writeFull`, `createDir`,
 `deleteFile`, plus a `typeName`. `IOBase.fromArrowFs(handler, path)` turns one into an ordinary
 handle, so a `Map`, `node:fs`, an S3 client, or a caching layer over any of them becomes storage
-the rest of the package can read and write. [`arrowfs`](../arrowfs.md) documents the backend and
+the rest of the package can read and write. [`arrowfs`](../holder.md) documents the backend and
 shows a complete handler.
 
 Two things belong to this boundary rather than to the backend. Sizes cross as `bigint`, because a
@@ -139,7 +139,7 @@ same core `joinpath` implementation as Rust's and Python's `/` idiom.
 ## Bytes and ranges
 
 `readRangeBytes` and `appendBytes` are the core's `read_range_bytes` and `append_bytes`, camelCased
-at the boundary and nothing more; [io](../io.md#whole-values) states what they do. Over each sits one
+at the boundary and nothing more; [io](../holder.md#whole-values) states what they do. Over each sits one
 inferring entry point: `readRange` chooses the answer's type from its options, and `append` chooses
 how to read the byte source it was handed.
 
@@ -171,7 +171,7 @@ encoding text as UTF-8 exactly as `writeText` does, and returns the byte offset 
 
 ## One native field from a class or value
 
-JavaScript follows the [canonical field-conversion contract](../field.md#converting-to-one-native-field)
+JavaScript follows the [canonical field-conversion contract](../types.md#converting-to-one-native-field)
 with `intoField(value, name?)` and the class-level `intoStructField` spelling. The canonical class
 form is an actual static getter; `intoField` validates its native non-null Struct result and memoizes
 that result per class. Other class member forms are rejected.
@@ -504,7 +504,7 @@ native default planner; the JavaScript layer caches identity but never decides w
 
 `BatchReader` is the primitive record shape: `readArrowReader` returns one and each
 `overwriteArrowReader`/`appendArrowReader`/`mergeArrowReader` call consumes one, exactly as
-[`IOMedia`](../io.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
+[`IOMedia`](../holder.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
 another reader, an Apache Arrow JS `Table` or `RecordBatch`, an array of batches, or Arrow IPC bytes -
 and iterating one yields Arrow JS record batches.
 
@@ -810,7 +810,7 @@ assert.deepEqual(
 fs.rmSync(warehouse, { recursive: true, force: true })
 ```
 
-The walk is the same in every language: the [iceberg](../iceberg.md) page shows each of these
+The walk is the same in every language: the [iceberg](../media.md) page shows each of these
 steps beside its Rust and Python form.
 
 ## FIX is a namespace

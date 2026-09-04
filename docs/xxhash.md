@@ -9,7 +9,7 @@ Digest bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XX
 
     Iceberg's `bucket[N]` transform is pinned by its specification to murmur3 x86_32. A
     partition computed with xxHash would place rows in the wrong buckets and no other
-    reader would find them; [iceberg](iceberg.md) never calls this module for partitioning.
+    reader would find them; [iceberg](media.md) never calls this module for partitioning.
 
 ## One-shot digests
 
@@ -67,7 +67,7 @@ Digest bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XX
 The four functions answer their native widths with nothing wrapped around the number.
 `Digest` is for a caller who wants the algorithm travelling with the value instead, and
 `DigestAlgorithm` is the runtime dispatcher when the algorithm is a value rather than a
-call - the same relationship [`Codec`](generic.md) has to [gzip](gzip.md).
+call - the same relationship [`Codec`](types.md) has to [gzip](coding.md).
 
 ## Digest values
 
@@ -285,7 +285,8 @@ cutoff for that reason.
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
     use yggdryl::{DigestAlgorithm, xxhash};
 
     let mut handle = Buffer::new();
@@ -354,15 +355,16 @@ cutoff for that reason.
     }
     ```
 
-`read_digest` streams through [`pstream_bytes`](io.md) and retains one bounded chunk, so
+`read_digest` streams through [`pstream_bytes`](holder.md) and retains one bounded chunk, so
 memory is flat in the object's size: a 64 GiB file costs one window rather than a copy.
 Nothing calls `read_all_bytes`. Both methods are derived, so every backend and every wrapper
 inherits them unchanged - which is what makes the two questions a compressed handle can be
 asked stay distinct:
 
 ```rust
-use yggdryl::gzip::Gzip;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::coding::gzip::Gzip;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 use yggdryl::{DigestAlgorithm, xxhash};
 
 let plain = b"symbol,price\nAAPL,187.23\n";
@@ -392,7 +394,7 @@ convention no format states; folder and recursive digests are deliberately absen
 
 !!! note "Rust only"
     `DigestReader` and `DigestWriter` are built on `Read` and `Write`, which neither binding
-    has a native spelling for - the same reason [gzip](gzip.md)'s `reader`/`writer` pair is
+    has a native spelling for - the same reason [gzip](coding.md)'s `reader`/`writer` pair is
     Rust only.
 
 ```rust
@@ -421,7 +423,8 @@ assert_eq!(target.into_inner(), b"AAPL,187.23");
     generic type parameter.
 
 ```rust
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 use yggdryl::xxhash::Hashed;
 use yggdryl::DigestAlgorithm;
 
@@ -540,7 +543,7 @@ borrows wherever the value already holds bytes and never allocates.
 
 ### Encoding
 
-Every value begins with one tag byte, a [`DataTypeId`](generic.md) discriminant. That byte
+Every value begins with one tag byte, a [`DataTypeId`](types.md) discriminant. That byte
 is a wire contract: inserting a variant into `DataTypeId` anywhere but the end changes
 stored digests, and a test pinning every value is what turns that into a failure rather
 than a surprise. Every integer in the feed is little-endian, explicitly, so a digest does
@@ -653,7 +656,7 @@ wide enough to hold.
 
 ## Benchmarks
 
-`rust/benchmarks/xxhash.rs`, `python/benchmarks/digests.py`, and
+`rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and
 `node/benchmarks/xxhash.js` measure the same protocol from the three sides. One containerized
 x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO;
 CPython 3.11.15; Node 22.22.2), `cargo bench --bench xxhash`. Fixtures are built once, outside
@@ -781,7 +784,7 @@ building every row as a value first. Answering 128 bits instead of 64 costs noth
 
 ### At the bindings
 
-`python/benchmarks/digests.py --min-time 0.1 --repeat 5`, release wheel, against the `xxhash`
+`python/benchmarks/xxhash.py --min-time 0.1 --repeat 5`, release wheel, against the `xxhash`
 package binding C `libxxhash` on the same 1,080,000-byte payload:
 
 ```text
@@ -823,3 +826,40 @@ The one-byte row is 496 ns against Python's 166 ns: NAPI's call overhead, flat a
 size below a kilobyte, and gone by 64 KiB where both bindings reach the Rust kernel's own
 speed. A `Buffer` is borrowed; a `string` is 7.5x slower because it is UTF-8 encoded on the way
 in, so hash bytes rather than text when the text is already encoded somewhere.
+
+## DigestAlgorithm: a hash over anything
+
+
+`DigestAlgorithm` names one xxHash algorithm and is the only place a name selects an
+implementation, the way `Codec` is for content codings. `Digest` is the value it answers -
+the algorithm carried with the number, so `xxh64` and `xxh3-64`, both 64 bits wide, can
+never be confused for one another. `Digester` is the runtime-selected streaming state, what
+`Encoder` is to `Codec`.
+
+```rust
+use yggdryl::{Digest, DigestAlgorithm};
+
+let digest = DigestAlgorithm::Xxh3_64.digest(b"AAPL");
+assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3_64);
+assert_eq!(Digest::from_str(&digest.to_string())?, digest);
+assert_eq!(digest.into_bytes().len(), DigestAlgorithm::Xxh3_64.width());
+
+// A caller who knows the algorithm at compile time uses the concrete state in
+// `yggdryl::xxhash` and pays no dispatch; this is the form for one held in a
+// variable.
+let mut digester = DigestAlgorithm::Xxh3_64.digester();
+digester.write_bytes(b"AA");
+digester.write_bytes(b"PL");
+assert_eq!(digester.as_digest(), digest);
+
+// Only the XXH3 pair takes a custom secret; every algorithm takes a seed.
+assert!(!DigestAlgorithm::Xxh64.is_secretable());
+assert!(DigestAlgorithm::Xxh3_64.is_secretable());
+assert_eq!(
+    DigestAlgorithm::ALL.map(DigestAlgorithm::as_str),
+    ["xxh32", "xxh64", "xxh3-64", "xxh3-128"],
+);
+```
+
+[xxhash](xxhash.md) owns the four implementations, the resumable states, the handle and
+Arrow surfaces, and the canonical `Scalar` byte feed every `stable_hash` reads.

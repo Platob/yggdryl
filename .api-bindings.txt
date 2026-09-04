@@ -37,8 +37,12 @@
   enums.Country / enums.Currency / enums.MIC / enums.CFI: the shipped vocabularies, over CountryCode, CurrencyCode, MicCode, and CfiCode
   scalar classes: field (cached staticmethod)
   combined: (module or value)
+  coding: gzip, zlib, zstd
+  holder: IOBase
+  media: MediaType, MimeType, RecordOptions, TextOptions, avro, iceberg
+  text: codec, json, toml, yaml
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
-  fields: AsciiField, BinaryField, BinaryViewField, BooleanField, Date32Field, Date64Field, Decimal32Field, Decimal64Field, Decimal128Field, Decimal256Field, DecimalField, DenseUnionField, DictionaryField, Duration32Field, Duration64Field, FixedAsciiField, FixedSizeBinaryField, FixedSizeListField, Float16Field, Float32Field, Float64Field, CfiField, CountryField, CurrencyField, GeographyField, GeometryField, GuidField, Int8Field, MicField, Int16Field, Int32Field, Int64Field, IntervalField, LargeBinaryField, LargeListField, LargeListViewField, LargeUtf8Field, ListField, ListViewField, MapField, NullField, RunEndEncodedField, StructField, Time32Field, Time64Field, TimeField, TimestampField, TypedDataType, TypedField, UInt8Field, UInt16Field, UInt32Field, UInt64Field, UnionField, VariantField, Utf8Field, Utf8ViewField, ascii, binary, binary_view, boolean, cfi, country, currency, date32, date64, decimal, decimal32, decimal64, decimal128, decimal256, dense_union, dictionary, duration32, duration64, field, fixed_ascii, fixed_size_binary, fixed_size_list, float16, float32, float64, geography, geometry, guid, int8, int16, int32, int64, interval, large_binary, large_list, large_list_view, large_utf8, list, list_view, map, map_of, mic, null, run_end_encoded, struct, time, time32, time64, timestamp, uint8, uint16, uint32, uint64, union, utf8, utf8_view, variant
+  types: AsciiField, BinaryField, BinaryViewField, BooleanField, Date32Field, Date64Field, Decimal32Field, Decimal64Field, Decimal128Field, Decimal256Field, DecimalField, DenseUnionField, DictionaryField, Duration32Field, Duration64Field, FixedAsciiField, FixedSizeBinaryField, FixedSizeListField, Float16Field, Float32Field, Float64Field, CfiField, CountryField, CurrencyField, GeographyField, GeometryField, GuidField, Int8Field, MicField, Int16Field, Int32Field, Int64Field, IntervalField, LargeBinaryField, LargeListField, LargeListViewField, LargeUtf8Field, ListField, ListViewField, MapField, NullField, RunEndEncodedField, StructField, Time32Field, Time64Field, TimeField, TimestampField, TypedDataType, TypedField, UInt8Field, UInt16Field, UInt32Field, UInt64Field, UnionField, VariantField, Utf8Field, Utf8ViewField, ascii, binary, binary_view, boolean, cfi, country, currency, date32, date64, decimal, decimal32, decimal64, decimal128, decimal256, dense_union, dictionary, duration32, duration64, field, fixed_ascii, fixed_size_binary, fixed_size_list, float16, float32, float64, geography, geometry, guid, int8, int16, int32, int64, interval, large_binary, large_list, large_list_view, large_utf8, list, list_view, map, map_of, mic, null, run_end_encoded, struct, time, time32, time64, timestamp, uint8, uint16, uint32, uint64, union, utf8, utf8_view, variant
   fix: STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixMsg, FixRegistry, global_registry, install_global_registry
   fix.FixRegistry
     statics: from_fields, from_handle
@@ -48,55 +52,55 @@
   fix.FixMsg
     instance: __len__, branch, by_id, by_name, by_path, by_tag, field, get, get_by_id, get_by_name, get_by_path, get_by_tag, registry, stable_hash, value
     protocol: immutable value - stable equality/hash, copy, and pickle carrying the schema, value and registry documents; __iter__ yields (name, Scalar) pairs in root order; branch is derived from the root field, and a bare tag or name resolves in it before the standard one
-  iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
+  media.iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static field()
-  avro
+  media.avro
     exports: Block, BlockIterator, Container, Schema, blocks, dumps, dumps_single, loads, loads_single
     decode limits: max_depth, max_input_bytes, max_nodes; blocks is a fused lazy iterator
-  avro.Schema
+  media.avro.Schema
     statics: from_value
     instance: fingerprint, into_canonical_form, into_json, kind, stable_hash
-  avro.Container
+  media.avro.Container
     instance: get, metadata, rows, schema, stable_hash
-  avro.BlockIterator
+  media.avro.BlockIterator
     instance: get, metadata, schema, __iter__, __next__
-  avro.Block
+  media.avro.Block
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
-  iceberg.IcebergOptions
+  media.iceberg.IcebergOptions
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
-  iceberg.Compaction
+  media.iceberg.Compaction
     instance: bytes_rewritten, files_after, files_before, stable_hash
-  iceberg.PartitionField
+  media.iceberg.PartitionField
     statics: from_json
     instance: field_id, into_json, name, source_id, stable_hash, transform
-  iceberg.PartitionSpec
+  media.iceberg.PartitionSpec
     statics: from_json, identity, unpartitioned
     instance: fields, into_json, is_unpartitioned, spec_id, stable_hash
-  iceberg.Snapshot
+  media.iceberg.Snapshot
     statics: from_json
     instance: into_json, manifest_list, operation, parent_snapshot_id, schema_id, sequence_number, snapshot_id, stable_hash, summary, timestamp_ms
-  iceberg.ManifestFile
+  media.iceberg.ManifestFile
     instance: added_files_count, added_rows_count, added_snapshot_id, deleted_files_count, existing_files_count, existing_rows_count, is_data, length, partition_spec_id, path, sequence_number, stable_hash
-  iceberg.DataFile
+  media.iceberg.DataFile
     instance: column_sizes, content, file_size_in_bytes, lower_bounds, mime_type, null_value_counts, partition, path, record_count, sort_order_id, split_offsets, stable_hash, upper_bounds, value_counts
-  iceberg.ScanPlan
+  media.iceberg.ScanPlan
     instance: files_planned, files_skipped, manifests_read, manifests_skipped, record_count, stable_hash
-  codec
+  text.codec
     exports: from_io, from_stream, into_io, into_stream
     inference: explicit format -> source/destination suffix -> one native content sniff; anonymous output defaults to JSON
     parse options: field, cls, safe, errors, max_depth, max_input_bytes, max_nodes, max_documents
     output options: format, utf8 (into_io), indent; destination=None returns bytes or str, otherwise writes and returns None
-  json
+  text.json
     exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
     parse: load/loads/load_all/loads_all(source, *, cls=None, field=None, safe=True, errors="raise", max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
-  toml
+  text.toml
     exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, load, loads
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes
     parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
-  yaml
+  text.yaml
     exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
     parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); load_all/loads_all use the same native limits

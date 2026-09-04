@@ -34,24 +34,24 @@ On Linux and macOS the interpreter is `.venv/bin/python`.
 
 | Name | Documented in |
 | --- | --- |
-| `DataType` | [datatype](../datatype.md) |
-| `Field`, `field`, `scalar`, `fields` | [field](../field.md) and this page |
+| `DataType` | [datatype](../types.md) |
+| `Field`, `field`, `scalar`, `fields` | [field](../types.md) and this page |
 | `Scalar` | this page and [text](../text.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri.md) |
-| `IOBase` | [io](../io.md) |
-| `RecordOptions` | [io](../io.md), [ipc](../ipc.md), [parquet](../parquet.md) |
-| `iceberg` | [iceberg](../iceberg.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../generic.md) |
-| `enums` | [generic](../generic.md) and this page |
+| `IOBase` | [io](../holder.md) |
+| `RecordOptions` | [io](../holder.md), [ipc](../media.md), [parquet](../media.md) |
+| `iceberg` | [iceberg](../media.md) |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../types.md) |
+| `enums` | [generic](../types.md) and this page |
 | `json`, `toml`, `yaml` | [text](../text.md) and the format pages |
-| `avro` | [Avro](../avro.md) schema, container, single-object, and batch media |
-| `gzip`, `zlib`, `zstd` | [gzip](../gzip.md), [zlib](../zlib.md), [zstd](../zstd.md) |
+| `avro` | [Avro](../media.md) schema, container, single-object, and batch media |
+| `gzip`, `zlib`, `zstd` | [gzip](../coding.md), [zlib](../coding.md), [zstd](../coding.md) |
 | `xxhash` | [xxhash](../xxhash.md) |
 
 The three coding modules carry the whole-buffer pair - `loads` and `dumps`, plus `loads_raw` and
 `dumps_raw` on `zlib` - under the standard library's own module names, so swapping `import gzip`
-for `from yggdryl import gzip` changes the engine and nothing else. Their streaming `reader`/
+for `from yggdryl.coding import gzip` changes the engine and nothing else. Their streaming `reader`/
 `writer` and the transparent `Gzip<H>`-style handles stay Rust-only: both are built on Rust's
 `Read`/`Write`, which Python has no native spelling for. A handle still applies the coding its own
 name declares without being told, and `IOBase.codec` is what asks it which one that is.
@@ -163,7 +163,7 @@ import datetime as dt
 import zoneinfo
 from decimal import Decimal
 
-from yggdryl import json
+from yggdryl.text import json
 
 value = {
     "price": Decimal("10.50"),
@@ -204,7 +204,7 @@ assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 
 Text codecs emit natural documents with no private value tags. Pass a `Field`
 when strings or numbers need an exact decimal, binary, or temporal reading.
-When the format is dynamic, [`yggdryl.codec`](../text.md#raw-document-codecs)
+When the format is dynamic, [`yggdryl.text.codec`](../text.md#raw-document-codecs)
 provides `from_io` / `from_stream` and `into_io` / `into_stream`: suffix or
 core content inference selects the existing JSON, YAML, TOML, or JSON Lines
 implementation, with no second parser in Python.
@@ -287,7 +287,7 @@ import pathlib
 import uuid
 from collections import deque
 
-from yggdryl import json
+from yggdryl.text import json
 
 value = {
     "tags": {"b", "a"},
@@ -338,7 +338,8 @@ decoded mapping through the native Struct `Field` cached behind the class's
 `field()` staticmethod; it never imports a module named by untrusted input.
 
 ```python
-from yggdryl import json, scalar
+from yggdryl import scalar
+from yggdryl.text import json
 
 @scalar
 class Trade:
@@ -479,7 +480,7 @@ methods are injected into the class. An undecorated subclass reuses the
 nearest decorated base's root; decorate the subclass to make it a distinct
 schema owner.
 
-The [core field guide](../field.md#converting-to-one-native-field) owns the
+The [core field guide](../types.md#converting-to-one-native-field) owns the
 canonical cross-runtime signatures and error contract. Python's global
 conversion accepts a native Field, a PyArrow Schema/Field/DataType, or a
 dataclass class/instance; `name` has identical rename semantics for each input
@@ -509,9 +510,9 @@ through annotation inference again.
 ## ASCII vocabularies as enums
 
 `yggdryl.enums` carries the core's static spellings - `DATA_TYPE_IDS`, `CODECS`, `LEVELS` and the
-rest, listed on the [generic page](../generic.md) - and the enum bases a caller declares a
+rest, listed on the [generic page](../types.md) - and the enum bases a caller declares a
 vocabulary with. `fixed_ascii(width)` builds the base for one
-[ASCII width](../datatype.md#ascii-widths-and-the-registered-codes) - one class per width, built
+[ASCII width](../types.md#ascii-widths-and-the-registered-codes) - one class per width, built
 once and cached - and `CountryCode`, `CurrencyCode`, `MicCode`, and `CfiCode` are the four
 registered codes; a subclass names its values as text and a member *is* the integer that value
 packs into, so the code is the same in every process, is exactly what the column stores, and orders
@@ -622,7 +623,7 @@ base every width and code shares, and nothing subclasses a vocabulary that alrea
 
 ### The registered vocabularies
 
-The four [registered codes](../datatype.md#ascii-widths-and-the-registered-codes) arrive already
+The four [registered codes](../types.md#ascii-widths-and-the-registered-codes) arrive already
 declared, each over its own datatype: `Country` over `CountryCode`, `Currency` over `CurrencyCode`,
 `MIC` over `MicCode`, and `CFI` over `CfiCode`. Each is an ordinary subclass of its base, no
 different from one written by hand, so a program that names the codes it trades gets real `IntEnum`
@@ -663,14 +664,14 @@ assert settlement.ascii_enum.name == "Currency"
 assert settlement.ascii_enum.get("USD") == "USD"
 ```
 
-`yggdryl.fields` names the same four codes as factories - `fields.country`, `fields.currency`,
-`fields.mic`, and `fields.cfi` - for a field built without a class:
+`yggdryl.types` names the same four codes as factories - `types.country`, `types.currency`,
+`types.mic`, and `types.cfi` - for a field built without a class:
 
 ```python
-from yggdryl import DataType, fields
+from yggdryl import DataType, types
 
-assert fields.mic("venue").dtype == DataType("mic")
-assert fields.currency("ccy", nullable=False).dtype == DataType("currency")
+assert types.mic("venue").dtype == DataType("mic")
+assert types.currency("ccy", nullable=False).dtype == DataType("currency")
 ```
 
 ## Errors
@@ -767,7 +768,7 @@ That is not a promise about a future backend. `IOBase.from_arrow_fs` takes any
 GCS, Azure, a `SubTreeFileSystem`, or a filesystem you wrote yourself as a `FileSystemHandler` -
 which is also how an `fsspec` filesystem arrives. The boundary is only inference: the filesystem
 is recognized without importing `pyarrow`, handed to the core's seven-method vtable, and never
-seen again by the Python layer. [`arrowfs`](../arrowfs.md) documents the backend itself.
+seen again by the Python layer. [`arrowfs`](../holder.md) documents the backend itself.
 
 ```python
 import pathlib
@@ -798,7 +799,7 @@ leaves carrying them, ready to rewrite.
 ### Bytes and ranges
 
 `read_range_bytes` and `append_bytes` are the core's methods under their own names;
-[io](../io.md#whole-values) states what they do. Over each sits one inferring entry point:
+[io](../holder.md#whole-values) states what they do. Over each sits one inferring entry point:
 `read_range` chooses the answer's type from `cls`, and `append` chooses how to read the buffer it
 was handed.
 
@@ -1022,8 +1023,8 @@ rows over a batch at a time - that is polars' boundary, not this one's.
 ## An Iceberg table end to end
 
 An Iceberg table is the same handle one level up, and a warehouse of them is one more:
-`yggdryl.iceberg` carries the catalog, the table, the schema-evolution builder, and compaction,
-each documented on the [iceberg](../iceberg.md) core page. PyArrow is the rows boundary in
+`yggdryl.media.iceberg` carries the catalog, the table, the schema-evolution builder, and compaction,
+each documented on the [iceberg](../media.md) core page. PyArrow is the rows boundary in
 both directions - a commit takes anything that exports an Arrow C stream, and every read, whether
 a scan, a time travel, or an inspection table, returns a `pyarrow.RecordBatchReader`.
 `update_schema()` is a context manager, so a recorded chain commits once on a clean exit and not
@@ -1036,7 +1037,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl.iceberg import Catalog
+from yggdryl.media.iceberg import Catalog
 
 warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
 catalog = Catalog(warehouse)
@@ -1070,7 +1071,7 @@ assert table.scan_at(past).read_all().column("id").to_pylist() == [1, 2]
 shutil.rmtree(warehouse.parent)
 ```
 
-The folder is the table and the walk is the same everywhere: the [iceberg](../iceberg.md)
+The folder is the table and the walk is the same everywhere: the [iceberg](../media.md)
 page shows each of these steps beside its Rust and JavaScript form.
 
 ## FIX registry at the boundary

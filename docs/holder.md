@@ -1,6 +1,59 @@
-# Byte I/O
+# Holders
 
-`yggdryl::io` is the crate's one storage abstraction: positional reads and writes over anything that holds bytes.
+Every storage implementation is reached through the positional `IOBase` contract.
+
+## Holder: every storage handle
+
+
+`Holder` names every [`IOBase`](holder.md) implementation the core ships: the local `Buffer`, `Folder`,
+`Path`, and `File`, the [`arrowfs`](holder.md) trio, and the generic `Buffered`, `Text`, and `Media`
+wrappers. `into_text`, `buffered`, and `into_media` are idempotent, so a dynamic caller can request
+the optimized view without stacking wrappers.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::holder::local::Folder;
+
+// Generic construction records the location without probing its role.
+let directory = Holder::local(Folder::temporary()?.path()?)?;
+assert!(matches!(directory, Holder::Path(_)));
+
+let missing = Holder::local(Folder::temporary()?.path()?.join("yggdryl-generic-doc.bin"))?;
+assert!(matches!(missing, Holder::Path(_)));
+```
+
+`Holder::local` returns `Holder::Path`, the unresolved [`local::Path`](holder.md)
+role, so construction performs no filesystem call. `Holder::buffer`,
+`Holder::folder`, and `Holder::file` commit to a role explicitly and also touch
+nothing. The generic path resolves through the matching specialized handle
+only when an operation needs to know what is there.
+
+`Holder::open` first promotes IPC, Parquet, Avro, or plain text into its inferred media wrapper,
+then opens it. This keeps schema, footer, and dimension caches behind one generic handle—the exact
+route Python and JavaScript scopes use. JSON, directories, and unknown byte media remain raw.
+
+Walking a tree stays in one type, because every hierarchy accessor returns `Holder` too.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::IOBase;
+use yggdryl::holder::local::Folder;
+
+let root = Holder::folder(Folder::temporary()?.path()?)?;
+assert!(root.is_container());
+
+// A child need not exist. Naming one yields a leaf handle, and nothing is created.
+let leaf = root.child_by_path("yggdryl-generic-child.bin")?;
+assert!(matches!(leaf, Holder::File(_)));
+assert!(!leaf.is_container());
+assert_eq!(leaf.size(), 0);
+```
+
+
+## IOBase
+
+
+`yggdryl` is the crate's one storage abstraction: positional reads and writes over anything that holds bytes.
 
 Python and JavaScript expose one handle class, `IOBase`, under the names each language already uses
 for a path. The byte contract and the record methods both cross into the bindings; the role traits,
@@ -10,7 +63,8 @@ three languages reach it.
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
     let mut handle = Buffer::new();
     handle.pwrite(0, b"symbol,price\n")?;
@@ -71,7 +125,7 @@ Three invariants hold for every implementation:
   the current size creates.
 - `size` never exceeds `capacity`, and `reserve` changes only `capacity`.
 
-## Streamed bytes
+### Streamed bytes
 
 The canonical Rust entry point is
 `IOBase::pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>`.
@@ -81,7 +135,8 @@ error is yielded after every successful prefix before the iterator stays
 fused. `batch_size` must be non-zero.
 
 ```rust
-use yggdryl::io::{Buffer, IOBase, IOCursor};
+use yggdryl::{IOBase, IOCursor};
+use yggdryl::holder::Buffer;
 
 let handle = Buffer::from_bytes(b"0123456789".to_vec());
 let chunks = handle
@@ -138,7 +193,7 @@ seekable. The stream does not open the coded handle or retain decoded pages.
 Through `Buffered`, it deliberately bypasses the page cache, leaving
 `cached_pages() == 0`; use positional reads when retained pages are wanted.
 
-### Measured streamed-byte behavior
+#### Measured streamed-byte behavior
 
 Criterion measured the same 8 MiB decoded fixture on Windows 11 x86_64, an
 AMD Ryzen 5 150 (6 cores/12 threads), and rustc 1.96.1 on 2026-08-23. Cells
@@ -162,7 +217,7 @@ Regenerate with:
 cargo bench -p yggdryl --bench io --features parquet -- io_pstream --noplot
 ```
 
-## Built from what you already hold
+### Built from what you already hold
 
 In Python, `IOBase(...)` accepts more than a path: callers hold open files and streams more often
 than the strings that named them, so the constructor takes those directly. A file-like object with a
@@ -190,13 +245,14 @@ buffered.media_type = "application/json"
 assert buffered.read_text() == '{"symbol": "AAPL"}'
 ```
 
-## Laziness
+### Laziness
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::IOBase;
-    use yggdryl::{IOKind, local};
+    use yggdryl::IOBase;
+    use yggdryl::{IOKind};
+    use yggdryl::holder::local;
 
     let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-lazy.csv");
     let _ = std::fs::remove_file(&path);
@@ -281,13 +337,15 @@ works whether the target is there or not.
 Metadata follows the rule: `media_type` is computed when it is asked for, and re-derived after the
 bytes change.
 
-## Kinds
+### Kinds
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{IOKind, local};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{IOKind};
+    use yggdryl::holder::local;
 
     assert_eq!(Buffer::new().kind(), IOKind::Memory);
     assert!(IOKind::Memory.is_leaf());
@@ -351,16 +409,18 @@ location that does not exist yet. A table format adds `Table`, `Namespace`, and 
 them containers, all of them answered by the value that adds the framing rather than by storage,
 which sees three indistinguishable folders. `is_container`, `is_leaf`, and `is_known` are the
 questions callers actually ask; the enum is documented with the rest of the shared enums in
-[generic.md](generic.md). The bindings expose the questions rather than the enum, as `exists`, `is_dir`,
+[types.md](types.md). The bindings expose the questions rather than the enum, as `exists`, `is_dir`,
 and `is_file`.
 
-## Bytes or rows
+### Bytes or rows
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::{MimeType, local};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{MimeType};
+    use yggdryl::holder::local;
 
     // A leaf answers from its representation, and the two are complements.
     let mut notes = Buffer::new();
@@ -443,12 +503,13 @@ tree - a folder reads as the table beneath it, and a partitioned tree is one tab
 or not the `parquet` feature is compiled in. [`record_options`](#arrow-batches) is the call that
 reports an encoding this build cannot decode, and it names it.
 
-## Whole values
+### Whole values
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
     let mut handle = Buffer::new();
     handle.write_all_bytes(b"symbol,price\n")?;
@@ -512,7 +573,7 @@ before the buffer is full.
 `copy_into` moves bytes between two handles in chunks, so neither side is buffered whole, and it
 carries the media type across. It is `copy_into` in Python and `copyInto` in JavaScript.
 
-## Digests
+### Digests
 
 `read_digest` and `read_range_digest` are derived the same way, and answer a
 [`Digest`](xxhash.md) rather than the bytes. Both stream through
@@ -523,7 +584,8 @@ object's size: a 64 GiB file costs one window rather than a copy, and nothing ca
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
     use yggdryl::DigestAlgorithm;
 
     let mut handle = Buffer::new();
@@ -577,7 +639,7 @@ bytes of its own, and which files a folder digest would cover is a convention no
 states. [xxhash](xxhash.md) carries the rest: the algorithms, the resumable states, the
 `Hashed<H>` wrapper that hashes writes as they land, and the canonical value feed.
 
-## Structured values
+### Structured values
 
 `read_scalar` and `write_scalar` use the handle's media type to select JSON,
 YAML, or TOML and any outer gzip, zlib, or zstd coding. Reads feed the parser
@@ -591,7 +653,8 @@ core value instead.
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
     use yggdryl::{Field, Url, Scalar};
 
     let media = Url::from_str("file:///trade.json.gz")?.media_type();
@@ -644,7 +707,7 @@ core value instead.
     assert.equal(value.kind, 'sequence')
     ```
 
-### Measured structured-value I/O
+#### Measured structured-value I/O
 
 Criterion measured one 16,384-record JSON value through the same `IOBase`
 methods on Windows 11 x86_64, an AMD Ryzen 5 150 (6 cores/12 threads), and
@@ -665,7 +728,7 @@ Regenerate the table with:
 cargo bench -p yggdryl --bench io --all-features -- io_value --noplot
 ```
 
-## Streaming adapters
+### Streaming adapters
 
 !!! note "Rust only"
     The Python and JavaScript packages expose positional reads and writes, not
@@ -674,7 +737,8 @@ cargo bench -p yggdryl --bench io --all-features -- io_value --noplot
 ```rust
 use std::io::{Read, Write};
 
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 
 let mut handle = Buffer::new();
 handle.writer_at(0).write_all(b"symbol,price\n")?;
@@ -690,7 +754,7 @@ assert_eq!(text, "AAPL,1\n");
 unaffected. [Adding and removing a coding](#adding-and-removing-a-coding) moves bytes between two
 handles through a coding without going through these adapters, and is in all three languages.
 
-## Cursors
+### Cursors
 
 A handle is positional - `pread`/`pwrite` take an offset - so a *position* is
 state a caller opts into, not something two readers fight over. A cursor is
@@ -702,7 +766,8 @@ advance it, and two cursors over one resource advance independently.
     ```rust
     use std::io::Read;
 
-    use yggdryl::io::{Buffer, IOBase, IOCursor};
+    use yggdryl::{IOBase, IOCursor};
+    use yggdryl::holder::Buffer;
 
     let mut cursor = Buffer::new().cursor();
     cursor.write_next(b"symbol,price\n")?;
@@ -754,12 +819,13 @@ built on exactly it. In Python and JavaScript the cursor *shares the handle*
 conventions: `seek(offset, whence)` and `read(size=-1)` in Python, `seek`,
 `tell`, and a `position` property in JavaScript.
 
-## What the bytes are
+### What the bytes are
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
     use yggdryl::MimeType;
 
     // Nothing names an in-memory buffer, so its type comes from its bytes.
@@ -805,7 +871,8 @@ live. It answers both questions a caller has: what representation the bytes are,
 codings sit on top.
 
 ```rust
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 use yggdryl::{Codec, MimeType, Url};
 
 // A declared type wins, and the codings it carries are what `codec` reports.
@@ -820,12 +887,13 @@ content cannot identify. Both cross into the bindings - `codec` as a read-only p
 `media_type` as a settable one - and the next section is what a caller does with the coding once it
 has been read.
 
-## Adding and removing a coding
+### Adding and removing a coding
 
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
     use yggdryl::{Codec, Url};
 
     let mut plain = Buffer::new().with_media_type(Url::from_str("file:///rows.json")?.media_type());
@@ -956,10 +1024,10 @@ codings a name declares - `trades.arrows.gz` writes gzipped and reads straight b
 decode coded lines as a stream. These two methods are for moving bytes between
 representations: publishing a plain file as a compressed one, or handing an outside tool a form it
 can open. What coding sits on the bytes is not something a reader has to think about. The codings
-themselves are documented per format in [gzip.md](gzip.md), [zlib.md](zlib.md), and
-[zstd.md](zstd.md).
+themselves are documented per format in [coding.md](coding.md), [coding.md](coding.md), and
+[coding.md](coding.md).
 
-## Open and close
+### Open and close
 
 The scoped pair is exposed in all three runtimes: Rust calls `open` / `close`
 directly, Python binds them to a context manager, and JavaScript exposes the
@@ -968,10 +1036,12 @@ same methods (plus `Symbol.dispose` where the runtime provides it).
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, Coded, IOBase};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::coding::Coded;
     use yggdryl::Codec;
 
-    let mut handle = Coded::new(Buffer::new(), Codec::Zstd);
+    let mut handle = Coded::wrap(Buffer::new(), Codec::Zstd);
     assert!(!handle.opened());
 
     handle.open()?;
@@ -1076,7 +1146,7 @@ assert rows == 2
 assert IOBase(target).read_arrow_field() == field
 ```
 
-## Clearing and removing
+### Clearing and removing
 
 `clear` and `remove` are the lifecycle pair, and what they mean is stated by kind rather than
 implied by a byte operation. `clear` empties the contents and keeps the resource: a leaf keeps
@@ -1103,8 +1173,9 @@ than silently recursed into.
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase};
-    use yggdryl::local::Folder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::local::Folder;
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
     let mut folder = Folder::new(&root)?;
@@ -1129,7 +1200,7 @@ than silently recursed into.
     folder.remove(false)?;
 
     // A wrapping handle removes what it wraps, cache included.
-    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
+    let mut coded = yggdryl::coding::gzip::Gzip::new(Buffer::new());
     coded.write_all_bytes(b"symbol,price\n")?;
     coded.remove(false)?;
     assert_eq!(coded.size(), 0);
@@ -1217,14 +1288,15 @@ and holds zero rows - deleting files behind the manifests would leave exactly th
 complete operation must not. `remove` deletes the table's whole location, metadata tree and data
 files together, because dropping a table is not emptying it.
 
-## Buffer
+### Buffer
 
 !!! note "Rust only"
     The bindings reach the in-memory implementation through
     `IOBase.from_bytes`, not through a `Buffer` class of their own.
 
 ```rust
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 use yggdryl::MimeType;
 
 let mut handle = Buffer::with_capacity(1_024);
@@ -1249,24 +1321,26 @@ because the content's identity may change through it.
 
 A buffer is not stored anywhere, so `url` reports a synthetic `mem:` identity naming the process and
 the allocation - enough to tell two live buffers apart in a log, without pretending the bytes live
-somewhere. The other implementations in the core are [local.md](local.md), the memory-mapped local
-tree, and [arrowfs.md](arrowfs.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
+somewhere. The other implementations in the core are [holder.md](holder.md), the memory-mapped local
+tree, and [holder.md](holder.md), which puts any existing Arrow filesystem - S3, GCS, Azure, or
 one you wrote - behind the same trait. Anything else is a sibling module supplying the same three
 roles, never a change to this one. Two wrapping handles sit over any of them and are handles
-themselves: `Coded` below, and the page cache in [buffered.md](buffered.md).
+themselves: `Coded` below, and the page cache in [holder.md](holder.md).
 
-## Coded
+### Coded
 
 !!! note "Rust only"
     The Python and JavaScript packages do not expose the compression
     wrappers.
 
 ```rust
-use yggdryl::io::{Buffer, Coded, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+use yggdryl::coding::Coded;
 use yggdryl::{Codec, Level, MimeType, Url};
 
 let inner = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
-let mut handle = Coded::new(inner, Codec::Gzip).with_level(Level::BEST);
+let mut handle = Coded::wrap(inner, Codec::Gzip).with_level(Level::BEST);
 
 // The wrapper's bytes are decoded, so its media type has the coding removed.
 assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
@@ -1282,15 +1356,15 @@ assert!(handle.handle().size() < payload.len() as u64);
 ```
 
 `Coded` wraps any handle and presents the decoded bytes: reads decompress, writes compress. It is an
-`IOBase` itself, so it goes anywhere a handle goes. The per-format aliases in [gzip.md](gzip.md),
-[zlib.md](zlib.md), and [zstd.md](zstd.md) are this type with the codec already chosen.
+`IOBase` itself, so it goes anywhere a handle goes. The per-format aliases in [coding.md](coding.md),
+[coding.md](coding.md), and [coding.md](coding.md) are this type with the codec already chosen.
 
 A content coding is not seekable, which forces two tradeoffs. The decoded value is materialized once
 and held until `close`, so positional reads and writes work at all over a compressed payload; and a
 write is published to the wrapped handle on `flush` or `close`, not on every `pwrite`. `into_handle`
 publishes and returns the wrapped handle. `Codec::Identity` makes the wrapper a pass-through.
 
-## Buffered
+### Buffered
 
 Rust exposes the typed `Buffered<H>` wrapper. Python and JavaScript keep their
 generic `IOBase` identity and configure the same core cache through
@@ -1299,8 +1373,9 @@ generic `IOBase` identity and configure the same core cache through
 without stacking caches.
 
 ```rust
-use yggdryl::buffered::BufferedOptions;
-use yggdryl::io::{Buffer, IOBase};
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 
 let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
 
@@ -1312,18 +1387,19 @@ assert_eq!(handle.cached_pages(), 1);
 
 `Buffered` is the other wrapping handle: it serves reads from fixed-size pages under a byte budget
 and a time to live, writes through, and pins the value's first and last pages so a footer-first
-container never re-reads either end. Everything else it mirrors. [buffered.md](buffered.md) is the
+container never re-reads either end. Everything else it mirrors. [holder.md](holder.md) is the
 page.
 
-## Roles
+### Roles
 
 !!! note "Rust only"
     The bindings expose one handle class rather than the three role traits
     behind it.
 
 ```rust
-use yggdryl::io::IOBase;
-use yggdryl::{IOKind, MimeType, local};
+use yggdryl::IOBase;
+use yggdryl::{IOKind, MimeType};
+use yggdryl::holder::local;
 
 let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-folder");
 let _ = std::fs::remove_dir_all(&path);
@@ -1362,8 +1438,9 @@ to:
   `path_media_type` (the container type, or the one the name implies).
 
 ```rust
-use yggdryl::io::IOBase;
-use yggdryl::{IOKind, local};
+use yggdryl::IOBase;
+use yggdryl::{IOKind};
+use yggdryl::holder::local;
 
 // A location that arrived from outside answers by looking at what is there.
 let existing = local::Path::new(local::Folder::temporary()?.path()?)?;
@@ -1379,19 +1456,20 @@ assert_eq!(leaf.ls(true, false).count(), 0);
 assert!(leaf.child_by_path("nested").is_err());
 ```
 
-`parent`, `child_by_path`, and `ls` return [generic.md](generic.md)'s `Holder`, which is why a walk over a
+`parent`, `child_by_path`, and `ls` return [types.md](types.md)'s `Holder`, which is why a walk over a
 tree needs no type parameter. A resource that cannot contain others lists nothing rather than failing,
 so a caller can walk without testing each node first. `local::Path` is the reference `IOPath`: it
 resolves by looking, and a byte write is what settles an undecided location into a file. A remote
 store is the same three roles over a different transport.
 
-## Delegating to a wrapped handle
+### Delegating to a wrapped handle
 
 !!! note "Rust only"
     A backend implements `IOBase` in Rust; neither binding can add one.
 
 ```rust
-use yggdryl::io::{Buffer, IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia};
+use yggdryl::holder::Buffer;
 
 /// A wrapper mirrors the handle's bytes rather than owning bytes of its own.
 struct Wrapped {
@@ -1423,7 +1501,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `delegate_iobase!` forwards the storage contract, including `open`, `opened`, and `close`; it does
 not forward record behavior. `delegate_iomedia!` independently forwards dimensions, options,
 Field/reader reads, and typed writes. A wrapper that changes any forwarded method uses the explicit
-list form and leaves that method out. [ipc.md](ipc.md), [parquet.md](parquet.md), and the compression
+list form and leaves that method out. [media.md](media.md), [media.md](media.md), and the compression
 handles choose the lists that match the state each wrapper owns.
 
 It has two other spellings, for two other shapes:
@@ -1435,12 +1513,12 @@ It has two other spellings, for two other shapes:
   shape.
 - `delegate_iobase!(handle: pread, size, ...)` names the methods to mirror one by one, for a wrapper
   that *changes* one of them - a method cannot be both expanded by the macro and written out
-  underneath it. [`Buffered`](buffered.md) is this shape: it owns the two positional primitives, the
+  underneath it. [`Buffered`](holder.md) is this shape: it owns the two positional primitives, the
   resize that invalidates, the open/close pair, and the `clear`/`remove` pair, and mirrors the rest.
   A method left out of the list falls back to the trait's own default, which for `clear` and `remove`
   means truncating rather than reaching the resource - so leave them out only when writing them.
 
-## Arrow batches
+### Arrow batches
 
 === "Rust"
 
@@ -1449,7 +1527,8 @@ It has two other spellings, for two other shapes:
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::arrow;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::{DataType, Url};
 
     // A non-null struct Field is the schema.
@@ -1551,7 +1630,7 @@ It has two other spellings, for two other shapes:
     assert.equal(rows, 2)
     ```
 
-### Logical dimensions
+#### Logical dimensions
 
 The media surface exposes two lazy dimensions:
 
@@ -1579,7 +1658,7 @@ dispatch uses.
 `cargo bench -p yggdryl --bench io --all-features -- io_dimensions` compares fresh metadata reads with the
 explicitly opened cache for both accessors across IPC, Parquet, Avro, and multiline text fixtures.
 
-### Canonical record-write signatures
+#### Canonical record-write signatures
 
 The primitive record surface is one read and three explicit write intents. Each typed shape also has
 one required-mode dispatcher. The Rust argument order - input, then mode when present, then options -
@@ -1734,8 +1813,9 @@ the resulting exact-schema reader redirects to the same three primitives
 above.
 
 ```rust
-use yggdryl::generic::IORecordOptions;
-use yggdryl::io::{Buffer, IOBase, IOMedia};
+use yggdryl::media::IORecordOptions;
+use yggdryl::{IOBase, IOMedia};
+use yggdryl::holder::Buffer;
 use yggdryl::{DataType, MimeType, Scalar};
 
 struct Quote(i32, &'static str);
@@ -1771,7 +1851,7 @@ assert_eq!(
 
 `record_options` derives the encoding's settings from the handle's media type, so the encoding is
 never guessed - it is whatever the handle already says it holds. `read_arrow_field` returns the
-canonical non-null struct root `Field` described in [field.md](field.md). All of this is behind the
+canonical non-null struct root `Field` described in [types.md](types.md). All of this is behind the
 default `arrow` feature.
 
 Content coding stays the handle's business. A handle named `trades.arrows.zst` round-trips compressed
@@ -1781,7 +1861,8 @@ argument.
 === "Rust"
 
     ```rust
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::MimeType;
 
     // An absent resource holds no batches rather than failing to parse.
@@ -1837,13 +1918,13 @@ argument.
     ```
 
 The encodings `record_options` can return are the ones this build carries: Arrow IPC
-([ipc.md](ipc.md)), Avro ([avro.md](avro.md)), and plain-text line media ([text.md](text.md)) under
+([media.md](media.md)), Avro ([media.md](media.md)), and plain-text line media ([text.md](text.md)) under
 the default Arrow feature, plus Apache Parquet under the non-default `parquet` feature
-([parquet.md](parquet.md)). Shared settings include the declared field, root name, cast strictness,
+([media.md](media.md)). Shared settings include the declared field, root name, cast strictness,
 batch and total limits, commit cadence, compression level, merge keys, selection, and partition
-filters; [`IORecordOptions`](generic.md) defines them once.
+filters; [`IORecordOptions`](types.md) defines them once.
 
-## Rows as JavaScript objects
+### Rows as JavaScript objects
 
 !!! note "JavaScript example"
     JavaScript's object-and-constructor behavior is shown below. Python exposes
@@ -1889,7 +1970,7 @@ was given. `overwriteRecords`, `appendRecords`, and `mergeRecords` widen rows
 into the matching explicit reader intent. An absent resource reads as empty and an empty write is a
 no-op, so neither path needs an existence guard.
 
-## Lazy scans
+### Lazy scans
 
 !!! note "Python only"
 
@@ -1928,7 +2009,7 @@ plain local Parquet resource is scanned natively; everything else reads through 
 reader every other read uses and arrives as the lazy shape anyway, so callers never branch on
 where the bytes live.
 
-## Column pushdown
+### Column pushdown
 
 === "Rust"
 
@@ -1937,8 +2018,9 @@ where the bytes live.
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
     use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::{DataType, MimeType};
 
     let stored = DataType::from_fields([
@@ -2070,8 +2152,8 @@ where the bytes live.
 The field on the options selects *and* casts, in one pass over the data. The columns it names that
 the resource stores are handed to the encoding as its own projection - a Parquet projection mask, an
 Arrow IPC projection - so the columns it leaves out are skipped rather than read and discarded.
-[parquet.md](parquet.md) is where that also means fewer bytes decoded, because a column chunk is
-separately addressable; [ipc.md](ipc.md) saves the decode and the allocation but still reads the
+[media.md](media.md) is where that also means fewer bytes decoded, because a column chunk is
+separately addressable; [media.md](media.md) saves the decode and the allocation but still reads the
 message body, and says so rather than claiming otherwise.
 
 A projection can only drop columns, so the cast does everything else: reordering to the declared
@@ -2082,7 +2164,7 @@ the stored shape is preserved exactly and no cast runs at all.
 `read_arrow_field` answers with the same shape this read produces, so the schema a caller reads and
 the batches a caller gets can never disagree.
 
-## Limiting a read or a write
+### Limiting a read or a write
 
 `max_row_size` bounds how many result rows flow in total - a count of rows,
 never a per-row byte cap - and `max_byte_size` bounds their Arrow in-memory
@@ -2099,8 +2181,9 @@ never decoded.
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::{DataType, MimeType};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -2230,7 +2313,7 @@ naming both settings, because a truncated merge would update the matched keys
 it kept and silently drop the rest - corrupting the resource rather than
 shortening the write.
 
-## Appending and merging
+### Appending and merging
 
 Overwrite replaces the resource, which is what an IPC stream or a Parquet file
 natively supports: each carries one field and one footer. Append retains stored
@@ -2244,8 +2327,9 @@ the authority; `merge_by_names` supplies keys only to the merge method.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::arrow;
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::{DataType, Url};
 
     let schema = DataType::from_fields([
@@ -2406,8 +2490,9 @@ default, selects everything.
 === "Rust"
 
     ```rust
-    use yggdryl::generic::IORecordOptions;
-    use yggdryl::io::{Buffer, IOBase, IOMedia};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
     use yggdryl::{arrow, DataType, MimeType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -2482,7 +2567,7 @@ default, selects everything.
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-## Text records
+### Text records
 
 `text/plain` uses the same record methods as IPC, Parquet, and Avro. Each
 physical line becomes `url: utf8`, `rownum: int64`, and `body: binary`.
@@ -2494,10 +2579,10 @@ retains the shared timezone accessor.
 line-only read/write method, or standalone schema builder. Use
 `read_arrow_reader` / `readArrowReader`,
 `read_records` / `readRecords`, and the ordinary overwrite or append
-methods. [Structured text and plain-text records](text.md#plain-text-records)
+methods. [Structured text and plain-text records](media.md#plain-text-records)
 defines the schema, parsing order, errors, examples, and benchmark commands.
 
-## Globbing and Hive partitions
+### Globbing and Hive partitions
 
 A location can name a set rather than one resource, and a Hive path can name the values its rows
 share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a listing, not a scan.
@@ -2505,8 +2590,8 @@ share. `IOBase` reads both, so selecting the parts of a lake to rewrite is a lis
 === "Rust"
 
     ```rust
-    use yggdryl::io::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-lake");
     let _ = std::fs::remove_dir_all(&root);
@@ -2605,7 +2690,7 @@ answered by `children_matching`, which takes the [expression](expression.md) lan
 null tests, `in` lists, and every other `&holder.*` attribute. There is no second filter behind the
 pairs.
 
-## A listing is an iterator
+### A listing is an iterator
 
 Every listing here yields one entry at a time: `ls`, `glob`, `rglob`, `children_matching`, and
 `children_where` all hand back a `Listing`, and none of them decides to build a vector on the
@@ -2641,7 +2726,7 @@ In Python the listings are ordinary iterators, so `iterdir`, `glob`, and `rglob`
 list costs the whole walk. In JavaScript they are iterables: `for...of` walks one, and `[...listing]`
 drains it.
 
-## Partition pruning and filtering
+### Partition pruning and filtering
 
 One option answers the same equality wherever the value lives.
 `filter_partitions` names `(column, value)` pairs, spelled the way partition
@@ -2659,7 +2744,7 @@ letters.
 === "Rust"
 
     ```rust
-    use yggdryl::generic::{IORecordOptions, RecordOptions};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::MimeType;
 
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
@@ -2725,7 +2810,7 @@ pause, so a reader that catches a leaf half-published or two writers racing a
 replace settle without surfacing a transient error. An append never retries -
 replaying a torn append would duplicate rows - so it fails honestly instead.
 
-## Partition columns in the data
+### Partition columns in the data
 
 A Hive layout stores a column in the path, so the file under `year=2024/month=01` leaves those values
 out of every row. Addressing the folder rather than the file is what puts them back: the four record
@@ -2735,9 +2820,10 @@ each row of a write to the leaf its values name.
 === "Rust"
 
     ```rust
-    use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
-    use yggdryl::io::{IOBase, IOMedia};
-    use yggdryl::local::Folder;
+    use yggdryl::holder::Holder;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::local::Folder;
     use yggdryl::{DataType, MimeType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-partitioned");
@@ -2873,7 +2959,7 @@ each row of a write to the leaf its values name.
 The layout is the authority on which columns are partition columns, because nothing in a batch says
 which of its columns belong in a path. A folder whose leaves already spell out `column=value`
 partitions by exactly those columns; a folder that spells out nothing takes the layout from the
-declared schema, whose [partition-marked fields](field.md#a-field-can-be-a-partition-column) say it;
+declared schema, whose [partition-marked fields](types.md#a-field-can-be-a-partition-column) say it;
 and a folder with neither is one table in one leaf, named after the encoding. So a tree comes into
 being two ways: address one partition directly to create it, or declare the columns on the schema
 and let the first write lay the directories out.
@@ -2881,9 +2967,10 @@ and let the first write lay the directories out.
 === "Rust"
 
     ```rust
-    use yggdryl::generic::{Holder, IORecordOptions, RecordOptions};
-    use yggdryl::io::{IOBase, IOMedia};
-    use yggdryl::local::Folder;
+    use yggdryl::holder::Holder;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::local::Folder;
     use yggdryl::{DataType, MimeType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-declared-layout");
@@ -2944,3 +3031,1702 @@ before the next is pulled. The price is paid on the other side, because these en
 whole leaf: a partition touched by five batches is rewritten five times. The first batch to reach a
 leaf performs the caller's operation and the rest append to it, which is what keeps an overwrite an
 overwrite without buffering the whole write first.
+
+## Local file system
+
+
+The file system as three [`IOBase`](holder.md) handles: a generic location, a directory, and a memory-mapped file.
+
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose this module yet.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder};
+
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
+
+    let mut file = File::create(&path)?;
+    file.write_all_bytes(b"AAPL")?;
+    file.flush()?;
+
+    assert_eq!(file.read_all_bytes()?, b"AAPL");
+
+    drop(file);
+    let _ = std::fs::remove_file(&path);
+    ```
+
+### The three roles
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder, Path};
+    use yggdryl::IOKind;
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-roles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("nested"))?;
+    std::fs::write(root.join("a.bin"), b"a")?;
+
+    // A container: it holds no bytes of its own, only children.
+    let folder = Folder::new(&root)?;
+    assert_eq!(folder.size(), 0);
+    assert_eq!(folder.ls(false, false).count(), 2);
+
+    // A leaf: bytes addressed by offset.
+    let leaf = File::new(root.join("a.bin"))?;
+    assert_eq!(leaf.read_all_bytes()?, b"a");
+
+    // A location: it answers by looking at what is actually there.
+    assert_eq!(Path::new(&root)?.kind(), IOKind::Directory);
+    assert_eq!(Path::new(root.join("a.bin"))?.kind(), IOKind::File);
+
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+`Folder` and `File` are the two things a file system has; `Path` is for the case where the
+caller does not yet know which it holds - a listing entry, a command-line argument, a
+configuration value. `Path` resolves once, keeps the implementation it resolved to, and runs
+every [`IOBase`](holder.md) call through it.
+
+Each role also implements the matching trait from [`yggdryl`](holder.md) - `IOFolder`, `IOFile`,
+`IOPath` - which pre-implements everything that follows from the role: a container refuses byte
+writes, a leaf lists nothing and resolves no children, a location reports its
+[`IOKind`](types.md) by testing the path. A backend supplies each role's few required members -
+four for a container, two for a leaf, three for a location - and inherits the rest.
+
+### Well-known roots
+
+`Folder` names the three directories a program may assume. `Folder::temporary()` is the platform
+temporary directory. `Folder::home()` is the current user's home, read from the environment the
+same way on every platform: `HOME` first, then `USERPROFILE`, an unset or empty variable being
+skipped. `Folder::config()` is that home joined with `.config`. Each answers a handle and creates
+nothing; as everywhere here, a directory comes into being when something is written into it. With
+neither variable set, `home` and `config` fail with a typed absence naming both, for which
+`Error::is_absent` is true, so a caller that wants "no home" reads the error instead of guessing a
+path.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
+
+    let temporary = Folder::temporary()?;
+    assert!(temporary.is_container());
+    assert!(temporary.url().to_string().starts_with("file:"));
+
+    // When a home resolves, the configuration directory is that home joined with `.config`.
+    match Folder::home() {
+        Ok(home) => assert_eq!(Folder::config()?.path()?, home.path()?.join(".config")),
+        Err(error) => assert!(error.is_absent()),
+    }
+    ```
+
+### Laziness
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder};
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lazy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+
+    // Constructing touches nothing.
+    let folder = Folder::new(&root)?;
+    let mut leaf = File::new(root.join("nested").join("trades.bin"))?;
+    assert!(!folder.exists());
+    assert!(!leaf.exists());
+
+    // Reading something absent yields nothing - and still creates nothing.
+    assert_eq!(folder.ls(true, false).count(), 0);
+    assert!(leaf.read_all_bytes()?.is_empty());
+    assert_eq!(leaf.size(), 0);
+    assert!(!root.exists());
+
+    // Writing creates the file and every missing parent.
+    leaf.write_all_bytes(b"trade")?;
+    leaf.flush()?;
+    assert!(leaf.exists());
+    assert_eq!(leaf.read_all_bytes()?, b"trade");
+
+    drop(leaf);
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+Nothing here validates a path up front, so a handle for a file that will exist later is a normal
+value to hold. The one eager check is the conversion to a canonical `file:` [`Url`](uri.md):
+`Folder::new`, `File::new`, and `Path::new` fail only when the path cannot be expressed as one,
+and `Folder::from_url` and `Path::from_url` fail when the URL is not local.
+
+That URL is the whole state of a `Folder`: the platform path is derived from it on demand, so a
+stored path and a stored URL can never disagree.
+
+### A write decides an undecided location
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{Folder, Path};
+    use yggdryl::IOKind;
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-decide-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root)?;
+
+    // Nothing is there, so nothing has decided what it is.
+    let mut location = Path::new(root.join("trades.bin"))?;
+    assert_eq!(location.kind(), IOKind::Unknown);
+
+    // A byte write settles it: an undecided location becomes a file.
+    location.write_all_bytes(b"AAPL")?;
+    location.flush()?;
+    assert_eq!(location.kind(), IOKind::File);
+    assert_eq!(location.read_all_bytes()?, b"AAPL");
+
+    // To settle it the other way, say so before writing.
+    let container = Path::new(root.join("day=2026-08-16"))?;
+    assert_eq!(container.kind(), IOKind::Unknown);
+    container.as_directory()?.create()?;
+    assert_eq!(container.kind(), IOKind::Directory);
+
+    drop(location);
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+Bytes are what distinguish a leaf from a container, so a `Path` with no resource behind it
+becomes a file the moment one writes to it. `as_directory` and `as_file` are the way to state
+the intent instead, and both work before anything exists. `Folder::create` makes the directory
+and every missing parent; on a container, `truncate(0)` does the same thing, and any other size
+is an error, because a container has no bytes to resize.
+
+### Walking the tree
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+
+    let folder = Folder::new(&root)?;
+    folder.create()?;
+
+    // A child is a handle; writing through it creates the leaf.
+    let mut leaf = folder.child_by_path("trades.arrows")?;
+    leaf.write_all_bytes(b"payload")?;
+    leaf.flush()?;
+    assert!(matches!(leaf, Holder::File(_)));
+
+    // A nested child creates its parent directory on write.
+    let mut nested = folder.child_by_path("sub/inner.bin")?;
+    nested.write_all_bytes(b"deep")?;
+    nested.flush()?;
+
+    // Listings are sorted, so two runs agree; recursion reaches the nested leaf.
+    let names: Vec<String> = folder
+        .ls(false, false)
+        .map(|entry| {
+            let entry = entry?;
+            Ok(entry
+                .url()
+                .and_then(|url| url.file_name())
+                .unwrap_or_default()
+                .to_owned())
+        })
+        .collect::<yggdryl::Result<_>>()?;
+    assert_eq!(names, ["sub", "trades.arrows"]);
+    assert_eq!(folder.ls(true, false).count(), 3);
+
+    // A leaf's parent is the directory holding it.
+    let parent = leaf.parent().expect("a file has a parent");
+    assert!(parent.is_container());
+    assert_eq!(parent.url().unwrap(), folder.url());
+
+    drop(leaf);
+    drop(nested);
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+`ls`, `child_by_path`, and `parent` return [`Holder`](types.md), so one enum walks a whole tree:
+subdirectories come back as `Holder::Folder`, files as `Holder::File`. Children resolve through
+the URL, so `.` and `..` segments collapse the way they do everywhere else in the crate, and a
+name with separators in it is a nested child rather than an error.
+
+`std::fs::read_dir` order is platform-defined; `ls` sorts, so a listing is reproducible.
+
+### The mapping
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder};
+
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
+
+    let mut file = File::create(&path)?;
+    file.pwrite(0, b"trade")?;
+
+    // Writing past the mapping remaps at a larger capacity instead of failing.
+    let bulk = vec![7_u8; 256 * 1024];
+    file.append_bytes(&bulk)?;
+    assert_eq!(file.size(), 5 + bulk.len() as u64);
+    assert!(file.capacity() >= file.size());
+
+    // Flushing publishes the logical length, so the file is the bytes, not the mapping.
+    file.flush()?;
+    assert_eq!(std::fs::metadata(&path)?.len(), file.size());
+
+    drop(file);
+    let _ = std::fs::remove_file(&path);
+    ```
+
+`size` is the logical length and `capacity` is how much of the file is mapped. Growth is
+geometric, so a run of appends remaps a logarithmic number of times rather than once per write,
+which leaves the mapped file longer than the bytes written. `flush` and `close` reconcile the
+two: they release the mapping and then set the file's length. Releasing first is not an
+optimisation, it is required, because Windows refuses to resize a file while a mapped section is
+open. Dropping the handle publishes too, but a drop cannot report failure, so call `flush` when
+the write must be known to have landed.
+
+Offsets are absolute and a write may start past the end:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder};
+
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-gap-{}.bin", std::process::id()));
+
+    let mut file = File::create(&path)?;
+    file.pwrite(0, b"ab")?;
+    file.pwrite(5, b"z")?;
+
+    // The gap the offset created is zero-filled.
+    assert_eq!(file.read_all_bytes()?, b"ab\0\0\0z");
+
+    drop(file);
+    let _ = std::fs::remove_file(&path);
+    ```
+
+### The SIGBUS hazard
+
+The mapping constructor is the only `unsafe` in the crate, and it is `unsafe` for a reason no
+wrapper can remove: the mapping aliases the file's bytes. If another process truncates the file
+while the mapping is live, touching the lost pages raises SIGBUS - a signal, not an error a
+`Result` can carry. `File` documents that instead of pretending it away.
+
+When the file may change underneath you, take the bytes into memory and work on the copy:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::local::{File, Folder};
+
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
+    std::fs::write(&path, b"trade")?;
+
+    // The handle - and its mapping - is gone by the time the copy returns.
+    let mut snapshot = Buffer::new();
+    File::new(&path)?.copy_into(&mut snapshot)?;
+
+    assert_eq!(snapshot.into_bytes(), b"trade");
+    let _ = std::fs::remove_file(&path);
+    ```
+
+`copy_into` transfers in chunks, so neither side is buffered whole, and it carries the source's
+media type onto the target.
+
+### A remote backend is a sibling module
+
+S3, GCS, and Azure are the same three ideas - a location, a container, a leaf - so a new backend
+is a sibling module supplying the same three roles rather than a change to anything here. Code
+written against [`IOBase`](holder.md) does not learn which one it got:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::local::{File, Folder};
+
+    fn head(handle: &dyn IOBase) -> yggdryl::Result<Vec<u8>> {
+        handle.read_range_bytes(0, 4)
+    }
+
+    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));
+
+    let mut file = File::create(&path)?;
+    file.write_all_bytes(b"AAPL,100")?;
+
+    let memory = Buffer::from_bytes(b"AAPL,100".to_vec());
+    assert_eq!(head(&file)?, b"AAPL");
+    assert_eq!(head(&file)?, head(&memory)?);
+
+    drop(file);
+    let _ = std::fs::remove_file(&path);
+    ```
+
+That is why [`ipc`](media.md) and [`parquet`](media.md) take a handle rather than a path: the
+same reader runs over a mapped file, an in-memory [`Buffer`](holder.md), or a compressed handle from
+[`gzip`](coding.md), [`zlib`](coding.md), or [`zstd`](coding.md).
+
+### Private entries
+
+A listing excludes names beginning with a dot unless it is asked for them, so
+walking a tree does not wander into `.git`, `.venv`, or `.DS_Store`.
+
+```rust
+use yggdryl::IOBase;
+use yggdryl::holder::local::Folder;
+use yggdryl::Url;
+
+let root = Folder::temporary()?.path()?.join("yggdryl-doc-private");
+std::fs::create_dir_all(root.join(".git"))?;
+std::fs::write(root.join("trades.arrows"), b"x")?;
+
+let folder = Folder::new(&root)?;
+assert_eq!(folder.ls(false, false).count(), 1);
+assert_eq!(folder.ls(false, true).count(), 2);
+
+// The rule is one accessor on the location itself, because every child has one.
+assert!(Url::from_str("file:///project/.git")?.is_private());
+assert!(!Url::from_str("file:///project/trades.arrows")?.is_private());
+
+std::fs::remove_dir_all(&root)?;
+```
+
+A private directory is not descended into either, so a recursive listing stays
+out of them entirely.
+
+## Arrow filesystems
+
+
+`yggdryl::holder::arrowfs` puts any existing Arrow filesystem - S3, GCS, Azure, a local tree, or one you
+wrote yourself - behind the crate's one storage abstraction, [`IOBase`](holder.md).
+
+Nothing here implements a transport. `ArrowFileSystem` is a seven-method contract modeled on
+Arrow's own `FileSystem` API, so an implementation that already exists - `pyarrow.fs`, Arrow C++,
+Arrow Java - maps onto it method for method, and the three roles above it inherit every wrapper the
+crate already has. A handle over a bucket reads and writes folders and files, streams Arrow
+records, and composes with [`Coded`](holder.md), [`ipc`](media.md), [`parquet`](media.md), and
+[`iceberg`](media.md), with no transport code written in this repository.
+
+### Construct from a filesystem and a path
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::IOBase;
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    let mut handle = File::from_location(filesystem, "bucket/trades.bin")?;
+
+    // Per the laziness contract nothing exists until something is written.
+    assert!(!handle.exists());
+    assert_eq!(handle.read_all_bytes()?, b"");
+
+    handle.write_all_bytes(b"AAPL")?;
+    handle.close()?;
+    assert_eq!(handle.read_all_bytes()?, b"AAPL");
+
+    // The handle's identity is a canonical URL naming the filesystem.
+    assert_eq!(handle.url().to_string(), "memory://bucket/trades.bin");
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.bin").as_posix())
+
+    # Per the laziness contract nothing exists until something is written.
+    assert not handle.exists()
+    assert handle.read_bytes() == b""
+
+    with handle:
+        handle.write_bytes(b"AAPL")
+
+    assert handle.read_bytes() == b"AAPL"
+    assert (root / "trades.bin").read_bytes() == b"AAPL"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    // Arrow JS ships no filesystem, so the handler is the filesystem: the
+    // same six calls, spelled in camelCase. This one is a Map; an S3 client
+    // or a caching layer answers the same way.
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.bin')
+
+    // Per the laziness contract nothing exists until something is written.
+    assert.equal(handle.exists(), false)
+    assert.equal(handle.readText(), '')
+
+    handle.writeText('AAPL')
+    handle.close()
+
+    assert.equal(handle.readText(), 'AAPL')
+    assert.equal(String(handle.url), 'memory://bucket/trades.bin')
+    ```
+
+The first path segment is the authority, which is exactly what a bucket is, so `"bucket/key"` on an
+S3 filesystem spells `s3://bucket/key`. In Python the filesystem may also be inferred from the
+first argument: `IOBase(fs, "bucket/key")` means the same as `IOBase.from_arrow_fs(fs, "bucket/key")`,
+and JavaScript infers the same way with `new IOBase(handler, 'bucket/key')`.
+
+!!! note "A JavaScript handler belongs to one thread"
+    The handler is called synchronously, in the middle of the native read or write, so it cannot be
+    reached from another thread: a handle used from a `Worker` refuses with a message saying so
+    rather than queueing work. A worker that needs its own view builds its own handler - only the
+    location string has to travel. This is a named limitation rather than an emulation, because
+    Node-API's only cross-thread call is asynchronous and every method here has to answer now.
+
+The real thing looks like this, and needs credentials and a network, so it is shown rather than run:
+
+=== "Python"
+
+    ```{ .python .ignore }
+    from pyarrow.fs import S3FileSystem
+    from yggdryl import IOBase
+    from yggdryl.media import iceberg
+
+    handle = IOBase.from_arrow_fs(S3FileSystem(region="eu-west-1"), "bucket/table")
+    table = iceberg.Table.open(handle)
+    rows = table.scan().read_all()
+    ```
+
+### A positional write publishes when the handle closes
+
+An Arrow filesystem replaces whole files. It has no random write - an object store cannot patch
+five bytes in the middle of an object - while `IOBase::pwrite` is positional. So a leaf stages its
+*positional* mutations in memory and publishes them as exactly one whole-value replacement on
+`flush` or `close`. Until then the stored value is untouched:
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{ArrowFileSystem, File, MemoryFileSystem};
+    use yggdryl::IOBase;
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    filesystem.write_full("bucket/trades.bin", b"stored")?;
+    let mut handle = File::from_location(filesystem.clone(), "bucket/trades.bin")?;
+
+    // Positional writes are pieces of a value, so they stage.
+    handle.truncate(0)?;
+    handle.pwrite(0, b"pend")?;
+    handle.pwrite(4, b"ing")?;
+
+    // The handle presents the pending value; the filesystem still has the old one.
+    assert_eq!(handle.read_all_bytes()?, b"pending");
+    assert_eq!(filesystem.file_info("bucket/trades.bin")?.size, 6);
+
+    handle.close()?;
+    assert_eq!(filesystem.file_info("bucket/trades.bin")?.size, 7);
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "staged.bin").as_posix())
+
+    handle.pwrite(0, b"pend")
+    handle.pwrite(4, b"ing")
+    assert not (root / "staged.bin").exists()
+
+    handle.close()
+    assert (root / "staged.bin").read_bytes() == b"pending"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
+    handle.pwrite(0, Buffer.from('pend'))
+    handle.pwrite(4, Buffer.from('ing'))
+
+    // The handle presents the pending value; the filesystem has not been
+    // asked to store anything yet.
+    assert.equal(handle.readText(), 'pending')
+    assert.equal(files.has('bucket/staged.bin'), false)
+
+    handle.close()
+    assert.equal(files.get('bucket/staged.bin').toString(), 'pending')
+    ```
+
+That is why a file another reader will open is written inside a scope - `with` in Python, `using`
+in JavaScript - which binds to exactly `open` and `close`.
+
+A *whole-value* write needs none of that. `write_all_bytes` and the ordinary record overwrite or
+append methods each describe one complete operation, so they publish when they finish. The staging
+exists to fold many positional writes into one replacement; it is not a mode a caller has to
+remember to leave.
+
+Reads need none of it. A `pread` maps straight onto one ranged fetch, so asking for eight bytes of
+a large object transfers eight bytes rather than the object. What a record encoding does with that
+is its own business, and [`parquet`](media.md) currently fetches the value whole - its footer is
+at the end, and a range-reading reader over `pread` is the optimization path that page names.
+Reading one Parquet footer over a bucket therefore still costs a whole object today; the handle is
+what stops being the reason.
+
+### Folders, globs, and partitions
+
+A directory on an object store is a prefix, so existence here is what the filesystem itself
+reports: the prefix has entries, or a marker exists. Nothing invents marker objects a store would
+not have written.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{ArrowFileSystem, Folder, MemoryFileSystem};
+    use yggdryl::IOBase;
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    for year in ["2024", "2025"] {
+        let leaf = format!("bucket/year={year}/part-0.parquet");
+        filesystem.write_full(&leaf, b"PAR1")?;
+    }
+    let lake = Folder::from_location(filesystem, "bucket")?;
+
+    assert!(lake.is_container());
+    assert_eq!(lake.ls(false, false).count(), 2);
+    assert_eq!(lake.glob("**/*.parquet", false)?.count(), 2);
+
+    // A fixed prefix is descended rather than listed and filtered.
+    assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
+
+    // Hive pairs are read off the location, as they are for any backend.
+    let selected: Vec<_> = lake
+        .children_where(&[("year", "2024")], false)?
+        .collect::<yggdryl::Result<_>>()?;
+    assert_eq!(selected.len(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp()) / "lake"
+    for year in ("2024", "2025"):
+        leaf = root / f"year={year}"
+        leaf.mkdir(parents=True)
+        (leaf / "part-0.parquet").write_bytes(b"PAR1")
+
+    lake = IOBase.from_arrow_fs(pafs.LocalFileSystem(), root.as_posix())
+
+    assert lake.is_dir()
+    assert len(list(lake.iterdir())) == 2
+    assert len(list(lake.glob("**/*.parquet"))) == 2
+    assert len(list(lake.children_where({"year": "2024"}))) == 1
+
+    # A child still carries the filesystem it came from.
+    part = lake / "year=2024" / "part-0.parquet"
+    assert part.read_bytes() == b"PAR1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    // A directory is a prefix, so `list` derives one from the keys rather
+    // than storing markers the caller's storage would not have written.
+    const files = new Map([
+      ['bucket/year=2024/part-0.parquet', Buffer.from('PAR1')],
+      ['bucket/year=2025/part-0.parquet', Buffer.from('PAR1')],
+    ])
+    const under = (prefix) =>
+      [...files.keys()].filter((name) => prefix === '' || name.startsWith(`${prefix}/`))
+    const handler = {
+      typeName: 'memory',
+      fileInfo(path) {
+        if (files.has(path)) return { path, kind: 'file', size: BigInt(files.get(path).length) }
+        return under(path).length ? { path, kind: 'directory' } : { path, kind: 'not-found' }
+      },
+      list(path, recursive) {
+        const prefix = path === '' ? '' : `${path}/`
+        const directories = new Set()
+        const found = []
+        for (const name of under(path)) {
+          const parts = name.slice(prefix.length).split('/')
+          for (let depth = 1; depth < parts.length; depth += 1) {
+            if (recursive || depth === 1) directories.add(prefix + parts.slice(0, depth).join('/'))
+          }
+          if (parts.length === 1 || recursive) {
+            found.push({ path: name, kind: 'file', size: BigInt(files.get(name).length) })
+          }
+        }
+        for (const name of directories) found.push({ path: name, kind: 'directory' })
+        return found
+      },
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const lake = IOBase.fromArrowFs(handler, 'bucket')
+
+    assert.equal(lake.isDir(), true)
+    assert.equal([...lake.ls()].length, 2)
+    assert.equal([...lake.glob('**/*.parquet')].length, 2)
+    assert.equal([...lake.glob('year=2024/**/*.parquet')].length, 1)
+    assert.equal([...lake.childrenWhere({ year: '2024' })].length, 1)
+
+    // A child still carries the filesystem it came from.
+    assert.equal(lake.joinpath('year=2024', 'part-0.parquet').readText(), 'PAR1')
+    ```
+
+### Records
+
+The record surface is the same read plus three explicit write intents every
+handle answers, inherited rather than reimplemented, so the encoding still
+comes from the media type and never from an argument. Their
+[canonical signatures and intent rules](holder.md#canonical-record-write-signatures)
+apply unchanged to an Arrow filesystem handle.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::DataType;
+
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Utf8.nullable_field("symbol"),
+    ])?
+    .required_field("row");
+
+    let batch = RecordBatch::try_new(
+        schema.clone().into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec![Some("AAPL"), None])),
+        ],
+    )?;
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    let mut handle = File::from_location(filesystem, "bucket/trades.parquet")?;
+    let options = handle.record_options()?.with_field(schema.clone());
+
+    handle.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        &options,
+    )?;
+    handle.close()?;
+
+    let rows: usize = handle
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(rows, 2);
+    assert_eq!(handle.read_arrow_field(&options)?, schema);
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    import pyarrow as pa
+    import pyarrow.fs as pafs
+    import pyarrow.parquet as pq
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    table = pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
+
+    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.parquet").as_posix())
+    with handle:
+        handle.overwrite_arrow_table(table)
+
+    assert handle.read_arrow_reader().read_all().num_rows == 2
+
+    # What landed is an ordinary Parquet file, so PyArrow reads it back.
+    assert pq.read_table(root / "trades.parquet").equals(table)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase } = require('yggdryl')
+
+    const files = new Map()
+    const handler = {
+      typeName: 'memory',
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      list: () => [],
+      readRange: (path, offset, length) =>
+        files.get(path)?.subarray(Number(offset), Number(offset) + length) ?? null,
+      writeFull: (path, bytes) => { files.set(path, Buffer.from(bytes)) },
+      createDir: () => {},
+      deleteFile: (path) => { files.delete(path) },
+    }
+
+    const table = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+    })
+
+    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
+    handle.overwriteArrowReader(BatchReader.from(table))
+    handle.close()
+
+    assert.equal(handle.readArrowReader().intoTable().numRows, 2)
+    // The encoding came from the name, never from an argument.
+    assert.equal(String(handle.mediaType), 'application/vnd.apache.arrow.stream')
+    ```
+
+A folder handle reads as the partitioned table beneath it, and a folder holding an Iceberg metadata
+document reads through its snapshots - both are the container behavior every backend inherits.
+
+### Composing with the wrappers
+
+Nothing about a foreign filesystem is special to the wrappers, because they only ever see an
+`IOBase`. A content coding round trips over a bucket exactly as it does over a file:
+
+!!! note "Rust only"
+    The Python and JavaScript packages do not expose the compression wrappers.
+    The Iceberg composition below carries its own tabs.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::IOBase;
+    use yggdryl::coding::Coded;
+    use yggdryl::{Codec, MimeType};
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    let leaf = File::from_location(filesystem.clone(), "bucket/trades.json.gz")?;
+
+    let mut coded = Coded::wrap(leaf, Codec::Gzip);
+    coded.write_all_bytes(br#"{"symbol":"AAPL"}"#)?;
+    coded.close()?;
+
+    // The view presents the decoded value...
+    assert_eq!(coded.media_type().base(), &MimeType::JSON);
+    assert_eq!(coded.read_all_bytes()?, br#"{"symbol":"AAPL"}"#);
+
+    // ...while what the filesystem holds is gzip.
+    let stored = File::from_location(filesystem, "bucket/trades.json.gz")?;
+    assert_eq!(&stored.read_all_bytes()?[..2], &[0x1f, 0x8b]);
+    ```
+
+An Iceberg table is a folder reached through `IOBase` only, so a warehouse on a foreign filesystem
+needs nothing from the table format:
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::holder::arrowfs::{Folder, MemoryFileSystem};
+    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::DataType;
+
+    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+        .required_field("row");
+    let batch = RecordBatch::try_new(
+        schema.clone().into_arrow_schema()?,
+        vec![Arc::new(Int64Array::from(vec![1, 2]))],
+    )?;
+
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    let root = Folder::from_location(filesystem, "warehouse/trades")?;
+
+    let mut table = Table::create(
+        root,
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )?;
+    table.commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+
+    let options = table.record_options()?;
+    let rows: usize = table
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(rows, 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    import pyarrow as pa
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+    from yggdryl.media import iceberg
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    table_rows = pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
+
+    warehouse = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades").as_posix())
+    table = iceberg.Table.create(warehouse, table_rows.schema)
+    table.append(table_rows)
+
+    assert table.scan().read_all().num_rows == 2
+    ```
+
+### The two filesystems that ship here
+
+`MemoryFileSystem` holds everything in one map and is the substrate the tests and benchmarks run
+on. `LocalFileSystem` is a thin `std::fs` mapping whose writes publish through a temporary file and
+a rename, so a reader never observes a half-written value; it exists to prove the contract against
+a real operating-system filesystem and to measure the wrapper against a native handle. **Neither
+replaces [`local`](holder.md)**, whose memory-mapped `File` remains the local backend.
+
+!!! note "Rust only"
+    Both are Rust types. A binding reaches a filesystem through the one its own
+    ecosystem already has - `pyarrow.fs` in Python, a handler object in
+    JavaScript.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{File, LocalFileSystem};
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-arrowfs-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let location = root.join("trades.bin").to_string_lossy().replace('\\', "/");
+
+    let mut handle = File::from_location(Arc::new(LocalFileSystem::new()), &location)?;
+    handle.write_all_bytes(b"AAPL")?;
+    handle.close()?;
+
+    assert_eq!(std::fs::read(root.join("trades.bin"))?, b"AAPL");
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+### Bringing your own filesystem
+
+In Rust, implement `ArrowFileSystem`. Seven methods, all synchronous, and the semantics are the
+ones Arrow already specifies: a path that is not there is `Unknown` rather than an error, a missing
+directory lists empty, a read past the end is short, and a write replaces the whole value.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, File};
+    use yggdryl::IOBase;
+    use yggdryl::Result;
+
+    /// A filesystem holding exactly one read-only object.
+    struct OneObject;
+
+    impl ArrowFileSystem for OneObject {
+        fn type_name(&self) -> &str {
+            "memory"
+        }
+
+        fn file_info(&self, path: &str) -> Result<FileInfo> {
+            Ok(if path == "bucket/only.bin" {
+                FileInfo::file(path, 5)
+            } else {
+                FileInfo::not_found(path)
+            })
+        }
+
+        fn list(&self, _path: &str, _recursive: bool) -> yggdryl::holder::arrowfs::FileInfos {
+            yggdryl::holder::arrowfs::FileInfos::new(
+                [Ok(FileInfo::file("bucket/only.bin", 5))].into_iter(),
+            )
+        }
+
+        fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+            if path != "bucket/only.bin" {
+                return Ok(0);
+            }
+            let value = b"AAPL!";
+            let offset = offset as usize;
+            if offset >= value.len() {
+                return Ok(0);
+            }
+            let count = (value.len() - offset).min(buffer.len());
+            buffer[..count].copy_from_slice(&value[offset..offset + count]);
+            Ok(count)
+        }
+
+        fn write_full(&self, _path: &str, _bytes: &[u8]) -> Result<()> {
+            Ok(())
+        }
+
+        fn create_dir(&self, _path: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn delete_file(&self, _path: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    let handle = File::from_location(Arc::new(OneObject), "bucket/only.bin")?;
+    assert_eq!(handle.read_all_bytes()?, b"AAPL!");
+    assert_eq!(handle.read_range_bytes(1, 3)?, b"APL");
+    ```
+
+In Python, write a `pyarrow.fs.FileSystemHandler` and wrap it in `pyarrow.fs.PyFileSystem`. That is
+also how an `fsspec` filesystem arrives, so this one shape covers both:
+
+=== "Python"
+
+    ```{ .python .ignore }
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    class MyHandler(pafs.FileSystemHandler):
+        ...  # get_file_info, get_file_info_selector, open_input_file, open_output_stream, ...
+
+    handle = IOBase.from_arrow_fs(pafs.PyFileSystem(MyHandler()), "bucket/key.parquet")
+    ```
+
+A working handler is longer than a documentation page wants, so the complete one lives in
+`python/tests/test_arrowfs.py`, where it is exercised end to end - including an Iceberg table whose
+every byte goes through it.
+
+In JavaScript there is nothing to wrap, because Arrow JS ships no filesystem - so the handler
+object *is* the filesystem, and the six methods are the whole contract. Anything a Node program can
+already reach answers them:
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-arrowfs-'))
+
+    // The same six calls, over node:fs. Absence may throw the way node:fs
+    // does - the boundary asks what is there and turns ENOENT into the
+    // contract's empty answer.
+    const handler = {
+      typeName: 'local',
+      fileInfo(location) {
+        try {
+          const stat = fs.statSync(location)
+          return {
+            path: location,
+            kind: stat.isDirectory() ? 'directory' : 'file',
+            size: BigInt(stat.size),
+          }
+        } catch {
+          return { path: location, kind: 'not-found' }
+        }
+      },
+      list(location, recursive) {
+        const found = []
+        for (const entry of fs.readdirSync(location, { withFileTypes: true })) {
+          const child = path.posix.join(location, entry.name)
+          if (entry.isDirectory()) {
+            found.push({ path: child, kind: 'directory' })
+            if (recursive) found.push(...this.list(child, true))
+          } else {
+            found.push({ path: child, kind: 'file', size: BigInt(fs.statSync(child).size) })
+          }
+        }
+        return found
+      },
+      readRange(location, offset, length) {
+        const descriptor = fs.openSync(location, 'r')
+        try {
+          const buffer = Buffer.alloc(length)
+          const read = fs.readSync(descriptor, buffer, 0, length, Number(offset))
+          return buffer.subarray(0, read)
+        } finally {
+          fs.closeSync(descriptor)
+        }
+      },
+      writeFull(location, bytes) {
+        fs.mkdirSync(path.posix.dirname(location), { recursive: true })
+        fs.writeFileSync(location, bytes)
+      },
+      createDir: (location) => fs.mkdirSync(location, { recursive: true }),
+      deleteFile: (location) => fs.rmSync(location, { force: true }),
+    }
+
+    const handle = IOBase.fromArrowFs(handler, path.posix.join(root, 'lake', 'trades.bin'))
+    handle.writeText('AAPL')
+    handle.close()
+
+    assert.equal(fs.readFileSync(path.join(root, 'lake', 'trades.bin'), 'utf8'), 'AAPL')
+    assert.equal(handle.readRangeBytes(1, 3).toString(), 'APL')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+### What the wrapper costs
+
+Putting an existing Arrow filesystem behind `IOBase`, the only honest
+question is what the wrapper adds to the transport underneath it. Every row below is the same
+payload landing in the same place twice: once through an `arrowfs` handle, once through the native
+handle (or the language's own filesystem calls) holding those same bytes.
+
+=== "Rust"
+
+    `cargo bench --bench arrowfs --features "parquet"`, Criterion medians,
+    512 KiB payloads and 65,536 rows:
+
+    ```text
+                                      arrowfs      native handle
+    bytes read_all   (memory)         22.99 us     23.68 us   Buffer
+    bytes write_all  (memory)         67.00 us     24.85 us   Buffer
+    bytes pread 4KiB (memory)         63.91 ns     35.05 ns   Buffer
+    bytes read_all   (local)          25.82 us     23.51 us   local::File
+    bytes write_all  (local)         212.43 us      1.11 ms   local::File
+    ipc     write                      4.08 ms      4.44 ms   Buffer
+    ipc     read                       1.49 ms      1.30 ms   Buffer
+    parquet write                     18.16 ms     17.84 ms   Buffer
+    parquet read                       5.17 ms      5.01 ms   Buffer
+    ls recursive     (local)          61.49 us     92.84 us   local::Folder
+    ```
+
+    The ranged read is the row that matters most, and it is the one stated in
+    nanoseconds. Serving 4 KiB out of a 512 KiB value costs 64 ns, not the
+    23 us a whole-value read costs, so the handle serves a range without
+    materializing the value. The vtable itself is the 29 ns difference against
+    `Buffer`: one dynamic call plus a bounds check. This measures the handle,
+    not any reader above it - [`parquet`](media.md) still fetches its value
+    whole, as that page says.
+
+    Whole-value writes are where staging shows. An Arrow filesystem replaces
+    files rather than writing ranges, so a write is buffered and published
+    once - 67 us against `Buffer`'s 25 us for 512 KiB, which is the copy the
+    publication costs. Against the memory-mapped `local::File` the same write
+    is **five times faster** (212 us against 1.11 ms), because publishing a
+    whole file through a temporary and a rename beats remapping and resizing a
+    mapping. Neither number makes one backend better than the other; they
+    measure different write shapes, which is exactly why both exist.
+
+    Records are within a few percent either way, because the encoding
+    dominates and the wrapper only moves the finished bytes. Listing is faster
+    than the local backend's because one `list` call answers a recursive walk
+    that `std::fs::read_dir` has to make per directory.
+
+    `glob` over the same tree shows the descent the contract promises:
+    expanding `**/*.parquet` across a 16-leaf lake costs 57 us, while
+    `year=2024/**/*.parquet` costs 23 us, because a fixed prefix is descended
+    rather than listed and filtered.
+
+=== "Python"
+
+    The baseline is PyArrow's own calls against the same
+    `pyarrow.fs.LocalFileSystem` - the implementation the wrapper delegates
+    to - so the difference is the vtable crossing and nothing else.
+    `arrowfs.py --min-time 0.2 --repeat 7`, release wheel, medians:
+
+    ```text
+                            wrapper      PyArrow
+    bytes write            400.0 us     244.3 us
+    bytes read             115.2 us      17.6 us
+    range read (4 KiB)      14.5 us       2.9 us
+    parquet write            8.16 ms      6.19 ms
+    parquet read             2.00 ms      1.95 ms
+    listing (16 entries)    85.5 us      34.4 us
+    ```
+
+    A Parquet read is at parity, because the decode dominates and the boundary
+    moves only finished bytes. Everything smaller is dominated by the crossing
+    itself: each vtable call acquires the GIL and makes a handful of PyArrow
+    calls, which is roughly 12 us of fixed cost, so the 4 KiB range read costs
+    14.5 us against PyArrow's 2.9 us. That cost is per *call*, not per byte -
+    the ranged read still reads 4 KiB rather than the 512 KiB object, which is
+    the property that matters on an object store, and it is why the read is
+    14.5 us rather than the 115 us a whole-value read takes.
+
+    A write costs more than PyArrow's because it is a different operation: the
+    wrapper stages the value and publishes it once, which is what makes a
+    positional `pwrite` API work over a filesystem that only replaces whole
+    files.
+
+=== "JavaScript"
+
+    JavaScript pays the same shape of cost against `node:fs`, with the handler
+    crossing the boundary on every call rather than only the handle.
+    `bench:arrowfs`, release build:
+
+    ```text
+                                wrapper       node:fs
+    handle from path         107,101/s     257,632/s
+    write bytes                4,912/s      11,235/s
+    read bytes                13,193/s      58,399/s
+    read range (4 KiB)       124,733/s     227,893/s
+    list children             58,181/s     264,682/s
+    glob *.parquet             9,372/s      16,900/s
+    read records            15.6M rows/s   11.6M rows/s (local handle)
+    write records           10.2M rows/s   22.1M rows/s (local handle)
+    ```
+
+    The ranged read is again the row that carries the claim: it is the
+    *fastest* byte operation of the three, not the slowest, because it fetches
+    4 KiB rather than the whole payload. Records read faster than through the
+    local handle because the staged value is already in memory once the first
+    read has fetched it, and slower to write for the same reason a Python
+    write is - the value is staged and published once.
+
+## Buffered handles
+
+
+A page cache that makes any [`IOBase`](holder.md) handle buffered, with the value's first and last pages pinned.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::buffered::BufferedOptions;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+
+    let handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
+        .buffered(BufferedOptions::default());
+
+    assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
+    assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
+    assert_eq!(handle.cached_pages(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes(b"symbol,price\nAAPL,1\n")
+    assert handle.buffered(page_size=64, max_bytes=256, ttl=30.0) is handle
+    assert handle.read_range_bytes(0, 6) == b"symbol"
+    assert handle.read_range_bytes(13, 4) == b"AAPL"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = IOBase.fromBytes(Buffer.from('symbol,price\nAAPL,1\n'))
+    assert.equal(handle.buffered({ pageSize: 64, maxBytes: 256, ttlMs: 30_000 }), handle)
+    assert.deepEqual(handle.readRangeBytes(0, 6), Buffer.from('symbol'))
+    assert.deepEqual(handle.readRangeBytes(13, 4), Buffer.from('AAPL'))
+    ```
+
+`IOBase::buffered` wraps any handle, and what comes back is a handle: `Buffered<H>` mirrors
+everything it does not change, so `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`,
+and `ls` answer exactly what the wrapped handle answers. It is invisible except for speed,
+the same way [`Coded`](holder.md) is invisible except for the coding.
+
+Nothing is cached at construction. Per the [laziness contract](holder.md), a handle is a
+description of where bytes would live, and the cache only ever holds pages a read asked for.
+Calling `buffered` again reconfigures the same cache layer; it never stacks a second one.
+Rust additionally exposes page-inspection methods used by the detailed examples below.
+
+### Pages
+
+```rust
+use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+// 256-byte pages, so a 1 KiB value is four of them.
+let options = BufferedOptions::default().with_page_size(256);
+let handle = Buffered::new(Buffer::from_bytes(vec![7_u8; 1_024]), options);
+
+// A read that misses fetches the whole page holding it, aligned.
+assert_eq!(handle.read_range_bytes(300, 4)?.len(), 4);
+assert_eq!(handle.cached_pages(), 1);
+assert_eq!(handle.cached_bytes(), 256);
+assert!(handle.has_cached_page(1));
+
+// A read spanning pages assembles from each of them, caching all it crossed.
+assert_eq!(handle.read_range_bytes(100, 600)?.len(), 600);
+assert_eq!(handle.cached_pages(), 3);
+
+// The page a given offset lives in is arithmetic, not a lookup.
+assert_eq!(handle.options().page_index(700), 2);
+assert_eq!(handle.options().page_start(2), 512);
+```
+
+A miss reads page-aligned from the inner handle and copies the requested range out; a hit
+copies straight from the held page. A read crossing several pages copies each of them into
+the caller's buffer directly, so nothing is assembled in between.
+
+### The three knobs
+
+```rust
+use std::time::Duration;
+
+use yggdryl::holder::buffered::BufferedOptions;
+
+let options = BufferedOptions::default();
+assert_eq!(options.page_size(), 64 * 1024);
+assert_eq!(options.max_bytes(), 8 * 1024 * 1024);
+assert_eq!(options.ttl(), Duration::from_secs(30));
+
+// A page size is rounded up to a power of two and clamped to 64 ..= 1 GiB.
+assert_eq!(BufferedOptions::default().with_page_size(1_000).page_size(), 1_024);
+assert_eq!(BufferedOptions::default().with_page_size(0).page_size(), 64);
+
+// A budget below two pages is clamped up to exactly two, never rejected,
+// because the two pinned pages have to fit for the cache to work at all.
+let tight = BufferedOptions::default().with_page_size(4_096).with_max_bytes(1);
+assert_eq!(tight.max_bytes(), 8_192);
+
+// Raising the page size re-applies that clamp to a budget set earlier.
+let grown = BufferedOptions::default()
+    .with_page_size(1_024)
+    .with_max_bytes(4_096)
+    .with_page_size(8_192);
+assert_eq!(grown.max_bytes(), 16_384);
+```
+
+**Page size** is the unit a miss fetches. **Max bytes** is the budget every cached page
+shares, pinned ones included; over it, the least recently *read* page leaves first.
+**Time to live** is counted from a page's last access, so a page that keeps being read
+never expires. Expiry is lazy - a lapsed page is discarded when it is touched, and a miss
+sweeps the table - so nothing here runs a background thread.
+
+### Both ends are pinned
+
+The first page, and the page holding the current last byte, are exempt from eviction and
+from expiry. Both ends of a value are where discovery lives - magic bytes and media-type
+sniffing at the head, a Parquet footer or an Arrow IPC schema and end-of-stream block at
+the tail - and they are re-read constantly, so they must never be what a sweep takes.
+
+```rust
+use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+// Sixteen pages of value, four pages of budget.
+let options = BufferedOptions::default()
+    .with_page_size(64)
+    .with_max_bytes(4 * 64);
+let handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 16 * 64]), options);
+
+// The footer first, then the header: the shape a container is opened with.
+handle.read_range_bytes(16 * 64 - 8, 8)?;
+handle.read_range_bytes(0, 8)?;
+
+// Then a scan of the middle, four times what the budget can hold.
+for page in 1..15 {
+    handle.read_range_bytes(page * 64, 8)?;
+}
+
+// The budget held throughout, the middle was evicted, and both ends stayed.
+assert!(handle.cached_bytes() <= handle.options().max_bytes());
+assert!(handle.has_cached_page(0));
+assert!(handle.has_cached_page(15));
+assert!(!handle.has_cached_page(7));
+```
+
+Two consequences worth stating, because both are observable:
+
+- **Pinned pages count toward the budget.** That is why `max_bytes` is clamped to at least
+  two pages: a budget that could not hold both ends would leave the cache thrashing.
+- **The pin follows the current end.** A write or a `truncate` that moves the size releases
+  the page that used to be last, and the new last page is pinned the next time it is
+  cached. Pinning is a retention guarantee, never a prefetch: a pinned page is still filled
+  lazily, by the first read that wants it.
+
+```rust
+use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+let options = BufferedOptions::default()
+    .with_page_size(64)
+    .with_max_bytes(4 * 64);
+let mut handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 4 * 64]), options);
+
+// Page 3 ends the value, so it holds a pin.
+assert_eq!(handle.read_all_bytes()?.len(), 4 * 64);
+assert!(handle.has_cached_page(3));
+
+// A write doubling the value moves the end; page 3 is ordinary again, and a
+// scan under budget pressure now evicts it while page 0 stays.
+handle.pwrite(8 * 64 - 1, b"z")?;
+for page in 4..8 {
+    handle.read_range_bytes(page * 64, 8)?;
+}
+handle.read_range_bytes(5 * 64, 8)?;
+handle.read_range_bytes(6 * 64, 8)?;
+assert!(handle.has_cached_page(0));
+assert!(handle.has_cached_page(7));
+assert!(!handle.has_cached_page(3));
+```
+
+### Writes are never stale
+
+```rust
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+let mut handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
+    .buffered(BufferedOptions::default());
+assert_eq!(handle.read_all_bytes()?.len(), 20);
+
+// A write goes straight to the wrapped handle and folds into the pages it
+// overlapped, so the read after it can never see the bytes it replaced.
+handle.pwrite(13, b"MSFT")?;
+assert_eq!(handle.read_range_bytes(13, 4)?, b"MSFT");
+assert_eq!(handle.handle().as_slice()[13..17], *b"MSFT");
+
+// Truncating drops every page a resize could have changed, both ways.
+handle.truncate(13)?;
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
+handle.truncate(15)?;
+assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
+```
+
+`pwrite` is write-through: the bytes reach the inner handle first, and then every cached
+page they overlapped is patched with them or dropped. `truncate` delegates and invalidates
+everything at or past the new size. `flush` delegates. `close` flushes and drops the whole
+cache - pinned pages included, because closing releases cached state - and leaves a working
+handle behind that simply fetches again.
+
+`clear` and `remove` drop the whole cache too, and they drop it **before** delegating: a page
+that outlived either would answer a later read with bytes that are gone, and one that outlived a
+*failed* removal would describe a resource whose state is no longer known. That ordering is why
+they are written out rather than delegated by the macro - a body the macro provides cannot be
+overridden, and a cache wrapper has to invalidate as part of the call.
+
+```rust
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+let mut handle = Buffer::from_bytes(vec![3_u8; 4_096]).buffered(BufferedOptions::default());
+assert_eq!(handle.read_all_bytes()?.len(), 4_096);
+assert_eq!(handle.cached_pages(), 1);
+
+handle.close()?;
+assert_eq!(handle.cached_pages(), 0);
+assert_eq!(handle.read_range_bytes(0, 4)?, [3, 3, 3, 3]);
+```
+
+The one thing the cache cannot see is a change made *behind* it - bytes written straight to
+the inner handle, or to the same file by another process. `handle_mut` therefore drops every
+page before it hands the inner handle over, and `clear_cache` is the same thing said
+explicitly.
+
+### Over a compressed handle
+
+A content coding is not seekable. A closed [`Coded`](holder.md) positional read decodes through
+the requested range and retains nothing. Wrapping it retains the decoded pages instead, so a
+hit performs no second decode and a miss restarts only as far as that page.
+
+```rust
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::coding::gzip::Gzip;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+let payload = "symbol,price\nAAPL,1\n".repeat(512).into_bytes();
+let mut source = Gzip::new(Buffer::new());
+source.write_all_bytes(&payload)?;
+source.flush()?;
+let encoded = source.into_handle()?;
+
+// The cache wraps the coding, so the pages it holds are decoded bytes.
+let handle = Gzip::new(encoded).buffered(BufferedOptions::default());
+assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
+assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
+
+// Two reads, one page, one decode.
+assert_eq!(handle.cached_pages(), 1);
+assert_eq!(handle.size(), payload.len() as u64);
+```
+
+Three things follow, and the [measurements below](#what-the-cache-buys-and-what-it-costs) cover all of them:
+
+- **The order of wrapping matters.** `Buffered<Coded<_>>` caches decoded bytes;
+  `Coded<Buffered<_>>` caches encoded transport.
+- **Choose by access shape.** `pstream_bytes` keeps one decoder and zero pages for a scan;
+  `Buffered<Coded<_>>` retains bounded decoded pages for locality; `open` materializes once
+  for repeated random access and `close` releases it.
+- **A page miss still starts at the frame beginning.** Compression has no decoded seek, so
+  later misses cost more than early ones even though none retains the whole value.
+
+### Wrapping twice wraps once
+
+```rust
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::holder::Holder;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+let once = Buffer::from_bytes(vec![5_u8; 128]).buffered(BufferedOptions::default());
+
+// `Buffered` has an inherent `buffered`, which wins method resolution, so
+// this re-wraps the handle it holds instead of stacking a second cache.
+let twice = once.buffered(BufferedOptions::default().with_page_size(512));
+assert_eq!(twice.options().page_size(), 512);
+assert_eq!(twice.read_range_bytes(0, 4)?, [5, 5, 5, 5]);
+
+// A holder does the same, so a listing entry can be buffered without care.
+let held = Holder::buffer(Buffer::from_bytes(vec![5_u8; 128]))
+    .buffered(BufferedOptions::default())
+    .buffered(BufferedOptions::default());
+assert!(matches!(&held, Holder::Buffered(inner) if matches!(inner.handle(), Holder::Buffer(_))));
+
+// `into_handle` gives the wrapped handle back, cache dropped.
+let inner: Buffer = twice.into_handle();
+assert_eq!(inner.size(), 128);
+```
+
+### Cursors ride the cache
+
+```rust
+use std::io::{Read, Seek, SeekFrom};
+
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::{IOBase, IOCursor};
+use yggdryl::holder::Buffer;
+
+let payload: Vec<u8> = (0..1_024_u32).map(|index| index as u8).collect();
+let mut cursor = Buffer::from_bytes(payload)
+    .buffered(BufferedOptions::default().with_page_size(256))
+    .cursor();
+
+// Sequential reads stream across page boundaries through the cache.
+let mut chunk = [0_u8; 300];
+cursor.read_exact(&mut chunk)?;
+assert_eq!(cursor.tell(), 300);
+assert_eq!(chunk[299], 299_u32 as u8);
+
+// A seek to the end lands on the pinned footer page. `IOCursor` and
+// `std::io::Seek` both spell `seek`, so this one names the trait it means.
+IOCursor::seek(&mut cursor, SeekFrom::End(-4))?;
+cursor.read_exact(&mut chunk[..4])?;
+assert_eq!(chunk[3], 1_023_u32 as u8);
+assert_eq!(cursor.handle().cached_pages(), 3);
+```
+
+`cursor` and `cursor_at` come from [`IOBase`](holder.md) itself, so a buffered handle gets the
+same `Read`, `Write`, and `Seek` implementations every other handle gets - reads and writes
+just go through the pages.
+
+### A file, and what the cache is for
+
+```rust
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::IOBase;
+use yggdryl::holder::local::{File, Folder};
+
+let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
+std::fs::write(&path, vec![9_u8; 4_096])?;
+
+let handle = File::new(&path)?.buffered(BufferedOptions::default().with_page_size(1_024));
+assert_eq!(handle.size(), 4_096);
+assert_eq!(handle.read_range_bytes(2_000, 8)?, [9_u8; 8]);
+assert_eq!(handle.cached_pages(), 1);
+
+// The wrapper is the file for every purpose but the reading.
+let bare = File::new(&path)?;
+assert_eq!(handle.url(), bare.url());
+
+drop(handle);
+let _ = std::fs::remove_file(&path);
+```
+
+Over a memory-mapped [local file](holder.md), a `pread` is already a `memcpy` out of the page
+cache the kernel keeps, so wrapping one buys little and costs a lock and a second copy - the
+[measurements below](#what-the-cache-buys-and-what-it-costs) say by how much.
+
+The cache earns its keep where a fetch is not a `memcpy`, and the core ships two such
+handles. An [`arrowfs`](holder.md) handle answers every read with one `read_range` call
+through the foreign-filesystem vtable - over `LocalFileSystem` an `open`, a `seek` and a
+`read` per call, and over an object store a round trip - and a [coded](holder.md) handle decodes.
+Both are the same code as the mapped case, which is the point of the wrapper: what changes is
+only how much the fetch it removes was worth.
+
+### What the cache buys, and what it costs
+
+`io_buffered` runs three read workloads over one 16 MiB fixture and every handle the core
+ships, plus a fourth workload over a compressed one. The handles fall into two families, and
+that split is the whole result:
+
+- **Already memory.** An in-memory `Buffer`, a memory-mapped `local::File`, and an
+  [`arrowfs`](holder.md) handle over `MemoryFileSystem`. A read is a `memcpy` - out of a
+  `Vec`, out of the mapping the kernel already caches, or out of the vtable's own map.
+- **A fetch per read.** An `arrowfs` handle over `LocalFileSystem`, where every `pread` is an
+  `open`, a `seek` and a `read`, and every `size` is a `stat`. That is the shape of every
+  object store, and the only such backend the core ships.
+
+`random` reads 512 bytes at a time inside a 4 MiB hot region that fits the 8 MiB budget;
+`sequential` scans the whole 16 MiB in 8 KiB steps, twice the budget, so every page is
+fetched once and evicted before it is wanted again; `footer` reads both ends, sweeps 12 MiB
+of the middle, and reads both ends again.
+
+From one containerized x86_64 Linux run with the group run alone
+(`cargo bench --bench io --features "parquet" -- io_buffered`; Criterion, 100 samples,
+medians). This box's run-to-run spread is wide - a case can move 15% between runs - so read
+the multiples, never the percentages:
+
+```text
+                                     random        sequential        footer
+buffer                             10.041 µs        606.58 µs      439.58 µs
+file                               28.037 µs        517.80 µs      367.66 µs
+buffered  (over file)              75.362 µs      1.9495 ms        507.49 µs
+arrowfs_memory                     46.739 µs        734.30 µs      392.83 µs
+arrowfs_memory_buffered            77.633 µs      2.0068 ms        503.69 µs
+arrowfs_local                     1.0832 ms       2.7574 ms       2.0924 ms
+arrowfs_local_buffered             73.668 µs      2.3841 ms        532.18 µs
+```
+
+**Over a backend that is already memory, the cache is a cost; over one that fetches, it is
+worth 4x to 15x.** The same code, the same page table, the same pinning:
+
+| Workload | `arrowfs_local` | with the cache | |
+| --- | --- | --- | --- |
+| `random` (a hot region, re-read) | 1.0832 ms | 73.668 µs | **14.7x faster** |
+| `footer` (both ends, big middle) | 2.0924 ms | 532.18 µs | **3.9x faster** |
+| `sequential` (one pass, nothing re-read) | 2.7574 ms | 2.3841 ms | **1.2x faster** |
+
+The ordering of those three is the useful part. A cache pays where reads *repeat* - a hot
+region, or the two ends of a footer-first container - and barely pays where every byte is
+read exactly once, because a one-pass scan copies each byte twice and reuses none of it. The
+`sequential` row is the honest floor: 8 KiB reads through 64 KiB pages, so the cache still
+turns eight `open`/`seek`/`read` triples into one, and that is worth 16%.
+
+Over the memory-like handles the same cache costs 2.7x (`random`, against `file`), because
+there was no fetch to remove: a hit is a clock read, a lock, a map lookup and a copy against
+a `memcpy` that was going to happen anyway. That is the price of not knowing what you were
+handed, and it is why the wrapper is opt-in rather than automatic.
+
+**Two changes during this work moved these numbers, and both are in the diff:**
+
+- *A hit asks the handle for nothing.* `read_at` used to call `size()` on every read, for the
+  end-of-value bound and the pin. On `arrowfs_local` that is a `stat` per read - the cache
+  paying exactly the cost it exists to remove. The size is now remembered beside the pages and
+  re-asked only when a read runs past what the cache knows. `random/arrowfs_local_buffered`
+  went **597.88 µs to 73.668 µs** and `sequential` turned from a 1.2x *loss* into a win.
+- *Dense page indexes hash with a multiply and a rotation* rather than SipHash, and the offset
+  arithmetic shifts rather than divides - which is what the power-of-two page size is for.
+  Together, −20% on the hit case.
+
+**What pinning buys cannot be timed over a backend whose re-read is a `memcpy`**, so the
+target asserts it as a count before any timer starts, over a counting handle: after a 12 MiB
+middle scan four times wider than the whole budget, re-reading the head and the tail costs
+**zero** inner fetches. On `arrowfs_local`, where a fetch is real, that count is what the
+`footer` row's 3.9x is made of.
+
+#### Over a compressed handle
+
+A content coding is not seekable, so [`Coded`](holder.md) answers a positional read by decoding
+the value, and *which* decode it pays depends on whether the handle is open. The `coded`
+cases read a 256 KiB gzip value in 64 reads of 4 KiB:
+
+```text
+io_buffered/coded/closed      12.182 ms    20.522 MiB/s
+io_buffered/coded/open         5.8867 us   41.474 GiB/s
+io_buffered/coded/buffered    10.2080 us   23.916 GiB/s
+```
+
+- **`closed` restarts the decoder.** Each call now stops after its requested range rather than
+  decoding the whole value, but 64 progressive calls still create 64 decoders and repeatedly
+  discard growing prefixes.
+- **`open` serves the one decoded snapshot it explicitly owns.** It is the fastest repeated
+  random-access path when holding that complete value is acceptable.
+- **`buffered` retains only fetched decoded pages.** It turns decoder restarts into page misses
+  and stays within 2x of the opened path for this access pattern.
+
+For a scan, [`pstream_bytes`](holder.md#streamed-bytes) is the zero-cache choice: it keeps one
+decoder and leaves `cached_pages() == 0`. The page cache is for reuse across genuinely
+positional reads, not a prerequisite for sequential decoding.
+
+The order of wrapping is the useful one: `Buffered<Coded<_>>` caches the *decoded* bytes.
+`Coded<Buffered<_>>` would cache the compressed bytes and still decode on every read.

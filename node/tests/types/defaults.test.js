@@ -77,7 +77,7 @@ function datatypeFixtures() {
 
 // A datatype id names one variant (`decimal128`); its kind names the coarse
 // family that variant belongs to (`decimal`). `DataType.kind` exposes the
-// family, whose vocabulary is owned by rust/src/generic/datatype_kind.rs.
+// family, whose vocabulary is owned by rust/src/datatype_kind.rs.
 const DATATYPE_KINDS = new Map(
   Object.entries({
     null: ['null'],

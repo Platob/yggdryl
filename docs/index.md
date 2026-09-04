@@ -63,22 +63,22 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
 
 ## What is here
 
-**A schema is a field.** [`DataType`](datatype.md) is the logical type tree and
-[`Field`](field.md) adds a name, nullability, and metadata. A non-null struct field describes
-rows, so there is no second schema type to keep in sync, and [casting](field.md) reconciles
+**A schema is a field.** [`DataType`](types.md) is the logical type tree and
+[`Field`](types.md) adds a name, nullability, and metadata. A non-null struct field describes
+rows, so there is no second schema type to keep in sync, and [casting](types.md) reconciles
 incoming Arrow data to it.
 
-**Storage is one trait.** [`IOBase`](io.md) addresses bytes positionally and lazily: building
+**Storage is one trait.** [`IOBase`](holder.md) addresses bytes positionally and lazily: building
 a handle touches nothing, reading something absent yields nothing, writing creates. An in-memory
-buffer, a [local file or directory](local.md), and a
-[compressed view](gzip.md) of either are all the same trait, and
-[one enum](generic.md) names every implementation.
+buffer, a [local file or directory](holder.md), and a
+[compressed view](coding.md) of either are all the same trait, and
+[one enum](holder.md#holder-every-storage-handle) names every implementation.
 
 **Records ride on storage.** Any handle reads and writes Arrow batches, choosing
-[Arrow IPC](ipc.md) or [Parquet](parquet.md) from its own media type, and
-[Iceberg](iceberg.md) reads its schemas as ordinary fields.
+[Arrow IPC](media.md) or [Parquet](media.md) from its own media type, and
+[Iceberg](media.md) reads its schemas as ordinary fields.
 
-**Scalars are one tree.** [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md) share
+**Scalars are one tree.** [JSON](text.md), [YAML](text.md), and [TOML](text.md) share
 the [structured value](text.md), and [URIs](uri.md) name where any of it lives.
 
 ## Install

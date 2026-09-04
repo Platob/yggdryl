@@ -17,7 +17,7 @@ Every check runs from the repository root, which owns the Cargo workspace.
     cd python
     .venv/Scripts/python -m maturin develop
     .venv/Scripts/python -m pytest
-    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
+    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
     ```
 
 === "JavaScript"
@@ -65,14 +65,14 @@ cargo test --features parquet --test value_bounds
 Unit tests live beside the code they cover, so a module is exercised through its own path:
 
 ```console
-cargo test --features "parquet iceberg" -p yggdryl --lib io::
-cargo test --features "parquet iceberg" -p yggdryl --lib local::
-cargo test --features "parquet iceberg" -p yggdryl --lib generic::
-cargo test --features "parquet iceberg" -p yggdryl --lib field::cast
-cargo test --features "parquet iceberg" -p yggdryl --lib ipc::
-cargo test --features "parquet iceberg" -p yggdryl --lib parquet::
-cargo test --features "parquet iceberg" -p yggdryl --lib avro::
-cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::
+cargo test --features "parquet iceberg" -p yggdryl --lib iobase::
+cargo test --features "parquet iceberg" -p yggdryl --lib holder::
+cargo test --features "parquet iceberg" -p yggdryl --lib types::
+cargo test --features "parquet iceberg" -p yggdryl --lib types::cast
+cargo test --features "parquet iceberg" -p yggdryl --lib media::ipc::
+cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::
+cargo test --features "parquet iceberg" -p yggdryl --lib media::avro::
+cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::
 cargo test --features "parquet iceberg" -p yggdryl --lib text::codec
 ```
 
@@ -109,7 +109,7 @@ The Avro fuzz sweeps run seeded mutations in the ordinary test pass; a longer
 sweep scales the same tests with `AVRO_FUZZ_ITERATIONS`:
 
 ```console
-AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib avro::tests::fuzz_lite
+AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib media::avro::tests::fuzz_lite
 ```
 
 ## What a test looks like here

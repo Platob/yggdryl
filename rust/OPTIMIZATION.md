@@ -183,13 +183,10 @@ measuring a representative workload.
 Run the focused suite in release mode:
 
 ```text
-cargo bench --manifest-path rust/Cargo.toml --bench datatype
-cargo bench --manifest-path rust/Cargo.toml --bench field
+cargo bench --manifest-path rust/Cargo.toml --bench types
 cargo bench --manifest-path rust/Cargo.toml --bench uri
 cargo bench --manifest-path rust/Cargo.toml --bench text
-cargo bench --manifest-path rust/Cargo.toml --bench json
-cargo bench --manifest-path rust/Cargo.toml --bench yaml
-python python/benchmarks/fields.py --iterations 100000
+python python/benchmarks/types.py --iterations 10000
 ```
 
 The suite measures scalar and deeply nested parsing, canonical field parsing,

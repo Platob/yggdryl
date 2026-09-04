@@ -45,7 +45,7 @@
 default becomes a physical array. The result is a one-row array, not a row object: this crate hands
 Arrow exactly two units, a `RecordBatch` and a one-row array. There is no Python
 row-object I/O surface between them. Anything wider than one value is a batch, and batches are
-read and written through [io.md](io.md), [ipc.md](ipc.md), and [parquet.md](parquet.md).
+read and written through [holder.md](holder.md), [media.md](media.md), and [media.md](media.md).
 
 The three runtimes hand the scalar back in their own Arrow vocabulary. Rust hands back the bare
 one-row `ArrayRef`, with `scalar_value` beside it to decode the row under its exact Field. Python
@@ -191,7 +191,7 @@ Field method is the one that can return a logical null.
     )
     ```
 
-A non-null Struct Field is the schema, described in [field.md](field.md), so the default scalar of
+A non-null Struct Field is the schema, described in [types.md](types.md), so the default scalar of
 a schema is one default row. A Rust `Scalar` for a struct is positional, which is why the row above
 is indexed rather than keyed; Python and JavaScript project the same row through their own struct
 scalar, keyed by name.
@@ -200,8 +200,8 @@ Everything below is the Rust surface. Python reaches the same materializer throu
 `DataType.arrow_scalar`, `Field.arrow_scalar`, `Field.cast_arrow_array`, and
 `Field.cast_arrow_batch` over PyArrow objects ([../extensions/python.md](extensions/python.md)).
 The JavaScript package exposes `defaultArrowScalar` and nothing else from this module; its
-`DataType.fromArrow` and `Field.fromArrow` constructors belong to [datatype.md](datatype.md) and
-[field.md](field.md) ([../extensions/javascript.md](extensions/javascript.md)).
+`DataType.fromArrow` and `Field.fromArrow` constructors belong to [types.md](types.md) and
+[types.md](types.md) ([../extensions/javascript.md](extensions/javascript.md)).
 
 ## One scalar across the array boundary
 
@@ -245,7 +245,7 @@ exception is what keeps null-only dictionaries, unions, and run-end encodings cl
 
 ```rust
 use arrow_array::Array;
-use yggdryl::generic::Int64Scalar;
+use yggdryl::types::Int64Scalar;
 use yggdryl::{DataType, TypedScalar, Scalar};
 
 let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
@@ -266,7 +266,7 @@ let absent = TypedScalar::from_parts(DataType::Int64, Scalar::Null)?;
 assert!(absent.into_arrow_array().is_err());
 ```
 
-A caller holding a [`TypedScalar`](generic.md) - one value and one datatype, with no Field around
+A caller holding a [`TypedScalar`](types.md) - one value and one datatype, with no Field around
 them - projects the same boundary directly: `into_arrow_array` materializes one row, and
 `from_arrow_array` (or the marker-narrowed `try_from_arrow_array`) decodes row zero of a one-row
 array into a validated pairing. The projection runs through a synthetic non-nullable Field over the
@@ -401,7 +401,7 @@ Python's `Field.from_arrow_schema()` - validates the entry, restores every neste
 before constructing root Field metadata. A malformed entry, a path to a non-dictionary field, a
 conflict with a non-zero Arrow ID, or caller-owned root metadata under the reserved key is refused.
 Per-field projection - `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow` - lives in
-[field.md](field.md) and [datatype.md](datatype.md).
+[types.md](types.md) and [types.md](types.md).
 
 ### What schema projection costs
 
@@ -431,8 +431,8 @@ record batch is allocated or crossed.
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
-use yggdryl::io::Buffer;
-use yggdryl::ipc::{self, IpcOptions};
+use yggdryl::holder::Buffer;
+use yggdryl::media::ipc::{self, IpcOptions};
 use yggdryl::{DataType, Field};
 
 let schema = Field::new(
@@ -483,7 +483,7 @@ assert_eq!(rows, 3);
 and `IOMedia::read_arrow_reader` - and the explicit
 `overwrite_arrow_reader`, `append_arrow_reader`, and `merge_arrow_reader` paths consume one.
 Their canonical signatures and intent validation are documented in
-[io.md](io.md#canonical-record-write-signatures). Passing a reader rather than a `Vec` leaves the
+[holder.md](holder.md#canonical-record-write-signatures). Passing a reader rather than a `Vec` leaves the
 decision of how much to hold in memory with the caller, and the box owns whatever it reads from, so
 it outlives the call that produced it and can be sent to another thread.
 
@@ -667,4 +667,4 @@ so an inactive branch that could never fit is not an error - it is not visited. 
 phase whose allocation cannot outlive it are released when the phase ends, so a deep tree is not
 charged twice for the same temporary buffer. The same accounting runs behind `ArrowCast`, so a
 batch cast that would have to invent an oversized default column is refused before it allocates;
-casting itself is documented in [field.md](field.md).
+casting itself is documented in [types.md](types.md).

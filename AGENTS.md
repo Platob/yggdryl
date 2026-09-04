@@ -77,10 +77,16 @@ pin an unsettled design by implementing a binding first.
 - Root owns workspace pins and lints. Members are `rust/`, `python/`, `node/`,
   each with `src/`, `tests/`, and `benchmarks/`. Runnable examples live in
   docs; no `examples/` directories.
+- Every shared trait, enum, or value owns one `rust/src/<name>.rs` root file.
+  Implementation families live in `rust/src/{types,holder,coding,media,text,
+  uri,arrow,expression,xxhash}/`; FIX protocol behavior lives in
+  `rust/src/fix/`. Tests, benchmarks, bindings, and docs mirror those layers.
+  A root file is not an implementation layer, and a layer is not a facade
+  around root-owned vocabulary.
 - A non-null Struct `Field` is the only row schema. Rows canonicalize to ordered
   `Scalar::Sequence`; `Scalar::Record` is a sorted name-to-scalar input shape,
   not a second schema. Do not add another row/schema class or schema accessor.
-- `rust/src/datatype/` and `rust/src/field/` own categorized schema behavior:
+- `rust/src/types/` owns categorized schema behavior:
   state, parser, serde, comparison, Arrow, casting, value validation, typed
   markers, and datatype-family modules. Modules own implementation, not empty
   facades around a monolith.
@@ -91,26 +97,27 @@ pin an unsettled design by implementing a binding first.
   owns its own state whatever key it is stored under: `field:init`,
   `field:partition`, `alias`, `comment`, `display`, `location`.
   `PARQUET:field_id` is the reserved typed exception.
-- All shared and dispatch enums live directly in `rust/src/generic/` and are
-  re-exported from `generic`: `Codec`, `DataTypeId`, `DataTypeKind`,
+- Shared and dispatch enums each live in their named root file and are
+  re-exported from the crate root: `Codec`, `DataTypeId`, `DataTypeKind`,
   `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
   `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
-  local copies or top-level `enums` module. `Digest` and `Digester` live beside
-  `DigestAlgorithm` there, as `Encoder` does beside `Codec`.
-- `rust/src/generic/` also owns `Scalar`, `Holder`, `Media`, `RecordOptions`,
-  `IORecordOptions`, and `RecordSettings`. Dispatch enums delegate complete
-  contracts and add no variant-specific public vocabulary.
+  local copies or Rust `enums` module. `Digest` and `Digester` live beside
+  `DigestAlgorithm`, as `Encoder` does beside `Codec`. `Scalar` belongs to
+  `types`, storage variants to `holder`, and record settings to `media`.
+  Dispatch enums delegate complete contracts and add no variant-specific
+  public vocabulary.
 - `IOMode` modes are `ReadOnly`, `Overwrite`, `Append`, `Merge`, and `Random`;
   operations reject modes that do not apply. No alternate alias.
-- `rust/src/io/` owns the single `IOBase` storage trait, `Buffer`, transparent
-  `Coded`, partition routing, and byte streams. `rust/src/buffered/` owns
-  `Buffered<H>` only.
-- `rust/src/text/line/` owns `Text<H>`, the flat `TextOptions`, bounded
+- Root `iobase.rs` owns the single `IOBase` storage trait and its behavior
+  modules. `holder/` owns `Buffer`, local and Arrow-filesystem handles, and
+  `Buffered<H>`; `coding/` owns transparent `Coded` handles; `media/` owns
+  record routing.
+- `rust/src/media/text/` owns `Text<H>`, the flat `TextOptions`, bounded
   physical-line splitting, row-header capture, and body rendering. `Text<H>`
   only retains options and delegates ordinary `IOMedia`; never add a line
   value, custom iterator, schema builder, or line-only read/write method.
-- `rust/src/{gzip,zlib,zstd}/` each own `load`, `dump`, `reader`, `writer`, and
-  an `IOBase` wrapper. `Codec` is the only dispatcher.
+- `rust/src/coding/{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`,
+  `writer`, and an `IOBase` wrapper. `Codec` is the only dispatcher.
 - `rust/src/xxhash/` owns the xxHash protocol vocabulary: one-shot digests, the
   four resumable states, `reader`/`writer`, the `Hashed<H>` handle, the
   canonical `Scalar` byte feed, and the Arrow row digests. `DigestAlgorithm` is
@@ -118,26 +125,26 @@ pin an unsettled design by implementing a binding first.
   types never appear in a public signature, a doc example, an error, or a
   binding. `stable_hash` is XXH3-64 over that feed everywhere; there is no
   second hash family and no second spelling of this one.
-- Storage backends are sibling module folders containing `Path`, `Folder`, and
-  `File`. `rust/src/local/` is memory-mapped local storage; remote backends do
-  not change `io` or `local`.
+- Storage backends are sibling folders below `holder/`, each containing
+  `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
+  remote backends do not change it or root storage traits.
 - Arrow interop lives in `rust/src/arrow/`; recursive cast planning stays with
   `Field`. The default `arrow` feature is optional for schema-only callers.
-- `rust/src/{ipc,parquet,avro}/` each own free functions over `IOBase` plus a
+- `rust/src/media/{ipc,parquet,avro}/` each own free functions over `IOBase` plus a
   stateful wrapper. Parquet is feature-gated. Avro's scalar codec is
   unconditional; its record surface uses Arrow. Iceberg uses these codecs.
-- `rust/src/iceberg/` separates types, schema, partition, snapshots, metadata,
+- `rust/src/media/iceberg/` separates types, schema, partition, snapshots, metadata,
   manifests, statistics, scalar rendering, scan, table, options, catalog,
   evolution, and inspection. A table format sits on record encodings.
-- URI/URL/URN live below `rust/src/uri/`. Shared structured text lives below
-  `text`; JSON/YAML/TOML live in their own modules over `Scalar`.
+- URI/URL/URN live below `rust/src/uri/`. JSON/YAML/TOML live below
+  `rust/src/text/` over `Scalar`.
 - Bindings mirror core domains. Their crate `lib.rs` files contain only
   boundary helpers, exports, and registration. Python annotation behavior is
   Python-only; all schema and scalar semantics remain native.
 
 ### Generic scalar
 
-- `generic::Scalar` is the single cross-platform scalar. Do not add a parallel
+- `types::Scalar` is the single cross-platform scalar. Do not add a parallel
   language value tree or retired alias.
 - Variants match native/Arrow widths: real `F16`, `F32`, `F64`; `D128`,
   `D256`; `Date32`, `Date64`; `Time32`, `Time64`; `Duration32`, `Duration64`;
@@ -218,7 +225,7 @@ Canonical core spellings:
   at the boundary and redirects to the explicit form: byte-like input and
   strings are content, never a path, and it parses, renders, validates and
   bounds nothing of its own.
-- `local::Folder`: `new`, `from_url`, and the well-known roots `temporary`,
+- `holder::local::Folder`: `new`, `from_url`, and the well-known roots `temporary`,
   `home`, `config`. `home` reads `HOME`, then `USERPROFILE`, and fails
   naming both when neither is set; `config` is `home` joined with `.config`;
   `temporary` wraps the platform temporary directory. All three construct a
@@ -258,7 +265,7 @@ scheme vocabulary.
   never retain prior pages. Line readers may keep only the temporary fragment
   needed to join a line across chunks.
 - `IOKind` is authoritative. `is_container`, `is_atomic`, `is_tabular`, and
-  `is_io` derive from generic kind/media behavior, not ad-hoc matching.
+  `is_io` derive from root kind/media behavior, not ad-hoc matching.
 - `clear` empties but preserves a resource. `remove(recursive)` deletes it.
   Both issue the operation directly and map only backend not-found to success;
   no pre-probe. Wrappers also clear pending writes/caches so flush cannot
@@ -302,7 +309,7 @@ scheme vocabulary.
 - Table, record-batch, and row-record entry points infer/wrap input and use the
   same reader pipeline. Nothing streamable accepts/returns `Vec` batches.
 - `options.field` is the only declared datatype/schema, built on every ask
-  from three stored parts - `name` (default `generic::DEFAULT_ROOT_NAME`),
+  from three stored parts - `name` (default `types::DEFAULT_ROOT_NAME`),
   `dtype` (none declared means inferred), `metadata` (empty unless declared) -
   so each part mutates alone and equal declarations have one stored form.
   Reads project in the encoding and cast each batch. Writes cast incoming batches once, pop the
@@ -335,7 +342,7 @@ scheme vocabulary.
   ordinary leaves.
 - Stored `column=value` layout is authoritative; otherwise marked root fields
   decide partitions. Contradictions are typed errors naming both declarations.
-- `io::partition::partition_text` is the only partition renderer. Partition
+- `media::partition::partition_text` is the only partition renderer. Partition
   columns move between paths and rows through one typed implementation.
 
 ## Media and table formats
@@ -563,8 +570,10 @@ Both extensions:
 
 - Root `mkdocs.yml` is authoritative; strict build, nav, and links change
   together. README is a short landing page.
-- One page per core module. Generic enums and `Scalar` share `docs/generic.md`;
-  no separate enums page. Extension pages document boundaries only.
+- One page per implementation layer: `types`, `holder`, `coding`, `media`,
+  `text`, `uri`, `arrow`, `expression`, and `xxhash`; FIX keeps its protocol
+  page. Root vocabulary is documented with the layer that uses it. Extension
+  pages document boundaries only.
 - Every page starts with one H1 and one purpose sentence. Media pages present:
   batch read/overwrite/append/merge, row/table adapters, raw text access where
   relevant, then embedded benchmark results.

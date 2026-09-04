@@ -148,15 +148,15 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
 
 | Concern | Page |
 | --- | --- |
-| Logical types, parsing, Arrow projection | [datatype](datatype.md) |
-| Names, nullability, metadata, validation, casting | [field](field.md) |
+| Logical types, parsing, Arrow projection | [datatype](types.md) |
+| Names, nullability, metadata, validation, casting | [field](types.md) |
 | Arrow scalars, schema projection, batch readers | [arrow](arrow.md) |
-| Reading and writing bytes anywhere | [io](io.md) |
-| Local files and directories | [local](local.md) |
-| gzip, zlib, zstd | [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
-| Batches on disk | [ipc](ipc.md), [parquet](parquet.md), [iceberg](iceberg.md) |
+| Reading and writing bytes anywhere | [io](holder.md) |
+| Local files and directories | [local](holder.md) |
+| gzip, zlib, zstd | [gzip](coding.md), [zlib](coding.md), [zstd](coding.md) |
+| Batches on disk | [ipc](media.md), [parquet](media.md), [iceberg](media.md) |
 | Naming a resource | [uri](uri.md) |
-| Scalars and text formats | [text](text.md), [json](json.md), [yaml](yaml.md), [toml](toml.md) |
+| Scalars and text formats | [text](text.md), [json](text.md), [yaml](text.md), [toml](text.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks

@@ -1,174 +1,121 @@
 # Architecture
 
-Five decisions shape this codebase; everything else follows from them.
+Shared vocabulary lives in root files; implementations live in nine layer folders. Rust is the
+source of truth, and Python and JavaScript are native views of the same contracts.
 
 ```text
-                      DataType ──────────────► arrow-schema
-                          │
-                          ▼
-   metadata ──────────► Field ◄──── a non-null Struct Field is the schema
-                          │
-          ┌───────────────┴───────────────┐
-          ▼                               ▼
-   field::cast                      arrow (scalars,
-   (ArrowCast, typed                 schema projection,
-    per-datatype casts)              BatchReader)
-          │                               │
-          └───────────────┬───────────────┘
-                          ▼
-                  ipc  /  parquet  /  iceberg
-                          │
-                          ▼
-                       IOBase ◄──── one storage trait: positional and lazy
-                          │
-     ┌────────────┬───────┴───────┬────────────────┬──────────────┐
-     ▼            ▼               ▼                ▼              ▼
-   Buffer       Coded         local::Path    arrowfs::Path   (your backend)
-  (memory)   (gzip/zlib/      ├─ Folder      ├─ Folder       via IOPath/
-              zstd view)      └─ File        └─ File         IOFile/IOFolder
-                                             over any Arrow
-                                             filesystem
+root traits, enums, and values
+        │
+        ├── types ─────────► arrow
+        │      │                │
+        │      └── expression ──┤
+        │                       ▼
+        ├── holder ◄── coding ◄── media
+        │                         │
+        ├── uri ──────────────────┘
+        ├── text
+        └── xxhash
 
-   Holder │ Media │ Codec │ RecordOptions │ Scalar ──── generic/
-
-   Uri ──► Url / Urn ──► MimeType + MediaType ──► Codec vocabulary
+fix ── protocol vocabulary over types + holder
 ```
+
+## Root files and layer folders
+
+Each `rust/src/<name>.rs` owns one shared trait, enum, or value. For example, `iobase.rs` owns
+`IOBase`, `codec.rs` owns `Codec`, and `media_type.rs` owns `MediaType`. The crate root declares
+and re-exports them; it contains no second implementation.
+
+Each folder owns one implementation family:
+
+| Layer | Owns |
+| --- | --- |
+| [`types`](types.md) | `DataType`, `Field`, `Scalar`, type families, protocol views, validation, and casting |
+| [`holder`](holder.md) | `Buffer`, local and Arrow-filesystem handles, buffering, and storage implementations |
+| [`coding`](coding.md) | gzip, zlib/deflate, zstd, and transparent coded handles |
+| [`media`](media.md) | record options, IPC, Parquet, Avro, plain-text records, and Iceberg |
+| [`text`](text.md) | structured `Scalar` codecs for JSON, YAML, and TOML |
+| [`uri`](uri.md) | URI, URL, URN, path, glob, and partition syntax |
+| [`arrow`](arrow.md) | Arrow schema, scalar, array, batch, and reader boundaries |
+| [`expression`](expression.md) | parsing, binding, row evaluation, Arrow evaluation, and pushdown |
+| [`xxhash`](xxhash.md) | digest values, one-shot and resumable hashes, streams, handles, and row hashes |
+
+[`fix`](fix.md) is a protocol module over those layers: FIX fields remain core `Field` values and
+registry storage remains `IOBase`.
+
+Tests, benchmarks, Python modules, JavaScript source groups, and documentation mirror these layer
+names. This makes a concept's implementation, validation, boundary, and contract discoverable by
+the same path.
 
 ## A schema is a field
 
-There is no record type and no schema type. A [field](field.md) whose datatype is a non-null
-`Struct` describes rows, and everything that would take a schema takes that field.
+A non-null Struct [`Field`](types.md) is the only row schema. `Scalar::Record` is named input that
+canonicalizes to an ordered `Scalar::Sequence` against that field; it is not another schema type.
+Validation, canonicalization, metadata, comparison, Arrow projection, and casting therefore share
+one source of truth.
 
-A schema therefore cannot disagree with the field it came from, because it *is* that field.
-Validation, canonicalization, Arrow projection, and comparison are all field operations, and every
-encoding, cast target, and Iceberg table reads the same value.
-
-A protocol namespace is a view of that one value, not a second one. `field.as_iceberg()` borrows the
-whole field and dereferences to it, so a foreign protocol's typed vocabulary lives on its view -
-[`HttpField`](field.md#one-protocol-at-a-time), `IcebergField`, and the rest - while the field keeps
-only its own state.
+Protocol metadata is a borrowed view of the same field. `field.as_fix()` and
+`field.as_iceberg()` add typed foreign vocabulary without copying state or adding protocol fields
+to the core type.
 
 ## Storage is one trait
 
-[`IOBase`](io.md) is positional rather than cursor-based: `pread` and `pwrite` take an explicit
-offset, so a footer-first container reads its index without seeking a shared cursor and two readers
-share one handle without coordinating.
+[`IOBase`](holder.md) is positional: `pread` and `pwrite` take explicit offsets, so independent
+readers never coordinate a hidden cursor. Root traits describe storage roles; implementations in
+`holder` supply memory, local, Arrow-filesystem, and buffered behavior.
 
-Handles are lazy by contract. Constructing one touches nothing; a read of something absent yields
-zero bytes; a write creates the resource and any parent it needs. That rule is why a location can be
-described, passed around, and inspected before anything is there.
+Construction is lazy. Missing reads return empty data, writes create resources and parents as a
+consequence, and internal code acts before handling typed absence or conflict. `clear` preserves a
+resource, `remove` deletes it, and `open`/`close` delimit the only cache lifetime. Listings are
+deterministic, lazy, fused iterators over `Result`, with a bounded traversal frontier.
 
-Lifecycle is stated rather than implied. `clear` empties, `remove` deletes, and each reaches the
-backend once - absence is a completed removal, not something to check for first, so neither ever
-issues a probe. A `remove` is the *complete* removal: pending writes and caches go with it.
-`open`/`close` bracket the only window in which a handle may cache, so a *complete* write publishes
-when it finishes and only a positional one stages.
+[`coding`](coding.md) wraps handles without creating another storage trait. gzip, zlib, and zstd
+retain only codec state and the current bounded chunk. [`media`](media.md) adds record behavior
+through `IOMedia`: Arrow readers stream batches, writes cast once, and commit buffering is explicitly
+bounded.
 
-## A role implements the boilerplate
+## Traits say what; enums say which
 
-Every storage backend has the same three roles, and the role traits pre-implement what follows from
-each: a folder holds no bytes and refuses byte writes, a leaf contains nothing and lists nothing,
-and a [generic location](local.md) answers by looking. `local` is the reference
-implementation; a remote store is a sibling module supplying the same three roles.
-[`arrowfs`](arrowfs.md) is that module for every filesystem the Arrow project already
-implements - S3, GCS, Azure, or a caller's own - so reaching a bucket costs a handle, not a
-change to `io` or `local`.
+Root traits define behavior and root enums dispatch among implementations. `Codec` selects a
+content coding, `MediaType` selects record behavior, `IOKind` describes a resource, and `IOMode`
+selects a write operation. `Holder` and `Media` are layer-owned concrete sums that carry one native
+implementation across listings and binding boundaries.
 
-## One enum per contract
+Adding a backend or format implements the existing trait and extends its one dispatcher. It does
+not add a parallel trait, local enum, or binding implementation.
 
-A trait says what an implementation must do; the enums in [`generic`](generic.md) say which
-implementations exist. `Holder` names every `IOBase`, `Media` every record encoding, `Codec` every
-content coding, `RecordOptions` every encoding's settings. Holding one means holding "some handle"
-as a concrete value, which is what lets a listing or a binding pass an implementation around without
-knowing which one it is.
+## Arrow speaks batches; structured text speaks values
 
-`generic` also owns [`Scalar`](text.md), the one native value the whole project speaks: every
-codec parses into it, every field validates it, and every binding converts its own objects to it.
+[`arrow`](arrow.md) carries columnar arrays and batches. IPC, Parquet, plain-text records, and
+Iceberg expose bounded `BatchReader` streams rather than collected batches. [`text`](text.md)
+parses and renders the generic `Scalar` through JSON, YAML, and TOML.
 
-## Arrow speaks batches; codecs speak values
+Field-directed conversion is the bridge: the exact field controls nullability, nested order,
+dictionaries, extension identity, and canonical scalar representation. Bindings use the same native
+boundary rather than constructing schemas or values recursively themselves.
 
-Two currencies, deliberately separate. [Arrow](arrow.md) carries columnar batches, and reading
-[IPC](ipc.md) or [Parquet](parquet.md) returns a reader that streams them rather than
-collecting. `Scalar` is what [JSON](json.md), [YAML](yaml.md), and [TOML](toml.md)
-read and write.
+## One expression, three tiers
 
-There is no row-to-Arrow conversion layer between them: converting a batch to values is a caller's
-decision with a caller's cost, not something the storage path does implicitly.
-
-## One filter, three tiers
-
-There is exactly one way to say which rows: [`Expression`](expression.md). It parses through one
-grammar, types itself against a schema, compiles once, and then answers three ways - row at a time
-over a `Scalar`, vectorized over an Arrow batch, and three-valued over container statistics.
-
-The three tiers share one resolved tree, which is the mechanism rather than the intention behind
-their agreeing. Where Arrow owns a kernel the kernel runs; where it does not, the row evaluator runs
-and its answers are gathered, which is slower and cannot disagree. Text and temporals meet through
-this crate's own spellings on both tiers, with Arrow's kernel left to the spellings it alone reads. The statistics tier answers
-`false` only when it can prove no row matches, so everything it cannot prove costs a read rather than
-a lost row.
-
-The `(column, value)` pairs the older surfaces take are sugar that builds an expression. There is no
-second implementation behind them, in the listing, in the record options, or in the table scan.
+[`Expression`](expression.md) parses once and binds to a field once. The resolved tree evaluates a
+row `Scalar`, an Arrow batch, or container statistics. Arrow kernels accelerate supported nodes;
+fallback row evaluation cannot change their meaning. Statistics return `false` only when they prove
+that no row can match, so uncertainty costs a read instead of losing data.
 
 ## One shape per hierarchy level
 
-The Iceberg catalog is three levels - catalogs of namespaces of tables - and every level reads the
-same way. A *collection* is a lazy map-oriented view whose construction touches nothing: `get`
-raises a typed absence, `create` raises a typed conflict, `open_or_create` absorbs both as the same
-attempt, `contains` answers the caller's own question, and `iter` yields names one at a time. A
-*resource* is one addressed thing: its dotted name, its kind, its properties, and its child
-collections. Dotted names resolve inside the collections - `tables.get("sales.eu.orders")`
-descends - so the rule lives in one place, and no level invents a verb the others lack.
-
-The shape exists to be learned once and reused twice - and to be leaned on: the Doris bridge and
-any future catalog-shaped surface address `catalog.namespaces()...tables()` rather than growing a
-flat method per operation.
-
-## Listings yield, they do not collect
-
-A listing says what is there, and it must never require holding all of it. `IOBase::ls`, `glob`,
-`children_matching`, and `children_where` all answer with one named iterator type, `Listing`, over
-`Result<Holder>`: the walk runs as the caller drains it, a failure arrives as an entry and fuses the
-iterator, and order is deterministic. The argument is the same one the three record methods make
-about batches - a shape that has to materialize cannot describe a resource larger than memory - and
-it applies to entries for the same reason.
-
-`IOBase` stays object-safe, which is why this is one named type rather than `impl Iterator` or a
-`Box<dyn Iterator<..>>` in a public signature: a `dyn IOBase` keeps working and a binding can name
-what it wraps. There is one such type because there is one item kind. What a recursive walk retains
-is its frontier - one level per open depth - and everything that stays owned says what bounds it.
+Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, and
+`is_empty`; resources expose identity, properties, and child collections. Dotted names descend
+through collections. Iceberg catalogs, namespaces, and tables all use this shape, and storage
+folders use the same lazy, typed absence/conflict rules.
 
 ## Bindings are views
 
-The Rust crate is the only implementation. [Python](extensions/python.md) and
-[JavaScript](extensions/javascript.md) infer their inputs at the boundary and call the core;
-recursive parsing, validation, comparison, hashing, and conversion never happen twice.
-
-## Module map
-
-| Module | Owns |
-| --- | --- |
-| `datatype` | [The logical type tree](datatype.md) |
-| `field` | [Names, nullability, metadata, borrowed protocol views, partition marks, validation, casting](field.md) |
-| `fix` | [The `fix:` vocabulary, the tag-and-name registry, its shards, the process default, and the message value](fix.md) |
-| `arrow` | [Scalars, schema projection, batch readers](arrow.md) |
-| `io` | [`IOBase`, `Buffer`, `Coded`, the role traits](io.md) |
-| `expression` | [The one filter and projection tree, its grammar, its bind, and its three tiers](expression.md) |
-| `generic` | [`Scalar`, `TypedScalar`, enums, `Holder`, `Coded`, `Media`, `RecordOptions`](generic.md) |
-| `local` | [`Path`, `Folder`, `File`](local.md) |
-| `gzip`, `zlib`, `zstd` | [Content codings and transparent handles](gzip.md) |
-| `ipc`, `parquet`, `iceberg` | [Batches and tables on disk](ipc.md) |
-| `uri` | [URI, URL, URN, and std path interop](uri.md) |
-| `text`, `json`, `yaml`, `toml` | [Structured codecs](text.md) over `Scalar` |
-| `text::line` | [`Text<H>`, the text-record handle](io.md#text-records): record splitting, the extractor options, and their Arrow projection - the one place lines are split |
-| `buffered` | [`Buffered<H>`, the page cache](buffered.md): fixed-size pages under a byte budget and a time to live, both ends pinned, write-through and invalidating |
+Python and JavaScript infer or coerce once at their boundary and redirect to Rust. Parsing,
+validation, comparison, hashing, storage routing, and recursive conversion remain native. Python
+public modules use the layer names; JavaScript keeps one package entry point while its source,
+tests, and benchmarks use the same groups.
 
 ## Feature boundaries
 
-`arrow` is on by default. `parquet` and `iceberg` are not: Parquet version-locks to the pinned Arrow
-release and pulls a thrift and compression stack. Iceberg adds official
-Iceberg 0.10.1 behind a private Arrow 58 adapter and requires Rust 1.94; the
-public runtime remains Arrow 59. A consumer that needs only schemas,
-identifiers, and text codecs builds with `default-features = false` on Rust
-1.85.
+`arrow` is enabled by default. `parquet` and `iceberg` remain optional because they add their format
+stacks. A schema, identifier, hashing, FIX, and structured-text consumer still builds with
+`default-features = false` on Rust 1.85.

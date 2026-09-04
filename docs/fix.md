@@ -2,7 +2,7 @@
 
 FIX field definitions as ordinary fields: the `fix:` vocabulary on a field's view, a registry that
 resolves an identifier or a name to the canonical field, the shards it persists to through any
-[`IOBase`](io.md) handle, the process-wide default, and the message value typed against one.
+[`IOBase`](holder.md) handle, the process-wide default, and the message value typed against one.
 
 !!! note "Bindings"
     The `fix:` vocabulary reaches every runtime through the protocol view a field already
@@ -14,7 +14,7 @@ resolves an identifier or a name to the canonical field, the shards it persists 
 
 ## The vocabulary is metadata
 
-A FIX field is a [`Field`](field.md) whose metadata carries the `fix:` namespace. The canonical
+A FIX field is a [`Field`](types.md) whose metadata carries the `fix:` namespace. The canonical
 name is the field's own `name()`, the datatype its own `dtype()`, and the display name the generic
 `display` key; the namespace adds only what FIX states beyond a field. It is read through
 `field.as_fix()` (`FixField`) and written through `field.as_fix_mut()` (`FixFieldMut`), so a
@@ -322,7 +322,7 @@ puts the prior branch entry back if the tag write fails.
 
 A component is a Struct field whose children are its members; a repeating group is a List field
 whose item is that Struct; the group's counter tag is the group field's own `fix:tag`. Every member
-carries its own tag, and the one path resolver every [`Field`](field.md) has reaches them:
+carries its own tag, and the one path resolver every [`Field`](types.md) has reaches them:
 `NoPartyIDs.PartyID` descends through the list's item because a list is transparent to a dotted
 path, and `NoPartyIDs.item.PartyID` spells the same route.
 
@@ -356,7 +356,7 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, fields
+    from yggdryl import DataType, Field, types
     from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
     party_id = Field("PartyID", "utf8")
@@ -364,7 +364,7 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
     role = Field("PartyRole", "int32")
     role.fix.tag = 452
     item = Field("item", DataType.from_fields([party_id, role]), nullable=False)
-    group = fields.list("NoPartyIDs", item)
+    group = types.list("NoPartyIDs", item)
     group.fix.tag = 453
 
     registry = FixRegistry.from_fields([group])
@@ -696,7 +696,7 @@ name and answers the field.
 
 ## Storage is two trees of shards under one handle
 
-A registry reads and writes through one [`IOBase`](io.md) folder handle and nothing else, into two
+A registry reads and writes through one [`IOBase`](holder.md) folder handle and nothing else, into two
 trees:
 
 ```text
@@ -761,8 +761,8 @@ folder, or point at a root written by this version.
 === "Rust"
 
     ```rust
-    use yggdryl::io::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
     use yggdryl::{DataType, FixId, FixBranch, FixRegistry};
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-fix-store-{}", std::process::id()));
@@ -846,7 +846,7 @@ folder, or point at a root written by this version.
 
     import pytest
 
-    from yggdryl import DataType, Field, fields as field_builders
+    from yggdryl import DataType, Field, types as field_builders
     from yggdryl.fix import FixRegistry
 
     workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-"))
@@ -1017,7 +1017,7 @@ resolution order.
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::holder::local::Folder;
     use yggdryl::{FixBranch, FixRegistry};
 
     let standard = FixBranch::STANDARD;
@@ -1088,7 +1088,7 @@ match wins:
 1. a registry installed by `FixRegistry::install_global`, which fails with a typed conflict once
    the default has resolved so the value every caller saw cannot change underneath them;
 2. the folder `YGGDRYL_FIX_REGISTRY` names - a URL, or a bare path - through the local backend;
-3. `~/.config/fix`, the production default, reached through [`Folder::config`](local.md) when that
+3. `~/.config/fix`, the production default, reached through [`Folder::config`](holder.md) when that
    folder exists; skipped when the machine has no `HOME` or `USERPROFILE`;
 4. the empty registry.
 
@@ -1104,7 +1104,7 @@ directory, because behaviour must not depend on where a process was started.
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::holder::local::Folder;
     use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
 
     // Install the tracked seed as this process's default before anything asks for it.
@@ -1177,7 +1177,7 @@ directory, because behaviour must not depend on where a process was started.
 
 ## A message carries its registry
 
-`FixMsg` is a value plus the registry that types it: a root Struct [`Field`](field.md) - the only
+`FixMsg` is a value plus the registry that types it: a root Struct [`Field`](types.md) - the only
 row schema - and the row as the ordered `Scalar::Sequence` the root declares, validated and
 canonicalized through `Field::validate_value` and `Field::canonicalize_value` like every row, so a
 `Scalar::Record` input becomes that sequence. `FixMsg::new` links `FixRegistry::global()`;
@@ -1210,7 +1210,7 @@ redirect. A repeating group is a List of Structs, so one of its members needs th
 `NoPartyIDs.0.PartyID`.
 
 Serialization is inherited, not written: `field.clone().into_json()` renders the schema,
-[`into_json_scalar`](json.md) the value, and `from_json_scalar_with_field` reads it back typed,
+[`into_json_scalar`](text.md) the value, and `from_json_scalar_with_field` reads it back typed,
 ordered and canonicalized against the same root.
 
 === "Rust"
@@ -1273,7 +1273,7 @@ ordered and canonicalized against the same root.
     ```python
     import pytest
 
-    from yggdryl import DataType, Field, fields
+    from yggdryl import DataType, Field, types
     from yggdryl.fix import STANDARD_BRANCH, FixMsg, FixRegistry
 
     symbol = Field("Symbol", "utf8", nullable=False)
@@ -1284,7 +1284,7 @@ ordered and canonicalized against the same root.
     party_id = Field("PartyID", "utf8")
     party_id.fix.tag = 448
     item = Field("item", DataType.from_fields([party_id]), nullable=False)
-    parties = fields.list("NoPartyIDs", item)
+    parties = types.list("NoPartyIDs", item)
     parties.fix.tag = 453
     registry = FixRegistry.from_fields([symbol, qty, parties])
 

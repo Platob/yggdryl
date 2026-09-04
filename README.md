@@ -21,17 +21,17 @@ copyable Rust, Python, and JavaScript examples. The same pages live in
 [`docs/`](docs/index.md), including the
 [getting-started guide](docs/getting-started.md) and the
 [architecture reference](docs/architecture.md). One page documents one core
-module, so the site tree and the source tree are the same tree:
+layer, so the site tree and source tree agree:
 
-| Area | Pages |
+| Layer | Page |
 | --- | --- |
-| Schema | [generic](docs/generic.md), [datatype](docs/datatype.md), [field](docs/field.md), [arrow](docs/arrow.md) |
-| Storage | [io](docs/io.md), [expression](docs/expression.md), [generic](docs/generic.md), [local](docs/local.md) |
-| Content codings | [gzip](docs/gzip.md), [zlib](docs/zlib.md), [zstd](docs/zstd.md) |
-| Record encodings | [ipc](docs/ipc.md), [parquet](docs/parquet.md) |
-| Table format | [iceberg](docs/iceberg.md) |
+| Datatypes, fields, scalar values | [types](docs/types.md) |
+| Storage handles and backends | [holder](docs/holder.md) |
+| Content codings | [coding](docs/coding.md) |
+| Record encodings and tables | [media](docs/media.md) |
+| Structured text | [text](docs/text.md) |
 | Identifiers | [uri](docs/uri.md) |
-| Structured text | [text](docs/text.md), [json](docs/json.md), [yaml](docs/yaml.md), [toml](docs/toml.md) |
+| Arrow, expressions, hashing, FIX | [arrow](docs/arrow.md), [expression](docs/expression.md), [xxhash](docs/xxhash.md), [fix](docs/fix.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
@@ -49,24 +49,14 @@ pushes to `main` publish the result to GitHub Pages.
 
 ```text
 rust/                    The core crate
-  src/datatype/          Categorized datatype implementation
-  src/field/             Field state, protocol views, Arrow projection, casting, parsing
-  src/field/protocol/    A field borrowed as one protocol, and each protocol's vocabulary
-  src/fix/               FIX vocabulary, the tag-and-name registry, its shards, the process default
-  src/metadata.rs        Immutable shared metadata value
-  src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
-  src/io/                The IOBase storage trait, Buffer, and Coded
-  src/expression/        The one filter and projection tree, and its three tiers
-  src/generic/           Scalar, enums, Holder, Media, and RecordOptions
-  src/local/             Local Path, Folder, and memory-mapped File
-  src/arrowfs/           Any Arrow filesystem (S3, GCS, Azure, your own) as a handle
-  src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
-  src/{ipc,parquet,avro}/
-                         Record encodings over any handle
-  src/iceberg/           Apache Iceberg tables over one container handle
-  src/uri.rs             Identifier domain
-  src/text/              Shared value, format dispatch, limits, byte positions
-  src/{json,yaml,toml}/  Format-specific parsers, streams, and emitters
+  src/*.rs               One shared trait, enum, or value per root file
+  src/types/             Datatypes, fields, scalars, and family behavior
+  src/holder/            Buffer, local/Arrow filesystems, and buffering
+  src/coding/            gzip, zlib/deflate, and Zstandard
+  src/media/             IPC, Parquet, Avro, text records, and Iceberg
+  src/text/              JSON, YAML, TOML, limits, and inference
+  src/{uri,arrow,expression,xxhash,fix}/
+                         The remaining core layers
   tests/                 Edge tests, categorized like the source
   benchmarks/            Criterion targets, categorized like the source
 python/                  The Python extension
@@ -119,10 +109,11 @@ The record surface is one streaming read and three explicit write intents:
 media type rather than an argument, `options.field` selects and casts in one
 pass, and a handle addressing a folder reads and writes across the partitions
 beneath it. The canonical signatures and intent rules live on the
-[I/O page](docs/io.md#canonical-record-write-signatures).
+[I/O page](docs/holder.md#canonical-record-write-signatures).
 
 ```rust
-use yggdryl::io::{Buffer, IOMedia};
+use yggdryl::IOMedia;
+use yggdryl::holder::Buffer;
 use yggdryl::MimeType;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -196,8 +187,8 @@ temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
 YAML.
 Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
 explicit byte, depth, node, and document limits. See the
-[shared text](docs/text.md), [JSON](docs/json.md),
-[TOML](docs/toml.md), and [YAML](docs/yaml.md) guides.
+[shared text](docs/text.md), [JSON](docs/text.md),
+[TOML](docs/text.md), and [YAML](docs/text.md) guides.
 
 ## Native value behavior
 
@@ -220,7 +211,7 @@ and metadata-mapping protocols, inferred string and PyArrow conversion, and
 cached native fields for ordinary dataclasses through `@scalar` and the static
 `Class.field()` accessor; `field(value, name=None)` remains a pure builder. It
 also provides precise `Annotated` Arrow and Field overrides and byte-first
-`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` modules. JavaScript provides
+`yggdryl.text.json`, `yggdryl.text.toml`, and `yggdryl.text.yaml` modules. JavaScript provides
 the equivalent value protocols plus Buffer-first codecs and safe, explicit
 class registries. The URI family wrappers expose the same canonical components
 and resource-path views in both languages.

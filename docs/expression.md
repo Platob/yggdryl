@@ -189,8 +189,8 @@ attribute whose price depends on the backend is classified by its worst case.
 === "Rust"
 
     ```rust
-    use yggdryl::io::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::Folder;
     use yggdryl::Expression;
 
     let lake = Folder::new(Folder::temporary()?.path()?.join("yggdryl-docs-lake"))?;
@@ -458,7 +458,7 @@ assert_eq!(kept, 1);
 The point of the inversion is who can join. A new target implements the trait beside its own type -
 a listing entry, a cache, a foreign table - and `expression/` never learns it exists; if an
 implementation ever needed a line inside that module beyond a `use`, the trait would be shaped
-wrong. The claim is proven by a test rather than asserted: `rust/src/io/tests.rs` defines a
+wrong. The claim is proven by a test rather than asserted: `rust/src/iobase/tests/applying.rs` defines a
 `Listing` target outside the module, reaching it through the public surface alone.
 
 ## Iceberg: one predicate, every level of the metadata
@@ -471,8 +471,8 @@ partition tuple *proves* is dropped rather than re-tested.
 === "Rust"
 
     ```{ .rust .ignore }
-    use yggdryl::iceberg::Table;
-    use yggdryl::local::Folder;
+    use yggdryl::media::iceberg::Table;
+    use yggdryl::holder::local::Folder;
 
     let table = Table::open(Folder::new("/lake/trades")?)?;
 
@@ -488,7 +488,7 @@ partition tuple *proves* is dropped rather than re-tested.
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl.iceberg import Table
+    from yggdryl.media.iceberg import Table
 
     table = Table("/lake/trades")
 

@@ -62,7 +62,7 @@ updates, Arrow conversion, or extension boundaries.
 `DataType::variant(fields)` is the finite-sum convenience constructor. It assigns
 declaration-order IDs and returns the canonical dense Arrow Union; the
 `variant(...)` parser spelling canonicalizes to the same physical display. See
-the [datatype guide](../docs/datatype.md) before mapping one of these tagged
+the [datatype guide](../docs/types.md) before mapping one of these tagged
 unions to Iceberg/Parquet Variant or PostgreSQL JSON, which use different
 external encodings.
 
@@ -73,7 +73,7 @@ python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
 python/.venv/Scripts/python -m maturin develop --release --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
-python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
+python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
 ```
 
 The field decorator, annotation mapping, dataclass field definitions, and codec

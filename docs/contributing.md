@@ -18,7 +18,7 @@ Run the checks for whatever you changed, and make code, tests, and documentation
     cd python
     .venv/Scripts/python -m maturin develop
     .venv/Scripts/python -m pytest
-    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
+    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
     ```
 
 === "JavaScript"
@@ -34,27 +34,21 @@ Start with the repository-wide `AGENTS.md`, which is the normative version of ev
 ## Where things go
 
 ```text
-rust/src/generic/    shared vocabulary     -> rust/tests/enums.rs       -> docs/generic.md
-rust/src/datatype/   logical types         -> rust/tests/datatype/      -> docs/datatype.md
-rust/src/field/      schema and casting    -> rust/tests/field/         -> docs/field.md
-rust/src/field/protocol/ borrowed views    -> rust/tests/field/         -> docs/field.md
-rust/src/arrow/      scalars, projection   -> rust/tests/*.rs           -> docs/arrow.md
-rust/src/io/         IOBase, Buffer, roles -> rust/src/io/tests.rs      -> docs/io.md
-rust/src/generic/    enums and Scalar       -> rust/src/generic/**       -> docs/generic.md
-rust/src/local/      Path, Folder, File    -> rust/src/local/tests.rs   -> docs/local.md
-rust/src/gzip|zlib|zstd/ content codings   -> beside each module        -> docs/<name>.md
-rust/src/ipc|parquet|iceberg/ encodings    -> beside each module        -> docs/<name>.md
-rust/src/uri.rs      identifiers           -> rust/tests/uri.rs         -> docs/uri.md
-rust/src/text/       Scalar and text codecs -> rust/tests/text/          -> docs/text.md
-rust/src/json|yaml|toml/ formats           -> rust/tests/<format>.rs    -> docs/<format>.md
-
-python/src/*.rs      PyO3 views of core values
-python/yggdryl/      Python-only facades: structured I/O and dataclass fields
-node/src/*.rs        Node-API views of core values
-node/*.js            JavaScript facade: loader, defaults, fields, values
+rust/src/types/       datatypes, fields, values -> rust/tests/types/       -> docs/types.md
+rust/src/holder/      storage implementations  -> rust/tests/holder/      -> docs/holder.md
+rust/src/coding/      content codings           -> rust/tests/coding/      -> docs/coding.md
+rust/src/media/       record and table formats  -> rust/tests/media/       -> docs/media.md
+rust/src/text/        structured text           -> rust/tests/text/        -> docs/text.md
+rust/src/uri/         identifiers               -> rust/tests/uri/         -> docs/uri.md
+rust/src/arrow/       Arrow boundaries          -> rust/tests/arrow/       -> docs/arrow.md
+rust/src/expression/  expressions               -> rust/tests/expression/  -> docs/expression.md
+rust/src/xxhash/      hashes                    -> rust/tests/xxhash/       -> docs/xxhash.md
+rust/src/fix/         FIX protocol              -> rust/tests/fix/          -> docs/fix.md
 ```
 
-`rust/src/lib.rs` holds exports and shared error plumbing, not a second implementation home.
+Each shared trait, enum, or value owns one root `.rs` file. Each implementation family owns one
+layer folder. `rust/src/lib.rs` only declares modules and re-exports their public vocabulary.
+Python and Node mirror these layer names without reimplementing core behavior.
 Benchmarks live in each member's `benchmarks/`; there are no `examples/` directories, because every
 runnable example lives in the documentation where all three languages appear side by side.
 
@@ -64,7 +58,7 @@ runnable example lives in the documentation where all three languages appear sid
 moves down to the one they share rather than being copied.
 
 **A trait says what; an enum says which.** Adding a backend or an encoding means implementing the
-trait and adding the variant to the [generic enum](generic.md), never adding a parallel
+trait and adding the variant to the [generic enum](types.md), never adding a parallel
 dispatch.
 
 **Errors state expected, got, and where.** `expected int64, got utf8` with a path or byte offset. A
@@ -75,16 +69,16 @@ handle that double-compresses is worse than an error. Test the refusal.
 
 **Laziness is a contract.** Constructing a handle touches nothing; reading something absent yields
 nothing; writing creates. New backends inherit this by implementing the
-[role traits](local.md).
+[role traits](holder.md).
 
 **Never pre-check.** No `exists` before a read, no `contains` before a `get`, no `mkdir` before a
 write, no "ensure" step of any kind. Act; branch on the typed
-[absence or conflict](io.md); repair once and retry once. A probe costs a round trip and its answer
+[absence or conflict](holder.md); repair once and retry once. A probe costs a round trip and its answer
 is stale before it returns, so the act still has to handle absence and the check bought nothing but
 a race. An existence question a *caller* asked - `exists`, `is_dir`, `contains` - is an answer, and
 stays public; one of our own on the way to doing something else is a bug.
 
-**Every listing is an iterator.** [`ls`, `glob`, and the predicate listings](io.md) yield one entry
+**Every listing is an iterator.** [`ls`, `glob`, and the predicate listings](holder.md) yield one entry
 at a time, the item is a `Result`, and the iterator fuses at the first failure. A return that stays
 owned says what bounds it, in a comment or a test; neither means it was missed.
 

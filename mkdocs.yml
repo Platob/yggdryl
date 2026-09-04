@@ -127,34 +127,18 @@ nav:
       - Benchmarks: benchmarks.md
       - Contributing: contributing.md
   - Getting started: getting-started.md
-  - Schema:
-      - datatype: datatype.md
-      - field: field.md
-      - fix: fix.md
-      - arrow: arrow.md
-      - playground: playground.md
-  - Generic:
-      - generic: generic.md
-  - Storage:
-      - uri: uri.md
-      - io: io.md
-      - buffered: buffered.md
-      - expression: expression.md
-      - local: local.md
-      - arrowfs: arrowfs.md
-      - gzip: gzip.md
-      - zlib: zlib.md
-      - zstd: zstd.md
-      - xxhash: xxhash.md
-  - Medias:
-      - text: text.md
-      - json: json.md
-      - yaml: yaml.md
-      - toml: toml.md
-      - ipc: ipc.md
-      - parquet: parquet.md
-      - avro: avro.md
-      - iceberg: iceberg.md
+  - Layers:
+      - Types: types.md
+      - Holder: holder.md
+      - Coding: coding.md
+      - Media: media.md
+      - Text: text.md
+      - URI: uri.md
+      - Arrow: arrow.md
+      - Expression: expression.md
+      - xxHash: xxhash.md
+      - FIX: fix.md
+      - Playground: playground.md
   - Extensions:
       - Python: extensions/python.md
       - JavaScript: extensions/javascript.md
