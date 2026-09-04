@@ -1,6 +1,6 @@
 //! The prebuilt ASCII vocabularies: the codes a common column starts from.
 //!
-//! A [code](super::coded) column carries values from a published registry, and
+//! A registered-code column carries values from a published registry, and
 //! most of a stream is the handful of codes that registry actually assigns.
 //! These are those listings, one constant per registry: ISO 4217 currencies,
 //! ISO 3166-1 alpha-2 countries, and the ISO 10383 market identifier codes of
@@ -16,6 +16,7 @@
 //! registered name resolves to, so a prebuilt vocabulary never refuses its own
 //! listing.
 
+use crate::types::parser;
 use crate::{AsciiEnum, DataType, Result};
 
 impl AsciiEnum {
@@ -151,7 +152,7 @@ impl AsciiEnum {
         // for a registration that does not exist.
         DataType::from_logical_name(name)?;
         Self::from_members(
-            super::parser::normalized(name.trim()),
+            parser::normalized(name.trim()),
             Self::prebuilt_values(name)
                 .iter()
                 .map(|value| (Self::member_name(value), *value)),
@@ -163,7 +164,7 @@ impl AsciiEnum {
     /// The name folds the way [`DataType::from_logical_name`] folds it, so one
     /// spelling reaches one list.
     pub fn prebuilt_values(name: &str) -> &'static [&'static str] {
-        let folded = super::parser::normalized(name.trim());
+        let folded = parser::normalized(name.trim());
         Self::PREBUILT
             .iter()
             .find(|(registered, _)| *registered == folded)

@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::datatype::{
+use crate::field::{RecognizedExtension, recognized_arrow_extension};
+use crate::generic::wkb;
+use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_free_text, ascii_padded, ascii_text,
     code_refusal, code_text, guid_parse, guid_text,
 };
-use crate::field::{RecognizedExtension, recognized_arrow_extension};
-use crate::generic::wkb;
 use crate::{DataType, Field, Scalar, UnionMode};
 use arrow_array::types::{
     ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type,
@@ -426,7 +426,7 @@ impl ArrayCastPlan {
                 }
             },
             (DataType::Variant, source) => {
-                if crate::datatype::is_variant_storage(source) {
+                if crate::types::is_variant_storage(source) {
                     // The identity: physically the same two required binary
                     // children, reconciled to the canonical child spelling.
                     ArrayCastKind::Kernel

@@ -1,10 +1,7 @@
 //! Temporal units and validated time-of-day construction.
 
-use crate::Result;
-use crate::TimeUnit;
-
-use super::DataType;
-use super::scalar::invalid;
+use crate::types::invalid;
+use crate::{DataType, Result, TimeUnit};
 
 impl DataType {
     /// Creates the Arrow time-of-day type selected by the requested unit.
@@ -51,7 +48,7 @@ impl DataType {
     }
 }
 
-pub(super) fn validate_time32_unit(unit: TimeUnit) -> Result<()> {
+pub(crate) fn validate_time32_unit(unit: TimeUnit) -> Result<()> {
     if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
         Ok(())
     } else {
@@ -59,7 +56,7 @@ pub(super) fn validate_time32_unit(unit: TimeUnit) -> Result<()> {
     }
 }
 
-pub(super) fn validate_time64_unit(unit: TimeUnit) -> Result<()> {
+pub(crate) fn validate_time64_unit(unit: TimeUnit) -> Result<()> {
     if matches!(unit, TimeUnit::Microsecond | TimeUnit::Nanosecond) {
         Ok(())
     } else {
@@ -67,7 +64,7 @@ pub(super) fn validate_time64_unit(unit: TimeUnit) -> Result<()> {
     }
 }
 
-pub(super) fn validate_duration_unit(kind: &'static str, unit: TimeUnit) -> Result<()> {
+pub(crate) fn validate_duration_unit(kind: &'static str, unit: TimeUnit) -> Result<()> {
     if unit.is_temporal() {
         Ok(())
     } else {

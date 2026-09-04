@@ -279,7 +279,7 @@ fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
     // Inference widens: two sampled rows meet at the type that holds both.
     // The rule table is [`DataType::merge_with`]'s, so an inferred schema and
     // a declared one are reconciled by exactly the same rules.
-    left.merge_exact(right, crate::datatype::Widening::Up).ok()
+    left.merge_exact(right, crate::types::Widening::Up).ok()
 }
 
 /// Return the exact decimal a coefficient and scale name.

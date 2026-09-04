@@ -12,15 +12,15 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::field::arrow_field_to_ffi;
 use crate::{Error, Field, Result};
 
-use super::ascii::ASCII_EXTENSION_NAME;
-use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_extension_name};
-use super::floating::validate_decimal;
+use super::ascii::{
+    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_extension_name,
+};
+use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::guid::GUID_EXTENSION_NAME;
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
-use super::scalar::{invalid, validate_non_negative};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
-use super::{DataType, Fields, UnionFields, UnionMode};
+use super::{DataType, Fields, UnionFields, UnionMode, invalid, validate_non_negative};
 
 impl DataType {
     /// Projects this Struct datatype as an Arrow schema.

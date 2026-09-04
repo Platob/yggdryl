@@ -8,7 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
-use super::{DataType, TimeUnit, UnionMode};
+use super::{DataType, TimeUnit};
 use crate::EdgeAlgorithm;
 
 impl DataType {
@@ -203,7 +203,7 @@ fn fmt_quoted(formatter: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum TokenKind {
+pub(crate) enum TokenKind {
     Word(SmolStr),
     Quoted(SmolStr),
     Integer(i64),
@@ -211,20 +211,20 @@ enum TokenKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Token {
-    kind: TokenKind,
-    start: usize,
-    end: usize,
+pub(crate) struct Token {
+    pub(crate) kind: TokenKind,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
 }
 
-struct Parser<'a> {
-    source: &'a str,
-    tokens: Vec<Token>,
-    index: usize,
+pub(crate) struct Parser<'a> {
+    pub(crate) source: &'a str,
+    pub(crate) tokens: Vec<Token>,
+    pub(crate) index: usize,
 }
 
 impl<'a> Parser<'a> {
-    fn parse(source: &'a str) -> Result<DataType> {
+    pub(crate) fn parse(source: &'a str) -> Result<DataType> {
         let tokens = tokenize(source)?;
         let mut parser = Self {
             source,
@@ -245,7 +245,7 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn parse_type(&mut self, depth: usize) -> Result<DataType> {
+    pub(crate) fn parse_type(&mut self, depth: usize) -> Result<DataType> {
         self.check_depth(depth)?;
 
         if let Some(open) = self.peek_symbol() {
@@ -414,7 +414,7 @@ impl<'a> Parser<'a> {
             // A registered logical name is one more spelling of the datatype
             // it names, resolved through the registry and never a copied
             // list. The keyword is already folded, so the lookup reuses it.
-            _ => match super::logical::folded_logical_name(&keyword) {
+            _ => match super::vocabulary::folded_logical_name(&keyword) {
                 Some(dtype) => dtype,
                 None => {
                     return Err(
@@ -427,7 +427,11 @@ impl<'a> Parser<'a> {
         self.parse_postfix_lists(value, depth)
     }
 
-    fn parse_postfix_lists(&mut self, mut value: DataType, depth: usize) -> Result<DataType> {
+    pub(crate) fn parse_postfix_lists(
+        &mut self,
+        mut value: DataType,
+        depth: usize,
+    ) -> Result<DataType> {
         let mut nesting = depth;
         while self.peek_symbol() == Some('[')
             && self
@@ -443,536 +447,7 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_timestamp(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
-        self.check_depth(depth)?;
-        let mut unit = TimeUnit::Microsecond;
-        let mut timezone = (keyword == "timestampltz" || keyword == "timestampwithtimezone")
-            .then_some(crate::Timezone::UTC);
-
-        if let Some(close) = self.consume_opening() {
-            if self.peek_symbol() != Some(close) {
-                if let Some(precision) = self.peek_integer() {
-                    let precision_start = self.current_position();
-                    self.index += 1;
-                    unit = precision_to_unit(precision, precision_start)?;
-                } else if self.peek_word_is("none") {
-                    self.index += 1;
-                    timezone = None;
-                } else if self.peek_word_is("some") {
-                    self.index += 1;
-                    let inner_close = self
-                        .consume_opening()
-                        .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                    timezone = Some(self.parse_timezone()?);
-                    self.expect_symbol(inner_close)?;
-                } else {
-                    let (parsed, unit_start) =
-                        self.parse_time_unit_span(Some(close), "timestamp unit")?;
-                    unit = parsed;
-                    if !unit.is_arrow_time() {
-                        return Err(self.error_at(
-                            unit_start,
-                            "timestamp requires a temporal resolution unit",
-                        ));
-                    }
-                }
-
-                if self.consume_separator() {
-                    self.consume_label("timezone");
-                    if self.peek_word_is("none") {
-                        self.index += 1;
-                        timezone = None;
-                    } else if self.peek_word_is("some") {
-                        self.index += 1;
-                        let inner_close = self
-                            .consume_opening()
-                            .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                        timezone = Some(self.parse_timezone()?);
-                        self.expect_symbol(inner_close)?;
-                    } else {
-                        timezone = Some(self.parse_timezone()?);
-                    }
-                }
-            }
-            self.expect_symbol(close)?;
-        }
-
-        if self.consume_word("with") {
-            self.expect_word("time")?;
-            self.expect_word("zone")?;
-            timezone.get_or_insert(crate::Timezone::UTC);
-        } else if self.consume_word("without") {
-            self.expect_word("time")?;
-            self.expect_word("zone")?;
-            timezone = None;
-        }
-
-        Ok(DataType::Timestamp(unit, timezone))
-    }
-
-    fn parse_sql_time(&mut self, depth: usize) -> Result<DataType> {
-        self.check_depth(depth)?;
-        if self.peek_opening().is_none() {
-            return DataType::time(TimeUnit::Microsecond);
-        }
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected time unit"))?;
-        let (unit, unit_start) = if let Some(precision) = self.peek_integer() {
-            let start = self.current_position();
-            self.index += 1;
-            (precision_to_unit(precision, start)?, start)
-        } else {
-            self.parse_time_unit_span(Some(close), "time unit")?
-        };
-        self.expect_symbol(close)?;
-        DataType::time(unit).map_err(|error| self.error_at(unit_start, format_smolstr!("{error}")))
-    }
-
-    fn parse_required_time_unit(&mut self, depth: usize) -> Result<(TimeUnit, usize)> {
-        self.check_depth(depth)?;
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected a temporal unit parameter"))?;
-        let (unit, unit_start) = self.parse_time_unit_span(Some(close), "temporal unit")?;
-        if !unit.is_arrow_time() {
-            return Err(self.error_at(unit_start, "expected a temporal resolution"));
-        }
-        self.expect_symbol(close)?;
-        Ok((unit, unit_start))
-    }
-
-    fn parse_interval_unit(&mut self, depth: usize) -> Result<TimeUnit> {
-        self.check_depth(depth)?;
-        let (unit, unit_start, sql_style) = if self
-            .tokens
-            .get(self.index)
-            .is_none_or(|_| self.is_time_unit_boundary(self.index, None))
-        {
-            (TimeUnit::MonthDayNano, self.current_position(), false)
-        } else if let Some(close) = self.consume_opening() {
-            let (unit, unit_start) = self.parse_time_unit_span(Some(close), "interval unit")?;
-            self.expect_symbol(close)?;
-            (unit, unit_start, false)
-        } else {
-            let (unit, unit_start) = self.parse_time_unit_span(None, "interval unit")?;
-            (unit, unit_start, true)
-        };
-        // In SQL, bare `INTERVAL DAY` names the day-time interval family;
-        // parenthesized `interval(day)` remains the scalar Date32 unit and is
-        // rejected below rather than contextually reinterpreted.
-        let unit = if sql_style && unit == TimeUnit::Day {
-            TimeUnit::DayTime
-        } else {
-            unit
-        };
-        if unit.is_interval() {
-            Ok(unit)
-        } else {
-            Err(self.error_at(unit_start, "interval requires an interval layout"))
-        }
-    }
-
-    fn parse_time_unit_span(
-        &mut self,
-        close: Option<char>,
-        label: &str,
-    ) -> Result<(TimeUnit, usize)> {
-        let first = self.index;
-        let mut end = first;
-        while self.tokens.get(end).is_some() {
-            if self.is_time_unit_boundary(end, close) {
-                break;
-            }
-            end += 1;
-        }
-        if first == end {
-            return Err(self.error_here(format_smolstr!("expected {label}")));
-        }
-
-        let first_token = &self.tokens[first];
-        let last_token = &self.tokens[end - 1];
-        let (value, source_start, quoted_token) = match &first_token.kind {
-            TokenKind::Quoted(value) if end == first + 1 => {
-                (value.as_str(), first_token.start + 1, Some(first_token))
-            }
-            _ => (
-                &self.source[first_token.start..last_token.end],
-                first_token.start,
-                None,
-            ),
-        };
-        let parsed = TimeUnit::from_str(value).map_err(|error| match error {
-            Error::Parse {
-                position, reason, ..
-            } => {
-                let position = quoted_token.map_or_else(
-                    || source_start.saturating_add(position),
-                    |token| self.quoted_source_position(token, position),
-                );
-                self.error_at(position, reason)
-            }
-            error => self.error_at(source_start, format_smolstr!("{error}")),
-        });
-        self.index = end;
-        parsed.map(|unit| (unit, source_start))
-    }
-
-    fn quoted_source_position(&self, token: &Token, decoded_position: usize) -> usize {
-        let Some(quote) = self.source[token.start..].chars().next() else {
-            return token.start;
-        };
-        let mut source_position = token.start.saturating_add(quote.len_utf8());
-        let body_end = token.end.saturating_sub(quote.len_utf8());
-        let mut decoded_offset = 0_usize;
-
-        while source_position < body_end {
-            if decoded_position <= decoded_offset {
-                return source_position;
-            }
-            let logical_start = source_position;
-            let Some(character) = self.source[source_position..].chars().next() else {
-                return logical_start;
-            };
-            source_position = source_position.saturating_add(character.len_utf8());
-
-            let decoded_len =
-                if character == quote && self.source[source_position..].starts_with(quote) {
-                    source_position = source_position.saturating_add(quote.len_utf8());
-                    quote.len_utf8()
-                } else if character == '\\' {
-                    let Some(escaped) = self.source[source_position..].chars().next() else {
-                        return logical_start;
-                    };
-                    source_position = source_position.saturating_add(escaped.len_utf8());
-                    if escaped == 'u' {
-                        let digits_end = source_position.saturating_add(4);
-                        let decoded_len = self
-                            .source
-                            .get(source_position..digits_end)
-                            .and_then(|digits| u32::from_str_radix(digits, 16).ok())
-                            .and_then(char::from_u32)
-                            .map_or(1, char::len_utf8);
-                        source_position = digits_end.min(body_end);
-                        decoded_len
-                    } else {
-                        1
-                    }
-                } else {
-                    character.len_utf8()
-                };
-
-            if decoded_position < decoded_offset.saturating_add(decoded_len) {
-                return logical_start;
-            }
-            decoded_offset = decoded_offset.saturating_add(decoded_len);
-        }
-        body_end
-    }
-
-    fn is_time_unit_boundary(&self, index: usize, close: Option<char>) -> bool {
-        match self.tokens.get(index).map(|token| &token.kind) {
-            Some(TokenKind::Symbol(symbol)) => {
-                close == Some(*symbol)
-                    || matches!(*symbol, ',' | ';')
-                    || (close.is_none()
-                        && (is_closing_or_separator(*symbol)
-                            || matches!(*symbol, '?' | '!')
-                            || (*symbol == '['
-                                && self
-                                    .tokens
-                                    .get(index + 1)
-                                    .is_some_and(|next| next.kind == TokenKind::Symbol(']')))))
-            }
-            Some(TokenKind::Word(value)) if close.is_none() => {
-                ["not", "required", "null", "nullable"]
-                    .iter()
-                    .any(|boundary| value.eq_ignore_ascii_case(boundary))
-            }
-            _ => false,
-        }
-    }
-
-    fn parse_list(&mut self, kind: ListKind, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected a list child in (), [], {}, or <>"))?;
-        let field = self.parse_field_or_type("item", true, depth)?;
-        self.expect_symbol(close)?;
-        Ok(match kind {
-            ListKind::List => DataType::list(field),
-            ListKind::ListView => DataType::list_view(field),
-            ListKind::LargeList => DataType::large_list(field),
-            ListKind::LargeListView => DataType::large_list_view(field),
-        })
-    }
-
-    fn parse_fixed_size_list(&mut self, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected fixed-size-list parameters"))?;
-        let field = self.parse_field_or_type("item", true, depth)?;
-        self.expect_separator("expected a list length after the child")?;
-        self.consume_label("length");
-        let length = self.parse_i32("list length")?;
-        self.expect_symbol(close)?;
-        DataType::fixed_size_list(field, length)
-    }
-
-    fn parse_struct(&mut self, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected struct fields"))?;
-        let collection_close = if self.peek_symbol() == Some('[') {
-            self.index += 1;
-            Some(']')
-        } else {
-            None
-        };
-        let body_close = collection_close.unwrap_or(close);
-        let mut fields = Vec::new();
-        while self.peek_symbol() != Some(body_close) {
-            fields.push(self.parse_named_field(depth)?);
-            if self.peek_symbol() == Some(body_close) {
-                break;
-            }
-            self.expect_separator("expected ',' between struct fields")?;
-        }
-        self.expect_symbol(body_close)?;
-        if collection_close.is_some() {
-            self.expect_symbol(close)?;
-        }
-        DataType::from_fields(fields)
-    }
-
-    fn parse_dictionary(&mut self, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected dictionary key and value types"))?;
-        self.consume_label("key");
-        let key = self.parse_type(depth)?;
-        self.expect_separator("expected dictionary value type")?;
-        self.consume_label("value");
-        let value = self.parse_type(depth)?;
-        self.expect_symbol(close)?;
-        DataType::dictionary(key, value)
-    }
-
-    fn parse_map(&mut self, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected map parameters"))?;
-
-        if self.peek_word_is("field") {
-            let entries = self.parse_explicit_field(depth, Some("entries"))?;
-            let mut keys_sorted = false;
-            if self.consume_separator() {
-                self.consume_label("keys_sorted");
-                keys_sorted = self.parse_bool("keys_sorted")?;
-            }
-            self.expect_symbol(close)?;
-            return DataType::map(entries, keys_sorted);
-        }
-
-        self.consume_label("key");
-        let key = self.parse_type(depth)?;
-        self.expect_separator("expected map value type")?;
-        self.consume_label("value");
-        let value = self.parse_type(depth)?;
-        let mut keys_sorted = false;
-        if self.consume_separator() {
-            self.consume_label("keys_sorted");
-            keys_sorted = self.parse_bool("keys_sorted")?;
-        }
-        self.expect_symbol(close)?;
-        DataType::map_of(key, value, keys_sorted)
-    }
-
-    fn parse_run_end(&mut self, depth: usize) -> Result<DataType> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected run-end and value fields"))?;
-        let run_ends = self.parse_field_or_type("run_ends", false, depth)?;
-        self.expect_separator("expected encoded values field")?;
-        let values = self.parse_field_or_type("values", true, depth)?;
-        self.expect_symbol(close)?;
-        DataType::run_end_encoded(run_ends, values)
-    }
-
-    /// Parse the optional `('crs')` / `('crs', 'algorithm')` parameters.
-    ///
-    /// Bare `geometry` and `geography` fill the defaults, so the parameters
-    /// appear exactly when they say something. A geometry given an edge
-    /// algorithm is refused by name at the algorithm's own position -
-    /// straight planar lines need none - and an unknown algorithm reports the
-    /// accepted vocabulary.
-    fn parse_geospatial(&mut self, geography: bool) -> Result<DataType> {
-        let build = |crs: Option<&str>, algorithm: Option<EdgeAlgorithm>| {
-            if geography {
-                DataType::geography(crs, algorithm)
-            } else {
-                DataType::geometry(crs)
-            }
-        };
-        let Some(close) = self.consume_opening() else {
-            return build(None, None).map_err(|error| self.error_here(format_smolstr!("{error}")));
-        };
-        // Empty parentheses are the bare spelling with punctuation.
-        if self.consume_symbol(close) {
-            return build(None, None).map_err(|error| self.error_here(format_smolstr!("{error}")));
-        }
-        let crs_position = self.current_position();
-        let crs = self.parse_text("a coordinate reference system")?;
-        let mut algorithm = None;
-        if self.consume_separator() {
-            let algorithm_position = self.current_position();
-            let name = self.parse_text("an edge algorithm")?;
-            if !geography {
-                return Err(self.error_at(
-                    algorithm_position,
-                    format_smolstr!(
-                        "expected no edge algorithm for geometry, got {name:?}; geography is the type whose edges take one"
-                    ),
-                ));
-            }
-            algorithm =
-                Some(EdgeAlgorithm::from_str(&name).map_err(|error| {
-                    self.error_at(algorithm_position, format_smolstr!("{error}"))
-                })?);
-        }
-        self.expect_symbol(close)?;
-        build(Some(&crs), algorithm)
-            .map_err(|error| self.error_at(crs_position, format_smolstr!("{error}")))
-    }
-
-    fn parse_union(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
-        let is_variant = keyword == "variant";
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected union or variant members"))?;
-        let mut mode = if keyword == "denseunion" || is_variant {
-            UnionMode::Dense
-        } else {
-            UnionMode::Sparse
-        };
-        if self.peek_union_mode(close) {
-            let position = self.current_position();
-            mode = self.parse_union_mode()?;
-            if is_variant && mode == UnionMode::Sparse {
-                return Err(self.error_at(position, "variant layout must be dense"));
-            }
-            if self.peek_symbol() != Some(close) {
-                self.expect_separator("expected ',' after union mode")?;
-            }
-        }
-
-        let collection_close = if self.peek_symbol() == Some('[') {
-            self.index += 1;
-            Some(']')
-        } else {
-            None
-        };
-        let body_close = collection_close.unwrap_or(close);
-        let mut fields = Vec::new();
-        let mut next_id = 0_i16;
-
-        while self.peek_symbol() != Some(body_close) {
-            let member_close = if self.peek_symbol() == Some('(') {
-                self.index += 1;
-                Some(')')
-            } else {
-                None
-            };
-
-            let type_id = if let Some(value) = self.peek_integer() {
-                let position = self.current_position();
-                self.index += 1;
-                let id = i8::try_from(value)
-                    .map_err(|_| self.error_at(position, "union type id must fit in i8"))?;
-                if is_variant && i16::from(id) != next_id {
-                    return Err(
-                        self.error_at(position, "variant type ids must be sequential from zero")
-                    );
-                }
-                if !self.consume_symbol('=')
-                    && !self.consume_symbol(':')
-                    && !self.consume_symbol(',')
-                {
-                    return Err(self.error_here("expected '=', ':', or ',' after union type id"));
-                }
-                id
-            } else {
-                i8::try_from(next_id).map_err(|_| {
-                    self.error_here(if is_variant {
-                        "a variant cannot contain more than 128 members"
-                    } else {
-                        "a union cannot contain more than 128 members"
-                    })
-                })?
-            };
-            next_id = i16::from(type_id) + 1;
-            let field =
-                self.parse_field_or_type(&format_smolstr!("member_{type_id}"), true, depth)?;
-            if let Some(member_close) = member_close {
-                self.expect_symbol(member_close)?;
-            }
-            fields.push((type_id, field));
-
-            if self.peek_symbol() == Some(body_close) {
-                break;
-            }
-            self.expect_separator("expected ',' between union members")?;
-        }
-        self.expect_symbol(body_close)?;
-
-        if collection_close.is_some() {
-            if self.consume_separator() {
-                let position = self.current_position();
-                mode = self.parse_union_mode()?;
-                if is_variant && mode == UnionMode::Sparse {
-                    return Err(self.error_at(position, "variant layout must be dense"));
-                }
-            }
-            self.expect_symbol(close)?;
-        }
-        if is_variant {
-            DataType::dense_union(fields.into_iter().map(|(_, field)| field))
-        } else {
-            DataType::union(fields, mode)
-        }
-    }
-
-    fn parse_union_mode(&mut self) -> Result<UnionMode> {
-        let value = self.parse_text("union mode")?;
-        match normalized(&value).as_str() {
-            "dense" => Ok(UnionMode::Dense),
-            "sparse" => Ok(UnionMode::Sparse),
-            _ => Err(self.error_here("union mode must be dense or sparse")),
-        }
-    }
-
-    fn parse_decimal_parameters(&mut self, default_precision: u8) -> Result<(u8, i8)> {
-        let Some(close) = self.consume_opening() else {
-            return Ok((default_precision, 0));
-        };
-        self.consume_label("precision");
-        let position = self.current_position();
-        let precision_value = self.parse_integer("decimal precision")?;
-        let precision = u8::try_from(precision_value)
-            .map_err(|_| self.error_at(position, "decimal precision must fit in u8"))?;
-        let mut scale = 0_i8;
-        if self.consume_separator() {
-            self.consume_label("scale");
-            let position = self.current_position();
-            let scale_value = self.parse_integer("decimal scale")?;
-            scale = i8::try_from(scale_value)
-                .map_err(|_| self.error_at(position, "decimal scale must fit in i8"))?;
-        }
-        self.expect_symbol(close)?;
-        Ok((precision, scale))
-    }
-
-    fn parse_single_i32_parameter(&mut self, label: &str) -> Result<i32> {
+    pub(crate) fn parse_single_i32_parameter(&mut self, label: &str) -> Result<i32> {
         let close = self
             .consume_opening()
             .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
@@ -981,7 +456,7 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn ignore_optional_length(&mut self) -> Result<()> {
+    pub(crate) fn ignore_optional_length(&mut self) -> Result<()> {
         // Square brackets after a scalar are the SQL/Spark postfix-array
         // operator, not a string length declaration.
         if self.peek_symbol() != Some('(') {
@@ -994,7 +469,7 @@ impl<'a> Parser<'a> {
         self.expect_symbol(close)
     }
 
-    fn parse_field_or_type(
+    pub(crate) fn parse_field_or_type(
         &mut self,
         default_name: &str,
         default_nullable: bool,
@@ -1012,7 +487,7 @@ impl<'a> Parser<'a> {
         Ok(Field::new(default_name, dtype, nullable))
     }
 
-    fn parse_named_field(&mut self, depth: usize) -> Result<Field> {
+    pub(crate) fn parse_named_field(&mut self, depth: usize) -> Result<Field> {
         self.check_depth(depth)?;
         if self.peek_word_is("field") {
             return self.parse_explicit_field(depth, None);
@@ -1029,7 +504,11 @@ impl<'a> Parser<'a> {
         Ok(Field::new(name, dtype, nullable))
     }
 
-    fn parse_explicit_field(&mut self, depth: usize, default_name: Option<&str>) -> Result<Field> {
+    pub(crate) fn parse_explicit_field(
+        &mut self,
+        depth: usize,
+        default_name: Option<&str>,
+    ) -> Result<Field> {
         self.expect_word("field")?;
         if self.peek_symbol() == Some('{') {
             return self.parse_arrow_field(depth, default_name);
@@ -1081,7 +560,11 @@ impl<'a> Parser<'a> {
         Ok(field)
     }
 
-    fn parse_arrow_field(&mut self, depth: usize, default_name: Option<&str>) -> Result<Field> {
+    pub(crate) fn parse_arrow_field(
+        &mut self,
+        depth: usize,
+        default_name: Option<&str>,
+    ) -> Result<Field> {
         self.expect_symbol('{')?;
         let mut name = None;
         let mut dtype = None;
@@ -1163,7 +646,7 @@ impl<'a> Parser<'a> {
         Ok(field)
     }
 
-    fn parse_metadata(&mut self) -> Result<Vec<(SmolStr, SmolStr)>> {
+    pub(crate) fn parse_metadata(&mut self) -> Result<Vec<(SmolStr, SmolStr)>> {
         let close = self
             .consume_opening()
             .filter(|close| *close == '}')
@@ -1185,7 +668,7 @@ impl<'a> Parser<'a> {
         Ok(values)
     }
 
-    fn parse_nullability(&mut self, default: bool) -> Result<bool> {
+    pub(crate) fn parse_nullability(&mut self, default: bool) -> Result<bool> {
         if self.consume_symbol('?') {
             return Ok(true);
         }
@@ -1208,7 +691,7 @@ impl<'a> Parser<'a> {
         Ok(default)
     }
 
-    fn parse_bool(&mut self, label: &str) -> Result<bool> {
+    pub(crate) fn parse_bool(&mut self, label: &str) -> Result<bool> {
         let token = self
             .next()
             .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
@@ -1229,7 +712,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_i32(&mut self, label: &str) -> Result<i32> {
+    pub(crate) fn parse_i32(&mut self, label: &str) -> Result<i32> {
         let position = self.current_position();
         let value = self.parse_integer(label)?;
         i32::try_from(value).map_err(|_| {
@@ -1240,7 +723,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_integer(&mut self, label: &str) -> Result<i64> {
+    pub(crate) fn parse_integer(&mut self, label: &str) -> Result<i64> {
         let token = self
             .next()
             .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
@@ -1255,7 +738,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_text(&mut self, label: &str) -> Result<SmolStr> {
+    pub(crate) fn parse_text(&mut self, label: &str) -> Result<SmolStr> {
         let token = self
             .next()
             .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
@@ -1271,14 +754,14 @@ impl<'a> Parser<'a> {
     /// Parsing is the one place a typo can still be reported against the text
     /// it came from, so the name is validated here rather than left as free
     /// text for a later layer to accept silently.
-    fn parse_timezone(&mut self) -> Result<crate::Timezone> {
+    pub(crate) fn parse_timezone(&mut self) -> Result<crate::Timezone> {
         let start = self.current_position();
         let text = self.parse_text("timezone")?;
         crate::Timezone::from_smol_str(text)
             .map_err(|error| self.error_at(start, format_smolstr!("{error}")))
     }
 
-    fn skip_value(&mut self) -> Result<()> {
+    pub(crate) fn skip_value(&mut self) -> Result<()> {
         if let Some(open) = self.peek_symbol() {
             if let Some(close) = matching_close(open) {
                 self.index += 1;
@@ -1301,7 +784,7 @@ impl<'a> Parser<'a> {
             .ok_or_else(|| self.error_here("expected Arrow field property value"))
     }
 
-    fn looks_like_named_field(&self) -> bool {
+    pub(crate) fn looks_like_named_field(&self) -> bool {
         matches!(
             (
                 self.tokens.get(self.index).map(|token| &token.kind),
@@ -1314,7 +797,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn consume_label(&mut self, label: &str) -> bool {
+    pub(crate) fn consume_label(&mut self, label: &str) -> bool {
         if self.peek_word_is(label)
             && self
                 .tokens
@@ -1328,7 +811,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expect_separator(&mut self, reason: &str) -> Result<()> {
+    pub(crate) fn expect_separator(&mut self, reason: &str) -> Result<()> {
         if self.consume_separator() {
             Ok(())
         } else {
@@ -1336,21 +819,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_separator(&mut self) -> bool {
+    pub(crate) fn consume_separator(&mut self) -> bool {
         self.consume_symbol(',') || self.consume_symbol(';')
     }
 
-    fn consume_opening(&mut self) -> Option<char> {
+    pub(crate) fn consume_opening(&mut self) -> Option<char> {
         let close = matching_close(self.peek_symbol()?)?;
         self.index += 1;
         Some(close)
     }
 
-    fn peek_opening(&self) -> Option<char> {
+    pub(crate) fn peek_opening(&self) -> Option<char> {
         matching_close(self.peek_symbol()?)
     }
 
-    fn expect_symbol(&mut self, expected: char) -> Result<()> {
+    pub(crate) fn expect_symbol(&mut self, expected: char) -> Result<()> {
         if self.consume_symbol(expected) {
             Ok(())
         } else {
@@ -1358,7 +841,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_symbol(&mut self, expected: char) -> bool {
+    pub(crate) fn consume_symbol(&mut self, expected: char) -> bool {
         if self.peek_symbol() == Some(expected) {
             self.index += 1;
             true
@@ -1367,14 +850,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_symbol(&self) -> Option<char> {
+    pub(crate) fn peek_symbol(&self) -> Option<char> {
         match self.tokens.get(self.index).map(|token| &token.kind) {
             Some(TokenKind::Symbol(symbol)) => Some(*symbol),
             _ => None,
         }
     }
 
-    fn expect_word(&mut self, expected: &str) -> Result<()> {
+    pub(crate) fn expect_word(&mut self, expected: &str) -> Result<()> {
         if self.consume_word(expected) {
             Ok(())
         } else {
@@ -1382,7 +865,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_word(&mut self, expected: &str) -> bool {
+    pub(crate) fn consume_word(&mut self, expected: &str) -> bool {
         if self.peek_word_is(expected) {
             self.index += 1;
             true
@@ -1391,21 +874,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_word_is(&self, expected: &str) -> bool {
+    pub(crate) fn peek_word_is(&self, expected: &str) -> bool {
         match self.tokens.get(self.index).map(|token| &token.kind) {
             Some(TokenKind::Word(value)) => normalized(value) == normalized(expected),
             _ => false,
         }
     }
 
-    fn peek_integer(&self) -> Option<i64> {
+    pub(crate) fn peek_integer(&self) -> Option<i64> {
         match self.tokens.get(self.index).map(|token| &token.kind) {
             Some(TokenKind::Integer(value)) => Some(*value),
             _ => None,
         }
     }
 
-    fn peek_union_mode(&self, close: char) -> bool {
+    pub(crate) fn peek_union_mode(&self, close: char) -> bool {
         (self.peek_word_is("dense") || self.peek_word_is("sparse"))
             && matches!(
                 self.tokens.get(self.index + 1).map(|token| &token.kind),
@@ -1414,23 +897,23 @@ impl<'a> Parser<'a> {
             )
     }
 
-    fn next(&mut self) -> Option<Token> {
+    pub(crate) fn next(&mut self) -> Option<Token> {
         let token = self.tokens.get(self.index)?.clone();
         self.index += 1;
         Some(token)
     }
 
-    fn is_done(&self) -> bool {
+    pub(crate) fn is_done(&self) -> bool {
         self.index == self.tokens.len()
     }
 
-    fn current_position(&self) -> usize {
+    pub(crate) fn current_position(&self) -> usize {
         self.tokens
             .get(self.index)
             .map_or(self.source.len(), |token| token.start)
     }
 
-    fn check_depth(&self, depth: usize) -> Result<()> {
+    pub(crate) fn check_depth(&self, depth: usize) -> Result<()> {
         if depth >= DataType::PARSE_RECURSION_LIMIT {
             Err(self.error_here(format_smolstr!(
                 "datatype nesting exceeds the limit of {}",
@@ -1441,17 +924,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn error_here(&self, reason: impl Into<SmolStr>) -> Error {
+    pub(crate) fn error_here(&self, reason: impl Into<SmolStr>) -> Error {
         self.error_at(self.current_position(), reason)
     }
 
-    fn error_at(&self, position: usize, reason: impl Into<SmolStr>) -> Error {
+    pub(crate) fn error_at(&self, position: usize, reason: impl Into<SmolStr>) -> Error {
         parse_error(self.source, position, reason)
     }
 }
 
 #[derive(Clone, Copy)]
-enum ListKind {
+pub(crate) enum ListKind {
     List,
     ListView,
     LargeList,
@@ -1649,11 +1132,11 @@ fn matching_close(open: char) -> Option<char> {
     }
 }
 
-fn is_closing_or_separator(symbol: char) -> bool {
+pub(crate) fn is_closing_or_separator(symbol: char) -> bool {
     matches!(symbol, '>' | ')' | ']' | '}' | ',' | ';')
 }
 
-pub(super) fn normalized(value: &str) -> String {
+pub(crate) fn normalized(value: &str) -> String {
     value
         .chars()
         .filter(|character| !matches!(character, '_' | '-' | ' '))
@@ -1661,7 +1144,7 @@ pub(super) fn normalized(value: &str) -> String {
         .collect()
 }
 
-fn precision_to_unit(precision: i64, position: usize) -> Result<TimeUnit> {
+pub(crate) fn precision_to_unit(precision: i64, position: usize) -> Result<TimeUnit> {
     match precision {
         0 => Ok(TimeUnit::Second),
         1..=3 => Ok(TimeUnit::Millisecond),

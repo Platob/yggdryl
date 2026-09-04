@@ -1,6 +1,6 @@
 //! Integer predicates used by constructors and run-end validation.
 
-use super::DataType;
+use crate::DataType;
 
 impl DataType {
     /// Returns whether this is a signed or unsigned integer type.
@@ -18,7 +18,7 @@ impl DataType {
         )
     }
 
-    pub(super) const fn is_run_ends_type(&self) -> bool {
+    pub(crate) const fn is_run_ends_type(&self) -> bool {
         matches!(self, Self::Int16 | Self::Int32 | Self::Int64)
     }
 }

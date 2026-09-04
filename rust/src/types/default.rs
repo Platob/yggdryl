@@ -628,7 +628,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         // as a point whose coordinates are NaN, in the canonical geospatial
         // value spelling.
         DefaultPlan::PointEmpty => Ok(Scalar::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
-        DefaultPlan::Guid => Ok(Scalar::String(crate::datatype::guid_text(&[0_u8; 16]))),
+        DefaultPlan::Guid => Ok(Scalar::String(crate::types::guid_text(&[0_u8; 16]))),
     }
 }
 
@@ -699,8 +699,8 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_mapping()
             .is_some_and(<[(Scalar, Scalar)]>::is_empty),
         DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
-        DefaultPlan::Guid => crate::datatype::guid_bytes(value)
-            .and_then(|bytes| crate::datatype::guid_parse(bytes).ok())
+        DefaultPlan::Guid => crate::types::guid_bytes(value)
+            .and_then(|bytes| crate::types::guid_parse(bytes).ok())
             .is_some_and(|stored| stored == [0_u8; 16]),
     }
 }

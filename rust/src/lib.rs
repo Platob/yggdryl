@@ -15,7 +15,6 @@ pub mod arrow;
 mod bytestream;
 mod codec;
 pub mod coding;
-mod datatype;
 mod datatype_id;
 mod datatype_kind;
 mod digest;
@@ -47,6 +46,7 @@ pub mod text;
 mod time_unit;
 mod timezone;
 pub mod toml;
+pub mod types;
 mod union_mode;
 mod uri;
 // The digest vocabulary's implementation. The value codec has no Arrow
@@ -57,10 +57,6 @@ pub mod yaml;
 
 pub use bytestream::ByteStream;
 pub use codec::{Codec, Encoder, Level};
-pub use datatype::{
-    AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,
-    UnionFields,
-};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
 pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
@@ -106,6 +102,10 @@ pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 pub use toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
+pub use types::{
+    AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,
+    UnionFields,
+};
 pub use union_mode::UnionMode;
 pub use uri::{
     Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,

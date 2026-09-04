@@ -9,8 +9,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::Field;
-use crate::datatype::serde::{integer, invalid, key};
 use crate::generic::Scalar;
+use crate::types::serde::{integer, invalid, key};
 use crate::{DataType, Error, Metadata, Result};
 
 impl Field {

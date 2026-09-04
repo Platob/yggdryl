@@ -1,19 +1,145 @@
-//! Scalar construction, value traits, ordering, hashing, and validation.
+//! The shared logical datatype enum and its cross-family value contract.
 
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataTypeId, DataTypeKind};
-use crate::{Error, Field, Result};
+use crate::{DataTypeId, DataTypeKind, Error, Field, Result, TimeUnit, UnionMode};
 
-use super::DataType;
-use super::floating::validate_decimal;
+use super::decimal::validate_decimal;
+use super::geospatial::GeospatialType;
 use super::nested::{
-    cmp_fields, validate_dictionary_key, validate_fields, validate_map_entries, validate_run_ends,
+    DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields, cmp_fields,
+    validate_dictionary_key, validate_fields, validate_map_entries, validate_run_ends,
     validate_union_fields,
 };
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
+/// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
+///
+/// Scalar variants are inline. Nested children use `Arc`, so cloning a
+/// datatype never allocates. Cache state belongs to [`Field`], not this value.
+///
+/// Parameterized variants remain public for ergonomic pattern matching and
+/// Arrow parity. Caller-created values can therefore bypass constructors and
+/// temporarily contain invalid parameters. Prefer validated constructors such
+/// as [`Self::time`], [`Self::decimal`], and [`Self::map`]. Arrow
+/// projection, structural serialization, and [`Self::validate`] reject every
+/// invalid state before it crosses an interoperability boundary.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[non_exhaustive]
+pub enum DataType {
+    /// Null values.
+    Null,
+    /// Boolean values.
+    Boolean,
+    /// Signed 8-bit integers.
+    Int8,
+    /// Signed 16-bit integers.
+    Int16,
+    /// Signed 32-bit integers.
+    Int32,
+    /// Signed 64-bit integers.
+    Int64,
+    /// Unsigned 8-bit integers.
+    UInt8,
+    /// Unsigned 16-bit integers.
+    UInt16,
+    /// Unsigned 32-bit integers.
+    UInt32,
+    /// Unsigned 64-bit integers.
+    UInt64,
+    /// IEEE 16-bit floating point.
+    Float16,
+    /// IEEE 32-bit floating point.
+    Float32,
+    /// IEEE 64-bit floating point.
+    Float64,
+    /// Timestamp unit and optional IANA timezone or fixed offset.
+    Timestamp(TimeUnit, Option<crate::Timezone>),
+    /// Days since the Unix epoch.
+    Date32,
+    /// Milliseconds since the Unix epoch representing whole days.
+    Date64,
+    /// 32-bit time of day; seconds and milliseconds are valid.
+    Time32(TimeUnit),
+    /// 64-bit time of day; microseconds and nanoseconds are valid.
+    Time64(TimeUnit),
+    /// 32-bit elapsed-time count.
+    Duration32(TimeUnit),
+    /// 64-bit elapsed-time count.
+    Duration64(TimeUnit),
+    /// Calendar interval.
+    Interval(TimeUnit),
+    /// Variable-width binary data with 32-bit offsets.
+    Binary,
+    /// Fixed-width binary data.
+    FixedSizeBinary(i32),
+    /// Variable-width binary data with 64-bit offsets.
+    LargeBinary,
+    /// Binary view layout.
+    BinaryView,
+    /// UTF-8 with 32-bit offsets.
+    Utf8,
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8,
+    /// UTF-8 view layout.
+    Utf8View,
+    /// Variable-width ASCII text.
+    Ascii,
+    /// ASCII text padded with trailing NUL to a fixed byte width.
+    FixedAscii(i32),
+    /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
+    Country,
+    /// ISO 4217: a currency code, three ASCII bytes.
+    Currency,
+    /// ISO 10383: a market identifier code, four ASCII bytes.
+    Mic,
+    /// ISO 10962: a classification of financial instruments, six ASCII bytes.
+    Cfi,
+    /// One 128-bit universally unique identifier.
+    Guid,
+    /// Variable list with 32-bit offsets.
+    List(Arc<Field>),
+    /// Variable list-view with 32-bit offsets.
+    ListView(Arc<Field>),
+    /// Fixed-length list.
+    FixedSizeList(Arc<Field>, i32),
+    /// Variable list with 64-bit offsets.
+    LargeList(Arc<Field>),
+    /// Variable list-view with 64-bit offsets.
+    LargeListView(Arc<Field>),
+    /// Ordered struct fields.
+    Struct(Fields),
+    /// Tagged union fields and layout mode.
+    Union(UnionFields, UnionMode),
+    /// Dictionary key and value types.
+    Dictionary(Arc<DictionaryType>),
+    /// Exact decimal backed by 32 bits.
+    Decimal32 { precision: u8, scale: i8 },
+    /// Exact decimal backed by 64 bits.
+    Decimal64 { precision: u8, scale: i8 },
+    /// Exact decimal backed by 128 bits.
+    Decimal128 { precision: u8, scale: i8 },
+    /// Exact decimal backed by 256 bits.
+    Decimal256 { precision: u8, scale: i8 },
+    /// Arrow map entries and key-order flag.
+    Map(Arc<MapType>),
+    /// Run-end encoding child fields.
+    RunEndEncoded(Arc<RunEndEncodedType>),
+    /// Self-describing semi-structured values.
+    ///
+    /// A variant value is a [`crate::Scalar`] - a tree that declares its own
+    /// types per value - so the type takes no parameters: shredding is a
+    /// physical layout, not part of the logical type. Bare `variant` is this
+    /// type; `variant(...)` with members stays the dense-union input sugar,
+    /// and the parenthesis is what disambiguates.
+    Variant,
+    /// Planar geospatial features, carried as Well-Known Binary.
+    Geometry(Arc<GeospatialType>),
+    /// Geospatial features on a sphere or spheroid, carried as WKB.
+    Geography(Arc<GeospatialType>),
+}
 
 impl DataType {
     /// The canonical value this datatype holds, from any value it accepts.
@@ -179,12 +305,6 @@ impl DataType {
     /// Builds a non-null [`Field`] of this datatype.
     pub fn required_field(self, name: impl Into<SmolStr>) -> Field {
         self.named_field(name, false)
-    }
-
-    /// Creates a fixed-size binary type after validating its width.
-    pub fn fixed_size_binary(width: i32) -> Result<Self> {
-        validate_non_negative("FixedSizeBinary", "width", width)?;
-        Ok(Self::FixedSizeBinary(width))
     }
 
     /// Validates all parameters and nested children without projecting Arrow.
@@ -393,14 +513,14 @@ fn dtype_rank(value: &DataType) -> u8 {
     }
 }
 
-pub(super) fn invalid(kind: &'static str, reason: impl Into<SmolStr>) -> Error {
+pub(crate) fn invalid(kind: &'static str, reason: impl Into<SmolStr>) -> Error {
     Error::InvalidDataType {
         kind,
         reason: reason.into(),
     }
 }
 
-pub(super) fn validate_non_negative(
+pub(crate) fn validate_non_negative(
     kind: &'static str,
     parameter: &'static str,
     value: i32,

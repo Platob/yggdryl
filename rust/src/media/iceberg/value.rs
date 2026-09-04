@@ -129,7 +129,7 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
         DataType::Guid => OfficialDatum::uuid(uuid::Uuid::from_bytes(
-            crate::datatype::guid_parse(crate::datatype::guid_bytes(value)?).ok()?,
+            crate::types::guid_parse(crate::types::guid_bytes(value)?).ok()?,
         )),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialDatum::binary(value.as_bytes()?.iter().copied())
@@ -195,7 +195,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             OfficialPrimitiveLiteral::String(value),
         ) => Some(Scalar::from(value.as_str())),
         (DataType::Guid, OfficialPrimitiveLiteral::UInt128(value)) => Some(Scalar::String(
-            crate::datatype::guid_text(&value.to_be_bytes()),
+            crate::types::guid_text(&value.to_be_bytes()),
         )),
         (
             DataType::Binary

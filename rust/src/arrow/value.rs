@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::datatype::{
+use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_free_text,
     ascii_padded, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
 };

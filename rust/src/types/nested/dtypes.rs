@@ -9,11 +9,8 @@ use std::sync::Arc;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::UnionMode;
-use crate::{Error, Field, Result};
-
-use super::DataType;
-use super::scalar::{invalid, validate_non_negative};
+use crate::types::{invalid, validate_non_negative};
+use crate::{DataType, Error, Field, Result, UnionMode};
 
 /// Either of the two ways a caller names one child.
 ///
@@ -47,7 +44,7 @@ impl<'a> From<&'a String> for FieldKey<'a> {
 
 /// An ordered, immutable collection of fields stored in one shared allocation.
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
-pub struct Fields(pub(super) Option<Arc<[Field]>>);
+pub struct Fields(pub(crate) Option<Arc<[Field]>>);
 
 impl Fields {
     /// Creates an empty collection without allocating.
@@ -116,7 +113,7 @@ impl Fields {
         }
     }
 
-    pub(super) fn from_imported_fields(fields: Vec<Field>) -> Result<Self> {
+    pub(crate) fn from_imported_fields(fields: Vec<Field>) -> Result<Self> {
         reject_duplicate_field_names(&fields, "Fields")?;
         Ok(Self::from_vec(fields))
     }
@@ -263,7 +260,7 @@ impl<'de> Deserialize<'de> for Fields {
 
 /// Union members paired with their non-negative Arrow type IDs.
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
-pub struct UnionFields(pub(super) Option<Arc<[(i8, Field)]>>);
+pub struct UnionFields(pub(crate) Option<Arc<[(i8, Field)]>>);
 
 impl UnionFields {
     /// Builds union members and rejects duplicate or negative type IDs.
@@ -333,7 +330,7 @@ impl UnionFields {
         }
     }
 
-    pub(super) fn from_imported_fields(values: Vec<(i8, Field)>) -> Result<Self> {
+    pub(crate) fn from_imported_fields(values: Vec<(i8, Field)>) -> Result<Self> {
         validate_union_values(&values, false)?;
         Ok(Self::from_vec(values))
     }
@@ -428,8 +425,8 @@ impl<'de> Deserialize<'de> for UnionFields {
 /// Shared dictionary key and value types.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
 pub struct DictionaryType {
-    pub(super) key: DataType,
-    pub(super) value: DataType,
+    pub(crate) key: DataType,
+    pub(crate) value: DataType,
 }
 
 impl DictionaryType {
@@ -466,8 +463,8 @@ impl<'de> Deserialize<'de> for DictionaryType {
 /// Shared Arrow map parameters.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct MapType {
-    pub(super) entries: Field,
-    pub(super) keys_sorted: bool,
+    pub(crate) entries: Field,
+    pub(crate) keys_sorted: bool,
 }
 
 impl MapType {
@@ -517,8 +514,8 @@ impl<'de> Deserialize<'de> for MapType {
 /// Shared run-end encoding child fields.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 pub struct RunEndEncodedType {
-    pub(super) run_ends: Field,
-    pub(super) values: Field,
+    pub(crate) run_ends: Field,
+    pub(crate) values: Field,
 }
 
 impl RunEndEncodedType {
@@ -566,6 +563,16 @@ impl<'de> Deserialize<'de> for RunEndEncodedType {
 }
 
 impl DataType {
+    /// Creates the self-describing semi-structured Variant type.
+    ///
+    /// It takes no parameters: shredding is physical layout, while each value
+    /// is the ordinary [`crate::Scalar`] tree. Parentheses distinguish the
+    /// finite [`Self::dense_union`] input form in the grammar.
+    #[must_use]
+    pub const fn variant() -> Self {
+        Self::Variant
+    }
+
     /// Creates a 32-bit variable list.
     pub fn list(item: Field) -> Self {
         Self::List(Arc::new(item))
@@ -1325,7 +1332,7 @@ fn missing_child(node: &DataType, path: &str) -> Error {
     }
 }
 
-pub(super) fn cmp_field_slices(left: &[Field], right: &[Field]) -> Ordering {
+pub(crate) fn cmp_field_slices(left: &[Field], right: &[Field]) -> Ordering {
     let mut left = left.iter();
     let mut right = right.iter();
     loop {
@@ -1343,11 +1350,11 @@ pub(super) fn cmp_field_slices(left: &[Field], right: &[Field]) -> Ordering {
     }
 }
 
-pub(super) fn cmp_fields(left: &Field, right: &Field) -> Ordering {
+pub(crate) fn cmp_fields(left: &Field, right: &Field) -> Ordering {
     left.cmp(right)
 }
 
-pub(super) fn validate_map_entries(entries: &Field) -> Result<()> {
+pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     if entries.is_nullable() {
         return Err(invalid("Map", "entries field must be non-null"));
     }
@@ -1366,7 +1373,7 @@ pub(super) fn validate_map_entries(entries: &Field) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn validate_dictionary_key(key: &DataType) -> Result<()> {
+pub(crate) fn validate_dictionary_key(key: &DataType) -> Result<()> {
     if is_valid_dictionary_key(key) {
         Ok(())
     } else {
@@ -1379,7 +1386,7 @@ pub(super) fn validate_dictionary_key(key: &DataType) -> Result<()> {
     }
 }
 
-pub(super) fn validate_run_ends(run_ends: &Field) -> Result<()> {
+pub(crate) fn validate_run_ends(run_ends: &Field) -> Result<()> {
     // Two independent rules; report the one that actually fired so a caller
     // fixes the right half.
     if run_ends.is_nullable() {
@@ -1407,16 +1414,16 @@ fn is_valid_dictionary_key(key: &DataType) -> bool {
     key.is_integer()
 }
 
-pub(super) fn validate_fields(fields: &[Field], kind: &'static str) -> Result<()> {
+pub(crate) fn validate_fields(fields: &[Field], kind: &'static str) -> Result<()> {
     reject_duplicate_field_names(fields, kind)?;
     fields.iter().try_for_each(Field::validate)
 }
 
-pub(super) fn validate_union_fields(fields: &UnionFields) -> Result<()> {
+pub(crate) fn validate_union_fields(fields: &UnionFields) -> Result<()> {
     validate_union_values(fields.as_fields(), true)
 }
 
-pub(super) fn validate_union_values(values: &[(i8, Field)], validate_children: bool) -> Result<()> {
+pub(crate) fn validate_union_values(values: &[(i8, Field)], validate_children: bool) -> Result<()> {
     let mut seen = 0_u128;
     for (index, (type_id, field)) in values.iter().enumerate() {
         if *type_id < 0 {
@@ -1449,7 +1456,7 @@ pub(super) fn validate_union_values(values: &[(i8, Field)], validate_children: b
     Ok(())
 }
 
-pub(super) fn reject_duplicate_field_names(fields: &[Field], kind: &'static str) -> Result<()> {
+pub(crate) fn reject_duplicate_field_names(fields: &[Field], kind: &'static str) -> Result<()> {
     const HASHED_DUPLICATE_CHECK_THRESHOLD: usize = 16;
 
     if fields.len() > HASHED_DUPLICATE_CHECK_THRESHOLD {

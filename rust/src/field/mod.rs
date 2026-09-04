@@ -9,14 +9,14 @@ use std::sync::{Arc, OnceLock};
 use arrow_schema::Field as ArrowField;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::datatype::{
-    DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
-};
 use crate::metadata::{
     ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_ENUM_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY,
     LOCATION_KEY, MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol,
     parse_ascii_enum, parse_field_id, parse_reserved_bool, property_key,
     write_json_string as write_quoted,
+};
+use crate::types::{
+    DataType, FieldKey, MapType, RunEndEncodedType, default_value_for_field, preflight_schema_shape,
 };
 use crate::{AsciiEnum, Error, Metadata, Result, Scalar, Scheme, Url, stable_hash_display};
 
@@ -273,7 +273,7 @@ impl Field {
     /// datatype accepts, or is null under a field that is not nullable.
     pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar> {
         let value = value.into();
-        if !self.is_nullable() && crate::datatype::value_is_logically_null(self.dtype(), &value) {
+        if !self.is_nullable() && crate::types::value_is_logically_null(self.dtype(), &value) {
             // The same refusal a column value takes, so one field answers one
             // way whether the value arrives alone or inside a row.
             return Err(Error::InvalidRecord {
@@ -466,8 +466,8 @@ impl Field {
     pub fn merge_with(&self, other: &Self, upscale: bool) -> Result<Self> {
         self.merge(
             other,
-            crate::datatype::Widening::upscale(upscale),
-            crate::datatype::Recode::Allowed,
+            crate::types::Widening::upscale(upscale),
+            crate::types::Recode::Allowed,
         )
     }
 
@@ -476,8 +476,8 @@ impl Field {
     pub(crate) fn merge(
         &self,
         other: &Self,
-        how: crate::datatype::Widening,
-        recode: crate::datatype::Recode,
+        how: crate::types::Widening,
+        recode: crate::types::Recode,
     ) -> Result<Self> {
         let dtype = self.dtype.merge(&other.dtype, how, recode)?;
         let mut merged = Self::new(self.name.clone(), dtype, self.nullable || other.nullable);
@@ -2080,7 +2080,7 @@ impl Index<&str> for Field {
 /// Subscripting a schema node by position reaches that nested child.
 ///
 /// The positional companion of [`Index<&str>`], matching how
-/// [`Fields`](crate::datatype::Fields) already indexes.
+/// [`Fields`](crate::types::Fields) already indexes.
 ///
 /// ```
 /// use yggdryl::DataType;

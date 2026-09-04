@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::datatype::{
+use crate::types::{
     ascii_bytes, ascii_free_text, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
     value_is_logically_null,
 };

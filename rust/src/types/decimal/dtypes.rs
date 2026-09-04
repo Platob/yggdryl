@@ -2,10 +2,8 @@
 
 use smol_str::format_smolstr;
 
-use crate::Result;
-
-use super::DataType;
-use super::scalar::invalid;
+use crate::types::invalid;
+use crate::{DataType, Result};
 
 impl DataType {
     /// Creates a Decimal32.
@@ -48,7 +46,7 @@ impl DataType {
     }
 }
 
-pub(super) fn validate_decimal(
+pub(crate) fn validate_decimal(
     kind: &'static str,
     precision: u8,
     scale: i8,

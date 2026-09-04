@@ -1297,7 +1297,7 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             Ok(Scalar::from(value.as_str()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => Ok(
-            Scalar::String(crate::datatype::guid_text(&value.to_be_bytes())),
+            Scalar::String(crate::types::guid_text(&value.to_be_bytes())),
         ),
         (
             OfficialPrimitiveType::Fixed(_) | OfficialPrimitiveType::Binary,

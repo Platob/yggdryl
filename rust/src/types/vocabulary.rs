@@ -9,7 +9,7 @@
 //!
 //! Four of the names resolve to a datatype spelled the same way - `currency`
 //! to [`DataType::Currency`], `country`, `mic` and `cfi` likewise - because
-//! those four [codes](super::coded) are types rather than widths. That is not
+//! those four registered codes are types rather than widths. That is not
 //! a second rule: the registry still answers a datatype, and the canonical
 //! spelling of that datatype still happens to be what was asked for.
 //!

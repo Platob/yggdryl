@@ -38,7 +38,7 @@ use smol_str::format_smolstr;
 use crate::{DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::coded::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
+use super::ascii::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -324,9 +324,9 @@ fn optional(field: &Field) -> Field {
 
 /// Merge two unions by taking the union of their members, matched by type id.
 fn merge_union(
-    left: &crate::datatype::UnionFields,
+    left: &crate::types::UnionFields,
     left_mode: UnionMode,
-    right: &crate::datatype::UnionFields,
+    right: &crate::types::UnionFields,
     right_mode: UnionMode,
     how: Widening,
     recode: Recode,
@@ -499,7 +499,7 @@ enum TextRank {
 
 /// Where a datatype sits in the text order, if it is text at all.
 ///
-/// A [registered code](super::coded) ranks as the fixed width it stores. Two
+/// A registered code ranks as the fixed width it stores. Two
 /// schemas that agree on a code never reach here - the merge answers an equal
 /// pair before ranking anything - so this decides only the pairs that
 /// disagree, and a code reconciled against anything else gives up its

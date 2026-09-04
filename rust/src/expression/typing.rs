@@ -536,7 +536,7 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 /// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
     unwrap_dictionary(left)
-        .merge_exact(unwrap_dictionary(right), crate::datatype::Widening::Up)
+        .merge_exact(unwrap_dictionary(right), crate::types::Widening::Up)
         .ok()
 }
 

@@ -912,11 +912,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         DataType::Guid => {
             // The row tier enforces the one GUID rule the cast plan enforces
             // on columns, so the two tiers refuse the same values.
-            let Some(bytes) = crate::datatype::guid_bytes(value) else {
+            let Some(bytes) = crate::types::guid_bytes(value) else {
                 return refuse("a GUID");
             };
-            match crate::datatype::guid_parse(bytes) {
-                Ok(stored) => Ok(Scalar::String(crate::datatype::guid_text(&stored))),
+            match crate::types::guid_parse(bytes) {
+                Ok(stored) => Ok(Scalar::String(crate::types::guid_text(&stored))),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),
                 Err(error) => Err(error),
             }
@@ -924,11 +924,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         DataType::Ascii | DataType::FixedAscii(_) => {
             // The row tier enforces the width rule the cast plan enforces on
             // columns, so the two tiers refuse the same values.
-            let Some(bytes) = crate::datatype::ascii_bytes(value) else {
+            let Some(bytes) = crate::types::ascii_bytes(value) else {
                 return refuse("ASCII text");
             };
             let width = target.ascii_width().unwrap_or(0);
-            match crate::datatype::ascii_text(width, bytes) {
+            match crate::types::ascii_text(width, bytes) {
                 Ok(text) => Ok(Scalar::from(text)),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),
                 Err(error) => Err(error),
@@ -936,10 +936,10 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         }
         // A code takes the same tier at the width its own type fixes.
         DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
-            let Some(bytes) = crate::datatype::ascii_bytes(value) else {
+            let Some(bytes) = crate::types::ascii_bytes(value) else {
                 return refuse("ASCII text");
             };
-            match crate::datatype::code_cell_text(target, bytes) {
+            match crate::types::code_cell_text(target, bytes) {
                 Ok(text) => Ok(Scalar::from(text)),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),
                 Err(error) => Err(error),
