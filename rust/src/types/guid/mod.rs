@@ -1,5 +1,8 @@
 //! Globally unique identifier datatypes.
 
+#[cfg(feature = "arrow")]
+pub(crate) mod casts;
+
 mod dtypes;
 mod fields;
 mod scalars;

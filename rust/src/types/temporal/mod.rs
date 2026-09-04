@@ -1,5 +1,8 @@
 //! Calendar, clock, duration, and interval datatypes.
 
+#[cfg(feature = "arrow")]
+pub(crate) mod casts;
+
 mod dtypes;
 mod fields;
 mod parser;

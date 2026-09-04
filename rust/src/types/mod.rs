@@ -4,6 +4,8 @@ mod arithmetic;
 mod arrow;
 pub mod ascii;
 pub mod boolean;
+#[cfg(feature = "arrow")]
+pub(crate) mod budget;
 pub mod bytes;
 mod compatibility;
 pub mod decimal;
@@ -30,7 +32,6 @@ mod value;
 mod vocabulary;
 
 #[cfg(feature = "arrow")]
-#[path = "../field/cast/mod.rs"]
 pub mod cast;
 
 pub use crate::{TimeUnit, UnionMode};

@@ -1,5 +1,8 @@
 //! ASCII widths, registered codes, and named value dictionaries.
 
+#[cfg(feature = "arrow")]
+pub(crate) mod casts;
+
 mod dictionary;
 mod dtypes;
 mod fields;
