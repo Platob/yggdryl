@@ -62,7 +62,7 @@ pub use expression::{
 pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
     JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry, fix_global_registry,
-    fix_install_global_registry,
+    fix_install_global_registry, fix_standard_branch_native, fix_standard_tag_limit_native,
 };
 pub use generic::JsRecordOptions;
 pub use iceberg::{

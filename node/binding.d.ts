@@ -401,7 +401,7 @@ declare module './index' {
   }
 
   interface FixRegistry {
-    /** Walk the fields in ascending canonical-tag order, lazily. */
+    /** Walk the fields in ascending canonical-identifier order, lazily. */
     [Symbol.iterator](): Generator<Field>
   }
 
@@ -1959,7 +1959,20 @@ export interface FixMsgConstructor {
 
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
 export interface Fix {
-  /** FIX field definitions resolved by tag, by name, or by dotted path. */
+  /**
+   * The FIX specification's own dictionary, and what an absent `fix:branch`
+   * means: the branch every bare tag and every bare name resolves in.
+   */
+  readonly STANDARD_BRANCH: string
+  /**
+   * The first tag the FIX specification does not assign itself. Below it a tag
+   * forces `STANDARD_BRANCH`, so no other dictionary may claim one.
+   */
+  readonly STANDARD_TAG_LIMIT: number
+  /**
+   * FIX field definitions resolved by identifier, by tag, by name, or by
+   * dotted path.
+   */
   readonly FixRegistry: typeof FixRegistry
   /** A FIX message: a value plus the registry that types it. */
   readonly FixMsg: FixMsgConstructor

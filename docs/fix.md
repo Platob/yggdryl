@@ -274,26 +274,48 @@ puts the prior branch entry back if the tag write fails.
 
     const trade = Field.from('TradeID: utf8')
     // Absent means standard, and there is no identity without a tag.
-    assert.equal(trade.fix.namespace, fix.STANDARD_NAMESPACE)
-    assert.equal(trade.fix.namespace, 'standard')
+    assert.equal(trade.fix.branch, fix.STANDARD_BRANCH)
+    assert.equal(fix.STANDARD_BRANCH, 'standard')
     assert.equal(trade.fix.id, null)
 
+    // A branch and an identifier cross as text, parsed once at the boundary,
+    // so there is no class for either in JavaScript.
     trade.fix.id = 'CME:5001'
     assert.equal(trade.fix.id, 'cme:5001', 'folded once, on the way in')
-    assert.equal(trade.fix.namespace, 'cme')
-    assert.equal(trade.get('fix:namespace'), 'cme')
+    assert.equal(trade.fix.branch, 'cme')
+    assert.equal(trade.get('fix:branch'), 'cme')
+    assert.throws(() => {
+      trade.fix.branch = '2cme'
+    }, /fix branch/)
+    assert.throws(() => {
+      trade.fix.id = '5001'
+    }, /fix identifier/)
 
-    // A tag the FIX specification assigns belongs to the standard namespace.
+    // A tag the FIX specification assigns belongs to the standard branch, at
+    // every door, and a refusal leaves the field unchanged.
     assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
     assert.throws(() => {
       trade.fix.tag = 35
-    }, /fix:namespace/)
+    }, /fix:branch/)
+    assert.throws(() => {
+      trade.fix.tags = [35]
+    }, /fix:branch/)
     assert.equal(trade.fix.id, 'cme:5001')
+    const msgType = Field.from('MsgType: utf8')
+    msgType.fix.tag = 35
+    assert.throws(() => {
+      msgType.fix.branch = 'cme'
+    }, /fix:branch/)
+    // The rule is one-way: the standard branch holds any tag.
+    const high = Field.from('Vendorish: utf8')
+    high.fix.tag = 10_000
+    assert.equal(high.fix.id, 'standard:10000')
 
-    // Setting the standard namespace removes the key rather than storing it.
+    // Setting the standard branch removes the key rather than storing it.
     trade.fix.id = 'standard:9001'
-    assert.equal(trade.has('fix:namespace'), false)
-    assert.equal(trade.fix.namespace, 'standard')
+    assert.equal(trade.has('fix:branch'), false)
+    assert.equal(trade.fix.branch, 'standard')
+    assert.equal(trade.fix.id, 'standard:9001')
     ```
 
 ## Nesting needs no second type
@@ -370,12 +392,13 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
     const group = fields.list('NoPartyIDs', item)
     group.fix.tag = 453
 
+    const standard = fix.STANDARD_BRANCH
     const registry = fix.FixRegistry.fromFields([group])
-    assert.equal(registry.fieldByPath('NoPartyIDs').fix.tag, 453)
-    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByPath('NoPartyIDs.item.PartyRole').name, 'PartyRole')
+    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs').fix.tag, 453)
+    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
+    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.item.PartyRole').name, 'PartyRole')
     // A member is reached through its group, not registered on its own.
-    assert.equal(registry.getFieldByName('PartyID'), null)
+    assert.equal(registry.getFieldByName(standard, 'PartyID'), null)
     ```
 
 ## The registry resolves in tiers
@@ -609,47 +632,66 @@ name and answers the field.
     const assert = require('node:assert/strict')
     const { DataType, Field, fix } = require('yggdryl')
 
-    function fixField(name, dtype, tag, ...aliases) {
+    function fixField(name, dtype, identifier, ...aliases) {
       const field = Field.from(`${name}: ${dtype}`)
-      field.fix.tag = tag
+      field.fix.id = identifier
       if (aliases.length !== 0) field.fix.aliases = aliases
       return field
     }
 
     const registry = fix.FixRegistry.fromFields([
-      fixField('Symbol', 'utf8', 55, 'Ticker'),
-      fixField('Price', 'decimal128(20, 8)', 44, 'Px'),
+      fixField('Symbol', 'utf8', 'standard:55', 'Ticker'),
+      fixField('Price', 'decimal128(20, 8)', 'standard:44', 'Px'),
+      // The venue dictionary reuses the name `Symbol`, the normal case.
+      fixField('Symbol', 'utf8', 'cme:5055'),
     ])
 
     // Any spelling of a name or alias answers the canonical field.
-    assert.equal(registry.fieldByName('TICKER').name, 'Symbol')
+    assert.equal(registry.fieldByName(fix.STANDARD_BRANCH, 'TICKER').name, 'Symbol')
     assert.equal(registry.field('px').name, 'Price')
     assert.ok(registry.getField(55).equals(registry.getField('symbol')))
     assert.equal(registry.has(44), true)
     assert.equal(registry.has('44'), false, 'a tag query never consults names')
     assert.throws(() => registry.fieldByTag(35), /tag 35/)
 
-    // A key another field holds is a conflict naming both; nothing changes.
+    // A bare tag and a bare name are the standard branch; the venue field is
+    // reached by its identifier or by name inside its own dictionary.
+    assert.equal(registry.fieldById('cme:5055').fix.branch, 'cme')
+    assert.equal(registry.fieldByName('cme', 'SYMBOL').fix.tag, 5055)
+    assert.equal(registry.fieldByName('standard', 'symbol').fix.tag, 55)
+    assert.equal(registry.getFieldByTag(5055), null, 'never crosses a branch')
+    assert.equal(registry.getField('cme:5055'), null, 'a string key is a name')
+
+    // A key another field holds *in the same branch* is a conflict naming
+    // both, and the branch; nothing changes.
     assert.throws(
-      () => registry.insert(fixField('SymbolSfx', 'utf8', 65, 'ticker')),
+      () => registry.insert(fixField('SymbolSfx', 'utf8', 'standard:65', 'ticker')),
       /held by Symbol/,
     )
-    assert.equal(registry.size, 2)
+    assert.equal(registry.size, 3)
 
     // A merge keeps what only the stored field declared and adds the rest.
-    const incoming = fixField('SYMBOL', 'utf8', 55, 'Sym')
+    const incoming = fixField('SYMBOL', 'utf8', 'standard:55', 'Sym')
     incoming.fix.tags = [65]
     registry.update(incoming)
     const merged = registry.fieldByTag(65)
     assert.equal(merged.name, 'SYMBOL')
     assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
     // A datatype disagreement is refused, never widened.
-    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 55)))
+    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 'standard:55')))
     assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
 
-    assert.deepEqual([...registry].map((field) => field.name), ['Price', 'SYMBOL'])
+    // Iteration is branch-major, then by tag.
+    assert.deepEqual(
+      [...registry].map((field) => field.fix.id),
+      ['cme:5055', 'standard:44', 'standard:55'],
+    )
     assert.equal(registry.remove('sym').name, 'SYMBOL')
     assert.equal(registry.getFieldByTag(65), null)
+    // `remove` reads a string as a standard name, so a vendor field leaves by
+    // its identifier.
+    assert.equal(registry.removeById('cme:5055').name, 'Symbol')
+    assert.equal(registry.size, 1)
     ```
 
 ## Storage is two trees of shards under one handle
@@ -891,7 +933,7 @@ folder, or point at a root written by this version.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { Field, fix } = require('yggdryl')
+    const { Field, fields, fix } = require('yggdryl')
 
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-fix-'))
     const root = path.join(workspace, 'dictionary')
@@ -903,23 +945,57 @@ folder, or point at a root written by this version.
       declared.push(field)
     }
     declared[3].fix.tags = [20]
+    // One venue field, which lands in its own branch folder.
+    const trade = Field.from('TradeID: utf8')
+    trade.fix.id = 'cme:5001'
+    declared.push(trade)
+    // One repeating group, which is the only field of the nested tree.
+    const item = fields.struct('item', [Field.from('PartyID: utf8')], { nullable: false })
+    const parties = fields.list('NoPartyIDs', item)
+    parties.fix.tag = 453
+    declared.push(parties)
     const registry = fix.FixRegistry.fromFields(declared)
     registry.writeInto(root)
 
+    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch)).sort()
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    const shards = fs.readdirSync(path.join(root, 'records', 'standard')).sort()
-    assert.deepEqual(shards, ['0.json', '1.json'])
+    assert.deepEqual(shards('primitive', 'standard'), ['0.json', '1.json'])
+    // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
+    assert.deepEqual(shards('primitive', 'cme'), ['50.json'])
+    // The group is nested, so it is the nested tree's only shard: 453 / 100.
+    assert.deepEqual(shards('nested', 'standard'), ['4.json'])
 
     const reloaded = fix.FixRegistry.fromHandle(root)
     assert.ok(reloaded.equals(registry))
     assert.equal(reloaded.fieldByTag(20).name, 'ExecType')
+    assert.equal(reloaded.fieldByTag(453).name, 'NoPartyIDs')
+    assert.equal(reloaded.fieldById('cme:5001').name, 'TradeID')
 
-    // Removing the only fields of a shard removes the shard on the next write.
+    // Removing the only field of a shard removes the shard on the next write,
+    // emptying a branch removes its folder whole, and emptying a tree removes
+    // the tree. A vendor field leaves by its identifier, because `remove`
+    // reads a string as a standard name.
     registry.remove(100)
     registry.remove(150)
+    registry.remove(453)
+    registry.removeById('cme:5001')
     registry.writeInto(root)
-    assert.equal(fs.existsSync(path.join(root, 'records', 'standard', '1.json')), false)
+    assert.equal(fs.existsSync(path.join(root, 'primitive', 'standard', '1.json')), false)
+    assert.equal(fs.existsSync(path.join(root, 'primitive', 'cme')), false)
+    assert.equal(fs.existsSync(path.join(root, 'nested')), false)
     assert.equal(fix.FixRegistry.fromHandle(root).size, 2)
+
+    // A leaf directly under a tree root is a typed error, never a silent
+    // empty load.
+    const stray = path.join(root, 'primitive', '0.json')
+    fs.writeFileSync(stray, '[]')
+    assert.throws(() => fix.FixRegistry.fromHandle(root), /only branch folders/)
+    fs.rmSync(stray)
+
+    // A root left in the retired `records/` layout is refused, not read empty.
+    const retired = path.join(workspace, 'retired')
+    fs.mkdirSync(path.join(retired, 'records', 'standard'), { recursive: true })
+    assert.throws(() => fix.FixRegistry.fromHandle(retired), /records/)
 
     // A folder that is not there loads as empty and is not created.
     const absent = path.join(root, 'absent')
@@ -988,13 +1064,17 @@ resolution order.
     const { fix } = require('yggdryl')
 
     // The seed this repository tracks, named from the repository root.
+    const standard = fix.STANDARD_BRANCH
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
 
     assert.equal(registry.fieldByTag(55).name, 'Symbol')
-    assert.equal(registry.fieldByName('ticker').name, 'Symbol')
+    assert.equal(registry.fieldById('standard:55').name, 'Symbol')
+    assert.equal(registry.fieldByName(standard, 'ticker').name, 'Symbol')
     assert.equal(registry.fieldByTag(20).name, 'ExecType')
-    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByName('ClOrdID').display, 'Client order ID')
+    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
+    assert.equal(registry.fieldByName(standard, 'ClOrdID').display, 'Client order ID')
+    // Every seed field is a specification field, so none states a branch.
+    assert.ok([...registry].every((field) => field.has('fix:branch') === false))
     assert.ok(registry.size < 40)
     ```
 
@@ -1294,6 +1374,11 @@ ordered and canonicalized against the same root.
       ['OrderQty', 'Symbol', 'NoPartyIDs', '9999'],
     )
 
+    // The message's branch is the root's own, and an identifier is exact.
+    assert.equal(message.branch, fix.STANDARD_BRANCH)
+    assert.equal(message.byId('standard:38').asJs(), 100)
+    assert.equal(message.getById('cme:5001'), null)
+
     // Schema and value serialize through the paths every field and value share.
     const document = message.toJSON()
     assert.equal(document.field.dtype.fields[1].metadata['fix:tag'], '55')
@@ -1523,34 +1608,65 @@ npm run --prefix node bench:fix
 
 One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon
 (`npm run --prefix node build`) under Node.js v24.18.0, whole-loop rate over the same tracked seed
-of 34 fields; the two loads run a thousandth of the hit count:
+of 34 fields, except the vendor rows, which run over the seed beside a generated `cme` dictionary
+of 1000 fields; the two loads run a thousandth of the hit count. The sub-microsecond rows move by a
+third between runs on this machine, so read them as one order of magnitude rather than as a ranking
+of one against another:
 
 | JavaScript operation | rate | per call |
 | --- | ---: | ---: |
-| `getFieldByTag(55)` hit | 295k/s | 3.39 us |
-| `getFieldByTag(20)` alternate-tag hit | 341k/s | 2.94 us |
-| `getFieldByName('Symbol')` hit | 273k/s | 3.66 us |
-| `getFieldByName('symbol')` hit, folded query | 311k/s | 3.22 us |
-| `getFieldByName('ticker')` alias hit | 265k/s | 3.77 us |
-| `getFieldByTag(9999)` miss | 1.54M/s | 649 ns |
-| `getFieldByName('Nope')` miss | 1.16M/s | 859 ns |
-| `getField(55)` generic tag hit | 279k/s | 3.59 us |
-| `getField('Symbol')` generic name hit | 280k/s | 3.57 us |
-| `fieldByPath`, one segment | 295k/s | 3.39 us |
-| `fieldByPath`, two segments (`NoPartyIDs.PartyID`) | 270k/s | 3.70 us |
-| `FixMsg.getByTag(55)` | 271k/s | 3.69 us |
-| `FixMsg.getByName('ticker')` | 233k/s | 4.30 us |
-| `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 276k/s | 3.62 us |
-| `fromHandle`, the seed (3 shards, 34 fields) | 534/s | 1.87 ms |
-| `fromHandle`, 1000 generated fields (11 shards) | 43/s | 23.3 ms |
+| `getFieldByTag(55)` hit | 320k/s | 3.12 us |
+| `getFieldByTag(20)` alternate-tag hit | 308k/s | 3.25 us |
+| `getFieldById('standard:55')` hit | 268k/s | 3.73 us |
+| `getFieldByName('standard', 'Symbol')` hit | 287k/s | 3.48 us |
+| `getFieldByName('standard', 'symbol')` hit, folded query | 265k/s | 3.78 us |
+| `getFieldByName('standard', 'ticker')` alias hit | 242k/s | 4.14 us |
+| `getFieldByTag(9999)` miss | 1.23M/s | 815 ns |
+| `getFieldByName('standard', 'Nope')` miss | 884k/s | 1.13 us |
+| `getFieldById('cme:5001')` miss | 929k/s | 1.08 us |
+| `getField(55)` generic tag hit | 319k/s | 3.14 us |
+| `getField('Symbol')` generic name hit | 283k/s | 3.53 us |
+| `fieldByPath`, one segment | 273k/s | 3.66 us |
+| `fieldByPath`, two segments (`NoPartyIDs.PartyID`) | 223k/s | 4.48 us |
+| `getFieldById('cme:5001')` vendor hit, two branches | 219k/s | 4.56 us |
+| `getFieldByName('cme', ...)` vendor hit, two branches | 269k/s | 3.72 us |
+| `getFieldByName('cme', ...)` vendor alias hit, two branches | 264k/s | 3.79 us |
+| `getFieldByTag(5001)` cross-branch miss, two branches | 1.13M/s | 886 ns |
+| `getFieldByTag(55)` standard hit, two branches | 302k/s | 3.31 us |
+| `removeById('cme:9999')` miss, two branches | 848k/s | 1.18 us |
+| `field.fix.branch` | 238k/s | 4.19 us |
+| `field.fix.id` | 223k/s | 4.48 us |
+| `FixMsg.getByTag(55)` | 311k/s | 3.21 us |
+| `FixMsg.getById('standard:55')` | 261k/s | 3.83 us |
+| `FixMsg.getByName('ticker')` | 211k/s | 4.73 us |
+| `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 249k/s | 4.01 us |
+| `FixMsg.branch` | 1.20M/s | 834 ns |
+| `fromHandle`, the seed (4 shards in two trees, 34 fields) | 281/s | 3.56 ms |
+| `fromHandle`, 1000 generated fields (11 shards) | 38/s | 26.3 ms |
 
-A miss is the honest price of the crossing itself: 649 ns for the key coercion, the native probe,
-and `null` back. Every hit adds the wrapper the answer is put in, and that wrapper is what the rest
-of the numbers are made of - `field.clone()` on an already-held native `Field` costs 3.0 us on this
-machine, so a hit at 3.4 us is a 649 ns lookup plus one `Field` materialization. The native tag hit
-is 32.3 ns, two orders of magnitude below the crossing, which is why the tiers the Rust table
-separates are indistinguishable here and why a caller resolving the same field repeatedly should
-hold the answer rather than ask again. `FixMsg`'s accessors wrap a `Scalar` instead and cost the
-same shape. `fromHandle` stays close to the native load - the shards are listed, read and parsed
-natively, and only the finished registry crosses - and scales with shard count, not with the fields
-in them.
+A miss is the honest price of the crossing itself: 815 ns for the key coercion, the native probe,
+and `null` back - the same order as the 641 ns a bare `registry.size` costs on this machine, which
+is the crossing with no lookup in it at all. Every hit adds the wrapper the answer is put in, and
+that wrapper is what the rest of the numbers are made of: `field.clone()` on an already-held native
+`Field` costs 2.99 us here, so a 3.12 us tag hit is very nearly one `Field` materialization and
+nothing else. The native tag hit is 32.3 ns, two orders of magnitude below the crossing, which is
+why the tiers the Rust table separates are indistinguishable here and why a caller resolving the
+same field repeatedly should hold the answer rather than ask again. `FixMsg`'s accessors wrap a
+`Scalar` instead and cost the same shape.
+
+**What a branch and an identifier cost at the boundary.** Both cross as text and are parsed on
+every call, which is the price of having no class for either. The misses isolate that price,
+because nothing is wrapped in them: `getFieldById('cme:5001')` is 1.08 us against 815 ns for a tag
+miss, so `FixId::from_str` - a branch validated and folded, then a decimal tag - is a few hundred
+nanoseconds, not a slower lookup, since the native identifier probe is what the tag probe redirects
+to anyway. `removeById`'s miss is 1.18 us, the same parse plus the mutation's uniqueness check.
+`field.fix.branch` and `field.fix.id` are the dearest rows on the table because `field.fix` builds
+a fresh protocol view per access before the property is even read, and `id` then renders a new
+JavaScript string; a caller in a loop should hold the view, exactly as it should hold a resolved
+`Field`. `FixMsg.branch` is 834 ns because the branch was resolved once at construction and only
+the string crosses.
+
+`fromHandle` stays close to the native load - the shards are listed, read and parsed natively, and
+only the finished registry crosses - and scales with shard count, not with the fields in them; it
+also moved with the core, which now lists two trees and reads four shards where it listed one and
+read three.

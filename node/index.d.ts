@@ -964,13 +964,14 @@ export declare class Field {
 export type JsField = Field
 
 /**
- * The fields of a registry, in ascending canonical-tag order.
+ * The fields of a registry, in ascending canonical-identifier order.
  *
  * Answered by `keys()`. It advances with the core's own cursor - the registry
- * plus the last tag it answered - so taking one field from a dictionary of
- * thousands costs one lookup. It lets the registry go the moment the walk
- * ends, because JavaScript collects at its own pace and a mutation must not
- * wait for a drained iterator to be swept.
+ * plus the last `FixId` it answered - so taking one field from a dictionary of
+ * thousands costs one lookup, and a walk crosses every branch in the one order
+ * the core iterates. It lets the registry go the moment the walk ends, because
+ * JavaScript collects at its own pace and a mutation must not wait for a
+ * drained iterator to be swept.
  *
  * This type implements JavaScript's iterable iterator protocol.
  * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
@@ -1014,11 +1015,38 @@ export declare class FixMsg {
    * this boundary; Python spells the same answer `len(message)`.
    */
   get size(): number
-  /** The value of the root child a tag names, or `null`. */
+  /**
+   * The dictionary this message is spelled in.
+   *
+   * Derived from the root field's own `fix:branch` at construction, never
+   * declared, so nothing can disagree with it; `'standard'` when the root
+   * states none.
+   */
+  get branch(): string
+  /**
+   * The value of the root child an identifier names, or `null`.
+   *
+   * An identifier is exact and does not tier: a dictionary this message does
+   * not speak simply misses.
+   */
+  getById(id: string): Scalar | null
+  /** The value of the root child an identifier names. */
+  byId(id: string): Scalar
+  /**
+   * The value of the root child a tag names, or `null`.
+   *
+   * The tag resolves in this message's own branch first, then in the
+   * standard one.
+   */
   getByTag(tag: number): Scalar | null
   /** The value of the root child a tag names. */
   byTag(tag: number): Scalar
-  /** The value of the root child a name reaches, or `null`. */
+  /**
+   * The value of the root child a name reaches, or `null`.
+   *
+   * The name folds through this message's own branch first, then the
+   * standard one.
+   */
   getByName(name: string): Scalar | null
   /** The value of the root child a name reaches. */
   byName(name: string): Scalar
@@ -1026,10 +1054,13 @@ export declare class FixMsg {
   getByPath(path: string): Scalar | null
   /** The value a dotted path reaches. */
   byPath(path: string): Scalar
-  /** The value a tag or a name reaches, or `null`. */
+  /**
+   * The value a tag or a name reaches in the standard branch tier, or
+   * `null`.
+   */
   get(key: number | string): Scalar | null
   /**
-   * The value a tag or a name reaches.
+   * The value a tag or a name reaches in the standard branch tier.
    *
    * The failing half of `get` is spelled `at` rather than the core's
    * `value`, because `value` is this class's property for the whole message
@@ -1070,7 +1101,8 @@ export declare class FixMsgEntries {
 export type JsFixMsgEntries = FixMsgEntries
 
 /**
- * FIX field definitions resolved by tag, by name, or by dotted path.
+ * FIX field definitions resolved by identifier, by tag, by name, or by dotted
+ * path.
  *
  * The dictionary is shared rather than copied, because a `FixMsg` links the
  * very registry it was resolved against and the process default is one too: a
@@ -1087,63 +1119,110 @@ export declare class FixRegistry {
    */
   static fromFields(fields: Array<Field>): FixRegistry
   /**
-   * Load every shard under `<location>/records`.
+   * Load every shard under `<location>/primitive` and `<location>/nested`.
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
-   * is not there loads as the empty registry and is not created.
+   * is not there loads as the empty registry and is not created; a shard
+   * that does not parse, and a root still holding the retired `records/`
+   * layout, throw with the URL named.
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
-   * Write every populated shard under `<location>/records`, removing the
-   * shards no field populates any more.
+   * Write every populated shard under `<location>/<tree>/<branch>`, removing
+   * the shards, branch folders and trees no field populates any more.
    */
   writeInto(location: LocationInput): void
   /** How many fields are registered. */
   get size(): number
-  /** The field a canonical or alternate tag names, or `null`. */
+  /**
+   * The field a canonical or alternate identifier names, or `null`.
+   *
+   * `id` is the `branch:tag` text; a malformed one throws the native parse
+   * failure, never a miss.
+   */
+  getFieldById(id: string): Field | null
+  /** The field a canonical or alternate identifier names. */
+  fieldById(id: string): Field
+  /**
+   * The field a canonical or alternate tag names, or `null`.
+   *
+   * A bare tag is the standard branch exactly, never whichever dictionary
+   * happens to be loaded.
+   */
   getFieldByTag(tag: number): Field | null
   /** The field a canonical or alternate tag names. */
   fieldByTag(tag: number): Field
-  /** The field a canonical name or alias names, ASCII case folded, or `null`. */
-  getFieldByName(name: string): Field | null
-  /** The field a canonical name or alias names, ASCII case folded. */
-  fieldByName(name: string): Field
   /**
-   * The field a dotted path reaches through a component or a group, or
-   * `null`.
+   * The field a canonical name or alias names inside one dictionary, ASCII
+   * case folded, or `null`.
+   *
+   * A name is unique per branch, not registry-wide, so the dictionary is
+   * named: `'standard'` is the specification's own.
    */
-  getFieldByPath(path: string): Field | null
-  /** The field a dotted path reaches through a component or a group. */
-  fieldByPath(path: string): Field
-  /** The field a tag or a name reaches, or `null`. */
+  getFieldByName(branch: string, name: string): Field | null
+  /**
+   * The field a canonical name or alias names inside one dictionary, ASCII
+   * case folded.
+   */
+  fieldByName(branch: string, name: string): Field
+  /**
+   * The field a dotted path reaches through a component or a group, in one
+   * dictionary, or `null`.
+   */
+  getFieldByPath(branch: string, path: string): Field | null
+  /**
+   * The field a dotted path reaches through a component or a group, in one
+   * dictionary.
+   */
+  fieldByPath(branch: string, path: string): Field
+  /** The field a tag or a name reaches in the standard branch, or `null`. */
   getField(key: number | string): Field | null
-  /** The field a tag or a name reaches. */
+  /** The field a tag or a name reaches in the standard branch. */
   field(key: number | string): Field
   /**
-   * The field a tag or a name reaches, or `null`: the Map-like spelling
-   * of `getField`.
+   * The field a tag or a name reaches in the standard branch, or `null`:
+   * the Map-like spelling of `getField`.
    */
   get(key: number | string): Field | null
-  /** Whether a tag or a name reaches a field. */
+  /** Whether a tag or a name reaches a field in the standard branch. */
   has(key: number | string): boolean
   /** Add a field, answering the one it replaced. */
   insert(field: Field): Field | null
-  /** Merge a definition into the stored field with the same canonical tag. */
+  /**
+   * Merge a definition into the stored field with the same canonical
+   * identifier.
+   */
   update(field: Field): void
-  /** Remove the field a tag or a name reaches, answering it. */
+  /**
+   * Remove the field a tag or a name reaches in the standard branch,
+   * answering it.
+   */
   remove(key: number | string): Field | null
   /**
-   * The fields in ascending canonical-tag order, lazily.
+   * Remove the field a canonical or alternate identifier names, answering
+   * it.
    *
-   * The iterator holds the registry and the tag it stopped at, so nothing
-   * is collected crossing the boundary and the dictionary is never cloned
-   * to walk it. Holding it is therefore sharing it: a mutation refuses
-   * until the walk ends, which is what stops the fields moving under a
-   * cursor into them. The loader wires `Symbol.iterator` over this.
+   * The generic `remove` reads a string as a standard-branch name, so this
+   * is the spelling that reaches a vendor dictionary at all; `id` is parsed
+   * exactly as every other identifier argument is.
+   */
+  removeById(id: string): Field | null
+  /**
+   * The fields in ascending canonical-identifier order, lazily.
+   *
+   * The order is the core's: branch-major, then by tag. The iterator holds
+   * the registry and the identifier it stopped at, so nothing is collected
+   * crossing the boundary and the dictionary is never cloned to walk it.
+   * Holding it is therefore sharing it: a mutation refuses until the walk
+   * ends, which is what stops the fields moving under a cursor into them.
+   * The loader wires `Symbol.iterator` over this.
    */
   keys(): Generator<Field>
-  /** Whether two registries hold the same fields, in canonical-tag order. */
+  /**
+   * Whether two registries hold the same fields, in canonical-identifier
+   * order.
+   */
   equals(other: FixRegistry): boolean
   /** Deterministic hash bits over the fields, shared with the core. */
   stableHash(): bigint
@@ -1151,7 +1230,7 @@ export declare class FixRegistry {
   clone(): FixRegistry
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
-  /** The fields as their own JSON documents, in canonical-tag order. */
+  /** The fields as their own JSON documents, in canonical-identifier order. */
   toJSON(): Array<any>
 }
 export type JsFixRegistry = FixRegistry
@@ -2128,11 +2207,36 @@ export declare class ProtocolField {
    */
   get display(): string | null
   /**
+   * The dictionary this field belongs to, on the `fix` view.
+   *
+   * A branch crosses as text: `'standard'` is the FIX specification's own
+   * dictionary and what an absent `fix:branch` means, and assigning it
+   * removes the key rather than storing it. A spelling that is not a branch
+   * throws the native parse failure, and a refusal - a tag the specification
+   * assigns cannot move to another dictionary - leaves the field unchanged.
+   */
+  get branch(): string
+  /** Record the dictionary this field belongs to. */
+  set branch(value: string)
+  /**
+   * This field's identity, `branch:tag`, on the `fix` view.
+   *
+   * Derived from the branch and the canonical tag on every read and never
+   * stored, so it is `null` exactly when `fix:tag` is absent. Assigning one
+   * moves both halves at once, which is the only ordering-safe way to move a
+   * field between dictionaries.
+   */
+  get id(): string | null
+  /** Record both halves of this field's identity at once. */
+  set id(value: string)
+  /**
    * The canonical FIX tag, on the `fix` view.
    *
    * Reads and writes `fix:tag` through the core's own typed accessors, so
    * the property name is never spelled at a call site. `view.delete('tag')`
-   * removes it, the way every other property is removed.
+   * removes it, the way every other property is removed. A tag below
+   * `fix.STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
+   * another branch cannot claim it.
    */
   get tag(): number | null
   /** Record the canonical FIX tag, rejecting anything but an exact `i32`. */

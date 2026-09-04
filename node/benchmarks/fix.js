@@ -3,10 +3,11 @@
 // Boundary cost of the FIX dictionary, against the native numbers.
 //
 // Every case here is one crossing over a registry the core resolves: what is
-// measured is the coercion of the key, the wrapper the answer is put in, and -
-// for the two loads - the shard read the boundary only names. The generated
-// registry is written to a temporary folder and removed on the way out, so the
-// only tracked input is the seed dictionary at `config/fix`.
+// measured is the coercion of the key - a tag, a branch, an identifier - the
+// wrapper the answer is put in, and - for the two loads - the shard read the
+// boundary only names. The generated registries are written to a temporary
+// folder and removed on the way out, so the only tracked input is the seed
+// dictionary at `config/fix`.
 
 const fs = require('node:fs')
 const os = require('node:os')
@@ -42,6 +43,8 @@ function benchmarkLoad(name, operation) {
 
 const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 const WIDE_FIELDS = 1_000
+const VENDOR_BRANCH = 'cme'
+const VENDOR_FIELDS = 1_000
 
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-bench-fix-'))
 const generated = path.join(workspace, 'generated')
@@ -57,9 +60,30 @@ const generated = path.join(workspace, 'generated')
 }
 
 const registry = fix.FixRegistry.fromHandle(SEED)
+
+// The seed beside a vendor dictionary, for the cross-branch rows.
+const twoBranches = (() => {
+  const all = [...fix.FixRegistry.fromHandle(SEED)]
+  for (let offset = 0; offset < VENDOR_FIELDS; offset += 1) {
+    const field = Field.from(`Venue${offset}: utf8`)
+    field.fix.id = `${VENDOR_BRANCH}:${5000 + offset}`
+    field.fix.aliases = [`VenueAlias${offset}`]
+    all.push(field)
+  }
+  return fix.FixRegistry.fromFields(all)
+})()
+
+// A field carrying a vendor identity, for the two identity-property rows.
+const tagged = Field.from('TradeID: utf8')
+tagged.fix.id = `${VENDOR_BRANCH}:5001`
+
 const order = fields.struct(
   'NewOrderSingle',
-  [registry.fieldByTag(55), registry.fieldByTag(38), registry.fieldByName('NoPartyIDs')],
+  [
+    registry.fieldByTag(55),
+    registry.fieldByTag(38),
+    registry.fieldByName(fix.STANDARD_BRANCH, 'NoPartyIDs'),
+  ],
   { nullable: false },
 )
 const message = new fix.FixMsg(
@@ -75,20 +99,40 @@ const message = new fix.FixMsg(
 try {
   benchmark('fix/tag_hit', () => registry.getFieldByTag(55))
   benchmark('fix/alternate_tag_hit', () => registry.getFieldByTag(20))
-  benchmark('fix/name_hit', () => registry.getFieldByName('Symbol'))
-  benchmark('fix/folded_name_hit', () => registry.getFieldByName('symbol'))
-  benchmark('fix/alias_hit', () => registry.getFieldByName('ticker'))
+  benchmark('fix/id_hit', () => registry.getFieldById('standard:55'))
+  benchmark('fix/name_hit', () => registry.getFieldByName(fix.STANDARD_BRANCH, 'Symbol'))
+  benchmark('fix/folded_name_hit', () => registry.getFieldByName(fix.STANDARD_BRANCH, 'symbol'))
+  benchmark('fix/alias_hit', () => registry.getFieldByName(fix.STANDARD_BRANCH, 'ticker'))
   benchmark('fix/tag_miss', () => registry.getFieldByTag(9999))
-  benchmark('fix/name_miss', () => registry.getFieldByName('Nope'))
+  benchmark('fix/name_miss', () => registry.getFieldByName(fix.STANDARD_BRANCH, 'Nope'))
+  benchmark('fix/id_miss', () => registry.getFieldById('cme:5001'))
   benchmark('fix/generic_tag_hit', () => registry.getField(55))
   benchmark('fix/generic_name_hit', () => registry.getField('Symbol'))
-  benchmark('fix/field_by_path_one_segment', () => registry.fieldByPath('NoPartyIDs'))
-  benchmark('fix/field_by_path_two_segments', () =>
-    registry.fieldByPath('NoPartyIDs.PartyID'),
+  benchmark('fix/field_by_path_one_segment', () =>
+    registry.fieldByPath(fix.STANDARD_BRANCH, 'NoPartyIDs'),
   )
+  benchmark('fix/field_by_path_two_segments', () =>
+    registry.fieldByPath(fix.STANDARD_BRANCH, 'NoPartyIDs.PartyID'),
+  )
+  benchmark('fix/vendor_id_hit_two_branches', () => twoBranches.getFieldById('cme:5001'))
+  benchmark('fix/vendor_name_hit_two_branches', () =>
+    twoBranches.getFieldByName(VENDOR_BRANCH, 'Venue1'),
+  )
+  benchmark('fix/vendor_alias_hit_two_branches', () =>
+    twoBranches.getFieldByName(VENDOR_BRANCH, 'venuealias1'),
+  )
+  benchmark('fix/cross_branch_tag_miss', () => twoBranches.getFieldByTag(5001))
+  benchmark('fix/standard_tag_hit_two_branches', () => twoBranches.getFieldByTag(55))
+  // A removal that finds nothing: the coercion and the probe, with no field
+  // wrapped and no dictionary changed, so the loop stays repeatable.
+  benchmark('fix/remove_by_id_miss', () => twoBranches.removeById('cme:9999'))
+  benchmark('fix/field_branch', () => tagged.fix.branch)
+  benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/message_get_by_tag', () => message.getByTag(55))
+  benchmark('fix/message_get_by_id', () => message.getById('standard:55'))
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('NoPartyIDs.0.PartyID'))
+  benchmark('fix/message_branch', () => message.branch)
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>
     fix.FixRegistry.fromHandle(generated),

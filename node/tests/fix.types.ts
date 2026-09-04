@@ -15,7 +15,9 @@ declare const handle: IOBase
 declare const url: Url
 declare const value: Scalar
 
-// The namespace holds two classes and two functions, and nothing else.
+// The namespace holds two classes, two functions and the two constants.
+const standardBranch: string = fix.STANDARD_BRANCH
+const standardTagLimit: number = fix.STANDARD_TAG_LIMIT
 const registryClass: typeof FixRegistry = fix.FixRegistry
 const empty: FixRegistry = new fix.FixRegistry()
 const built: FixRegistry = fix.FixRegistry.fromFields([field, field])
@@ -32,12 +34,14 @@ void fromString
 void fromHandle
 
 const size: number = loaded.size
+const byId: Field | null = loaded.getFieldById('cme:5001')
+const requiredById: Field = loaded.fieldById('cme:5001')
 const byTag: Field | null = loaded.getFieldByTag(55)
 const requiredByTag: Field = loaded.fieldByTag(55)
-const byName: Field | null = loaded.getFieldByName('Symbol')
-const requiredByName: Field = loaded.fieldByName('Symbol')
-const byPath: Field | null = loaded.getFieldByPath('NoPartyIDs.PartyID')
-const requiredByPath: Field = loaded.fieldByPath('NoPartyIDs.PartyID')
+const byName: Field | null = loaded.getFieldByName(standardBranch, 'Symbol')
+const requiredByName: Field = loaded.fieldByName('standard', 'Symbol')
+const byPath: Field | null = loaded.getFieldByPath('standard', 'NoPartyIDs.PartyID')
+const requiredByPath: Field = loaded.fieldByPath('standard', 'NoPartyIDs.PartyID')
 const byKey: Field | null = loaded.getField(55)
 const byNameKey: Field | null = loaded.getField('Symbol')
 const requiredByKey: Field = loaded.field('Symbol')
@@ -46,6 +50,7 @@ const present: boolean = loaded.has('Symbol')
 const inserted: Field | null = loaded.insert(field)
 loaded.update(field)
 const removed: Field | null = loaded.remove(55)
+const removedById: Field | null = loaded.removeById('cme:5001')
 const walk: Generator<Field> = loaded.keys()
 const drained: Field[] = [...loaded]
 const forOf: Field[] = [...loaded.keys()]
@@ -56,6 +61,9 @@ const rendered: string = loaded.toString()
 const document: unknown[] = loaded.toJSON()
 
 void size
+void standardTagLimit
+void byId
+void requiredById
 void byTag
 void requiredByTag
 void byName
@@ -69,6 +77,7 @@ void mapLike
 void present
 void inserted
 void removed
+void removedById
 void walk
 void drained
 void forOf
@@ -86,7 +95,13 @@ loaded.get({ tag: 55 })
 // @ts-expect-error a tag is a number, never a string
 loaded.getFieldByTag('55')
 // @ts-expect-error a name is a string, never a number
-loaded.fieldByName(55)
+loaded.fieldByName('standard', 55)
+// @ts-expect-error a branch-qualified name takes both halves
+loaded.fieldByName('Symbol')
+// @ts-expect-error an identifier is a string, never a number
+loaded.fieldById(5001)
+// @ts-expect-error an identifier is a string, never a number
+loaded.removeById(5001)
 
 const input: FixValueInput = { Symbol: 'AAPL' }
 const message: FixMsg = new fix.FixMsg(field, input)
@@ -96,6 +111,9 @@ const linked: FixRegistry = message.registry
 const schema: Field = message.field
 const row: Scalar = message.value
 const valueCount: number = message.size
+const messageBranch: string = message.branch
+const valueById: Scalar | null = message.getById('standard:55')
+const requiredValueById: Scalar = message.byId('standard:55')
 const valueByTag: Scalar | null = message.getByTag(55)
 const requiredValueByTag: Scalar = message.byTag(55)
 const valueByName: Scalar | null = message.getByName('Symbol')
@@ -118,6 +136,10 @@ void nullRegistry
 void linked
 void schema
 void row
+void valueCount
+void messageBranch
+void valueById
+void requiredValueById
 void valueByTag
 void requiredValueByTag
 void valueByName
@@ -144,6 +166,10 @@ const global: FixRegistry = fix.globalRegistry()
 fix.installGlobalRegistry(global)
 
 // The typed FIX vocabulary lives on the protocol view a field already answers.
+const branch: string = field.fix.branch
+field.fix.branch = 'cme'
+const identity: string | null = field.fix.id
+field.fix.id = 'cme:5001'
 const tag: number | null = field.fix.tag
 field.fix.tag = 55
 const tags: number[] = field.fix.tags
@@ -153,6 +179,8 @@ field.fix.aliases = ['Ticker']
 const description: string | null = field.fix.description
 field.fix.description = 'Ticker symbol.'
 
+void branch
+void identity
 void tag
 void tags
 void aliases
@@ -160,5 +188,9 @@ void description
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
+// @ts-expect-error a branch crosses as text, never a number
+field.fix.branch = 55
+// @ts-expect-error an identifier crosses as text, never a number
+field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]

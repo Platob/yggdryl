@@ -3104,7 +3104,8 @@ Object.defineProperty(FixMsg.prototype, 'constructor', {
 
 // Both FIX collections are lazy native iterators, so the loader supplies only
 // the protocol Node-API cannot spell: iterating a registry walks its fields in
-// canonical-tag order and iterating a message walks its `[name, value]` pairs.
+// canonical-identifier order and iterating a message walks its `[name, value]`
+// pairs.
 Object.defineProperty(binding.FixRegistry.prototype, Symbol.iterator, {
   configurable: true,
   value: function fields() {
@@ -3118,7 +3119,12 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
   },
 })
 
+// The two FIX facts a caller spells rather than derives - what an absent
+// `fix:branch` means, and where the FIX specification's own tag range ends -
+// come from the core's own constants, so neither can drift from it.
 const fix = Object.freeze({
+  STANDARD_BRANCH: binding._fixStandardBranchNative(),
+  STANDARD_TAG_LIMIT: binding._fixStandardTagLimitNative(),
   FixRegistry: binding.FixRegistry,
   FixMsg,
   globalRegistry: binding.fixGlobalRegistryNative,
@@ -3136,6 +3142,8 @@ for (const name of [
   'JsFixMsg',
   'JsFixMsgEntries',
   'JsFixRegistry',
+  '_fixStandardBranchNative',
+  '_fixStandardTagLimitNative',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
 ]) {
