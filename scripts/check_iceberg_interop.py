@@ -3,7 +3,7 @@
 Self-consistency proves nothing about a table format, so this driver runs the
 two halves of a real exchange:
 
-1. ``cargo test --features "parquet iceberg" --test iceberg_interop`` writes a
+1. ``cargo test --features "parquet iceberg" --test interop iceberg::`` writes a
    partitioned v2 table into ``target/iceberg-interop/from-rust``, appending
    once and then upserting through the plain record surface. PyIceberg then
    opens it as a ``StaticTable``, and this script compares its schema,
@@ -142,7 +142,8 @@ def run_cargo() -> str:
         "--features",
         "parquet iceberg",
         "--test",
-        "iceberg_interop",
+        "interop",
+        "iceberg::",
         "--",
         "--nocapture",
     ]

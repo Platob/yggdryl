@@ -2,7 +2,7 @@
 """Time outside implementations over a manifest this crate wrote.
 
 A performance claim needs a baseline the reader trusts, on the same payload
-and wire. `cargo test --test iceberg_interop a_large_manifest` leaves a
+and wire. `cargo test --test interop iceberg::a_large_manifest` leaves a
 deterministic ten-thousand-entry Iceberg manifest under
 ``target/iceberg-interop/manifest-10k.avro``; this script times fastavro and
 PyIceberg's own manifest reader over that exact file and prints entries per
@@ -35,8 +35,8 @@ def ensure_fixture() -> None:
             "--features",
             "parquet iceberg",
             "--test",
-            "iceberg_interop",
-            "a_large_manifest",
+            "interop",
+            "iceberg::a_large_manifest",
             "--",
             "--nocapture",
         ],
@@ -107,8 +107,8 @@ def with_yggdryl() -> None:
             "--features",
             "parquet iceberg",
             "--test",
-            "iceberg_interop",
-            "times_the_baseline_manifest",
+            "interop",
+            "iceberg::times_the_baseline_manifest",
             "--",
             "--nocapture",
         ],

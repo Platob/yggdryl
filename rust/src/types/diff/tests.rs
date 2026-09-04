@@ -1,4 +1,3 @@
-
 use super::{Differences, OwnedDifferences};
 use crate::{DataType, Field};
 

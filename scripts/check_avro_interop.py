@@ -4,7 +4,7 @@
 Self-consistency proves nothing about an exchange format, so this driver runs
 the same data through the reference-quality Python implementation:
 
-1. ``cargo test --test avro_interop`` writes ``target/avro-interop/from-rust.avro``.
+1. ``cargo test --test interop avro::`` writes ``target/avro-interop/from-rust.avro``.
 2. fastavro reads it and asserts every row, logical types included.
 3. fastavro writes ``target/avro-interop/from-fastavro.avro`` with the same
    rows, once per codec it shares with the Rust reader.
@@ -96,7 +96,8 @@ def run_cargo(allow_skip: bool) -> str:
             "cargo",
             "test",
             "--test",
-            "avro_interop",
+            "interop",
+            "avro::",
             "--",
             "--nocapture",
         ],

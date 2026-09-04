@@ -1,0 +1,10 @@
+#[path = "avro/codecs.rs"]
+pub(crate) mod codecs;
+#[path = "avro/container.rs"]
+pub(crate) mod container;
+#[path = "avro/format.rs"]
+pub(crate) mod format;
+#[path = "avro/projection.rs"]
+pub(crate) mod projection;
+#[path = "avro/resolution.rs"]
+pub(crate) mod resolution;
