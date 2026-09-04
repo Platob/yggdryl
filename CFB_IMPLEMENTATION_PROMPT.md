@@ -12,16 +12,16 @@ code instead, and reuse it unchanged:
 
 | what | where |
 | --- | --- |
-| `FixBranch`, `FixId`, `FixKey`, module docs | `rust/src/fix/mod.rs` |
-| `FixField` / `FixFieldMut` accessors over `fix:` | `rust/src/fix/field.rs` |
-| `FixRegistry`, `insert`, `update`, tiered resolution | `rust/src/fix/registry.rs` |
-| `FixRegistry::from_handle` / `write_into` over `IOBase` | `rust/src/fix/store.rs` |
-| the process default | `rust/src/fix/global.rs` |
-| `FixMsg` | `rust/src/fix/msg.rs` |
-| module tests (one file, inline fixtures) | `rust/src/fix/tests.rs` |
-| the seed dictionary | `config/fix/{primitive,nested}/standard/*.json` |
-| the page to extend | `docs/fix.md` |
-| the bench target | `rust/benchmarks/fix.rs` + `rust/benchmarks/fix/` |
+| `FixBranch`, `FixId`, `FixKey`, module docs | the FIX module |
+| `FixField` / `FixFieldMut` accessors over `fix:` | the FIX field views |
+| `FixRegistry`, `insert`, `update`, tiered resolution | the FIX registry |
+| `from_handle` / `write_into` over one folder handle | the registry's store |
+| the process default | the FIX module |
+| `FixMsg` | the FIX module |
+| module tests (one file, inline fixtures) | the FIX module's tests |
+| the seed dictionary | the committed dictionary |
+| the page to extend | the FIX documentation page |
+| the bench target | the FIX benchmark target |
 
 `FixField` carries `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`,
 `fix:description`; nesting needs no second type (a component is a Struct, a
@@ -48,11 +48,11 @@ Two facts of the current code decide the signature, and both differ from the
 first draft of this brief:
 
 1. `FixField<'field>` is a macro-generated newtype over `ProtocolField<'field>`
-   (`rust/src/field/protocol/mod.rs:540`) that wraps a `&'field Field`. It
+   that wraps a `&'field Field`. It
    cannot own a parse result, and an associated constructor that ignores its
    own lifetime does not belong on it.
-2. `FixRegistry::insert` refuses a field carrying no `fix:tag`
-   (`rust/src/fix/registry.rs:494`, "A field enters only with a `fix:tag`").
+2. `FixRegistry::insert` refuses a field carrying no `fix:tag` - "a field
+   enters only with a `fix:tag`".
    A message root is a Struct named by a MsgType and has no tag, so **message
    roots cannot enter a `FixRegistry`**. There is no existing "key for message
    roots" to reuse; do not invent a synthetic tag, a `FixBranch` cut from
@@ -65,22 +65,30 @@ handle constructor and owns fields:
 impl FixRegistry {
     /// Parses an Ullink CBlock configuration into the vocabulary it declares
     /// and the message roots its grammar bindings describe.
-    pub fn from_cfb(handle: &dyn IOBase) -> Result<(Self, Vec<Field>)>;
+    ///
+    /// `branch` names the dialect the file describes, because a `.cfb` never
+    /// names itself; `None` reads it into the standard branch. The root
+    /// element's `fix-version`, `sendercompid` and `targetcompid` become
+    /// that branch's `FixBranchInfo`.
+    pub fn from_cfb(
+        handle: &dyn IOBase,
+        branch: Option<&FixBranch>,
+    ) -> Result<(Self, Vec<Field>)>;
 }
 ```
 
-New module `rust/src/fix/cfb.rs`, declared `mod cfb;` in
-`rust/src/fix/mod.rs` beside `store`; nothing new is re-exported from
-`lib.rs` because nothing new is public but the method.
+New module a new CBlock module inside the FIX module, declared `mod cfb;` in
+the FIX module beside `store`; nothing new is re-exported from
+the crate root because nothing new is public but the method.
 
 The registry half holds the `vocabulary` fields, each with its `fix:tag`, and
 is directly insertable, writable through `write_into`, and mergeable into a
-registry seeded from `config/fix`. The `Vec<Field>` half holds the message
+registry seeded from the committed dictionary. The `Vec<Field>` half holds the message
 roots in binding document order. Merging the two halves is the caller's
 business, and the constructor takes no seed registry: `from_cfb` answers what
 one file says.
 
-Read the file with `read_all_bytes()`, the way `rust/src/fix/store.rs:234`
+Read the file with `read_all_bytes()`, the way the store
 reads a shard.
 
 ## The format
@@ -92,12 +100,34 @@ tab-indented, Unix LF. You will not have those files: build fixtures by hand
 from this description and the verbatim extract below.
 
 Root: `cplugin-configuration[type version fix-version date? logs?
-targetcompid? sendercompid?]`. `type` is a Java class name whose
-`BuySide`/`SellSide` portion gives the plugin role; `fix-version` is e.g.
-`4.4`. Both are read and dropped in this phase - `fix-version` in particular
-buys nothing, because it cannot become a `FixBranch` (`FixBranch::from_str`
-requires a leading ASCII letter, so `4.4` is not a branch) and message roots
-are not registry entries anyway.
+targetcompid? sendercompid?]`.
+
+**Three of those attributes are the branch record, and reading them is the
+first thing this parser does.** A `.cfb` is one counterparty's dictionary,
+and it states at the top exactly what a dialect declares about itself:
+`fix-version` (e.g. `4.4`) is the FIX version it speaks, and `sendercompid`
+/ `targetcompid` name its session. That is the `FixBranchInfo` the FIX
+versioning brief defines - `prompts/fix-versioning/`, rule `P2-R9b` - so read them into one and stop
+dropping them:
+
+- `fix-version` parses through the FIX layer's version mapping into a
+  `Version`. It never becomes a *branch*: a branch must start with an ASCII
+  letter, so `4.4` is not one, and the confusion between "which dialect" and
+  "which version of the protocol" is exactly what bundling them on the
+  branch record ends.
+- `sendercompid` / `targetcompid` are stored as they arrive and compared
+  folded. **The `type` attribute is what says which way the pair points:**
+  its `BuySide`/`SellSide` portion gives the plugin's role, so the declared
+  pair is the session seen from *this* side, and the other side sees it
+  reversed. That is why a reader matching a session tries both orders.
+- `version` (the CBlock format's own, e.g. `1.2`), `date` and `logs` stay
+  dropped. They describe the file, not the dialect.
+
+**The branch name does not come from the file**, because a `.cfb` never
+names itself. The caller supplies it, and that is a parameter of the
+constructor below; absent, the parse lands in the standard branch and
+declares no session, which is the right answer for a file that is only
+being read for its vocabulary.
 
 Children, in document order: `history`, `cvs-revision`, `description`,
 `message-types`, `inbound-message-type-mappings`,
@@ -229,15 +259,15 @@ carrying it is read standalone.
 
 Resolve `vocabulary-tag/@type` through `DataType::from_str`. Logical names
 fold to lowercase with `_`, `-` and space removed
-(`rust/src/datatype/parser.rs:1656`), so seven of the eight already resolve:
+(the datatype grammar's own name fold), so seven of the eight already resolve:
 
 | `.cfb` type | resolves through | to |
 | --- | --- | --- |
-| `string` | grammar (`parser.rs:344`) | `utf8` |
-| `char` | grammar (`parser.rs:344`) | `utf8` |
-| `integer` | grammar (`parser.rs:297`) | `int32` |
-| `float` | grammar (`parser.rs:304`) | `float32` |
-| `boolean` | grammar (`parser.rs:294`) | `bool` |
+| `string` | grammar (the grammar's text spellings) | `utf8` |
+| `char` | grammar (the grammar's text spellings) | `utf8` |
+| `integer` | grammar (the grammar's integer spellings) | `int32` |
+| `float` | grammar (the grammar's float spellings) | `float32` |
+| `boolean` | grammar (the grammar's boolean spellings) | `bool` |
 | `utc-timestamp` | `LOGICAL_NAMES["utctimestamp"]` | `timestamp(ns,"UTC")` |
 | `utc-time-only` | `LOGICAL_NAMES["utctimeonly"]` | `time64(ns)` |
 | `utc-date` | **nothing** | - |
@@ -246,15 +276,15 @@ Three decisions, each explicit:
 
 1. **`utc-date` does not resolve**, because it folds to `utcdate` and the
    registry spells that name `utcdateonly`
-   (`rust/src/datatype/logical.rs:159`). Add the alias generically rather
+   (the logical-name table spells it `utcdateonly`). Add the alias generically rather
    than mapping it privately in the parser. That is three edits pinned by one
    verbatim-comparison test:
-   - `rust/src/datatype/logical.rs` - `("utcdate", DataType::Date32)` beside
+   - the logical-name table - `("utcdate", DataType::Date32)` beside
      `utcdateonly`;
-   - `rust/src/datatype/tests.rs:1470` - the same entry in `registered()`,
+   - its mirror in the datatype tests - the same entry in `registered()`,
      which `the_registry_is_the_documented_mapping_and_holds_no_repeat`
      compares against `LOGICAL_NAMES` element for element;
-   - `docs/datatype.md` - the `UTCDateOnly` row gains the second spelling,
+   - the datatype page - the `UTCDateOnly` row gains the second spelling,
      the way `Exchange`, `mic` already share one row.
 
    The name is not one the Arrow/SQL grammar owns, so this respects the
@@ -267,7 +297,7 @@ Three decisions, each explicit:
    about which tag is money, and the second pass never invents a type. Do not
    promote by tag, do not consult the seeded registry mid-parse. Document
    this as the phase's principal known loss, and document the consequence:
-   merging a `.cfb` vocabulary into a registry seeded from `config/fix`
+   merging a `.cfb` vocabulary into a registry seeded from the committed dictionary
    *replaces* tag 6 `AvgPx` `decimal64(18,8)` with `float32`, because
    `insert` replaces wholesale on an identity match.
 
@@ -354,9 +384,13 @@ The module docs list these as the phase's known losses: `part`, `activated`,
 sentinel, every validity element, `merge-mode`, `message-types` and both
 mapping tables, `history`, `cvs-revision`, `description` on the root,
 `normalization-binding`, `reject-binding`, `flow-filter-binding`, `maps`,
-`options`, `noe-normalization-binding`, and the root's own `type`,
-`version`, `fix-version`, `date`, `logs`, `targetcompid`, `sendercompid`.
-Plus the `float`/`integer` width loss above.
+`options`, `noe-normalization-binding`, and the root's own `version`, `date`
+and `logs`. Plus the `float`/`integer` width loss above.
+
+**Not dropped any more:** the root's `fix-version`, `sendercompid` and
+`targetcompid` become the branch's `FixBranchInfo`, and `type` is read for
+the `BuySide`/`SellSide` role that says which way the session pair points.
+Only the role is kept from it - the Java class name itself is not stored.
 
 ## Errors
 
@@ -376,16 +410,16 @@ file is 6.3 MB and 300k elements, and only two of fourteen top-level children
 are read, so the parser must skip by depth without materializing a tree.
 `quick-xml` with `default-features = false` is the fit; pin the exact current
 release the way `smol_str`, `saphyr-parser`, `toml` and `twox-hash` are
-pinned, and justify it in a `rust/Cargo.toml` comment the way `flate2`,
+pinned, and justify it in a the crate manifest comment the way `flate2`,
 `memchr` and `snap` are. No `encoding` feature: the corpus is ASCII and
 quick-xml reads UTF-8. Unescaping goes through the crate's own `unescape`,
 never a hand-rolled entity table.
 
-**Tests** go in `rust/src/fix/tests.rs`, fixtures as inline `&str` in the
+**Tests** go in the FIX module's tests, fixtures as inline `&str` in the
 exact shape of the extract below, handles via `Folder::temporary()` the way
 the store cases already do. Cover: a small vocabulary; a flat binding; a
 two-level nested group; the worked tree below asserted node for node; the
-vocabulary half inserting into a registry read from `config/fix`, both
+vocabulary half inserting into a registry read from the committed dictionary, both
 outcomes pinned - same tag and same name replaces, same tag and a different
 name is a typed conflict; a group's counter consumed rather than emitted; a
 missing `alt`; an expression-valued `required`; a constraint with no
@@ -394,21 +428,26 @@ nested `grammar` with no counter; a duplicate tag at one level; depth 5; the
 `utc-date` alias; and a malformed file whose error names the tag and the byte
 position.
 
-**Benchmark** a full parse: new `rust/benchmarks/fix/cfb.rs`, added to the
-`criterion_group!` in `rust/benchmarks/fix.rs` beside `resolve`, `mutate` and
-`store`. Add an allocation case to `rust/tests/allocations.rs` for the parse's
+Then the branch record, which is what the root element is for: the root's
+`fix-version`, `sendercompid` and `targetcompid` landing on the named
+branch's `FixBranchInfo`; a file parsed with no branch landing in the
+standard branch and declaring no session; and a `BuySide` file and a
+`SellSide` file declaring one session in opposite orders, both matched.
+
+**Benchmark** a full parse: a new CBlock group in the FIX benchmark target beside `resolve`, `mutate` and
+`store`. Add an allocation case to the counting-allocator test target for the parse's
 steady-state cost - that file owns the process's one counting allocator.
 
-**Docs** extend `docs/fix.md`; no new page, no nav change. Put the contract
+**Docs** extend the FIX documentation page; no new page, no nav change. Put the contract
 first, then one runnable asserted example, then the losses table, then the
-measured numbers. The `datatype` alias also touches `docs/datatype.md`'s
+measured numbers. The `datatype` alias also touches the datatype page's
 logical-name table.
 
 **Verify** what `AGENTS.md` requires for this surface: `cargo fmt`,
 warning-free Clippy, workspace tests with default features and
 `parquet iceberg`, Rust 1.85 default and `--no-default-features --lib`,
 rustdoc with warnings denied, the fix and datatype benches,
-`scripts/check_docs_examples.py`, and `python -m mkdocs build --strict`.
+the repository's docs-example checker, and `python -m mkdocs build --strict`.
 Rust-only phase: no Python or Node work.
 
 ## The shape, verbatim
