@@ -18,7 +18,7 @@ use crate::datatype::{
     arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
-use crate::fix::FixTag;
+use crate::fix::{FixTag, branch_from_py, id_from_py};
 use crate::media::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
@@ -2071,11 +2071,71 @@ impl PyProtocolField {
             .map(str::to_owned))
     }
 
+    /// The dictionary this field belongs to, on the `fix` view.
+    ///
+    /// A branch crosses as text: `"standard"` is the FIX specification's own
+    /// dictionary and what an absent `fix:branch` means, and assigning it
+    /// removes the key rather than storing it. A spelling that is not a branch
+    /// is a `ValueError` carrying the native parse failure, and a refusal -
+    /// a tag the specification assigns cannot move to another dictionary -
+    /// leaves the field unchanged.
+    #[getter]
+    fn branch(&self, py: Python<'_>) -> PyResult<String> {
+        self.require_fix("branch")?;
+        let field = self.borrow_field(py)?;
+        field
+            .inner
+            .as_fix()
+            .branch()
+            .map(|branch| branch.as_str().to_owned())
+            .map_err(value_error)
+    }
+
+    #[setter]
+    fn set_branch(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("branch")?;
+        let branch = branch_from_py(&value.extract::<String>()?)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_branch(&branch)
+            .map_err(value_error)
+    }
+
+    /// This field's identity, `branch:tag`, on the `fix` view.
+    ///
+    /// Derived from the branch and the canonical tag on every read and never
+    /// stored, so it is `None` exactly when `fix:tag` is absent. Assigning one
+    /// moves both halves at once, which is the only ordering-safe way to move
+    /// a field between dictionaries.
+    #[getter]
+    fn id(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("id")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .id()
+            .map_err(value_error)?
+            .map(|id| id.to_string()))
+    }
+
+    #[setter]
+    fn set_id(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("id")?;
+        let id = id_from_py(&value.extract::<String>()?)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field.inner.as_fix_mut().set_id(&id).map_err(value_error)
+    }
+
     /// The canonical FIX tag, on the `fix` view.
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
-    /// removes it, the way every other property is removed.
+    /// removes it, the way every other property is removed. A tag below
+    /// `STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
+    /// another branch cannot claim it.
     #[getter]
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;

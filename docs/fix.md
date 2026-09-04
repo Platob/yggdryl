@@ -224,30 +224,46 @@ puts the prior branch entry back if the tag write fails.
     import pytest
 
     from yggdryl import Field
-    from yggdryl.fix import STANDARD_NAMESPACE, STANDARD_TAG_LIMIT
+    from yggdryl.fix import STANDARD_BRANCH, STANDARD_TAG_LIMIT
 
     trade = Field("TradeID", "utf8")
     # Absent means standard, and there is no identity without a tag.
-    assert trade.fix.namespace == STANDARD_NAMESPACE == "standard"
+    assert trade.fix.branch == STANDARD_BRANCH == "standard"
     assert trade.fix.id is None
 
+    # A branch and an identifier cross as text, parsed once at the boundary,
+    # so there is no class for either in Python.
     trade.fix.id = "CME:5001"
     assert trade.fix.id == "cme:5001", "folded once, on the way in"
-    assert trade.fix.namespace == "cme"
-    assert trade.metadata["fix:namespace"] == "cme"
+    assert trade.fix.branch == "cme"
+    assert trade.metadata["fix:branch"] == "cme"
+    with pytest.raises(ValueError, match="fix branch"):
+        trade.fix.branch = "2cme"
+    with pytest.raises(ValueError, match="fix identifier"):
+        trade.fix.id = "5001"
 
-    # A tag the FIX specification assigns belongs to the standard namespace.
+    # A tag the FIX specification assigns belongs to the standard branch, at
+    # every door, and a refusal leaves the field unchanged.
     assert STANDARD_TAG_LIMIT == 5000
-    with pytest.raises(ValueError, match="fix:namespace"):
+    with pytest.raises(ValueError, match="fix:branch"):
         trade.fix.tag = 35
+    with pytest.raises(ValueError, match="fix:branch"):
+        trade.fix.tags = [35]
     assert trade.fix.id == "cme:5001"
-    with pytest.raises(ValueError, match="fix:namespace"):
-        Field("MsgType", "utf8", metadata={"fix:tag": "35"}).fix.namespace = "cme"
+    msg_type = Field("MsgType", "utf8")
+    msg_type.fix.tag = 35
+    with pytest.raises(ValueError, match="fix:branch"):
+        msg_type.fix.branch = "cme"
+    # The rule is one-way: the standard branch holds any tag.
+    high = Field("Vendorish", "utf8")
+    high.fix.tag = 10_000
+    assert high.fix.id == "standard:10000"
 
-    # Setting the standard namespace removes the key rather than storing it.
+    # Setting the standard branch removes the key rather than storing it.
     trade.fix.id = "standard:9001"
-    assert "fix:namespace" not in trade.metadata
-    assert trade.fix.namespace == "standard"
+    assert "fix:branch" not in trade.metadata
+    assert trade.fix.branch == "standard"
+    assert trade.fix.id == "standard:9001"
     ```
 
 === "JavaScript"
@@ -319,7 +335,7 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
 
     ```python
     from yggdryl import DataType, Field, fields
-    from yggdryl.fix import FixRegistry
+    from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
     party_id = Field("PartyID", "utf8")
     party_id.fix.tag = 448
@@ -330,11 +346,14 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
     group.fix.tag = 453
 
     registry = FixRegistry.from_fields([group])
-    assert registry.field_by_path("NoPartyIDs").fix.tag == 453
-    assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
-    assert registry.field_by_path("NoPartyIDs.item.PartyRole").name == "PartyRole"
+    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs").fix.tag == 453
+    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
+    assert (
+        registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.item.PartyRole").name
+        == "PartyRole"
+    )
     # A member is reached through its group, not registered on its own.
-    assert registry.get_field_by_name("PartyID") is None
+    assert registry.get_field_by_name(STANDARD_BRANCH, "PartyID") is None
     ```
 
 === "JavaScript"
@@ -518,12 +537,12 @@ name and answers the field.
     import pytest
 
     from yggdryl import DataType, Field
-    from yggdryl.fix import FixRegistry
+    from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
 
-    def fix_field(name: str, dtype: str, tag: int, *aliases: str) -> Field:
+    def fix_field(name: str, dtype: str, identifier: str, *aliases: str) -> Field:
         field = Field(name, dtype)
-        field.fix.tag = tag
+        field.fix.id = identifier
         if aliases:
             field.fix.aliases = aliases
         return field
@@ -531,13 +550,15 @@ name and answers the field.
 
     registry = FixRegistry.from_fields(
         [
-            fix_field("Symbol", "utf8", 55, "Ticker"),
-            fix_field("Price", "decimal128(20, 8)", 44, "Px"),
+            fix_field("Symbol", "utf8", "standard:55", "Ticker"),
+            fix_field("Price", "decimal128(20, 8)", "standard:44", "Px"),
+            # The venue dictionary reuses the name `Symbol`, the normal case.
+            fix_field("Symbol", "utf8", "cme:5055"),
         ]
     )
 
     # Any spelling of a name or alias answers the canonical field.
-    assert registry.field_by_name("TICKER").name == "Symbol"
+    assert registry.field_by_name(STANDARD_BRANCH, "TICKER").name == "Symbol"
     assert registry.field("px").name == "Price"
     assert registry.get_field(55) == registry.get_field("symbol")
     assert 44 in registry
@@ -545,13 +566,23 @@ name and answers the field.
     with pytest.raises(KeyError, match="tag 35"):
         registry.field_by_tag(35)
 
-    # A key another field holds is a conflict naming both; nothing changes.
-    with pytest.raises(ValueError, match="held by Symbol"):
-        registry.insert(fix_field("SymbolSfx", "utf8", 65, "ticker"))
-    assert len(registry) == 2
+    # A bare tag and a bare name are the standard branch; the venue field is
+    # reached by its identifier or by name inside its own dictionary.
+    assert registry.field_by_id("cme:5055").fix.branch == "cme"
+    assert registry.field_by_name("cme", "SYMBOL").fix.tag == 5055
+    assert registry.field_by_name("standard", "symbol").fix.tag == 55
+    assert registry.get_field_by_tag(5055) is None, "never crosses a branch"
+    assert registry.get_field("cme:5055") is None, "a string key is a name"
+
+    # A key another field holds *in the same branch* is a conflict naming
+    # both, and the branch; nothing changes.
+    with pytest.raises(ValueError, match="held by Symbol") as conflict:
+        registry.insert(fix_field("SymbolSfx", "utf8", "standard:65", "ticker"))
+    assert 'branch \\"standard\\"' in str(conflict.value)
+    assert len(registry) == 3
 
     # A merge keeps what only the stored field declared and adds the rest.
-    incoming = fix_field("SYMBOL", "utf8", 55, "Sym")
+    incoming = fix_field("SYMBOL", "utf8", "standard:55", "Sym")
     incoming.fix.tags = [65]
     registry.update(incoming)
     merged = registry.field_by_tag(65)
@@ -559,10 +590,15 @@ name and answers the field.
     assert merged.fix.aliases == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
-        registry.update(fix_field("Symbol", "large_utf8", 55))
+        registry.update(fix_field("Symbol", "large_utf8", "standard:55"))
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
-    assert [field.name for field in registry] == ["Price", "SYMBOL"]
+    # Iteration is branch-major, then by tag.
+    assert [field.fix.id for field in registry] == [
+        "cme:5055",
+        "standard:44",
+        "standard:55",
+    ]
     assert registry.remove("sym").name == "SYMBOL"
     assert registry.get_field_by_tag(65) is None
     ```
@@ -766,35 +802,79 @@ folder, or point at a root written by this version.
     import shutil
     import tempfile
 
-    from yggdryl import Field
+    import pytest
+
+    from yggdryl import DataType, Field, fields as field_builders
     from yggdryl.fix import FixRegistry
 
     workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-"))
     root = workspace / "dictionary"
 
-    fields = []
+    declared = []
     for tag, name in ((35, "MsgType"), (99, "StopPx"), (100, "NoAllocs"), (150, "ExecType")):
         field = Field(name, "utf8")
         field.fix.tag = tag
-        fields.append(field)
-    fields[3].fix.tags = [20]
-    registry = FixRegistry.from_fields(fields)
+        declared.append(field)
+    declared[3].fix.tags = [20]
+    # One venue field, which lands in its own branch folder.
+    trade = Field("TradeID", "utf8")
+    trade.fix.id = "cme:5001"
+    declared.append(trade)
+    # One repeating group, which is the only field of the nested tree.
+    item = Field("item", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
+    parties = field_builders.list("NoPartyIDs", item)
+    parties.fix.tag = 453
+    declared.append(parties)
+    registry = FixRegistry.from_fields(declared)
     registry.write_into(root)
 
+
+    def shards(tree: str, branch: str) -> list[str]:
+        return sorted(path.name for path in (root / tree / branch).iterdir())
+
+
     # The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    shards = sorted(path.name for path in (root / "records" / "standard").iterdir())
-    assert shards == ["0.json", "1.json"]
+    assert shards("primitive", "standard") == ["0.json", "1.json"]
+    # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
+    assert shards("primitive", "cme") == ["50.json"]
+    # The group is nested, so it is the nested tree's only shard: 453 / 100.
+    assert shards("nested", "standard") == ["4.json"]
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
     assert reloaded.field_by_tag(20).name == "ExecType"
+    assert reloaded.field_by_tag(453).name == "NoPartyIDs"
+    assert reloaded.field_by_id("cme:5001").name == "TradeID"
 
-    # Removing the only fields of a shard removes the shard on the next write.
+    # Removing the only field of a shard removes the shard on the next write,
+    # emptying a branch removes its folder whole, and emptying a tree removes
+    # the tree. `remove` reads a str key as a standard name, so the venue
+    # field leaves by rebuilding the dictionary without it.
     registry.remove(100)
     registry.remove(150)
-    registry.write_into(root)
-    assert not (root / "records" / "standard" / "1.json").exists()
+    registry.remove(453)
+    kept = FixRegistry.from_fields(
+        [field for field in registry if field.fix.branch == "standard"]
+    )
+    kept.write_into(root)
+    assert not (root / "primitive" / "standard" / "1.json").exists()
+    assert not (root / "primitive" / "cme").exists()
+    assert not (root / "nested").exists()
     assert len(FixRegistry.from_handle(root)) == 2
+
+    # A leaf directly under a tree root is a typed error, never a silent
+    # empty load.
+    stray = root / "primitive" / "0.json"
+    stray.write_bytes(b"[]")
+    with pytest.raises(ValueError, match="only branch folders"):
+        FixRegistry.from_handle(root)
+    stray.unlink()
+
+    # A root left in the retired `records/` layout is refused, not read empty.
+    retired = workspace / "retired"
+    (retired / "records" / "standard").mkdir(parents=True)
+    with pytest.raises(ValueError, match="records"):
+        FixRegistry.from_handle(retired)
 
     # A folder that is not there loads as empty and is not created.
     absent = root / "absent"
@@ -883,17 +963,20 @@ resolution order.
     ```python
     import pathlib
 
-    from yggdryl.fix import FixRegistry
+    from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
     # The seed this repository tracks, named from the repository root.
     seed = pathlib.Path("config/fix").resolve()
     registry = FixRegistry.from_handle(seed)
 
     assert registry.field_by_tag(55).name == "Symbol"
-    assert registry.field_by_name("ticker").name == "Symbol"
+    assert registry.field_by_id("standard:55").name == "Symbol"
+    assert registry.field_by_name(STANDARD_BRANCH, "ticker").name == "Symbol"
     assert registry.field_by_tag(20).name == "ExecType"
-    assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
-    assert registry.field_by_name("ClOrdID").display == "Client order ID"
+    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
+    assert registry.field_by_name(STANDARD_BRANCH, "ClOrdID").display == "Client order ID"
+    # Every seed field is a specification field, so none states a branch.
+    assert all("fix:branch" not in field.metadata for field in registry)
     assert len(registry) < 40
     ```
 
@@ -1111,7 +1194,7 @@ ordered and canonicalized against the same root.
     import pytest
 
     from yggdryl import DataType, Field, fields
-    from yggdryl.fix import FixMsg, FixRegistry
+    from yggdryl.fix import STANDARD_BRANCH, FixMsg, FixRegistry
 
     symbol = Field("Symbol", "utf8", nullable=False)
     symbol.fix.tag = 55
@@ -1152,6 +1235,11 @@ ordered and canonicalized against the same root.
     with pytest.raises(KeyError):
         message.by_path("NoPartyIDs.PartyID")  # a group member needs its index
     assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "9999"]
+
+    # The message's branch is the root's own, and an identifier is exact.
+    assert message.branch == STANDARD_BRANCH
+    assert message.by_id("standard:38").as_py() == 100
+    assert message.get_by_id("cme:5001") is None
 
     # The schema serializes through the path every field already has, and the
     # value the message holds names the same row.
@@ -1370,27 +1458,39 @@ cd python && .venv/Scripts/python benchmarks/fix.py --iterations 2000
 ```
 
 One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12,
-median time per call over the same tracked seed of 34 fields. The sub-microsecond rows move by a
-third between runs on this machine, so read them as one order of magnitude rather than as a
+median time per call over the same tracked seed of 34 fields, except the vendor rows, which run
+over the seed beside a generated `cme` dictionary of 1000 fields. The sub-microsecond rows move by
+a third between runs on this machine, so read them as one order of magnitude rather than as a
 ranking of one against another:
 
 | Python operation | estimate |
 | --- | ---: |
-| `get_field_by_tag(55)` hit | 254 ns |
-| `get_field_by_tag(20)` alternate-tag hit | 256 ns |
-| `get_field_by_name("Symbol")` hit | 239 ns |
-| `get_field_by_name("symbol")` hit, folded query | 240 ns |
-| `get_field_by_name("ticker")` alias hit | 282 ns |
-| `get_field_by_tag(9999)` miss | 171 ns |
-| `get_field_by_name("Nope")` miss | 183 ns |
-| `get_field(55)` generic tag hit | 183 ns |
-| `field_by_path`, one segment | 239 ns |
-| `field_by_path`, two segments (`NoPartyIDs.PartyID`) | 375 ns |
-| `FixMsg.get_by_tag(55)` | 188 ns |
-| `FixMsg.get_by_name("ticker")` | 271 ns |
-| `FixMsg.get_by_path("NoPartyIDs.0.PartyID")` | 462 ns |
-| `from_handle`, the seed (3 shards, 34 fields) | 1.70 ms |
-| `from_handle`, 1000 generated fields (11 shards) | 13.8 ms |
+| `get_field_by_tag(55)` hit | 196 ns |
+| `get_field_by_tag(20)` alternate-tag hit | 235 ns |
+| `get_field_by_id("standard:55")` hit | 408 ns |
+| `get_field_by_name("standard", "Symbol")` hit | 303 ns |
+| `get_field_by_name("standard", "symbol")` hit, folded query | 298 ns |
+| `get_field_by_name("standard", "ticker")` alias hit | 404 ns |
+| `get_field_by_tag(9999)` miss | 186 ns |
+| `get_field_by_name("standard", "Nope")` miss | 264 ns |
+| `get_field_by_id("cme:5001")` miss | 308 ns |
+| `get_field(55)` generic tag hit | 205 ns |
+| `field_by_path`, one segment | 357 ns |
+| `field_by_path`, two segments (`NoPartyIDs.PartyID`) | 568 ns |
+| `get_field_by_id("cme:5001")` vendor hit, two branches | 519 ns |
+| `get_field_by_name("cme", ...)` vendor hit, two branches | 304 ns |
+| `get_field_by_name("cme", ...)` vendor alias hit, two branches | 493 ns |
+| `get_field_by_tag(5001)` cross-branch miss, two branches | 288 ns |
+| `get_field_by_tag(55)` standard hit, two branches | 304 ns |
+| `field.fix.branch` | 549 ns |
+| `field.fix.id` | 625 ns |
+| `FixMsg.get_by_tag(55)` | 251 ns |
+| `FixMsg.get_by_id("standard:55")` | 386 ns |
+| `FixMsg.get_by_name("ticker")` | 367 ns |
+| `FixMsg.get_by_path("NoPartyIDs.0.PartyID")` | 711 ns |
+| `FixMsg.branch` | 148 ns |
+| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.99 ms |
+| `from_handle`, 1000 generated fields (11 shards) | 16.7 ms |
 
 A hit costs the native lookup plus one crossing: the key is read once at the boundary and the
 answer is wrapped as a `Field` or a `Scalar`, which clones the stored value rather than borrowing
@@ -1398,8 +1498,22 @@ it. That wrapping is what the numbers are almost entirely made of - the native t
 an order of magnitude below the crossing - which is why the tiers the Rust table separates are
 indistinguishable here, and why a caller resolving the same field repeatedly should hold the
 answer rather than ask again. A miss is the one case that is reliably cheaper, because nothing is
-wrapped. `from_handle` stays within a fifth of the native load: the shards are listed, read and
-parsed natively, and only the finished registry crosses.
+wrapped.
+
+**What a branch and an identifier cost at the boundary.** Both cross as text and are parsed on
+every call, which is the price of having no class for either: `get_field_by_id("standard:55")` is
+408 ns against 196 ns for the same field by tag, and the 212 ns between them is
+`FixId::from_str` - a branch validated and folded, then a decimal tag - not a slower lookup, since
+the native identifier probe is what the tag probe redirects to anyway. A branch-qualified name is
+303 ns against 264 ns for the same call's miss, so the extra argument costs about what one short
+string coercion costs. `field.fix.branch` and `field.fix.id` are the dearest rows on the table
+because each is a metadata read plus a fresh Python `str`, and `id` renders one. A caller in a
+loop should hold the answer, exactly as it should hold a resolved `Field`.
+
+`from_handle` stays within a few percent of the native load - 2.99 ms against 2.87 ms - because
+the shards are listed, read and parsed natively and only the finished registry crosses; it also
+moved with the core, which now lists two trees and reads four shards where it listed one and read
+three.
 
 ### The JavaScript boundary
 

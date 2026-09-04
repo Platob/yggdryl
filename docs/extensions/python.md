@@ -880,24 +880,41 @@ page shows each of these steps beside its Rust and JavaScript form.
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()` and
-`install_global_registry()`; the `fix:` vocabulary itself is four typed properties on the
-`field.fix` protocol view - `tag`, `tags`, `aliases`, `description` - and reading one on any other
-protocol's view is a `TypeError` naming that view's scheme. Resolution, folding, merging, sharding
-and validation are the core's, documented on the [fix](../fix.md) page. What follows is only what
-the crossing adds.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`,
+`install_global_registry()` and the two constants `STANDARD_BRANCH` (`"standard"`) and
+`STANDARD_TAG_LIMIT` (`5000`); the `fix:` vocabulary itself is six typed properties on the
+`field.fix` protocol view - `branch`, `id`, `tag`, `tags`, `aliases`, `description` - and reading
+one on any other protocol's view is a `TypeError` naming that view's scheme. Resolution, folding,
+merging, sharding and validation are the core's, documented on the [fix](../fix.md) page. What
+follows is only what the crossing adds.
 
 **Keys.** A tag is an `int` and a name or a dotted path is a `str`, coerced once per call.
 `bool` is an `int` in Python and never a tag, so it is refused by name rather than read as 0 or 1;
 a value outside `i32` raises `OverflowError` from the extraction rather than being narrowed to a
 different tag. Anything else is a `TypeError` naming what was given. `registry[key]`,
-`registry.get(key, default)`, `key in registry` and `FixMsg[key]` all take the same pair.
+`registry.get(key, default)`, `key in registry` and `FixMsg[key]` all take the same pair, and in
+all four an `int` is a tag and a `str` a name or dotted path **in the standard branch** - a
+colon-bearing string is a name, never an identifier.
+
+**Branches and identifiers.** Both cross as `str` and are parsed once at the boundary through the
+core's own `FixBranch::from_str` and `FixId::from_str`, so no class exists for either in Python.
+`field.fix.branch` reads `"standard"` when the key is absent and assigning `"standard"` removes
+the key; `field.fix.id` is the `"branch:tag"` text, `None` exactly when `fix:tag` is absent, and
+assigning one moves both halves at once - the only ordering-safe way to move a field between
+dictionaries. `registry.get_field_by_id` / `field_by_id` take that text, and
+`get_field_by_name` / `field_by_name` and `get_field_by_path` / `field_by_path` take the branch as
+their **leading argument**, because a name is unique per branch and not registry-wide.
+`get_field_by_tag` / `field_by_tag` mean the standard branch exactly. A spelling that is not a
+branch or an identifier is a `ValueError` carrying the native parse failure - never a miss - and a
+non-`str` is a `TypeError`. `msg.branch` answers the dictionary the message is spelled in, derived
+from the root field, and `msg.get_by_id` / `by_id` name one dictionary exactly and do not tier.
 
 **Locations.** `FixRegistry.from_handle` and `registry.write_into` take what every folder-shaped
 entry point takes - an `IOBase` handle, a `Url`, a `str` URL or absolute path, a `PathLike` - and
 run it through the same coercion `Catalog(warehouse)` uses. Naming a folder that is not there is
 not an error: it loads as the empty registry and creates nothing, and a write creates the folder
-and its parents.
+and its parents under `primitive/<branch>/` and `nested/<branch>/`. A root still holding the
+retired `records/` folder is a `ValueError`, never an empty load.
 
 **Exceptions.** Absence is a `KeyError` whose argument is the native message unchanged, so
 `field_by_tag`, `field_by_name`, `field_by_path`, `field` and every `FixMsg` failing half raise it
@@ -909,6 +926,9 @@ process default - is a `ValueError` carrying the native message.
 `insert`, `update` and `remove` need it unshared: once a `FixMsg` links it or it is installed as the
 process default, a mutation raises `ValueError` rather than changing a dictionary underneath a
 message that already resolved against it. Build a new registry, or reload it, and mutate that.
+`remove` takes the same key the other three generic entry points take, so it reaches the standard
+branch only; a vendor field leaves by rebuilding the dictionary from the fields that stay - the
+Rust `remove(&FixId)` has no Python spelling.
 
 **Values.** `FixMsg` is immutable and behaves like one: stable equality against schema, value and
 dictionary, a `hash()` over schema and value, `copy`/`deepcopy`, and a pickle that carries the
@@ -924,7 +944,7 @@ import pickle
 import pytest
 
 from yggdryl import DataType, Field, IOBase, Url
-from yggdryl.fix import FixMsg, FixRegistry
+from yggdryl.fix import STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixMsg, FixRegistry
 
 seed = pathlib.Path("config/fix").resolve()
 
@@ -943,13 +963,34 @@ with pytest.raises(OverflowError):
 with pytest.raises(TypeError, match="int tag or a str name"):
     registry[3.5]
 
+# A branch and an identifier cross as text: the branch leads a name or path
+# lookup, and a malformed one is a ValueError rather than a miss.
+assert STANDARD_BRANCH == "standard" and STANDARD_TAG_LIMIT == 5000
+assert registry.field_by_name(STANDARD_BRANCH, "ticker").name == "Symbol"
+assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
+assert registry.field_by_id("standard:55").fix.id == "standard:55"
+with pytest.raises(ValueError, match="fix branch"):
+    registry.field_by_name("2cme", "Symbol")
+with pytest.raises(ValueError, match="fix identifier"):
+    registry.field_by_id("55")
+with pytest.raises(TypeError):
+    registry.field_by_id(55)
+
 # Absence is a KeyError carrying the native message; a refusal is a ValueError.
 with pytest.raises(KeyError) as absent:
-    registry.field_by_name("Nope")
+    registry.field_by_name(STANDARD_BRANCH, "Nope")
 assert absent.value.args[0] == 'expected a fix field at "name \\"Nope\\"", got nothing'
-assert registry.get_field_by_name("Nope") is None
+assert registry.get_field_by_name(STANDARD_BRANCH, "Nope") is None
 with pytest.raises(ValueError, match="fix:tag"):
     registry.insert(Field("Untagged", "utf8"))
+
+# A tag the FIX specification assigns cannot move to another dictionary.
+vendor = Field("TradeID", "utf8")
+vendor.fix.id = "CME:5001"
+assert vendor.fix.id == "cme:5001" and vendor.fix.branch == "cme"
+with pytest.raises(ValueError, match="fix:branch"):
+    vendor.fix.tag = 35
+assert vendor.fix.id == "cme:5001"
 
 # A message shares the dictionary it resolved against, so mutating it refuses.
 root = Field("row", DataType.from_fields([registry.field_by_tag(55)]), nullable=False)
@@ -962,6 +1003,9 @@ assert copy.deepcopy(message) == message
 assert pickle.loads(pickle.dumps(message)) == message
 assert pickle.loads(pickle.dumps(message)).registry == registry
 assert hash(message) == hash(FixMsg(root, message.value, registry))
+assert message.branch == STANDARD_BRANCH
+assert message.by_id("standard:55").as_py() == "AAPL"
+assert message.get_by_id("cme:5001") is None
 ```
 
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so: the
