@@ -9,7 +9,6 @@ mod format;
 mod formatting;
 mod io;
 mod limits;
-pub mod line;
 mod loading;
 mod placeholder;
 pub(crate) mod position;
@@ -31,7 +30,6 @@ pub use io::{
     into_io_all_with_formatting, into_io_with_formatting, into_io_with_level,
 };
 pub use limits::Limits;
-pub use line::{LineSep, Text, TextOptions};
 pub use loading::Loading;
 pub use placeholder::Placeholders;
 

@@ -8,7 +8,8 @@
 
 use yggdryl::TimeUnit;
 use yggdryl::holder::local::File;
-use yggdryl::{Scalar, Timezone, avro};
+use yggdryl::media::avro;
+use yggdryl::{Scalar, Timezone};
 
 /// Where the exchange files live, shared with the Python driver.
 fn exchange_dir() -> std::path::PathBuf {

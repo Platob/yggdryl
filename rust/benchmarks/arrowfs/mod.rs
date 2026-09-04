@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOBase;
-use yggdryl::generic::IORecordOptions;
 use yggdryl::holder::arrowfs::{ArrowFileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, Field, Url};
 
 /// Rows per record fixture, large enough that encoding dominates setup.

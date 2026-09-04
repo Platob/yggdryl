@@ -147,7 +147,7 @@ fn http_field(extra: usize) -> Field {
 /// A field carrying Iceberg's whole column vocabulary plus `extra` keys.
 #[cfg(feature = "iceberg")]
 fn iceberg_field(extra: usize) -> Field {
-    use yggdryl::iceberg::Transform;
+    use yggdryl::media::iceberg::Transform;
 
     let mut field = DataType::Int64.required_field("id");
     let mut view = field.as_iceberg_mut();

@@ -16,9 +16,9 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 
 use yggdryl::IOMode;
-use yggdryl::generic::IORecordOptions as _;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::arrow::JsBatchReader;

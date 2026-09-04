@@ -86,7 +86,7 @@
 //!
 //! The Iceberg specification mandates murmur3 x86_32 for `bucket[N]`. A
 //! partition computed with xxHash would place rows in the wrong buckets and no
-//! other reader would find them. [`crate::iceberg`] never calls this module for
+//! other reader would find them. [`crate::media::iceberg`] never calls this module for
 //! partitioning.
 
 #[cfg(feature = "arrow")]

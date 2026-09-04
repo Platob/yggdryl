@@ -9,11 +9,11 @@ use arrow_array::{BinaryArray, RecordBatch};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use yggdryl::DataType;
-use yggdryl::avro::Avro;
-use yggdryl::generic::RecordOptions;
 use yggdryl::holder::Buffer;
-use yggdryl::ipc::Ipc;
-use yggdryl::parquet::Parquet;
+use yggdryl::media::RecordOptions;
+use yggdryl::media::avro::Avro;
+use yggdryl::media::ipc::Ipc;
+use yggdryl::media::parquet::Parquet;
 use yggdryl::{IOBase, IOMedia};
 
 use super::{ROWS, batch, handle, stored_with};
@@ -208,7 +208,7 @@ pub(crate) fn dimension_benchmarks(criterion: &mut Criterion) {
     let geospatial = geospatial_fixture();
     let avro = stored_with("bench-dimensions.avro", &source);
     let text = text_fixture();
-    let mut avro_options = RecordOptions::Avro(yggdryl::avro::AvroOptions::new());
+    let mut avro_options = RecordOptions::Avro(yggdryl::media::avro::AvroOptions::new());
     let sync_marker = *b"0123456789abcdef";
 
     let mut group = criterion.benchmark_group("io_dimensions");

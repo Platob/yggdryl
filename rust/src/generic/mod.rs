@@ -3,13 +3,7 @@
 mod arithmetic;
 pub(crate) mod decimal;
 mod enum_scalar;
-mod inference;
 pub(crate) mod iso;
-mod magic;
-#[cfg(feature = "arrow")]
-mod media;
-#[cfg(feature = "arrow")]
-mod options;
 mod pairs;
 pub mod scalar;
 pub(crate) mod temporal;
@@ -19,20 +13,6 @@ pub mod wkb;
 
 pub(crate) use arithmetic::Arithmetic;
 pub use enum_scalar::EnumScalar;
-pub use magic::MAGIC_PROBE_LEN;
-#[cfg(feature = "arrow")]
-pub use media::Media;
-#[cfg(feature = "arrow")]
-pub(crate) use options::{CommitBuffer, WriteLimitState};
-#[cfg(feature = "arrow")]
-pub use options::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions};
-
-/// The root Field name a record surface uses when none is declared.
-///
-/// It names an inferred root and a declared datatype alike, so a stream read
-/// without a schema and one read under a declared datatype answer the same
-/// root name unless the options say otherwise.
-pub const DEFAULT_ROOT_NAME: &str = "row";
 pub(crate) use pairs::sorted_pairs;
 #[cfg(feature = "iceberg")]
 pub(crate) use pairs::sorted_values;

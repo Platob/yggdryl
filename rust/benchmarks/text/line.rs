@@ -5,9 +5,9 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 use yggdryl::IOMedia;
 use yggdryl::Url;
-use yggdryl::generic::RecordOptions;
 use yggdryl::holder::Buffer;
-use yggdryl::text::TextOptions;
+use yggdryl::media::RecordOptions;
+use yggdryl::media::text::TextOptions;
 
 const ROWS: usize = crate::bench_profile::corpus(50_000, 2_000);
 const ROWHEADER: &str = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)";

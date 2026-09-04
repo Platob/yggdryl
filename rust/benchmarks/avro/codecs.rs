@@ -12,10 +12,11 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
-use yggdryl::avro::AvroOptions;
-use yggdryl::generic::IORecordOptions;
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Url, avro};
+use yggdryl::media::IORecordOptions;
+use yggdryl::media::avro;
+use yggdryl::media::avro::AvroOptions;
+use yggdryl::{DataType, Url};
 
 /// Rows in the sweep fixture.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 1_024);

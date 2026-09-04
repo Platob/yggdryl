@@ -389,25 +389,25 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
     }
 
     #[cfg(feature = "arrow")]
-    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+    fn record_options(&self) -> Result<crate::media::RecordOptions> {
         crate::IOMedia::record_options(&self.handle)
     }
 
     #[cfg(feature = "arrow")]
-    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
+    fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(&self.handle, options)
     }
 
     #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
         crate::IOMedia::read_arrow_reader(&self.handle, options)
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(&self.handle)
     }
 
@@ -415,7 +415,7 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
+    ) -> Result<crate::media::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
     }
 }

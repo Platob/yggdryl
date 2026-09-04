@@ -213,7 +213,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     #[cfg(feature = "iceberg")]
     {
-        use yggdryl::iceberg::Transform;
+        use yggdryl::media::iceberg::Transform;
 
         let mut iceberg_field = DataType::Int64.required_field("id");
         let mut view = iceberg_field.as_iceberg_mut();

@@ -11,10 +11,10 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyByteArray, PyBytes, PyDict, PyList};
-use yggdryl::avro::{
+use yggdryl::holder::Buffer;
+use yggdryl::media::avro::{
     Block as CoreAvroBlock, Blocks as CoreAvroBlocks, Container, Resolution, Schema,
 };
-use yggdryl::holder::Buffer;
 use yggdryl::text::Limits;
 
 use crate::record::string_pairs_from_value;
@@ -425,10 +425,10 @@ pub(crate) fn avro_loads(
         .detach(|| {
             let source = Buffer::from_bytes(bytes);
             match reader_schema.as_ref() {
-                Some(reader) => {
-                    yggdryl::avro::read_container_resolved_with_limits(&source, reader, limits)
-                }
-                None => yggdryl::avro::read_container_with_limits(&source, limits),
+                Some(reader) => yggdryl::media::avro::read_container_resolved_with_limits(
+                    &source, reader, limits,
+                ),
+                None => yggdryl::media::avro::read_container_with_limits(&source, limits),
             }
         })
         .map_err(value_error)?;
@@ -458,7 +458,7 @@ pub(crate) fn avro_blocks(
     let source = Buffer::from_bytes(bytes_from_value(data)?);
     let limits = decode_limits(max_depth, max_input_bytes, max_nodes);
     let inner =
-        yggdryl::avro::read_blocks_owned_with_limits(source, limits).map_err(value_error)?;
+        yggdryl::media::avro::read_blocks_owned_with_limits(source, limits).map_err(value_error)?;
     let resolution = reader_schema
         .map(|reader| Resolution::from_schemas(inner.schema(), &reader.inner))
         .transpose()
@@ -494,7 +494,7 @@ pub(crate) fn avro_dumps<'py>(
     let encoded = py
         .detach(|| {
             let mut target = Buffer::new();
-            yggdryl::avro::write_container(&mut target, &schema_json, &borrowed, &rows)?;
+            yggdryl::media::avro::write_container(&mut target, &schema_json, &borrowed, &rows)?;
             Ok::<_, yggdryl::Error>(target.into_bytes())
         })
         .map_err(value_error)?;
@@ -526,7 +526,9 @@ pub(crate) fn avro_loads_single(
     let limits = decode_limits(max_depth, max_input_bytes, max_nodes);
     let schema = schema_from_value(schema, limits)?;
     let value = py
-        .detach(|| yggdryl::avro::from_single_object_slice_with_limits(&bytes, &schema, limits))
+        .detach(|| {
+            yggdryl::media::avro::from_single_object_slice_with_limits(&bytes, &schema, limits)
+        })
         .map_err(value_error)?;
     as_py(py, &value)
 }
@@ -542,7 +544,7 @@ pub(crate) fn avro_dumps_single<'py>(
     let value = from_py(value)?;
     let schema = schema_from_value(schema, Limits::default())?;
     let encoded = py
-        .detach(|| yggdryl::avro::into_single_object_vec(&schema, &value))
+        .detach(|| yggdryl::media::avro::into_single_object_vec(&schema, &value))
         .map_err(value_error)?;
     Ok(PyBytes::new(py, &encoded))
 }

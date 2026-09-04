@@ -12,9 +12,9 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
 };
 use napi_derive::napi;
-use yggdryl::generic::DEFAULT_ROOT_NAME;
 use yggdryl::holder::Holder;
-use yggdryl::iceberg::{
+use yggdryl::media::DEFAULT_ROOT_NAME;
+use yggdryl::media::iceberg::{
     Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
     Namespaces as CoreNamespaces, PartitionField as CorePartitionField,

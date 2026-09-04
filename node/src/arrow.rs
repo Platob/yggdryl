@@ -20,7 +20,7 @@ use napi_derive::napi;
 use yggdryl::arrow::BatchReader;
 
 use crate::iceberg::{FieldInput, field_from_input};
-use yggdryl::generic::DEFAULT_ROOT_NAME;
+use yggdryl::media::DEFAULT_ROOT_NAME;
 
 use crate::field::JsField;
 use crate::napi_error;

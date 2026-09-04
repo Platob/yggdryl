@@ -7,7 +7,7 @@
 
 use napi::bindgen_prelude::{Buffer, Result};
 use napi_derive::napi;
-use yggdryl::generic::{
+use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
 use yggdryl::{IOMode, Level, Metadata};

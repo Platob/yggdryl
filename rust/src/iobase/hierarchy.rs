@@ -35,7 +35,7 @@ pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
     #[cfg(feature = "iceberg")]
     // A folder holding a table format is one tabular value however its files
     // are named, and asking costs one lookup of the metadata directory.
-    if matches!(crate::iceberg::located(handle), Ok(Some(_))) {
+    if matches!(crate::media::iceberg::located(handle), Ok(Some(_))) {
         return true;
     }
     let mut level = handle.ls(false, false);

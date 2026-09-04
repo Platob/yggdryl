@@ -70,17 +70,17 @@ pub enum Holder {
     /// Any handle retained as plain-text record media.
     ///
     /// Boxed because the text wrapper owns another `Holder` while keeping its
-    /// flat [`TextOptions`](crate::text::TextOptions) as the default record
+    /// flat [`TextOptions`](crate::media::text::TextOptions) as the default record
     /// configuration.
-    Text(Box<crate::text::Text<Self>>),
+    Text(Box<crate::media::text::Text<Self>>),
     /// Any of the others, retained behind its inferred record encoding.
     ///
-    /// The box breaks the recursive shape: a [`Media`](crate::generic::Media)
+    /// The box breaks the recursive shape: a [`Media`](crate::media::Media)
     /// owns a `Holder` as its byte handle, while this variant lets a binding
     /// keep that media wrapper (and its opened-session metadata cache) without
     /// changing from the one `Holder` surface.
     #[cfg(feature = "arrow")]
-    Media(Box<crate::generic::Media>),
+    Media(Box<crate::media::Media>),
 }
 
 impl Holder {
@@ -183,17 +183,17 @@ impl Holder {
             }
 
             if base == crate::MimeType::ARROW_STREAM || base == crate::MimeType::ARROW_FILE {
-                return Self::Media(Box::new(crate::generic::Media::ipc(self)));
+                return Self::Media(Box::new(crate::media::Media::ipc(self)));
             }
             #[cfg(feature = "parquet")]
             if base == crate::MimeType::PARQUET {
-                return Self::Media(Box::new(crate::generic::Media::parquet(self)));
+                return Self::Media(Box::new(crate::media::Media::parquet(self)));
             }
             if base == crate::MimeType::PLAIN_TEXT {
                 return self.into_text();
             }
             debug_assert_eq!(base, crate::MimeType::AVRO);
-            Self::Media(Box::new(crate::generic::Media::avro(self)))
+            Self::Media(Box::new(crate::media::Media::avro(self)))
         }
     }
 
@@ -237,7 +237,7 @@ impl Holder {
                 let held = buffered.into_handle().into_text();
                 Self::Buffered(Box::new(Buffered::new(held, options)))
             }
-            other => Self::Text(Box::new(crate::text::Text::new(other))),
+            other => Self::Text(Box::new(crate::media::text::Text::new(other))),
         }
     }
 
@@ -246,7 +246,7 @@ impl Holder {
     /// Repeating the conversion replaces the retained text configuration
     /// without nesting another media wrapper.
     #[must_use]
-    pub fn into_text_with(self, options: crate::text::TextOptions) -> Self {
+    pub fn into_text_with(self, options: crate::media::text::TextOptions) -> Self {
         match self {
             Self::Text(text) => Self::Text(Box::new(text.with_options(options))),
             Self::Buffered(buffered) => {
@@ -255,7 +255,7 @@ impl Holder {
                 Self::Buffered(Box::new(Buffered::new(held, buffered_options)))
             }
             other => Self::Text(Box::new(
-                crate::text::Text::new(other).with_options(options),
+                crate::media::text::Text::new(other).with_options(options),
             )),
         }
     }
@@ -351,12 +351,12 @@ impl crate::IOMedia for Holder {
     }
 
     #[cfg(feature = "arrow")]
-    fn record_options(&self) -> Result<crate::generic::RecordOptions> {
+    fn record_options(&self) -> Result<crate::media::RecordOptions> {
         crate::IOMedia::record_options(self.as_media())
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(self.as_media())
     }
 
@@ -364,19 +364,19 @@ impl crate::IOMedia for Holder {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
+    ) -> Result<crate::media::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
     }
 
     #[cfg(feature = "arrow")]
-    fn read_arrow_field(&self, options: &crate::generic::RecordOptions) -> Result<crate::Field> {
+    fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(self.as_media(), options)
     }
 
     #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
         crate::IOMedia::read_arrow_reader(self.as_media(), options)
     }
@@ -385,7 +385,7 @@ impl crate::IOMedia for Holder {
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
@@ -394,7 +394,7 @@ impl crate::IOMedia for Holder {
     fn overwrite_prepared_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::overwrite_prepared_arrow_reader(self.as_media_mut(), batches, options)
     }
@@ -403,7 +403,7 @@ impl crate::IOMedia for Holder {
     fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
@@ -412,7 +412,7 @@ impl crate::IOMedia for Holder {
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
@@ -421,7 +421,7 @@ impl crate::IOMedia for Holder {
     fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
@@ -430,7 +430,7 @@ impl crate::IOMedia for Holder {
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
@@ -439,7 +439,7 @@ impl crate::IOMedia for Holder {
     fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<()> {
         crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
@@ -585,15 +585,15 @@ impl From<Buffered<Holder>> for Holder {
     }
 }
 
-impl From<crate::text::Text<Holder>> for Holder {
-    fn from(value: crate::text::Text<Self>) -> Self {
+impl From<crate::media::text::Text<Holder>> for Holder {
+    fn from(value: crate::media::text::Text<Self>) -> Self {
         Self::Text(Box::new(value))
     }
 }
 
 #[cfg(feature = "arrow")]
-impl From<crate::generic::Media> for Holder {
-    fn from(value: crate::generic::Media) -> Self {
+impl From<crate::media::Media> for Holder {
+    fn from(value: crate::media::Media) -> Self {
         Self::Media(Box::new(value))
     }
 }

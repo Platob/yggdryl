@@ -21,13 +21,13 @@ use smol_str::SmolStr;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::local::Folder;
-use yggdryl::iceberg::{
+use yggdryl::media::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
-use yggdryl::io::partition::partition_text;
+use yggdryl::media::partition::partition_text;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 /// Distinct venue values the planning tables partition on.
@@ -883,7 +883,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
 fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, MemoryFileSystem};
-    use yggdryl::iceberg::Catalog;
+    use yggdryl::media::iceberg::Catalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]

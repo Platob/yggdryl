@@ -11,9 +11,10 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
-use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Field, Url, avro};
+use yggdryl::media::avro;
+use yggdryl::media::avro::AvroOptions;
+use yggdryl::{DataType, Field, Url};
 
 /// Rows in the wide fixture.
 const ROWS: usize = crate::bench_profile::corpus(8_192, 256);

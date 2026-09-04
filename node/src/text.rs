@@ -2,8 +2,8 @@
 
 use napi::bindgen_prelude::{Buffer, Either, Result, Uint8Array};
 use napi_derive::napi;
-use yggdryl::generic::IORecordOptions;
-use yggdryl::text::TextOptions as CoreTextOptions;
+use yggdryl::media::IORecordOptions;
+use yggdryl::media::text::TextOptions as CoreTextOptions;
 use yggdryl::{Level, Metadata, MimeType};
 
 use crate::datatype::{DataTypeInput, JsDataType, dtype_from_input};
@@ -312,7 +312,7 @@ impl JsTextOptions {
         let linesep = value
             .map(|value| match value {
                 Either::A(value) => value.parse(),
-                Either::B(value) => yggdryl::text::LineSep::new(value.as_ref()),
+                Either::B(value) => yggdryl::media::text::LineSep::new(value.as_ref()),
             })
             .transpose()
             .map_err(napi_error)?;

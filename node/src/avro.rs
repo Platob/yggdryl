@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use napi::bindgen_prelude::{Buffer, ClassInstance, Result};
 use napi_derive::napi;
-use yggdryl::avro::{Block as CoreBlock, Blocks as CoreBlocks, Container, Resolution, Schema};
 use yggdryl::holder::Buffer as CoreBuffer;
+use yggdryl::media::avro::{
+    Block as CoreBlock, Blocks as CoreBlocks, Container, Resolution, Schema,
+};
 use yggdryl::{Limits, Scalar};
 
 use crate::codec::JsScalar;
@@ -146,7 +148,7 @@ impl JsAvroSchema {
     /// Encode one value with Avro single-object framing.
     #[napi(js_name = "_intoSingleObjectNative", skip_typescript)]
     pub fn into_single_object_native(&self, value: &JsScalar) -> Result<Buffer> {
-        yggdryl::avro::into_single_object_vec(&self.inner, &value.inner)
+        yggdryl::media::avro::into_single_object_vec(&self.inner, &value.inner)
             .map(Into::into)
             .map_err(napi_error)
     }
@@ -158,7 +160,7 @@ impl JsAvroSchema {
         input: Buffer,
         limits: Option<AvroDecodeLimitsInput>,
     ) -> Result<JsScalar> {
-        yggdryl::avro::from_single_object_slice_with_limits(
+        yggdryl::media::avro::from_single_object_slice_with_limits(
             &input,
             &self.inner,
             decode_limits(limits)?,
@@ -269,10 +271,12 @@ pub fn avro_loads_native(
     let handle = CoreBuffer::from_bytes(input.to_vec());
     let limits = decode_limits(limits)?;
     let container = match reader_schema.as_ref() {
-        Some(reader) => {
-            yggdryl::avro::read_container_resolved_with_limits(&handle, &reader.inner, limits)
-        }
-        None => yggdryl::avro::read_container_with_limits(&handle, limits),
+        Some(reader) => yggdryl::media::avro::read_container_resolved_with_limits(
+            &handle,
+            &reader.inner,
+            limits,
+        ),
+        None => yggdryl::media::avro::read_container_with_limits(&handle, limits),
     }
     .map_err(napi_error)?;
     container_into_scalar(container)
@@ -288,7 +292,7 @@ pub fn avro_blocks_native(
     limits: Option<AvroDecodeLimitsInput>,
 ) -> Result<JsAvroBlocks> {
     let limits = decode_limits(limits)?;
-    let inner = yggdryl::avro::read_blocks_owned_with_limits(
+    let inner = yggdryl::media::avro::read_blocks_owned_with_limits(
         CoreBuffer::from_bytes(input.to_vec()),
         limits,
     )
@@ -325,7 +329,7 @@ pub fn avro_dumps_native(
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect::<Vec<_>>();
     let mut handle = CoreBuffer::new();
-    yggdryl::avro::write_container(
+    yggdryl::media::avro::write_container(
         &mut handle,
         &schema.inner.clone().into_json(),
         &borrowed_metadata,

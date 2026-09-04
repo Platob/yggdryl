@@ -17,7 +17,7 @@ use crate::{Field, Scalar};
 use super::{BatchReader, Error, Result, arrow_schema_from_field};
 
 /// Default number of row values materialized into one Arrow batch.
-pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::generic::DEFAULT_RECORD_BATCH_ROW_SIZE;
+pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// Widen native row values into a lazy Arrow reader.
 ///

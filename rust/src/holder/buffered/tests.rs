@@ -661,7 +661,7 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
 #[cfg(feature = "arrow")]
 #[test]
 fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
-    use crate::text::TextOptions;
+    use crate::media::text::TextOptions;
 
     // A located leaf, because that is the case the projection gets wrong: it
     // reopens a handle's *location*, which for a coding view holds the
@@ -681,7 +681,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     let plain = b"2024-02-01T10:00:00 [INFO] alpha\n2024-02-01T10:00:01 [WARN] beta\n";
     std::fs::write(&path, crate::coding::gzip::dump(plain).unwrap()).unwrap();
 
-    let options: crate::generic::RecordOptions = TextOptions::new()
+    let options: crate::media::RecordOptions = TextOptions::new()
         .try_with_rowheader(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
         .unwrap()
         .into();

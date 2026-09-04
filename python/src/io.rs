@@ -12,9 +12,9 @@ use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
-use yggdryl::generic::{IORecordOptions as _, RecordOptions};
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 

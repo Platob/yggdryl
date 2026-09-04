@@ -9,7 +9,8 @@ use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
-use yggdryl::{Limits, Scalar, avro, json};
+use yggdryl::media::avro;
+use yggdryl::{Limits, Scalar, json};
 
 /// Rows per fixture.
 const ROWS: usize = crate::bench_profile::corpus(10_000, 512);

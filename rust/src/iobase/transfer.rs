@@ -1,7 +1,7 @@
 //! Arrow record transfer through [`IOBase`](super::IOBase).
 
 use super::IOBase;
-use crate::generic::RecordOptions;
+use crate::media::RecordOptions;
 use crate::{Error, Result};
 
 /// The default append implementation after an encoding-specific boundary has
@@ -15,7 +15,7 @@ pub(crate) fn append_arrow_reader_default(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Append)?;
     let commit_row_size = options.require_commit_row_size()?;
@@ -31,7 +31,7 @@ pub(crate) fn append_arrow_reader_default(
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::iceberg::located(handle)? {
             return table.append_arrow_reader(batches, options);
         }
         return append_arrow_reader_folder(handle, batches, options, commit_row_size);
@@ -63,7 +63,7 @@ pub(crate) fn merge_arrow_reader_default(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Merge)?;
     let commit_row_size = options.require_commit_row_size()?;
@@ -76,7 +76,7 @@ pub(crate) fn merge_arrow_reader_default(
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::iceberg::located(handle)? {
             return table.merge_arrow_reader(batches, options);
         }
         return merge_arrow_reader_folder(handle, batches, options, commit_row_size);
@@ -146,14 +146,14 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<Option<crate::Field>> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Overwrite)?;
     let commit_row_size = options.require_commit_row_size()?;
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::iceberg::located(handle)? {
             table.overwrite_arrow_reader(batches, options)?;
             return Ok(None);
         }
@@ -201,7 +201,7 @@ fn append_arrow_reader_folder(
     options: &RecordOptions,
     commit_row_size: Option<usize>,
 ) -> Result<()> {
-    let mut writer = crate::io::partition::FolderWriter::new(folder, options)?;
+    let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
     let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
         return Ok(());
@@ -227,7 +227,7 @@ fn merge_arrow_reader_folder(
     // Layout resolves before shaping or mutation because it decides whether
     // at least one merge key remains inside each leaf. The top-level no-op
     // peek has retained the first row-bearing batch without advancing past it.
-    let mut writer = crate::io::partition::FolderWriter::new(folder, options)?;
+    let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
     let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
         return Ok(());
@@ -250,9 +250,9 @@ fn overwrite_arrow_reader_folder(
     options: &RecordOptions,
     commit_row_size: Option<usize>,
 ) -> Result<crate::Field> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
-    let mut writer = crate::io::partition::FolderWriter::new(folder, options)?;
+    let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
     let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
     let schema = batches.schema();
     let published = crate::arrow::field_from_arrow_schema(delegated.name(), schema.as_ref())?;
@@ -312,7 +312,7 @@ pub(crate) fn prepare_arrow_write_onto(
     RecordOptions,
     Option<crate::Field>,
 )> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     let batches = options.cast_arrow_reader(batches, existing)?;
     let batches = options.limit_arrow_reader(batches)?;
@@ -342,7 +342,7 @@ fn prepare_leaf_arrow_write(
     RecordOptions,
     Option<crate::Field>,
 )> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     let stored = if matches!(options, RecordOptions::Text(_)) {
         None
@@ -381,11 +381,11 @@ pub struct ArrowWriteSession {
     options: RecordOptions,
     delegated: RecordOptions,
     declared: Option<crate::Field>,
-    limit: crate::generic::WriteLimitState,
+    limit: crate::media::WriteLimitState,
     commit_row_size: usize,
     input_schema: Option<arrow_schema::SchemaRef>,
     shaped_schema: Option<arrow_schema::SchemaRef>,
-    buffer: Option<crate::generic::CommitBuffer>,
+    buffer: Option<crate::media::CommitBuffer>,
     target: Option<ArrowWriteTarget>,
     published: bool,
     input_complete: bool,
@@ -402,11 +402,11 @@ enum ArrowWriteTarget {
     /// Text lines have no stored field; append remains their native operation.
     TextLeaf,
     Folder {
-        writer: Box<crate::io::partition::FolderWriter>,
+        writer: Box<crate::media::partition::FolderWriter>,
     },
     #[cfg(feature = "iceberg")]
     Iceberg {
-        located: Box<crate::iceberg::Located>,
+        located: Box<crate::media::iceberg::Located>,
         stored: crate::Field,
     },
 }
@@ -430,7 +430,7 @@ impl ArrowWriteSession {
 
     /// Start a session for one explicit write mode.
     pub fn new(mode: crate::IOMode, options: &RecordOptions) -> Result<Self> {
-        use crate::generic::IORecordOptions;
+        use crate::media::IORecordOptions;
 
         options.require_write_mode(mode)?;
         let commit_row_size =
@@ -455,7 +455,7 @@ impl ArrowWriteSession {
             options: options.clone(),
             delegated,
             declared,
-            limit: crate::generic::WriteLimitState::new(
+            limit: crate::media::WriteLimitState::new(
                 options.max_row_size(),
                 options.max_byte_size(),
             ),
@@ -480,7 +480,7 @@ impl ArrowWriteSession {
         handle: &mut (impl IOBase + ?Sized),
         mut batches: crate::arrow::BatchReader,
     ) -> Result<bool> {
-        use crate::generic::IORecordOptions as _;
+        use crate::media::IORecordOptions as _;
         use arrow_array::RecordBatchReader as _;
 
         self.require_live()?;
@@ -565,7 +565,7 @@ impl ArrowWriteSession {
 
     /// Publish the final incomplete cadence and complete the session.
     pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
-        use crate::generic::IORecordOptions as _;
+        use crate::media::IORecordOptions as _;
 
         self.require_live()?;
         if !self.input_complete {
@@ -639,7 +639,7 @@ impl ArrowWriteSession {
         }
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(located) = crate::iceberg::located(handle)? {
+            if let Some(located) = crate::media::iceberg::located(handle)? {
                 let stored = located.stored_field()?;
                 self.target = Some(ArrowWriteTarget::Iceberg {
                     located: Box::new(located),
@@ -647,7 +647,7 @@ impl ArrowWriteSession {
                 });
                 return Ok(());
             }
-            let mut writer = crate::io::partition::FolderWriter::new(handle, &self.options)?;
+            let mut writer = crate::media::partition::FolderWriter::new(handle, &self.options)?;
             writer.set_options(routing_options(
                 self.delegated.clone(),
                 self.declared.clone(),
@@ -687,7 +687,7 @@ impl ArrowWriteSession {
         if self.shaped_schema.is_some() {
             return Ok(());
         }
-        use crate::generic::IORecordOptions as _;
+        use crate::media::IORecordOptions as _;
         let empty = arrow_array::RecordBatch::new_empty(input_schema);
         let shaped = self.options.cast_arrow_batch(empty, self.target_field())?;
         let schema = shaped.schema();
@@ -702,7 +702,7 @@ impl ArrowWriteSession {
                 )?,
             });
         }
-        self.buffer = Some(crate::generic::CommitBuffer::new(
+        self.buffer = Some(crate::media::CommitBuffer::new(
             std::sync::Arc::clone(&schema),
             self.commit_row_size,
         ));
@@ -715,7 +715,7 @@ impl ArrowWriteSession {
             let ready = self
                 .buffer
                 .as_mut()
-                .and_then(crate::generic::CommitBuffer::next_ready);
+                .and_then(crate::media::CommitBuffer::next_ready);
             let Some(reader) = ready else { return Ok(()) };
             self.publish(handle, reader)?;
         }
@@ -729,7 +729,7 @@ impl ArrowWriteSession {
         let remainder = self
             .buffer
             .as_mut()
-            .and_then(crate::generic::CommitBuffer::finish);
+            .and_then(crate::media::CommitBuffer::finish);
         if let Some(reader) = remainder {
             self.publish(handle, reader)?;
         }
@@ -742,7 +742,7 @@ impl ArrowWriteSession {
         handle: &mut (impl IOBase + ?Sized),
         batches: crate::arrow::BatchReader,
     ) -> Result<()> {
-        use crate::generic::IORecordOptions as _;
+        use crate::media::IORecordOptions as _;
 
         let mode = match (self.mode, self.published) {
             (crate::IOMode::Overwrite, true) => crate::IOMode::Append,
@@ -893,7 +893,7 @@ impl arrow_array::RecordBatchReader for PrefixedBatchReader {
 /// Restore a declared field only for partition-layout discovery.
 #[cfg(feature = "arrow")]
 fn routing_options(mut delegated: RecordOptions, declared: Option<crate::Field>) -> RecordOptions {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     if let Some(field) = declared {
         delegated.set_field(field);
@@ -919,7 +919,7 @@ pub(crate) fn select_reader(
     reader: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<crate::arrow::BatchReader> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     let names = options.select_by_names();
     if names.is_empty() {
@@ -937,18 +937,18 @@ pub(crate) fn leaf_reader(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<crate::arrow::BatchReader> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     let declared = options.field();
     let declared = declared.as_ref();
     let reader = match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::read_batch_reader(handle, declared, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::media::ipc::read_batch_reader(handle, declared, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::parquet::read_batch_reader(handle, declared, parquet)?
+            crate::media::parquet::read_batch_reader(handle, declared, parquet)?
         }
-        RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
-        RecordOptions::Text(text) => crate::text::line::arrow::read_arrow_reader(handle, text)?,
+        RecordOptions::Avro(avro) => crate::media::avro::read_batch_reader(handle, declared, avro)?,
+        RecordOptions::Text(text) => crate::media::text::arrow::read_arrow_reader(handle, text)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
@@ -963,11 +963,11 @@ pub(crate) fn leaf_row_size(
     options: &RecordOptions,
 ) -> Result<u64> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::row_size(handle, ipc),
+        RecordOptions::Ipc(ipc) => crate::media::ipc::row_size(handle, ipc),
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
-        RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
-        RecordOptions::Text(text) => crate::text::line::arrow::row_size(handle, text),
+        RecordOptions::Parquet(parquet) => crate::media::parquet::row_size(handle, parquet),
+        RecordOptions::Avro(avro) => crate::media::avro::row_size(handle, avro),
+        RecordOptions::Text(text) => crate::media::text::arrow::row_size(handle, text),
     }
 }
 
@@ -981,18 +981,18 @@ pub(crate) fn leaf_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<crate::Field> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     if let Some(field) = options.field() {
         return Ok(field.clone());
     }
     match options {
-        RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
+        RecordOptions::Ipc(ipc) => Ok(crate::media::ipc::read_field(handle, ipc)?),
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
-        RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
+        RecordOptions::Parquet(parquet) => Ok(crate::media::parquet::read_field(handle, parquet)?),
+        RecordOptions::Avro(avro) => Ok(crate::media::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => {
-            let reader = crate::text::line::arrow::read_arrow_reader(handle, text)?;
+            let reader = crate::media::text::arrow::read_arrow_reader(handle, text)?;
             Ok(crate::arrow::field_from_arrow_schema(
                 text.name(),
                 reader.schema().as_ref(),
@@ -1013,14 +1013,16 @@ pub(crate) fn leaf_writer(
     options: &RecordOptions,
 ) -> Result<()> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::media::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
+            crate::media::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
         }
-        RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
+        RecordOptions::Avro(avro) => {
+            crate::media::avro::overwrite_arrow_reader(handle, batches, avro)?
+        }
         RecordOptions::Text(text) => {
-            crate::text::line::arrow::write_arrow_reader(handle, batches, text)?;
+            crate::media::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
     }
     Ok(())
@@ -1036,7 +1038,7 @@ pub(crate) fn stored_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<Option<crate::Field>> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     if handle.is_empty() {
         return Ok(None);
@@ -1084,7 +1086,7 @@ fn merge_leaf_onto(
     merge_by_names: &[String],
     target: &crate::Field,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     // The stored side is read as the target so both sides of the match agree
     // column for column before a single key is compared.
@@ -1092,7 +1094,7 @@ fn merge_leaf_onto(
     rewrite.set_field(target.clone());
     let stored = leaf_reader(handle, &rewrite)?;
     let merged =
-        crate::io::merge::merged(stored, incoming, target, merge_by_names, options.safe())?;
+        crate::media::merge::merged(stored, incoming, target, merge_by_names, options.safe())?;
     // The merged contents are the whole new value. The cloned options already
     // had its declared field popped by `prepare_arrow_write`; clear the key as
     // well so the required overwrite hook sees exactly one publication and
@@ -1112,7 +1114,7 @@ fn append_leaf(
     // Text lines append natively: rows render after the current last line,
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
-        return crate::text::line::arrow::append_arrow_reader(handle, incoming, text);
+        return crate::media::text::arrow::append_arrow_reader(handle, incoming, text);
     }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)
@@ -1126,7 +1128,7 @@ fn append_leaf_onto(
     options: &RecordOptions,
     target: &crate::Field,
 ) -> Result<()> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     let mut rewrite = options.clone();
     rewrite.set_field(target.clone());
@@ -1154,7 +1156,7 @@ fn target_field(
     incoming: &crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<crate::Field> {
-    use crate::generic::IORecordOptions;
+    use crate::media::IORecordOptions;
 
     if let Some(field) = options.field() {
         return Ok(field.clone());

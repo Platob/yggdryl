@@ -9,7 +9,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::IOMedia;
-use yggdryl::generic::IORecordOptions;
+use yggdryl::media::IORecordOptions;
 
 use super::{ROWS, batch, handle, reader, stored, stored_with, wide};
 

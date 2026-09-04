@@ -12,7 +12,6 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
-pub mod avro;
 mod bytestream;
 mod codec;
 pub mod coding;
@@ -28,19 +27,6 @@ pub mod fix;
 pub mod generic;
 pub mod holder;
 mod i256;
-#[cfg(feature = "iceberg")]
-pub mod iceberg;
-// The line handler consults the Iceberg type vocabulary even when the table
-// format itself is not compiled in, so the schema it accepts never depends on
-// the feature set - a schema answered from a pattern is the same schema in a
-// schema-only build as in a full one. Without the feature the module is
-// exactly the vocabulary - the one self-contained `types.rs`, never a
-// duplicate, and it needs no dependency of its own - and enabling the feature
-// only *adds* the rest of the format, so the features stay additive.
-#[cfg(not(feature = "iceberg"))]
-#[path = "iceberg/types.rs"]
-pub mod iceberg;
-pub mod io;
 mod iobase;
 mod iocursor;
 mod iofile;
@@ -49,15 +35,12 @@ mod iokind;
 mod iomedia;
 mod iomode;
 mod iopath;
-#[cfg(feature = "arrow")]
-pub mod ipc;
 pub mod json;
 mod listing;
+pub mod media;
 mod media_type;
 mod metadata;
 mod mime_type;
-#[cfg(feature = "parquet")]
-pub mod parquet;
 mod path;
 mod scheme;
 pub mod text;

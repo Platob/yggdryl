@@ -11,7 +11,7 @@ use crate::{Codec, Error, MimeType, Result, Url};
 /// because a permission or network error is not an absence.
 ///
 /// ```
-/// use yggdryl::io::skip_absent;
+/// use yggdryl::skip_absent;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let absent = std::io::Error::from(std::io::ErrorKind::NotFound);

@@ -379,8 +379,8 @@ mod records {
     use arrow_schema::{ArrowError, SchemaRef};
 
     use crate::arrow::BatchReader;
-    use crate::generic::{IORecordOptions, RecordOptions};
     use crate::holder::Buffer;
+    use crate::media::{IORecordOptions, RecordOptions};
     use crate::{ArrowWriteSession, IOBase, IOMedia};
     use crate::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
@@ -3270,7 +3270,7 @@ mod lifecycle {
     #[test]
     fn a_media_handle_drops_its_cache_as_part_of_the_removal() {
         use crate::arrow::batch_reader;
-        use crate::ipc::Ipc;
+        use crate::media::ipc::Ipc;
 
         let field = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
             .expect("a struct root")
@@ -3431,18 +3431,18 @@ mod shape {
         let plain = Buffer::new();
         assert!(plain.is_atomic());
 
-        let ipc = crate::ipc::Ipc::new(Buffer::new());
+        let ipc = crate::media::ipc::Ipc::new(Buffer::new());
         assert!(ipc.is_tabular());
         assert!(!ipc.is_atomic());
 
         #[cfg(feature = "parquet")]
         {
-            let parquet = crate::parquet::Parquet::new(Buffer::new());
+            let parquet = crate::media::parquet::Parquet::new(Buffer::new());
             assert!(parquet.is_tabular());
             assert!(!parquet.is_atomic());
         }
 
-        let avro = crate::avro::Avro::new(Buffer::new());
+        let avro = crate::media::avro::Avro::new(Buffer::new());
         assert!(avro.is_tabular());
         assert!(!avro.is_atomic());
     }

@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
-use yggdryl::generic::IORecordOptions;
 use yggdryl::holder::local::Folder;
-use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::media::IORecordOptions;
+use yggdryl::media::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
 use yggdryl::{DataType, Field};
 
 /// The directory both halves of the exchange live under.
@@ -337,7 +337,7 @@ fn tables_written_by_pyiceberg_at_other_versions_read_here() {
 /// compare implementations on identical bytes.
 #[test]
 fn a_large_manifest_is_left_for_baseline_readers() {
-    use yggdryl::iceberg::{DataFile, ManifestEntry, write_manifest};
+    use yggdryl::media::iceberg::{DataFile, ManifestEntry, write_manifest};
 
     let dir = interop_root();
     std::fs::create_dir_all(&dir).expect("the exchange directory");
@@ -380,7 +380,7 @@ fn a_large_manifest_is_left_for_baseline_readers() {
 /// the variable and runs this with `--release`.
 #[test]
 fn times_the_baseline_manifest_for_the_comparison_table() {
-    use yggdryl::iceberg::{read_manifest, read_manifest_for_plan};
+    use yggdryl::media::iceberg::{read_manifest, read_manifest_for_plan};
 
     if std::env::var_os("YGGDRYL_BASELINE_TIMING").is_none() {
         return;

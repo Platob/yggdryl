@@ -48,8 +48,8 @@ use pyo3::types::{
 };
 
 use yggdryl::arrow::BatchReader;
-use yggdryl::generic::{IORecordOptions, RecordOptions};
-use yggdryl::text::TextOptions as CoreTextOptions;
+use yggdryl::media::text::TextOptions as CoreTextOptions;
+use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
 use crate::datatype::{PyDataType, core_dtype_from_value};
@@ -183,7 +183,7 @@ pub(crate) fn record_batch_from_value(value: &Bound<'_, PyAny>) -> PyResult<Reco
 /// The rows one batch holds when a caller streaming plain rows sets no bound.
 ///
 /// Mappings and schema-shaped sequences use the same bounded grouping.
-const DEFAULT_ROWS_PER_BATCH: usize = yggdryl::generic::DEFAULT_RECORD_BATCH_ROW_SIZE;
+const DEFAULT_ROWS_PER_BATCH: usize = yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// A `DataFrame` library this boundary converts to and from.
 ///
@@ -1101,7 +1101,7 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 }
 
 /// Parse one text row terminator without losing arbitrary byte values.
-fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::LineSep> {
+fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::media::text::LineSep> {
     if let Ok(value) = value.extract::<&str>() {
         return value.parse().map_err(value_error);
     }
@@ -1120,7 +1120,7 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::Line
             "linesep must be str, bytes, bytearray, memoryview, or None",
         ));
     };
-    yggdryl::text::LineSep::new(bytes).map_err(value_error)
+    yggdryl::media::text::LineSep::new(bytes).map_err(value_error)
 }
 
 /// Read one required key from private `RecordOptions` pickle state.

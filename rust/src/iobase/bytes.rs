@@ -3,9 +3,9 @@
 use std::io::{Read, Write};
 
 use super::IOBase;
-#[cfg(feature = "arrow")]
-use crate::generic::RecordOptions;
 use crate::holder::Holder;
+#[cfg(feature = "arrow")]
+use crate::media::RecordOptions;
 use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 
 /// Implement [`IOBase`] methods by forwarding them to an inner handle.
@@ -368,7 +368,7 @@ impl IOMedia for Box<dyn IOBase> {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
         IOMedia::read_parquet_statistics(self.as_ref())
     }
 
@@ -376,7 +376,7 @@ impl IOMedia for Box<dyn IOBase> {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
+    ) -> Result<crate::media::parquet::GeospatialStatistics> {
         IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
     }
 

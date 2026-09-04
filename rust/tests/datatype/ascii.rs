@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::batch_reader;
-use yggdryl::generic::RecordOptions;
 use yggdryl::holder::Buffer;
+use yggdryl::media::RecordOptions;
 use yggdryl::{DataType, Expression, Field, Scalar, TypedScalar, Url};
 use yggdryl::{IOBase, IOMedia};
 
@@ -257,8 +257,8 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
 #[test]
 fn an_ascii_column_is_an_iceberg_string() {
     let mut schema = root([DataType::FixedAscii(4).required_field("ccy")]);
-    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    let json = yggdryl::iceberg::schema_into_json(&schema).unwrap();
+    yggdryl::media::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    let json = yggdryl::media::iceberg::schema_into_json(&schema).unwrap();
     let fields = json
         .get_key_str("fields")
         .and_then(Scalar::as_sequence)

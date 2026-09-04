@@ -217,9 +217,9 @@ fn decoded_with_format<H: IOBase + ?Sized>(
     format: Option<Format>,
 ) -> Result<(Box<dyn Read + '_>, Plan)> {
     let mut encoded = source.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
-    let mut head = Vec::with_capacity(crate::generic::MAGIC_PROBE_LEN);
+    let mut head = Vec::with_capacity(crate::media::MAGIC_PROBE_LEN);
     {
-        let mut probe = std::io::Read::take(&mut encoded, crate::generic::MAGIC_PROBE_LEN as u64);
+        let mut probe = std::io::Read::take(&mut encoded, crate::media::MAGIC_PROBE_LEN as u64);
         probe.read_to_end(&mut head)?;
     }
     let plan = match format {

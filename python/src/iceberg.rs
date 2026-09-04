@@ -17,13 +17,13 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
 
 use yggdryl::IOBase as _;
-use yggdryl::generic::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::holder::Holder;
-use yggdryl::iceberg::{
+use yggdryl::media::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
     assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
+use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
 
 use crate::datatype::core_dtype_from_value;
@@ -363,7 +363,7 @@ fn iceberg_batch_reader(
     table: Option<&Table<Holder>>,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<yggdryl::arrow::BatchReader> {
-    let mut options = yggdryl::generic::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
+    let mut options = yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
         .map_err(value_error)?;
     let declared = table.and_then(|table| table.schema().ok());
     if let Some(schema) = declared {
@@ -387,7 +387,7 @@ fn iceberg_batch_reader(
 /// against; a create-on-write names none yet, and the rows declare it. The
 /// lookup costs one metadata read on a call that is about to write several.
 fn iceberg_named_batch_reader(
-    tables: &yggdryl::iceberg::Tables<'_, Holder>,
+    tables: &yggdryl::media::iceberg::Tables<'_, Holder>,
     name: &str,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<yggdryl::arrow::BatchReader> {
@@ -3278,14 +3278,14 @@ impl PyNamespaces {
     ///
     /// A parent that does not exist lists nothing rather than failing, per
     /// the level's own listing contract.
-    fn level(&self, py: Python<'_>, tables: bool) -> PyResult<yggdryl::iceberg::Names> {
+    fn level(&self, py: Python<'_>, tables: bool) -> PyResult<yggdryl::media::iceberg::Names> {
         let catalog = self.catalog.borrow(py);
         match &self.parent {
             None => Ok(catalog.inner.namespaces().iter()),
             Some(parent) => match catalog.inner.namespaces().get(parent) {
                 Ok(namespace) if tables => Ok(namespace.tables().iter()),
                 Ok(namespace) => Ok(namespace.namespaces().iter()),
-                Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
+                Err(error) if error.is_absent() => Ok(yggdryl::media::iceberg::Names::empty()),
                 Err(error) => Err(value_error(error)),
             },
         }
@@ -3422,7 +3422,7 @@ impl PyNamespaces {
 /// a `del` - so there is no `__delitem__` to pair this with.
 #[pyclass(name = "IcebergNames", module = "yggdryl._native")]
 pub(crate) struct PyNames {
-    names: yggdryl::iceberg::Names,
+    names: yggdryl::media::iceberg::Names,
 }
 
 #[pymethods]
@@ -3456,7 +3456,7 @@ pub(crate) struct PyNamespaceIterator {
     catalog: Py<PyCatalog>,
     /// The parent namespace's dotted name; `None` is the warehouse root.
     parent: Option<String>,
-    names: yggdryl::iceberg::Names,
+    names: yggdryl::media::iceberg::Names,
     kind: ViewIteratorKind,
 }
 
@@ -3498,7 +3498,7 @@ pub(crate) struct PyTableIterator {
     catalog: Py<PyCatalog>,
     /// The owning namespace's dotted name; `None` is the warehouse root.
     namespace: Option<String>,
-    names: yggdryl::iceberg::Names,
+    names: yggdryl::media::iceberg::Names,
     kind: ViewIteratorKind,
 }
 
@@ -3569,14 +3569,14 @@ impl PyTables {
     fn with_core<R>(
         &self,
         py: Python<'_>,
-        operation: impl FnOnce(yggdryl::iceberg::Tables<'_, Holder>) -> R,
+        operation: impl FnOnce(yggdryl::media::iceberg::Tables<'_, Holder>) -> R,
     ) -> R {
         let catalog = self.catalog.borrow(py);
         operation(catalog.inner.tables())
     }
 
     /// The table names one level down, as the core's lazy iterator.
-    fn level(&self, py: Python<'_>) -> PyResult<yggdryl::iceberg::Names> {
+    fn level(&self, py: Python<'_>) -> PyResult<yggdryl::media::iceberg::Names> {
         let catalog = self.catalog.borrow(py);
         match &self.namespace {
             None => Ok(catalog.inner.tables().iter()),
@@ -3584,7 +3584,7 @@ impl PyTables {
                 Ok(namespace) => Ok(namespace.tables().iter()),
                 // A namespace that does not exist lists nothing rather than
                 // failing.
-                Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
+                Err(error) if error.is_absent() => Ok(yggdryl::media::iceberg::Names::empty()),
                 Err(error) => Err(value_error(error)),
             },
         }

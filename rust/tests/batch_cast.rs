@@ -90,7 +90,7 @@ fn a_zero_column_batch_keeps_its_row_count() {
 #[test]
 fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
     use yggdryl::MimeType;
-    use yggdryl::generic::{IORecordOptions, RecordOptions};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
 
     // Rows arrive as (symbol utf8, price int32, venue utf8).
     let source = Arc::new(Schema::new(vec![

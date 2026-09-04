@@ -631,7 +631,7 @@ impl PyField {
         // Scanner, anything exporting the C stream - casts batch by batch.
         let reader = crate::record::batch_reader_from_any(
             value,
-            &yggdryl::generic::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
+            &yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
                 .map_err(value_error)?,
         )?;
         let cast = yggdryl::arrow::cast_reader(reader, &self.inner, safe).map_err(value_error)?;

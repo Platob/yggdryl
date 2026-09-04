@@ -20,11 +20,11 @@ use criterion::measurement::WallTime;
 use criterion::{BatchSize, BenchmarkGroup, Criterion, Throughput};
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
-use yggdryl::avro::Avro;
-use yggdryl::generic::{IORecordOptions, Media};
 use yggdryl::holder::Holder;
-use yggdryl::ipc::Ipc;
-use yggdryl::parquet::Parquet;
+use yggdryl::media::avro::Avro;
+use yggdryl::media::ipc::Ipc;
+use yggdryl::media::parquet::Parquet;
+use yggdryl::media::{IORecordOptions, Media};
 use yggdryl::{DataType, Field, IOMode, Scalar};
 
 use super::{batch, handle, reader, stored_with, wide};

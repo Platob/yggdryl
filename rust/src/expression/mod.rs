@@ -1455,7 +1455,7 @@ impl Expression {
     #[must_use]
     pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self {
         let reference = Self::column(column);
-        if value == crate::io::NULL_PARTITION {
+        if value == crate::media::NULL_PARTITION {
             return reference.is_null();
         }
         reference.eq(Self::literal(value).try_cast(dtype.clone()))

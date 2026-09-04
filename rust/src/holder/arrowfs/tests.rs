@@ -969,8 +969,8 @@ mod records {
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
 
-    use crate::generic::{IORecordOptions, RecordOptions};
     use crate::holder::arrowfs::LocalFileSystem;
+    use crate::media::{IORecordOptions, RecordOptions};
     use crate::{DataType, Field};
 
     fn schema() -> Field {
@@ -1127,7 +1127,7 @@ mod tables {
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
 
-    use crate::iceberg::{FormatVersion, PartitionSpec, Table};
+    use crate::media::iceberg::{FormatVersion, PartitionSpec, Table};
     use crate::{DataType, Field};
 
     fn schema() -> Field {

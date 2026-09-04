@@ -202,15 +202,15 @@ impl<H: IOBase> Coding<H> {
     #[cfg(feature = "arrow")]
     fn shape_owned_arrow_reader(
         reader: crate::arrow::BatchReader,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        use crate::generic::IORecordOptions;
+        use crate::media::IORecordOptions;
 
         let reader = match options.field() {
             Some(field) => crate::arrow::cast_reader(reader, &field, options.safe())?,
             None => reader,
         };
-        let reader = crate::io::partition::filtered_reader(reader, options)?;
+        let reader = crate::media::partition::filtered_reader(reader, options)?;
         options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
     }
 }
@@ -261,20 +261,20 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
-        options: &crate::generic::RecordOptions,
+        options: &crate::media::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        use crate::generic::IORecordOptions;
+        use crate::media::IORecordOptions;
 
         let owned = self.owned_presented_handle()?;
         if owned.is_container() {
             return crate::IOMedia::read_arrow_reader(&owned, options);
         }
         let reader = match options {
-            crate::generic::RecordOptions::Ipc(ipc) => {
-                crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
+            crate::media::RecordOptions::Ipc(ipc) => {
+                crate::media::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
             }
-            crate::generic::RecordOptions::Text(text) => {
-                crate::text::line::arrow::read_owned_arrow_reader(owned, text)?
+            crate::media::RecordOptions::Text(text) => {
+                crate::media::text::arrow::read_owned_arrow_reader(owned, text)?
             }
             _ => return crate::IOMedia::read_arrow_reader(&owned, options),
         };
