@@ -10,7 +10,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 | Bindings | Rust only |
 | Validates | Only the canonical `file:` [`Url`](../../uri/index.md), which is a `Folder`'s whole state |
 | Lazy | Constructing touches nothing; a write creates the file and every missing parent |
-| Roots | `temporary()`, `home()` (`HOME`, then `USERPROFILE`), `config()` (home joined with `.config`); none creates |
+| Roots | `temporary()`, `home()` (`HOME`, then `USERPROFILE`, unset or empty skipped), `config()` (home joined with `.config`); none creates |
 | Listings | Sorted; dot-prefixed entries skipped and never descended unless asked |
 | Mapping | `size` logical, `capacity` mapped; geometric growth; `flush` and `close` unmap, then set the length |
 | Unsafe | The mapping constructor: another process truncating a mapped file raises SIGBUS |

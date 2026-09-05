@@ -8,9 +8,9 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 | --- | --- |
 | Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, `filter_partitions`, partition columns in folder records |
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
-| Pattern location | `kind` is `IOKind::Directory`; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
-| `children_where` | Leaves only, carrying every pair; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
-| `filter_partitions` | `(column, value)` pairs as paths spell them; prunes leaves by path, filters carried columns row by row, same answer either way |
+| Pattern location | `kind` is `IOKind::Directory` before any backend call; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
+| `children_where` | Leaves only, carrying every pair; what a folder-addressed record method resolves through; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
+| `filter_partitions` | `(column, value)` pairs as paths spell them; a pruned leaf is never listed or decoded, a carried column is filtered row by row, same answer either way |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
 | Retries | Listings and whole-leaf rewrites retry a bounded number of times with a growing pause; an append never retries |
@@ -121,7 +121,7 @@ Every listing yields one entry at a time, so a folder with a million leaves list
 | Fails at the entry | The error names it; earlier items stand; `.collect::<Result<Vec<_>>>()` gives a vector |
 | Deterministic | Directory entries are sorted; a walk yields a container immediately before its subtree |
 | Frontier | A recursive walk holds one cursor per open depth, never its results |
-| Owned | `partitions` is owned, bounded by the URL's path depth, not a `Listing` |
+| Owned | Bounded by the act is owned: `partitions` (one URL's path depth), an operation's report (expiry snapshot ids, compaction counts); unbounded by the resource is a `Listing` |
 | Backend | [Local](../backends/local.md) reads one directory at a time; an Arrow [filesystem](../backends/filesystems.md) answers a prefix in one call |
 
 ## Partition pruning and filtering

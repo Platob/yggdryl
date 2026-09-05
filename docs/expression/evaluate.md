@@ -8,11 +8,11 @@ Evaluation over every target: the vectorized Arrow tier, `Statement::bind` with 
 | --- | --- |
 | Owns | Arrow tier, `Statement::bind`, `project_reader`, `ApplyExpression` / `ApplyExpressionStream`, `Table::plan_matching` / `scan_matching` |
 | Arrow tier | An optimization of the row tier, never a second definition; a property test asserts equality on every operator, nulls and `nan` included |
-| Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else runs the row evaluator and gathers |
+| Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else runs the row evaluator and gathers, which is slower |
 | Zero-copy | A mask keeping every row hands back the input batch; a projection reorders `ArrayRef`s and touches no buffer |
 | Bind | Resolves projections, predicate, ordering, parameters, and output field against one struct `Field`, once |
-| Parameters | Rust `bind_with(&field, &[(name, Scalar)])`; Python `bind(field, parameters=None)`; JavaScript `bind(fieldLike, parameters?)` |
-| Streamed | `project_reader` / `project_arrow` / `projectArrow` apply predicate and projection per batch with one limit across the stream |
+| Parameters | Rust `bind_with(&field, &[(name, Scalar)])`; Python `bind(field, parameters=None)`; JavaScript `bind(fieldLike, parameters?)` takes a `Scalar` record or a plain object; one core binder |
+| Streamed | `project_reader` / `project_arrow` / `projectArrow` apply predicate and projection per batch, one limit across the stream, where the holder permits streaming |
 | Sort | `sort` / `sort_arrow_batch` / `sortArrowBatch` order one materialized batch |
 | Bindings | Statement bind and Iceberg planning in all three; `ApplyExpression` is Rust only |
 
@@ -59,7 +59,8 @@ A `BoundStatement` exposes the resolved plan without reparsing it.
 
 ## Vectorized, and zero-copy where the shape allows
 
-A text to temporal cast is the one kernel with a reading in front of it: the column spells through the row code, and Arrow answers only spellings a row refuses.
+A text to temporal cast is the one kernel with a reading in front of it.
+The column spells through the row code, and Arrow answers only spellings a row refuses.
 
 | Shape | Buffers |
 | --- | --- |
@@ -79,7 +80,8 @@ Global ordering needs every row, so the `sort` family sorts one materialized bat
 
 ## Targets own their application
 
-`ApplyExpression` lets the target say what applying an expression produces, as an associated type; `Bound` keeps only `matches` (apply then require boolean) and `filter` (apply then select).
+`ApplyExpression` lets the target say what applying an expression produces, as an associated type.
+`Bound` keeps only `matches` (apply then require boolean) and `filter` (apply then select).
 
 | Target | Applying an expression produces |
 | --- | --- |
@@ -144,7 +146,8 @@ for batch in filtered {
 assert_eq!(kept, 1);
 ```
 
-A new target implements the trait beside its own type and `expression/` never learns it exists; `rust/src/iobase/tests/applying.rs` proves it with a `Listing` target reached through the public surface alone.
+A new target implements the trait beside its own type, and `expression/` never learns it exists.
+`rust/src/iobase/tests/applying.rs` proves it with a `Listing` target reached through the public surface alone.
 
 ## Iceberg: one predicate, every level of the metadata
 
@@ -205,6 +208,7 @@ The scan is planned by the expression that filters the rows: a manifest-list sum
 - `Bounds` prove no row can match -> `Some(false)`; the container is skipped unread.
 - Conjunct proven by the partition tuple -> dropped rather than re-tested; what no metadata level settles is left for the rows.
 - Text to temporal cast on a column -> the row reader spells first; the kernel sees only spellings a row refuses.
+- `project_arrow` / `projectArrow` -> the input kind is preserved: record batch, table, or reader.
 - `sort` / `sort_arrow_batch` / `sortArrowBatch` -> one batch, never a stream.
 
 ## Commands
@@ -237,7 +241,8 @@ The scan is planned by the expression that filters the rows: a manifest-list sum
 
 ## Performance
 
-`benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select` as the baseline; `expression_mask` and `kernel_mask` share case IDs, so the gap is the price of the grammar. One containerized x86_64 Linux run on the published host ([Benchmarks](../benchmarks.md); rustc 1.94.1, thin LTO), 65,536 rows, `--measurement-time 1`:
+`benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `expression_mask` and `kernel_mask` share case IDs.
+Indicative numbers from one containerized x86_64 Linux run ([Benchmarks](../benchmarks.md)), 65,536 rows, `--measurement-time 1`:
 
 ```text
                        expression   kernel

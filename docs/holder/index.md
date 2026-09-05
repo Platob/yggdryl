@@ -22,8 +22,8 @@ Every storage implementation is reached through the positional `IOBase` contract
 | Variants | local `Buffer`/`Folder`/`Path`/`File`, `fs`, `Buffered`/`Text`/`Media` |
 | `Holder::local` | `Holder::Path`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
-| Lazy | construction touches no filesystem |
-| `Holder::open` | wraps IPC, Parquet, Avro, text, then opens |
+| Lazy | construction touches no filesystem; a role resolves only when an operation needs it |
+| `Holder::open` | wraps IPC, Parquet, Avro, text, then opens; keeps the schema, footer, and dimension caches; the bindings' route |
 | Idempotent | `into_text`, `buffered`, `into_media` never stack |
 | Hierarchy | `parent`, `child_by_path`, `ls` return `Holder` |
 
@@ -107,9 +107,9 @@ std::fs::remove_dir_all(&path)?;
 
 | trait | declares | pre-implements |
 | --- | --- | --- |
-| `IOFolder` | `folder_url`, `folder_exists`, `create_folder`, `list_folder` | `folder_pread`, `folder_pwrite`, `folder_truncate`, `folder_media_type`, `folder_kind` |
-| `IOFile` | `file_url`, `file_exists` | `file_ls`, `file_child_by_path`, `file_kind` |
-| `IOPath` | `path_url`, `is_folder`, `is_file` | `path_exists`, `path_kind`, `path_media_type` |
+| `IOFolder` | `folder_url`, `folder_exists`, `create_folder`, `list_folder` | `folder_pread` (nothing), `folder_pwrite` (refuses), `folder_truncate` (creates on `0`, else errors), `folder_media_type` (`inode/directory`), `folder_kind` (`Directory`) |
+| `IOFile` | `file_url`, `file_exists` | `file_ls` (nothing), `file_child_by_path` (refuses), `file_kind` (`File`, `Unknown` when absent) |
+| `IOPath` | `path_url`, `is_folder`, `is_file` | `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), `path_media_type` (container type, or the one the name implies) |
 
 ```rust
 use yggdryl::IOBase;
@@ -168,7 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | spelling | forwards |
 | --- | --- |
 | `delegate_iobase!(handle)` | storage contract, `open`, `opened`, `close`; no records |
-| `delegate_iomedia!(handle)` | dimensions, options, reads, typed writes |
+| `delegate_iomedia!(handle)` | dimensions, options, Field and reader reads, typed writes |
 | `delegate_iobase!(handle, except_lifecycle)` | omits `clear`, `remove`, `is_atomic`, `is_tabular`, `is_io` |
 | `delegate_iobase!(handle: pread, size, ...)` | only the named methods |
 
@@ -176,7 +176,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 - `pwrite` on a container -> refused, naming the directory; `truncate(0)` creates it.
 - JSON, directories, unknown media -> `Holder::open` leaves them raw.
-- A method omitted from the list form -> the trait default, so `clear` truncates.
+- A method omitted from the list form -> the trait default, so `clear` and `remove` truncate.
+- A method the wrapper writes itself -> leave it out of the list; the macro cannot also expand it.
 - `Ipc`, `Parquet`, the text handler -> `except_lifecycle`; [Buffered](backends/buffered.md) -> the list form.
 
 ## Commands

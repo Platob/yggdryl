@@ -6,6 +6,7 @@ JSON and JSON Lines over the shared `Scalar` codec.
 
 | facet | contract |
 | --- | --- |
+| Proves | null, booleans, finite numbers, strings, arrays, string-key objects; anything else needs a `Field` |
 | Loads | objects to name-sorted `Record`, arrays to `Sequence`, numbers to the narrowest exact family |
 | Dumps | compact; deterministic `Record` order; `Mapping` keeps insertion order, string keys only |
 | Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return it, else natural objects |

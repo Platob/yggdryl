@@ -391,7 +391,7 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
 
 ## Cursors
 
-A cursor makes a position explicit; two cursors over one resource advance independently.
+A cursor makes a position explicit: `tell` and `seek` move it, reads and writes advance it, and two cursors advance independently.
 
 === "Rust"
 
@@ -871,9 +871,11 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 - `pstream_bytes(position, 0)` -> refused; `batch_size` must be non-zero.
 - Stream error -> yielded once after every successful prefix, then the iterator stays fused.
 - `pstream_bytes` at a non-zero position on a coded handle -> decodes and discards the prefix; frames are not seekable.
-- `pstream_bytes` through [Buffered](../backends/buffered.md) -> bypasses the page cache, `cached_pages() == 0`.
+- `pstream_bytes` through [Buffered](../backends/buffered.md) -> bypasses the page cache, `cached_pages() == 0`; use positional reads when retained pages are wanted.
 - `IOBase(handle)` in Python -> rebuilt; an in-memory source hands over its content and media type.
 - `is_tabular` on a `.parquet` leaf without the `parquet` feature -> `true`; `record_options` on [Records](records.md) names the undecodable encoding.
+- `is_tabular` on a folder of data files -> `true`: it reads as the table beneath it, and a partitioned tree is one table in one encoding.
+- `IOKind::Table`, `Namespace`, `Catalog` -> settle the shape outright; a leaf or an undecided location settles from the media type, with no call into the backing store.
 - `codec` with nothing to undo -> Python `None`, JavaScript `null`, never `"identity"`.
 - Bindings -> `codec` is a read-only property, `media_type` a settable one.
 - `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`, naming the target's media type; nothing is written.
@@ -881,7 +883,7 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 - `open` on an already-open handle -> no-op.
 - `open` on an absent resource -> succeeds without creating it; creation waits for the first write.
 - `close` -> publishes the pending write and releases the cache; the handle stays usable and re-materializes.
-- `clear`/`remove` on an absent resource -> success, nothing created; permission, network, busy failures stay typed errors.
+- `clear`/`remove` on an absent resource -> success, nothing created (`clear` is not a write); permission, network, busy failures stay typed errors.
 - `remove(false)` on a container with children -> refused by name; `recursive` is ignored on a leaf.
 
 ## Commands

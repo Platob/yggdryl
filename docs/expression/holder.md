@@ -8,8 +8,11 @@
 | --- | --- |
 | Owns | `&holder.*`, `children_matching`, `statistics_prune`, `partition_split` |
 | Ordering | `bind` sorts conjuncts cheapest-first, stopping at the first `false` |
-| Over-stated cost | Harmless; a later selector still answers |
+| Over-stated cost | Harmless; a later selector still answers, so a backend-dependent price is classed by its worst case |
 | Pruning | `false` only when no row can match |
+| Split | Sound because dropping conjuncts only widens what is kept |
+| Grammar | [Grammar](grammar.md) |
+| Partition columns | [Partitions](../holder/iobase/partitions.md) |
 
 ## Use
 
@@ -92,8 +95,7 @@
 
 ## Statistics pruning
 
-Minimums, maximums, and null counts settle it. A Hive path is one such statistic:
-minimum equal to maximum, nothing null.
+Per-column minimums, maximums, and null counts settle it, in a Parquet footer, an Iceberg manifest, or a Hive path.
 
 Rust only.
 
@@ -121,7 +123,7 @@ assert!("size is null".parse::<Expression>()?.bind(&schema)?.statistics_prune(&b
 
 ## Partition split
 
-`partition_split` separates the conjuncts a layout answers from the residual over rows.
+`partition_split` separates the conjuncts that read only partition columns and holder attributes from the residual over rows.
 
 Rust only.
 
@@ -143,6 +145,8 @@ assert!(!residual.is_complete());
 ## Edges
 
 - Row-column conjunct -> dropped; a file may be kept, never wrongly discarded.
+- Free-attribute conjunct answering `false` -> exactly zero calls into the backing store.
+- A Hive path -> the tightest statistic there is: minimum equal to maximum, nothing null.
 - Unprovable predicate -> `statistics_prune` returns `true`, one read.
 - Incomplete split -> `is_complete()` is `false`; `remaining()` runs over rows.
 
@@ -166,5 +170,3 @@ assert!(!residual.is_complete());
     ```bash
     node --test --test-name-pattern="holder attribute|a lake is filtered" node/tests/expression
     ```
-
-See also [Grammar](grammar.md) and [Partitions](../holder/iobase/partitions.md).

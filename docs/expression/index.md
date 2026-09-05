@@ -2,6 +2,15 @@
 
 `yggdryl::Expression` is one recursive tree that says which rows and which values, typed against a schema and compiled once.
 
+## Pages
+
+| Page | Purpose |
+| --- | --- |
+| [Expression](index.md) | This page: stages, canonical text, nulls |
+| [Grammar](grammar.md) | Grammar, closed function set, nesting and node-count limits |
+| [Holder attributes](holder.md) | `&holder.*` attributes, cost classes, pruning without reading |
+| [Evaluate](evaluate.md) | Arrow tier, `Statement::bind`, `ApplyExpression`, Iceberg scan planning |
+
 ## Contract
 
 | Aspect | Rule |
@@ -97,15 +106,6 @@ Parse, bind once, ask a row.
     assert.equal(bound.matches(Scalar.fromJs(['USD', price, 5])), false)
     ```
 
-## Pages
-
-| Page | Purpose |
-| --- | --- |
-| [Expression](index.md) | This page: stages, canonical text, nulls |
-| [Grammar](grammar.md) | Grammar, closed function set, nesting and node-count limits |
-| [Holder attributes](holder.md) | `&holder.*` attributes, cost classes, pruning without reading |
-| [Evaluate](evaluate.md) | Arrow tier, `Statement::bind`, `ApplyExpression`, Iceberg scan planning |
-
 ## Four stages
 
 ```text
@@ -151,7 +151,8 @@ for text in [
 
 ## Null is unknown
 
-`and` is false when any operand is false, `or` is true when any operand is true, `not unknown` is unknown.
+`and` is false when any operand is false, and `or` is true when any operand is true, even when another operand is unknown.
+`not unknown` is unknown.
 
 ```rust
 use yggdryl::{Expression, Field, Scalar};

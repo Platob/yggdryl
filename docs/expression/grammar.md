@@ -7,7 +7,7 @@ The language the [expression layer](index.md) parses: one statement grammar, one
 | Key | Value |
 | --- | --- |
 | Owns | the statement and expression grammar, the function set, the parse limits |
-| Types | `Expression` is name-based and serializable, `Bound` is schema-resolved and is not |
+| Types | `Expression` is name-based and serializable, `Bound` is schema-resolved and is not; partially bound is unrepresentable |
 | Bindings | one expression binds against a data schema, a partition schema, and a listing |
 | Logic | Kleene three-valued, and a filter keeps a row only when the answer is exactly true |
 | Functions | 18, closed, no registry |

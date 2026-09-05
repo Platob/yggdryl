@@ -11,7 +11,7 @@ One natural record document backed by the shared Rust codec.
 | Lacks | null, non-string keys, scalar root, streams, private markers |
 | Exact | decimal scale, binary, string temporals, Struct order need a [`Field`](../types/field.md) |
 | Selector | Python `cls=Scalar`, JavaScript `{ scalar: true }`; omitted returns natural mappings |
-| Limits | byte, depth, decoded-node, document; nullable binding options, core defaults |
+| Limits | byte, depth, decoded-node, document; nullable binding options, snake_case in Python and camelCase in JavaScript, core defaults when omitted |
 | Errors | name TOML and a byte offset; `validate_for_write` rejects before a destination opens |
 | `IOBase` | `from_io` / `into_io` infer TOML and outer [coding](../coding/index.md) from the media type |
 
@@ -254,7 +254,7 @@ Rust `from_utf8`, `from_bytes`, `from_reader` decode one document; `into_utf8`, 
 
 ## Formatting
 
-`Formatting::indented(n)` lays array items out vertically; `Formatting::compact()` adds no layout.
+`Formatting::indented(n)` lays array items out vertically; `Formatting::compact()` adds no layout. Objects stay inline tables and only whitespace changes.
 
 === "Rust"
 

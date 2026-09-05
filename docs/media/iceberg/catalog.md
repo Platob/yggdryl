@@ -8,11 +8,11 @@ One warehouse folder, namespaces as nested folders, and a table per dotted name.
 | --- | --- |
 | Owns | `Catalog` over one folder, `HadoopCatalog`'s layout |
 | Storage | [`IOBase`](../../holder/index.md), nothing else |
-| Kinds | `IOKind::Catalog` / `Namespace` / `Table`; `IOKind` is Rust-only |
-| Dotted names | `table`, `namespace`; the collections resolve them too |
-| Views | cheap handles, not caches; construction performs no I/O |
-| Iteration | lazy; `values` / `items` / `entries` open one resource per step |
-| Properties | `metadata/catalog.json`, `metadata/namespace.json` |
+| Kinds | `IOKind::Catalog` / `Namespace` / `Table`, answered by the framing, never by a listing; `IOKind` is Rust-only |
+| Dotted names | `table`, `namespace`; the collections descend them too, and `catalog.tables` reaches any table from the root in one lookup |
+| Views | cheap handles, not caches; construction performs no I/O, and two views over one catalog see each other's writes |
+| Iteration | lazy; membership and iteration consult storage when asked, `values` / `items` / `entries` open one resource per step |
+| Properties | `metadata/catalog.json`, `metadata/namespace.json`, through the shared JSON codec |
 | Absent | `drop_table`, `rename_table`, `__delitem__`, service client |
 | Bindings | `yggdryl.media.iceberg.Catalog`, `iceberg.Catalog` |
 | Rust-only | `Catalogs`, over a folder of warehouses |
@@ -175,7 +175,8 @@ A caller holding rows and a dotted name needs nothing else.
 | `tables().create` | numbers the schema; spec from its [partition marks](../../types/field.md) |
 | `append` / `overwrite` | Rust: `append_arrow_reader`, `overwrite_arrow_reader` |
 | `append_arrow_reader_with_options`, twin | per-call [options](../options.md) |
-| rows | what [the record surface](../../holder/iobase/records.md) infers |
+| rows | what [the record surface](../../holder/iobase/records.md) infers: Python takes `append_records` inputs, JavaScript `BatchReader.from` plus `appendRecords` inputs |
+| declared field | the table's stored schema; a create-on-write table has none, so the rows name one |
 
 ## Namespaces of tables
 

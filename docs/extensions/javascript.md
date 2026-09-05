@@ -204,8 +204,8 @@ assert.throws(
 )
 ```
 
-`Expression` exposes the same names as lazy tree builders. A string operand is
-parsed as expression text, and any other JavaScript value becomes a literal.
+`Expression` exposes the same names except `absolute`, as lazy tree builders. A
+string operand is parsed as expression text, any other value as a literal.
 
 ## fromJs and asJs
 
@@ -743,15 +743,23 @@ and validates a plain object. Resolution and merging are the core's, on the
 - Rust spellings -> `as_iceberg()`/`as_iceberg_mut()`, `contentType` as
   `as_http().content_type()`, `arrow` as `as_arrow_properties`, and
   `fieldProperties` as `as_field_properties`.
+- Rust field metadata -> `http:` headers on `as_http()`, while
+  `parquet_field_id`, `alias`, `comment`, `display`, and `location` stay on
+  `Field`.
 - `DataType.fromRegex` -> named-capture inference, decided by the core.
 - `gzip`, `zlib`, `zstd` -> `loads`/`dumps` over `Buffer`, plus
-  `loadsRaw`/`dumpsRaw` on `zlib`.
-- `TextOptions.withRownum` given a `number`, or a `bigint` wider than 128 bits
-  -> refused, never narrowed or rounded.
+  `loadsRaw`/`dumpsRaw` on `zlib`, reading and writing what `node:zlib` does.
+- A handle -> applies the coding its name declares without being told;
+  `IOBase.codec` asks which one that is.
+- `TextOptions.withRownum` -> `bigint | null` over the whole signed 64-bit
+  range; a `number` is rejected, never silently narrowed.
+- A `bigint` wider than 128 bits -> refused, since no exact native integer
+  holds it.
 - A handler-backed handle in a `Worker` -> refused by name; handlers run
   synchronously on the thread that supplied them.
 - `readRange` with an unknown option, a non-boolean `text`, or an undecodable
   range -> refused.
+- `readRange` `length` -> checked as strictly as `offset`, never rounded.
 - Any class member but the static `intoStructField` getter -> rejected.
 - `time` and `duration` -> `NAIVE` only; `datetime` also takes a name or `Timezone`.
 - Date and time widths -> follow the unit, duration follows the count, and Arrow
@@ -795,6 +803,8 @@ and validates a plain object. Resolution and merging are the core's, on the
   settings participate, compiled caches and derived fields do not.
 - A set `commitRowSize` -> chunks end at each publication and `maxRowSize`
   boundary; with none, one write publishes at end of input.
+- A synchronous record iterable -> one copied IPC chunk per native request, so
+  the source is never held whole.
 - The first record chunk -> fixes the Arrow JS physical schema, and later chunks
   reuse those column types.
 - `batchRowSize = 1024` with `commitRowSize = 1500` -> pulls 1024 then 476, so
@@ -816,10 +826,16 @@ and validates a plain object. Resolution and merging are the core's, on the
   `scanAt` takes a `bigint` or an exact `number`.
 - A fractional tag or one outside `i32` -> throws; a `bigint`, object, or `null`
   key -> `TypeError`.
+- The `fix:` vocabulary read or written on another protocol's view ->
+  `TypeError` naming that view's scheme.
+- `message.branch` -> the dictionary the message is spelled in, derived from
+  its root field.
 - Registry mutation while a `FixMsg`, the process default, or a live `keys()`
   walk holds it -> throws; `registry.clone()` is the mutable deep copy.
 - A `keys()` walk -> stops sharing when drained, or when a `for...of` `break`
   returns it.
+- `registry.remove(string)` -> a standard-branch name; `removeById(id)` is how
+  a vendor field leaves.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
 - A missing FIX folder -> the empty registry; a retired `records/` folder -> throws.

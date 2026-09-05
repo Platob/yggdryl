@@ -12,8 +12,8 @@ A registry persists through one [`IOBase`](../holder/index.md) folder handle as 
 | Tree | `field.dtype().is_nested()`, after unwrapping a dictionary and a run-end encoding |
 | Shard body | JSON array of `Field::into_value`, identifier-ordered, indented; no envelope, no version marker |
 | Load | every shard of both trees on open; both trees optional; a missing folder loads empty |
-| Authority | the field's own `fix:branch` and datatype, never the folder it sits in |
-| Write | populated shards whole, then empty shards, branch folders and trees removed |
+| Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
+| Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |
 | Refused | a root still holding `records/`; no migration, no backward compatibility |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
 
@@ -270,7 +270,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 
 ## Trees and shards
 
-`primitive` holds the fields whose datatype is one scalar value and `nested` the ones carrying a subtree. In FIX terms the nested fields are exactly the components and the repeating groups.
+`primitive` holds the fields whose datatype is one scalar value and `nested` the ones carrying a subtree. In FIX terms the nested fields are exactly the components, a Struct of members, and the repeating groups, a List of that Struct.
 
 ```text
 <root>/primitive/<branch>/<shard>.json
@@ -280,6 +280,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 ## The tracked seed
 
 `config/fix` holds a small FIX 4.4 subset: the header and trailer, the order and execution fields, `Parties` as a repeating group.
+Each field carries the specification's wording as its description and a display name where FIX has one.
 
 === "Rust"
 
@@ -349,12 +350,15 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 
 - `primitive/0.json`, a leaf directly under a tree -> typed error naming it, never a folder skipped into an empty load.
 - A folder under a tree whose name is not a branch -> `FixBranch::from_str`'s parse failure, its byte position and the folder URL.
+- A branch folder's name -> the canonical lowercase branch text: one path segment, no separators, no `.` or `..`.
 - A `README` beside the shards -> ignored on read, left alone by `write_into`'s cleanup; only `<n>.json` with a decimal `n` is read.
 - A field in the wrong shard, in a folder its `fix:branch` contradicts, or in the tree its datatype contradicts -> refused with both sides named.
-- A shard that does not parse, holds a tagless field, or duplicates another shard's tag -> typed error naming the shard's URL.
+- A dictionary-encoded or run-end-encoded field -> placed by its unwrapped value type, so a dictionary of Struct is nested and one of Utf8 is not.
+- A shard that does not parse, holds a tagless field, duplicates another shard's tag, or holds a field the registry refuses -> typed error naming the shard's URL.
 - A folder that does not exist -> the empty registry, and the folder is not created.
 - A root still holding `records/`, nested or flat -> refused naming the folder, never read as empty.
 - The last field of a shard removed -> that shard, its branch folder and its tree disappear on the next `write_into`.
+- A field whose datatype moves it between trees -> the old tree's copy is removed by the next `write_into`, never resurrected on reload.
 - `config/fix` in the Python and JavaScript seed examples -> resolved against the working directory, so run them from the repository root.
 
 ## Commands

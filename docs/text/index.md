@@ -2,6 +2,15 @@
 
 `yggdryl::text` reads and writes JSON, JSON Lines, YAML, and TOML over the shared native `Scalar`; the bindings only translate native and Arrow values.
 
+## Pages
+
+| Page | Purpose |
+| --- | --- |
+| [JSON](json.md) | JSON and JSON Lines; placeholders refused |
+| [YAML](yaml.md) | Syntax-proven natural types, document streams, block or flow style |
+| [TOML](toml.md) | One string-key record, syntax-proven temporals, inline tables |
+| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML and TOML |
+
 ## Contract
 
 | | |
@@ -63,18 +72,9 @@
     assert.deepEqual(quote.asJs(), { price: 12.5, symbol: 'AAPL' })
     ```
 
-## Pages
-
-| Page | Purpose |
-| --- | --- |
-| [JSON](json.md) | JSON and JSON Lines; placeholders refused |
-| [YAML](yaml.md) | Syntax-proven natural types, document streams, block or flow style |
-| [TOML](toml.md) | One string-key record, syntax-proven temporals, inline tables |
-| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML and TOML |
-
 ## Typed `Scalar` families
 
-Every `Scalar` is hashable and totally ordered; equal numeric or temporal values share one hash across storage widths.
+Every `Scalar` is hashable and totally ordered; equal numeric or temporal values share one hash across storage widths. Width stays available for datatype and Arrow projection.
 
 | family | native variants |
 | --- | --- |
@@ -309,6 +309,7 @@ Bindings spell `indent=2` / `{ indent: 2 }`, `None` / `null`, and `"\t"`; the sa
 - `25:30:00` as a time of day -> `01:30:00`; hours fold modulo the day up to `99`.
 - `2026-08-17T24:00:00` as a datetime -> the 18th at midnight.
 - `26:03:04`, `P1DT2H3M4S`, `PT93784S` as a duration -> one count; written back as `PT<seconds>S`.
+- Minutes and seconds in any clock spelling -> always under sixty; only hours fold, up to `99`.
 - A time of day or duration with a zone -> refused; both must be naive.
 - Empty or positional rows without a `Field` -> ambiguous; an explicit `Field` is required.
 - Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
@@ -355,7 +356,7 @@ Bindings spell `indent=2` / `{ indent: 2 }`, `None` / `null`, and `"\t"`; the sa
 
 ### Scalar and Arrow boundary costs
 
-Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` and `python/benchmarks/types/scalars.py`, with conversion setup outside the timed loop.
+Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` and `python/benchmarks/types/scalars.py`, with conversion setup outside the timed loop. Regenerate on the deployment host before comparing releases.
 
 | Rust core operation | estimate |
 | --- | ---: |

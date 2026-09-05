@@ -601,7 +601,7 @@ Each `Block` arrives compressed with its row count; `rows` decodes it, `rows_res
 
 ## Single-object encoding
 
-Each datum frames as `C3 01`, the writer schema's Rabin fingerprint in little-endian order, and the body, for systems that cannot afford a container header per record.
+Each datum frames as `C3 01`, the writer schema's Rabin fingerprint in little-endian order, and the body.
 
 === "Rust"
 
@@ -717,6 +717,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 
 ## Edges
 
+- `merge_by_names` -> upsert: rows matching the key are updated, misses are inserted.
 - `trades.avro.gz` -> refused rather than double-compressed: Avro compresses inside its blocks, like [Parquet](parquet.md) and unlike [IPC](ipc.md).
 - A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype on the record surface -> refused by name; the `Scalar` functions accept them.
 - `set_avro_block_codec` or `set_avro_sync_marker` on options for another encoding -> typed record error.
@@ -763,7 +764,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 
 ### Record surface
 
-Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, with the stored side for append and keyed merge (upsert) prepared outside the timer.
+Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, its append and merge base prepared outside the timer.
 
 | batch operation | rows | estimate | throughput |
 | --- | ---: | ---: | ---: |

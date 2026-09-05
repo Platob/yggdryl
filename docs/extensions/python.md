@@ -17,7 +17,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `MimeType`, `MediaType`, `Timezone` | [Scalar](../types/scalar.md) |
 | `enums` | [ASCII](../types/ascii.md) and this page |
 | `json`, `toml`, `yaml` | [Structured text](../text/index.md) and the format pages |
-| `avro` | [Apache Avro](../media/avro.md) |
+| `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
 | `xxhash` | [xxHash](../xxhash/index.md) |
 
@@ -81,7 +81,7 @@ assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 | `set`, `remove` | persistent: a rebuilt `Scalar`, source intact |
 | `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute` | checked native arithmetic, mirrored by the Python operators |
 
-All values are hashable, and `kind` survives Arrow, pickle, and repr round trips.
+All values are hashable. `kind` and `dtype` expose the exact native type, which survives Arrow, pickle, and repr round trips.
 
 ```python
 import datetime as dt
@@ -131,9 +131,9 @@ Pass a `Field` when strings or numbers need an exact decimal, binary, or tempora
 
 ## Python value protocols
 
-Wrappers fall into three identity classes. `stable_hash()` is the deterministic native `u64`, which `hash()` remaps to `Py_hash_t` without changing equal-value agreement.
+Wrappers fall into three identity classes, and an immutable one compares, orders, hashes, copies, and pickles by its complete native identity. `stable_hash()` is the deterministic native `u64`, which `hash()` remaps to `Py_hash_t` without changing equal-value agreement.
 
-- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
+- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Digest`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
 - unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound expressions and statements, Avro blocks, metadata views.
 
@@ -523,7 +523,7 @@ assert url.match("*.gz")
 assert url.relative_to(Url("file:///lake")) == "trades/part-0.tar.gz"
 ```
 
-`IOBase.from_fs` takes any `pyarrow.fs.FileSystem` and returns this same class, so everything above works over S3, GCS, Azure, a `SubTreeFileSystem`, or your own handler. It is recognized without importing `pyarrow` and handed to the core's seven-method [vtable](../holder/backends/filesystems.md).
+`IOBase.from_fs` takes any `pyarrow.fs.FileSystem` and returns this same class: S3, GCS, Azure, a `SubTreeFileSystem`, an `fsspec` filesystem, or your own `FileSystemHandler`. It is recognized without importing `pyarrow` and handed to the core's seven-method [vtable](../holder/backends/filesystems.md).
 
 ```python
 import pathlib
@@ -642,7 +642,7 @@ selected.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 assert handle.read_arrow_reader(options=selected).schema.names == ["id"]
 ```
 
-The selected method is authoritative, and `merge_by_names` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence, defaulting to one publication after successful end of input.
+The selected method is authoritative, and `merge_by_names` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence for every representation above, including pandas and polars, and defaults to `None`: one publication after successful end of input.
 
 ```python
 import pathlib
@@ -823,7 +823,7 @@ A `bytes` or `str` is hashed in place, and any other buffer is read through one 
 | --- | --- |
 | keys | an `int` is a tag, a `str` a name or dotted path in the standard branch; a colon-bearing string is a name, never an identifier |
 | branches and identifiers | both cross as `str`, parsed once by the core; neither has a Python class |
-| `field.fix.branch`, `field.fix.id` | `"standard"` when the key is absent, `None` exactly when `fix:tag` is absent; assigning an id moves both halves at once |
+| `field.fix.branch`, `field.fix.id` | `"standard"` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `"standard"` removes the key, and assigning an id moves both halves at once |
 | lookups | `field_by_name` and `field_by_path` take the branch as their leading argument; `field_by_tag` means the standard branch |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a write creates `primitive/<branch>/` and `nested/<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
@@ -913,27 +913,48 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - a decimal past 256 coefficient bits, or an exponent with no scale in `-128..=127` -> `OverflowError`.
 - a temporal finer than a microsecond -> `ValueError`, not truncation.
 - `Scalar` arithmetic -> `TypeError`, `OverflowError`, `ZeroDivisionError`, `ArithmeticError` on inexact integer division.
+- a text codec document -> natural shapes with no private value tags.
+- `yggdryl.text.codec` -> suffix or content inference selects the existing JSON, YAML, TOML, or JSON Lines implementation.
 - an Avro fingerprint -> Parsing Canonical Form, not complete behavioral identity.
+- `stable_hash()` -> never locks a mutable wrapper, and a copy or an unpickle arrives unlocked.
+- metadata views -> unhashable, but compare by their current content like ordinary mapping views.
+- Iceberg views -> keep snapshot v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every data-file count, bound, split, encryption, delete, and row-lineage field.
 - Rust's per-protocol view types (`HttpField`, `IcebergField`, and sixteen others) -> no Python counterpart yet.
-- `field.https` -> absent; HTTPS shares the canonical `http:` namespace, and Rust spells `arrow` and `field_properties` `as_arrow_properties` and `as_field_properties`.
+- `field.https` -> absent, because HTTPS shares the canonical `http:` namespace.
+- `field.iceberg` in Rust -> `as_iceberg()` / `as_iceberg_mut()`; `arrow` is `as_arrow_properties` and `field_properties` is `as_field_properties`.
+- `field.content_type` -> `as_http().content_type()` in Rust, where the `http:` headers live.
 - a decorated class -> gains no codec, dictionary, or Arrow methods; an undecorated subclass reuses the nearest decorated base's root.
+- a field cached by `@scalar` -> read-only independently of the `hash()` lock.
+- `name=` on a global conversion -> identical rename semantics for a `Field`, a PyArrow input, and a dataclass.
 - `DataType("ascii")` -> any length and no packed integer, so no vocabulary.
+- an ASCII enum member -> the same code in every process, exactly what the column stores, ordered as its text is.
+- a vocabulary that already has members -> never subclassed; `AsciiCode` is the base every width and code shares.
 - `row_size`, `column_size` -> lazy, retained only between `open()` and `close()`, invalidated by writes through that handle.
 - `relative_to` outside the root -> `ValueError`; `touch` on a directory -> `IsADirectoryError`.
 - `read_range(cls=...)` outside `bytes`, `str`, and `None` -> `TypeError`, the way `read_scalar(cls=...)` refuses one.
 - a `pyarrow.Table` handed to `overwrite_arrow_reader` -> refused; a scanner participates as `scanner.to_reader()`.
 - empty records -> require `options.field`, and invalid intent is rejected before the input is iterated.
+- a commit cadence falling inside a batch grouping -> conversion ends the current batch at the exact cadence boundary.
 - `commit_row_size = 0` -> rejected before any Python input is inspected.
 - a zero `max_row_size` or `max_byte_size` -> append is a no-op; overwrite publishes a typed empty value from `options.field`.
-- a failure after a commit -> completed prefixes stay visible; limits apply once to the whole stream and refuse keyed merge.
+- a failure after a commit -> completed prefixes stay visible by design.
+- limits -> applied once to the whole incoming stream, before it is split into commits, and refused with keyed merge.
 - `overwrite_pandas` handed a polars frame -> refused; a `polars.LazyFrame` is accepted and collected.
 - `update_schema()` on an exception -> no commit at all.
+- an Iceberg commit -> anything that exports an Arrow C stream; a scan, a time travel, and an inspection table answer a `pyarrow.RecordBatchReader`.
 - `cls=` on a decode -> the cached native Struct field, never a module named by untrusted input.
 - streaming `reader` / `writer` and the `Gzip<H>` and `Hashed<H>` handles -> Rust-only, built on Rust's `Read` / `Write`.
 - `from yggdryl.coding import gzip` -> the standard library's module names with `loads` / `dumps`; `zlib` adds `loads_raw` / `dumps_raw`.
 - a handle applies the coding its own name declares, and `IOBase.codec` asks which one.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
+- `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.
+- `FixRegistry` -> mutable, so unhashable, and equal by the fields it holds.
+- a registry linked by a `FixMsg` or installed as the process default -> `insert`, `update`, and `remove` raise `ValueError`.
+- `remove` -> reaches the standard branch only; `remove_by_id` is how a vendor field leaves.
+- `msg.by_id` / `msg.get_by_id` -> name one dictionary exactly and do not tier; `msg.branch` comes from the root field.
+- iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.
+- a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's item.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
 
 ```python

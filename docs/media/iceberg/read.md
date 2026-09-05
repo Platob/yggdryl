@@ -659,17 +659,18 @@ Rust only; the fan-out is inside the core scan, so every binding gets it through
     let _ = std::fs::remove_dir_all(&root);
     ```
 
-Each worker decodes one file end to end, filters included; a reorder buffer releases batches in plan order. On the benchmark table, 32 files of 100k rows, four workers collect about twice as fast as one (`read/` group, `rust/benchmarks/media/iceberg.rs`).
+Each worker decodes one file end to end: the cast, the partition restore and the residual filters run there, not on the consumer. On the benchmark table, 32 files of 100k rows, four workers collect about twice as fast as one (`read/` group, `rust/benchmarks/media/iceberg.rs`).
 
 ## Edges
 
 - Conjunct a file's partition tuple proves -> dropped, never re-tested per row; what no level settles is filtered row by row.
 - Filter on a non-partition column -> prunes on per-file bounds only; scattered values exclude nothing, and a plan that skips nothing says so.
 - `scan_at` -> a column added later is absent; a column dropped later is still present.
-- `commit_metadata_changes` -> one new metadata document; a failed change or write leaves the table untouched.
+- `commit_metadata_changes` (a property, a new ref, an evolved schema) -> one new metadata document; a failed change or write leaves the table untouched.
 - `overwrite_where` with nothing incoming -> a delete, as the [Spark quickstart](catalog.md) spells `DELETE FROM ... WHERE`.
 - Coarse key bounds -> a merge reads more files, never the wrong ones.
 - `overwrite_where` or `merge` after a lost commit -> no rebase; both raise, the caller re-plans. See [Iceberg writes](write.md).
+- Reorder buffer -> batches release strictly in plan order; the next file is admitted only as the cursor file drains.
 - Table below a parallel threshold -> sequential read, identical batches; never more than `read.parallelism` files in flight.
 - Filtered parallel scan -> fans out over the surviving files, not over the table.
 

@@ -1,6 +1,6 @@
 # DataType
 
-The owned logical type of one value; cloning never allocates.
+The owned logical type of one value: immutable, and cloning never allocates.
 
 ## Contract
 
@@ -262,6 +262,7 @@ Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase string
 ## Arrow projection
 
 Rust and Python exchange a real Arrow type; Node reads Arrow JS through `toString`.
+Python crosses through the Arrow C Data Interface rather than rebuilding the value.
 
 === "Rust"
 
@@ -381,6 +382,7 @@ The core computes one default; each binding projects it.
 ## Serializing a schema
 
 One structural model, three writers; a schema embeds inline in configuration.
+Nesting is carried, not flattened, so every format round-trips it.
 
 === "Rust"
 
@@ -568,10 +570,11 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | --- | --- |
 | `arrow` | validated clone |
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, fixed-size list -> list |
-| `polars`, `pandas` | no map; Polars keeps unsigned and fixed-size list |
+| `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and fixed-size list |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
-On a [Field](field.md) the call keeps name, nullability, and metadata; [Iceberg](../media/iceberg/index.md) is a vocabulary, not an engine.
+On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
+[Iceberg](../media/iceberg/index.md) is a closed primitive vocabulary, not an engine.
 
 ## Building the enum directly
 
@@ -599,14 +602,22 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ## Edges
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
-- `FixedSizeBinary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; nesting past 64 -> error.
+- `FixedSizeBinary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a fixed-size list default over that byte limit fails the same way.
+- nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
 - `DataType.fromArrow({})` -> `own textual representation` error, never `[object Object]`.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
+- a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
+- prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
+- prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.
+- a JavaScript default -> a plain array, `Buffer`, `Map`, or `{ typeId, value }`.
+- JSON emit order -> `name`, `dtype`, `nullable`, `dictionary_id` when non-zero, `dictionary_is_ordered` when set, then `metadata`.
 - unset optional attributes -> omitted by every format and by `pretty`, never null.
+- `pretty()` -> stable across runs; nothing in it iterates a hash map.
+- a value from Python or JavaScript -> already validated at the entry point; `validate` is Rust only.
 
 ## Commands
 
