@@ -15,6 +15,7 @@
 
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
@@ -106,6 +107,81 @@ decimal_leaf!(Decimal32, i32);
 decimal_leaf!(Decimal64, i64);
 decimal_leaf!(Decimal128, i128);
 decimal_leaf!(Decimal256, I256);
+
+/// One exact decimal coefficient width and scale.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum Decimal {
+    /// Signed 32-bit coefficient.
+    D32(Decimal32),
+    /// Signed 64-bit coefficient.
+    D64(Decimal64),
+    /// Signed 128-bit coefficient.
+    D128(Decimal128),
+    /// Signed 256-bit coefficient.
+    D256(Decimal256),
+}
+
+impl Decimal {
+    /// Return the coefficient widened losslessly to 256 bits.
+    pub fn coefficient(self) -> I256 {
+        match self {
+            Self::D32(value) => value.coefficient().into_i256(),
+            Self::D64(value) => value.coefficient().into_i256(),
+            Self::D128(value) => value.coefficient().into_i256(),
+            Self::D256(value) => value.coefficient(),
+        }
+    }
+
+    /// Return the base-10 scale.
+    pub const fn scale(self) -> i8 {
+        match self {
+            Self::D32(value) => value.scale(),
+            Self::D64(value) => value.scale(),
+            Self::D128(value) => value.scale(),
+            Self::D256(value) => value.scale(),
+        }
+    }
+}
+
+impl fmt::Display for Decimal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&decimal_text(self.coefficient(), self.scale()))
+    }
+}
+
+impl PartialEq for Decimal {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Decimal {}
+
+impl PartialOrd for Decimal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Decimal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        compare(
+            self.coefficient(),
+            self.scale(),
+            other.coefficient(),
+            other.scale(),
+        )
+    }
+}
+
+impl Hash for Decimal {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        normalize(self.coefficient(), self.scale()).hash(state);
+    }
+}
+
+const _: () = assert!(std::mem::size_of::<Decimal>() == 48);
 
 define_scalar_type!(Decimal32Scalar, super::Decimal32Type, "decimal32");
 define_scalar_type!(Decimal64Scalar, super::Decimal64Type, "decimal64");

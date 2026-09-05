@@ -649,8 +649,9 @@ floating_value!(
 );
 
 /// A copyable view over any exact floating-point width.
-#[derive(Clone, Copy, Debug)]
-pub enum Float {
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum Floating {
     /// IEEE binary16.
     F16(Float16),
     /// IEEE binary32.
@@ -659,7 +660,9 @@ pub enum Float {
     F64(Float64),
 }
 
-impl Float {
+const _: () = assert!(std::mem::size_of::<Floating>() == 16);
+
+impl Floating {
     /// Return the exact physical bit width.
     pub const fn bit_width(self) -> u8 {
         match self {
@@ -714,45 +717,55 @@ impl Float {
     }
 }
 
-impl PartialEq for Float {
+impl fmt::Display for Floating {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::F16(value) => value.fmt(formatter),
+            Self::F32(value) => value.fmt(formatter),
+            Self::F64(value) => value.fmt(formatter),
+        }
+    }
+}
+
+impl PartialEq for Floating {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl Eq for Float {}
+impl Eq for Floating {}
 
-impl PartialOrd for Float {
+impl PartialOrd for Floating {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for Float {
+impl Ord for Floating {
     fn cmp(&self, other: &Self) -> Ordering {
         self.common().cmp(&other.common())
     }
 }
 
-impl Hash for Float {
+impl Hash for Floating {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.common().hash(state);
     }
 }
 
-impl From<half::f16> for Float {
+impl From<half::f16> for Floating {
     fn from(value: half::f16) -> Self {
         Self::F16(Float16::from_f16(value))
     }
 }
 
-impl From<f32> for Float {
+impl From<f32> for Floating {
     fn from(value: f32) -> Self {
         Self::F32(Float32::from_f32(value))
     }
 }
 
-impl From<f64> for Float {
+impl From<f64> for Floating {
     fn from(value: f64) -> Self {
         Self::F64(Float64::from_f64(value))
     }
@@ -775,11 +788,11 @@ impl Scalar {
 
 impl Scalar {
     /// Return the exact floating-point width and value.
-    pub const fn as_float(&self) -> Option<Float> {
+    pub const fn as_float(&self) -> Option<Floating> {
         match self {
-            Self::F16(value) => Some(Float::F16(*value)),
-            Self::F32(value) => Some(Float::F32(*value)),
-            Self::F64(value) => Some(Float::F64(*value)),
+            Self::F16(value) => Some(Floating::F16(*value)),
+            Self::F32(value) => Some(Floating::F32(*value)),
+            Self::F64(value) => Some(Floating::F64(*value)),
             _ => None,
         }
     }
@@ -789,7 +802,7 @@ impl Scalar {
     /// The 32-bit width widens exactly, so no float answers differently here
     /// than it would at its own width.
     pub fn as_f64(&self) -> Option<f64> {
-        self.as_float().map(Float::as_f64)
+        self.as_float().map(Floating::as_f64)
     }
 
     /// Return the 32-bit float when this is one.
@@ -798,7 +811,7 @@ impl Scalar {
     /// exact and narrowing is not; a caller who wants the rounding asks for
     /// it with `as f32` where the loss is visible.
     pub fn as_f32(&self) -> Option<f32> {
-        self.as_float().and_then(Float::as_f32)
+        self.as_float().and_then(Floating::as_f32)
     }
 
     /// Return the 16-bit float when this is one.
@@ -828,8 +841,8 @@ impl From<f64> for Scalar {
     }
 }
 
-impl From<Float> for Scalar {
-    fn from(value: Float) -> Self {
+impl From<Floating> for Scalar {
+    fn from(value: Floating) -> Self {
         value.into_scalar()
     }
 }

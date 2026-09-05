@@ -95,7 +95,7 @@ pub use types::protocol::{
     UrnField, UrnFieldMut,
 };
 pub use types::{
-    AnyType, Children, Differences, EnumScalar, Field, FieldRef, FieldType, Float, Integer,
+    AnyType, Children, Differences, EnumScalar, Field, FieldRef, FieldType, Floating, Integer,
     OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily,
     ScalarValue, TemporalFamily, TemporalRef, TypedField, TypedFieldRef, TypedScalar,
 };

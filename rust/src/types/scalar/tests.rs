@@ -123,7 +123,7 @@ fn generic_float_selector_keeps_width_and_common_value_semantics() {
 }
 
 #[test]
-fn integer_family_view_is_logical_and_canonical() {
+fn integer_family_preserves_width_with_logical_comparison() {
     let signed = Scalar::I8(7).as_integer().unwrap();
     let unsigned = Scalar::U64(7).as_integer().unwrap();
     let minimum = Scalar::I128(i128::MIN).as_integer().unwrap();
@@ -133,7 +133,7 @@ fn integer_family_view_is_logical_and_canonical() {
     assert_eq!(signed, unsigned);
     assert_eq!(signed.as_i128(), Some(7));
     assert_eq!(signed.as_u128(), Some(7));
-    assert_eq!(signed.into_scalar(), Scalar::I64(7));
+    assert_eq!(signed.into_scalar(), Scalar::I8(7));
     assert_eq!(minimum.into_scalar(), Scalar::I128(i128::MIN));
     assert_eq!(maximum.as_i128(), None);
     assert_eq!(maximum.into_scalar(), Scalar::U128(u128::MAX));
@@ -413,4 +413,65 @@ fn concrete_leaves_preserve_their_physical_identity() {
         Scalar::from(1_i32),
     )])));
     assert_eq!(record.as_map().get("one"), Some(&Scalar::from(1_i32)));
+}
+
+#[test]
+fn tier_two_families_keep_exact_members_and_logical_identity() {
+    use crate::Floating;
+    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text};
+
+    let signed = integer::Integer::I32(integer::Int32::new(7));
+    let unsigned = integer::Integer::U8(integer::UInt8::new(7));
+    assert_eq!(signed, unsigned);
+    assert!(matches!(signed.into_scalar(), Scalar::I32(7)));
+
+    let narrow = Floating::F32(Float32::from_f32(1.25));
+    let wide = Floating::F64(Float64::from_f64(1.25));
+    assert_eq!(narrow, wide);
+
+    let narrow = decimal::Decimal::D32(decimal::Decimal32::new(1_250, 2));
+    let wide = decimal::Decimal::D256(decimal::Decimal256::new(I256::from_i128(125), 1));
+    assert_eq!(narrow, wide);
+    assert_eq!(narrow.to_string(), "12.50");
+
+    let utf8 = text::Text::Utf8(text::Utf8::new("same"));
+    let large = text::Text::LargeUtf8(text::LargeUtf8::new("same"));
+    assert_eq!(utf8, large);
+
+    let binary = bytes::Bytes::Binary(bytes::Binary::from(vec![1, 2]));
+    let view = bytes::Bytes::BinaryView(bytes::BinaryView::from(vec![1, 2]));
+    assert_eq!(binary, view);
+
+    let ascii = ascii::AsciiFamily::Ascii(ascii::Ascii::new("USD").unwrap());
+    let currency = ascii::AsciiFamily::Currency(ascii::Currency::new("USD").unwrap());
+    assert_eq!(ascii, currency);
+
+    let mut point = vec![1, 1, 0, 0, 0];
+    point.extend_from_slice(&1.5_f64.to_le_bytes());
+    point.extend_from_slice(&2.5_f64.to_le_bytes());
+    let geometry =
+        geospatial::Geospatial::Geometry(geospatial::Geometry::new(point.clone()).unwrap());
+    let geography = geospatial::Geospatial::Geography(geospatial::Geography::new(point).unwrap());
+    assert_eq!(geometry, geography);
+
+    let nested = nested::Nested::Sequence(nested::Sequence::new(Arc::from([
+        Scalar::from(1_i32),
+        Scalar::from(2_i32),
+    ])));
+    assert_eq!(nested.len(), 2);
+    assert!(!nested.is_empty());
+
+    let temporal = temporal::Temporal::DateTime64(
+        temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+    );
+    assert_eq!(temporal.family(), temporal::TemporalFamily::DateTime);
+    assert_eq!(temporal.bit_width(), 64);
+    assert_eq!(temporal.timezone(), Timezone::UTC);
+    assert_eq!(temporal::TemporalFamily::Interval.as_str(), "interval");
+
+    let encoded = serde_json::to_string(&nested).unwrap();
+    assert_eq!(
+        serde_json::from_str::<nested::Nested>(&encoded).unwrap(),
+        nested
+    );
 }

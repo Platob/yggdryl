@@ -110,6 +110,46 @@ impl fmt::Display for Record {
     }
 }
 
+/// One schema-free nested value shape.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[non_exhaustive]
+pub enum Nested {
+    /// Ordered values, whose field decides list or struct semantics.
+    Sequence(Sequence),
+    /// Ordered arbitrary-key entries.
+    Mapping(Mapping),
+    /// Name-sorted record entries.
+    Record(Record),
+}
+
+impl Nested {
+    /// Return the number of immediate children.
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Sequence(value) => value.as_slice().len(),
+            Self::Mapping(value) => value.as_slice().len(),
+            Self::Record(value) => value.as_map().len(),
+        }
+    }
+
+    /// Whether this nested value has no children.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl fmt::Display for Nested {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sequence(value) => value.fmt(formatter),
+            Self::Mapping(value) => value.fmt(formatter),
+            Self::Record(value) => value.fmt(formatter),
+        }
+    }
+}
+
+const _: () = assert!(std::mem::size_of::<Nested>() == 24);
+
 /// A borrowed iterator over sequence values or mapping keys.
 pub enum Children<'a> {
     /// Sequence values.

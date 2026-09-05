@@ -2070,6 +2070,9 @@ fn temporal_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         TemporalFamily::Time => time_as_py(py, value),
         TemporalFamily::DateTime => datetime_as_py(py, value),
         TemporalFamily::Duration => duration_as_py(py, value),
+        TemporalFamily::Interval => Err(PyValueError::new_err(
+            "calendar intervals have no Python datetime projection",
+        )),
     }
 }
 

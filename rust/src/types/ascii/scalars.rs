@@ -1,6 +1,7 @@
 //! ASCII values and typed scalar aliases.
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -112,6 +113,73 @@ ascii_code_leaf!(Country, 2);
 ascii_code_leaf!(Currency, 3);
 ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
+
+/// One exact ASCII storage or registered-code representation.
+///
+/// `AsciiFamily` carries the suffix because Rust cannot place the family enum
+/// and its required `Ascii` leaf in the same type namespace.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum AsciiFamily {
+    /// Variable-width ASCII.
+    Ascii(Ascii),
+    /// Fixed-width ASCII.
+    FixedAscii(FixedAscii),
+    /// ISO 3166-1 alpha-2 country code.
+    Country(Country),
+    /// ISO 4217 currency code.
+    Currency(Currency),
+    /// ISO 10383 market identifier code.
+    Mic(Mic),
+    /// ISO 10962 classification code.
+    Cfi(Cfi),
+}
+
+impl AsciiFamily {
+    /// Borrow the validated text independently of its storage identity.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Ascii(value) => value.as_str(),
+            Self::FixedAscii(value) => value.as_str(),
+            Self::Country(value) => value.as_str(),
+            Self::Currency(value) => value.as_str(),
+            Self::Mic(value) => value.as_str(),
+            Self::Cfi(value) => value.as_str(),
+        }
+    }
+}
+
+impl fmt::Display for AsciiFamily {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl PartialEq for AsciiFamily {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for AsciiFamily {}
+
+impl PartialOrd for AsciiFamily {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for AsciiFamily {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for AsciiFamily {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
 
 define_scalar_type!(
     AsciiScalar,

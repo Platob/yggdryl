@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
@@ -240,52 +241,71 @@ pub(crate) fn validate_integer_tuple(
     Ok(())
 }
 
-/// A copyable logical view over any integer width.
-///
-/// Positive signed and unsigned values share one representation. Converting
-/// back chooses a signed scalar whenever the magnitude fits `i128`; the exact
-/// source width remains available on the original [`Scalar`].
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct Integer {
-    negative: bool,
-    magnitude: u128,
+/// One exact signed or unsigned integer representation.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum Integer {
+    /// Signed 8-bit integer.
+    I8(Int8),
+    /// Signed 16-bit integer.
+    I16(Int16),
+    /// Signed 32-bit integer.
+    I32(Int32),
+    /// Signed 64-bit integer.
+    I64(Int64),
+    /// Unsigned 8-bit integer.
+    U8(UInt8),
+    /// Unsigned 16-bit integer.
+    U16(UInt16),
+    /// Unsigned 32-bit integer.
+    U32(UInt32),
+    /// Unsigned 64-bit integer.
+    U64(UInt64),
+    /// Signed 128-bit integer.
+    I128(Int128),
+    /// Unsigned 128-bit integer.
+    U128(UInt128),
 }
 
-impl Integer {
-    pub(crate) const fn from_signed(value: i128) -> Self {
-        Self {
-            negative: value < 0,
-            magnitude: value.unsigned_abs(),
-        }
-    }
+const _: () = assert!(std::mem::size_of::<Integer>() == 32);
 
-    pub(crate) const fn from_unsigned(value: u128) -> Self {
-        Self {
-            negative: false,
-            magnitude: value,
+impl Integer {
+    const fn normalized(self) -> (bool, u128) {
+        match self {
+            Self::I8(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+            Self::I16(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+            Self::I32(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+            Self::I64(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+            Self::I128(value) => (value.get() < 0, value.get().unsigned_abs()),
+            Self::U8(value) => (false, value.get() as u128),
+            Self::U16(value) => (false, value.get() as u128),
+            Self::U32(value) => (false, value.get() as u128),
+            Self::U64(value) => (false, value.get() as u128),
+            Self::U128(value) => (false, value.get()),
         }
     }
 
     /// Return whether this value is negative.
     pub const fn is_negative(self) -> bool {
-        self.negative
+        self.normalized().0
     }
 
     /// Return the unsigned magnitude.
     pub const fn magnitude(self) -> u128 {
-        self.magnitude
+        self.normalized().1
     }
 
     /// Return the signed value when it fits `i128`.
     pub const fn as_i128(self) -> Option<i128> {
-        if self.negative {
-            if self.magnitude == (i128::MAX as u128) + 1 {
+        let (negative, magnitude) = self.normalized();
+        if negative {
+            if magnitude == (i128::MAX as u128) + 1 {
                 Some(i128::MIN)
             } else {
-                Some(-(self.magnitude as i128))
+                Some(-(magnitude as i128))
             }
-        } else if self.magnitude <= i128::MAX as u128 {
-            Some(self.magnitude as i128)
+        } else if magnitude <= i128::MAX as u128 {
+            Some(magnitude as i128)
         } else {
             None
         }
@@ -293,26 +313,26 @@ impl Integer {
 
     /// Return the unsigned value when it is non-negative.
     pub const fn as_u128(self) -> Option<u128> {
-        if self.negative {
+        if self.is_negative() {
             None
         } else {
-            Some(self.magnitude)
+            Some(self.magnitude())
         }
     }
 
-    /// Build the canonical 64- or 128-bit scalar holding this integer.
-    pub fn into_scalar(self) -> Scalar {
-        if self.negative {
-            let value = if self.magnitude == (i128::MAX as u128) + 1 {
-                i128::MIN
-            } else {
-                -(self.magnitude as i128)
-            };
-            Scalar::from(value)
-        } else if self.magnitude <= i128::MAX as u128 {
-            Scalar::from(self.magnitude as i128)
-        } else {
-            Scalar::from(self.magnitude)
+    /// Rebuild the exact flat scalar variant this family member represents.
+    pub const fn into_scalar(self) -> Scalar {
+        match self {
+            Self::I8(value) => Scalar::I8(value.get()),
+            Self::I16(value) => Scalar::I16(value.get()),
+            Self::I32(value) => Scalar::I32(value.get()),
+            Self::I64(value) => Scalar::I64(value.get()),
+            Self::U8(value) => Scalar::U8(value.get()),
+            Self::U16(value) => Scalar::U16(value.get()),
+            Self::U32(value) => Scalar::U32(value.get()),
+            Self::U64(value) => Scalar::U64(value.get()),
+            Self::I128(value) => Scalar::I128(value.get()),
+            Self::U128(value) => Scalar::U128(value.get()),
         }
     }
 
@@ -322,13 +342,40 @@ impl Integer {
     }
 }
 
+impl fmt::Display for Integer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::I8(value) => value.fmt(formatter),
+            Self::I16(value) => value.fmt(formatter),
+            Self::I32(value) => value.fmt(formatter),
+            Self::I64(value) => value.fmt(formatter),
+            Self::U8(value) => value.fmt(formatter),
+            Self::U16(value) => value.fmt(formatter),
+            Self::U32(value) => value.fmt(formatter),
+            Self::U64(value) => value.fmt(formatter),
+            Self::I128(value) => value.fmt(formatter),
+            Self::U128(value) => value.fmt(formatter),
+        }
+    }
+}
+
+impl PartialEq for Integer {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Integer {}
+
 impl Ord for Integer {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self.negative, other.negative) {
-            (true, true) => other.magnitude.cmp(&self.magnitude),
+        let (negative, magnitude) = self.normalized();
+        let (other_negative, other_magnitude) = other.normalized();
+        match (negative, other_negative) {
+            (true, true) => other_magnitude.cmp(&magnitude),
             (true, false) => Ordering::Less,
             (false, true) => Ordering::Greater,
-            (false, false) => self.magnitude.cmp(&other.magnitude),
+            (false, false) => magnitude.cmp(&other_magnitude),
         }
     }
 }
@@ -339,20 +386,26 @@ impl PartialOrd for Integer {
     }
 }
 
+impl Hash for Integer {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.normalized().hash(state);
+    }
+}
+
 impl Scalar {
     /// Return the logical sign and magnitude of any exact integer width.
     pub const fn as_integer(&self) -> Option<Integer> {
         match self {
-            Self::I8(value) => Some(Integer::from_signed(*value as i128)),
-            Self::I16(value) => Some(Integer::from_signed(*value as i128)),
-            Self::I32(value) => Some(Integer::from_signed(*value as i128)),
-            Self::I64(value) => Some(Integer::from_signed(*value as i128)),
-            Self::I128(value) => Some(Integer::from_signed(*value)),
-            Self::U8(value) => Some(Integer::from_unsigned(*value as u128)),
-            Self::U16(value) => Some(Integer::from_unsigned(*value as u128)),
-            Self::U32(value) => Some(Integer::from_unsigned(*value as u128)),
-            Self::U64(value) => Some(Integer::from_unsigned(*value as u128)),
-            Self::U128(value) => Some(Integer::from_unsigned(*value)),
+            Self::I8(value) => Some(Integer::I8(Int8::new(*value))),
+            Self::I16(value) => Some(Integer::I16(Int16::new(*value))),
+            Self::I32(value) => Some(Integer::I32(Int32::new(*value))),
+            Self::I64(value) => Some(Integer::I64(Int64::new(*value))),
+            Self::I128(value) => Some(Integer::I128(Int128::new(*value))),
+            Self::U8(value) => Some(Integer::U8(UInt8::new(*value))),
+            Self::U16(value) => Some(Integer::U16(UInt16::new(*value))),
+            Self::U32(value) => Some(Integer::U32(UInt32::new(*value))),
+            Self::U64(value) => Some(Integer::U64(UInt64::new(*value))),
+            Self::U128(value) => Some(Integer::U128(UInt128::new(*value))),
             _ => None,
         }
     }

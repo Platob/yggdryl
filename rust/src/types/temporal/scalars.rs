@@ -208,6 +208,93 @@ impl fmt::Display for Interval {
     }
 }
 
+/// One exact temporal or interval representation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[non_exhaustive]
+pub enum Temporal {
+    /// Day-count date.
+    Date32(Date32),
+    /// Millisecond-count date.
+    Date64(Date64),
+    /// 32-bit time of day.
+    Time32(Time32),
+    /// 64-bit time of day.
+    Time64(Time64),
+    /// 64-bit datetime.
+    DateTime64(DateTime64),
+    /// 32-bit duration.
+    Duration32(Duration32),
+    /// 64-bit duration.
+    Duration64(Duration64),
+    /// Calendar interval.
+    Interval(Interval),
+}
+
+impl Temporal {
+    /// Return the logical family within the temporal group.
+    pub const fn family(self) -> TemporalFamily {
+        match self {
+            Self::Date32(_) | Self::Date64(_) => TemporalFamily::Date,
+            Self::Time32(_) | Self::Time64(_) => TemporalFamily::Time,
+            Self::DateTime64(_) => TemporalFamily::DateTime,
+            Self::Duration32(_) | Self::Duration64(_) => TemporalFamily::Duration,
+            Self::Interval(_) => TemporalFamily::Interval,
+        }
+    }
+
+    /// Return the physical unit or interval layout.
+    pub const fn unit(self) -> TimeUnit {
+        match self {
+            Self::Date32(value) => value.unit(),
+            Self::Date64(value) => value.unit(),
+            Self::Time32(value) => value.unit(),
+            Self::Time64(value) => value.unit(),
+            Self::DateTime64(value) => value.unit(),
+            Self::Duration32(value) => value.unit(),
+            Self::Duration64(value) => value.unit(),
+            Self::Interval(value) => value.unit(),
+        }
+    }
+
+    /// Return the temporal timezone, with intervals explicitly zone-free.
+    pub const fn timezone(self) -> Timezone {
+        match self {
+            Self::Date32(value) => value.timezone(),
+            Self::Date64(value) => value.timezone(),
+            Self::Time32(value) => value.timezone(),
+            Self::Time64(value) => value.timezone(),
+            Self::DateTime64(value) => value.timezone(),
+            Self::Duration32(value) => value.timezone(),
+            Self::Duration64(value) => value.timezone(),
+            Self::Interval(_) => Timezone::NAIVE,
+        }
+    }
+
+    /// Return the physical count width, or 128 bits for an interval payload.
+    pub const fn bit_width(self) -> u8 {
+        match self {
+            Self::Date32(_) | Self::Time32(_) | Self::Duration32(_) => 32,
+            Self::Date64(_) | Self::Time64(_) | Self::DateTime64(_) | Self::Duration64(_) => 64,
+            Self::Interval(_) => 128,
+        }
+    }
+}
+
+impl fmt::Display for Temporal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Date32(value) => value.fmt(formatter),
+            Self::Date64(value) => value.fmt(formatter),
+            Self::Time32(value) => value.fmt(formatter),
+            Self::Time64(value) => value.fmt(formatter),
+            Self::DateTime64(value) => value.fmt(formatter),
+            Self::Duration32(value) => value.fmt(formatter),
+            Self::Duration64(value) => value.fmt(formatter),
+            Self::Interval(value) => value.fmt(formatter),
+        }
+    }
+}
+
 define_scalar_type!(DateTime64Scalar, super::DateTime64Type, "datetime64");
 define_scalar_type!(
     Date32Scalar,
@@ -238,6 +325,8 @@ pub enum TemporalFamily {
     DateTime,
     /// Elapsed durations.
     Duration,
+    /// Calendar intervals.
+    Interval,
 }
 
 impl TemporalFamily {
@@ -248,6 +337,7 @@ impl TemporalFamily {
             Self::Time => "time",
             Self::DateTime => "datetime",
             Self::Duration => "duration",
+            Self::Interval => "interval",
         }
     }
 }

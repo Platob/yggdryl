@@ -1,6 +1,7 @@
 //! UTF-8 values and typed scalar aliases.
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -70,6 +71,63 @@ macro_rules! text_leaf {
 text_leaf!(Utf8);
 text_leaf!(LargeUtf8);
 text_leaf!(Utf8View);
+
+/// One exact UTF-8 storage representation.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum Text {
+    /// UTF-8 with 32-bit offsets.
+    Utf8(Utf8),
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8(LargeUtf8),
+    /// UTF-8 view storage.
+    Utf8View(Utf8View),
+}
+
+impl Text {
+    /// Borrow the Unicode text independently of its storage layout.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Utf8(value) => value.as_str(),
+            Self::LargeUtf8(value) => value.as_str(),
+            Self::Utf8View(value) => value.as_str(),
+        }
+    }
+}
+
+impl fmt::Display for Text {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for Text {}
+
+impl PartialOrd for Text {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Text {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for Text {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+const _: () = assert!(std::mem::size_of::<Text>() == 32);
 
 impl From<&str> for Scalar {
     fn from(value: &str) -> Self {

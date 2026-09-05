@@ -64,7 +64,7 @@ pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enum_scalar::EnumScalar;
 pub use field::*;
-pub use floating::scalars::{Float, Float16Scalar, Float32Scalar, Float64Scalar};
+pub use floating::scalars::{Float16Scalar, Float32Scalar, Float64Scalar, Floating};
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;

@@ -355,6 +355,7 @@ pub(super) fn write_temporal(
         crate::TemporalFamily::Time => DataTypeId::Time64,
         crate::TemporalFamily::DateTime => DataTypeId::DateTime64,
         crate::TemporalFamily::Duration => DataTypeId::Duration64,
+        crate::TemporalFamily::Interval => DataTypeId::Interval,
     };
     let (class, count) = temporal_key(count, unit);
     write_tag(sink, tag);
