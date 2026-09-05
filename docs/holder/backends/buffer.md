@@ -10,9 +10,8 @@
 | Bindings | Rust only; Python and JavaScript reach it through `IOBase.from_bytes` / `fromBytes` |
 | Construction | `Buffer::with_capacity`, `Buffer::from_bytes` |
 | Direct bytes | `as_slice`, `as_mut_slice`, `into_bytes` |
-| Growth | the allocation doubles; `reserve` pre-sizes a known final length |
+| Growth | the allocation doubles, so many small appends stay amortized constant; `reserve` pre-sizes a known final length |
 | Media type | declared with `with_media_type`, never guessed |
-| Identity | `url` reports a synthetic `mem:` value |
 | Siblings | [Local](local.md), [Filesystems](filesystems.md) |
 | Wrappers | [Buffered](buffered.md), `Coded` in [Coding](../../coding/index.md) |
 
@@ -41,9 +40,7 @@ assert_eq!(csv.media_type().base(), &MimeType::CSV);
 
 ## Edges
 
-- `reserve(n)` -> grows the allocation only; `size()` is unchanged.
-- `as_mut_slice()` -> discards any inferred media type, because the content's identity may change through it.
-- Many small appends -> amortized constant, because the allocation doubles rather than growing exactly.
+- `as_mut_slice()` -> discards any inferred media type; the content's identity may change through it.
 - `url()` -> a synthetic `mem:` identity naming the process and the allocation; the bytes are stored nowhere.
 
 ## Commands

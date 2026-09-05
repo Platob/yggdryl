@@ -10,12 +10,12 @@
 | Handle surface | `overwrite_*`, `append_*`, keyed `merge_*`, `read_arrow_reader`, `read_arrow_field` from [`IOMedia`](../holder/iobase/records.md) |
 | Merge | `merge_by_names` supplies identity only; the method name carries intent, never the key |
 | Schema | self-describing; `dtype` set skips the handle; root name defaults to `DEFAULT_ROOT_NAME` (`"row"`) |
-| Pushdown | `field` projects at decode, keeps stored order and types, never casts |
+| Pushdown | `field`, a non-null struct root naming a subset, projects at decode; keeps stored order and types, never casts |
 | Coding | last content coding of the handle media type (`.gz`, `.zst`); `level` is the only compression setting |
 | Cached | `open` caches schema and dimensions until `close`; writes and every `Ipc` builder drop the cache |
 | Format settings | none beyond the shared [`IORecordOptions`](options.md) fields |
 | Errors | bytes that are not a stream fail `read_field` and `read_batch_reader` at once |
-| Bindings | Rust: free functions and `Ipc<H>`; Python: `IOBase` with `pyarrow.RecordBatchReader`; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../extensions/javascript.md) |
+| Bindings | Rust: free functions and `Ipc<H>`; Python: `IOBase` with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../extensions/javascript.md) |
 
 ## Use
 
@@ -1068,9 +1068,12 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../holde
 ## Edges
 
 - `merge_by_names` on an overwrite or append -> the key never selects merge; intent stays with the method name.
+- `append_*` or keyed `merge_*` -> published through `ipc::overwrite_arrow_reader`, the one complete-stream encoder.
 - `field` naming every stored column, or one the stream lacks -> reads everything; a projection only drops columns.
 - projected read -> the returned reader reports the projected schema; Arrow's own `StreamReader` would report the whole stream's.
+- reading -> batches arrive one at a time and only the current one is alive.
 - `IpcOptions::dtype` set -> `read_field` builds the field without touching the handle.
+- `field` accessor -> built from `name`, `dtype`, and `metadata` by [`IORecordOptions`](options.md).
 - handle with no content coding -> `level` does nothing.
 - missing resource -> zero batches, not a parse failure; the reader reports the declared schema, or an empty Arrow schema without one.
 - `open` on an absent stream -> succeeds and caches explicit zero dimensions.
@@ -1106,7 +1109,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../holde
 
 ## Performance
 
-Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23); the read fixture holds 65,536 rows and four columns, the write fixture 4,096 rows with the stored side prepared outside the timer.
+Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, with the stored side prepared outside the timer.
 
 | batch operation | rows | estimate | throughput |
 | --- | ---: | ---: | ---: |
@@ -1128,7 +1131,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_st
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record
 ```
 
-`python/benchmarks/media.py` carries a PyArrow IPC write baseline over the same batches and sink: one containerized x86_64 Linux run with `--min-time 0.1 --repeat 3`, 65,536 rows, 4 columns, 8 batches.
+`python/benchmarks/media.py` carries a PyArrow IPC write baseline over the same batches and sink. One containerized x86_64 Linux run with `--min-time 0.1 --repeat 3`, 65,536 rows, 4 columns, 8 batches.
 
 ```text
 ipc write reader                 1.133 ms   57.9M rows/s
