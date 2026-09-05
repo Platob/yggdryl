@@ -16,6 +16,20 @@ test('datatype values infer inputs and round-trip canonical strings', () => {
   assert.ok(DataType.fromString(type.toString()).equals(type))
 })
 
+test('named regex captures define a nullable Struct before data is read', () => {
+  const inferred = DataType.fromRegex(
+    '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
+  )
+  assert.deepEqual([...inferred].map((field) => field.name), ['level', 'id'])
+  assert.equal(inferred.field('level').dtype.id, 'utf8')
+  assert.equal(inferred.field('id').dtype.id, 'int64')
+  assert.ok([...inferred].every((field) => field.nullable))
+
+  const strings = DataType.fromRegex('(?<id>\\d+)', false)
+  assert.equal(strings.field('id').dtype.id, 'utf8')
+  assert.throws(() => DataType.fromRegex('(?<id>'), /regular expression/)
+})
+
 test('generic time selects its physical width through native unit parsing', () => {
   // `kind` is the coarse family shared by every temporal variant; the selected
   // physical width (`time32` vs `time64`) is the variant identity and shows up

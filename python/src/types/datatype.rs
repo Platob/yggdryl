@@ -741,6 +741,15 @@ impl PyDataType {
             .map_err(value_error)
     }
 
+    /// Build a Struct from named regex captures without reading data.
+    #[staticmethod]
+    #[pyo3(signature = (regex, autotype = true))]
+    fn from_regex(regex: &str, autotype: bool) -> PyResult<Self> {
+        CoreDataType::from_regex(regex, autotype)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     #[staticmethod]
     fn from_arrow(value: PyArrowType<ArrowDataType>) -> PyResult<Self> {
         let PyArrowType(value) = value;

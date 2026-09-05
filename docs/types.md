@@ -14,10 +14,10 @@ type, with Arrow itself kept out of the value model.
     use yggdryl::DataType;
 
     let value = DataType::from_str("decimal(18, 4)")?;
-    assert_eq!(value, DataType::decimal128(18, 4)?);
+    assert_eq!(value, DataType::decimal64(18, 4)?);
 
     // Display is canonical and both text forms round-trip.
-    assert_eq!(value.to_string(), "decimal128(18,4)");
+    assert_eq!(value.to_string(), "decimal64(18,4)");
     assert_eq!(DataType::from_str(&value.to_string())?, value);
     assert_eq!(DataType::from_json(&value.clone().into_json()?)?, value);
     ```
@@ -30,7 +30,7 @@ type, with Arrow itself kept out of the value model.
     value = DataType("decimal(18, 4)")
     assert value == DataType.decimal(18, 4)
 
-    assert str(value) == "decimal128(18,4)"
+    assert str(value) == "decimal64(18,4)"
     assert DataType(str(value)) == value
     assert DataType.from_json(value.into_json()) == value
     ```
@@ -42,9 +42,9 @@ type, with Arrow itself kept out of the value model.
     const { DataType } = require('yggdryl')
 
     const value = DataType.from('decimal(18, 4)')
-    assert.equal(value.id, 'decimal128')
+    assert.equal(value.id, 'decimal64')
 
-    assert.equal(value.toString(), 'decimal128(18,4)')
+    assert.equal(value.toString(), 'decimal64(18,4)')
     assert.ok(DataType.fromString(value.toString()).equals(value))
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
@@ -199,11 +199,12 @@ nesting actually needs - a child is a name, a type, and a nullability flag.
     assert.throws(() => DataType.time('year_month'), /temporal resolution/)
     ```
 
-`decimal` and `time` are selectors, not extra types: precision 1-38 lands on `decimal128` and 39-76
-on `decimal256`, seconds and milliseconds land on `time32` and micro/nanoseconds on `time64`. The
-exact constructors stay available for when the physical width is part of the contract. Whichever you
-call, the parameters are validated once at construction - a precision of zero, a positive scale
-larger than the precision, a nanosecond `time32`, or a negative fixed width never becomes a value.
+`decimal` and `time` are selectors, not extra types: precision 1-9 lands on `decimal32`, 10-18 on
+`decimal64`, 19-38 on `decimal128`, and 39-76 on `decimal256`; seconds and milliseconds land on
+`time32`, and micro/nanoseconds on `time64`. The exact constructors stay available for when the
+physical width is part of the contract. Whichever you call, the parameters are validated once at
+construction - a precision of zero, a positive scale larger than the precision, a nanosecond
+`time32`, or a negative fixed width never becomes a value.
 
 Units are parsed from the shared [`TimeUnit`](types.md) vocabulary, so `s`, `sec`, `MILLIS`, `µs`,
 and `nano seconds` all work, and the calendar interval layouts - which are not time-of-day
@@ -254,8 +255,8 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
         types.utf8("values"),
     ).dtype
 
-    assert codes.kind == "dictionary"
-    assert runs.kind == "run_end_encoded"
+    assert codes.kind == "nested"
+    assert runs.kind == "nested"
     assert not codes.is_nested and not runs.is_nested
     assert str(codes) == "dictionary(int16,utf8)"
 
@@ -278,8 +279,8 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
       .runEndEncoded('runs', fields.int16('run_ends', { nullable: false }), fields.utf8('values'))
       .dtype
 
-    assert.equal(codes.kind, 'dictionary')
-    assert.equal(runs.kind, 'run_end_encoded')
+    assert.equal(codes.kind, 'nested')
+    assert.equal(runs.kind, 'nested')
     assert.equal(codes.nested, false)
     assert.equal(runs.nested, false)
     assert.equal(codes.toString(), 'dictionary(int16,utf8)')
@@ -452,7 +453,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
 
     variant = DataType.variant()
     assert variant.id == "variant"
-    assert variant.kind == "variant"
+    assert variant.kind == "nested"
     assert str(variant) == "variant"
     assert DataType("variant") == variant
     assert DataType("variant(n:int64)").id == "union"
@@ -487,7 +488,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
 
     const variant = DataType.variant()
     assert.equal(variant.id, 'variant')
-    assert.equal(variant.kind, 'variant')
+    assert.equal(variant.kind, 'nested')
     assert.equal(variant.toString(), 'variant')
     assert.ok(new DataType('variant').equals(variant))
     assert.equal(DataType.fromString('variant(n:int64)').id, 'union')
@@ -605,7 +606,10 @@ and bounds by the one WKB reader documented there.
     let stored = scalar_array(&ccy, &Scalar::from("USD"))?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(0), b"USD\0");
-    assert_eq!(scalar_value(&ccy, stored.as_ref())?, Scalar::from("USD"));
+    assert_eq!(
+        scalar_value(&ccy, stored.as_ref())?,
+        DataType::FixedAscii(4).scalar("USD")?
+    );
 
     // The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
     let arrow = ccy.clone().into_arrow()?;
@@ -665,7 +669,7 @@ and bounds by the one WKB reader documented there.
     assert ascii32.id == "fixed_ascii"
     assert str(ascii32) == "ascii(4)"
     assert DataType("ascii(12)") == DataType.ascii(12)
-    assert ascii32.kind == note.kind == "string"
+    assert ascii32.kind == note.kind == "ascii"
     assert ascii32.ascii_width == 4
     assert DataType.ascii(12).ascii_width == 12
     # Variable ASCII has no width to report, and neither has anything else.
@@ -680,7 +684,7 @@ and bounds by the one WKB reader documented there.
     assert str(currency) == "currency"
     assert currency.ascii_width == 3
     assert currency != DataType.ascii(3)
-    assert currency.kind == "string"
+    assert currency.kind == "ascii"
     assert [(DataType(name).id, DataType(name).ascii_width) for name in
             ("country", "currency", "mic", "cfi")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)
@@ -750,7 +754,7 @@ and bounds by the one WKB reader documented there.
     assert.equal(ascii32.id, 'fixed_ascii')
     assert.equal(ascii32.toString(), 'ascii(4)')
     assert.ok(DataType.from('ascii(12)').equals(DataType.ascii(12)))
-    assert.equal(ascii32.kind, 'string')
+    assert.equal(ascii32.kind, 'ascii')
     assert.equal(ascii32.asciiWidth, 4)
     // Variable ASCII has no width to report, and neither has anything else.
     assert.equal(note.asciiWidth, null)
@@ -1156,6 +1160,58 @@ what a reader means by an identifier. The 32-digit bare-hex text, upper case, an
 bytes are all accepted on the way in and rewrite to that one spelling; anything else is refused by
 the one rule that field validation, Arrow ingest, and every cast tier all call.
 
+### Regular-expression captures
+
+`DataType::from_regex` builds one Struct from a byte regex's named captures,
+in capture order. Every field is nullable because either the whole expression
+or an optional branch may miss. With autotyping enabled, a capture whose syntax
+names a boolean, integer, finite float, ISO date, time, or datetime receives
+that datatype; a broad capture such as `\S+` stays UTF-8. Inference reads no
+rows, so text media can publish its schema before opening its source.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+
+    let dtype = DataType::from_regex(
+        r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)",
+        true,
+    )?;
+    assert_eq!(dtype.field("level")?.dtype(), &DataType::Utf8);
+    assert_eq!(dtype.field("id")?.dtype(), &DataType::Int64);
+    assert!(dtype.field("id")?.is_nullable());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    dtype = DataType.from_regex(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)")
+    assert dtype["level"].dtype == DataType("utf8")
+    assert dtype["id"].dtype == DataType("int64")
+    assert dtype["id"].nullable
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const dtype = DataType.fromRegex(
+      '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
+    )
+    assert.equal(dtype.field('level').dtype.id, 'utf8')
+    assert.equal(dtype.field('id').dtype.id, 'int64')
+    assert.equal(dtype.field('id').nullable, true)
+    ```
+
+Passing `false` as the second argument keeps every capture UTF-8. Invalid
+syntax and expressions beyond the shared datatype recursion limit are typed
+datatype errors.
+
 ### Logical names
 
 === "Rust"
@@ -1464,10 +1520,10 @@ before materializing foreign state. Whole schemas cross the same boundary throug
     // One positional slot per child, each honoring its own nullability.
     assert_eq!(
         value.default_value()?.as_sequence().unwrap(),
-        &[Scalar::I64(0), Scalar::Null]
+        &[Scalar::from(0_i64), Scalar::Null]
     );
     assert!(value.is_default_value(&value.default_value()?)?);
-    assert_eq!(DataType::Utf8.default_value()?, Scalar::String("".into()));
+    assert_eq!(DataType::Utf8.default_value()?, Scalar::from(""));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
     assert!(DataType::FixedSizeBinary(64 * 1024 * 1024 + 1).default_value().is_err());
@@ -1557,7 +1613,7 @@ caller already holds - the bytes it was read from, the text it was read as, or t
     use yggdryl::DataType;
     use yggdryl::types::Scalar;
 
-    let dtype = DataType::decimal128(9, 2)?;
+    let dtype = DataType::decimal(9, 2)?;
 
     // One structural model, three formats over it.
     assert_eq!(DataType::from_value(dtype.clone().into_value())?, dtype);
@@ -1566,7 +1622,7 @@ caller already holds - the bytes it was read from, the text it was read as, or t
     assert_eq!(DataType::from_toml(&dtype.clone().into_toml()?)?, dtype);
 
     let shape = dtype.into_value();
-    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal128"));
+    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal32"));
     ```
 
 === "Python"
@@ -1581,7 +1637,7 @@ caller already holds - the bytes it was read from, the text it was read as, or t
     assert DataType.from_yaml(dtype.into_yaml()) == dtype
     assert DataType.from_toml(dtype.into_toml()) == dtype
 
-    assert dtype.into_dict()["type"] == "decimal128"
+    assert dtype.into_dict()["type"] == "decimal32"
     ```
 
 === "JavaScript"
@@ -1647,7 +1703,7 @@ The output is stable across runs; nothing in it iterates a hash map.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scheme, TimeUnit};
+    use yggdryl::{DataType, Field, Scheme, TimeUnit, Timezone};
 
     let source = DataType::from_fields([
         Field::new("small", DataType::UInt8, false),
@@ -2635,7 +2691,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     // The marker is checked, never assumed.
     assert!(
         Field::new("id", DataType::Utf8, false)
-            .try_into_typed::<integer::Int64>()
+            .try_into_typed::<integer::Int64Type>()
             .is_err()
     );
     assert_eq!(id.into_field().dtype(), &DataType::Int64);
@@ -2768,7 +2824,7 @@ schema.validate_value(&row)?;
 
 // Canonicalizing narrows every value into the representation the root declares.
 let canonical = schema.canonicalize_value(row)?;
-assert_eq!(canonical.get(0), Some(&Scalar::I64(7)));
+assert_eq!(canonical.get(0), Some(&Scalar::from(7_i64)));
 assert_eq!(
     canonical.get(1).and_then(Scalar::as_f64),
     Some(f64::from(0.1f32))
@@ -3372,7 +3428,7 @@ assert_eq!(price.dtype(), &DataType::Int64);
 
 // The same pairing, with the datatype fixed at compile time.
 let typed: Int64Scalar = price.try_into_typed()?;
-assert_eq!(typed.value(), &Scalar::I64(7));
+assert_eq!(typed.value(), &Scalar::from(7_i64));
 assert!(Int64Scalar::new(Scalar::from("seven")).is_err());
 ```
 

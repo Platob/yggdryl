@@ -30,7 +30,7 @@ Each folder owns one implementation family:
 | Layer | Owns |
 | --- | --- |
 | [`types`](types.md) | `DataType`, `Field`, `Scalar`, type families, protocol views, validation, and casting |
-| [`holder`](holder.md) | `Buffer`, local and Arrow-filesystem handles, buffering, and storage implementations |
+| [`holder`](holder.md) | `Buffer`, local and generic filesystem handles, buffering, and storage implementations |
 | [`coding`](coding.md) | gzip, zlib/deflate, zstd, and transparent coded handles |
 | [`media`](media.md) | record options, IPC, Parquet, Avro, plain-text records, and Iceberg |
 | [`text`](text.md) | structured `Scalar` codecs for JSON, YAML, and TOML |
@@ -61,7 +61,9 @@ to the core type.
 
 [`IOBase`](holder.md) is positional: `pread` and `pwrite` take explicit offsets, so independent
 readers never coordinate a hidden cursor. Root traits describe storage roles; implementations in
-`holder` supply memory, local, Arrow-filesystem, and buffered behavior.
+`holder` supply memory, local, generic filesystem, and buffered behavior. The
+generic `FileSystem` trait preserves Arrow's synchronous method signatures so
+existing Arrow-compatible backends map onto it directly.
 
 Construction is lazy. Missing reads return empty data, writes create resources and parents as a
 consequence, and internal code acts before handling typed absence or conflict. `clear` preserves a

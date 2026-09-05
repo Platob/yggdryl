@@ -379,6 +379,14 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
+    /// Build a Struct from named regex captures without reading data.
+    #[napi(factory)]
+    pub fn from_regex(regex: String, autotype: Option<bool>) -> Result<Self> {
+        CoreDataType::from_regex(&regex, autotype.unwrap_or(true))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// Parse the textual representation of an Arrow-compatible JS value.
     ///
     /// The loader coerces non-string inputs through their `toString` method;

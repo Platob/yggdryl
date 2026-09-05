@@ -561,6 +561,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
 
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  options.withRownum = 10n
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
 
@@ -569,7 +570,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
     table.schema.fields.map((field) => field.name),
     ['url', 'rownum', 'body', 'level', 'id'],
   )
-  assert.deepEqual([...table.getChild('rownum')], [1n, 2n, 3n])
+  assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
   assert.deepEqual(
     [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
     ['first', 'second', 'plain'],
@@ -593,6 +594,7 @@ test('text-only settings are flat native TextOptions value state', () => {
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'
+  options.withRownum = -3n
 
   assert.equal(options.rowheader, '(?<stamp>\\S+)')
   assert.equal(options.lstrip, '^\\s+')
@@ -600,11 +602,18 @@ test('text-only settings are flat native TextOptions value state', () => {
   assert.deepEqual(options.linesep, Buffer.from('\r\n'))
   assert.equal(options.autotype, false)
   assert.equal(options.timezone.toString(), '+02:00')
+  assert.equal(options.withRownum, -3n)
   assert.ok(options.clone().equals(options))
 
   assert.throws(() => {
     options.rowheader = '(?<body>.+)'
   }, /distinct from url, rownum, and body/)
+  assert.throws(() => {
+    options.withRownum = 1
+  })
+  assert.throws(() => {
+    options.withRownum = 1n << 63n
+  }, /signed 64-bit integer/)
   const arrowOptions = RecordOptions.from('trades.arrows')
   assert.equal('autotype' in arrowOptions, false)
   assert.throws(() => {
@@ -690,6 +699,7 @@ test('text folders decode coded leaves through the same record path', (t) => {
 
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  options.withRownum = 1n
   options.lstrip = '^\\s+'
   const rows = [...new IOBase(root).readRecords(options)]
 

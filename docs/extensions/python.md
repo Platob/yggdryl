@@ -106,6 +106,11 @@ assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 value, a string, a PyArrow value, a Python type annotation - and dispatches to the matching core
 constructor.
 
+`DataType.from_regex(pattern, autotype=True)` passes the string and flag
+directly to the core's named-capture inference. For plain-text rows,
+`TextOptions.with_rownum` accepts `None` or a signed 64-bit Python `int`;
+`bool` is a `TypeError`, and an out-of-range integer is an `OverflowError`.
+
 ## Native `Scalar`
 
 `Scalar` is a Python view of the Rust tree. Family factories select the native
@@ -981,6 +986,9 @@ a stdlib or `@scalar` dataclass type it constructs one instance per row.
 Record methods select an explicit write intent or require `mode`. Configure
 field, selection, batch sizing, and merge keys on one `RecordOptions` value and
 pass it as `options=`.
+
+`TextOptions` additionally owns the pre-read row-header schema and optional
+row numbering described in [plain-text records](../media.md#plain-text-records).
 
 ## pandas and polars
 

@@ -110,8 +110,8 @@ operators.
     use yggdryl::Scalar;
 
     assert_eq!(
-        Scalar::I8(-1).checked_add(&Scalar::U8(2))?,
-        Scalar::I16(1),
+        Scalar::from(-1_i8).checked_add(&Scalar::from(2_u8))?,
+        Scalar::from(1_i16),
     );
     assert_eq!(
         Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?,
@@ -306,7 +306,7 @@ contradicts a suffix is rejected.
     let (format, value) = text::from_utf8_inferred(r#"{"id":1}"#)?;
 
     assert_eq!(format, Format::Json);
-    assert_eq!(value.get_key_str("id"), Some(&Scalar::U64(1)));
+    assert_eq!(value.get_key_str("id"), Some(&Scalar::from(1_u64)));
     assert_eq!(text::into_utf8(&value, format)?, r#"{"id":1}"#);
     ```
 
@@ -379,7 +379,7 @@ Node. Regenerate with `python benchmarks/text.py --iterations 10000` and
     use yggdryl::{Scalar};
     use yggdryl::text::json;
 
-    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::from(1_i64))])?;
     let pretty =
         json::into_utf8_with_formatting(&value, Formatting::indented(2))?;
 
@@ -449,7 +449,7 @@ mapping or the environment switch is supplied.
     )?;
 
     assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080_i64)));
     ```
 
 === "Python"
@@ -780,7 +780,7 @@ never changes the parsed value.
     use yggdryl::{Scalar};
     use yggdryl::text::json;
 
-    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::from(1_i64))])?;
     let pretty =
         json::into_utf8_with_formatting(&value, Formatting::indented(2))?;
 
@@ -1086,7 +1086,7 @@ never meaning.
     use yggdryl::{Scalar};
     use yggdryl::text::yaml;
 
-    let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+    let value = Scalar::from_record([("id", Scalar::from(1_i64))])?;
     let flow =
         yaml::into_utf8_with_formatting(&value, Formatting::compact())?;
 
@@ -1139,7 +1139,7 @@ unquoted braces are YAML flow-mapping syntax.
     use yggdryl::Scalar;
 
     let loading = Loading::new().with_placeholders(
-        Placeholders::new().with_variable("PORT", Scalar::I64(8080)),
+        Placeholders::new().with_variable("PORT", Scalar::from(8080_i64)),
     );
     let value = yggdryl::text::from_utf8_with(
         "port: \"{{ PORT }}\"\n",
@@ -1147,7 +1147,7 @@ unquoted braces are YAML flow-mapping syntax.
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080_i64)));
     ```
 
 === "Python"
@@ -1492,7 +1492,11 @@ does not.
 
     let value = Scalar::from_record([(
         "items",
-        Scalar::from_sequence([Scalar::I64(1), Scalar::I64(2), Scalar::I64(3)]),
+        Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from(2_i64),
+            Scalar::from(3_i64),
+        ]),
     )])?;
     let laid_out =
         toml::into_utf8_with_formatting(&value, Formatting::indented(2))?;
@@ -1546,7 +1550,7 @@ runs after parsing and before optional Field interpretation.
     let loading = Loading::new().with_placeholders(
         Placeholders::new()
             .with_variable("HOST", Scalar::from("db.internal"))
-            .with_variable("PORT", Scalar::I64(5432)),
+            .with_variable("PORT", Scalar::from(5432_i64)),
     );
     let value = yggdryl::text::from_utf8_with(
         "host = \"{{ HOST }}\"\nport = \"{{ PORT }}\"\n",
@@ -1555,7 +1559,7 @@ runs after parsing and before optional Field interpretation.
     )?;
 
     assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(5432)));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(5432_i64)));
     ```
 
 === "Python"

@@ -1,6 +1,6 @@
 //! Native JavaScript view of flat plain-text record options.
 
-use napi::bindgen_prelude::{Buffer, Either, Result, Uint8Array};
+use napi::bindgen_prelude::{BigInt, Buffer, Either, Error, Result, Uint8Array};
 use napi_derive::napi;
 use yggdryl::media::IORecordOptions;
 use yggdryl::media::text::TextOptions as CoreTextOptions;
@@ -260,6 +260,25 @@ impl JsTextOptions {
         self.inner.set_filter_partitions(partitions);
     }
 
+    /// The first emitted row number, or `null` when the column is omitted.
+    #[napi(getter)]
+    pub fn with_rownum(&self) -> Option<BigInt> {
+        self.inner.with_rownum.map(BigInt::from)
+    }
+
+    /// Set or clear the exact signed 64-bit starting row number.
+    #[napi(setter)]
+    pub fn set_with_rownum(&mut self, value: Option<BigInt>) -> Result<()> {
+        self.inner.with_rownum = value
+            .map(|value| {
+                let value = crate::exact_i128(&value, "withRownum")?;
+                i64::try_from(value)
+                    .map_err(|_| Error::from_reason("withRownum must be a signed 64-bit integer"))
+            })
+            .transpose()?;
+        Ok(())
+    }
+
     /// The regex searched for a row header in each physical line.
     #[napi(getter)]
     pub fn rowheader(&self) -> Option<String> {
@@ -320,13 +339,13 @@ impl JsTextOptions {
         Ok(())
     }
 
-    /// Return whether first-batch capture autotyping is enabled.
+    /// Return whether regex-syntax capture autotyping is enabled.
     #[napi(getter)]
     pub fn autotype(&self) -> bool {
         self.inner.autotype()
     }
 
-    /// Enable or disable first-batch capture autotyping.
+    /// Enable or disable regex-syntax capture autotyping.
     #[napi(setter)]
     pub fn set_autotype(&mut self, autotype: bool) {
         self.inner.set_autotype(autotype);

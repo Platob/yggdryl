@@ -660,7 +660,7 @@ core value instead.
     let media = Url::from_str("file:///trade.json.gz")?.media_type();
     let mut handle = Buffer::new().with_media_type(media);
     let value = Scalar::from_record([
-        ("quantity", Scalar::I64(2)),
+        ("quantity", Scalar::from(2_i64)),
         ("symbol", Scalar::from("AAPL")),
     ])?;
     handle.write_scalar(&value)?;
@@ -668,7 +668,7 @@ core value instead.
     let field = Field::from_str(
         "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
     )?;
-    assert_eq!(handle.read_scalar(Some(&field))?[0], Scalar::I64(2));
+    assert_eq!(handle.read_scalar(Some(&field))?[0], Scalar::from(2_i64));
     ```
 
 === "Python"
@@ -2570,9 +2570,11 @@ default, selects everything.
 ### Text records
 
 `text/plain` uses the same record methods as IPC, Parquet, and Avro. Each
-physical line becomes `url: utf8`, `rownum: int64`, and `body: binary`.
+physical line becomes `url: utf8` and `body: binary`; setting
+`TextOptions.with_rownum` / `withRownum` inserts `rownum: int64` between them
+and supplies its first value.
 A flat `TextOptions` value adds regex `rowheader` captures, edge stripping, a
-fixed line separator, and first-batch autotyping. Generic `RecordOptions`
+fixed line separator, and syntax-directed pre-read autotyping. Generic `RecordOptions`
 retains the shared timezone accessor.
 
 `into_text` / `intoText` retains those options without adding a line iterator,
@@ -4152,7 +4154,7 @@ already reach answers them:
 
 ### What the wrapper costs
 
-Putting an existing Arrow filesystem behind `IOBase`, the only honest
+Putting an existing Arrow-compatible filesystem behind `IOBase`, the only honest
 question is what the wrapper adds to the transport underneath it. Every row below is the same
 payload landing in the same place twice: once through an `fs` handle, once through the native
 handle (or the language's own filesystem calls) holding those same bytes.

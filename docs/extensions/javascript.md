@@ -12,7 +12,7 @@ const schema = new Field(
   false,
 )
 
-assert.equal(schema.dtype.kind, 'struct')
+assert.equal(schema.dtype.kind, 'nested')
 assert.equal(String(Url.fromPath('C:/market data/trades.arrows')),
   'file:///C:/market%20data/trades.arrows')
 ```
@@ -85,7 +85,7 @@ or hashing. A `Buffer` or `Uint8Array` is hashed in place; an `ArrayBuffer` is n
 pair and the `Hashed<H>` handle stay Rust-only, for the same `Read`/`Write` reason the
 codings do.
 
-## A filesystem is whatever answers six calls
+## A filesystem is whatever answers seven calls
 
 Arrow JS ships no filesystem, so where Python hands the core a `pyarrow.fs.FileSystem` that already
 exists, JavaScript supplies the vtable itself: a plain object whose methods are Arrow's own
@@ -117,7 +117,7 @@ const assert = require('node:assert/strict')
 
 // A datatype expression is a datatype.
 assert.equal(String(new Field('id', 'int64', false).dtype), 'int64')
-assert.equal(DataType.from('list<int32>').kind, 'list')
+assert.equal(DataType.from('list<int32>').kind, 'nested')
 
 // A media type is its canonical name.
 assert.equal(String(MimeType.from('application/json')), 'application/json')
@@ -135,6 +135,11 @@ There is no JavaScript-side parser: `DataType.from` and its siblings call the ma
 constructor. JavaScript has no object `/` operator protocol, so generic URI path
 composition uses variadic `Uri.joinPath`; every component is normalized by the
 same core `joinpath` implementation as Rust's and Python's `/` idiom.
+
+`DataType.fromRegex(pattern, autotype)` redirects named-capture inference to
+that core. `TextOptions.withRownum` is `bigint | null`: `bigint` preserves the
+whole signed 64-bit range, while a JavaScript `number` is rejected rather than
+silently narrowed.
 
 ## Bytes and ranges
 

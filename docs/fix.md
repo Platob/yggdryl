@@ -1237,7 +1237,7 @@ ordered and canonicalized against the same root.
         .required_field("NewOrderSingle");
     let value = Scalar::from_record([
         ("Symbol", Scalar::from("AAPL")),
-        ("OrderQty", Scalar::I64(100)),
+        ("OrderQty", Scalar::from(100_i64)),
         ("NoPartyIDs", Scalar::from_sequence([
             Scalar::from_record([("PartyID", Scalar::from("BROKER"))])?,
         ])),
@@ -1247,7 +1247,7 @@ ordered and canonicalized against the same root.
 
     // The record became the ordered row the root declares.
     assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(4));
-    assert_eq!(msg.by_tag(38)?, &Scalar::I64(100));
+    assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
     assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
     assert_eq!(msg.by_path("NoPartyIDs.0.PartyID")?, &Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is retained");
@@ -1256,7 +1256,10 @@ ordered and canonicalized against the same root.
 
     // The message's branch is the root's own, and an identifier is exact.
     assert_eq!(msg.branch(), &yggdryl::FixBranch::STANDARD);
-    assert_eq!(msg.by_id(&yggdryl::FixId::standard(38))?, &Scalar::I64(100));
+    assert_eq!(
+        msg.by_id(&yggdryl::FixId::standard(38))?,
+        &Scalar::from(100_i64)
+    );
     assert!(msg.get_by_id(&yggdryl::FixId::from_str("cme:5001")?).is_none());
 
     // Schema and value serialize through the paths every field and value share.

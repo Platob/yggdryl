@@ -2,7 +2,7 @@
 
 // Plain-text records through the generic JavaScript record/media boundary.
 //
-//     npm run --prefix node bench:text -- --records 100000
+//     npm run --prefix node bench:text -- --records 5000 --iterations 3
 //
 // Build the release addon first. Every BatchReader batch crosses as copied
 // Arrow IPC because Arrow JS has no C Data consumer.
@@ -26,12 +26,14 @@ function positiveArgument(name, fallback) {
   return value
 }
 
-const rows = positiveArgument('--records', 100_000)
+const rows = positiveArgument('--records', 5_000)
 const iterations = positiveArgument(
   '--iterations',
-  Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5', 10),
+  Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '3', 10),
 )
-const rowheader = '^(?<stamp>\\S+) \\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+const rowheader =
+  '^(?<stamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}) ' +
+  '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
 
 function corpus(from, to) {
   const lines = new Array(to - from)
@@ -47,6 +49,7 @@ function corpus(from, to) {
 function textOptions() {
   const options = new TextOptions()
   options.rowheader = rowheader
+  options.withRownum = 1n
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
   return options

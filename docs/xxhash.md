@@ -484,15 +484,15 @@ borrows wherever the value already holds bytes and never allocates.
     );
 
     // Equal values answer one digest, across widths.
-    assert_eq!(Scalar::I8(1), Scalar::I64(1));
+    assert_eq!(Scalar::from(1_i8), Scalar::from(1_i64));
     assert_eq!(
-        Scalar::I8(1).digest(DigestAlgorithm::Xxh3),
-        Scalar::I64(1).digest(DigestAlgorithm::Xxh3),
+        Scalar::from(1_i8).digest(DigestAlgorithm::Xxh3),
+        Scalar::from(1_i64).digest(DigestAlgorithm::Xxh3),
     );
     // Values that differ stay apart, across variant boundaries.
     assert_ne!(
         Scalar::from("1").digest(DigestAlgorithm::Xxh3),
-        Scalar::U8(0x31).digest(DigestAlgorithm::Xxh3),
+        Scalar::from(0x31_u8).digest(DigestAlgorithm::Xxh3),
     );
     // A null and an empty string are not the same absence.
     assert_ne!(
@@ -598,7 +598,10 @@ assert_eq!(
 );
 // Equal values hash equally across widths, which is the invariant every
 // binding relies on.
-assert_eq!(Scalar::I8(1).stable_hash(), Scalar::I64(1).stable_hash());
+assert_eq!(
+    Scalar::from(1_i8).stable_hash(),
+    Scalar::from(1_i64).stable_hash()
+);
 let _ = text::Format::Json;
 ```
 

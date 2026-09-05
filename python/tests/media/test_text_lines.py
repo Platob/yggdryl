@@ -26,6 +26,19 @@ def handle(tmp_path: pathlib.Path, data: bytes, name: str = "app.log") -> IOBase
     return IOBase(target)
 
 
+def test_datatype_from_regex_is_the_shared_pre_read_schema_inference() -> None:
+    inferred = DataType.from_regex(ROWHEADER)
+    assert [field.name for field in inferred] == ["level", "id"]
+    assert inferred["level"].dtype == DataType("utf8")
+    assert inferred["id"].dtype == DataType("int64")
+    assert all(field.nullable for field in inferred)
+
+    text = DataType.from_regex(ROWHEADER, False)
+    assert all(field.dtype == DataType("utf8") for field in text)
+    with pytest.raises(ValueError, match="regular expression"):
+        DataType.from_regex("(?<id>")
+
+
 def test_text_options_are_flat_validated_values() -> None:
     options = text_options()
     options.rowheader = ROWHEADER
@@ -34,6 +47,7 @@ def test_text_options_are_flat_validated_values() -> None:
     options.linesep = r"\r\n"
     options.autotype = False
     options.timezone = "+02:00"
+    options.with_rownum = -3
     options.batch_row_size = 7
 
     assert options.rowheader == ROWHEADER
@@ -42,6 +56,7 @@ def test_text_options_are_flat_validated_values() -> None:
     assert options.linesep == b"\r\n"
     assert options.autotype is False
     assert options.timezone == Timezone("+02:00")
+    assert options.with_rownum == -3
     assert options.batch_row_size == 7
 
     for rebuilt in (copy.copy(options), copy.deepcopy(options), pickle.loads(pickle.dumps(options))):
@@ -57,6 +72,10 @@ def test_text_options_are_flat_validated_values() -> None:
         options.rowheader = r"(?<body>.+)"
     with pytest.raises(ValueError, match="valid byte regex"):
         options.lstrip = "("
+    with pytest.raises(TypeError, match="not bool"):
+        options.with_rownum = True
+    with pytest.raises(OverflowError):
+        options.with_rownum = 1 << 63
 
     arrow = RecordOptions("application/vnd.apache.arrow.stream")
     assert not hasattr(arrow, "autotype")
@@ -68,7 +87,7 @@ def test_text_options_are_flat_validated_values() -> None:
     assert generic_text.timezone == Timezone.UTC
 
 
-def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
+def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
     tmp_path: pathlib.Path,
 ) -> None:
     source = handle(
@@ -77,6 +96,7 @@ def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
     )
     options = text_options()
     options.rowheader = ROWHEADER
+    options.with_rownum = 10
     options.lstrip = r"^\s+"
     options.rstrip = r"\s+$"
 
@@ -90,7 +110,7 @@ def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
     assert reader.schema.field("id").type == pa.int64()
 
     table = reader.read_all()
-    assert table.column("rownum").to_pylist() == [1, 2, 3]
+    assert table.column("rownum").to_pylist() == [10, 11, 12]
     assert table.column("body").to_pylist() == [b"first", b"second", b"plain"]
     assert table.column("level").to_pylist() == ["INFO", "WARN", None]
     assert table.column("id").to_pylist() == [7, 9, None]
@@ -99,21 +119,21 @@ def test_generic_records_have_base_columns_adaptive_captures_and_binary_body(
     assert list(source.read_records(options=options)) == [
         {
             "url": table.column("url")[0].as_py(),
-            "rownum": 1,
+            "rownum": 10,
             "body": b"first",
             "level": "INFO",
             "id": 7,
         },
         {
             "url": table.column("url")[1].as_py(),
-            "rownum": 2,
+            "rownum": 11,
             "body": b"second",
             "level": "WARN",
             "id": 9,
         },
         {
             "url": table.column("url")[2].as_py(),
-            "rownum": 3,
+            "rownum": 12,
             "body": b"plain",
             "level": None,
             "id": None,
@@ -136,26 +156,33 @@ def test_rowheader_removal_and_stripping_are_independent_edge_operations(
     assert row["id"] == 7
 
 
-def test_autotype_can_be_disabled_and_fixes_types_after_the_first_batch(
+def test_capture_types_come_from_regex_before_any_row_is_read(
     tmp_path: pathlib.Path,
 ) -> None:
-    source = handle(tmp_path, b"1\nword\n", "values.txt")
+    source = handle(tmp_path, b"1\n2\n", "values.txt")
 
     strings = text_options()
-    strings.rowheader = r"(?<value>\S+)"
+    strings.rowheader = r"(?<value>\d+)"
     strings.autotype = False
     table = source.read_arrow_reader(options=strings).read_all()
     assert table.schema.field("value").type == pa.string()
-    assert table.column("value").to_pylist() == ["1", "word"]
+    assert table.column("value").to_pylist() == ["1", "2"]
 
-    adaptive = text_options()
-    adaptive.rowheader = r"(?<value>\S+)"
-    adaptive.batch_row_size = 1
-    reader = source.read_arrow_reader(options=adaptive)
+    typed = text_options()
+    typed.rowheader = r"(?<value>\d+)"
+    missing = IOBase(tmp_path / "missing.log")
+    assert missing.read_arrow_field(options=typed)["value"].dtype == DataType("int64")
+    reader = source.read_arrow_reader(options=typed)
     assert reader.schema.field("value").type == pa.int64()
-    assert reader.read_next_batch().column("value").to_pylist() == [1]
-    with pytest.raises(ValueError, match="inferred datatype int64"):
-        reader.read_next_batch()
+    assert reader.read_all().column("value").to_pylist() == [1, 2]
+
+    broad = text_options()
+    broad.rowheader = r"(?<value>\S+)"
+    table = handle(tmp_path, b"1\nword\n", "broad.txt").read_arrow_reader(
+        options=broad
+    ).read_all()
+    assert table.schema.names == ["url", "body", "value"]
+    assert table.column("value").to_pylist() == ["1", "word"]
 
 
 def test_timezone_is_used_only_for_autotyped_offset_free_timestamps(
@@ -163,7 +190,9 @@ def test_timezone_is_used_only_for_autotyped_offset_free_timestamps(
 ) -> None:
     source = handle(tmp_path, b"2024-02-01T00:00:00 event\n")
     options = text_options()
-    options.rowheader = r"(?<stamp>\S+)"
+    options.rowheader = (
+        r"(?<stamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+    )
     options.timezone = "+02:00"
 
     table = source.read_arrow_reader(options=options).read_all()
@@ -249,6 +278,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     )
     options = text_options()
     options.rowheader = ROWHEADER
+    options.with_rownum = 1
     options.lstrip = r"^\s+"
 
     rows = list(IOBase(root).read_records(options=options))
@@ -261,21 +291,21 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     ]
 
 
-def test_absence_and_zero_row_bounds_keep_an_adaptive_schema(
+def test_absence_and_zero_row_bounds_keep_the_regex_derived_schema(
     tmp_path: pathlib.Path,
 ) -> None:
     options = text_options()
     options.rowheader = ROWHEADER
     reader = IOBase(tmp_path / "missing.log").read_arrow_reader(options=options)
 
-    assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
+    assert reader.schema.names == ["url", "body", "level", "id"]
     assert reader.schema.field("level").type == pa.string()
-    assert reader.schema.field("id").type == pa.string()
+    assert reader.schema.field("id").type == pa.int64()
     assert reader.read_all().num_rows == 0
 
     options.max_row_size = 0
     reader = handle(tmp_path, b"[INFO] id=1 hidden\n").read_arrow_reader(options=options)
-    assert reader.schema.names == ["url", "rownum", "body", "level", "id"]
+    assert reader.schema.names == ["url", "body", "level", "id"]
     assert reader.read_all().num_rows == 0
 
 

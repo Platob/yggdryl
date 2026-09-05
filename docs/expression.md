@@ -51,13 +51,13 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
     // The literal was converted once, into the column's own exact type.
     assert_eq!(
         bound.expression().to_string(),
-        "ccy = 'EUR' and price > decimal128(9,2) '100.00'",
+        "ccy = 'EUR' and price > decimal32(9,2) '100.00'",
     );
 
     let row = Scalar::from_sequence([
         Scalar::from("EUR"),
-        Scalar::D128(15_000, 2),
-        Scalar::I64(5),
+        Scalar::d128(15_000, 2),
+        Scalar::from(5_i64),
     ]);
     assert!(bound.matches(&row)?);
     ```
@@ -76,7 +76,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
     assert filter.columns() == ["ccy", "price"]
 
     bound = filter.bind(schema)
-    assert str(bound.expression) == "ccy = 'EUR' and price > decimal128(9,2) '100.00'"
+    assert str(bound.expression) == "ccy = 'EUR' and price > decimal32(9,2) '100.00'"
 
     # A row is a sequence in schema order, or a mapping of column to value.
     # The price is a `Decimal`, because the column is exact and so is the
@@ -101,7 +101,7 @@ text ──parse──▶ Expression ──bind(schema)──▶ Bound ──▶
     const bound = filter.bind(schema)
     assert.equal(
       bound.expression.toString(),
-      "ccy = 'EUR' and price > decimal128(9,2) '100.00'",
+      "ccy = 'EUR' and price > decimal32(9,2) '100.00'",
     )
 
     // The price is an exact decimal, because the column is exact and so is
@@ -276,7 +276,12 @@ use yggdryl::{Expression, Field, Scalar};
 let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
 let bounds = Bounds::new(Some(1_000))
     .with_column("ccy", Some(Scalar::from("EUR")), Some(Scalar::from("USD")), Some(0))
-    .with_column("size", Some(Scalar::I64(1)), Some(Scalar::I64(99)), Some(4));
+    .with_column(
+        "size",
+        Some(Scalar::from(1_i64)),
+        Some(Scalar::from(99_i64)),
+        Some(4),
+    );
 
 // Provably empty: no row can hold a size above the file's maximum.
 assert!(!"size > 1000".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
@@ -305,7 +310,7 @@ schema.set_dtype(yggdryl::DataType::from_fields(children)?)?;
 let bound = "year = 2024 and price > 100".parse::<Expression>()?.bind(&schema)?;
 let residual = bound.partition_split();
 assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
-assert_eq!(residual.remaining().to_string(), "price > decimal128(9,2) '100.00'");
+assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
 assert!(!residual.is_complete());
 ```
 
@@ -418,8 +423,8 @@ let schema = "trades:struct<ccy:utf8,size:bigint>".parse::<Field>()?.with_nullab
 let bound = "ccy = 'EUR' and size > 10".parse::<Expression>()?.bind(&schema)?;
 
 // One row applies to the value the expression computes.
-let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::I64(25)]);
-assert_eq!(row.apply_expression(&bound)?, Scalar::Bool(true));
+let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::from(25_i64)]);
+assert_eq!(row.apply_expression(&bound)?, Scalar::from(true));
 
 // One batch applies to one column of answers, one per row.
 let arrow_schema = schema.into_arrow_schema()?;
@@ -435,7 +440,12 @@ assert_eq!(batch.apply_expression(&bound)?.len(), 2);
 // Statistics apply to the certainty pruning runs on: every size is below 10,
 // so no row can match and the container is skipped unread.
 let bounds = Bounds::new(Some(1_000))
-    .with_column("size", Some(Scalar::I64(1)), Some(Scalar::I64(5)), Some(0));
+    .with_column(
+        "size",
+        Some(Scalar::from(1_i64)),
+        Some(Scalar::from(5_i64)),
+        Some(0),
+    );
 assert_eq!(bounds.apply_expression(&bound)?, Some(false));
 
 // A holder settles only the conjuncts that need no row - here none - and an

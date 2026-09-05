@@ -405,6 +405,7 @@ test('text options value protocols include every flat text setting', () => {
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'
+  options.withRownum = 7n
 
   const clone = options.clone()
   assert.ok(clone.equals(options))

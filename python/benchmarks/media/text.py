@@ -2,7 +2,7 @@
 
 Run from ``python/`` against a release wheel::
 
-    .venv/Scripts/python benchmarks/media/text.py --min-time 0.2 --repeat 7
+    .venv/Scripts/python benchmarks/media/text.py --min-time 0.05 --repeat 3
 """
 
 from __future__ import annotations
@@ -25,8 +25,11 @@ import pyarrow as pa
 
 from yggdryl import IOBase, TextOptions
 
-ROWS = 50_000
-ROWHEADER = r"^(?P<stamp>\S+) \[(?P<level>[A-Z]+)\] id=(?P<id>\d+)"
+ROWS = 5_000
+ROWHEADER = (
+    r"^(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) "
+    r"\[(?P<level>[A-Z]+)\] id=(?P<id>\d+)"
+)
 COMPILED = re.compile(ROWHEADER)
 ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-text-"))
 PLAIN = ROOT / "events.log"
@@ -44,6 +47,7 @@ def corpus() -> str:
 def options() -> TextOptions:
     value = TextOptions()
     value.rowheader = ROWHEADER
+    value.with_rownum = 1
     value.lstrip = r"^\s+"
     value.rstrip = r"\s+$"
     return value
@@ -104,8 +108,8 @@ def measure(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--min-time", type=float, default=0.2)
-    parser.add_argument("--repeat", type=int, default=7)
+    parser.add_argument("--min-time", type=float, default=0.05)
+    parser.add_argument("--repeat", type=int, default=3)
     arguments = parser.parse_args()
     if arguments.min_time <= 0:
         parser.error("--min-time must be greater than zero")

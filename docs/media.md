@@ -3466,13 +3466,16 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
         ]}"#,
     )?;
     let row = Scalar::from_record([
-        ("day", Scalar::Date32(19_782, TimeUnit::Day, Timezone::NAIVE)),
-        ("at", Scalar::DateTime64(
+        (
+            "day",
+            Scalar::date32_in(19_782, TimeUnit::Day, Timezone::NAIVE)?,
+        ),
+        ("at", Scalar::datetime64(
             1_700_000_000_000_000,
             TimeUnit::Microsecond,
             Timezone::UTC,
-        )),
-        ("price", Scalar::D128(18_750, 2)),
+        )?),
+        ("price", Scalar::d128(18_750, 2)),
     ])?;
 
     let mut handle = Buffer::new();
@@ -3524,7 +3527,7 @@ the same Avro fingerprint while remaining distinct Yggdryl schema values.
     const decoded = avro.loadsSingle(avro.dumpsSingle(value, decimal), decimal)
 
     assert.ok(decoded instanceof Scalar)
-    assert.equal(decoded.kind, 'd128')
+    assert.equal(decoded.kind, 'd64')
     assert.equal(decoded.unscaled, 18750n)
     assert.equal(decoded.scale, 2)
     ```
@@ -3788,10 +3791,13 @@ out of a store - and the natural key for caching a [`Resolution`].
 
     let schema = json::from_utf8(r#""long""#)?;
     let mut bytes = Buffer::new();
-    avro::write_container(&mut bytes, &schema, &[], &[Scalar::I64(7)])?;
+    avro::write_container(&mut bytes, &schema, &[], &[Scalar::from(7_i64)])?;
 
     let limits = Limits::new(8, 1_024, 8, 1);
-    assert_eq!(avro::read_container_with_limits(&bytes, limits)?.rows, [Scalar::I64(7)]);
+    assert_eq!(
+        avro::read_container_with_limits(&bytes, limits)?.rows,
+        [Scalar::from(7_i64)]
+    );
     ```
 
 === "Python"
@@ -3913,12 +3919,12 @@ From the same machine, the `avro` target's own groups
 ## Plain-text records
 
 
-A plain-text row always begins with this required schema:
+A plain-text row starts with this schema:
 
 | column | datatype | value |
 | --- | --- | --- |
 | `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
-| `rownum` | `int64` | one-based physical line number, restarted for each leaf |
+| `rownum` | `int64` | present only when `with_rownum` is set; first value is exactly that setting |
 | `body` | `binary` | line bytes without the record terminator |
 
 Use `TextOptions` with the ordinary `read_arrow_reader` / `readArrowReader` or
@@ -3934,19 +3940,20 @@ the generic dispatch boundary:
 | `rowheader` | byte regex searched once per line; named captures append nullable columns |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
-| `autotype` | infer capture datatypes from the first batch; default `true` |
+| `with_rownum` / `withRownum` | optional signed 64-bit first row number; unset omits the column |
+| `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
 When `rowheader` matches, its complete match is removed from `body`. Edge
 stripping runs afterward. A line without a match keeps its body and receives
 null capture values.
 
-Autotyping recognizes booleans, signed 64-bit integers, finite floats, ISO
-dates, times, and timestamps. Types are fixed after the first
-`batch_row_size` rows (or the shared default batch size). A later
-incompatible value is an error naming its row and capture. Set
-`autotype = false` to keep every capture as UTF-8. An empty resource still
-answers the complete schema, with capture columns as UTF-8.
+[`DataType::from_regex`](types.md#regular-expression-captures) recognizes
+captures constrained to booleans, signed 64-bit integers, finite floats, ISO
+dates, times, and datetimes. Broad captures such as `\S+` stay UTF-8. Set
+`autotype = false` to keep every capture as UTF-8. Because this examines the
+expression rather than sampled rows, an empty or unopened resource answers the
+same complete schema as a populated one.
 
 === "Rust"
 
@@ -3964,6 +3971,7 @@ answers the complete schema, with capture columns as UTF-8.
     .with_media_type(Url::from_str("file:///app.log")?.media_type());
 
     let mut text_options = TextOptions::new();
+    text_options.with_rownum = Some(1);
     text_options.set_rowheader(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))?;
     text_options.set_lstrip(Some(r"^\s+"))?;
     text_options.set_rstrip(Some(r"\s+$"))?;
@@ -4008,6 +4016,7 @@ answers the complete schema, with capture columns as UTF-8.
         source.write_bytes(b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n")
 
         options = TextOptions()
+        options.with_rownum = 1
         options.rowheader = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
         options.lstrip = r"^\s+"
         options.rstrip = r"\s+$"
@@ -4040,6 +4049,7 @@ answers the complete schema, with capture columns as UTF-8.
     fs.writeFileSync(textSource, '  [INFO] id=7 first  \r\n[WARN] id=9 second\n')
 
     const textOptions = new TextOptions()
+    textOptions.withRownum = 1n
     textOptions.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
     textOptions.lstrip = '^\\s+'
     textOptions.rstrip = '\\s+$'
@@ -4081,9 +4091,9 @@ the copied IPC crossing required by Arrow JS.
 ```console
 cargo bench -p yggdryl --bench text
 cd python
-.venv/Scripts/python benchmarks/text.py --min-time 0.2 --repeat 7
+.venv/Scripts/python benchmarks/media/text.py --min-time 0.05 --repeat 3
 cd ..
-npm run --prefix node bench:text
+npm run --prefix node bench:text -- --records 5000 --iterations 3
 ```
 
 
@@ -7590,7 +7600,7 @@ never frees its identifier.
 
     # An Iceberg schema is a non-null struct field; its columns are the children.
     schema = schema_from_json("row", document)
-    assert schema.dtype.kind == "struct"
+    assert schema.dtype.kind == "nested"
     assert not schema.nullable
     assert len(schema.dtype) == 2
     assert str(schema.dtype[0].dtype) == "int64"
@@ -7620,7 +7630,7 @@ never frees its identifier.
 
     // An Iceberg schema is a non-null struct field; its columns are the children.
     const schema = iceberg.schemaFromJson('row', document)
-    assert.equal(schema.dtype.kind, 'struct')
+    assert.equal(schema.dtype.kind, 'nested')
     assert.equal(schema.nullable, false)
     assert.equal(schema.dtype.length, 2)
     assert.equal(String(schema.dtype.getFieldAt(0).dtype), 'int64')

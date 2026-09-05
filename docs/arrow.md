@@ -255,7 +255,7 @@ assert_eq!(TypedScalar::from_arrow_array(DataType::Int64, array.as_ref())?, pric
 
 // The marker-narrowed decode checks the datatype at compile time too.
 let typed = Int64Scalar::try_from_arrow_array(DataType::Int64, array.as_ref())?;
-assert_eq!(typed.value(), &Scalar::I64(7));
+assert_eq!(typed.value(), &Scalar::from(7_i64));
 
 // A null projects only when the datatype's own default spells it...
 let nothing = TypedScalar::from_parts(DataType::Null, Scalar::Null)?;

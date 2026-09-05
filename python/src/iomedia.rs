@@ -1187,6 +1187,7 @@ impl PyRecordOptions {
         state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
         state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
         if let RecordOptions::Text(options) = &self.inner {
+            state.set_item("with_rownum", options.with_rownum)?;
             state.set_item("rowheader", options.rowheader())?;
             state.set_item("lstrip", options.lstrip())?;
             state.set_item("rstrip", options.rstrip())?;
@@ -1283,6 +1284,18 @@ impl PyRecordOptions {
         )?;
 
         if let RecordOptions::Text(text) = &mut options.inner {
+            let value = required_record_pickle_item(state, "with_rownum")?;
+            text.with_rownum = if value.is_none() {
+                None
+            } else {
+                if value.is_instance_of::<PyBool>() {
+                    return Err(PyTypeError::new_err(
+                        "with_rownum must be an integer or None, not bool",
+                    ));
+                }
+                Some(value.extract::<i64>()?)
+            };
+
             let value = required_record_pickle_item(state, "rowheader")?;
             let value = (!value.is_none())
                 .then(|| value.extract::<String>())
@@ -1912,6 +1925,28 @@ impl PyTextOptions {
     fn set_filter_partitions(&mut self, partitions: Vec<(String, String)>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_filter_partitions(partitions);
+        Ok(())
+    }
+
+    /// The first emitted row number, or `None` when the column is omitted.
+    #[getter]
+    fn with_rownum(&self) -> Option<i64> {
+        self.inner.with_rownum
+    }
+
+    #[setter]
+    fn set_with_rownum(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.with_rownum = if let Some(value) = value {
+            if value.is_instance_of::<PyBool>() {
+                return Err(PyTypeError::new_err(
+                    "with_rownum must be an integer or None, not bool",
+                ));
+            }
+            Some(value.extract::<i64>()?)
+        } else {
+            None
+        };
         Ok(())
     }
 

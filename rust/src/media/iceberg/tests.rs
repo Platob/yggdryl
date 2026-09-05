@@ -5408,7 +5408,7 @@ mod line_projection {
     }
 
     #[test]
-    fn adaptive_text_rows_stream_into_a_table_through_record_media() {
+    fn regex_typed_text_rows_stream_into_a_table_through_record_media() {
         let path = root("text-record-media");
         let source = named(b"[INFO] id=7 first  \n[WARN] id=42 second\n");
         let mut options: RecordOptions = TextOptions::new()

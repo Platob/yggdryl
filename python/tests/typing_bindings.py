@@ -566,6 +566,7 @@ record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 text_record_options = TextOptions()
 text_record_options.rowheader = r"\[(?<level>[A-Z]+)\]"
+text_record_options.with_rownum = 1
 text_record_options.lstrip = r"^\s+"
 text_record_options.rstrip = r"\s+$"
 text_record_options.linesep = memoryview(b"\r\n")
@@ -577,6 +578,8 @@ text_rstrip: str | None = text_record_options.rstrip
 text_linesep: bytes | None = text_record_options.linesep
 text_autotype: bool = text_record_options.autotype
 text_timezone: Timezone | None = text_record_options.timezone
+text_rownum: int | None = text_record_options.with_rownum
+regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(
     options=text_record_options

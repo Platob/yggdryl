@@ -1166,6 +1166,7 @@ pub struct Text<H: IOBase>
 
 ### yggdryl::media::text::options  [rust\src\media\text\options.rs]
 pub struct TextOptions
+  pub with_rownum: Option<i64>
   pub fn new() -> Self
   pub fn rowheader(&self) -> Option<&str>
   pub fn set_rowheader(&mut self, rowheader: Option<&str>) -> Result<()>
@@ -2082,6 +2083,9 @@ pub const fn new() -> Self
 ### yggdryl::types::parser  [rust\src\types\parser.rs]
 pub const PARSE_RECURSION_LIMIT: usize = 64;
   pub fn from_str(input: &str) -> Result<Self>
+
+### yggdryl::types::regex  [rust\src\types\regex.rs]
+pub fn from_regex(pattern: &str, autotype: bool) -> Result<Self>
 
 ### yggdryl::types::parser::field  [rust\src\types\parser\field.rs]
 pub fn from_str(value: &str) -> Result<Self>

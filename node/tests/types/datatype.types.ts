@@ -2,6 +2,7 @@ import { AsciiEnum, DataType, Field } from '../..'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
+const regexType: DataType = DataType.fromRegex('(?<id>\\d+)')
 const child: Field | null = type.getField('id')
 const indexedChild: Field | null = type.getField(0)
 const pathChild: Field | null = type.getFieldByPath('id')
@@ -38,6 +39,7 @@ void children
 void typeHash
 void typeJson
 void arrowType
+void regexType
 void bareVariantId
 void bareVariantKind
 void geometryType

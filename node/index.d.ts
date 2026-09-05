@@ -386,6 +386,8 @@ export declare class DataType {
   static geography(crs?: string | undefined | null, algorithm?: string | undefined | null): DataType
   /** Parse canonical, Arrow, SQL, Hive, or Spark type syntax. */
   static fromString(value: string): DataType
+  /** Build a Struct from named regex captures without reading data. */
+  static fromRegex(regex: string, autotype?: boolean | undefined | null): DataType
   /**
    * Deserialize the structural JSON representation.
    *
@@ -3275,6 +3277,10 @@ export declare class TextOptions {
   get filterPartitions(): Array<[string, string]>
   /** Replace partition filters. */
   set filterPartitions(partitions: Array<[string, string]>)
+  /** The first emitted row number, or `null` when the column is omitted. */
+  get withRownum(): bigint | null
+  /** Set or clear the exact signed 64-bit starting row number. */
+  set withRownum(value: bigint | undefined | null)
   /** The regex searched for a row header in each physical line. */
   get rowheader(): string | null
   /** Compile or clear the row-header regex. */
@@ -3291,9 +3297,9 @@ export declare class TextOptions {
   get linesep(): Buffer | null
   /** Set or clear the physical-line terminator. */
   set linesep(value: string | Uint8Array | undefined | null)
-  /** Return whether first-batch capture autotyping is enabled. */
+  /** Return whether regex-syntax capture autotyping is enabled. */
   get autotype(): boolean
-  /** Enable or disable first-batch capture autotyping. */
+  /** Enable or disable regex-syntax capture autotyping. */
   set autotype(autotype: boolean)
   /** Return the timezone for offset-free autotyped timestamps. */
   get timezone(): JsTimezone | null

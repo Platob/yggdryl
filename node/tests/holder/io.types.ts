@@ -160,6 +160,7 @@ void appended
 void copied
 const textOptions: TextOptions = new TextOptions()
 textOptions.rowheader = '\\[(?<level>[A-Z]+)\\]'
+textOptions.withRownum = 1n
 textOptions.lstrip = '^\\s+'
 textOptions.rstrip = '\\s+$'
 textOptions.linesep = new Uint8Array([13, 10])
@@ -175,6 +176,7 @@ const textRstrip: string | null = textOptions.rstrip
 const textLinesep: Buffer | null = textOptions.linesep
 const textAutotype: boolean = textOptions.autotype
 const textTimezone: Timezone | null = textOptions.timezone
+const textRownum: bigint | null = textOptions.withRownum
 const lineBatches: BatchReader = handle.readArrowReader(textOptions)
 const lineRecords: IterableIterator<Record<string, unknown>> =
   handle.readRecords(textOptions)
@@ -190,6 +192,7 @@ void textRstrip
 void textLinesep
 void textAutotype
 void textTimezone
+void textRownum
 void retainedText
 
 const coding: string | null = handle.codec
