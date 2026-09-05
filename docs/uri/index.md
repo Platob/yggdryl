@@ -2,6 +2,15 @@
 
 `yggdryl::uri` parses every spelling of a resource identifier (URI, URL, URN, or platform path) into one canonical value.
 
+## Pages
+
+| Page | Purpose |
+| --- | --- |
+| [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, S3 |
+| [Path](path.md) | Segments, compound filenames, media type, `std::path` bridge, navigation |
+| [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms; what the scheme decides |
+| [Patterns](patterns.md) | Globs, `.gitignore` matching, Hive partitions |
+
 ## Contract
 
 | Aspect | Rule |
@@ -67,15 +76,6 @@
     assert.equal(uri.fragment, 'summary')
     assert.equal(uri.fileName, 'report.tar.gz')
     ```
-
-## Pages
-
-| Page | Purpose |
-| --- | --- |
-| [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, S3 |
-| [Path](path.md) | Segments, compound filenames, media type, `std::path` bridge, navigation |
-| [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms; what the scheme decides |
-| [Patterns](patterns.md) | Globs, `.gitignore` matching, Hive partitions |
 
 ## Canonical on arrival
 

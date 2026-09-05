@@ -1,21 +1,19 @@
 # RecordOptions
 
-`IORecordOptions` is the settings surface every encoding answers, and `RecordOptions` is the enum naming one encoding's options.
+`IORecordOptions` is every encoding's settings surface; `RecordOptions` is the enum naming one encoding's options.
 
 ## Contract
 
 | key | value |
 | --- | --- |
-| Owns | `IORecordOptions`, the `RecordOptions` enum, and each encoding's own options struct |
-| Declared root | `name` + `dtype` + `metadata`; `field()` builds it on every ask |
-| Default name | `media::DEFAULT_ROOT_NAME`, `"row"` |
+| Owns | `IORecordOptions`, `RecordOptions`, each encoding's options struct |
+| Root parts | `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), `dtype` (none), `metadata` (empty) |
 | Shared fields | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, `filter_partitions` |
-| Identity | `Clone`, `Eq`, `Ord`, `Hash` include the encoding variant; `stable_hash()` is deterministic across runs |
-| `batch_row_size` | rows per batch; the `batch_size` of [`pstream_bytes`](../holder/iobase/bytes.md) counts bytes |
-| `commit_row_size` | unset publishes once; non-zero `N` publishes complete `N`-row prefixes and the final remainder |
-| Derivation | `for_media_type` reads the base type only; the content coding belongs to the handle |
-| Errors | `require_field` fails when no datatype is declared |
-| Bindings | Python and JavaScript expose `RecordOptions`; the encoding-specific structs stay in Rust |
+| Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable |
+| `batch_row_size` | rows per batch; [`pstream_bytes`](../holder/iobase/bytes.md) `batch_size` counts bytes |
+| `commit_row_size` | unset publishes once; `N` publishes `N`-row prefixes plus the remainder |
+| Derivation | `for_media_type` reads the base type only |
+| Bindings | `RecordOptions` in Python and JavaScript; encoding structs stay in Rust |
 
 ## Use
 
@@ -96,15 +94,7 @@ The media type names the encoding, so no format argument is passed.
 
 ## Declared root
 
-`field()` answers the non-null Struct root those parts spell, or nothing when no `dtype` is declared.
-
-| part | default | declares |
-| --- | --- | --- |
-| `name` | `media::DEFAULT_ROOT_NAME` - `"row"` | the root Field name, of a declared field and of an inferred one alike |
-| `dtype` | none | the root datatype; without one nothing is declared and the shape is inferred |
-| `metadata` | empty | the root metadata; it reaches a read or write only through the field a `dtype` builds |
-
-Each part changes alone, and the next `field` reflects it.
+`field()` builds the non-null Struct root on every ask, so no part is ever stale against it.
 
 === "Rust"
 
@@ -224,7 +214,7 @@ Each part changes alone, and the next `field` reflects it.
 
 ## Casting
 
-`cast_arrow_batch` and its streaming sibling `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root. Every write path routes through this one definition.
+`cast_arrow_batch` and `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root. Every write path routes through this definition.
 
 Rust only.
 
@@ -252,7 +242,7 @@ assert_eq!(cast.num_columns(), 1);
 
 ## Shared settings
 
-There is no shared settings struct: each encoding stores the settings as its own flat public fields and implements `IORecordOptions` over them.
+Each encoding stores the settings as flat public fields and implements `IORecordOptions` over them.
 
 Rust only.
 
@@ -275,7 +265,7 @@ assert_eq!(options.commit_row_size(), Some(10_000));
 
 ## Requiring a datatype
 
-A datatype is the one part with no default, and `require_field` is what a write calls.
+`require_field` is what a write calls, and a datatype is the one part with no default.
 
 Rust only.
 
@@ -293,14 +283,13 @@ assert!(message.contains("with_dtype"), "{message}");
 
 ## Edges
 
-- No `dtype` -> `field()` is nothing and `require_field` errors, naming `with_field` and `with_dtype`.
-- `metadata` without a `dtype` -> never reaches a read or write, because only a built field carries it.
-- `set_field` / `with_field` -> the field's nullability and dictionary options are dropped.
-- `take_field` -> returns the build and clears `dtype` and `metadata`; `name` stays.
-- `with_field(f)` for `f` named `"row"` with no metadata -> equals `with_dtype(f.dtype().clone())` and hashes equal.
-- The `existing` root cast -> always safe; a value that will not convert becomes null instead of redefining the column.
-- A setting an encoding has no use for -> still there and still ignored, like [`ParquetOptions::level`](parquet.md).
-- A content coding on the URL -> ignored, the same derivation [`IOMedia::record_options`](index.md) performs.
+- No `dtype` -> `field()` is nothing; `require_field` errors naming `with_field` and `with_dtype`.
+- `metadata` without a `dtype` -> never reaches a read or write.
+- `set_field` / `with_field` -> nullability and dictionary options dropped.
+- `take_field` -> clears `dtype` and `metadata`, keeps `name`.
+- `existing` root -> the cast is always safe; an unconvertible value becomes null.
+- Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).
+- Content coding -> ignored, the derivation [`IOMedia::record_options`](index.md) also performs.
 - `max_row_group_size` on `trades.arrows` -> `None` in Python, `null` in JavaScript.
 
 ## Commands

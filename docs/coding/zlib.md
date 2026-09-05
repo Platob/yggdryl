@@ -335,7 +335,7 @@ assert!(zlib::load(&body).is_err());
 
 ## Performance
 
-`python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JSON lines, one containerized x86_64 Linux run, same wire format.
+`python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JSON lines, one containerized x86_64 Linux run, same wire format. `zlib-rs` puts the encode 9x ahead.
 
 ```text
 zlib encode (yggdryl)      0.344 ms   2998.3 MiB/s

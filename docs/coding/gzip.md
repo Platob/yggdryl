@@ -13,8 +13,9 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 | Level | 0 to 9, clamped, default 6 |
 | Handle | `Gzip<H>` is an [`IOBase`](../holder/index.md) over an `IOBase`: reads decompress, writes compress, nothing seeks |
 | Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
+| Streams | `writer` over any `Write`, `reader` over any `Read`; one compression window, not the whole payload |
 | Streamed reads | [`pstream_bytes`](../holder/iobase/bytes.md), bounded arrays, handle never opened |
-| Inference | `.gz` as the last suffix selects [`Codec::Gzip`](index.md) |
+| Inference | `.gz` as the last suffix selects [`Codec::Gzip`](index.md); `Codec::from_url` off a location, `Codec::from_media_type` off a media type |
 
 ## Use
 

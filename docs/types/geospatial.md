@@ -180,6 +180,7 @@ assert!(error.to_string().contains("byte 5"), "{error}");
 - EWKB SRID -> read past, not modeled.
 - `POINT EMPTY` -> NaN coordinates decode as `coordinate: None`.
 - Empty geometry -> `bounding_box` is the fold identity; `BoundingBox::is_empty` skips the statistic.
+- `geometry_type_ids` -> the distinct ISO type codes the payload holds.
 - `Scalar::Bytes` holding WKB -> canonicalized to `Scalar::Geospatial`; `as_wkb` reads both.
 - `geoarrow.wkb` -> community mapping; GeoArrow is not finalized.
 

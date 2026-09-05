@@ -257,8 +257,10 @@ The sugar spells `DataType::dense_union`, `DataType.variant(fields)`, or `fields
 
 ## Edges
 
-- Duplicate member names -> `duplicate field name` error.
+- Duplicate member names -> `duplicate field name` error; `from_fields` fails.
 - Unknown child name -> `None`; `in` / `contains` false.
+- Assigning or deleting a child on a `DataType` -> refused; it is immutable and hashable.
+- Python `types.*` and JavaScript `fields.*` factories -> a `Field`, not a bare type; `.dtype` reaches the type.
 - Non-integer dictionary key -> `integer key datatype` error.
 - Nullable or unsigned `run_ends` -> `int16, int32, or int64` error.
 - Duplicate union type id -> `Err`.

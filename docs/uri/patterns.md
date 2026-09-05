@@ -1,6 +1,6 @@
 # Patterns
 
-Reading a query off a URL path: glob detection and decomposition, `.gitignore`-rule matching, and Hive `column=value` partitions.
+This page reads a query off a URL path: glob detection and decomposition, `.gitignore`-rule matching, and Hive `column=value` partitions.
 
 ## Contract
 

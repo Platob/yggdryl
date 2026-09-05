@@ -97,7 +97,7 @@ Both narrowed forms are the same canonical value, so conversion either way is fr
 
 ## What the scheme decides
 
-Rust only, except `exists`, `is_dir`, and `is_file`, which both bindings expose under those names.
+Rust only. The `exists`, `is_dir`, and `is_file` predicates are in both bindings, under those names.
 
 === "Rust"
 

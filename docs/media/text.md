@@ -159,7 +159,7 @@ Writes consume the non-null Binary `body` column and append the terminator.
 - empty or unopened resource -> the full schema anyway.
 - `body` holding the terminator -> write refused.
 - keyed merge -> unsupported; overwrite and append only.
-- `app.log.gz` or a mixed folder -> same options, no page retained.
+- `app.log.gz` or a mixed folder -> same options; no prior page retained, only the unfinished line fragment.
 - `Text` handle -> options only, no line iterator or schema builder.
 
 ## Commands

@@ -1,6 +1,6 @@
 # Handles
 
-Digest the bytes behind an `IOBase` handle, and hash a stream in the copy that was already happening.
+Digest an `IOBase` handle's bytes, and hash a stream while it moves.
 
 ## Contract
 
@@ -18,8 +18,6 @@ Digest the bytes behind an `IOBase` handle, and hash a stream in the copy that w
 | Bindings | both handle methods everywhere; `DigestReader`, `DigestWriter`, `Hashed<H>` are Rust only |
 
 ## Use
-
-`read_digest` covers the whole object, `read_range_digest` one byte range.
 
 === "Rust"
 
@@ -96,7 +94,7 @@ Digest the bytes behind an `IOBase` handle, and hash a stream in the copy that w
 
 ## Wrapped handles
 
-A [coding](../coding/index.md) wrapper and the handle underneath answer two distinct questions.
+A [coding](../coding/index.md) wrapper and its backing handle answer different questions.
 
 ```rust
 use yggdryl::coding::gzip::Gzip;
@@ -125,7 +123,7 @@ assert_ne!(xxhash::xxh3(plain), xxhash::xxh3(&compressed));
 
 ## Reading and writing through a digest
 
-Rust only: `DigestReader` and `DigestWriter` are built on `Read` and `Write`, which neither binding spells natively.
+Rust only: `DigestReader` and `DigestWriter` build on `Read` and `Write`.
 
 ```rust
 use std::io::{Read, Write};
@@ -148,7 +146,7 @@ assert_eq!(target.into_inner(), b"AAPL,187.23");
 
 ## Hashed handles
 
-Rust only: `Hashed<H>` wraps an `IOBase`, which the bindings reach as `IOBase` rather than as a generic type parameter.
+Rust only: `Hashed<H>` is generic over the handle it wraps.
 
 ```rust
 use yggdryl::IOBase;
@@ -179,11 +177,9 @@ assert_eq!(
 
 ## Edges
 
-- Resource that does not exist -> digests as the empty payload, never an error.
-- Container handle -> typed `Error::NotAtomic` naming the kind; folder and recursive digests do not exist.
-- Compressed wrapper -> digests the bytes it presents; `handle()` digests the bytes stored underneath.
-- Positional write into `Hashed<H>` -> the running state goes stale, and the next digest re-streams.
-- Writes staged until publication -> the running state counts only once `flush` makes it cover the whole value.
+- Missing resource -> the digest of no bytes, never an error.
+- Container handle -> `Error::NotAtomic`; folder and recursive digests do not exist.
+- Positional write into `Hashed<H>` -> stale state, and the next digest re-streams.
 
 ## Commands
 
@@ -207,7 +203,7 @@ assert_eq!(
 
 ## Performance
 
-One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO), as stated on [benchmarks](../benchmarks.md).
+One containerized x86_64 Linux run ([benchmarks](../benchmarks.md)): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO.
 
 | case | time | throughput |
 | --- | --- | --- |
@@ -216,14 +212,14 @@ One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rust
 | one-shot, 64 MiB | 9.153 ms | 7.33 GB/s |
 | streamed in 64 KiB windows, 64 MiB | 8.938 ms | 7.51 GB/s |
 
-Streaming in the window `pstream_bytes` yields costs nothing against hashing the payload whole.
+Streaming in `pstream_bytes` windows costs nothing against hashing the payload whole.
 
 | 64 MiB local file | time | peak resident after |
 | --- | --- | --- |
 | `read_digest` | 8.85 ms | 77.9 MiB (unchanged) |
 | `read_all_bytes` then digest | 72.98 ms | 140.5 MiB |
 
-The streamed read left the process's high-water mark exactly where it found it. Reading the value whole added the file.
+The memory column is why `read_digest` exists: the streamed read left the high-water mark unchanged.
 
 | case | time |
 | --- | --- |
@@ -233,7 +229,7 @@ The streamed read left the process's high-water mark exactly where it found it. 
 | through `DigestReader` | 0.685 ms |
 | through `DigestWriter` | 0.540 ms |
 
-`Hashed<H>` saves the second pass, which is the 0.19 ms. The reader and writer pay for the hash on top of a copy that was already happening.
+`Hashed<H>` saves the second pass, the 0.19 ms. The wrappers hash on a copy already happening.
 
 ```bash
 cargo bench -p yggdryl --bench xxhash -- xxhash_streaming

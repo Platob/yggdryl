@@ -238,6 +238,7 @@ assert_eq!(zstd::load(&inner.read_all_bytes()?)?, payload.as_bytes());
 
 - `zstd::dump` on a short payload -> output longer than input.
 - `zstd::writer` dropped before `finish` -> no epilogue, not a valid frame.
+- `zstd::writer` / `zstd::reader` -> one window held, whatever the payload size; `load`/`dump` hold both sides.
 - `zstd::reader` unable to allocate its window -> still constructed; the error surfaces on the first `read`.
 - `Level::NONE` -> zstd 1, never stored; [gzip](gzip.md) and [zlib](zlib.md) store uncompressed.
 - `Zstd::new` over an empty handle -> size 0, empty read, no error.

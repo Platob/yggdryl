@@ -15,7 +15,6 @@ Resumable hash states that answer without consuming, plus the seed and secret ru
 | Secretable | XXH3 pair only; ask `DigestAlgorithm::is_secretable` |
 | Secret cutoff | Consulted only for inputs longer than 240 bytes |
 | Secret length | At least `SECRET_MINIMUM_LENGTH`, which is 136 bytes |
-| Errors | `Error::InvalidSecret` on a short secret |
 
 ## Use
 
@@ -88,7 +87,7 @@ Feed bytes with `write_bytes`, read the digest at any commit boundary.
 
 ## Seeds and secrets
 
-The examples hash 241 bytes, past the cutoff where a custom secret is consulted. The one-shot calls take the same seed and secret arguments; see [xxHash](index.md).
+The examples hash 241 bytes, past the cutoff where a custom secret is consulted. One-shot calls take the same arguments; see [xxHash](index.md).
 
 === "Rust"
 
@@ -156,10 +155,10 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 ## Edges
 
 - An empty chunk -> contributes nothing, wherever it sits.
-- A payload of 240 bytes or fewer with a secret -> hashed with the derived secret, exactly as an unsecreted call.
-- A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or a thrown `at least 136 bytes, got 135`.
-- `clear()` on a seeded or secreted state -> keeps that seed and secret, it does not become unseeded.
-- `Hasher::finish` on `Xxh128` -> the low 64 bits, because the trait's return type cannot carry more; `as_u128` is the full value.
+- A secret with a payload of 240 bytes or fewer -> never consulted; the derived secret answers.
+- A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or `at least 136 bytes, got 135`.
+- `clear()` -> keeps the constructed seed and secret; it never returns an unseeded state.
+- `Hasher::finish` on `Xxh128` -> the low 64 bits; `as_u128` carries the full value.
 
 ## Commands
 

@@ -20,6 +20,7 @@
 ## Use
 
 Build one, read its four parts, and round-trip the compact text.
+
 === "Rust"
 
     ```rust
@@ -69,9 +70,11 @@ Build one, read its four parts, and round-trip the compact text.
     assert.ok(Field.from(field.toString()).equals(field))
     assert.ok(Field.from('price decimal(18, 6) NOT NULL').equals(field))
     ```
+
 ## A non-null struct field is the schema
 
 A table's columns are the children of a struct field with `nullable` false, the root every [media](../media/index.md) reader takes. `require_struct` still accepts a nullable struct column.
+
 === "Rust"
 
     ```rust
@@ -135,6 +138,7 @@ A table's columns are the children of a struct field with `nullable` false, the 
     assert.equal(children.getFieldByPath('symbol').name, 'symbol')
     assert.deepEqual(children.keys(), ['id', 'symbol'])
     ```
+
 Each lookup exists by position, by path, or either:
 
 | | position | path | either |
@@ -143,11 +147,12 @@ Each lookup exists by position, by path, or either:
 | optional | `get_field_at` | `get_field_by_path` | `get_field` |
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
+
 `DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`field:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
 ## Flattening and expanding
 
-`unnest_fields` flattens struct nesting to dotted leaf paths and keeps a list or map as one leaf column. `explode_fields` swaps each collection child for what it holds, keeping name and order.
+`unnest_fields` flattens struct nesting to dotted leaf paths; `explode_fields` swaps each collection child for what it holds.
 
 Rust only.
 
@@ -177,6 +182,7 @@ Rust only.
     assert_eq!(exploded[2].name(), "levels");
     assert_eq!(exploded[2].dtype(), &DataType::Float64);
     ```
+
 ## Merging two schemas
 
 `merge_with` is the crate's only promotion table, shared by expression typing and value inference. Rules, in order:
@@ -188,7 +194,7 @@ Rust only.
 5. text wins next; ASCII widths meet at the wider width, or the narrower when narrowing. A width beside variable text meets at the variable text, or the width when narrowing;
 6. numbers meet by width, temporals by unit.
 
-Anything left is refused. `Field.merge_with` keeps the receiver's name, is nullable when either side is, keeps dictionary options where both encode, and unions metadata, receiver winning.
+Anything left is refused.
 
 Rust only.
 
@@ -230,6 +236,7 @@ Rust only.
     assert_eq!(field.dtype(), &DataType::Int64);
     assert!(field.is_nullable());
     ```
+
 ## Item access reaches a child, never metadata
 
 Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `int` a position, and `len`, iteration, and membership speak children. Metadata is reached through [its own view](#metadata-is-a-mapping).
@@ -315,6 +322,7 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
     !!! note "Rust first"
         The JavaScript binding reaches children through `dtype` with `at`, `getByName`, and
         `keys`; the shared subscript vocabulary lands with the rest of the lifecycle surface.
+
 | | path (`str`) | position (`int`) |
 | --- | --- | --- |
 | read | whole name first, then split at each `.` from the left | negative counts from the end |
@@ -390,6 +398,7 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
     assert.equal(field.delete('venue'), true)
     assert.deepEqual(field.keys(), ['currency', 'source'])
     ```
+
 Keys and values are strings in lexical key order, so equal entries compare and hash identically. Every write validates the whole batch first; a bad entry leaves the field as it was.
 
 ## Typed field aliases
@@ -448,6 +457,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(symbol.get('source'), 'feed')
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
+
 `Int64Field` and its fifty-five siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
 
 | alias | constructors |
@@ -516,6 +526,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     !!! note "Rust first"
         The YAML and TOML pair lands in the JavaScript binding once the core surface settles;
         `toJSON` is already there.
+
 ## A readable rendering
 
 `Display`, and Python's `str`/`repr`, is the compact form that round-trips through `from_str`. The readable form is the alternate: `{:#}`, the `pretty()` adapter behind it, and Python's `pretty()`.
@@ -581,6 +592,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     !!! note "Rust first"
         `pretty` lands in the JavaScript binding once the core surface settles.
+
 ## Comparing two fields
 
 === "Rust"
@@ -637,16 +649,21 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     assert.equal(left.showDiff(left), '✓ equal')
     assert.equal(left.showDiff(left, true, false), '')
     ```
+
 `equals` answers yes or no; `show_diffs` answers why as a lazy iterator (`Differences` borrows, `OwnedDifferences` owns). `show_diff` joins the lines; [`DataType`](datatype.md) has the same two calls.
 
 ## Edges
 
 - nullable root -> `validate_struct_root` refuses.
 - Python `field(x, idx=..., path=...)` naming more than one -> refused.
-- `unnest_fields` -> a leaf under a nullable ancestor is nullable; each name resolves through `field_by_path`.
-- `explode_fields` -> one level per call; nullable when the collection or its element is.
-- both projections -> a list of fields, not a node.
-- `merge_with(other, false)` -> the tightest type naming both; `true` widens losslessly.
+- an optional lookup -> `Option` in Rust, `None` in Python, `null` in JavaScript.
+- `unnest_fields` -> a list or map stays one leaf column; a leaf under a nullable ancestor is nullable.
+- `unnest_fields` names -> each one resolves through `field_by_path`.
+- `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
+- `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
+- both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
+- `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both.
+- `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.
 - boolean beside datetime, decimal beside float -> refused.
 - `order["a.b"]` -> a child literally named `a.b` wins over `a` then `b`.
@@ -656,7 +673,8 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - binding metadata and protocol views -> unhashable; Rust's borrowed protocol view is not `Borrow<Field>`.
 - typed field -> no `DerefMut`; a failing `set_dtype` leaves the value untouched.
 - `field(value, name)` with a non-string name or a non-field value -> `TypeError`.
-- emitted shape -> `dictionary_id` only when non-zero, `dictionary_is_ordered` only when set; unset optionals omitted, never null.
+- emitted shape -> `name`, `dtype`, `nullable`, then `dictionary_id` when non-zero and `dictionary_is_ordered` when set, then `metadata`.
+- unset optional attribute -> omitted, never emitted as null.
 - `pretty()` -> only set attributes; metadata as `@key = value` lines; stable across runs.
 - `with_metadata=false` -> metadata dropped at every depth.
 - `return_equal` -> false for `show_diffs`, true for `show_diff`; only `show_diff` prints `✓ equal`.
@@ -705,6 +723,7 @@ Rust times both consuming typed accessors, construction outside the timer; the b
 | JavaScript `intoField(nativeField)` | 40.0 ns (25.0M calls/s) |
 | JavaScript cached `intoField(Class)` | 72.0 ns (13.9M calls/s) |
 | JavaScript renamed `intoField(Class, name)` | 33.6 us (29.7k calls/s) |
+
 ```bash
 cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'
 python/.venv/bin/python python/benchmarks/types.py --iterations 10000

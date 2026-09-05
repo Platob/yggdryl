@@ -7,13 +7,14 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 | Owns | Rule |
 | --- | --- |
 | Segments | non-empty names; a trailing or doubled slash adds none |
+| Segment iteration | Rust borrows from the `Uri` and allocates nothing; Python `len` / `[i]` / `in`, JavaScript `length` / `at` / spread |
 | Filename | one segment of valid URI bytes; the caller encodes |
 | `extension`, `extensions` | last suffix; all suffixes, left to right |
 | `stem` | filename minus last extension; dotfiles keep the dot |
 | Mutators | atomic; a rejected name changes nothing |
 | `mime_type`, `media_type` | last suffix; whole chain as base plus encodings |
 | `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority |
-| Navigation | `UriPath`, lifted onto `Uri` and `Url`; `Urn` has none |
+| Navigation | `UriPath`, lifted onto `Uri` and `Url`; scheme, authority, query, fragment survive; `Urn` has none |
 
 ## Use
 
@@ -411,6 +412,8 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 - `application/vnd.example` -> `set_mime_type` refuses; a `+json` suffix writes `json`.
 - Query, fragment, `%2F`, `%5C`, an escape forming `C:`, or a non-`file:` value -> `into_path` refuses.
 - Absolute `joinpath` argument -> replaces the path.
+- `/../../a` -> `..` past an absolute root is clamped to `a`; relative `../../a` keeps both steps.
+- A drive or UNC path on any host -> detection is textual, so the result is the same everywhere.
 - `parents` -> values of the source type; invalid steps skipped.
 
 ## Commands

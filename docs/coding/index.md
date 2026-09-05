@@ -2,6 +2,14 @@
 
 `Codec` names a content coding; `coding::Coded` applies it over any `IOBase` handle so downstream code sees plain bytes.
 
+## Pages
+
+| Page | Purpose |
+| --- | --- |
+| [gzip](gzip.md) | RFC 1952 gzip |
+| [zlib](zlib.md) | RFC 1950 zlib and raw DEFLATE |
+| [zstd](zstd.md) | RFC 8878 Zstandard |
+
 ## Contract
 
 | | |
@@ -40,14 +48,6 @@ Rust only. A compound [filename](../uri/path.md) declares the coding, so `Coded:
     assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
     assert_ne!(handle.handle().read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
     ```
-
-## Pages
-
-| Page | Purpose |
-| --- | --- |
-| [gzip](gzip.md) | RFC 1952 gzip |
-| [zlib](zlib.md) | RFC 1950 zlib and raw DEFLATE |
-| [zstd](zstd.md) | RFC 8878 Zstandard |
 
 ## Wrap and publish
 

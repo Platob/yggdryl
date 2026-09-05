@@ -754,7 +754,9 @@ A coding around the whole file moves the footer out of reach, so the media type 
 
 ## Edges
 
-- `trades.parquet.gz`, or any non-identity coding -> refused on reads and writes with `parquet compresses`, naming `ParquetOptions::compression`; other encodings such as [Arrow IPC](ipc.md) write through the [coding](../coding/index.md) instead.
+- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by_names` are updated, misses are inserted.
+- `trades.parquet.gz`, or any non-identity coding -> refused on reads and writes with `parquet compresses`, naming `ParquetOptions::compression`.
+- other encodings, such as [Arrow IPC](ipc.md), take a coded name through the handle's [coding](../coding/index.md); Parquet alone refuses one.
 - `level` -> ignored; `compression` decides how the file compresses.
 - read `field` naming every stored column, or one the file lacks -> reads everything.
 - a pulled batch not matching the reader's field -> error naming the batch index.
