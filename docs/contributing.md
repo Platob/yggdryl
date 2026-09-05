@@ -1,10 +1,10 @@
 # Contributing
 
-Run the checks for whatever you changed, and make code, tests, and documentation agree before handing off.
+Run the checks for what you changed; code, tests, and documentation agree before handoff. `AGENTS.md` is the normative version of everything below.
 
 === "Rust"
 
-    ```console
+    ```bash
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --features "parquet iceberg" -- -D warnings
     cargo test --workspace --all-targets --features "parquet iceberg"
@@ -14,92 +14,55 @@ Run the checks for whatever you changed, and make code, tests, and documentation
 
 === "Python"
 
-    ```console
+    ```bash
     cd python
-    .venv/Scripts/python -m maturin develop
-    .venv/Scripts/python -m pytest
-    .venv/Scripts/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
+    .venv/bin/python -m maturin develop
+    .venv/bin/python -m pytest
+    .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
     ```
 
 === "JavaScript"
 
-    ```console
+    ```bash
     npm ci --prefix node
     npm run --prefix node build:debug
     npm test --prefix node
     ```
 
-Start with the repository-wide `AGENTS.md`, which is the normative version of everything below.
-
 ## Where things go
 
-```text
-rust/src/types/       datatypes, fields, values -> rust/tests/types/       -> docs/types.md
-rust/src/holder/      storage implementations  -> rust/tests/holder/      -> docs/holder.md
-rust/src/coding/      content codings           -> rust/tests/coding/      -> docs/coding.md
-rust/src/media/       record and table formats  -> rust/tests/media/       -> docs/media.md
-rust/src/text/        structured text           -> rust/tests/text/        -> docs/text.md
-rust/src/uri/         identifiers               -> rust/tests/uri/         -> docs/uri.md
-rust/src/arrow/       Arrow boundaries          -> rust/tests/arrow/       -> docs/arrow.md
-rust/src/expression/  expressions               -> rust/tests/expression/  -> docs/expression.md
-rust/src/xxhash/      hashes                    -> rust/tests/xxhash/       -> docs/xxhash.md
-rust/src/fix/         FIX protocol              -> rust/tests/fix/          -> docs/fix.md
-```
+| Source | Tests | Docs tab |
+| --- | --- | --- |
+| `rust/src/types/` | `rust/tests/types/` | [Types](types/index.md) |
+| `rust/src/holder/`, `rust/src/iobase*` | `rust/tests/holder/` | [Holder](holder/index.md) |
+| `rust/src/coding/` | `rust/src/coding/tests.rs` | [Coding](coding/index.md) |
+| `rust/src/media/` | `rust/src/media/tests.rs`, `rust/tests/interop/` | [Media](media/index.md) |
+| `rust/src/text/` | `rust/tests/text/` | [Text](text/index.md) |
+| `rust/src/uri/` | `rust/tests/uri/` | [URI](uri/index.md) |
+| `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
+| `rust/src/expression/` | `rust/src/expression/tests.rs` | [Expression](expression/index.md) |
+| `rust/src/xxhash/` | `rust/src/xxhash/tests.rs` | [xxHash](xxhash/index.md) |
+| `rust/src/fix/` | `rust/tests/fix/` | [FIX](fix/index.md) |
 
-Each shared trait, enum, or value owns one root `.rs` file. Each implementation family owns one
-layer folder. `rust/src/lib.rs` only declares modules and re-exports their public vocabulary.
-Python and Node mirror these layer names without reimplementing core behavior.
-Benchmarks live in each member's `benchmarks/`; there are no `examples/` directories, because every
-runnable example lives in the documentation where all three languages appear side by side.
+Each shared trait, enum, or value owns one root `rust/src/<name>.rs`; each layer owns one folder. Python and Node mirror the layer names without reimplementing core behavior. Runnable examples live in the documentation, never in an `examples/` directory.
 
 ## What a change must satisfy
 
-**One concept, one home.** A behaviour belongs to exactly one module. If two modules need it, it
-moves down to the one they share rather than being copied.
-
-**A trait says what; an enum says which.** Adding a backend or an encoding means implementing the
-trait and adding the variant to the [generic enum](types.md), never adding a parallel
-dispatch.
-
-**Errors state expected, got, and where.** `expected int64, got utf8` with a path or byte offset. A
-message that only names a rule is incomplete.
-
-**Refusals are features.** A cast that widens silently, a schema that accepts a nullable root, or a
-handle that double-compresses is worse than an error. Test the refusal.
-
-**Laziness is a contract.** Constructing a handle touches nothing; reading something absent yields
-nothing; writing creates. New backends inherit this by implementing the
-[role traits](holder.md).
-
-**Never pre-check.** No `exists` before a read, no `contains` before a `get`, no `mkdir` before a
-write, no "ensure" step of any kind. Act; branch on the typed
-[absence or conflict](holder.md); repair once and retry once. A probe costs a round trip and its answer
-is stale before it returns, so the act still has to handle absence and the check bought nothing but
-a race. An existence question a *caller* asked - `exists`, `is_dir`, `contains` - is an answer, and
-stays public; one of our own on the way to doing something else is a bug.
-
-**Every listing is an iterator.** [`ls`, `glob`, and the predicate listings](holder.md) yield one entry
-at a time, the item is a `Result`, and the iterator fuses at the first failure. A return that stays
-owned says what bounds it, in a comment or a test; neither means it was missed.
+- **One concept, one home.** Two modules that need one behaviour share it from the module below them.
+- **A trait says what; an enum says which.** A new backend or encoding implements the trait and adds the variant; no parallel dispatch.
+- **Errors state expected, got, and where.** `expected int64, got utf8` with a path or byte offset.
+- **Refusals are features.** A silent widening cast, a nullable root, or a double-compressed handle is worse than an error; test the refusal.
+- **Laziness is a contract.** Constructing a handle touches nothing, reading something absent yields nothing, writing creates.
+- **Never pre-check.** No `exists` before a read, no `mkdir` before a write; act, branch on the typed absence or conflict, repair once, retry once. A caller's own `exists` or `is_dir` stays public.
+- **Every listing is an iterator.** `ls`, `glob`, and the predicate listings yield `Result` items and fuse at the first failure.
 
 ## Documentation is part of the change
 
-Every page mirrors one module folder, opens with one H1 and exactly one sentence, and shows every
-example in all three languages unless the module carries the Rust-only note. Every block is executed
-by `python scripts/check_docs_examples.py`, so a renamed method breaks the docs exactly as it breaks
-the code.
-
-Keep source documentation and Markdown compact: state the contract, one non-obvious edge, and
-measured behavior once. Remove repeated rationale, signature restatements, and prose already made
-obvious by names or examples; keep safety, streaming, failure, and compatibility guarantees.
-
-When you add or rename a page, update the `mkdocs.yml` navigation and every link to it in the same
-change; `mkdocs build --strict` fails otherwise.
+- One page per family, one H1, one sentence, then the [page skeleton](architecture.md): Contract, Use, feature sections, Edges, Commands, Performance.
+- Every example appears in Rust, Python, and JavaScript unless it carries the "Rust only" line, and every block runs under `python scripts/check_docs_examples.py`.
+- A benchmark table lives on the page that owns the measured method, names host and toolchain, and ends with its regenerate command.
+- Adding or renaming a page updates `mkdocs.yml` and every link to it in the same change; `mkdocs build --strict` fails otherwise.
 
 ## Bindings
 
-Python and JavaScript are views. They may infer inputs at the boundary - a string where a datatype
-expression is expected, a path-like where a URL is expected - and must then call the core. A native
-error message crosses the boundary unchanged, and each binding stays idiomatic in its own language:
-mapping dunders and keyword arguments in Python, generic `from` constructors and `Map` protocols in
-JavaScript.
+Python and JavaScript are views. They may infer inputs at the boundary (a string where a datatype expression is expected, a path-like where a URL is expected) and must then call the core. A native error message crosses unchanged, and each binding stays idiomatic: mapping dunders and keyword arguments in Python, `from` constructors and `Map` protocols in JavaScript.

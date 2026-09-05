@@ -62,7 +62,7 @@ updates, Arrow conversion, or extension boundaries.
 `DataType::variant(fields)` is the finite-sum convenience constructor. It assigns
 declaration-order IDs and returns the canonical dense Arrow Union; the
 `variant(...)` parser spelling canonicalizes to the same physical display. See
-the [datatype guide](../docs/types.md) before mapping one of these tagged
+the [nested datatypes page](../docs/types/nested.md) before mapping one of these tagged
 unions to Iceberg/Parquet Variant or PostgreSQL JSON, which use different
 external encodings.
 

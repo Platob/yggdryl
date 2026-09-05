@@ -1,40 +1,40 @@
 # Getting started
 
-Build one of the three runtimes from this repository and describe your first schema.
+Build one runtime, describe a schema, attach metadata, then pick a layer tab.
 
-## Build a runtime
+## Build
 
 === "Rust"
 
-    ```console
+    ```bash
     cargo build
     cargo test --workspace --features "parquet iceberg"
     ```
 
 === "Python"
 
-    ```console
+    ```bash
     cd python
     python -m venv .venv
-    .venv/Scripts/python -m pip install maturin pytest pyarrow
-    .venv/Scripts/python -m maturin develop
-    .venv/Scripts/python -m pytest
+    .venv/bin/python -m pip install maturin pytest pyarrow
+    .venv/bin/python -m maturin develop
+    .venv/bin/python -m pytest
     ```
 
 === "JavaScript"
 
-    ```console
+    ```bash
     cd node
-    npm install
+    npm ci
     npm run build:debug
-    node --test tests/*.test.js
+    npm test
     ```
 
-On Linux and macOS the Python interpreter is `.venv/bin/python`.
+On Windows the interpreter is `.venv\Scripts\python`. `maturin develop --release` builds the wheel that benchmarks time.
 
 ## Describe a schema
 
-A non-null struct field is the schema, and its children are the columns.
+A non-null struct field is the schema; its children are the columns.
 
 === "Rust"
 
@@ -98,7 +98,7 @@ A non-null struct field is the schema, and its children are the columns.
 
 ## Attach metadata
 
-Metadata belongs to the field, and it behaves like the mapping type of each language.
+Metadata belongs to the field and behaves like each language's mapping type.
 
 === "Rust"
 
@@ -144,27 +144,27 @@ Metadata belongs to the field, and it behaves like the mapping type of each lang
     assert.equal(field.size, 2)
     ```
 
-## Where to go next
+## Where next
 
-| Concern | Page |
+| You need | Page |
 | --- | --- |
-| Logical types, parsing, Arrow projection | [datatype](types.md) |
-| Names, nullability, metadata, validation, casting | [field](types.md) |
-| Arrow scalars, schema projection, batch readers | [arrow](arrow.md) |
-| Reading and writing bytes anywhere | [io](holder.md) |
-| Local files and directories | [local](holder.md) |
-| gzip, zlib, zstd | [gzip](coding.md), [zlib](coding.md), [zstd](coding.md) |
-| Batches on disk | [ipc](media.md), [parquet](media.md), [iceberg](media.md) |
-| Naming a resource | [uri](uri.md) |
-| Scalars and text formats | [text](text.md), [json](text.md), [yaml](text.md), [toml](text.md) |
+| Logical types, parsing, families | [DataType](types/datatype.md) |
+| Names, nullability, metadata, casting | [Field](types/field.md), [Cast](types/cast.md) |
+| Bytes and records on any storage | [Holder](holder/index.md) |
+| gzip, zlib, zstd | [Coding](coding/index.md) |
+| IPC, Parquet, Avro, Iceberg | [Media](media/index.md) |
+| JSON, YAML, TOML | [Text](text/index.md) |
+| Naming a resource | [URI](uri/index.md) |
+| Predicates and pushdown | [Expression](expression/index.md) |
+| Digests | [xxHash](xxhash/index.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks
 
-```console
+```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --features "parquet iceberg" -- -D warnings
-cargo test --workspace --features "parquet iceberg"
+cargo test --workspace --all-targets --features "parquet iceberg"
 python scripts/check_docs_examples.py
 python -m mkdocs build --strict
 ```
