@@ -16,18 +16,18 @@
 | --- | --- |
 | Owns | `Codec`, `Level`, `coding::Coded`; the bytes live in [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
 | Codings | `Identity`, `Gzip`, `Zlib`, `Deflate`, `Zstd`; four `Coded` variants |
-| Select | `Coded::infer` from the media type; `Coded::wrap` from a `Codec` |
+| Select | `Coded::infer` from the media type; `Coded::wrap` from a `Codec`; `Holder::into_coded` retains either as the handle |
 | Deflate | No framing to detect, so it wraps as the zlib handle |
 | Level | `with_level`; `Identity` ignores it |
 | Composes | Any [`IOBase`](../holder/index.md), `Holder` or another coded handle; `Coded` is itself an `IOBase` |
 | Seek | None; the decoded value is materialized once and held until `close` |
 | Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
 | Media type | Decoded, coding removed |
-| Bindings | Rust only; Python and JavaScript use [`IOBase.codec`, `compress_into`, `decompress_into`](../holder/iobase/bytes.md) and per-codec `loads`/`dumps` |
+| Bindings | Python retains the same view with [`IOBase.into_coded`](../holder/iobase/bytes.md); JavaScript uses [`IOBase.codec`, `compressInto`, `decompressInto`](../holder/iobase/bytes.md) and per-codec `loads`/`dumps` |
 
 ## Use
 
-Rust only. A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` needs nothing else.
+A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - and the `into_coded` that retains it - needs nothing else.
 
 === "Rust"
 
@@ -47,6 +47,37 @@ Rust only. A compound [filename](../uri/path.md) declares the coding, so `Coded:
     // The coded handle reads plain bytes; the handle underneath holds the frame.
     assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
     assert_ne!(handle.handle().read_all_bytes()?, b"symbol,price\nAAPL,1\nAAPL,2\n");
+    ```
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = root / "app.log.gz"
+    path.write_bytes(gzip.compress(b"[INFO] alpha\n[WARN] beta\n"))
+
+    # The handle mirrors the stored bytes, coding and all.
+    source = IOBase(path)
+    assert source.codec == "gzip"
+    assert source.read_bytes()[:2] == b"\x1f\x8b"
+
+    # `into_coded` retains the coding the name declares, in place. The handle
+    # then presents the decoded value: plain text, no coding, nothing named.
+    decoded = IOBase(path).into_coded()
+    assert decoded.codec is None
+    assert decoded.read_text() == "[INFO] alpha\n[WARN] beta\n"
+
+    # Records read the same way, decoding as the batches are pulled.
+    assert [row["body"] for row in decoded.read_records()] == [
+        b"[INFO] alpha",
+        b"[WARN] beta",
+    ]
     ```
 
 ## Wrap and publish

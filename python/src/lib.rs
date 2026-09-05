@@ -20,7 +20,7 @@ use crate::types::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
 use crate::types::scalar::PyScalar;
-use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
+use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
 mod coding;
 mod enums;
@@ -320,6 +320,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUrl>()?;
     module.add_class::<PyUrn>()?;
     module.add_class::<PyUriPathIterator>()?;
+    module.add_class::<PyParameters>()?;
+    module.add_class::<PyParameterIterator>()?;
     module.add_class::<types::timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;

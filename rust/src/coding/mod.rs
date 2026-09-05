@@ -18,7 +18,7 @@ pub mod zstd;
 
 pub use coded::Coded;
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 
 use crate::holder::Holder;
 use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
@@ -316,9 +316,11 @@ impl<H: IOBase> IOBase for Coding<H> {
             return self.handle.pstream_bytes(position, batch_size);
         }
         // The caller's batch bounds decoded output. The encoded transport has
-        // its own fixed window: coupling it to a one-byte output request would
-        // turn one decode into one positional backend call per encoded byte.
-        let encoded = self.handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
+        // its own window - the fetch size, not this batch - so a one-byte
+        // decoded request cannot turn into one backend call per encoded byte.
+        let encoded = self
+            .handle
+            .pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?;
         ByteStream::from_reader(
             SkipReader::new(LazyDecoder::new(self.codec, encoded), position),
             batch_size,
@@ -497,15 +499,21 @@ impl<H: IOBase> IOBase for Coding<H> {
 /// itself lazy.
 struct LazyDecoder<'source> {
     codec: Codec,
-    source: Option<ByteStream<'source>>,
+    source: Option<BufReader<ByteStream<'source>>>,
     decoder: Option<Box<dyn Read + 'source>>,
 }
 
 impl<'source> LazyDecoder<'source> {
-    const fn new(codec: Codec, source: ByteStream<'source>) -> Self {
+    fn new(codec: Codec, source: ByteStream<'source>) -> Self {
         Self {
             codec,
-            source: Some(source),
+            // The decoder pulls in its own small increments, so the transport
+            // is buffered at the fetch window: one request per window instead
+            // of one per decoder pull.
+            source: Some(BufReader::with_capacity(
+                crate::DEFAULT_FETCH_BYTE_SIZE,
+                source,
+            )),
             decoder: None,
         }
     }
@@ -520,19 +528,14 @@ impl Read for LazyDecoder<'_> {
             let Some(mut source) = self.source.take() else {
                 return Ok(0);
             };
-            // Probe with enough bytes for every supported framing header. A
-            // one-byte probe costs a separate remote range request before the
-            // decoder's first useful read; replaying this owned prefix keeps
-            // absence lazy while making the first request useful.
-            let mut prefix = [0_u8; 64];
-            let read = source.read(&mut prefix)?;
-            if read == 0 {
+            // The first fetch answers absence and is also the decoder's first
+            // window: an absent or empty resource decodes as empty without
+            // constructing a decoder, and a present one is never probed with a
+            // request smaller than the window.
+            if source.fill_buf()?.is_empty() {
                 return Ok(0);
             }
-            self.decoder = Some(
-                self.codec
-                    .reader(std::io::Cursor::new(prefix).take(read as u64).chain(source)),
-            );
+            self.decoder = Some(self.codec.reader(source));
         }
         self.decoder
             .as_mut()

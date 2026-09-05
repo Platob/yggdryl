@@ -124,8 +124,8 @@ fn uri_parsing_exposes_non_nullable_core_components() {
     assert_eq!(uri.scheme().as_str(), "https");
     assert_eq!(uri.authority().as_str(), "example.test");
     assert_eq!(uri.path().as_str(), "/archive/report.tar.gz");
-    assert_eq!(uri.query(), Some("q=1"));
-    assert_eq!(uri.fragment(), Some("summary"));
+    assert_eq!(uri.query(false).unwrap().as_deref(), Some("q=1"));
+    assert_eq!(uri.fragment(false).unwrap().as_deref(), Some("summary"));
     assert_eq!(
         uri.path_segments().collect::<Vec<_>>(),
         ["archive", "report.tar.gz"]
@@ -176,8 +176,8 @@ fn windows_drive_and_unc_paths_normalize_independently_of_host_os() {
         prefixed.to_string(),
         "file:///C:/Ada%20Lovelace/report.csv?raw=1#rows"
     );
-    assert_eq!(prefixed.query(), Some("raw=1"));
-    assert_eq!(prefixed.fragment(), Some("rows"));
+    assert_eq!(prefixed.query(false).unwrap().as_deref(), Some("raw=1"));
+    assert_eq!(prefixed.fragment(false).unwrap().as_deref(), Some("rows"));
     assert_eq!(
         Uri::from_str(r"file:c:\data\ticks.arrow")
             .unwrap()
@@ -716,7 +716,7 @@ fn urn_conversion_preserves_namespace_and_namespace_specific_string() {
     assert_eq!(urn.authority().as_str(), "");
     assert_eq!(urn.namespace(), "isbn");
     assert_eq!(urn.namespace_specific(), "9780131103627");
-    assert_eq!(urn.fragment(), Some("edition-2"));
+    assert_eq!(urn.fragment(false).unwrap().as_deref(), Some("edition-2"));
     assert_eq!(urn.clone().into_uri(), uri);
     assert_eq!(urn.clone().into_uri(), uri);
     assert_eq!(uri.clone().into_urn().unwrap(), urn);
@@ -998,8 +998,8 @@ fn uri_and_url_navigation_preserve_every_other_component() {
     let url = Url::from_str("https://example.com/a/b/c?q=1#frag").unwrap();
     let joined = url.joinpath("../d").unwrap();
     assert_eq!(joined.path().as_str(), "/a/b/d");
-    assert_eq!(joined.query(), Some("q=1"));
-    assert_eq!(joined.fragment(), Some("frag"));
+    assert_eq!(joined.query(false).unwrap().as_deref(), Some("q=1"));
+    assert_eq!(joined.fragment(false).unwrap().as_deref(), Some("frag"));
     assert_eq!(joined.authority().as_str(), "example.com");
 
     let parents: Vec<String> = url

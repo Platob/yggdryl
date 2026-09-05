@@ -12,6 +12,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, IOBase, RecordOptions, TextOptions, Timezone
+from yggdryl.coding import gzip, zstd
 
 ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 
@@ -340,6 +341,56 @@ def test_framing_normalizes_terminators_and_reports_record_caps(
     rejected.leading_fragment = "error"
     with pytest.raises(ValueError, match="leading physical line"):
         source.read_arrow_reader(options=rejected).read_all()
+
+
+def test_compressed_logs_stream_their_records_without_naming_the_coding(
+    tmp_path: pathlib.Path,
+) -> None:
+    plain = b"[A] first\ncontinued\n[B] second\n"
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<kind>[A-Z])\] "
+    options.batch_row_size = 1
+
+    for name, encoded in (
+        ("records.log.gz", gzip.dumps(plain)),
+        ("records.log.zst", zstd.dumps(plain)),
+    ):
+        source = handle(tmp_path, encoded, name)
+        reader = source.read_arrow_reader(options=options)
+        assert reader.schema.names == ["url", "body", "kind"]
+
+        # The coding decodes as the batches are pulled, one record at a time.
+        batches = list(reader)
+        assert [batch.num_rows for batch in batches] == [1, 1]
+        table = pa.Table.from_batches(batches)
+        assert table.column("body").to_pylist() == [b"first\ncontinued", b"second"]
+        assert table.column("kind").to_pylist() == ["A", "B"]
+
+        # The property counts through the same decoded stream, under the
+        # options the handle infers for itself: physical lines, unframed.
+        assert source.row_size == 3
+
+        # The decoded view reads the same records off the same bytes.
+        coded = IOBase(tmp_path / name).into_coded()
+        assert coded.read_arrow_reader(options=options).read_all().num_rows == 2
+
+
+def test_an_empty_or_absent_compressed_log_keeps_its_schema(
+    tmp_path: pathlib.Path,
+) -> None:
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<kind>[A-Z])\] "
+
+    for name, source in (
+        ("empty.log.gz", handle(tmp_path, gzip.dumps(b""), "empty.log.gz")),
+        ("absent.log.zst", IOBase(tmp_path / "absent.log.zst")),
+    ):
+        reader = source.read_arrow_reader(options=options)
+        assert reader.schema.names == ["url", "body", "kind"], name
+        assert reader.read_all().num_rows == 0, name
+        assert source.row_size == 0, name
 
 
 def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path) -> None:

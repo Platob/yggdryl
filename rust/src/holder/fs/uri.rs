@@ -5,6 +5,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::uri::percent_decode;
 use crate::{Authority, Error, Result, Uri};
 
 use super::mask_uri;
@@ -213,7 +214,7 @@ fn resolve_s3(
         return Err(invalid_uri("S3 URI requires an authority"));
     }
 
-    let mut values = parse_query(parsed.query())?;
+    let mut values = parse_query(&parsed)?;
     if let Some(explicit) = explicit {
         for (key, value) in explicit {
             values.insert(key.to_ascii_lowercase(), value.clone());
@@ -223,11 +224,11 @@ fn resolve_s3(
 
     let mut access_key = parsed
         .user()
-        .map(|access| percent_decode(access, "S3 access key"))
+        .map(|access| percent_decode(access, "S3 access key").map(std::borrow::Cow::into_owned))
         .transpose()?;
     let mut secret_key = parsed
         .password()
-        .map(|secret| percent_decode(secret, "S3 secret key"))
+        .map(|secret| percent_decode(secret, "S3 secret key").map(std::borrow::Cow::into_owned))
         .transpose()?;
     replace_option(&mut access_key, &values, "access_key");
     replace_option(&mut secret_key, &values, "secret_key");
@@ -393,61 +394,22 @@ fn parse_bool(key: &str, value: &str) -> Result<bool> {
     }
 }
 
-fn parse_query(query: Option<&str>) -> Result<BTreeMap<String, String>> {
+fn parse_query(parsed: &Uri) -> Result<BTreeMap<String, String>> {
     let mut values = BTreeMap::new();
-    let Some(query) = query else {
-        return Ok(values);
-    };
-    for pair in query.split('&') {
-        if pair.is_empty() {
-            continue;
-        }
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        let key = percent_decode(key, "S3 option name")?.to_ascii_lowercase();
+    // The URI model already reads a query as its decoded pairs, so an option
+    // name and its value are whatever the escapes stand for.
+    for (key, value) in parsed
+        .parameters(true)
+        .map_err(|error| invalid_uri(error.to_string()))?
+        .iter()
+    {
+        let key = key.to_ascii_lowercase();
         if values.contains_key(&key) {
             return Err(invalid_option(&key, "duplicate S3 filesystem option"));
         }
-        values.insert(key, percent_decode(value, "S3 option value")?);
+        values.insert(key, value.to_owned());
     }
     Ok(values)
-}
-
-fn percent_decode(value: &str, target: &'static str) -> Result<String> {
-    let bytes = value.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] != b'%' {
-            decoded.push(bytes[index]);
-            index += 1;
-            continue;
-        }
-        let high = bytes.get(index + 1).and_then(|byte| hex(*byte));
-        let low = bytes.get(index + 2).and_then(|byte| hex(*byte));
-        let (Some(high), Some(low)) = (high, low) else {
-            return Err(Error::Parse {
-                target,
-                position: index,
-                reason: "percent escape must contain two hexadecimal digits".into(),
-            });
-        };
-        decoded.push((high << 4) | low);
-        index += 3;
-    }
-    String::from_utf8(decoded).map_err(|_| Error::Parse {
-        target,
-        position: 0,
-        reason: "percent escapes must decode to UTF-8".into(),
-    })
-}
-
-fn hex(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 struct RawUri<'a> {
