@@ -458,7 +458,7 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an a
 
     ```bash
     cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::the_primitive_half fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
+    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
     cargo bench -p yggdryl --bench fix -- fix/resolve
     cargo bench -p yggdryl --bench fix -- fix/mutate
@@ -468,7 +468,7 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an a
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/fix -k "registry_resolves or no_lookup or registry_absence or registry_keys or registry_coerces or registry_iterates or seed_iterates or registry_insert or registry_mutation or install_global"
+    python/.venv/bin/python -m pytest python/tests/fix -k "registry_resolves or explicit_branch or inference or registry_absence or registry_keys or registry_coerces or registry_iterates or seed_iterates or registry_insert or registry_mutation or install_global"
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     ```
 
@@ -476,7 +476,7 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an a
 
     ```bash
     node --test node/tests/fix/fix.test.js
-    node --test --test-name-pattern="resolves every key|never crosses a branch|removeById|absence throws|number tag or a string name|coerced at the boundary|iterates lazily|seed iterates|insert, update and remove|shared registry|registry is a value|fix namespace is frozen|installing the process default" node/tests/fix/fix.test.js
+    node --test --test-name-pattern="resolves every key|explicit branch pins lookup|inference stays native|removeById|absence throws|number tag or a string name|coerced at the boundary|iterates lazily|seed iterates|insert, update and remove|shared registry|registry is a value|fix namespace is frozen|installing the process default" node/tests/fix/fix.test.js
     npm run --prefix node bench:fix
     ```
 

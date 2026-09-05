@@ -361,7 +361,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 
     ```bash
     cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::folded_text fix::tests::a_branch_folds fix::tests::an_identifier_renders fix::tests::properties_round_trip fix::tests::a_property_write fix::tests::the_branch_round_trips fix::tests::a_specification_tag fix::tests::set_id_moves fix::tests::a_corrupt_stored fix::tests::a_path_reaches
+    cargo test -p yggdryl --lib -- fix::tests::name_indexes_fold_ascii fix::tests::a_branch_folds fix::tests::an_identifier_is_packed fix::tests::properties_round_trip fix::tests::a_property_write fix::tests::the_branch_round_trips fix::tests::a_specification_tag fix::tests::set_id_moves fix::tests::a_corrupt_stored fix::tests::a_path_reaches
     cargo bench -p yggdryl --bench fix -- fix/mutate/set_
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_render
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_parse

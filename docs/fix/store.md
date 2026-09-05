@@ -1,17 +1,19 @@
 # Store
 
-A registry persists through one [`IOBase`](../holder/index.md) folder handle as two shard trees and nothing else.
+A registry persists through one [`IOBase`](../holder/index.md) folder handle as two shard trees plus one branch manifest.
 
 ## Contract
 
 | key | value |
 | --- | --- |
 | Owns | `FixRegistry::from_handle` and `write_into` over one folder handle |
-| Layout | `<root>/primitive/<branch>/<shard>.json`, `<root>/nested/<branch>/<shard>.json` |
-| Shard | `shard = tag / 100`, inside each branch; an alternate tag fans nothing |
-| Tree | `field.dtype().is_nested()`, after unwrapping a dictionary and a run-end encoding |
+| Layout | `<root>/primitive/<shard>.json` and `<root>/primitive/<branch>/<shard>.json`, the same two under `nested/`, and `<root>/branches.json` |
+| Branch level | The standard branch writes its shards directly under a tree; a named branch adds one folder |
+| Shard | `shard = tag / 100`, inside each tree; an alternate tag fans nothing |
+| Tree | `field.dtype().is_nested()`, after unwrapping a dictionary and a run-end encoding; the in-memory indexes still cover both trees together |
 | Shard body | JSON array of `Field::into_value`, identifier-ordered, indented; no envelope, no version marker |
-| Load | every shard of both trees on open; both trees optional; a missing folder loads empty |
+| Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; absent is valid |
+| Load | every shard of both trees on open; both trees optional; other leaves ignored; a missing folder loads empty |
 | Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
 | Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |
 | Refused | a root still holding `records/`; no migration, no backward compatibility |
@@ -253,6 +255,8 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 
 `primitive` holds the fields whose datatype is one scalar value and `nested` the ones carrying a subtree. In FIX terms the nested fields are exactly the components, a Struct of members, and the repeating groups, a List of that Struct.
 
+The split keeps an authored dictionary legible, not the lookup fast: one identity space and one field vector still cover both trees.
+
 ```text
 <root>/primitive/<shard>.json
 <root>/primitive/<branch>/<shard>.json
@@ -261,9 +265,34 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 <root>/branches.json
 ```
 
+`shard = tag / 100` inside each tree, so `55:` is `primitive/0.json` and `5001:cme` is `primitive/cme/50.json`. A named branch segment is the canonical lowercase text, one safe path segment.
+
+## Branch manifest
+
+`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, derived `digest`, `version`, `targetcompid` and `sendercompid`.
+
+| rule | behaviour |
+| --- | --- |
+| absent value in an entry | defaulted to the branch defaults |
+| declared `digest` | verified against the derived one |
+| absent manifest | valid; default branch values are reconstructed from the shards |
+| entry with no field in either tree | typed error, never an invented dictionary |
+
+A registry answers the stored branch values through five calls.
+
+| call | answers |
+| --- | --- |
+| `branch_of(FixId)` | the borrowed `FixBranch` that identifier names |
+| `branch_named(&str)` | the borrowed branch of that name |
+| `branch_for_session(sender, target)` | the borrowed branch of that component pair, matched with ASCII case folded |
+| `branches()` | every stored branch |
+| `set_branch(FixBranch)` | installs one atomically |
+
+Component IDs keep the spelling they were written with.
+
 ## The tracked seed
 
-`config/fix` holds a small FIX 4.4 subset: the header and trailer, the order and execution fields, `Parties` as a repeating group.
+`config/fix` holds a small FIX 4.4 subset in `config/fix/primitive/<shard>.json` and `config/fix/nested/4.json`: the header and trailer, the order and execution fields, `Parties` as a repeating group.
 Each field carries the specification's wording as its description and a display name where FIX has one.
 
 === "Rust"
@@ -332,8 +361,10 @@ Each field carries the specification's wording as its description and a display 
 
 ## Edges
 
-- `primitive/0.json`, a leaf directly under a tree -> typed error naming it, never a folder skipped into an empty load.
+- `primitive/0.json`, a leaf directly under a tree -> a standard-branch shard, read like any other; other leaves are ignored.
 - A folder under a tree whose name is not a branch -> `FixBranch::from_str`'s parse failure, its byte position and the folder URL.
+- `branches.json` absent -> valid; every branch value is reconstructed from the shards with the branch defaults.
+- A `branches.json` entry no field in either tree claims -> typed error, never an invented dictionary.
 - A branch folder's name -> the canonical lowercase branch text: one path segment, no separators, no `.` or `..`.
 - A `README` beside the shards -> ignored on read, left alone by `write_into`'s cleanup; only `<n>.json` with a decimal `n` is read.
 - A field in the wrong shard, in a folder its `fix:branch` contradicts, or in the tree its datatype contradicts -> refused with both sides named.
@@ -367,54 +398,3 @@ Each field carries the specification's wording as its description and a display 
     node --test node/tests/fix/fix.test.js
     node --test --test-name-pattern="storage location|retired layout|two trees|own folder" node/tests/fix/fix.test.js
     ```
-
-## Performance
-
-### Rust
-
-One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34 fields unless a row says otherwise.
-
-| storage | estimate |
-| --- | ---: |
-| `from_handle`, 1 shard of 10 fields | 962 us |
-| `from_handle`, 10 shards of 10 fields | 5.55 ms |
-| `from_handle`, 100 shards of 10 fields | 62.1 ms |
-| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.87 ms |
-| `from_handle`, two branches (1034 fields, 14 shards) | 19.8 ms |
-| `write_into`, 100 shards | 324 ms |
-| `write_into`, two branches (1034 fields, 14 shards) | 150 ms |
-| explicit-location autoload of the seed (URL parse, folder, load) | 2.82 ms |
-
-`from_handle` scales with shard count, not with the fields in them; the split moved the seed load from 2.06 ms to 2.87 ms. The storage rows are filesystem-bound and move by tens of percent between runs.
-
-```bash
-cargo bench -p yggdryl --bench fix -- fix/store
-```
-
-### Python
-
-One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12, median time per call over the same seed.
-
-| Python operation | estimate |
-| --- | ---: |
-| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.99 ms |
-| `from_handle`, 1000 generated fields (11 shards) | 16.7 ms |
-
-`from_handle` stays within a few percent of the native load, 2.99 ms against 2.87 ms, because only the finished registry crosses.
-
-```bash
-python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
-```
-
-### JavaScript
-
-One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon under Node.js v24.18.0, whole-loop rate.
-
-| JavaScript operation | rate | per call |
-| --- | ---: | ---: |
-| `fromHandle`, the seed (4 shards in two trees, 34 fields) | 281/s | 3.56 ms |
-| `fromHandle`, 1000 generated fields (11 shards) | 38/s | 26.3 ms |
-
-```bash
-npm run --prefix node bench:fix
-```

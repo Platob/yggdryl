@@ -198,8 +198,8 @@
 
 A bare tag or name resolves in two steps and no further:
 
-1. this message's own branch, when the tag is at or above `FixId::STANDARD_TAG_LIMIT`, or the
-   message is already standard;
+1. this message's own branch, when the tag is in `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)`, or
+   the message is already standard;
 2. the standard branch.
 
 `get_by_tag(5001)` finds the venue's own field, and `get_by_tag(35)` still finds `MsgType`.
@@ -209,7 +209,7 @@ A bare tag or name resolves in two steps and no further:
 | accessor | resolution |
 | --- | --- |
 | `get_by_tag` / `by_tag` | the tag through the tier to its canonical name, then the root child of that name; falls back to a root child named by the tag's decimal text |
-| `get_by_id` / `by_id` | names a dictionary exactly and does not tier, so a foreign branch misses |
+| `get_by_id` / `by_id` | takes a `FixId` by value, names a dictionary exactly and does not tier, so a foreign branch misses |
 | `get_by_name` / `by_name` | folds through the same tier to the registry's canonical spelling, then matches a root child exactly |
 | `get_by_path` / `by_path` | the whole string as a name, then segment by segment: into a Struct child by name, into a List entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects |
@@ -218,7 +218,7 @@ A bare tag or name resolves in two steps and no further:
 
 - A root whose `fix:branch` is malformed -> typed error at construction, never a silent miss later.
 - `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
-- A bare tag below `FixId::STANDARD_TAG_LIMIT` on a non-standard message -> only the standard branch is tried.
+- A bare tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a non-standard message -> only the standard branch is tried.
 - `by_id` on a foreign branch -> a miss, because an identifier never tiers.
 - `by_path("NoPartyIDs.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`NoPartyIDs.0.PartyID`).
 
@@ -244,41 +244,3 @@ A bare tag or name resolves in two steps and no further:
     node --test node/tests/fix/fix.test.js
     node --test --test-name-pattern="message" node/tests/fix/fix.test.js
     ```
-
-## Performance
-
-Binding rows only; the Criterion target carries no `FixMsg` case.
-
-### Python
-
-One local Windows x86_64 run of the release wheel under CPython 3.12, median time per call over the tracked seed of 34 fields.
-
-| Python operation | estimate |
-| --- | ---: |
-| `FixMsg.get_by_tag(55)` | 251 ns |
-| `FixMsg.get_by_id("standard:55")` | 386 ns |
-| `FixMsg.get_by_name("ticker")` | 367 ns |
-| `FixMsg.get_by_path("NoPartyIDs.0.PartyID")` | 711 ns |
-| `FixMsg.branch` | 148 ns |
-
-```bash
-python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
-```
-
-### JavaScript
-
-One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon under Node.js v24.18.0, whole-loop rate over the tracked seed of 34 fields.
-
-| JavaScript operation | rate | per call |
-| --- | ---: | ---: |
-| `FixMsg.getByTag(55)` | 311k/s | 3.21 us |
-| `FixMsg.getById('standard:55')` | 261k/s | 3.83 us |
-| `FixMsg.getByName('ticker')` | 211k/s | 4.73 us |
-| `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 249k/s | 4.01 us |
-| `FixMsg.branch` | 1.20M/s | 834 ns |
-
-`FixMsg`'s accessors wrap a `Scalar` and cost the same shape. `FixMsg.branch` is 834 ns because the branch was resolved once at construction and only the string crosses.
-
-```bash
-npm run --prefix node bench:fix
-```
