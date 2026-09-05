@@ -223,10 +223,37 @@ mod parameters {
     }
 
     #[test]
+    fn a_raw_view_takes_back_every_value_it_answered_with() {
+        // The split takes the first `=`, so a value may hold more of them and
+        // still read back as it was written. What this view answers with, it
+        // must accept: `get` then `insert` is a round trip, not a refusal.
+        let mut parameters = Parameters::from_query("filter=a=b&plain=1", false).unwrap();
+        assert_eq!(parameters.get("filter"), Some("a=b"));
+
+        let held = parameters.get("filter").unwrap().to_owned();
+        parameters.insert("filter", &held).unwrap();
+        parameters.append("copy", &held).unwrap();
+        assert_eq!(
+            parameters.into_query().as_deref(),
+            Some("filter=a=b&plain=1&copy=a=b")
+        );
+        assert_eq!(
+            Parameters::from_query("filter=a=b&plain=1&copy=a=b", false)
+                .unwrap()
+                .get_all("filter")
+                .collect::<Vec<_>>(),
+            ["a=b"]
+        );
+
+        // A key still cannot carry what ends it.
+        assert!(parameters.insert("a=b", "1").is_err());
+    }
+
+    #[test]
     fn a_raw_view_refuses_text_the_query_syntax_cannot_carry() {
         let mut parameters = Parameters::from_query("symbol=AAPL", false).unwrap();
 
-        for (key, value) in [("as of", "x"), ("note", "a&b"), ("note", "a=b")] {
+        for (key, value) in [("as of", "x"), ("note", "a&b"), ("a=b", "1")] {
             let error = parameters.insert(key, value).unwrap_err().to_string();
             assert!(!error.is_empty(), "{key}={value}");
         }

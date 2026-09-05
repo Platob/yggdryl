@@ -1380,8 +1380,10 @@ enum ParametersOwner {
 /// This is a live view of the value it was taken from - `url.parameters()` -
 /// so every read goes back to that URL's query and every write replaces it.
 /// Item syntax means a key: `parameters["symbol"]`, `del parameters["venue"]`,
-/// and the mapping methods `keys`, `values`, `items`, `get`, `pop`,
-/// `setdefault`, `update` and `clear` behave as a `dict`'s do.
+/// and the mapping methods `get`, `pop`, `setdefault`, `update` and `clear`
+/// behave as a `dict`'s do - a lookup that changes nothing writes nothing.
+/// `keys`, `values` and `items` answer with tuples rather than views, because
+/// a query may repeat a key.
 ///
 /// A query may name one key more than once, which a `dict` cannot: `[]` and
 /// `get` answer with the first, `get_all` with every one, `[]=` replaces the
@@ -1457,9 +1459,25 @@ impl PyParameters {
         py: Python<'_>,
         edit: impl FnOnce(&mut CoreParameters<'static>) -> PyResult<R>,
     ) -> PyResult<R> {
+        self.edit_if(py, |pairs| Ok((edit(pairs)?, true)))
+    }
+
+    /// Read and edit, writing back only when the edit changed something.
+    ///
+    /// A lookup that finds nothing to do is a read, and a read must not
+    /// rewrite the value it read: the query would be respelled - `flag`
+    /// becomes `flag=`, `a&&b` loses its empty pair - and a frozen owner would
+    /// refuse an operation that changes nothing.
+    fn edit_if<R>(
+        &self,
+        py: Python<'_>,
+        edit: impl FnOnce(&mut CoreParameters<'static>) -> PyResult<(R, bool)>,
+    ) -> PyResult<R> {
         let mut pairs = self.pairs(py)?;
-        let answer = edit(&mut pairs)?;
-        self.write(py, &pairs)?;
+        let (answer, changed) = edit(&mut pairs)?;
+        if changed {
+            self.write(py, &pairs)?;
+        }
         Ok(answer)
     }
 }
@@ -1515,39 +1533,35 @@ impl PyParameters {
     }
 
     fn __iter__(&self, py: Python<'_>) -> PyResult<PyParameterIterator> {
-        self.keys(py)
+        Ok(PyParameterIterator::new(
+            self.pairs(py)?.keys().map(str::to_owned).collect(),
+        ))
     }
 
     /// Return every key, in the order the query spells them.
-    fn keys(&self, py: Python<'_>) -> PyResult<PyParameterIterator> {
-        Ok(PyParameterIterator::new(
-            self.pairs(py)?
-                .keys()
-                .map(str::to_owned)
-                .map(ParameterEntry::One)
-                .collect(),
-        ))
+    ///
+    /// The three come back as tuples rather than as one-shot iterators: a
+    /// query may repeat a key, so these are sequences, and a caller reads them
+    /// more than once the way a `dict` view is read more than once.
+    fn keys<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let keys: Vec<String> = self.pairs(py)?.keys().map(str::to_owned).collect();
+        PyTuple::new(py, keys)
     }
 
     /// Return every value, in order, repeated keys included.
-    fn values(&self, py: Python<'_>) -> PyResult<PyParameterIterator> {
-        Ok(PyParameterIterator::new(
-            self.pairs(py)?
-                .values()
-                .map(str::to_owned)
-                .map(ParameterEntry::One)
-                .collect(),
-        ))
+    fn values<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let values: Vec<String> = self.pairs(py)?.values().map(str::to_owned).collect();
+        PyTuple::new(py, values)
     }
 
     /// Return every `(key, value)` pair, in order.
-    fn items(&self, py: Python<'_>) -> PyResult<PyParameterIterator> {
-        Ok(PyParameterIterator::new(
-            self.pairs(py)?
-                .iter()
-                .map(|(key, value)| ParameterEntry::Pair(key.to_owned(), value.to_owned()))
-                .collect(),
-        ))
+    fn items<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let items: Vec<(String, String)> = self
+            .pairs(py)?
+            .iter()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect();
+        PyTuple::new(py, items)
     }
 
     /// Return the first value named `key`, or `default` when there is none.
@@ -1583,7 +1597,11 @@ impl PyParameters {
                 default.len() + 1
             )));
         }
-        let removed = self.edit(py, |pairs| Ok(pairs.remove(key)))?;
+        let removed = self.edit_if(py, |pairs| {
+            let removed = pairs.remove(key);
+            let changed = removed.is_some();
+            Ok((removed, changed))
+        })?;
         if let Some(value) = removed {
             return Ok(PyString::new(py, &value).into_any().unbind());
         }
@@ -1596,12 +1614,12 @@ impl PyParameters {
     /// Return the value named `key`, setting it to `default` when absent.
     #[pyo3(signature = (key, default="", /))]
     fn setdefault(&self, py: Python<'_>, key: &str, default: &str) -> PyResult<String> {
-        self.edit(py, |pairs| {
+        self.edit_if(py, |pairs| {
             if let Some(value) = pairs.get(key) {
-                return Ok(value.to_owned());
+                return Ok((value.to_owned(), false));
             }
             pairs.append(key, default).map_err(value_error)?;
-            Ok(default.to_owned())
+            Ok((default.to_owned(), true))
         })
     }
 
@@ -1615,8 +1633,12 @@ impl PyParameters {
     ) -> PyResult<()> {
         let mut entries: Vec<(String, String)> = Vec::new();
         if let Some(values) = values {
-            if let Ok(mapping) = values.cast::<PyDict>() {
-                for (key, value) in mapping.iter() {
+            // A mapping is whatever answers `keys`, which is how `dict.update`
+            // itself tells one from a sequence of pairs.
+            if let Ok(keys) = values.call_method0("keys") {
+                for key in keys.try_iter()? {
+                    let key = key?;
+                    let value = values.get_item(&key)?;
                     entries.push((key.extract()?, value.extract()?));
                 }
             } else {
@@ -1636,19 +1658,21 @@ impl PyParameters {
                 entries.push((key.extract()?, value.extract()?));
             }
         }
-        self.edit(py, |pairs| {
+        let changed = !entries.is_empty();
+        self.edit_if(py, |pairs| {
             for (key, value) in &entries {
                 pairs.insert(key, value).map_err(value_error)?;
             }
-            Ok(())
+            Ok(((), changed))
         })
     }
 
     /// Drop every pair, clearing the query.
     fn clear(&self, py: Python<'_>) -> PyResult<()> {
-        self.edit(py, |pairs| {
+        self.edit_if(py, |pairs| {
+            let changed = !pairs.is_empty();
             pairs.clear();
-            Ok(())
+            Ok(((), changed))
         })
     }
 
@@ -1690,7 +1714,15 @@ impl PyParameters {
         let Ok(mapping) = other.cast::<PyDict>() else {
             return Ok(py.NotImplemented());
         };
-        let equal = left.len() == mapping.len()
+        // A query may name one key twice, which no dict can, so such a query
+        // equals no dict at all - and comparing pair by pair would call two
+        // pairs of the same name a match for one entry, leaving room for a
+        // key the dict holds and the query does not.
+        let mut names: Vec<&str> = left.keys().collect();
+        names.sort_unstable();
+        let repeats = names.windows(2).any(|pair| pair[0] == pair[1]);
+        let equal = !repeats
+            && left.len() == mapping.len()
             && left.iter().try_fold(true, |equal, (key, value)| {
                 Ok::<bool, PyErr>(
                     equal
@@ -1703,22 +1735,16 @@ impl PyParameters {
     }
 }
 
-/// One entry a [`PyParameterIterator`] yields.
-enum ParameterEntry {
-    One(String),
-    Pair(String, String),
-}
-
-/// Iterator over a query's keys, values, or pairs.
+/// Iterator over a query's keys, in the order the query spells them.
 #[pyclass(module = "yggdryl._native")]
 pub(crate) struct PyParameterIterator {
-    entries: std::vec::IntoIter<ParameterEntry>,
+    keys: std::vec::IntoIter<String>,
 }
 
 impl PyParameterIterator {
-    fn new(entries: Vec<ParameterEntry>) -> Self {
+    fn new(keys: Vec<String>) -> Self {
         Self {
-            entries: entries.into_iter(),
+            keys: keys.into_iter(),
         }
     }
 }
@@ -1733,16 +1759,11 @@ impl PyParameterIterator {
         slf
     }
 
-    fn __next__(&mut self, py: Python<'_>) -> Option<Py<PyAny>> {
-        match self.entries.next()? {
-            ParameterEntry::One(value) => Some(PyString::new(py, &value).into_any().unbind()),
-            ParameterEntry::Pair(key, value) => {
-                Some(PyTuple::new(py, [key, value]).ok()?.into_any().unbind())
-            }
-        }
+    fn __next__(&mut self, py: Python<'_>) -> Option<Py<PyString>> {
+        Some(PyString::new(py, &self.keys.next()?).unbind())
     }
 
     fn __length_hint__(&self) -> usize {
-        self.entries.len()
+        self.keys.len()
     }
 }

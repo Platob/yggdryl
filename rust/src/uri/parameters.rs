@@ -237,7 +237,10 @@ impl<'uri> Parameters<'uri> {
     /// Spell these pairs as one query component, or `None` when there is none.
     ///
     /// A decoding view encodes each key and value; a raw view already holds
-    /// the query's own text and joins it unchanged.
+    /// the query's own text and joins it unchanged. A pair is always spelled
+    /// `key=value`, so a query that named a key without `=` comes back with
+    /// one, and an empty pair - the `&&` in `a=1&&b=2` - is not spelled at
+    /// all: both name the same pairs, in the same order, with the same values.
     pub fn into_query(&self) -> Option<SmolStr> {
         if self.pairs.is_empty() {
             return None;
@@ -264,14 +267,23 @@ impl<'uri> Parameters<'uri> {
         if !self.decoded {
             validate_component(key, "uri query key", 0, is_query_fragment_byte)?;
             validate_component(value, "uri query value", 0, is_query_fragment_byte)?;
-            for (text, target) in [(key, "uri query key"), (value, "uri query value")] {
-                if let Some(position) = text.bytes().position(|byte| matches!(byte, b'&' | b'=')) {
-                    return Err(super::parser::parse_error(
-                        target,
-                        position,
-                        "a raw pair must not carry the & or = that separates pairs",
-                    ));
-                }
+            // `&` ends a pair, so neither half may carry one. `=` ends only the
+            // key: a value may hold as many as it likes, because the split
+            // takes the first, which is why `a=b=c` reads back as it was
+            // written and what this view answered can be written back.
+            if let Some(position) = key.bytes().position(|byte| matches!(byte, b'&' | b'=')) {
+                return Err(super::parser::parse_error(
+                    "uri query key",
+                    position,
+                    "a raw key must not carry the & or = that ends it",
+                ));
+            }
+            if let Some(position) = value.bytes().position(|byte| byte == b'&') {
+                return Err(super::parser::parse_error(
+                    "uri query value",
+                    position,
+                    "a raw value must not carry the & that ends its pair",
+                ));
             }
         }
         Ok((key.to_owned(), value.to_owned()))
