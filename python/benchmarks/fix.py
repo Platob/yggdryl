@@ -35,7 +35,7 @@ ORDER = Field(
         [
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
-            SEED_REGISTRY.field_by_name(STANDARD_BRANCH, "NoPartyIDs"),
+            SEED_REGISTRY.field_by_name("NoPartyIDs", STANDARD_BRANCH),
         ]
     ),
     nullable=False,
@@ -49,9 +49,11 @@ MESSAGE = FixMsg(
     },
     SEED_REGISTRY,
 )
-WIDE_FIELDS = 1_000
+WIDE_FIELDS = 200
 VENDOR_BRANCH = "cme"
-VENDOR_FIELDS = 1_000
+VENDOR_FIELDS = 200
+FIXML_LINE = b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|"
+ULLINK_LINE = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
 
 
 def _vendor_registry() -> FixRegistry:
@@ -60,7 +62,7 @@ def _vendor_registry() -> FixRegistry:
     for offset in range(VENDOR_FIELDS):
         tag = 5000 + offset
         field = Field(f"Venue{offset}", "utf8")
-        field.fix.id = f"{VENDOR_BRANCH}:{tag}"
+        field.fix.id = f"{tag}:{VENDOR_BRANCH}"
         field.fix.aliases = [f"VenueAlias{offset}"]
         fields.append(field)
     return FixRegistry.from_fields(fields)
@@ -68,7 +70,7 @@ def _vendor_registry() -> FixRegistry:
 
 TWO_BRANCHES = _vendor_registry()
 TAGGED = Field("TradeID", "utf8")
-TAGGED.fix.id = f"{VENDOR_BRANCH}:5001"
+TAGGED.fix.id = f"5001:{VENDOR_BRANCH}"
 
 
 def _generated(root: pathlib.Path) -> pathlib.Path:
@@ -92,19 +94,19 @@ def _alternate_tag_hit() -> object:
 
 
 def _id_hit() -> object:
-    return SEED_REGISTRY.get_field_by_id("standard:55")
+    return SEED_REGISTRY.get_field_by_id("55:")
 
 
 def _name_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name(STANDARD_BRANCH, "Symbol")
+    return SEED_REGISTRY.get_field_by_name("Symbol", STANDARD_BRANCH)
 
 
 def _folded_name_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name(STANDARD_BRANCH, "symbol")
+    return SEED_REGISTRY.get_field_by_name("symbol", STANDARD_BRANCH)
 
 
 def _alias_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name(STANDARD_BRANCH, "ticker")
+    return SEED_REGISTRY.get_field_by_name("ticker", STANDARD_BRANCH)
 
 
 def _tag_miss() -> object:
@@ -112,11 +114,11 @@ def _tag_miss() -> object:
 
 
 def _name_miss() -> object:
-    return SEED_REGISTRY.get_field_by_name(STANDARD_BRANCH, "Nope")
+    return SEED_REGISTRY.get_field_by_name("Nope", STANDARD_BRANCH)
 
 
 def _id_miss() -> object:
-    return SEED_REGISTRY.get_field_by_id("cme:5001")
+    return SEED_REGISTRY.get_field_by_id("5001:cme")
 
 
 def _generic_tag_hit() -> object:
@@ -124,26 +126,26 @@ def _generic_tag_hit() -> object:
 
 
 def _path_one_segment() -> object:
-    return SEED_REGISTRY.field_by_path(STANDARD_BRANCH, "NoPartyIDs")
+    return SEED_REGISTRY.field_by_path("NoPartyIDs", STANDARD_BRANCH)
 
 
 def _path_two_segments() -> object:
-    return SEED_REGISTRY.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID")
+    return SEED_REGISTRY.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH)
 
 
 def _vendor_id_hit() -> object:
-    return TWO_BRANCHES.get_field_by_id("cme:5001")
+    return TWO_BRANCHES.get_field_by_id("5001:cme")
 
 
 def _vendor_name_hit() -> object:
-    return TWO_BRANCHES.get_field_by_name(VENDOR_BRANCH, "Venue1")
+    return TWO_BRANCHES.get_field_by_name("Venue1", VENDOR_BRANCH)
 
 
 def _vendor_alias_hit() -> object:
-    return TWO_BRANCHES.get_field_by_name(VENDOR_BRANCH, "venuealias1")
+    return TWO_BRANCHES.get_field_by_name("venuealias1", VENDOR_BRANCH)
 
 
-def _cross_branch_miss() -> object:
+def _vendor_tag_hit_inferred() -> object:
     return TWO_BRANCHES.get_field_by_tag(5001)
 
 
@@ -164,7 +166,7 @@ def _message_get_by_tag() -> object:
 
 
 def _message_get_by_id() -> object:
-    return MESSAGE.get_by_id("standard:55")
+    return MESSAGE.get_by_id("55:")
 
 
 def _message_get_by_name() -> object:
@@ -179,8 +181,16 @@ def _message_branch() -> object:
     return MESSAGE.branch
 
 
+def _infer_fixml_protocol() -> object:
+    return SEED_REGISTRY.infer_bytes_protocol(FIXML_LINE)
+
+
+def _infer_ullink_msgtype() -> object:
+    return SEED_REGISTRY.infer_text_msgtype(ULLINK_LINE)
+
+
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
-    samples = timeit.repeat(operation, number=iterations, repeat=7)
+    samples = timeit.repeat(operation, number=iterations, repeat=3)
     median = statistics.median(samples)
     nanoseconds = median * 1_000_000_000 / iterations
     print(f"{name:36} {nanoseconds:14.1f} ns/op")
@@ -188,7 +198,7 @@ def _measure(name: str, operation: Callable[[], object], iterations: int) -> Non
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=10_000)
+    parser.add_argument("--iterations", type=int, default=2_000)
     args = parser.parse_args()
     if args.iterations < 1:
         parser.error("--iterations must be positive")
@@ -212,7 +222,7 @@ def main() -> None:
         _measure("vendor id hit, two branches", _vendor_id_hit, args.iterations)
         _measure("vendor name hit, two branches", _vendor_name_hit, args.iterations)
         _measure("vendor alias hit, two branches", _vendor_alias_hit, args.iterations)
-        _measure("cross-branch tag miss", _cross_branch_miss, args.iterations)
+        _measure("inferred vendor tag hit", _vendor_tag_hit_inferred, args.iterations)
         _measure(
             "standard tag hit, two branches",
             _standard_hit_over_two_branches,
@@ -225,6 +235,8 @@ def main() -> None:
         _measure("message get_by_name", _message_get_by_name, args.iterations)
         _measure("message get_by_path", _message_get_by_path, args.iterations)
         _measure("message branch", _message_branch, args.iterations)
+        _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
+        _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
         loads = max(1, args.iterations // 100)
         _measure(
             "from_handle, the seed",

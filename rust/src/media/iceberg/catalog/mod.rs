@@ -100,7 +100,7 @@ use super::Table;
 use crate::IOBase;
 use crate::holder::Holder;
 use crate::metadata::Metadata;
-use crate::{Error, Result, Scalar};
+use crate::{Error, IOKind, Result, Scalar};
 
 /// The reserved folder every level keeps its own document in.
 ///
@@ -236,7 +236,9 @@ fn classify(folder: Holder) -> Result<Occupant> {
 fn folder_present(folder: &Holder) -> Result<bool> {
     match folder {
         Holder::Folder(folder) => Ok(folder.exists()),
-        Holder::FsFolder(folder) => Ok(folder.exists()),
+        Holder::FsFolder(folder) => {
+            Ok(folder.filesystem().file_info(folder.path())?.kind != IOKind::Unknown)
+        }
         other => match other.ls(false, true).next() {
             None => Ok(false),
             Some(Ok(_)) => Ok(true),
@@ -268,7 +270,7 @@ fn resolve(warehouse: &(impl IOBase + ?Sized), name: &str) -> Result<Holder> {
 /// A backend's `child_by_path` answers with what it believes is there, and
 /// for a location nothing occupies yet that is a leaf-to-be. A catalog knows
 /// better - its names address containers - so the leaf spellings are re-cast
-/// as the same backend's folder, keeping the handle's filesystem and URL.
+/// as the same backend's folder, keeping every bound-location fact.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
         Holder::Folder(_) | Holder::FsFolder(_) => Ok(child),
@@ -284,12 +286,10 @@ fn folder_role(child: Holder) -> Result<Holder> {
             ))),
         },
         Holder::FsPath(path) => Ok(Holder::FsFolder(crate::holder::fs::Folder::new(
-            path.filesystem().clone(),
-            path.url().clone(),
+            path.bound().clone(),
         ))),
         Holder::FsFile(file) => Ok(Holder::FsFolder(crate::holder::fs::Folder::new(
-            file.filesystem().clone(),
-            file.url().clone(),
+            file.bound().clone(),
         ))),
         other => {
             let described = other

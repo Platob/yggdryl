@@ -92,8 +92,10 @@ pin an unsettled design by implementing a binding first.
   facades around a monolith.
 - `Field` alone owns metadata and cache-aware mutation. `DataType` has no
   metadata. Protocol metadata is inert `<scheme>:<property>` text in one map.
-  A protocol view borrows a whole `Field` and dereferences to it, and a foreign
-  protocol's typed vocabulary lives on that view, never on `Field`. `Field`
+  A protocol view borrows a whole `Field` and dereferences to it. Protocol-owned
+  typed vocabulary, including `digest:role`, and generic `identity:` /
+  `partition:` metadata live on those views, never on `Field`. The only
+  digest roles are `holder` and `component`. `Field`
   owns its own state whatever key it is stored under: `field:init`,
   `field:partition`, `alias`, `comment`, `display`, `location`.
   `PARQUET:field_id` is the reserved typed exception.
@@ -127,6 +129,14 @@ pin an unsettled design by implementing a binding first.
   types never appear in a public signature, a doc example, an error, or a
   binding. `stable_hash` is XXH3-64 over that feed everywhere; there is no
   second hash family and no second spelling of this one.
+- Integer digest holders accept signed or unsigned storage at the algorithm's
+  exact width. Signed storage is a bit-preserving view of the unsigned digest;
+  nested holder reuse normalizes it back to that unsigned payload before feed.
+- A row digest reads direct Struct children in declaration order. One or more
+  `digest:role=component` fields are the exact input; with none, every field
+  except `digest:role=holder` is input. Holders never feed themselves back into
+  a recomputation. The selected values retain ordered-sequence framing,
+  including when the selection is empty.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.
@@ -491,6 +501,10 @@ Iceberg contract:
 - `ArrowCast` owns recursive array/batch casting. Struct casts reconcile names,
   reject ambiguous folds, follow target order, fill valid missing fields, and
   preserve exact arrays after logical validation.
+- `Field::cast_arrow_array_bits` is the explicit full-domain `int32`/`uint32`
+  and `int64`/`uint64` representation cast. It shares value buffers unless a
+  required target must fill nulls, preserves every present value's bits, and
+  never changes ordinary numeric cast semantics.
 - Wrapper exposure propagates: hidden child failures/nulls remain hidden.
   Preflight slot and fixed-buffer budgets before allocating.
 - IPC dictionary IDs are transport-local. Preserve native IDs in one reserved

@@ -54,6 +54,7 @@ memmap2 = "0.9"
 # in regex's own tree, so naming it for the line scan costs no extra crate.
 memchr = "2.7"
 regex = "1.11"
+regex-automata = "0.4"
 regex-syntax = "0.8"
 serde = { version = "1.0", features = ["derive", "rc"] }
 saphyr-parser = "=0.0.11"

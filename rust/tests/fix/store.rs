@@ -8,8 +8,8 @@ use std::sync::Arc;
 use yggdryl::IOBase;
 use yggdryl::holder::local::Folder;
 use yggdryl::{
-    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field,
-    into_json_scalar,
+    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, Scalar, Version,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 /// The venue dictionary the branched cases are written against.
@@ -45,9 +45,15 @@ fn seed_root() -> PathBuf {
 
 /// The sorted names under `root/<tree>/<branch>`.
 fn shard_files(root: &Path, tree: &str, branch: &str) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))
+    let folder = if branch.is_empty() {
+        root.join(tree)
+    } else {
+        root.join(tree).join(branch)
+    };
+    let mut names: Vec<String> = std::fs::read_dir(folder)
         .map(|entries| {
             entries
+                .filter(|entry| entry.as_ref().is_ok_and(|entry| entry.path().is_file()))
                 .map(|entry| {
                     entry
                         .expect("a readable entry")
@@ -101,7 +107,7 @@ fn shards_round_trip_through_a_temporary_folder() {
     .unwrap();
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "primitive", "standard"),
+        shard_files(&root, "primitive", ""),
         ["0.json", "1.json", "100.json"]
     );
     // Every field here is a scalar, so no `nested/` tree is written at all.
@@ -119,7 +125,7 @@ fn shards_round_trip_through_a_temporary_folder() {
         assert_eq!(reloaded.field_by_tag(tag).unwrap().name(), name);
         assert_eq!(
             reloaded
-                .field_by_name(&FixBranch::STANDARD, name)
+                .field_by_name(name, Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             name
@@ -133,11 +139,10 @@ fn shards_round_trip_through_a_temporary_folder() {
     registry.insert(exec_type).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "primitive", "standard"),
+        shard_files(&root, "primitive", ""),
         ["0.json", "1.json", "100.json"]
     );
-    let zero =
-        std::fs::read_to_string(root.join("primitive").join("standard").join("0.json")).unwrap();
+    let zero = std::fs::read_to_string(root.join("primitive").join("0.json")).unwrap();
     assert!(!zero.contains("ExecType"), "{zero}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded.field_by_tag(20).unwrap().name(), "ExecType");
@@ -146,29 +151,16 @@ fn shards_round_trip_through_a_temporary_folder() {
     // A removed field's emptied shard disappears on the next write, so a
     // reload cannot resurrect it; a leaf that is not a shard is left alone
     // inside a branch folder.
-    std::fs::write(
-        root.join("primitive").join("standard").join("README.md"),
-        b"notes",
-    )
-    .unwrap();
+    std::fs::write(root.join("primitive").join("README.md"), b"notes").unwrap();
     assert_eq!(registry.remove(10_000).unwrap().name(), "TenThousand");
     registry.write_into(&mut folder).unwrap();
     assert_eq!(
-        shard_files(&root, "primitive", "standard"),
+        shard_files(&root, "primitive", ""),
         ["0.json", "1.json", "README.md"]
     );
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert!(reloaded.get_field_by_tag(10_000).is_none());
     assert_eq!(reloaded, registry);
-
-    // A leaf directly under a tree root is the stale pre-branch layout, and
-    // it is a typed error rather than a folder skipped into an empty load.
-    std::fs::write(root.join("primitive").join("0.json"), b"[]").unwrap();
-    let error = FixRegistry::from_handle(&folder).unwrap_err();
-    let message = error.to_string();
-    assert!(message.contains("only branch folders"), "{message}");
-    assert!(message.contains("the leaf \"0.json\""), "{message}");
-    std::fs::remove_file(root.join("primitive").join("0.json")).unwrap();
 
     // A folder whose name is no branch keeps its typed parse failure and
     // its byte position, with the folder named.
@@ -197,7 +189,7 @@ fn shards_round_trip_through_a_temporary_folder() {
     // holds a dictionary this loader cannot read, so it says so instead of
     // answering an empty one every later lookup would resolve against.
     let stale = root.join("stale");
-    std::fs::create_dir_all(stale.join("records").join("standard")).unwrap();
+    std::fs::create_dir_all(stale.join("records").join("std")).unwrap();
     let error = FixRegistry::from_handle(&Folder::new(&stale).unwrap()).unwrap_err();
     assert!(
         matches!(error, yggdryl::Error::InvalidRecord { .. }),
@@ -218,10 +210,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     registry.write_into(&mut folder).unwrap();
     // Both a component and a repeating group are nested, so the primitive
     // tree is never written at all.
-    assert_eq!(
-        shard_files(&root, "nested", "standard"),
-        ["10.json", "4.json"]
-    );
+    assert_eq!(shard_files(&root, "nested", ""), ["10.json", "4.json"]);
     assert!(!root.join("primitive").exists());
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
@@ -229,7 +218,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     assert_eq!(reloaded.field_by_tag(453).unwrap(), &group);
     assert_eq!(
         reloaded
-            .field_by_name(&FixBranch::STANDARD, "parties")
+            .field_by_name("parties", Some(&FixBranch::STANDARD))
             .unwrap(),
         &group
     );
@@ -243,7 +232,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     ] {
         assert_eq!(
             reloaded
-                .field_by_path(&FixBranch::STANDARD, path)
+                .field_by_path(path, Some(&FixBranch::STANDARD))
                 .unwrap()
                 .as_fix()
                 .tag()
@@ -271,11 +260,8 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
 
     // Each field is written to the tree its datatype names, and the shard
     // arithmetic inside a tree is the one it always was.
-    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
-    assert_eq!(
-        shard_files(&root, "nested", "standard"),
-        ["10.json", "4.json"]
-    );
+    assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
+    assert_eq!(shard_files(&root, "nested", ""), ["10.json", "4.json"]);
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.len(), 4);
@@ -295,16 +281,14 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
         "Symbol"
     );
     registry.write_into(&mut folder).unwrap();
-    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
     assert_eq!(
-        shard_files(&root, "nested", "standard"),
+        shard_files(&root, "nested", ""),
         ["0.json", "10.json", "4.json"]
     );
-    let stale =
-        std::fs::read_to_string(root.join("primitive").join("standard").join("0.json")).unwrap();
+    let stale = std::fs::read_to_string(root.join("primitive").join("0.json")).unwrap();
     assert!(!stale.contains("Symbol"), "{stale}");
-    let moved =
-        std::fs::read_to_string(root.join("nested").join("standard").join("0.json")).unwrap();
+    let moved = std::fs::read_to_string(root.join("nested").join("0.json")).unwrap();
     assert!(moved.contains("Symbol"), "{moved}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
@@ -316,26 +300,14 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
     }
     registry.write_into(&mut folder).unwrap();
     assert!(!root.join("nested").exists());
-    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
-
-    // A leaf directly under either tree root is a typed error naming it,
-    // never a folder skipped into a silently short load.
-    for tree in ["primitive", "nested"] {
-        std::fs::create_dir_all(root.join(tree)).unwrap();
-        std::fs::write(root.join(tree).join("0.json"), b"[]").unwrap();
-        let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
-        assert!(message.contains("only branch folders"), "{tree}: {message}");
-        assert!(message.contains("the leaf \"0.json\""), "{tree}: {message}");
-        assert!(message.contains(tree), "{tree}: {message}");
-        std::fs::remove_file(root.join(tree).join("0.json")).unwrap();
-    }
 
     // The record is authoritative and the tree is layout: a scalar filed
     // under `nested/` names its datatype and the tree it was read from.
-    std::fs::create_dir_all(root.join("nested").join("standard")).unwrap();
+    std::fs::create_dir_all(root.join("nested")).unwrap();
     std::fs::write(
-        root.join("nested").join("standard").join("0.json"),
+        root.join("nested").join("0.json"),
         yggdryl::text::json::into_bytes(&Scalar::from_sequence([tagged("Text", 58).into_value()]))
             .unwrap(),
     )
@@ -353,7 +325,7 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
 #[test]
 fn a_malformed_shard_names_its_location() {
     let root = scratch("malformed");
-    let shards = root.join("primitive").join("standard");
+    let shards = root.join("primitive");
     std::fs::create_dir_all(&shards).unwrap();
     let folder = Folder::new(&root).unwrap();
 
@@ -415,10 +387,7 @@ fn a_malformed_shard_names_its_location() {
     // The record is authoritative and the folder is layout, so a field whose
     // own branch contradicts the folder it sits in names both.
     let mut venue = DataType::Utf8.nullable_field("TradeID");
-    venue
-        .as_fix_mut()
-        .set_id(&FixId::from_parts(cme(), 5001).unwrap())
-        .unwrap();
+    venue.as_fix_mut().set_id(&cme(), 5001).unwrap();
     let elsewhere = Scalar::from_sequence([venue.clone().into_value()]);
     std::fs::create_dir_all(root.join("primitive").join("cme")).unwrap();
     std::fs::remove_file(shards.join("0.json")).unwrap();
@@ -434,13 +403,13 @@ fn a_malformed_shard_names_its_location() {
     );
     std::fs::remove_file(root.join("primitive").join("cme").join("0.json")).unwrap();
     std::fs::write(
-        root.join("primitive").join("standard").join("50.json"),
+        root.join("primitive").join("50.json"),
         yggdryl::text::json::into_bytes(&elsewhere).unwrap(),
     )
     .unwrap();
     let message = FixRegistry::from_handle(&folder).unwrap_err().to_string();
     assert!(
-        message.contains("the branch \"standard\" its folder names"),
+        message.contains("the branch \"\" its folder names"),
         "{message}"
     );
     assert!(message.contains("\"cme\""), "{message}");
@@ -456,22 +425,16 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
     let cme = cme();
 
     let mut trade = DataType::Utf8.nullable_field("TradeID");
-    trade
-        .as_fix_mut()
-        .set_id(&FixId::from_parts(cme.clone(), 5001).unwrap())
-        .unwrap();
+    trade.as_fix_mut().set_id(&cme, 5001).unwrap();
     let mut venue = DataType::Utf8.nullable_field("VenueID");
-    venue
-        .as_fix_mut()
-        .set_id(&FixId::from_parts(cme.clone(), 9000).unwrap())
-        .unwrap();
+    venue.as_fix_mut().set_id(&cme, 9000).unwrap();
     let mut registry =
         FixRegistry::from_fields([tagged("Symbol", 55), trade.clone(), venue.clone()]).unwrap();
     registry.write_into(&mut folder).unwrap();
 
     // Each branch owns its own shard arithmetic: 5001 is shard 50 and
-    // 9000 is shard 90 inside `cme`, and 55 is shard 0 inside `standard`.
-    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    // 9000 is shard 90 inside `cme`, and 55 is shard 0 inside `std`.
+    assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
     assert_eq!(
         shard_files(&root, "primitive", "cme"),
         ["50.json", "90.json"]
@@ -483,21 +446,24 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
     assert_eq!(reloaded.field_by_tag(55).unwrap().name(), "Symbol");
     assert_eq!(
         reloaded
-            .field_by_id(&FixId::from_parts(cme.clone(), 5001).unwrap())
+            .field_by_id(FixId::from_parts(&cme, 5001).unwrap())
             .unwrap(),
         &trade
     );
     assert_eq!(
-        reloaded.field_by_name(&cme, "venueid").unwrap().name(),
+        reloaded
+            .field_by_name("venueid", Some(&cme))
+            .unwrap()
+            .name(),
         "VenueID"
     );
-    assert!(reloaded.get_field_by_tag(5001).is_none());
+    assert_eq!(reloaded.get_field_by_tag(5001), Some(&trade));
 
     // Dropping every field of one branch removes its folder whole, so a
     // reload cannot resurrect it.
     assert_eq!(
         registry
-            .remove(&FixId::from_parts(cme.clone(), 5001).unwrap())
+            .remove(FixId::from_parts(&cme, 5001).unwrap())
             .unwrap()
             .name(),
         "TradeID"
@@ -506,19 +472,74 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
     assert_eq!(shard_files(&root, "primitive", "cme"), ["90.json"]);
     assert_eq!(
         registry
-            .remove(&FixId::from_parts(cme, 9000).unwrap())
+            .remove(FixId::from_parts(&cme, 9000).unwrap())
             .unwrap()
             .name(),
         "VenueID"
     );
     registry.write_into(&mut folder).unwrap();
     assert!(!root.join("primitive").join("cme").exists());
-    assert_eq!(shard_files(&root, "primitive", "standard"), ["0.json"]);
+    assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.len(), 1);
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_branch_manifest_is_optional_canonical_and_session_aware() {
+    let root = scratch("branch-manifest");
+    let mut folder = Folder::new(&root).unwrap();
+    let cme = cme();
+    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    trade.as_fix_mut().set_id(&cme, 5001).unwrap();
+    let mut registry = FixRegistry::from_fields([tagged("MsgType", 35), trade]).unwrap();
+    let branch =
+        FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap(), "CME", "BANKX").unwrap();
+    registry.set_branch(branch.clone()).unwrap();
+    registry.write_into(&mut folder).unwrap();
+
+    let first = std::fs::read(root.join("branches.json")).unwrap();
+    let text = std::str::from_utf8(&first).unwrap();
+    assert!(text.contains("\"name\": \"cme\""), "{text}");
+    assert!(text.contains("\"version\": \"4.4\""), "{text}");
+    assert!(text.contains("\"targetcompid\": \"CME\""), "{text}");
+    assert!(text.contains("\"sendercompid\": \"BANKX\""), "{text}");
+    let reloaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(reloaded.branch_named("CME"), Some(&branch));
+    assert_eq!(reloaded.branch_for_session("bankx", "cme"), Some(&branch));
+    assert!(reloaded.branch_for_session("cme", "bankx").is_none());
+
+    let copy = scratch("branch-manifest-copy");
+    let mut target = Folder::new(&copy).unwrap();
+    reloaded.write_into(&mut target).unwrap();
+    assert_eq!(std::fs::read(copy.join("branches.json")).unwrap(), first);
+
+    // A pre-manifest dictionary loads with one bare record per branch.
+    std::fs::remove_file(root.join("branches.json")).unwrap();
+    let bare = FixRegistry::from_handle(&folder).unwrap();
+    let bare_cme = bare.branch_named("cme").unwrap();
+    assert_eq!(bare_cme, &cme);
+    assert_eq!(bare_cme.version(), Version::default());
+    assert_eq!(bare_cme.sender_comp_id(), "");
+    assert_eq!(bare_cme.target_comp_id(), "");
+    assert!(bare.branch_for_session("BANKX", "CME").is_none());
+
+    // A manifest cannot invent a branch with no field definitions.
+    std::fs::write(root.join("branches.json"), br#"[{"name":"orphan"}]"#).unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            yggdryl::Error::InvalidRecord { path, reason }
+                if path == "orphan" && reason.contains("no field")
+        ),
+        "{error}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&copy);
 }
 
 #[test]
@@ -532,35 +553,35 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "msgtype")
+            .field_by_name("msgtype", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "MsgType"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "TICKER")
+            .field_by_name("TICKER", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Symbol"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "ClientOrderID")
+            .field_by_name("ClientOrderID", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "ClOrdID"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "qty")
+            .field_by_name("qty", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "OrderQty"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "px")
+            .field_by_name("px", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Price"
@@ -568,7 +589,7 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     assert_eq!(registry.field_by_tag(20).unwrap().name(), "ExecType");
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs.PartyID")
+            .field_by_path("NoPartyIDs.PartyID", Some(&FixBranch::STANDARD))
             .unwrap()
             .as_fix()
             .tag()
@@ -613,13 +634,11 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
         entries,
         [
             "nested",
-            "nested/standard",
-            "nested/standard/4.json",
+            "nested/4.json",
             "primitive",
-            "primitive/standard",
-            "primitive/standard/0.json",
-            "primitive/standard/1.json",
-            "primitive/standard/4.json"
+            "primitive/0.json",
+            "primitive/1.json",
+            "primitive/4.json"
         ]
     );
 
@@ -628,23 +647,46 @@ fn the_tracked_seed_loads_and_is_exactly_what_the_store_emits() {
     let mut target = Folder::new(&copy).unwrap();
     registry.write_into(&mut target).unwrap();
     assert_eq!(
-        shard_files(&copy, "primitive", "standard"),
+        shard_files(&copy, "primitive", ""),
         ["0.json", "1.json", "4.json"]
     );
-    assert_eq!(shard_files(&copy, "nested", "standard"), ["4.json"]);
+    assert_eq!(shard_files(&copy, "nested", ""), ["4.json"]);
     for (tree, name) in [
         ("primitive", "0.json"),
         ("primitive", "1.json"),
         ("primitive", "4.json"),
         ("nested", "4.json"),
     ] {
-        let tracked = std::fs::read(root.join(tree).join("standard").join(name)).unwrap();
-        let emitted = std::fs::read(copy.join(tree).join("standard").join(name)).unwrap();
+        let tracked = std::fs::read(root.join(tree).join(name)).unwrap();
+        let emitted = std::fs::read(copy.join(tree).join(name)).unwrap();
         // The checkout may carry CRLF; the emitted document never does.
-        let tracked: Vec<u8> = tracked.into_iter().filter(|byte| *byte != b'\r').collect();
+        let mut tracked: Vec<u8> = tracked.into_iter().filter(|byte| *byte != b'\r').collect();
+        if tracked.last() == Some(&b'\n') {
+            tracked.pop();
+        }
         assert_eq!(
             tracked, emitted,
             "{tree}/{name} differs from what the store emits"
+        );
+    }
+    assert!(!root.join("branches.json").exists());
+    assert!(!copy.join("branches.json").exists());
+
+    for entry in folder.ls(true, true) {
+        let entry = entry.unwrap();
+        if !entry.is_atomic() || entry.url().and_then(|url| url.extension()) != Some("json") {
+            continue;
+        }
+        let text = String::from_utf8(entry.read_all_bytes().unwrap()).unwrap();
+        assert!(
+            !text.contains("\"fix:id\""),
+            "{} stores a FixId",
+            entry.url().unwrap()
+        );
+        assert!(
+            !text.contains("standard:"),
+            "{} stores a FixId",
+            entry.url().unwrap()
         );
     }
     let _ = std::fs::remove_dir_all(&copy);

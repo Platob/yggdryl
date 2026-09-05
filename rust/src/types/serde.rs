@@ -117,6 +117,7 @@ enum DataTypeRef<'a> {
     Mic {},
     Cfi {},
     Uuid {},
+    Version {},
     List {
         field: &'a Field,
     },
@@ -243,6 +244,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Mic => Self::Mic {},
             D::Cfi => Self::Cfi {},
             D::Uuid => Self::Uuid {},
+            D::Version => Self::Version {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -357,6 +359,7 @@ enum DataTypeValue {
     Mic {},
     Cfi {},
     Uuid {},
+    Version {},
     List {
         field: Field,
     },
@@ -467,6 +470,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Mic {} => Self::Mic,
             DataTypeValue::Cfi {} => Self::Cfi,
             DataTypeValue::Uuid {} => Self::Uuid,
+            DataTypeValue::Version {} => Self::Version,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -593,6 +597,7 @@ impl DataType {
             D::Mic => tag("mic"),
             D::Cfi => tag("cfi"),
             D::Uuid => tag("uuid"),
+            D::Version => tag("version"),
             D::DateTime64 { unit, timezone } => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -827,6 +832,7 @@ impl DataType {
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
             "uuid" => Self::Uuid,
+            "version" => Self::Version,
             "datetime64" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

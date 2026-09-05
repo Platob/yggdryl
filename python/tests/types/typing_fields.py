@@ -17,7 +17,7 @@ from yggdryl import (
     scalar,
 )
 from yggdryl.text import json, toml, yaml
-from yggdryl.types import CurrencyField, StructField
+from yggdryl.types import CurrencyField, StructField, VersionField
 
 
 @scalar(frozen=True, slots=True)
@@ -61,6 +61,8 @@ dynamic_class: type[object] = imported.into_dataclass(
 )
 currency: CurrencyField = types.currency("currency", nullable=False)
 currency_code: str | None = currency.default_pyvalue()
+version: VersionField = types.version("version", nullable=False)
+version_code: str | None = version.default_pyvalue()
 
 
 assert payload["order_id"] == 42
@@ -70,3 +72,4 @@ assert optional.nullable
 assert from_yaml == from_toml == from_json == order
 assert dynamic_class.field() is imported  # type: ignore[attr-defined]
 assert currency_code == ""
+assert version_code == "0"

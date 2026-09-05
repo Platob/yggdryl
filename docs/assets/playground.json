@@ -4,7 +4,7 @@
     {
       "dtype": "ascii",
       "asciiWidth": null,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "Binary",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -13,7 +13,7 @@
     {
       "dtype": "ascii(2)",
       "asciiWidth": 2,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[2]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -22,7 +22,7 @@
     {
       "dtype": "ascii(3)",
       "asciiWidth": 3,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[3]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -31,7 +31,7 @@
     {
       "dtype": "ascii(4)",
       "asciiWidth": 4,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[4]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -40,7 +40,7 @@
     {
       "dtype": "ascii(8)",
       "asciiWidth": 8,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[8]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -49,7 +49,7 @@
     {
       "dtype": "ascii(12)",
       "asciiWidth": 12,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[12]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -58,7 +58,7 @@
     {
       "dtype": "ascii(16)",
       "asciiWidth": 16,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[16]",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
@@ -67,7 +67,7 @@
     {
       "dtype": "country",
       "asciiWidth": 2,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[2]",
       "extensionName": "yggdryl.country",
       "extensionDocument": "",
@@ -76,7 +76,7 @@
     {
       "dtype": "currency",
       "asciiWidth": 3,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[3]",
       "extensionName": "yggdryl.currency",
       "extensionDocument": "",
@@ -85,7 +85,7 @@
     {
       "dtype": "mic",
       "asciiWidth": 4,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[4]",
       "extensionName": "yggdryl.mic",
       "extensionDocument": "",
@@ -94,7 +94,7 @@
     {
       "dtype": "cfi",
       "asciiWidth": 6,
-      "kind": "string",
+      "kind": "ascii",
       "arrow": "FixedSizeBinary[6]",
       "extensionName": "yggdryl.cfi",
       "extensionDocument": "",

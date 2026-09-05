@@ -82,6 +82,8 @@ VARIANT_MEMBERS = (
     Field("text", "utf8", nullable=False),
 )
 PRECISE_PRICE = pa.decimal128(18, 4)
+BIT_CAST_SOURCE = pa.array([2**64 - 1], type=pa.uint64())
+BIT_CAST_FIELD = Field("digest", "int64", nullable=False)
 
 
 @scalar(frozen=True, slots=True)
@@ -227,6 +229,10 @@ def _spark_compatibility() -> DataType:
     return DEFAULT_STRUCT.into_scheme_compat("spark")
 
 
+def _cast_arrow_array_bits() -> object:
+    return BIT_CAST_FIELD.cast_arrow_array_bits(BIT_CAST_SOURCE)
+
+
 # The protocol cases measure the boundary the live view adds: creating one is a
 # scheme clone plus a reference to the field, and each read then crosses into
 # the core exactly as ``get_property`` does, with the key assembled by the view
@@ -368,6 +374,7 @@ def main() -> None:
             max(1, args.iterations // 100),
         )
         _measure("default Arrow scalar", _default_arrow_scalar, args.iterations)
+        _measure("Arrow integer bit cast", _cast_arrow_array_bits, args.iterations)
         _measure("Spark compatibility", _spark_compatibility, args.iterations)
         _measure("protocol view creation", _create_protocol_view, args.iterations)
         _measure("protocol view read", _read_through_protocol_view, args.iterations)

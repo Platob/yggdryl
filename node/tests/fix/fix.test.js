@@ -16,7 +16,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, IOBase, Scalar, Url, fields, fix } = require('yggdryl')
+const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
@@ -30,7 +30,7 @@ function seed() {
 
 function fixField(name, dtype, tag, { branch = fix.STANDARD_BRANCH, tags, aliases, description } = {}) {
   const field = Field.from(`${name}: ${dtype}`)
-  field.fix.id = `${branch}:${tag}`
+  field.fix.id = `${tag}:${branch}`
   if (tags) field.fix.tags = tags
   if (aliases) field.fix.aliases = aliases
   if (description !== undefined) field.fix.description = description
@@ -94,7 +94,7 @@ test('the typed vocabulary answers only on the fix view', () => {
       view.branch = 'cme'
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
-      view.id = 'cme:5001'
+      view.id = '5001:cme'
     }, { name: 'TypeError', message: new RegExp(scheme) })
   }
   // The Map-like surface still works on every view, this one included.
@@ -134,51 +134,51 @@ test('the branch and the identifier round trip as text', () => {
   // An absent property is the standard branch, and there is no identity
   // without a tag.
   assert.equal(trade.fix.branch, fix.STANDARD_BRANCH)
-  assert.equal(fix.STANDARD_BRANCH, 'standard')
+  assert.equal(fix.STANDARD_BRANCH, '')
   assert.equal(trade.fix.id, null)
   assert.equal(trade.has('fix:branch'), false)
 
-  trade.fix.id = 'CME:5001'
-  assert.equal(trade.fix.id, 'cme:5001', 'ASCII case folded once, on the way in')
+  trade.fix.id = '5001:CME'
+  assert.equal(trade.fix.id, '5001:cme', 'ASCII case folded once, on the way in')
   assert.equal(trade.fix.branch, 'cme')
   assert.equal(trade.get('fix:branch'), 'cme')
   assert.equal(trade.fix.tag, 5001)
 
   // Setting the standard branch removes the key rather than storing it.
-  trade.fix.branch = 'STANDARD'
-  assert.equal(trade.fix.branch, 'standard')
+  trade.fix.branch = ''
+  assert.equal(trade.fix.branch, '')
   assert.equal(trade.has('fix:branch'), false)
-  assert.equal(trade.fix.id, 'standard:5001')
+  assert.equal(trade.fix.id, '5001:')
 
   // Assigning an identifier moves both halves at once, in either direction.
-  trade.fix.id = 'cme:5002'
-  assert.equal(trade.fix.id, 'cme:5002')
-  trade.fix.id = 'standard:35'
-  assert.equal(trade.fix.id, 'standard:35')
+  trade.fix.id = '5002:cme'
+  assert.equal(trade.fix.id, '5002:cme')
+  trade.fix.id = '35:'
+  assert.equal(trade.fix.id, '35:')
   assert.equal(trade.has('fix:branch'), false)
 
   // The branch alone still moves a field whose tags allow it.
   const vendor = Field.from('VendorID: utf8')
   vendor.fix.tag = 9001
   vendor.fix.branch = 'cme'
-  assert.equal(vendor.fix.id, 'cme:9001')
+  assert.equal(vendor.fix.id, '9001:cme')
 })
 
 test('a malformed branch or identifier is the native parse failure', () => {
   const field = Field.from('TradeID: utf8')
 
-  for (const bad of ['2cme', '', 'cme:x', 'c,me', 'a'.repeat(24)]) {
+  for (const bad of ['2cme', 'cme:x', 'c,me', 'a'.repeat(24)]) {
     assert.throws(() => {
       field.fix.branch = bad
     }, /fix branch/)
   }
-  for (const bad of ['5001', 'cme:', 'cme:+5001', 'cme:-1', ':5001', 'cme:5001x']) {
+  for (const bad of ['5001', '+5001:cme', '-1:cme', ':cme', '5001:2cme']) {
     assert.throws(() => {
       field.fix.id = bad
     }, /fix identifier|fix branch/)
   }
   // Nothing was written by any refusal.
-  assert.equal(field.fix.branch, 'standard')
+  assert.equal(field.fix.branch, '')
   assert.equal(field.fix.id, null)
 
   // A branch and an identifier are text, never a number.
@@ -191,26 +191,27 @@ test('a malformed branch or identifier is the native parse failure', () => {
 })
 
 test('a specification tag forces the standard branch at every door', () => {
-  assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
+  assert.equal(fix.USER_TAG_MIN, 5000)
+  assert.equal(fix.USER_TAG_MAX, 40_000)
 
   // A canonical tag: another branch may not claim it.
   const vendor = Field.from('TradeID: utf8')
-  vendor.fix.id = 'cme:5001'
+  vendor.fix.id = '5001:cme'
   assert.throws(() => {
     vendor.fix.tag = 35
   }, /fix:branch/)
-  assert.equal(vendor.fix.id, 'cme:5001')
+  assert.equal(vendor.fix.id, '5001:cme')
   assert.throws(() => {
-    vendor.fix.id = 'cme:35'
+    vendor.fix.id = '35:cme'
   }, /fix:branch/)
-  assert.equal(vendor.fix.id, 'cme:5001')
+  assert.equal(vendor.fix.id, '5001:cme')
 
   // An alternate tag resolves with the same power, so it obeys the same rule.
   assert.throws(() => {
     vendor.fix.tags = [35]
   }, /fix:branch/)
   assert.deepEqual(vendor.fix.tags, [])
-  assert.equal(vendor.fix.id, 'cme:5001')
+  assert.equal(vendor.fix.id, '5001:cme')
 
   // A branch change is refused against the tags the field already holds.
   const msgType = Field.from('MsgType: utf8')
@@ -218,8 +219,8 @@ test('a specification tag forces the standard branch at every door', () => {
   assert.throws(() => {
     msgType.fix.branch = 'cme'
   }, /fix:branch/)
-  assert.equal(msgType.fix.branch, 'standard')
-  assert.equal(msgType.fix.id, 'standard:35')
+  assert.equal(msgType.fix.branch, '')
+  assert.equal(msgType.fix.id, '35:')
 
   const alternates = Field.from('Wide: utf8')
   alternates.fix.tag = 9001
@@ -227,12 +228,24 @@ test('a specification tag forces the standard branch at every door', () => {
   assert.throws(() => {
     alternates.fix.branch = 'cme'
   }, /fix:branch/)
-  assert.equal(alternates.fix.branch, 'standard')
+  assert.equal(alternates.fix.branch, '')
 
   // The rule is one-way: the standard branch holds any tag.
   const high = Field.from('Vendorish: utf8')
   high.fix.tag = 10_000
-  assert.equal(high.fix.id, 'standard:10000')
+  assert.equal(high.fix.id, '10000:')
+
+  for (const admitted of [fix.USER_TAG_MIN, fix.USER_TAG_MAX - 1]) {
+    const field = Field.from('Venue: utf8')
+    field.fix.id = `${admitted}:cme`
+    assert.equal(field.fix.tag, admitted)
+  }
+  for (const refused of [fix.USER_TAG_MIN - 1, fix.USER_TAG_MAX]) {
+    const field = Field.from('Venue: utf8')
+    assert.throws(() => {
+      field.fix.id = `${refused}:cme`
+    }, /5000.*40000/)
+  }
 })
 
 test('the registry resolves every key the way the core does', () => {
@@ -241,21 +254,21 @@ test('the registry resolves every key the way the core does', () => {
 
   assert.equal(registry.fieldByTag(55).name, 'Symbol')
   assert.equal(registry.getFieldByTag(55).name, 'Symbol')
-  assert.equal(registry.fieldById('standard:55').name, 'Symbol')
-  assert.ok(registry.getFieldById('standard:55').equals(registry.fieldByTag(55)))
+  assert.equal(registry.fieldById('55:').name, 'Symbol')
+  assert.ok(registry.getFieldById('55:').equals(registry.fieldByTag(55)))
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
   assert.equal(registry.fieldByTag(20).name, 'ExecType')
   assert.equal(registry.fieldByTag(150).name, 'ExecType')
-  assert.equal(registry.fieldById('standard:20').name, 'ExecType')
+  assert.equal(registry.fieldById('20:').name, 'ExecType')
   // A name answers the canonical spelling whatever case it was asked in.
-  assert.equal(registry.fieldByName('standard', 'symbol').name, 'Symbol')
-  assert.equal(registry.fieldByName(fix.STANDARD_BRANCH, 'SYMBOL').name, 'Symbol')
-  assert.equal(registry.fieldByName('standard', 'ticker').name, 'Symbol')
-  assert.equal(registry.fieldByName('standard', 'clientorderid').name, 'ClOrdID')
+  assert.equal(registry.fieldByName('symbol', '').name, 'Symbol')
+  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'Symbol')
+  assert.equal(registry.fieldByName('ticker', '').name, 'Symbol')
+  assert.equal(registry.fieldByName('clientorderid', '').name, 'ClOrdID')
   // A path reaches a repeating group and one of its members.
-  assert.equal(registry.fieldByPath('standard', 'NoPartyIDs').fix.tag, 453)
-  assert.equal(registry.fieldByPath('standard', 'NoPartyIDs.PartyID').fix.tag, 448)
-  assert.equal(registry.fieldByPath('standard', 'nopartyids.item.PartyRole').name, 'PartyRole')
+  assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
+  assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', '').fix.tag, 448)
+  assert.equal(registry.fieldByPath('nopartyids.item.PartyRole', '').name, 'PartyRole')
 
   // The generic pair answers exactly what the specialized one does.
   for (const key of [55, 'Symbol', 'ticker', 'NoPartyIDs.PartyID', 20]) {
@@ -268,11 +281,37 @@ test('the registry resolves every key the way the core does', () => {
   assert.equal(registry.has('Nope'), false)
   assert.equal(registry.getField(9999), null)
   assert.equal(registry.get('Nope'), null)
-  assert.equal(registry.getFieldByPath('standard', 'Symbol.absent'), null)
+  assert.equal(registry.getFieldByPath('Symbol.absent', ''), null)
   assert.equal(registry.has('55'), false, 'a tag query never consults names')
 })
 
-test('no lookup ever crosses a branch', () => {
+test('protocol and MsgType inference stays native and shallow', () => {
+  const registry = seed()
+  const cases = [
+    ['prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix', MimeType.FIX, 'D'],
+    ['ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL', MimeType.ULLINK, '8'],
+    ['8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|', MimeType.FIXUL, 'UDF'],
+    [
+      '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|',
+      MimeType.FIXUL,
+      'D',
+    ],
+    ['level=INFO message=random', MimeType.OCTET_STREAM, null],
+  ]
+  for (const [line, protocol, msgtype] of cases) {
+    assert.ok(registry.inferBytesProtocol(Buffer.from(line)).equals(protocol))
+    assert.ok(registry.inferTextProtocol(line).equals(protocol))
+    const bytes = registry.inferBytesMsgtype(Buffer.from(line))
+    assert.equal(bytes?.toString() ?? null, msgtype)
+    assert.equal(registry.inferTextMsgtype(line), msgtype)
+  }
+
+  const empty = new fix.FixRegistry()
+  assert.equal(empty.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
+  assert.equal(empty.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+})
+
+test('an explicit branch pins lookup and omission infers the best match', () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
     // The venue dictionary reuses the name, which is the normal case.
@@ -281,27 +320,26 @@ test('no lookup ever crosses a branch', () => {
   ])
 
   // A name is unique per branch, not registry-wide.
-  assert.equal(registry.fieldByName('standard', 'symbol').fix.id, 'standard:55')
-  assert.equal(registry.fieldByName('cme', 'SYMBOL').fix.id, 'cme:5055')
-  assert.equal(registry.fieldByName('CME', 'venueticker').name, 'Symbol')
-  assert.equal(registry.getFieldByName('standard', 'venueticker'), null)
-  assert.equal(registry.getFieldByName('cme', 'ticker'), null)
-  assert.equal(registry.getFieldByPath('cme', 'Symbol').fix.id, 'cme:5055')
+  assert.equal(registry.fieldByName('symbol', '').fix.id, '55:')
+  assert.equal(registry.fieldByName('SYMBOL', 'cme').fix.id, '5055:cme')
+  assert.equal(registry.fieldByName('venueticker', 'CME').name, 'Symbol')
+  assert.equal(registry.getFieldByName('venueticker', ''), null)
+  assert.equal(registry.getFieldByName('ticker', 'cme'), null)
+  assert.equal(registry.getFieldByPath('Symbol', 'cme').fix.id, '5055:cme')
 
-  // A bare tag is the standard branch exactly, never whichever dictionary
-  // happens to be loaded.
-  assert.equal(registry.getFieldByTag(5055), null)
-  assert.equal(registry.getFieldByTag(5001), null)
-  assert.equal(registry.has(5055), false)
-  assert.equal(registry.fieldById('cme:5055').fix.id, 'cme:5055')
+  // A bare tag uses the same deterministic best-match order.
+  assert.equal(registry.getFieldByTag(5055).fix.id, '5055:cme')
+  assert.equal(registry.getFieldByTag(5001).fix.id, '5001:cme')
+  assert.equal(registry.has(5055), true)
+  assert.equal(registry.fieldById('5055:cme').fix.id, '5055:cme')
 
-  // A bare name is the standard branch too, and a colon-bearing string is a
-  // name, never an identifier.
-  assert.equal(registry.getField('symbol').fix.id, 'standard:55')
-  assert.equal(registry.getField('cme:5055'), null)
-  assert.equal(registry.has('cme:5055'), false)
-  assert.equal(registry.get('cme:5001'), null)
-  assert.equal(registry.remove('cme:5055'), null)
+  // A standard canonical name wins; a colon-bearing string is a name, never
+  // an identifier.
+  assert.equal(registry.getField('symbol').fix.id, '55:')
+  assert.equal(registry.getField('5055:cme'), null)
+  assert.equal(registry.has('5055:cme'), false)
+  assert.equal(registry.get('5001:cme'), null)
+  assert.equal(registry.remove('5055:cme'), null)
   assert.equal(registry.size, 3)
 })
 
@@ -317,21 +355,21 @@ test('removeById is how a vendor field leaves the dictionary', () => {
   assert.equal(registry.remove(5001), null)
   assert.equal(registry.size, 3)
 
-  const removed = registry.removeById('CME:5001')
+  const removed = registry.removeById('5001:CME')
   assert.equal(removed.name, 'TradeID')
   assert.equal(registry.size, 2)
-  assert.equal(registry.getFieldById('cme:5001'), null)
-  assert.equal(registry.getFieldByName('cme', 'venuetrade'), null)
+  assert.equal(registry.getFieldById('5001:cme'), null)
+  assert.equal(registry.getFieldByName('venuetrade', 'cme'), null)
   // A field that is not there answers null rather than throwing.
-  assert.equal(registry.removeById('cme:5001'), null)
-  assert.equal(registry.removeById('standard:9999'), null)
+  assert.equal(registry.removeById('5001:cme'), null)
+  assert.equal(registry.removeById('9999:'), null)
   // And the standard branch is reached by identifier just as well.
-  assert.equal(registry.removeById('standard:55').name, 'Symbol')
+  assert.equal(registry.removeById('55:').name, 'Symbol')
   assert.equal(registry.size, 1)
 
   // A malformed identifier is the native parse failure, never a miss.
   assert.throws(() => registry.removeById('5002'), /fix identifier/)
-  assert.throws(() => registry.removeById('cme:35'), /fix:branch/)
+  assert.throws(() => registry.removeById('35:cme'), /fix:branch/)
   assert.throws(() => registry.removeById(5002), /into rust type `String`/)
   assert.equal(registry.size, 1)
 })
@@ -344,14 +382,14 @@ test('absence throws with the core message, its get twin answers null', () => {
     /^Error: expected a fix field at "tag 9999", got nothing$/,
   )
   assert.throws(
-    () => registry.fieldById('cme:5001'),
-    /^Error: expected a fix field at "identifier cme:5001", got nothing$/,
+    () => registry.fieldById('5001:cme'),
+    /^Error: expected a fix field at "identifier 5001:cme", got nothing$/,
   )
-  assert.throws(() => registry.fieldByName('standard', 'Nope'), /name \\"Nope\\"/)
-  assert.throws(() => registry.fieldByPath('standard', 'Symbol.absent'), /path \\"Symbol.absent\\"/)
+  assert.throws(() => registry.fieldByName('Nope', ''), /name \\"Nope\\"/)
+  assert.throws(() => registry.fieldByPath('Symbol.absent', ''), /path \\"Symbol.absent\\"/)
   assert.throws(() => registry.field(9999), /tag 9999/)
-  assert.equal(registry.getFieldByName('standard', 'Nope'), null)
-  assert.equal(registry.getFieldById('cme:5001'), null)
+  assert.equal(registry.getFieldByName('Nope', ''), null)
+  assert.equal(registry.getFieldById('5001:cme'), null)
 })
 
 test('a key is a number tag or a string name, and nothing else', () => {
@@ -376,18 +414,18 @@ test('a key is a number tag or a string name, and nothing else', () => {
     })
   }
   // The specialized halves take exactly one shape, checked by Node-API.
-  assert.throws(() => registry.fieldByName('standard', 55), /into rust type `String`/)
+  assert.throws(() => registry.fieldByName('std', 55), /into rust type `String`/)
   assert.throws(() => registry.fieldByTag('55'), /into rust type `f64`/)
 })
 
 test('every branch and identifier argument is coerced at the boundary', () => {
   const registry = seed()
 
-  for (const bad of ['2cme', '', 'c:me']) {
-    assert.throws(() => registry.fieldByName(bad, 'Symbol'), /fix branch/)
-    assert.throws(() => registry.getFieldByName(bad, 'Symbol'), /fix branch/)
-    assert.throws(() => registry.fieldByPath(bad, 'Symbol'), /fix branch/)
-    assert.throws(() => registry.getFieldByPath(bad, 'Symbol'), /fix branch/)
+  for (const bad of ['2cme', 'c:me']) {
+    assert.throws(() => registry.fieldByName('Symbol', bad), /fix branch/)
+    assert.throws(() => registry.getFieldByName('Symbol', bad), /fix branch/)
+    assert.throws(() => registry.fieldByPath('Symbol', bad), /fix branch/)
+    assert.throws(() => registry.getFieldByPath('Symbol', bad), /fix branch/)
   }
   for (const bad of ['55', 'cme:', 'cme:x']) {
     assert.throws(() => registry.fieldById(bad), /fix identifier/)
@@ -395,12 +433,12 @@ test('every branch and identifier argument is coerced at the boundary', () => {
     assert.throws(() => registry.removeById(bad), /fix identifier/)
   }
   // The standard-tag rule reaches the boundary through that same parse.
-  assert.throws(() => registry.fieldById('cme:35'), /fix:branch/)
+  assert.throws(() => registry.fieldById('35:cme'), /fix:branch/)
 
   for (const wrong of [55, null, 3.5]) {
     assert.throws(() => registry.fieldById(wrong), /into rust type `String`/)
-    assert.throws(() => registry.getFieldByName(wrong, 'Symbol'), /into rust type `String`/)
-    assert.throws(() => registry.fieldByPath('standard', wrong), /into rust type `String`/)
+    assert.throws(() => registry.getFieldByName('Symbol', wrong), /into rust type `String`/)
+    assert.throws(() => registry.fieldByPath('std', wrong), /into rust type `String`/)
   }
 })
 
@@ -411,12 +449,14 @@ test('the registry iterates lazily in ascending identifier order', () => {
     fixField('Price', 'decimal128(20, 8)', 44),
     fixField('VenueQty', 'int64', 5002, { branch: 'cme' }),
     fixField('Account', 'utf8', 1),
+    fixField('Tail', 'utf8', 9001),
   ])
 
-  // Branch-major, then by tag - the order the core iterates and stores in.
+  // Tag-major, then by branch digest - the packed identifier's order. The
+  // vendor fields therefore precede the later standard tag.
   assert.deepEqual(
     [...registry].map((field) => field.fix.id),
-    ['cme:5001', 'cme:5002', 'standard:1', 'standard:44', 'standard:55'],
+    ['1:', '44:', '55:', '5001:cme', '5002:cme', '9001:'],
   )
   assert.deepEqual(
     [...registry.keys()].map((field) => field.fix.id),
@@ -426,15 +466,15 @@ test('the registry iterates lazily in ascending identifier order', () => {
   // An unfinished walk shares the registry, so a mutation refuses until the
   // walk ends - by exhaustion or by the `return` a `break` sends.
   const walk = registry.keys()
-  assert.equal(walk.next().value.name, 'TradeID')
-  assert.equal(walk.next().value.name, 'VenueQty')
+  assert.equal(walk.next().value.name, 'Account')
+  assert.equal(walk.next().value.name, 'Price')
   assert.throws(() => registry.remove(1), /shared with a message/)
-  assert.throws(() => registry.removeById('cme:5001'), /shared with a message/)
+  assert.throws(() => registry.removeById('5001:cme'), /shared with a message/)
   walk.return()
   assert.equal(registry.remove(1).name, 'Account')
   assert.deepEqual(
     [...registry].map((field) => field.fix.id),
-    ['cme:5001', 'cme:5002', 'standard:44', 'standard:55'],
+    ['44:', '55:', '5001:cme', '5002:cme', '9001:'],
   )
 })
 
@@ -448,7 +488,7 @@ test('the seed iterates in canonical-tag order and states no branch', () => {
   const tags = [...registry].map((field) => field.fix.tag)
   assert.deepEqual(tags, [...tags].sort((left, right) => left - right))
   // Every seed field is a specification field, so none states a branch.
-  assert.ok([...registry].every((field) => field.fix.branch === 'standard'))
+  assert.ok([...registry].every((field) => field.fix.branch === ''))
   assert.ok([...registry].every((field) => field.has('fix:branch') === false))
 })
 
@@ -476,8 +516,8 @@ test('a root left in the retired layout is refused', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const old = path.join(root, 'old')
 
-  fs.mkdirSync(path.join(old, 'records', 'standard'), { recursive: true })
-  fs.writeFileSync(path.join(old, 'records', 'standard', '0.json'), '[]')
+  fs.mkdirSync(path.join(old, 'records', ''), { recursive: true })
+  fs.writeFileSync(path.join(old, 'records', '0.json'), '[]')
   assert.throws(() => fix.FixRegistry.fromHandle(old), /records/)
 })
 
@@ -489,12 +529,12 @@ test('a written folder reloads equal through the two trees', (t) => {
 
   reference.writeInto(dictionary)
   assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'primitive', 'standard')).sort(),
+    fs.readdirSync(path.join(dictionary, 'primitive', '')).sort(),
     ['0.json', '1.json', '4.json'],
   )
   // The one repeating group is the nested tree's only shard: 453 / 100.
   assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'nested', 'standard')).sort(),
+    fs.readdirSync(path.join(dictionary, 'nested', '')).sort(),
     ['4.json'],
   )
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
@@ -502,7 +542,7 @@ test('a written folder reloads equal through the two trees', (t) => {
   const reloaded = fix.FixRegistry.fromHandle(new IOBase(dictionary))
   for (const key of [453, 'PartyID', 447, 452]) reloaded.remove(key)
   reloaded.writeInto(new IOBase(dictionary))
-  assert.equal(fs.existsSync(path.join(dictionary, 'primitive', 'standard', '4.json')), false)
+  assert.equal(fs.existsSync(path.join(dictionary, 'primitive', '4.json')), false)
   // Emptying the nested tree removes it whole.
   assert.equal(fs.existsSync(path.join(dictionary, 'nested')), false)
   assert.equal(fix.FixRegistry.fromHandle(dictionary).size, reference.size - 4)
@@ -520,13 +560,13 @@ test('a vendor branch gets its own folder', (t) => {
   registry.writeInto(dictionary)
 
   // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-  assert.ok(fs.existsSync(path.join(dictionary, 'primitive', 'standard', '0.json')))
+  assert.ok(fs.existsSync(path.join(dictionary, 'primitive', '0.json')))
   assert.ok(fs.existsSync(path.join(dictionary, 'primitive', 'cme', '50.json')))
 
   const reloaded = fix.FixRegistry.fromHandle(dictionary)
   assert.ok(reloaded.equals(registry))
-  assert.equal(reloaded.fieldById('cme:5001').name, 'TradeID')
-  assert.equal(reloaded.fieldByName('cme', 'tradeid').name, 'TradeID')
+  assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
+  assert.equal(reloaded.fieldByName('tradeid', 'cme').name, 'TradeID')
   assert.equal(reloaded.getFieldByTag(5001), null)
 })
 
@@ -556,7 +596,7 @@ test('insert, update and remove carry the core rules across', () => {
     registry.insert(fixField('VenueSym', 'utf8', 5055, { branch: 'cme', aliases: ['ticker'] })),
     null,
   )
-  assert.equal(registry.fieldByName('cme', 'TICKER').name, 'VenueSym')
+  assert.equal(registry.fieldByName('TICKER', 'cme').name, 'VenueSym')
 
   // A merge concatenates the two list properties, incoming first.
   registry.update(fixField('SYMBOL', 'utf8', 55, { tags: [65], aliases: ['Sym'] }))
@@ -584,7 +624,7 @@ test('a shared registry refuses mutation and a clone is independent', () => {
     () => registry.insert(fixField('Side', 'utf8', 54)),
     () => registry.update(fixField('Symbol', 'utf8', 55)),
     () => registry.remove(55),
-    () => registry.removeById('standard:55'),
+    () => registry.removeById('55:'),
   ]) {
     assert.throws(mutation, /shared with a message or installed as the process default/)
   }
@@ -604,7 +644,7 @@ function order(registry) {
     [
       registry.fieldByTag(55),
       registry.fieldByTag(38),
-      registry.fieldByName('standard', 'NoPartyIDs'),
+      registry.fieldByName('NoPartyIDs', ''),
       Field.from('9999: utf8'),
     ],
     { nullable: false },
@@ -631,14 +671,14 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.size, 4)
   assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
-  assert.equal(message.byId('standard:55').asJs(), 'AAPL')
+  assert.equal(message.byId('55:').asJs(), 'AAPL')
   assert.equal(message.byName('ticker').asJs(), 'AAPL')
   assert.equal(message.byTag(38).toString(), '"100.00000000"')
   assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // An identifier is exact: a dictionary this message does not speak misses.
-  assert.equal(message.getById('cme:5001'), null)
+  assert.equal(message.getById('5001:cme'), null)
 
   assert.ok(message.get(55).equals(message.byTag(55)))
   assert.ok(message.at('ticker').equals(message.byTag(55)))
@@ -650,8 +690,8 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "tag 1234", got nothing$/,
   )
   assert.throws(
-    () => message.byId('cme:5001'),
-    /^Error: expected a fix value at "identifier cme:5001", got nothing$/,
+    () => message.byId('5001:cme'),
+    /^Error: expected a fix value at "identifier 5001:cme", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
   assert.throws(() => message.byPath('NoPartyIDs.PartyID'), /path \\"NoPartyIDs.PartyID\\"/)
@@ -708,9 +748,9 @@ test('a venue message resolves in two steps', () => {
   assert.equal(message.byName('ticker').asJs(), 'AAPL')
 
   // An identifier names one dictionary exactly and does not tier.
-  assert.equal(message.byId('cme:5001').asJs(), 'T-1')
-  assert.equal(message.byId('standard:35').asJs(), 'D')
-  assert.equal(message.getById('standard:5001'), null)
+  assert.equal(message.byId('5001:cme').asJs(), 'T-1')
+  assert.equal(message.byId('35:').asJs(), 'D')
+  assert.equal(message.getById('5001:'), null)
 
   // A standard message is one step: it never reads a venue dictionary.
   const plain = fields.struct(
@@ -719,7 +759,7 @@ test('a venue message resolves in two steps', () => {
     { nullable: false },
   )
   const standard = new fix.FixMsg(plain, { MsgType: 'D', TradeID: 'T-1' }, registry)
-  assert.equal(standard.branch, 'standard')
+  assert.equal(standard.branch, '')
   assert.equal(standard.byTag(35).asJs(), 'D')
   assert.equal(standard.getByTag(5001), null)
   assert.equal(standard.getByName('venuetrade'), null)
@@ -803,13 +843,15 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'FixMsg',
       'FixRegistry',
       'STANDARD_BRANCH',
-      'STANDARD_TAG_LIMIT',
+      'USER_TAG_MAX',
+      'USER_TAG_MIN',
       'globalRegistry',
       'installGlobalRegistry',
     ],
   )
-  assert.equal(fix.STANDARD_BRANCH, 'standard')
-  assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
+  assert.equal(fix.STANDARD_BRANCH, '')
+  assert.equal(fix.USER_TAG_MIN, 5000)
+  assert.equal(fix.USER_TAG_MAX, 40_000)
   for (const name of [
     'FixFieldIterator',
     'FixMsg',
@@ -836,7 +878,7 @@ test('installing the process default wins before anything resolves it', () => {
     fix.installGlobalRegistry(seed)
     assert.ok(fix.globalRegistry().equals(seed))
     assert.equal(fix.globalRegistry().fieldByTag(55).name, 'Symbol')
-    assert.equal(fix.globalRegistry().fieldByName('standard', 'ticker').name, 'Symbol')
+    assert.equal(fix.globalRegistry().fieldByName('ticker', '').name, 'Symbol')
     const root = fields.struct('row', [fix.globalRegistry().fieldByTag(55)], { nullable: false })
     assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(seed))
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)

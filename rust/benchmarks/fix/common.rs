@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixBranch, FixId, FixRegistry};
+use yggdryl::{DataType, Field, FixBranch, FixRegistry};
 
 /// Large-dictionary size: reportable in release, quick to smoke-test in debug.
-pub(crate) const LARGE_FIELDS: usize = crate::bench_profile::corpus(4_000, 200);
+pub(crate) const LARGE_FIELDS: usize = crate::bench_profile::corpus(400, 50);
 
 /// Second-branch size used by resolution and storage measurements.
-pub(crate) const BRANCH_FIELDS: usize = crate::bench_profile::corpus(1_000, 100);
+pub(crate) const BRANCH_FIELDS: usize = crate::bench_profile::corpus(100, 20);
 
 /// The tracked seed dictionary, relative to the crate manifest.
 pub(crate) fn seed_root() -> PathBuf {
@@ -29,10 +29,9 @@ fn vendored(count: usize) -> Vec<Field> {
         .map(|index| {
             let mut field = DataType::Int64.nullable_field(format!("Vendor{index:05}"));
             let tag = i32::try_from(5_000 + index).expect("a small tag");
-            let id = FixId::from_parts(venue.clone(), tag).expect("a vendor identifier");
             field
                 .as_fix_mut()
-                .set_id(&id)
+                .set_id(&venue, tag)
                 .expect("a generated identity");
             field
                 .as_fix_mut()
@@ -74,8 +73,8 @@ pub(crate) fn generated(count: usize) -> Vec<Field> {
 /// One in fifty generated fields is a repeating group.
 ///
 /// A dictionary's components and repeating groups are a small minority of it,
-/// and that ratio is what the primitive/nested split is measured against: the
-/// hot half stays nearly the whole dictionary and the cold one stays small.
+/// and that ratio keeps the benchmark corpus representative while both shapes
+/// resolve through the same indexes.
 const NESTED_EVERY: usize = 50;
 
 /// `count` generated fields with tags from 5000 up, one in

@@ -62,7 +62,7 @@ impl Scalar {
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            Self::Null | Self::Nested(_) => return None,
+            Self::Null | Self::Nested(_) | Self::Version(_) => return None,
             Self::Text(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Ascii(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
@@ -264,6 +264,11 @@ impl Scalar {
                 write_tag(sink, DataTypeId::Uuid);
                 sink.write(&value.into_bytes());
             }
+            Self::Version(value) => {
+                write_tag(sink, DataTypeId::Version);
+                write_len(sink, value.rendered_len());
+                let _ = std::fmt::write(&mut HasherWriter(sink), format_args!("{value}"));
+            }
             Self::Enum(value) => {
                 write_tag(sink, DataTypeId::Dictionary);
                 write_text(sink, value.kind());
@@ -299,6 +304,16 @@ impl Scalar {
             Self::Decimal(_) => unreachable!("all decimal widths fed above"),
             Self::Temporal(_) => unreachable!("every temporal family fed above"),
         }
+    }
+}
+
+/// A formatting sink that writes canonical text straight into a digest.
+struct HasherWriter<'a, H>(&'a mut H);
+
+impl<H: Hasher> std::fmt::Write for HasherWriter<'_, H> {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        self.0.write(value.as_bytes());
+        Ok(())
     }
 }
 

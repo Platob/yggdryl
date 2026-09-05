@@ -25,6 +25,8 @@ fn authority_credentials_split_only_the_first_user_information_colon() {
     assert_eq!(authority.user(), Some("user"));
     assert_eq!(authority.password(), Some("pass:word"));
     assert_eq!(authority.host(), "example.test");
+    assert_eq!(authority.host_port(), "example.test:8443");
+    assert_eq!(authority.port(), Some(8443));
     assert_eq!(authority.as_str(), "user:pass:word@example.test:8443");
 
     let url = Url::from_str("https://user:pass:word@[2001:db8::1]:8443/data").unwrap();
@@ -52,6 +54,7 @@ fn authority_credentials_split_only_the_first_user_information_colon() {
 fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     let bucket = Uri::from_str("s3://market-data/year=2026/part.parquet").unwrap();
     assert_eq!(bucket.hostname(), None);
+    assert_eq!(bucket.s3_endpoint(), None);
     assert_eq!(bucket.bucket(), Some("market-data"));
     assert_eq!(bucket.region(), None);
 
@@ -59,6 +62,7 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
         Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data/year=2026/part.parquet")
             .unwrap();
     assert_eq!(endpoint.hostname(), Some("s3.eu-west-3.amazonaws.com"));
+    assert_eq!(endpoint.s3_endpoint(), Some("s3.eu-west-3.amazonaws.com"));
     assert_eq!(endpoint.bucket(), Some("market-data"));
     assert_eq!(endpoint.region(), Some("eu-west-3"));
 
@@ -70,6 +74,20 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     );
     assert_eq!(virtual_host.bucket(), Some("market-data"));
     assert_eq!(virtual_host.region(), Some("ap-south-1"));
+    assert_eq!(
+        virtual_host.s3_endpoint(),
+        Some("s3.dualstack.ap-south-1.amazonaws.com")
+    );
+    assert!(virtual_host.is_s3_virtual());
+
+    let port = Uri::from_str("s3://key:secret@minio:9000/archive/key").unwrap();
+    assert_eq!(port.hostname(), Some("minio"));
+    assert_eq!(port.s3_endpoint(), Some("minio:9000"));
+    assert_eq!(port.bucket(), Some("archive"));
+    assert!(!port.is_s3_virtual());
+
+    let alternate = Uri::from_str("s3a://archive/key").unwrap();
+    assert_eq!(alternate.bucket(), Some("archive"));
 
     let regional = Uri::from_str("s3://s3-us-gov-west-1.amazonaws.com/archive/key").unwrap();
     assert_eq!(regional.bucket(), Some("archive"));

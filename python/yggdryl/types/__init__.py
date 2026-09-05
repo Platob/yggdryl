@@ -134,6 +134,7 @@ from .temporal import (
     time64,
     datetime64,
 )
+from .version import VersionField, version
 
 __all__ = [
     "AsciiEnum",
@@ -197,6 +198,7 @@ __all__ = [
     "UInt64Field",
     "UnionField",
     "VariantField",
+    "VersionField",
     "Utf8Field",
     "Utf8ViewField",
     "ascii",
@@ -257,4 +259,5 @@ __all__ = [
     "utf8_view",
     "uuid",
     "variant",
+    "version",
 ]

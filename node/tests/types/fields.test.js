@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
+const arrow = require('apache-arrow')
 const binding = require('yggdryl')
 const { DataType, Field, fields } = binding
 
@@ -26,6 +27,7 @@ test('internal typed-factory bridges stay outside the public package surface', (
   }
   assert.equal(Object.hasOwn(Field, 'fromArrowString'), false)
   assert.equal(Object.hasOwn(Field.prototype, '_showDiffs'), false)
+  assert.equal(Object.hasOwn(Field.prototype, '_castArrowArrayBitsIpcNative'), false)
   assert.equal(Object.hasOwn(DataType.prototype, '_showDiffs'), false)
   for (const name of ['DifferenceIterator', 'JsDifferenceIterator']) {
     assert.equal(Object.hasOwn(binding, name), false, name)
@@ -33,6 +35,57 @@ test('internal typed-factory bridges stay outside the public package surface', (
   assert.equal(new DataType('int32').constructor, DataType)
   assert.equal(new Field('id', 'int32').constructor, Field)
   assert.equal(Object.hasOwn(new DataType('int32').constructor, '_simple'), false)
+})
+
+test('Field.castArrowArrayBits preserves every int32 and int64 bit pattern', () => {
+  const unsigned32 = arrow.vectorFromArray(
+    [0, 2 ** 31 - 1, 2 ** 31, 2 ** 32 - 1, null],
+    new arrow.Uint32(),
+  )
+  const signed32 = fields.int32('digest').castArrowArrayBits(unsigned32)
+  assert.equal(signed32.type.toString(), 'Int32')
+  assert.deepEqual(Array.from(signed32), [0, 2 ** 31 - 1, -(2 ** 31), -1, null])
+  assert.deepEqual(
+    Array.from(fields.uint32('digest').castArrowArrayBits(signed32)),
+    Array.from(unsigned32),
+  )
+
+  const unsigned64 = arrow.vectorFromArray(
+    [0n, 2n ** 63n - 1n, 2n ** 63n, 2n ** 64n - 1n, null],
+    new arrow.Uint64(),
+  )
+  const signed64 = fields.int64('digest').castArrowArrayBits(unsigned64)
+  assert.equal(signed64.type.toString(), 'Int64')
+  assert.deepEqual(
+    Array.from(signed64),
+    [0n, 2n ** 63n - 1n, -(2n ** 63n), -1n, null],
+  )
+  assert.deepEqual(
+    Array.from(fields.uint64('digest').castArrowArrayBits(signed64)),
+    Array.from(unsigned64),
+  )
+  const empty = fields.int64('digest').castArrowArrayBits(
+    arrow.vectorFromArray([], new arrow.Uint64()),
+  )
+  assert.equal(empty.type.toString(), 'Int64')
+  assert.equal(empty.length, 0)
+
+  const required = fields.int64('digest', { nullable: false })
+    .castArrowArrayBits(arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()))
+  assert.deepEqual(Array.from(required), [0n, -1n])
+
+  assert.throws(
+    () => fields.int64('digest').castArrowArrayBits(unsigned32),
+    /requires a uint64 array/,
+  )
+  assert.throws(
+    () => fields.utf8('digest').castArrowArrayBits(unsigned32),
+    /bit-preserving Arrow integer casts require/,
+  )
+  assert.throws(
+    () => fields.int32('digest').castArrowArrayBits([0]),
+    /must be an Apache Arrow Vector/,
+  )
 })
 
 test('DataType.fromFields is the iterable-aware native Struct builder', () => {
@@ -150,6 +203,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['uuid', fields.uuid('value')],
+    ['version', fields.version('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -172,7 +226,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 52)
+  assert.equal(byId.size, 53)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -224,6 +278,8 @@ test('the ascii factories build the variable form and one fixed width', () => {
   assert.equal(fields.fixedAscii('iso', 2).dtype.asciiWidth, 2)
   assert.equal(fields.uuid('id').dtype.id, 'uuid')
   assert.equal(fields.uuid('id', { nullable: false }).nullable, false)
+  assert.equal(fields.version('release').dtype.id, 'version')
+  assert.equal(fields.version('release', { nullable: false }).defaultJSValue(), '0')
   // A fixed width past the packed integer is still storage, so it builds.
   assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
   assert.equal(fields.fixedAscii('code', 12).nullable, true)

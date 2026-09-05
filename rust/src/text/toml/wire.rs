@@ -272,6 +272,7 @@ fn write_scalar<W: Write>(
         }
         Scalar::Text(value) => write_quoted(writer, value.as_str())?,
         Scalar::Ascii(value) => write_quoted(writer, value.as_str())?,
+        Scalar::Version(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Uuid(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Enum(value) => write_quoted(writer, value.as_str())?,
         Scalar::Bytes(value) => write_quoted(

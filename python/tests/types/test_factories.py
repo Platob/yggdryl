@@ -76,11 +76,12 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "mic": types.mic("value"),
         "cfi": types.cfi("value"),
         "uuid": types.uuid("value"),
+        "version": types.version("value"),
         "geometry": types.geometry("value"),
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 52
+    assert len(values_by_kind) == 53
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
@@ -90,6 +91,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
     assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - {"int128", "uint128"}
     assert all(type(value) is Field for value in values_by_kind.values())
     assert types.Int32Field is Field
+    assert types.VersionField is Field
     assert types.TypedField is Field
 
 

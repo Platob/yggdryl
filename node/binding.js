@@ -94,7 +94,9 @@ function snapshotNativeJSON(value, label = 'JSON value') {
       }
       const keys = Reflect.ownKeys(source)
       if (keys.length !== length + 1 || !keys.includes('length')) {
-        throw new TypeError(`${label} arrays must be dense and contain no extra keys`)
+        throw new TypeError(
+          `${label} arrays must be dense and contain no extra keys`,
+        )
       }
       const clone = new Array(length)
       assign(target, key, clone)
@@ -123,7 +125,8 @@ function snapshotNativeJSON(value, label = 'JSON value') {
     const prototype = Object.getPrototypeOf(source)
     if (
       prototype !== null &&
-      (utilTypes.isProxy(prototype) || Object.getPrototypeOf(prototype) !== null)
+      (utilTypes.isProxy(prototype) ||
+        Object.getPrototypeOf(prototype) !== null)
     ) {
       throw new TypeError(`${label} must contain only plain objects`)
     }
@@ -217,10 +220,14 @@ const nativeScalarFromArrowTable =
   NativeScalar._fromArrowTableIpcNative.bind(NativeScalar)
 const nativeScalarIntoArrowScalar =
   NativeScalar.prototype._intoArrowScalarIpcNative
-const nativeScalarIntoArrowArray = NativeScalar.prototype._intoArrowArrayIpcNative
+const nativeScalarIntoArrowArray =
+  NativeScalar.prototype._intoArrowArrayIpcNative
 const nativeScalarIntoArrowBatch =
   NativeScalar.prototype._intoArrowBatchIpcNative
-const nativeScalarIntoArrowTable = NativeScalar.prototype._intoArrowTableIpcNative
+const nativeScalarIntoArrowTable =
+  NativeScalar.prototype._intoArrowTableIpcNative
+const nativeFieldCastArrowArrayBits =
+  NativeField.prototype._castArrowArrayBitsIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -272,6 +279,7 @@ delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowBatchIpcNative
 delete NativeScalar.prototype._intoArrowTableIpcNative
+delete NativeField.prototype._castArrowArrayBitsIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -286,7 +294,9 @@ delete binding.ScalarIterator
 function publicNativeClass(NativeClass, name, hiddenStatics) {
   const PublicClass = function (...args) {
     if (new.target === undefined) {
-      throw new TypeError(`Class constructor ${name} cannot be invoked without 'new'`)
+      throw new TypeError(
+        `Class constructor ${name} cannot be invoked without 'new'`,
+      )
     }
     const target = new.target === PublicClass ? NativeClass : new.target
     return Reflect.construct(NativeClass, args, target)
@@ -379,7 +389,9 @@ const PartitionSpec = publicNativeClass(
 // constructor is the one inference gate and returns that same native class.
 function AvroSchema(value, options) {
   if (new.target === undefined) {
-    throw new TypeError('Class constructor AvroSchema cannot be invoked without new')
+    throw new TypeError(
+      'Class constructor AvroSchema cannot be invoked without new',
+    )
   }
   return avroSchemaFrom(value, true, options)
 }
@@ -448,6 +460,10 @@ const knownMimeNames = Object.freeze([
   'ORC',
   'PUFFIN',
   'PLAIN_TEXT',
+  'ULLINK',
+  'FIX',
+  'FIXUL',
+  'FIXML',
   'MARKDOWN',
   'HTML',
   'CSS',
@@ -518,7 +534,8 @@ Object.defineProperty(MediaType, 'fromParts', {
     return mediaFromParts(base, collectMediaIterable(encodings, 'encodings'))
   },
 })
-const mediaFromExtensions = NativeMediaType._fromExtensions.bind(NativeMediaType)
+const mediaFromExtensions =
+  NativeMediaType._fromExtensions.bind(NativeMediaType)
 Object.defineProperty(MediaType, 'fromExtensions', {
   value(extensions) {
     return mediaFromExtensions(collectMediaIterable(extensions, 'extensions'))
@@ -707,7 +724,9 @@ function checkedOptions(options) {
       options.maxDepth <= 0 ||
       options.maxDepth > MAX_DEPTH)
   ) {
-    throw new RangeError(`maxDepth must be an integer between 1 and ${MAX_DEPTH}`)
+    throw new RangeError(
+      `maxDepth must be an integer between 1 and ${MAX_DEPTH}`,
+    )
   }
   for (const name of ['maxInputBytes', 'maxNodes', 'maxDocuments']) {
     const value = options[name]
@@ -716,7 +735,9 @@ function checkedOptions(options) {
       value !== null &&
       (!Number.isSafeInteger(value) || value < 0)
     ) {
-      throw new RangeError(`${name} must be a non-negative safe integer or null`)
+      throw new RangeError(
+        `${name} must be a non-negative safe integer or null`,
+      )
     }
   }
   if (
@@ -727,7 +748,9 @@ function checkedOptions(options) {
       options.indent < 0 ||
       options.indent > 255)
   ) {
-    throw new RangeError('indent must be an integer between 0 and 255, "\\t", or null')
+    throw new RangeError(
+      'indent must be an integer between 0 and 255, "\\t", or null',
+    )
   }
   if (options.format !== undefined && typeof options.format !== 'string') {
     throw new TypeError('codec format must be a string')
@@ -746,18 +769,24 @@ function checkedOptions(options) {
   if (
     options.placeholders !== undefined &&
     options.placeholders !== null &&
-    (typeof options.placeholders !== 'object' || Array.isArray(options.placeholders))
+    (typeof options.placeholders !== 'object' ||
+      Array.isArray(options.placeholders))
   ) {
-    throw new TypeError('placeholders must be a mapping of variable names to values')
+    throw new TypeError(
+      'placeholders must be a mapping of variable names to values',
+    )
   }
-  if (options.environment !== undefined && typeof options.environment !== 'boolean') {
+  if (
+    options.environment !== undefined &&
+    typeof options.environment !== 'boolean'
+  ) {
     throw new TypeError('environment must be a boolean')
   }
   return field === options.field ? options : { ...options, field }
 }
 
 function codecLimits(options) {
-  const optional = (value) => value === null ? undefined : value
+  const optional = (value) => (value === null ? undefined : value)
   return {
     maxDepth: optional(options.maxDepth),
     maxInputBytes: optional(options.maxInputBytes),
@@ -791,7 +820,9 @@ function codecDocumentLimit(options) {
 function fillingArguments(options) {
   const { placeholders, environment } = options
   return [
-    placeholders === undefined || placeholders === null ? null : Scalar.fromJs(placeholders),
+    placeholders === undefined || placeholders === null
+      ? null
+      : Scalar.fromJs(placeholders),
     environment === undefined ? null : environment,
   ]
 }
@@ -802,10 +833,14 @@ function fillingArguments(options) {
 // than from a native error.
 function refuseFillingForJson(format, options) {
   if (options.placeholders !== undefined && options.placeholders !== null) {
-    throw new TypeError(`placeholders are a yaml/toml feature, not a ${format} one`)
+    throw new TypeError(
+      `placeholders are a yaml/toml feature, not a ${format} one`,
+    )
   }
   if (options.environment !== undefined && options.environment !== false) {
-    throw new TypeError(`environment resolution is a yaml/toml feature, not a ${format} one`)
+    throw new TypeError(
+      `environment resolution is a yaml/toml feature, not a ${format} one`,
+    )
   }
 }
 
@@ -841,7 +876,9 @@ function endsWithHighSurrogate(value) {
 
 async function* streamByteChunks(stream, maxBytes = DEFAULT_MAX_STREAM_BYTES) {
   if (stream == null || typeof stream[Symbol.asyncIterator] !== 'function') {
-    throw new TypeError('stream must be an async iterable of string or byte chunks')
+    throw new TypeError(
+      'stream must be an async iterable of string or byte chunks',
+    )
   }
   let pendingHighSurrogate = ''
   let size = 0
@@ -868,9 +905,7 @@ async function* streamByteChunks(stream, maxBytes = DEFAULT_MAX_STREAM_BYTES) {
     if (pendingHighSurrogate !== '') {
       size += UTF8_REPLACEMENT_BYTE_LENGTH
       if (size > maxBytes) {
-        throw new RangeError(
-          `stream exceeds the ${maxBytes}-byte input limit`,
-        )
+        throw new RangeError(`stream exceeds the ${maxBytes}-byte input limit`)
       }
       yield Buffer.from(pendingHighSurrogate)
       pendingHighSurrogate = ''
@@ -878,17 +913,13 @@ async function* streamByteChunks(stream, maxBytes = DEFAULT_MAX_STREAM_BYTES) {
     const bytes = toBytes(chunk)
     size += bytes.length
     if (size > maxBytes) {
-      throw new RangeError(
-        `stream exceeds the ${maxBytes}-byte input limit`,
-      )
+      throw new RangeError(`stream exceeds the ${maxBytes}-byte input limit`)
     }
     yield bytes
   }
   if (pendingHighSurrogate !== '') {
     if (size + UTF8_REPLACEMENT_BYTE_LENGTH > maxBytes) {
-      throw new RangeError(
-        `stream exceeds the ${maxBytes}-byte input limit`,
-      )
+      throw new RangeError(`stream exceeds the ${maxBytes}-byte input limit`)
     }
     yield Buffer.from(pendingHighSurrogate)
   }
@@ -906,23 +937,16 @@ function readDescriptorBounded(descriptor, maximum = DEFAULT_MAX_STREAM_BYTES) {
   const chunks = []
   let total = 0
   while (true) {
-    const capacity = Math.min(
-      64 * 1024,
-      maximum + 1 - total,
-    )
+    const capacity = Math.min(64 * 1024, maximum + 1 - total)
     if (capacity <= 0) {
-      throw new RangeError(
-        `input exceeds the ${maximum}-byte input limit`,
-      )
+      throw new RangeError(`input exceeds the ${maximum}-byte input limit`)
     }
     const chunk = Buffer.allocUnsafe(capacity)
     const length = fs.readSync(descriptor, chunk, 0, capacity, null)
     if (length === 0) break
     total += length
     if (total > maximum) {
-      throw new RangeError(
-        `input exceeds the ${maximum}-byte input limit`,
-      )
+      throw new RangeError(`input exceeds the ${maximum}-byte input limit`)
     }
     chunks.push(chunk.subarray(0, length))
   }
@@ -946,7 +970,9 @@ function formatFor(source, options, fallback) {
   }
   if (source !== null) return nativeCodec.inferFormat(source)
   if (fallback !== undefined) return fallback
-  throw new TypeError('codec format requires content, a supported path, or an explicit format')
+  throw new TypeError(
+    'codec format requires content, a supported path, or an explicit format',
+  )
 }
 
 function markerShape(value, kind, keys) {
@@ -959,7 +985,10 @@ function markerShape(value, kind, keys) {
     return false
   }
   const actual = Object.keys(value).sort()
-  return actual.length === keys.length && actual.every((key, index) => key === keys[index])
+  return (
+    actual.length === keys.length &&
+    actual.every((key, index) => key === keys[index])
+  )
 }
 
 // A temporal and an exact decimal arrive as their parts rather than as one
@@ -1100,7 +1129,9 @@ Object.defineProperty(Scalar.prototype, 'asJs', {
   configurable: true,
   value(options) {
     options = checkedOptions(options)
-    return fromTransport(Reflect.apply(nativeScalarAsJs, this, [options.maxDepth]))
+    return fromTransport(
+      Reflect.apply(nativeScalarAsJs, this, [options.maxDepth]),
+    )
   },
 })
 
@@ -1170,7 +1201,8 @@ Object.defineProperties(Scalar.prototype, {
           if (name === 'negate' || name === 'absolute') {
             return Reflect.apply(native, this, [])
           }
-          const operand = other instanceof NativeScalar ? other : Scalar.fromJs(other)
+          const operand =
+            other instanceof NativeScalar ? other : Scalar.fromJs(other)
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1187,7 +1219,9 @@ Object.defineProperties(Scalar.prototype, {
     value(key) {
       if (this.kind === 'sequence') {
         if (!Number.isSafeInteger(key) || key < 0) {
-          throw new TypeError('sequence keys must be non-negative safe integers')
+          throw new TypeError(
+            'sequence keys must be non-negative safe integers',
+          )
         }
         return this.at(key)
       }
@@ -1300,7 +1334,9 @@ function checkedAvroDecodeOptions(options, allowReaderSchema) {
   }
   const hasReaderSchema = Object.hasOwn(options, 'readerSchema')
   if (!allowReaderSchema && hasReaderSchema) {
-    throw new TypeError('readerSchema is only valid for Avro container and block decoding')
+    throw new TypeError(
+      'readerSchema is only valid for Avro container and block decoding',
+    )
   }
   const limits = {}
   for (const name of ['maxDepth', 'maxInputBytes', 'maxNodes']) {
@@ -1370,7 +1406,9 @@ Object.defineProperties(AvroSchema.prototype, {
   },
   intoSingleObject: {
     value(value) {
-      return Reflect.apply(nativeAvroIntoSingleObject, this, [Scalar.fromJs(value)])
+      return Reflect.apply(nativeAvroIntoSingleObject, this, [
+        Scalar.fromJs(value),
+      ])
     },
   },
   fromSingleObject: {
@@ -1403,7 +1441,9 @@ Object.defineProperty(NativeAvroBlock.prototype, 'rows', {
 Object.defineProperty(NativeAvroBlocks.prototype, 'metadata', {
   get() {
     return Object.fromEntries(
-      Reflect.apply(nativeAvroBlocksMetadata, this, []).map(({ key, value }) => [key, value]),
+      Reflect.apply(nativeAvroBlocksMetadata, this, []).map(
+        ({ key, value }) => [key, value],
+      ),
     )
   },
 })
@@ -1445,7 +1485,9 @@ function avroMetadata(values) {
   } catch (cause) {
     throw new TypeError(
       String(cause.message).replaceAll('field metadata', 'Avro metadata'),
-      { cause },
+      {
+        cause,
+      },
     )
   }
 }
@@ -1497,7 +1539,10 @@ const avro = Object.freeze({
   },
   loads: avroLoads,
   loadsSingle(input, schema, options) {
-    return avroSchemaFrom(schema, false, options).fromSingleObject(input, options)
+    return avroSchemaFrom(schema, false, options).fromSingleObject(
+      input,
+      options,
+    )
   },
 })
 
@@ -1656,11 +1701,19 @@ function isReadable(value) {
 }
 
 function isNodeWritable(value) {
-  return value !== null && typeof value === 'object' && typeof value.write === 'function'
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof value.write === 'function'
+  )
 }
 
 function isWebWritable(value) {
-  return value !== null && typeof value === 'object' && typeof value.getWriter === 'function'
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof value.getWriter === 'function'
+  )
 }
 
 function isWritable(value) {
@@ -1697,9 +1750,7 @@ async function readStream(stream, options) {
   for await (const bytes of streamByteChunks(stream, maximum)) {
     size += bytes.length
     if (size > maximum) {
-      throw new RangeError(
-        `stream exceeds the ${maximum}-byte input limit`,
-      )
+      throw new RangeError(`stream exceeds the ${maximum}-byte input limit`)
     }
     chunks.push(bytes)
   }
@@ -1815,9 +1866,7 @@ async function* jsonLinesStream(stream, options) {
     const chunkOffset = total
     total += bytes.length
     if (total > maximum) {
-      throw new RangeError(
-        `stream exceeds the ${maximum}-byte input limit`,
-      )
+      throw new RangeError(`stream exceeds the ${maximum}-byte input limit`)
     }
     let start = 0
     let newline = bytes.indexOf(0x0a, start)
@@ -2103,7 +2152,8 @@ function singleDocumentMethods(format) {
     load(source, options) {
       options = checkedOptions(options)
       if (isReadable(source)) {
-        return (async () => nativeLoads(await readStream(source, options), format, options))()
+        return (async () =>
+          nativeLoads(await readStream(source, options), format, options))()
       }
       const input = readSource(source, codecInputLimit(options))
       return input.path === null
@@ -2174,7 +2224,10 @@ function fixedCodec(format, multiFormat) {
         nativeDumpAllPath(values, path, multiFormat, options)
         return undefined
       }
-      return writeDestination(destination, nativeDumpAll(values, multiFormat, options))
+      return writeDestination(
+        destination,
+        nativeDumpAll(values, multiFormat, options),
+      )
     },
     loadAllStream(stream, options) {
       options = checkedOptions(options)
@@ -2240,7 +2293,8 @@ const codec = Object.freeze({
     if (options.format !== undefined) {
       const format = formatFor(null, options, FORMAT_JSON)
       if (format === FORMAT_JSON_LINES) return jsonLinesStream(stream, options)
-      return (async () => nativeLoads(await readStream(stream, options), format, options))()
+      return (async () =>
+        nativeLoads(await readStream(stream, options), format, options))()
     }
     return (async () => {
       const bytes = await readStream(stream, options)
@@ -2261,12 +2315,22 @@ const codec = Object.freeze({
 function arrowString(value, NativeType, name) {
   if (value instanceof NativeType) return value
   if (typeof value === 'string') return value
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
-    throw new TypeError(`${name}.fromArrow expects a string or Arrow-compatible object`)
+  if (
+    value === null ||
+    (typeof value !== 'object' && typeof value !== 'function')
+  ) {
+    throw new TypeError(
+      `${name}.fromArrow expects a string or Arrow-compatible object`,
+    )
   }
   const toString = value.toString
-  if (typeof toString !== 'function' || toString === Object.prototype.toString) {
-    throw new TypeError(`${name}.fromArrow expects an object with its own textual representation`)
+  if (
+    typeof toString !== 'function' ||
+    toString === Object.prototype.toString
+  ) {
+    throw new TypeError(
+      `${name}.fromArrow expects an object with its own textual representation`,
+    )
   }
   const text = Reflect.apply(toString, value, [])
   if (typeof text !== 'string') {
@@ -2316,6 +2380,18 @@ Object.defineProperty(Field, 'fromArrow', {
   },
 })
 
+Object.defineProperty(Field.prototype, 'castArrowArrayBits', {
+  configurable: true,
+  value(value) {
+    return arrowVectorFromIPC(
+      Reflect.apply(nativeFieldCastArrowArrayBits, this, [
+        arrowVectorIntoIPC(value, 'Field.castArrowArrayBits input'),
+      ]),
+      'Field.castArrowArrayBits output',
+    )
+  },
+})
+
 const fieldUpdate = Field.prototype.update
 Field.prototype.update = function update(values) {
   return fieldUpdate.call(this, normalizeMetadata(values))
@@ -2362,12 +2438,55 @@ const nativeIOIntoText = IOBase.prototype._intoTextNative
 const nativeIOReadRangeBytes = IOBase.prototype.readRangeBytes
 const nativeIOAppendBytes = IOBase.prototype.appendBytes
 const nativeIOReadRangeText = IOBase.prototype._readRangeTextNative
+const nativeIOOpenOutputStream = IOBase.prototype.openOutputStream
+const nativeIOOpenAppendStream = IOBase.prototype.openAppendStream
+const nativeIOFromUri = IOBase.fromUri
 delete IOBase.prototype._readRangeTextNative
 delete IOBase.prototype._readScalarNative
 delete IOBase.prototype._writeScalarNative
 delete IOBase.prototype._bufferedNative
 delete IOBase.prototype._intoTextNative
 
+function filesystemMetadata(metadata) {
+  if (metadata === undefined || metadata === null) return undefined
+  if (metadata instanceof Map) return Object.fromEntries(metadata)
+  if (isPlainObject(metadata)) return metadata
+  throw new TypeError('output metadata must be an object or Map')
+}
+
+function IOBaseFacade() {}
+IOBaseFacade.prototype = IOBase.prototype
+binding.IOBase = new Proxy(IOBaseFacade, {
+  construct(_target, argumentsList) {
+    return Reflect.construct(IOBase, argumentsList)
+  },
+  get(target, property, receiver) {
+    if (Reflect.has(target, property))
+      return Reflect.get(target, property, receiver)
+    if (property === 'fromUri') {
+      return function fromUri(uri, options) {
+        try {
+          return nativeIOFromUri.call(IOBase, uri, filesystemMetadata(options))
+        } catch (error) {
+          throw typedFilesystemError(error)
+        }
+      }
+    }
+    const value = Reflect.get(IOBase, property, IOBase)
+    return typeof value === 'function' ? value.bind(IOBase) : value
+  },
+})
+
+if (nativeIOOpenOutputStream) {
+  IOBase.prototype.openOutputStream = function openOutputStream(metadata) {
+    return nativeIOOpenOutputStream.call(this, filesystemMetadata(metadata))
+  }
+}
+if (nativeIOOpenAppendStream) {
+  IOBase.prototype.openAppendStream = function openAppendStream(metadata) {
+    return nativeIOOpenAppendStream.call(this, filesystemMetadata(metadata))
+  }
+}
 function checkedBufferedOptions(options) {
   if (options === undefined || options === null) return {}
   if (!isPlainObject(options)) {
@@ -2380,7 +2499,9 @@ function checkedBufferedOptions(options) {
       value !== null &&
       (!Number.isSafeInteger(value) || value < 0)
     ) {
-      throw new RangeError(`${name} must be a non-negative safe integer or null`)
+      throw new RangeError(
+        `${name} must be a non-negative safe integer or null`,
+      )
     }
   }
   return options
@@ -2532,7 +2653,9 @@ function isPlainObject(value) {
 
 function partitionEntry(column, value) {
   if (typeof column !== 'string' || typeof value !== 'string') {
-    throw new TypeError('partition filters must name a column and a value as strings')
+    throw new TypeError(
+      'partition filters must name a column and a value as strings',
+    )
   }
   return { column, value }
 }
@@ -2542,7 +2665,9 @@ function partitionEntry(column, value) {
 function partitionFilters(filters) {
   if (filters === undefined || filters === null) return []
   if (filters instanceof Map) {
-    return Array.from(filters, ([column, value]) => partitionEntry(column, value))
+    return Array.from(filters, ([column, value]) =>
+      partitionEntry(column, value),
+    )
   }
   if (Array.isArray(filters)) {
     return filters.map((entry) => {
@@ -2563,7 +2688,9 @@ function partitionFilters(filters) {
       partitionEntry(column, value),
     )
   }
-  throw new TypeError('partition filters must be an object, Map, or entry array')
+  throw new TypeError(
+    'partition filters must be an object, Map, or entry array',
+  )
 }
 
 const childrenWhere = IOBase.prototype.childrenWhere
@@ -2583,11 +2710,9 @@ Object.defineProperty(IOBase.prototype, Symbol.iterator, {
   },
 })
 
-// `using` is the scope construct the binding contract binds to open/close, so
-// a handle leaving scope publishes what was written through it. That matters
-// most on a backend that replaces whole files - any Arrow file system - where
-// the bytes are staged until the handle closes. Node exposes the symbol only
-// from 20.11, so the binding is conditional rather than assumed.
+// `using` closes handles and filesystem streams at scope exit. Node exposes
+// the symbol only from 20.11, so the binding is conditional rather than
+// assumed.
 if (typeof Symbol.dispose === 'symbol') {
   Object.defineProperty(IOBase.prototype, Symbol.dispose, {
     configurable: true,
@@ -2595,6 +2720,20 @@ if (typeof Symbol.dispose === 'symbol') {
       this.close()
     },
   })
+
+  for (const Stream of [
+    binding.ByteReader,
+    binding.RandomAccessReader,
+    binding.ByteWriter,
+  ]) {
+    if (!Stream) continue
+    Object.defineProperty(Stream.prototype, Symbol.dispose, {
+      configurable: true,
+      value: function dispose() {
+        this.close()
+      },
+    })
+  }
 }
 
 function pathParts(values) {
@@ -2644,7 +2783,10 @@ delete binding.ArrowWriteSession
 // The declared root metadata takes the same inputs `Field.prototype.update`
 // does: entries, a plain object, a Map, or a Field's own pairs.
 for (const Options of [RecordOptions, TextOptions]) {
-  const recordMetadata = Object.getOwnPropertyDescriptor(Options.prototype, 'metadata')
+  const recordMetadata = Object.getOwnPropertyDescriptor(
+    Options.prototype,
+    'metadata',
+  )
   Object.defineProperty(Options.prototype, 'metadata', {
     configurable: true,
     enumerable: recordMetadata.enumerable,
@@ -2686,16 +2828,25 @@ const nativeStatementProjectReader =
   BoundStatement.prototype._projectArrowReaderNative
 const nativeStatementProjectBatch =
   BoundStatement.prototype._projectArrowBatchNative
-const nativeStatementSortBatch =
-  BoundStatement.prototype._sortArrowBatchNative
+const nativeStatementSortBatch = BoundStatement.prototype._sortArrowBatchNative
 for (const [owner, name, method] of [
   [NativeStatement.prototype, '_bindNative', nativeStatementBind],
-  [BoundStatement.prototype, '_projectArrowReaderNative', nativeStatementProjectReader],
-  [BoundStatement.prototype, '_projectArrowBatchNative', nativeStatementProjectBatch],
+  [
+    BoundStatement.prototype,
+    '_projectArrowReaderNative',
+    nativeStatementProjectReader,
+  ],
+  [
+    BoundStatement.prototype,
+    '_projectArrowBatchNative',
+    nativeStatementProjectBatch,
+  ],
   [BoundStatement.prototype, '_sortArrowBatchNative', nativeStatementSortBatch],
 ]) {
   if (typeof method !== 'function') {
-    throw new TypeError(`native binding is missing ${owner.constructor.name}.${name}`)
+    throw new TypeError(
+      `native binding is missing ${owner.constructor.name}.${name}`,
+    )
   }
   delete owner[name]
 }
@@ -2806,7 +2957,13 @@ const nativeScanAt = binding.Table.prototype.scanAt
 Object.defineProperty(binding.Table.prototype, 'scanAt', {
   configurable: true,
   value(snapshotId, filters, schema, options) {
-    return nativeScanAt.call(this, snapshotId, partitionFilters(filters), schema, options)
+    return nativeScanAt.call(
+      this,
+      snapshotId,
+      partitionFilters(filters),
+      schema,
+      options,
+    )
   },
 })
 
@@ -2832,7 +2989,8 @@ for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
 // the chaining Node-API cannot spell: each call returns the builder, and
 // `commit()` carries the table the chain started from.
 const NativeSchemaUpdate = binding.SchemaUpdate
-const nativeCommitSchemaUpdate = binding.Table.prototype._commitSchemaUpdateNative
+const nativeCommitSchemaUpdate =
+  binding.Table.prototype._commitSchemaUpdateNative
 delete binding.Table.prototype._commitSchemaUpdateNative
 Object.defineProperty(binding.Table.prototype, 'updateSchema', {
   configurable: true,
@@ -2883,7 +3041,12 @@ for (const name of ['append', 'overwrite']) {
     value(tableName, data, options) {
       const tables = this.tables
       const stored = tables.has(tableName) ? tables.get(tableName) : null
-      return native.call(this, tableName, icebergBatchReader(stored, data), options)
+      return native.call(
+        this,
+        tableName,
+        icebergBatchReader(stored, data),
+        options,
+      )
     },
   })
 }
@@ -2968,7 +3131,9 @@ if (binding.ByteIterator) {
   const nativeNext = binding.ByteIterator.prototype.next
   binding.ByteIterator.prototype.next = function next() {
     const bytes = nativeNext.call(this)
-    return bytes === null ? { value: undefined, done: true } : { value: bytes, done: false }
+    return bytes === null
+      ? { value: undefined, done: true }
+      : { value: bytes, done: false }
   }
   Object.defineProperty(binding.ByteIterator.prototype, Symbol.iterator, {
     configurable: true,
@@ -2987,7 +3152,9 @@ if (binding.Listing) {
   const nativeNext = binding.Listing.prototype.next
   binding.Listing.prototype.next = function next() {
     const entry = nativeNext.call(this)
-    return entry === null ? { value: undefined, done: true } : { value: entry, done: false }
+    return entry === null
+      ? { value: undefined, done: true }
+      : { value: entry, done: false }
   }
   Object.defineProperty(binding.Listing.prototype, Symbol.iterator, {
     configurable: true,
@@ -2995,6 +3162,109 @@ if (binding.Listing) {
       return this
     },
   })
+}
+
+function filesystemErrorCode(message) {
+  if (/DirectoryNotEmpty|ENOTEMPTY/.test(message)) return 'DirectoryNotEmpty'
+  if (/NotADirectory|ENOTDIR/.test(message)) return 'NotADirectory'
+  if (/IsADirectory|EISDIR/.test(message)) return 'IsADirectory'
+  if (/AlreadyExists|EEXIST/.test(message)) return 'AlreadyExists'
+  if (/PermissionDenied|EACCES|EPERM/.test(message)) return 'PermissionDenied'
+  if (/NotFound|ENOENT/.test(message)) return 'NotFound'
+  if (/Unsupported|ENOTSUP|EOPNOTSUPP|does not support/.test(message))
+    return 'Unsupported'
+  return 'Transport'
+}
+
+const filesystemErrorCodes = new Set([
+  'NotFound',
+  'PermissionDenied',
+  'AlreadyExists',
+  'NotADirectory',
+  'IsADirectory',
+  'DirectoryNotEmpty',
+  'Unsupported',
+  'Transport',
+])
+
+function typedFilesystemError(error) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    !filesystemErrorCodes.has(error.code)
+  ) {
+    error.code = filesystemErrorCode(String(error.message))
+  }
+  return error
+}
+
+// Native errors keep their original messages. This small protocol projection
+// adds the stable category JavaScript callers can branch on without parsing it.
+for (const name of [
+  'info',
+  'normalizePath',
+  'createDir',
+  'deleteDir',
+  'deleteDirContents',
+  'deleteRootDirContents',
+  'deleteFile',
+  'openInputFile',
+  'openInputStream',
+  'openOutputStream',
+  'openAppendStream',
+  'sameLocation',
+  'copyInto',
+  'moveInto',
+  'readBytes',
+  'readText',
+  'readRangeBytes',
+  'writeBytes',
+  'writeText',
+  'pwrite',
+  'appendBytes',
+  'mkdir',
+  'unlink',
+  'clear',
+  'remove',
+]) {
+  const native = IOBase.prototype[name]
+  if (typeof native !== 'function') continue
+  IOBase.prototype[name] = function filesystemOperation(...args) {
+    try {
+      return native.apply(this, args)
+    } catch (error) {
+      throw this.path === null ? error : typedFilesystemError(error)
+    }
+  }
+}
+
+// Stateful filesystem streams preserve typed failures, including the sticky
+// failure returned again by close. Input chunks are zero-copy Buffer views over
+// the Uint8Array returned through N-API.
+for (const [Stream, methods, reads] of [
+  [binding.ByteReader, ['read', 'close'], new Set(['read'])],
+  [
+    binding.RandomAccessReader,
+    ['read', 'readAt', 'seek', 'close'],
+    new Set(['read', 'readAt']),
+  ],
+  [binding.ByteWriter, ['write', 'flush', 'close'], new Set()],
+]) {
+  if (!Stream) continue
+  for (const name of methods) {
+    const native = Stream.prototype[name]
+    if (typeof native !== 'function') continue
+    Stream.prototype[name] = function filesystemStreamOperation(...args) {
+      try {
+        const value = native.apply(this, args)
+        return reads.has(name) && !Buffer.isBuffer(value)
+          ? Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+          : value
+      } catch (error) {
+        throw typedFilesystemError(error)
+      }
+    }
+  }
 }
 
 // The catalog collections are Map-like: `keys()` is a lazy native iterator,
@@ -3005,7 +3275,9 @@ if (binding.IcebergNames) {
   const nativeNext = binding.IcebergNames.prototype.next
   binding.IcebergNames.prototype.next = function next() {
     const name = nativeNext.call(this)
-    return name === null ? { value: undefined, done: true } : { value: name, done: false }
+    return name === null
+      ? { value: undefined, done: true }
+      : { value: name, done: false }
   }
   Object.defineProperty(binding.IcebergNames.prototype, Symbol.iterator, {
     configurable: true,
@@ -3049,7 +3321,9 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
 const NativeFixMsg = binding.FixMsg
 function FixMsg(field, value, registry) {
   if (new.target === undefined) {
-    throw new TypeError("Class constructor FixMsg cannot be invoked without 'new'")
+    throw new TypeError(
+      "Class constructor FixMsg cannot be invoked without 'new'",
+    )
   }
   return new NativeFixMsg(
     field,
@@ -3082,11 +3356,12 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
 })
 
 // The two FIX facts a caller spells rather than derives - what an absent
-// `fix:branch` means, and where the FIX specification's own tag range ends -
+// `fix:branch` means, and the half-open range another branch may claim -
 // come from the core's own constants, so neither can drift from it.
 const fix = Object.freeze({
   STANDARD_BRANCH: binding._fixStandardBranchNative(),
-  STANDARD_TAG_LIMIT: binding._fixStandardTagLimitNative(),
+  USER_TAG_MIN: binding._fixUserTagMinNative(),
+  USER_TAG_MAX: binding._fixUserTagMaxNative(),
   FixRegistry: binding.FixRegistry,
   FixMsg,
   globalRegistry: binding.fixGlobalRegistryNative,
@@ -3105,7 +3380,8 @@ for (const name of [
   'JsFixMsgEntries',
   'JsFixRegistry',
   '_fixStandardBranchNative',
-  '_fixStandardTagLimitNative',
+  '_fixUserTagMinNative',
+  '_fixUserTagMaxNative',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
 ]) {
@@ -3154,7 +3430,8 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
 
   const seedOf = (options) => {
     if (options == null) return undefined
-    if (typeof options === 'bigint' || typeof options === 'number') return options
+    if (typeof options === 'bigint' || typeof options === 'number')
+      return options
     return options.seed
   }
   const secretOf = (options) =>
@@ -3165,14 +3442,51 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     if (typeof seed === 'bigint') return seed
     if (typeof seed === 'number') {
       if (!Number.isSafeInteger(seed) || seed < 0) {
-        throw new TypeError('seed must be a non-negative safe integer or a bigint')
+        throw new TypeError(
+          'seed must be a non-negative safe integer or a bigint',
+        )
       }
       return BigInt(seed)
     }
     throw new TypeError('seed must be a number or a bigint')
   }
 
-  const asSecret = (secret) => (secret == null ? undefined : new Uint8Array(toBytes(secret)))
+  const asSecret = (secret) =>
+    secret == null ? undefined : new Uint8Array(toBytes(secret))
+
+  for (const State of [
+    binding.Xxh32,
+    binding.Xxh64,
+    binding.Xxh3,
+    binding.Xxh128,
+  ]) {
+    const fillArrowBatchNative = State.prototype._fillArrowBatchIpcNative
+    if (typeof fillArrowBatchNative !== 'function') {
+      throw new TypeError(
+        `native binding is missing ${State.name}._fillArrowBatchIpcNative`,
+      )
+    }
+    delete State.prototype._fillArrowBatchIpcNative
+    Object.defineProperty(State.prototype, 'fillArrowBatch', {
+      configurable: true,
+      value(root, batch, force = false) {
+        if (typeof force !== 'boolean') {
+          throw new TypeError(
+            `${State.name}.fillArrowBatch force must be a boolean`,
+          )
+        }
+        return arrowBatchFromIPC(
+          fillArrowBatchNative.call(
+            this,
+            intoField(root),
+            arrowBatchIntoIPC(batch, `${State.name}.fillArrowBatch input`),
+            force,
+          ),
+          `${State.name}.fillArrowBatch output`,
+        )
+      },
+    })
+  }
 
   binding.xxhash = Object.freeze({
     SECRET_MINIMUM_LENGTH: secretMinimumLength,
@@ -3183,7 +3497,10 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     Xxh128: binding.Xxh128,
     xxh32(data, options) {
       const seed = seedOf(options)
-      return xxh32Native(toNativeContent(data), seed == null ? undefined : Number(seed))
+      return xxh32Native(
+        toNativeContent(data),
+        seed == null ? undefined : Number(seed),
+      )
     },
     xxh64(data, options) {
       return xxh64Native(toNativeContent(data), asSeed(seedOf(options)))

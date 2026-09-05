@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -7,7 +8,10 @@ use arrow_ipc::writer::StreamWriter;
 use super::super::folder_reader;
 use super::prices;
 use crate::holder::Holder;
-use crate::holder::fs::{File, FileInfo, FileInfos, FileSystem, MemoryFileSystem};
+use crate::holder::fs::{
+    ByteReader, ByteWriter, File, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
+    OutputMetadata, RandomAccessReader,
+};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
 use crate::{IOBase, Listing};
@@ -45,22 +49,8 @@ impl ProbeFilesystem {
     fn total_reads(&self) -> usize {
         self.reads.lock().expect("the read probe lock").len()
     }
-}
 
-impl FileSystem for ProbeFilesystem {
-    fn type_name(&self) -> &str {
-        "probe"
-    }
-
-    fn file_info(&self, path: &str) -> Result<FileInfo> {
-        self.inner.file_info(path)
-    }
-
-    fn list(&self, path: &str, recursive: bool) -> FileInfos {
-        self.inner.list(path, recursive)
-    }
-
-    fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+    fn record_read(&self, path: &str) -> Result<()> {
         self.reads
             .lock()
             .expect("the read probe lock")
@@ -68,19 +58,90 @@ impl FileSystem for ProbeFilesystem {
         if self.failing_path.as_deref() == Some(path) {
             return Err(Error::Io(std::io::Error::other(READ_FAILURE)));
         }
-        self.inner.read_range(path, offset, buffer)
+        Ok(())
+    }
+}
+
+impl FileSystem for ProbeFilesystem {
+    fn type_name(&self) -> &str {
+        "probe"
     }
 
-    fn write_full(&self, path: &str, bytes: &[u8]) -> Result<()> {
-        self.inner.write_full(path, bytes)
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
     }
 
-    fn create_dir(&self, path: &str) -> Result<()> {
-        self.inner.create_dir(path)
+    fn normalize_path(&self, path: &str) -> Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> Result<()> {
+        self.inner.delete_root_dir_contents()
     }
 
     fn delete_file(&self, path: &str) -> Result<()> {
         self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> Result<Box<dyn RandomAccessReader>> {
+        self.record_read(path)?;
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> Result<Box<dyn ByteReader>> {
+        self.record_read(path)?;
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> Result<Box<dyn ByteWriter>> {
+        self.inner.open_output_stream(path, metadata)
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -98,11 +159,23 @@ impl ProbeFolder {
     fn new(width: usize, failing_entry: Option<usize>, failing_read: Option<usize>) -> Self {
         let failing_path = failing_read.map(part_path);
         let filesystem = Arc::new(ProbeFilesystem::new(failing_path));
+        filesystem
+            .create_dir("bucket/lake", true)
+            .expect("create the fixture root");
         let encoded = encoded_batch(&prices());
         for index in 0..width {
-            filesystem
-                .write_full(&part_path(index), &encoded)
-                .expect("seed one IPC leaf");
+            let mut writer = filesystem
+                .open_output_stream(&part_path(index), None)
+                .expect("open one IPC leaf");
+            let mut position = 0;
+            while position < encoded.len() {
+                let written = writer
+                    .write(&encoded[position..])
+                    .expect("seed one IPC leaf");
+                assert_ne!(written, 0, "the seed stream must make progress");
+                position += written;
+            }
+            writer.close().expect("publish one IPC leaf");
         }
         Self {
             url: Url::from_str("probe://bucket/lake/").expect("a valid folder URL"),
@@ -174,7 +247,7 @@ impl IOBase for ProbeFolder {
             if failing_entry == Some(index) {
                 return Err(Error::Io(std::io::Error::other(LISTING_FAILURE)));
             }
-            File::from_location(Arc::clone(&filesystem), &part_path(index)).map(Holder::FsFile)
+            File::from_path(Arc::clone(&filesystem), part_path(index), None).map(Holder::FsFile)
         })))
     }
 }

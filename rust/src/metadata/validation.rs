@@ -1,5 +1,10 @@
 //! Metadata key canonicalization and typed value validation.
 
+use crate::xxhash::{
+    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, DIGEST_ROLE_COMPONENT, DIGEST_ROLE_HOLDER,
+    DIGEST_ROLE_KEY, canonicalize_digest_algorithm, canonicalize_digest_paths,
+};
+
 use super::*;
 
 /// Return the full `scheme:name` key one property is stored under.
@@ -52,6 +57,20 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
             value
         }
         LOCATION_KEY => Url::from_str(&value)?.to_string(),
+        DIGEST_ALGORITHM_KEY => canonicalize_digest_algorithm(&value)?,
+        DIGEST_PATHS_KEY => canonicalize_digest_paths(&value)?,
+        DIGEST_ROLE_KEY => {
+            if !matches!(value.as_str(), DIGEST_ROLE_HOLDER | DIGEST_ROLE_COMPONENT) {
+                return Err(Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(DIGEST_ROLE_KEY),
+                    reason: crate::text::expected_got(
+                        "holder or component",
+                        format_args!("{value:?}"),
+                    ),
+                });
+            }
+            value
+        }
         FIELD_ENUM_KEY => parse_ascii_enum(&value)?.into_json(),
         FIELD_INIT_KEY => parse_reserved_bool(FIELD_INIT_KEY, &value)?.to_string(),
         FIELD_PARTITION_KEY => parse_reserved_bool(FIELD_PARTITION_KEY, &value)?.to_string(),

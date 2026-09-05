@@ -506,9 +506,11 @@ mod handles {
     fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
         use std::sync::Arc;
 
-        use crate::holder::fs::{Folder, MemoryFileSystem};
+        use crate::holder::fs::{FileSystem, Folder, MemoryFileSystem};
 
-        let lake = Folder::from_location(Arc::new(MemoryFileSystem::new()), "lake").unwrap();
+        let filesystem = Arc::new(MemoryFileSystem::new());
+        filesystem.create_dir("lake", false).unwrap();
+        let lake = Folder::from_path(filesystem, "lake", None).unwrap();
         let mut leaf = lake.child_by_path("trades.csv").unwrap();
         leaf.write_all_bytes(&payload()).unwrap();
         leaf.close().unwrap();
@@ -866,25 +868,27 @@ mod hashed {
     }
 
     #[test]
-    fn pending_writes_count_only_after_flush() {
+    fn filesystem_stream_writes_are_visible_without_staging() {
         use std::sync::Arc;
 
-        use crate::holder::fs::{Folder, MemoryFileSystem};
+        use crate::holder::fs::{FileSystem, Folder, MemoryFileSystem};
 
-        // An Arrow filesystem file stages writes in memory and publishes the
-        // whole value on flush, which is exactly the case the size check is
-        // there for.
-        let lake = Folder::from_location(Arc::new(MemoryFileSystem::new()), "lake").unwrap();
+        // An Arrow filesystem file forwards a completed positional write
+        // through one output stream rather than retaining a second payload.
+        let filesystem = Arc::new(MemoryFileSystem::new());
+        filesystem.create_dir("lake", false).unwrap();
+        let lake = Folder::from_path(filesystem, "lake", None).unwrap();
         let leaf = lake.child_by_path("trades.csv").unwrap();
         let mut handle = Hashed::new(leaf, DigestAlgorithm::Xxh3);
 
         handle.pwrite_all(0, b"AAPL,187.23\n").unwrap();
-        // Staged but not published: the digest describes what is stored.
         assert_eq!(
             handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
             DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes().unwrap()),
         );
 
+        // A later wrapper flush is harmless because the filesystem stream was
+        // already closed after the complete write.
         handle.flush().unwrap();
         assert_eq!(
             handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),

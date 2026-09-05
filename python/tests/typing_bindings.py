@@ -30,6 +30,7 @@ from yggdryl import (
     Scalar,
     types,
     fix,
+    xxhash,
 )
 from yggdryl.coding import gzip, zlib, zstd
 from yggdryl.media import avro, iceberg
@@ -153,6 +154,9 @@ default_field_scalar: pa.Scalar = field.default_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 cast_dtype_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
 cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(source_array)
+bit_cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array_bits(
+    pa.array([2**64 - 1], type=pa.uint64())
+)
 source_batch = pa.record_batch([source_array], names=["value"])
 cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
     [Field("value", "int64")]
@@ -160,6 +164,15 @@ cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
+filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
+    Field(
+        "rows",
+        DataType.from_fields([Field("value", "int64")]),
+        nullable=False,
+    ),
+    source_batch,
+    force=True,
+)
 default_dtype_value: object = DataType("int32").default_pyvalue()
 default_field_value: object = field.default_pyvalue()
 default_dtype_hint: object = DataType("int32").default_pyhint()
@@ -175,6 +188,9 @@ typed_id_value: int | None = typed_id.default_pyvalue()
 typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
+typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array_bits(
+    pa.array([2**32 - 1], type=pa.uint32())
+)
 typed_clock: TimeField = types.time("clock", "microseconds", nullable=False)
 typed_ids: ListField[int] = types.list("ids", typed_id)
 nullable_item: Int32Field = types.int32("item")
@@ -413,6 +429,9 @@ location: Url | None = field.location
 property_value: str | None = field.get_property("postgres", "type")
 properties: list[tuple[str, str]] = list(field.property_iter("postgres"))
 iceberg_properties: ProtocolField = field.iceberg
+digest_properties: ProtocolField = field.digest
+identity_properties: ProtocolField = field.identity
+partition_properties: ProtocolField = field.partition
 postgres_properties: ProtocolField = field.protocol("POSTGRES")
 protocol_scheme: str = iceberg_properties.scheme
 protocol_prefix: str = iceberg_properties.prefix
@@ -429,6 +448,17 @@ protocol_present: bool = "doc" in iceberg_properties
 protocol_len: int = len(iceberg_properties)
 del iceberg_properties["doc"]
 iceberg_properties.clear()
+
+digest_root: Field = Field(
+    "row",
+    DataType.from_fields([types.int32("id", nullable=False)]),
+    nullable=False,
+)
+digest_children: list[Field] = digest_root.digest_fields
+digest_names: list[str] = digest_root.digest_field_names
+digest_count: int = digest_root.digest_field_len
+digest_explicit: bool = digest_root.has_digest_components
+digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(
     "row",
@@ -465,6 +495,8 @@ assert protocol_display == "Last trade"
 assert location
 assert property_value
 assert properties
+assert identity_properties is not None
+assert partition_properties is not None
 assert postgres_properties
 assert protocol_scheme == "iceberg"
 assert protocol_prefix == "iceberg"
@@ -565,6 +597,9 @@ record_match_key: list[str] = record_options.merge_by_names
 record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 text_record_options = TextOptions()
+text_record_options.framing = True
+text_record_options.leading_fragment = "drop"
+text_record_options.max_record_byte_size = 4096
 text_record_options.rowheader = r"\[(?<level>[A-Z]+)\]"
 text_record_options.with_rownum = 1
 text_record_options.lstrip = r"^\s+"
@@ -572,6 +607,11 @@ text_record_options.rstrip = r"\s+$"
 text_record_options.linesep = memoryview(b"\r\n")
 text_record_options.autotype = True
 text_record_options.timezone = Timezone.UTC
+text_framing: bool = text_record_options.framing
+text_leading_fragment: Literal["keep", "drop", "error"] = (
+    text_record_options.leading_fragment
+)
+text_max_record_byte_size: int | None = text_record_options.max_record_byte_size
 text_header: str | None = text_record_options.rowheader
 text_lstrip: str | None = text_record_options.lstrip
 text_rstrip: str | None = text_record_options.rstrip
@@ -1004,10 +1044,11 @@ fix_description: str | None = fix_field.fix.description
 fix_branch: str = fix_field.fix.branch
 fix_id: str | None = fix_field.fix.id
 fix_standard_branch: str = fix.STANDARD_BRANCH
-fix_standard_tag_limit: int = fix.STANDARD_TAG_LIMIT
+fix_user_tag_min: int = fix.USER_TAG_MIN
+fix_user_tag_max: int = fix.USER_TAG_MAX
 
 fix_vendor: Field = Field("TradeID", "utf8")
-fix_vendor.fix.id = "cme:5001"
+fix_vendor.fix.id = "5001:cme"
 fix_vendor.fix.branch = "cme"
 fix_vendor_id: str | None = fix_vendor.fix.id
 
@@ -1025,18 +1066,22 @@ fix_registry_from_handle: fix.FixRegistry = fix.FixRegistry.from_handle(
 fix_registry_from_text: fix.FixRegistry = fix.FixRegistry.from_handle(
     "file:///dictionary"
 )
-fix_by_id: Field = fix_registry_from_fields.field_by_id("standard:38")
-fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("standard:38")
+fix_by_id: Field = fix_registry_from_fields.field_by_id("38:")
+fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("38:")
 fix_by_tag: Field = fix_registry_from_fields.field_by_tag(38)
 fix_maybe_by_tag: Field | None = fix_registry_from_fields.get_field_by_tag(38)
-fix_by_name: Field = fix_registry_from_fields.field_by_name(fix.STANDARD_BRANCH, "qty")
+fix_by_name: Field = fix_registry_from_fields.field_by_name("qty", fix.STANDARD_BRANCH)
 fix_maybe_by_name: Field | None = fix_registry_from_fields.get_field_by_name(
-    "standard", "qty"
+    "qty", ""
 )
-fix_by_path: Field = fix_registry_from_fields.field_by_path("standard", "OrderQty")
+fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty", "")
 fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
-    "standard", "OrderQty"
+    "OrderQty", ""
 )
+fix_bytes_protocol: MimeType = fix_registry_from_fields.infer_bytes_protocol(b"35=D|")
+fix_text_protocol: MimeType = fix_registry_from_fields.infer_text_protocol("35=D|")
+fix_bytes_msgtype: bytes | None = fix_registry_from_fields.infer_bytes_msgtype(b"35=D|")
+fix_text_msgtype: str | None = fix_registry_from_fields.infer_text_msgtype("35=D|")
 fix_generic: Field = fix_registry_from_fields.field(38)
 fix_maybe_generic: Field | None = fix_registry_from_fields.get_field("OrderQty")
 fix_item: Field = fix_registry_from_fields[38]
@@ -1044,7 +1089,7 @@ fix_default: object = fix_registry_from_fields.get("nope", None)
 fix_replaced: Field | None = fix_registry.insert(fix_field)
 fix_registry.update(fix_field)
 fix_removed: Field | None = fix_registry.remove(38)
-fix_removed_by_id: Field | None = fix_registry.remove_by_id("cme:5001")
+fix_removed_by_id: Field | None = fix_registry.remove_by_id("5001:cme")
 fix_size: int = len(fix_registry_from_fields)
 fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
@@ -1061,8 +1106,8 @@ fix_message_registry: fix.FixRegistry = fix_message.registry
 fix_message_field: Field = fix_message.field
 fix_message_value: Scalar = fix_message.value
 fix_message_branch: str = fix_message.branch
-fix_message_by_id: Scalar = fix_message.by_id("standard:38")
-fix_message_maybe_id: Scalar | None = fix_message.get_by_id("standard:38")
+fix_message_by_id: Scalar = fix_message.by_id("38:")
+fix_message_maybe_id: Scalar | None = fix_message.get_by_id("38:")
 fix_message_by_tag: Scalar = fix_message.by_tag(38)
 fix_message_maybe_tag: Scalar | None = fix_message.get_by_tag(38)
 fix_message_by_name: Scalar = fix_message.by_name("qty")
@@ -1078,13 +1123,17 @@ fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
 
 assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
-assert fix_branch == fix_standard_branch and fix_standard_tag_limit == 5000
-assert fix_id == "standard:38" and fix_vendor_id == "cme:5001"
+assert fix_branch == fix_standard_branch and fix_user_tag_min == 5000
+assert fix_user_tag_max == 40_000
+assert fix_id == "38:" and fix_vendor_id == "5001:cme"
 assert fix_by_id and fix_maybe_by_id
 assert fix_registry_loaded is not None and fix_registry_from_url is not None
 assert fix_registry_from_handle is not None and fix_registry_from_text is not None
 assert fix_by_tag and fix_maybe_by_tag and fix_by_name and fix_maybe_by_name
 assert fix_by_path and fix_maybe_by_path and fix_generic and fix_maybe_generic
+assert fix_bytes_protocol and fix_text_protocol
+assert fix_bytes_msgtype is None or fix_bytes_msgtype
+assert fix_text_msgtype is None or fix_text_msgtype
 assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert fix_removed is None or fix_removed
@@ -1092,7 +1141,7 @@ assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has
 assert fix_names == [] or fix_names
 assert fix_message_registry and fix_message_field and fix_message_value
-assert fix_message_branch == "standard"
+assert fix_message_branch == ""
 assert fix_message_by_id and fix_message_maybe_id
 assert fix_message_by_tag and fix_message_maybe_tag
 assert fix_message_by_name and fix_message_maybe_name

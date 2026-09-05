@@ -16,7 +16,7 @@ use crate::{
         mime_type_from_input,
     },
     exact_i32,
-    fix::{branch_from_js, id_from_js},
+    fix::{branch_from_js, id_parts_from_js},
     napi_error, napi_type_error, ordering_value,
     types::datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
     types::value::arrow_scalar_to_ipc,
@@ -163,6 +163,67 @@ impl JsField {
         }
         writer.finish().map_err(napi_error)?;
         Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
+    }
+
+    /// Bit-cast one opposite-signed, same-width Arrow JS integer vector.
+    ///
+    /// The JavaScript loader owns the copied one-column IPC boundary and
+    /// removes this private bridge from the published class.
+    #[napi(js_name = "_castArrowArrayBitsIpcNative", skip_typescript)]
+    pub fn cast_arrow_array_bits_ipc(&self, bytes: Uint8Array) -> Result<Buffer> {
+        use std::sync::Arc;
+
+        use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
+        use arrow_ipc::writer::StreamWriter;
+        use arrow_schema::Schema;
+
+        use crate::text::codec::{arrow_batches, ensure_one_column};
+
+        let (source_schema, batches) = arrow_batches(&bytes)?;
+        ensure_one_column(&source_schema, "Arrow array")?;
+        let target_schema = Arc::new(Schema::new([self
+            .inner
+            .clone()
+            .into_arrow_ref()
+            .map_err(napi_error)?]));
+        let mut writer =
+            StreamWriter::try_new(Vec::new(), target_schema.as_ref()).map_err(napi_error)?;
+
+        if batches.is_empty() {
+            let source = new_empty_array(source_schema.field(0).data_type());
+            let cast = self
+                .inner
+                .cast_arrow_array_bits(source)
+                .map_err(napi_error)?;
+            let options = RecordBatchOptions::new().with_row_count(Some(0));
+            let batch =
+                RecordBatch::try_new_with_options(Arc::clone(&target_schema), vec![cast], &options)
+                    .map_err(napi_error)?;
+            writer.write(&batch).map_err(napi_error)?;
+        } else {
+            for batch in batches {
+                let source = batch
+                    .columns()
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
+                let cast = self
+                    .inner
+                    .cast_arrow_array_bits(source)
+                    .map_err(napi_error)?;
+                let options = RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
+                let cast_batch = RecordBatch::try_new_with_options(
+                    Arc::clone(&target_schema),
+                    vec![cast],
+                    &options,
+                )
+                .map_err(napi_error)?;
+                writer.write(&cast_batch).map_err(napi_error)?;
+            }
+        }
+
+        writer.finish().map_err(napi_error)?;
+        Ok(writer.into_inner().map_err(napi_error)?.into())
     }
 
     /// Build an empty native reader carrying exactly this Field's Arrow schema.
@@ -1225,6 +1286,24 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::FIELD)
     }
 
+    /// The live row-digest property view.
+    #[napi(getter)]
+    pub fn digest(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::DIGEST)
+    }
+
+    /// The live generic field-identity property view.
+    #[napi(getter)]
+    pub fn identity(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::IDENTITY)
+    }
+
+    /// The live generic partition-field property view.
+    #[napi(getter)]
+    pub fn partition(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::PARTITION)
+    }
+
     /// The live Amazon S3 property view.
     #[napi(getter)]
     pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolField {
@@ -1259,6 +1338,46 @@ impl JsField {
     #[napi(getter)]
     pub fn pandas(&self, reference: Reference<JsField>) -> JsProtocolField {
         JsProtocolField::new(reference, CoreScheme::PANDAS)
+    }
+
+    /// The effective row-digest components, in declaration order.
+    #[napi]
+    pub fn digest_fields(&self) -> Vec<JsField> {
+        self.inner
+            .digest_fields()
+            .cloned()
+            .map(Self::from_core)
+            .collect()
+    }
+
+    /// The names of the effective row-digest components.
+    #[napi]
+    pub fn digest_field_names(&self) -> Vec<String> {
+        self.inner
+            .digest_field_names()
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    /// Number of fields contributing to each row digest.
+    #[napi(getter)]
+    pub fn digest_field_len(&self) -> u32 {
+        u32::try_from(self.inner.digest_field_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Whether any child explicitly declares the digest-component role.
+    #[napi(getter)]
+    pub fn has_digest_components(&self) -> bool {
+        self.inner.has_digest_components()
+    }
+
+    /// Return this struct root holding only its effective digest components.
+    #[napi]
+    pub fn only_digest_fields(&self) -> Result<Self> {
+        self.inner
+            .only_digest_fields()
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Whether this field carries the values a path spells out.
@@ -1669,7 +1788,7 @@ impl JsProtocolField {
 
     /// The dictionary this field belongs to, on the `fix` view.
     ///
-    /// A branch crosses as text: `'standard'` is the FIX specification's own
+    /// A branch crosses as text: `''` is the FIX specification's own
     /// dictionary and what an absent `fix:branch` means, and assigning it
     /// removes the key rather than storing it. A spelling that is not a branch
     /// throws the native parse failure, and a refusal - a tag the specification
@@ -1681,7 +1800,7 @@ impl JsProtocolField {
             .inner
             .as_fix()
             .branch()
-            .map(|branch| branch.as_str().to_owned())
+            .map(|branch| branch.name().to_owned())
             .map_err(napi_error)
     }
 
@@ -1697,7 +1816,7 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
-    /// This field's identity, `branch:tag`, on the `fix` view.
+    /// This field's identity, `tag:branch`, on the `fix` view.
     ///
     /// Derived from the branch and the canonical tag on every read and never
     /// stored, so it is `null` exactly when `fix:tag` is absent. Assigning one
@@ -1706,24 +1825,23 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn id(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "id")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
-            .id()
-            .map_err(napi_error)?
-            .map(|id| id.to_string()))
+        let view = self.field.inner.as_fix();
+        let Some(tag) = view.tag().map_err(napi_error)? else {
+            return Ok(None);
+        };
+        let branch = view.branch().map_err(napi_error)?;
+        Ok(Some(format!("{tag}:{branch}")))
     }
 
     /// Record both halves of this field's identity at once.
     #[napi(setter)]
     pub fn set_id(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "id")?;
-        let id = id_from_js(&value)?;
+        let (branch, id) = id_parts_from_js(&value)?;
         self.field
             .inner
             .as_fix_mut()
-            .set_id(&id)
+            .set_id(&branch, id.tag())
             .map_err(napi_error)
     }
 
@@ -1731,9 +1849,8 @@ impl JsProtocolField {
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `view.delete('tag')`
-    /// removes it, the way every other property is removed. A tag below
-    /// `fix.STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
-    /// another branch cannot claim it.
+    /// removes it, the way every other property is removed. A field in another
+    /// branch can claim only `fix.USER_TAG_MIN..fix.USER_TAG_MAX`.
     #[napi(getter)]
     pub fn tag(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "tag")?;

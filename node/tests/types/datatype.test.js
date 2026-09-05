@@ -198,6 +198,20 @@ test('the uuid is sixteen bytes spelled as one identifier', () => {
   void text
 })
 
+test('version is canonical numerically ordered text', () => {
+  const version = new DataType('version')
+
+  assert.equal(version.id, 'version')
+  assert.equal(version.kind, 'text')
+  assert.equal(version.toString(), 'version')
+  assert.equal(version.asciiWidth, null)
+  assert.ok(DataType.fromString(version.toString()).equals(version))
+
+  const field = new Field('version', version, false)
+  assert.equal(field.defaultJSValue(), '0')
+  assert.ok(Field.fromJSON(field.toJSON()).equals(field))
+})
+
 test('recursive datatypes expose fields as a collection', () => {
   const nested = DataType.fromString(
     'struct<id: bigint not null, payload: array<struct<name: string, score: decimal(18, 4)>>>',

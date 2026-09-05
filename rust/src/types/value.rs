@@ -654,6 +654,18 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 Ok((Scalar::Uuid(uuid), true))
             }
         }
+        D::Version => match value {
+            Scalar::Version(_) => Ok((value.clone(), false)),
+            Scalar::Text(text) => text
+                .as_str()
+                .parse::<crate::Version>()
+                .map(|version| (Scalar::Version(version), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected version text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -1227,6 +1239,15 @@ fn validate_dtype_value(
                 Some(Ok(_)) => Ok(()),
                 _ => Err(expected("uuid", value)),
             },
+        },
+        D::Version => match value {
+            Scalar::Version(_) => Ok(()),
+            Scalar::Text(text) => text
+                .as_str()
+                .parse::<crate::Version>()
+                .map(|_| ())
+                .map_err(|_| expected("version", value)),
+            _ => Err(expected("version", value)),
         },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)

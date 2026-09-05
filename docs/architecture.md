@@ -42,7 +42,7 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation m
 | Rule | Consequence |
 | --- | --- |
 | A schema is a field | A non-null Struct [`Field`](types/field.md) is the only row schema; `Scalar::Record` is named input that canonicalizes to an ordered `Scalar::Sequence`. |
-| Protocol metadata is a view | `field.as_fix()` and `field.as_iceberg()` borrow the same field; nothing is copied into a protocol type. |
+| Protocol metadata is a view | `field.as_fix()` and `field.as_iceberg()` borrow the same field, `field.as_digest()` names row-digest roles, `field.as_identity()` and `field.as_partition()` give generic metadata; none copies state. |
 | Storage is one trait | [`IOBase`](holder/index.md) is positional (`pread`, `pwrite`); construction touches nothing, absent reads are empty, writes create. |
 | Listings are iterators | `ls`, `glob`, and predicate listings yield `Result` items lazily and fuse at the first failure. |
 | Traits say what, enums say which | `Codec`, `MediaType`, `IOKind`, `IOMode` dispatch; `Holder` and `Media` carry one native implementation across bindings. |

@@ -107,6 +107,13 @@ pub enum Error {
         /// The location addressed, rendered canonically.
         path: SmolStr,
     },
+    /// The selected backend does not provide an optional filesystem capability.
+    Unsupported {
+        /// The operation the caller requested.
+        operation: &'static str,
+        /// The backend that declined it.
+        filesystem: SmolStr,
+    },
     /// An XXH3 custom secret is shorter than the algorithm requires.
     InvalidSecret {
         /// The digest algorithm the secret was offered to.
@@ -209,6 +216,13 @@ impl fmt::Display for Error {
                 formatter,
                 "expected to create a {expected} at {path:?}, got an existing {actual}"
             ),
+            Self::Unsupported {
+                operation,
+                filesystem,
+            } => write!(
+                formatter,
+                "filesystem {filesystem:?} does not support {operation}"
+            ),
             Self::InvalidSecret {
                 algorithm,
                 required,
@@ -306,6 +320,14 @@ impl Error {
         }
     }
 
+    /// Report an optional filesystem operation the backend does not provide.
+    pub fn unsupported(operation: &'static str, filesystem: impl fmt::Display) -> Self {
+        Self::Unsupported {
+            operation,
+            filesystem: SmolStr::new(filesystem.to_string()),
+        }
+    }
+
     /// Normalize a backend's own absence and conflict spellings into the typed
     /// variants, at that backend's boundary.
     ///
@@ -350,6 +372,12 @@ impl Error {
             Self::Io(error) => error.kind() == std::io::ErrorKind::AlreadyExists,
             _ => false,
         }
+    }
+
+    /// Return whether this failure is an unsupported optional capability.
+    #[must_use]
+    pub const fn is_unsupported(&self) -> bool {
+        matches!(self, Self::Unsupported { .. })
     }
 
     /// Return whether checked division or remainder received a zero divisor.

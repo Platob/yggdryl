@@ -7,6 +7,7 @@ pub(crate) mod nested;
 pub(crate) mod parser;
 pub(crate) mod temporal;
 pub(crate) mod value;
+pub(crate) mod version;
 
 pub(crate) const NESTED_SQL: &str = concat!(
     "struct<id:bigint,events:array<struct<timestamp:datetime64(us,UTC),",

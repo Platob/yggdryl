@@ -38,6 +38,7 @@ impl Serialize for JsonRef<'_> {
             ),
             Scalar::Text(value) => serializer.serialize_str(value.as_str()),
             Scalar::Ascii(value) => serializer.serialize_str(value.as_str()),
+            Scalar::Version(value) => serializer.collect_str(value),
             Scalar::Uuid(value) => serializer.serialize_str(&value.to_string()),
             Scalar::Enum(value) => serializer.serialize_str(value.as_str()),
             Scalar::Bytes(value) => serializer
