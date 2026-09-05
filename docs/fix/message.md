@@ -18,8 +18,6 @@
 
 ## Use
 
-One message resolved by tag, identifier, name and path, then serialized and read back.
-
 === "Rust"
 
     ```rust
@@ -195,15 +193,16 @@ One message resolved by tag, identifier, name and path, then serialized and read
     assert.deepEqual(document.value[1], 'AAPL')
     assert.ok(new fix.FixMsg(root, message.value, registry).equals(message))
     ```
+
 ## Resolution tier
 
 A bare tag or name resolves in two steps and no further:
 
-1. this message's own branch, when the identifier that would name is legal at all, that is,
-   the tag is at or above `FixId::STANDARD_TAG_LIMIT`, or the message is already standard;
+1. this message's own branch, when the tag is at or above `FixId::STANDARD_TAG_LIMIT`, or the
+   message is already standard;
 2. the standard branch.
 
-Both halves of a venue message stay reachable: `get_by_tag(5001)` finds the venue's own field, and `get_by_tag(35)` still finds `MsgType`.
+`get_by_tag(5001)` finds the venue's own field, and `get_by_tag(35)` still finds `MsgType`.
 
 ## Accessors
 
@@ -218,7 +217,7 @@ Both halves of a venue message stay reachable: `get_by_tag(5001)` finds the venu
 ## Edges
 
 - A root whose `fix:branch` is malformed -> typed error at construction, never a silent miss later.
-- `get_by_tag(9999)` with no dictionary entry -> the root child named `9999` exactly, never `09999`; the tag renders on the stack, so a miss allocates nothing.
+- `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
 - A bare tag below `FixId::STANDARD_TAG_LIMIT` on a non-standard message -> only the standard branch is tried.
 - `by_id` on a foreign branch -> a miss, because an identifier never tiers.
 - `by_path("NoPartyIDs.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`NoPartyIDs.0.PartyID`).
@@ -252,7 +251,7 @@ Binding rows only; the Criterion target carries no `FixMsg` case.
 
 ### Python
 
-One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12, median time per call over the tracked seed of 34 fields.
+One local Windows x86_64 run of the release wheel under CPython 3.12, median time per call over the tracked seed of 34 fields.
 
 | Python operation | estimate |
 | --- | ---: |
@@ -268,7 +267,7 @@ python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
 
 ### JavaScript
 
-One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon (`npm run --prefix node build`) under Node.js v24.18.0, whole-loop rate over the same tracked seed of 34 fields.
+One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon under Node.js v24.18.0, whole-loop rate over the tracked seed of 34 fields.
 
 | JavaScript operation | rate | per call |
 | --- | ---: | ---: |
@@ -278,7 +277,7 @@ One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon (`npm run --
 | `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 249k/s | 4.01 us |
 | `FixMsg.branch` | 1.20M/s | 834 ns |
 
-`FixMsg`'s accessors wrap a `Scalar` and cost the same shape as a `Field` hit. `FixMsg.branch` is 834 ns because the branch was resolved once at construction and only the string crosses.
+`FixMsg`'s accessors wrap a `Scalar` and cost the same shape. `FixMsg.branch` is 834 ns because the branch was resolved once at construction and only the string crosses.
 
 ```bash
 npm run --prefix node bench:fix

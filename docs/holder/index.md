@@ -43,6 +43,21 @@ let missing = Holder::local(Folder::temporary()?.path()?.join("yggdryl-generic-d
 assert!(matches!(missing, Holder::Path(_)));
 ```
 
+The enum answers the whole contract, so a caller writes the same calls whatever it holds.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+
+// A value that could have been any handle. The calls do not change.
+let mut handle = Holder::buffer(Buffer::new());
+handle.write_all_bytes(b"AAPL,1\n")?;
+
+assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
+assert_eq!(handle.kind(), yggdryl::IOKind::Memory);
+```
+
 ## Hierarchy
 
 ```rust
