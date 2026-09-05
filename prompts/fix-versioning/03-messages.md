@@ -34,8 +34,8 @@ impl FixRegistry {
 pub struct FixEntry {
     pub tag: Option<i32>,      // None when the key named no field
     pub branch: Option<i32>,   // xxh32 of the branch; None is standard/unresolved
-    pub key: Option<SmolStr>,  // the arriving key, kept only when it is not the tag
-    pub value: SmolStr,        // exactly as it arrived; never absent
+    pub key: SmolStr,          // the key as it arrived; always present
+    pub value: SmolStr,        // the value as it arrived; always present
 }
 impl FixEntry { pub fn id(&self) -> Option<FixId>; }
 
@@ -96,16 +96,21 @@ impl FixMsg {
   bytes that are not UTF-8 at all — a signature, an encrypted block, a
   vendor's XML in some other encoding. So `from_pairs` takes
   `(&[u8], &[u8])`, the readers hand it byte slices, and a separator is a
-  `u8` rather than a `char`, which cannot be multi-byte by accident.
+  `u8` rather than a `char`, which cannot be multi-byte by accident. Where
+  bytes must be held as text, P7-R6 says how.
   Everything the parser must *decide* is ASCII by construction — a tag is
   digits, a rendered key folds on ASCII case and ASCII separators (P7-R13) —
   so the whole key path runs on bytes with no UTF-8 validation at all, which
   is faster as well as more correct.
-- **P7-R6. A key that is not UTF-8 drops its pair, with an anomaly.** A key
-  is a tag or a rendered name; bytes that are neither cannot address a
-  field, and keeping them as a field name would put un-renderable text in a
-  schema. `key` therefore stays a `SmolStr`. This is P7-R17's rule for a
-  different malformation, and it reports rather than fails (P7-R70).
+- **P7-R6. Bytes become text by a lossy decode, in one pass, with no
+  pre-check.** Where a byte slice has to be held as text, convert it and let
+  the conversion decide: valid UTF-8 borrows through unchanged, and a byte
+  that is not gets the replacement character. Do **not** scan first to ask
+  whether it will succeed — a validity pass over every key and value, to
+  answer a question the conversion already answers, is the cost this brief
+  moved to bytes to avoid (P7-R5). Nothing is refused for being
+  un-decodable, and nothing is dropped: a mangled key is kept, mangled, and
+  simply resolves to no field.
 - **P7-R7. The value owns.** A `FixMsg` holds its entries and outlives the
   text it was read from, so a borrowed value would force `FixMsg<'a>` on
   every caller and on both bindings, which hold one across an FFI boundary.
@@ -113,21 +118,26 @@ impl FixMsg {
   cover a side, a price, a symbol and a 21-byte `UTCTimestamp`, so the
   common entry allocates nothing. Readers still split into borrowed
   `(&[u8], &[u8])`; the single materialization is in `from_pairs`.
-- **P7-R8. `tag` is optional and `key` exists** because an unresolved key
-  has no tag. `VenueOwnThing=x` survives in the tree (P7-R15) and `entries`
-  is the wire record, so it must hold it too. `key` is `None` for the common
-  resolved pair, so nothing is stored twice.
-- **P7-R9. The value is never typed inside the entry.** Typing happens once,
-  in `from_pairs`, through `Field::scalar`: the bytes become the `Scalar` the
-  field's datatype declares.
-- **P7-R10. A `data` field's bytes live in the row, not in its entry.**
-  `SmolStr` is UTF-8 and a signature is not, so `entries` records the
-  message's *text* and the row holds the bytes — which is where that field's
-  datatype puts them anyway (`binary`, P6-R13). The entry for such a tag
-  holds the value's text where it has one and is empty where it does not,
-  and `into_bytes` reads that tag from the row. Nothing is lost and no type
-  is invented: the message carries both halves, and re-emission reads
-  whichever half holds the field.
+- **P7-R8. `key` is always present; only `tag` is optional.** Every entry
+  records the key as it arrived — `"54"` for a tag-keyed pair, `Side` for a
+  named one, `VenueOwnThing` for one no dictionary explains — and `tag` is
+  `None` where that key named no field. `entries` is the wire record, so it
+  says what came in, unconditionally; a two-byte decimal key costs nothing
+  inline, and an entry that sometimes omits its key is a record a reader has
+  to reconstruct.
+- **P7-R9. The value is typed from the raw bytes, never from the entry's
+  text.** Typing happens once, in `from_pairs`, through `Field::scalar`,
+  and it reads the `&[u8]` the reader split — *before* P7-R6's lossy decode,
+  which exists only to fill the entry. Type from the decoded text and a
+  `data` field's bytes are destroyed on the way in; the ordering is the
+  whole rule.
+- **P7-R10. A `data` field's bytes live in the row; its entry is a lossy
+  view of them.** `SmolStr` is UTF-8 and a signature is not, so the entry
+  holds the decode (P7-R6) while the row holds the bytes — which is where
+  that field's datatype puts them anyway (`binary`, P6-R13). `into_bytes`
+  reads such a tag from the row, every other tag from its entry, so nothing
+  is lost and no type is invented. An entry whose text is lossy is not the
+  authority for its field, and `anomalies()` says which entries those are.
 
 ### `FixMsg` carries its entries
 
@@ -304,15 +314,17 @@ impl FixMsg {
 
 ### Decided
 
-- **Bytes in, `SmolStr` stored, and no new type.** The door is bytes so no
-  pair is validated as UTF-8 and no legal message is refused; the entry is
-  the crate's own inline string, so the common entry allocates nothing; and
-  the one case that string cannot hold — a `data` field's bytes — is held by
-  the row, which its datatype already types as `binary` (P7-R10).
-  *Rejected:* a bespoke small-bytes value. It would be a type the crate does
+- **Bytes in, `SmolStr` stored, lossily, and no new type.** The door is
+  bytes, so nothing is validated up front and no legal message is refused;
+  the entry is the crate's own inline string, so the common entry allocates
+  nothing; and the one thing that string cannot hold — a `data` field's
+  bytes — is held by the row, which its datatype already types as `binary`
+  (P7-R10). *Rejected:* a bespoke small-bytes value — a type the crate does
   not otherwise need, to carry four tags that are usually absent.
   *Rejected:* `Arc<[u8]>` in the entry — it allocates on every entry and
-  throws away the inline win P7-R7 exists for.
+  throws away the inline win P7-R7 exists for. *Rejected:* refusing an
+  un-decodable key or value — that drops data for a malformation the
+  replacement character already describes.
 - **The readers are byte-native and `from_text` is the one text door.** A
   `&str` reader that splits and then converts to bytes pays UTF-8 validation
   for nothing. `&str` is `&[u8]` for free, so the text convenience costs one
@@ -542,8 +554,14 @@ line some venue really sent.
     the whole path: typed as bytes in the row and re-emitted by `into_bytes`
     from there (P7-R10, P7-R39), while every other value in the same message
     round-trips through its entry.
-6d. A key that is not UTF-8 drops its pair and reports, while the rest of
-    the message reads (P7-R6).
+6d. A key that is not UTF-8 is kept, decoded lossily, resolves to no field,
+    and its pair still becomes an unknown child — nothing is dropped and
+    nothing is refused (P7-R6).
+6e. Every entry carries its key: `"54"` for a tag-keyed pair, `Side` for a
+    named one (P7-R8).
+6f. A valid-UTF-8 value is converted without a validity pass of its own and
+    without copying, and a `data` field is typed from the raw bytes rather
+    than from its lossy text (P7-R6, P7-R9).
 7. Empty and blank keys dropped; an empty value dropped (P7-R17).
 8. The same pairs built against an empty registry (P7-R28).
 
