@@ -22,7 +22,7 @@
 | Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`; re-parses to the same value |
 | `file:` fallback | Only with no scheme token at all |
 | Errors | Bad scheme token, percent escape, space, or bracket: parse error with the failing byte offset |
-| Escapes | Stored as written; `path_text`, `query`, and `fragment` take `decode` to answer with the text they stand for |
+| Escapes | Stored as written; `path_text`, `query`, and `fragment` take `decode` to answer with the text they stand for. Rust and Python; JavaScript reads the stored form only |
 | Decoded text | Text, never structure: `%2F` decodes inside its segment, `%26` inside its pair |
 | Hash lock | Python: the first `hash(...)` freezes that wrapper; a later setter raises `TypeError` |
 | Stable hash | `stable_hash()` / `stableHash()` compute only; never lock |

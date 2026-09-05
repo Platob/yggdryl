@@ -130,10 +130,9 @@ The bindings expose the same lazy iterator with a 65,536-byte default batch.
 
 `DEFAULT_STREAM_BATCH_SIZE` (64 KiB) shapes what a reader hands *out*; `DEFAULT_FETCH_BYTE_SIZE` (1 MiB) shapes what it asks *for*. The two differ because a decoder pulls in its own small increments - a gzip stream reads 32 KiB at a time - and against an object store every pull is a round trip. Compressed record reads buffer the transport at the fetch window, so a scan costs requests proportional to the object, not to the decoder's appetite: one open, one ask per window, and the emptiness test rides the first window instead of a one-byte request.
 
-| Read of a 1 GiB `.log.gz` | Asks of the store |
-| --- | --- |
-| decoder-sized pulls | ~32768 |
-| one fetch window each | ~1024 |
+Measured over a filesystem that records what each read asks it for, a 490 KB gzip log went from 16 asks - fifteen of 32 KiB, after a one-byte probe - to one ask of a whole window; a 9.98 MB object costs one open and ten window-sized asks. A 1 GiB object therefore divides into roughly a thousand asks where the decoder's own appetite would have made about thirty-two thousand.
+
+A positional read is the other half of the rule: `pread` and `read_range_bytes` on a coded handle fetch what they need - between one stream batch and one window - rather than a whole window for a few bytes.
 
 ## Built from what you already hold
 

@@ -13,11 +13,11 @@
 | Duplicates | `get` answers with the first, `get_all` with every one, `insert` replaces the first and drops the rest, `append` adds another |
 | Pair with no `=` | Empty value; the `&&` in `a=1&&b=2` is not a pair |
 | `decode = true` | Text in and out; writes encode what the query cannot carry |
-| `decode = false` | The query's own bytes; a write that would not parse back is refused |
+| `decode = false` | The query's own bytes; a key carrying `&` or `=` is refused, a value may carry `=` because the split takes the first one |
 | `+` | A literal plus, encoded as `%2B` on write, never a space |
 | Zero copy | Reads borrow the query; only a changed or decoded pair owns its text |
 | Rust borrow | A view borrows its URI, so `into_owned` is what frees it for write-back |
-| Python | A live view of the value it came from, with the mapping dunders and methods a `dict` has |
+| Python | A live view of the value it came from, with the mapping dunders and methods a `dict` has; a lookup that changes nothing writes nothing, and `keys`/`values`/`items` answer with tuples because a key may repeat |
 | Bindings | Rust and Python; JavaScript reads the query component only |
 
 ## Use
@@ -126,7 +126,9 @@ A decoding view answers with the text the escapes stand for, and encodes what it
 - `%2F` in a key or value -> a literal `/`; the query has no structure a separator could change.
 - `%FF` -> a raw view reads it; a decoding view refuses it, because it stands for no UTF-8 text. An overlong encoding (`%C0%AF`) and a lone surrogate (`%ED%A0%80`) are refused for the same reason.
 - `?a%62=1&ab=2` -> a decoding view sees one key twice, because `a%62` and `ab` are the same text. `get` answers with the first and `insert` keeps one, so a view that decodes can lose a pair a raw view keeps.
-- Python: a hashed `Url` is frozen, so a write through its view raises `TypeError`.
+- Python: a hashed `Url` is frozen, so a write through its view raises `TypeError` - but `pop(k, default)` on a missing key, `setdefault` on a present one, and an empty `update()` are reads, and answer.
+- Python: a query that names one key twice equals no `dict`, because no `dict` can hold it.
+- `?filter=a=b` -> one pair whose value is `a=b`; a raw view writes it back unchanged.
 - Python: `pop(key)` raises without a default, as `dict.pop` does; `pop(key, None)` answers `None`.
 - Rust: a view borrows its URI, so `url.set_parameters(&url.parameters(true)?)` cannot compile; `into_owned` is the answer.
 

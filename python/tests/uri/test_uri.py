@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 import pickle
+from collections.abc import Iterator
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 
@@ -444,3 +445,80 @@ def test_a_hashed_url_refuses_a_parameter_write() -> None:
     with pytest.raises(TypeError, match="frozen"):
         parameters["symbol"] = "MSFT"
     assert value.query() == "symbol=AAPL"
+
+
+def test_a_lookup_that_changes_nothing_writes_nothing() -> None:
+    """The mapping methods that only read must not rewrite the query.
+
+    A write-back respells what it parsed - ``flag`` becomes ``flag=``, an empty
+    pair disappears - and a frozen value refuses it, so a ``dict``-shaped read
+    would both change the URL and raise where a ``dict`` would not.
+    """
+    value = Url("https://example.com/t?flag&a=1&&b=%7Ez")
+    stored = str(value)
+    parameters = value.parameters()
+
+    assert parameters.pop("absent", None) is None
+    assert parameters.setdefault("a", "9") == "1"
+    parameters.update()
+    assert str(value) == stored
+
+    with pytest.raises(KeyError):
+        parameters.pop("absent")
+    assert str(value) == stored
+
+    empty = Url("https://example.com/t")
+    empty.parameters().clear()
+    assert str(empty) == "https://example.com/t"
+
+    # The same reads answer on a hashed value, which refuses every write.
+    frozen = Url("https://example.com/t?a=1")
+    hash(frozen)
+    assert frozen.parameters().pop("absent", "default") == "default"
+    assert frozen.parameters().setdefault("a", "9") == "1"
+    frozen.parameters().update()
+    with pytest.raises(TypeError, match="frozen"):
+        frozen.parameters()["a"] = "2"
+
+
+def test_parameters_compare_and_update_the_way_a_mapping_does() -> None:
+    import collections.abc
+
+    class Reading(collections.abc.Mapping[str, str]):
+        """A mapping that is not a ``dict``, which ``update`` must still take."""
+
+        def __init__(self, values: dict[str, str]) -> None:
+            self._values = values
+
+        def __getitem__(self, key: str) -> str:
+            return self._values[key]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self._values)
+
+        def __len__(self) -> int:
+            return len(self._values)
+
+    value = Url("https://example.com/t")
+    value.parameters().update(Reading({"symbol": "AAPL"}))
+    value.parameters().update([("venue", "XNAS")])
+    assert value.query() == "symbol=AAPL&venue=XNAS"
+    assert value.parameters() == {"symbol": "AAPL", "venue": "XNAS"}
+
+    # A query that names one key twice is no dict, whatever the dict holds.
+    repeated = Url("https://example.com/t?a=1&a=1").parameters()
+    assert repeated != {"a": "1"}
+    assert repeated != {"a": "1", "b": "2"}
+    assert repeated == Url("https://example.com/t?a=1&a=1").parameters()
+
+
+def test_the_pair_views_are_read_more_than_once() -> None:
+    parameters = Url("https://example.com/t?a=1&b=2&a=3").parameters()
+
+    keys = parameters.keys()
+    assert list(keys) == ["a", "b", "a"]
+    assert list(keys) == ["a", "b", "a"]
+    assert len(keys) == 3
+    assert parameters.values() == ("1", "2", "3")
+    assert parameters.items() == (("a", "1"), ("b", "2"), ("a", "3"))
+    assert list(parameters) == ["a", "b", "a"]

@@ -396,13 +396,10 @@ fn parse_bool(key: &str, value: &str) -> Result<bool> {
 
 fn parse_query(parsed: &Uri) -> Result<BTreeMap<String, String>> {
     let mut values = BTreeMap::new();
-    // The URI model already reads a query as its decoded pairs, so an option
-    // name and its value are whatever the escapes stand for.
-    for (key, value) in parsed
-        .parameters(true)
-        .map_err(|error| invalid_uri(error.to_string()))?
-        .iter()
-    {
+    // The URI model already reads a query as its decoded pairs, and its parse
+    // error names the component and the offset, which restating as an opaque
+    // "invalid URI" would throw away.
+    for (key, value) in parsed.parameters(true)?.iter() {
         let key = key.to_ascii_lowercase();
         if values.contains_key(&key) {
             return Err(invalid_option(&key, "duplicate S3 filesystem option"));
