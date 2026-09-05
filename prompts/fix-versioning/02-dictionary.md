@@ -621,30 +621,31 @@ page.
 
 ---
 
-## Phase 8 — coded FIX datatypes: `Side` and `MsgType`
+## Phase 8 — coded datatypes: `Side`, `MsgType`, `Direction`
 
-**Goal.** Two universal, cross-version coded datatypes over a fixed ASCII
-width, so a side and a message type are one packed integer rather than a
-string compared byte by byte.
+**Goal.** Three universal, cross-version coded datatypes over a fixed ASCII
+width, so a side, a message type and which way a line moved are each one
+packed integer rather than a string compared byte by byte.
 
 **Depends.** Phase 4 (code sets), Phase 6 (a generated vocabulary).
 
-**Surface.** Two variants in the datatype layer and their discriminants, a
+**Surface.** Three variants in the datatype layer and their discriminants, a
 generated vocabulary constant beside the other prebuilt code vocabularies,
-and the generator line that types tags 35 and 54 with them. Tests, the
-datatype benchmark, the datatype and FIX pages.
+and the generator line that types tags 35 and 54 with two of them. Tests,
+the datatype benchmark, the datatype and FIX pages.
 
 **Never.** Add a *constraint*. These declare a vocabulary, not a whitelist
-(P8-R5).
+(P8-R5). Add a member meaning "no answer" (P8-R9).
 
 ### Rules
 
 - **P8-R1. They join the coded family, they do not invent a mechanism.**
   `Country`, `Currency`, `Mic` and `Cfi` are already parameter-free variants
   over a fixed ASCII width whose members are a `const` listing prebuilt in
-  the enum registry, reachable by logical name. `Side` and `MsgType` are two
-  more of exactly that. `DataTypeId` gains two variants **appended** (L2).
-- **P8-R2. `MsgType` is eight bytes, `Side` is four,** and both are the
+  the enum registry, reachable by logical name. `Side`, `MsgType` and
+  `Direction` are three more of exactly that. `DataTypeId` gains three
+  variants **appended** (L2).
+- **P8-R2. `MsgType` is eight bytes, `Side` and `Direction` are four,** and all are the
   crate's existing fixed-width ASCII storage — the value's bytes NUL-padded
   up to the width, the padding trimmed on read, the whole width packed as
   one integer with no allocation. Neither variant invents an encoding: they
@@ -682,16 +683,38 @@ datatype benchmark, the datatype and FIX pages.
   enough to earn a variant.
 - **P8-R7. The P1-R11 invariant table applies unchanged,** and so does
   P1-R10: `DataType` is `#[non_exhaustive]` with wildcard arms everywhere, so
-  a green build proves nothing. Ten invariants, ten tests, twice.
+  a green build proves nothing. Ten invariants, ten tests, three times.
+- **P8-R8. `Direction` is transport, not FIX, and its vocabulary is two
+  members.** `SENT` and `RECV`: which way a captured line moved. It is not a
+  FIX notion — every captured line has a direction whatever protocol it
+  carries — so it is named in the datatype layer beside the other coded
+  types and no part of it lives in the FIX layer. Four bytes for the same
+  reason `Side` takes four, and the two members are spelled out in full
+  rather than abbreviated because the stored bytes are what a reader sees.
+- **P8-R9. There is no `UNKNOWN` member; the answer is null.** A row whose
+  line does not say which way it moved has no direction, and the crate
+  already spells "no answer" one way. A member meaning *unknown* would be a
+  second spelling of null — two things to check at every read, and the one a
+  caller forgets. Prior art packs a zero code for it because its storage
+  could not be null; ours can.
+- **P8-R10. There is exactly one `Direction` in the crate, and it means
+  transport.** A side's lane is deliberately *not* a type (P9-R13): two
+  types spelled `Direction`, one saying `SENT`/`RECV` and one saying
+  buy/sell, is the ambiguity that makes a reviewer read the import line to
+  understand a signature.
 
 ### Decided
 
-- **Two variants, not a generic `Coded(name)` datatype.** *Rejected:* a
+- **Named variants, not a generic `Coded(name)` datatype.** *Rejected:* a
   parameterized coded type keyed by code-set name. It would make the
   datatype carry a name the registry already owns, and every reader would
   need the registry to know what a value means — the opposite of a
   parameter-free discriminant that compares and hashes without touching
   nested state.
+- **Null rather than an `UNKNOWN` direction.** *Rejected:* the prior art's
+  zero-coded member. It exists there because a packed integer column had no
+  null to spell it with; this crate's does, and carrying the member anyway
+  would leave every consumer checking two things where one is the fact.
 - **Eight for `MsgType`, four for `Side`, rather than one width for both.**
   *Rejected:* the tight symmetric fit. Two bytes holds every standard
   `MsgType` and four holds any plausible one, but the first venue with a
@@ -714,7 +737,10 @@ datatype benchmark, the datatype and FIX pages.
 4. Resolution by logical name; the prebuilt listing identical between two
    readers.
 5. The P1-R11 invariant table, once per variant (P8-R7).
-6. The generated dictionary types tag 35 and tag 54 with them (P8-R6).
+6. The generated dictionary types tag 35 and tag 54 with them, and types
+   nothing with `Direction` (P8-R6, P8-R8).
+7. `SENT` and `RECV` round-tripping through the packing, and a line with no
+   direction answering null rather than a member (P8-R9).
 
 **Bench.** A packed `MsgType` compare against the `utf8` compare it
 replaces, in the datatype benchmark target.

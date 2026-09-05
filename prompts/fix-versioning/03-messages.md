@@ -1,4 +1,5 @@
-# Messages — explicit halves, entries, the readers, the batches, the digest
+# Messages — explicit halves, entries, the readers, the batches, the crate's
+own fields
 
 **Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
 text, or from a ULBridge body; answer the handful of facts a reader actually
@@ -1147,7 +1148,8 @@ pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
   column consumer cannot survive.
 - **P10-R3. The default shape is three groups: what it is, what it means,
   what was sent.** (a) identity — `msgtype` as the packed datatype (P8),
-  `branch`, `version`, and `msghash` (P11-R8); (b) one column per lifted facet (P9-R4), typed as
+  `branch`, `version`, `msghash` (P11-R8) and `direction` (P11-R18); (b) one
+  column per lifted facet (P9-R4), typed as
   that facet's field is typed at the message's version (P9-R8); (c)
   `entries`, a list of struct mirroring `FixEntry` — `tag`, `branch`, `key`,
   `value`. Nothing else is a column by default: a wide column per tag is a
@@ -1285,18 +1287,19 @@ cost. A second group for the write direction.
 
 ---
 
-## Phase 11 — `MsgHash`: one message, one digest, and adjacent dedup
+## Phase 11 — the crate's own fields: `MsgHash` and `Direction`
 
 **Goal.** Give every message a 16-byte value digest that costs one walk and
-no allocation, carry it as a column, and drop the line a capture published
-twice.
+no allocation; read which way its line moved from the bytes in front of the
+payload; carry both as columns; and drop the line a capture published twice.
 
-**Depends.** Phase 7 (entries), Phase 10 (the batch stream the digest becomes
-a column of and the iterator it filters).
+**Depends.** Phase 7 (entries, and the frame located inside a log line),
+Phase 8 (the `Direction` datatype), Phase 10 (the batch stream both become
+columns of and the iterator dedup filters).
 
-**Surface.** One custom field constant and its registration; a digest
-accessor on the message; one iterator adapter; one option. Tests, a
-benchmark group, the FIX page.
+**Surface.** Two custom field constants and their registration; a digest
+accessor on the message; one direction reader in the datatype layer; one
+iterator adapter; one option. Tests, a benchmark group, the FIX page.
 
 **Never.** Store the digest on the message (N4). Add a second hash (N3): the
 crate ships xxh3-128 and a resumable state for it, and that is the one used.
@@ -1308,6 +1311,13 @@ impl FixMsg {
     /// This message's value digest (P11-R3). Computed, never stored.
     pub fn digest(&self) -> u128;
 }
+
+/// Which way a whole captured line moved: the verb in front of its payload,
+/// else `default`, where the line does not say (P11-R14, P11-R15).
+/// `payload_at` is where the reader already located the frame (P7-R41).
+pub fn direction_from_message_bytes(line: &[u8], payload_at: usize,
+                                    default: Option<&'static str>)
+    -> Option<&'static str>;
 
 /// Drops each message whose digest equals the one before it.
 pub struct FixDedup<I> { /* inner, last: Option<u128>, dropped: u64 */ }
@@ -1401,6 +1411,64 @@ impl<I: Iterator<Item = FixMsg>> FixDedup<I> {
   is not an exception to that — it is the one place it has to be reported
   instead.
 
+#### `Direction`: read the prefix, strip the body
+
+- **P11-R13. `Direction` is the crate's second field, tag `30002`,** on the
+  crate's branch beside `MsgHash` and registered the same way, named
+  `direction` (P3-R7) and typed by the four-byte coded datatype (P8-R8). Two
+  crate fields, one mechanism; a third would use it too.
+- **P11-R14. The verb is read in front of the payload, never inside it.** The
+  readers already locate where the frame starts inside a log line (P7-R41):
+  everything before that offset is the transport's prose and everything from
+  it is the message. A verb counts only where it opens before that offset, so
+  a `sent` inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML
+  payload's own wording never becomes a direction. Stripping the body is the
+  whole mechanism — there is no cleverer reading, and the offset the reader
+  already computed is what makes it free.
+- **P11-R15. Both verbs, or neither, falls to the default.** A line reading
+  `sending >> … << queued` has one verb in front of the payload and answers
+  `SENT`; a line whose prefix carries both has no verb the reading can
+  prefer, and neither has a line carrying none — both fall to the caller's
+  default, which is `None` unless one is given, and `None` is what the
+  datatype spells "no answer" with (P8-R9). A read verb always beats the
+  default: the default fills silence, it never overrides a statement.
+- **P11-R15.1. FIX parsing defaults to `SENT`.** A session's own log is
+  written by the side doing the sending, so its unmarked lines are the ones
+  it sent and its inbound lines are the ones it bothered to mark. The
+  readers and the batch options therefore carry `SENT` as the default; a
+  capture taken from the other side, or one whose silence really means
+  unknown, sets `RECV` or `None` instead. It is one option with one stated
+  default, never a rule buried in the reader — and P11-R15 still holds, so
+  no marked line is affected by it.
+- **P11-R16. The two listings, written out.** Domain knowledge, not
+  inference — a reviewer must be able to check it:
+
+  | direction | opens with |
+  | --- | --- |
+  | `SENT` | `send`, `sending`, `sent`; and `out`, `outbound`, `outgoing` |
+  | `RECV` | `receive`, `receiving`, `received`, `recv`; and `in`, `inbound`, `incoming` |
+
+  The verbs match on a word boundary. The bare `in` and `out` forms match
+  **only** where the line or a bracket opens them and a delimiter closes
+  them, because that is the one shape a marker has and none of the shapes the
+  same letters have otherwise: `sending in session 3` and `received out of
+  order` are English, `direct:out` is a route endpoint, `MCFID-IN-XPAR` is a
+  session name. A word boundary alone is not enough — a hyphen is one — and
+  each of those sitting in front of the *opposite* verb turns a right answer
+  into the default rather than merely adding a wrong one (P11-R15). `forward` and
+  the session-name fields stay out entirely: each mislabels an enrichment
+  snapshot or a route's fixed endpoint as movement.
+- **P11-R17. It is resolved once, where the line and the frame still
+  coexist, and then it is stored.** This is the one place N4 does not apply
+  and the doc comment must say why: the prefix is not part of the message, so
+  a direction not answered at read time cannot be recovered from the row
+  afterwards — the bytes it was read from are gone. `MsgHash` is the opposite
+  case and is computed every call (P11-R7); the two rules sit together so the
+  difference is visible.
+- **P11-R18. `direction` is a column of the identity group** (P10-R3),
+  nullable, and stored as the packed four bytes rather than as a name — the
+  same discipline every coded column in the crate keeps (P8-R1).
+
 ### Decided
 
 - **A field with a tag, not a property beside the message.** *Rejected:*
@@ -1417,6 +1485,20 @@ impl<I: Iterator<Item = FixMsg>> FixDedup<I> {
 - **Adjacent dedup, not a seen-set.** *Rejected:* a `HashSet<u128>` over the
   stream. Unbounded memory over an unbounded stream, and wrong besides —
   identical messages far apart are usually two real events.
+- **A default, and `SENT` for FIX.** *Rejected:* null on every silent line.
+  It is defensible and it is what the reading alone can prove, but it makes
+  the direction column mostly null on a real session log, where silence is
+  not absence of information — it is the convention that only the other
+  direction gets marked. The default is stated, overridable, and beaten by
+  any verb the line does carry, so nothing it fills is a contradiction of the
+  capture.
+- **The direction is read from the line, not looked up from the session.**
+  *Rejected:* deciding direction by comparing `SenderCompID` against the
+  session's own identity. It is right only where the capture's session
+  configuration is known and present, it is wrong on a relayed or replayed
+  capture, and it answers nothing at all for the non-FIX lines in the same
+  file. The verb in front of the payload is on every line the transport
+  wrote, whatever it carried.
 - **xxh3-128, not a cryptographic digest.** *Rejected:* a 16-byte hash from a
   cryptographic family. This digest answers "same message?", never "signed by
   whom?"; xxh3 is already a dependency, already vectorized, and roughly an
@@ -1448,6 +1530,27 @@ impl<I: Iterator<Item = FixMsg>> FixDedup<I> {
 10. The batch reader with dedup off giving row-for-row correspondence
     (P10-R10) and with it on giving fewer rows whose carried-through columns
     are their own (P11-R12).
+
+11. The capture corpus lines read for direction with no default:
+    `sending >> 8=FIX.4.2|…` answering `SENT`; `recv 8=FIX4^A…` and
+    `Receiving XmlApi: <Execution…` answering `RECV`;
+    `8=FIX.4.4|35=8|58=quoting…` and `After Enrichment -> ACCOUNT=…`
+    answering null (P11-R14, P11-R16).
+12. The same corpus through the FIX readers, where the two silent lines
+    answer `SENT` and every marked line answers exactly what it did with no
+    default — the `recv` line included, which is the case that proves the
+    default cannot override a statement (P11-R15.1).
+13. A `sent` appearing only *inside* the payload falling to the default, and
+    the same line with the same word moved in front of the frame answering
+    `SENT` — one pair that proves the offset is what decides (P11-R14).
+14. `sending in session 3`, `received out of order`, `direct:out` and
+    `MCFID-IN-XPAR` each falling to the default, and `[OUT] 8=FIX…`
+    answering `SENT` (P11-R16).
+15. A prefix carrying both verbs falling to the default, and answering null
+    where the default is unset (P11-R15).
+16. The `direction` column packed, nullable, and equal to the reader's answer
+    for every corpus line (P11-R18), including the rows whose text is no
+    longer available downstream (P11-R17).
 
 **Bench.** `digest()` against re-serializing the message and hashing the
 bytes, so the cost of the walk-and-feed shape is visible; and the dedup
