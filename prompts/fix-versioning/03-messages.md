@@ -43,19 +43,25 @@ impl FixMsg {
     pub fn anomalies(&self) -> impl Iterator<Item = FixAnomaly<'_>>;
     pub fn into_text(&self, sep: char) -> String;
 
+    /// The version this message is expressed in, read back from the fields
+    /// that declare it. Derived, never stored (N4).
+    pub fn version(&self) -> Option<Version>;
+    /// The same message expressed in another version, by lineage alone.
+    pub fn convert_into(&self, target: &Version) -> Result<Self>;
+
     pub fn from_pairs<'a, I>(
-        registry: Arc<FixRegistry>, entries: I,
-        branch: Option<&FixBranch>, version: Option<Version>,
+        registry: Arc<FixRegistry>, entries: I, branch: Option<&FixBranch>,
+        source_version: Option<Version>, target_version: Option<Version>,
     ) -> Result<Self> where I: IntoIterator<Item = (&'a str, &'a str)>;
 
     pub fn from_text(text: &str) -> Result<Self>;
     pub fn from_fixtext(
-        registry: Arc<FixRegistry>, text: &str, sep: char,
-        branch: Option<&FixBranch>, version: Option<Version>,
+        registry: Arc<FixRegistry>, text: &str, sep: char, branch: Option<&FixBranch>,
+        source_version: Option<Version>, target_version: Option<Version>,
     ) -> Result<Self>;
     pub fn from_ultext(
-        registry: Arc<FixRegistry>, body: &[u8],
-        branch: Option<&FixBranch>, version: Option<Version>,
+        registry: Arc<FixRegistry>, body: &[u8], branch: Option<&FixBranch>,
+        source_version: Option<Version>, target_version: Option<Version>,
     ) -> Result<Self>;
 }
 ```
@@ -145,8 +151,9 @@ impl FixMsg {
 
 ### Inferring version and branch
 
-- **P7-R15. Version, when the caller names none.** Each step is a FIX rule,
-  not a heuristic.
+- **P7-R15. The *source* version, when the caller names none** — the version
+  the arriving message is written in, which decides how its tags are read.
+  Each step is a FIX rule, not a heuristic.
   1. **Tag 1128 `ApplVerID`** — the application version: `0`=FIX27,
      `1`=FIX30, `2`=FIX40, `3`=FIX41, `4`=FIX42, `5`=FIX43, `6`=FIX44,
      `7`=FIX50, `8`=FIX50SP1, `9`=FIX50SP2, `10`=FIXLatest — and `FIXLatest`
@@ -164,6 +171,13 @@ impl FixMsg {
      it holds. Never `Version::MAX`: a sentinel compares wrongly against a
      field genuinely dated at the newest version, and is wrong again the
      next time an EP lands.
+- **P7-R15b. The *target* version defaults to the source.** It is the
+  version the built message is expressed in. Absent, no conversion happens
+  and the reader behaves as if there were one version parameter — so the
+  common call is unchanged and conversion is opt-in. Given, the parse reads
+  the wire at the source and answers a message at the target: a venue that
+  speaks 4.2 can be normalized to the dictionary's newest on the way in,
+  which is the whole point of two parameters instead of one.
 - **P7-R16. Branch, when the caller names none.** The first step is identity,
   not inference.
   1. **The session names the dialect.** `SenderCompID(49)` and
@@ -185,12 +199,14 @@ impl FixMsg {
 
 ### Building the message
 
-- **P7-R17.** The field is the registry's, cloned, with `name_at(version)`
-  and `dtype_at(version)` where a lineage exists, its own name and datatype
-  where it does not.
+- **P7-R17.** The field is the registry's, cloned, with
+  `name_at(source_version)` and `dtype_at(source_version)` where a lineage
+  exists, its own name and datatype where it does not. The target version,
+  when it differs, is applied afterwards by the converter (P7-R64) — never
+  by a second resolution here.
 - **P7-R18.** Non-null in this message's schema, because the value is there.
 - **P7-R19.** The value passes through the code set first:
-  `code_value_at(&version, entry.value).unwrap_or(entry.value)`, so
+  `code_value_at(&source_version, entry.value).unwrap_or(entry.value)`, so
   `CommType=PercentageWaivedCashDiscount` stores `4` and
   `MsgType=NewOrderSingle` stores `D`, while an unexplained spelling is
   carried through untouched (P4-R7).
@@ -212,6 +228,44 @@ impl FixMsg {
   `anomalies()`; (d) `from_pairs` still answers `Ok`. A parse error is
   raised only for input that is not a message at all. A null nobody can
   explain is worse than the value that actually arrived.
+
+### Converting between versions
+
+- **P7-R59. `convert_into` is lineage-driven and nothing else.** Every
+  question it asks is one the field already answers: `defined_at`,
+  `name_at`, `dtype_at`, and the code set's version filter. It evaluates no
+  expression, consults no mapping table, and invents no value. That is what
+  keeps it inside this phase rather than the CBlock brief's normalization
+  layer (P3-R12).
+- **P7-R60. It borrows and answers a new message.** The original stays
+  valid — a caller often needs both. Target equal to source is a clone, and
+  cheap: check before walking.
+- **P7-R61. Per field, in this order.**
+
+  | at the target | what happens |
+  | --- | --- |
+  | defined, same name and type | carried over untouched |
+  | defined, renamed | the child takes `name_at(target)` |
+  | defined, retyped | the value goes back through the value contract at the new type; a refusal nulls it (P7-R24) |
+  | **not defined** | dropped from the row, kept in `entries`, reported through `anomalies()` |
+  | a code not valid at the target | the raw value is kept, and an anomaly is reported — never a substituted code |
+
+- **P7-R62. The fields that declare the version are rewritten to it.**
+  `BeginString(8)` and `ApplVerID(1128)`, where the message carries them, so
+  a converted message does not lie about what it is. `FixMsg::version()`
+  reads them back, which is why it is derived and not stored (N4).
+- **P7-R63. `entries` are regenerated from the converted row,** so
+  `into_text` emits the target dialect — which is the reason to convert at
+  all. The conversion is therefore *not* lossless in the `entries` sense:
+  the wire record of the source is replaced by the wire record of the
+  target, and anything that could not convert is carried as an unknown entry
+  so nothing is silently dropped (P7-R12). Say so in the doc comment; the
+  round-trip guarantee (P7-R28) applies to the converted message.
+- **P7-R64. Parsing at a target equals parsing then converting.**
+  `from_pairs(.., source, target)` answers what
+  `from_pairs(.., source, source).convert_into(target)` answers. State it,
+  test it, and implement it once — the reader calls the converter rather
+  than growing a second conversion path (N3).
 
 ### Groups
 
@@ -370,7 +424,7 @@ line some venue really sent.
 
 **Version and branch.**
 9. `ApplVerID` beating `BeginString`; `BeginString="FIXT.1.1"` falling
-   through; an explicit `version` overriding both (P7-R15).
+   through; an explicit `source_version` overriding both (P7-R15).
 10. A declared `(sender, target)` pair selecting its dialect directly, in
     the declared order and reversed, folded (P7-R16.1, P2-R9d).
 11. A branch's declared default losing to a message's own `ApplVerID` and
@@ -380,6 +434,28 @@ line some venue really sent.
 13. Tag 32 keyed `LastShares` in a `4.2` message and `LastQty` in a newest
     one, both answering the same value.
 14. Header and trailer ordering with a body field interleaved in the input.
+
+**Versions in and out.**
+14b. An absent `target_version` changes nothing: the message equals the one
+     built with a single version parameter (P7-R15b).
+14c. A 4.2 wire message parsed with `target_version` at the dictionary's
+     newest answers a message whose tag 32 child is named `LastQty`, while
+     the same parse without a target names it `LastShares`.
+14d. `from_pairs(.., source, target)` equals
+     `from_pairs(.., source, source).convert_into(target)` (P7-R64).
+14e. `convert_into` with target equal to source is an unchanged clone
+     (P7-R60), and `convert_into` on a message with no lineage anywhere
+     changes nothing.
+14f. A field defined at the source but not at the target is dropped from the
+     row, present in `entries`, and reported in `anomalies()` (P7-R61).
+14g. A retype whose value no longer fits nulls that field and reports, and
+     does not fail the conversion (P7-R61, P7-R24).
+14h. A code valid at the source and not at the target keeps its raw value
+     and reports, and is never substituted (P7-R61).
+14i. `BeginString` and `ApplVerID` are rewritten to the target, and
+     `version()` reads the target back (P7-R62).
+14j. `into_text` after a conversion emits the target dialect, and
+     `from_text` of that answers the converted message (P7-R63, P7-R28).
 
 **Token rules.**
 15. Every row of P7-R38…R48, one case each.
@@ -438,7 +514,9 @@ three reserved vectors and nothing per entry (P7-R54, P7-R55).
 
 Last phase of this brief. Deliberately left to the CBlock brief and stated
 in the module docs rather than started here: reassembling a repeating group
-from bare tag repetition, which needs the message-type grammar (P7-R26);
-rewriting a message between two FIX versions, which the lineage carries the
-facts for but does not perform (P3-R12); and parsing `NAME=VALUE` pairs
-nested inside `XmlData(213)` (P7-R52).
+from bare tag repetition, which needs the message-type grammar (P7-R26); the
+*expression-driven* normalization layer with its conditions, lookups and
+value mappings, which needs an evaluator (P3-R12) — note that the
+lineage-driven half of transcoding *is* done here, in `convert_into`
+(P7-R59); and parsing `NAME=VALUE` pairs nested inside `XmlData(213)`
+(P7-R52).

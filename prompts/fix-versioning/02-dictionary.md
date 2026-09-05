@@ -105,10 +105,14 @@ impl FixRegistry {
   means a dictionary cannot claim a version no field is dated in; the second
   is the greatest pedigree pair any lineage carries, and is the whole of
   what "FIX Latest" means for that dictionary (P3-R1b).
-- **P3-R12. The transcoding boundary.** The lineage carries enough to rename
-  and retype a value between versions. Actually rewriting a message belongs
-  to the CBlock brief's normalization phase. Do not start it; state the
-  boundary in the module docs.
+- **P3-R12. The transcoding boundary, precisely.** The lineage carries
+  enough to rename and retype a field between versions, and Phase 7 spends
+  it: `convert_into` walks a message by `defined_at` / `name_at` /
+  `dtype_at` alone (P7-R59). What stays out of this brief is the
+  *expression-driven* layer — the CBlock `normalization-binding` with its
+  conditions, lookups and value mappings, which needs an evaluator. Do not
+  start that; state the line in the module docs, because "transcoding" names
+  both and only one of them is here.
 
 ### Tests
 
@@ -541,7 +545,8 @@ page.
 ## Handoff
 
 **From Phase 3.** Phases 4–7 read the lineage: `name_at` / `dtype_at` /
-`defined_at`, which Phase 7 builds every field through (P7-R17); `versions()`
+`defined_at`, which Phase 7 builds every field through (P7-R17) and converts
+messages by (P7-R59); `versions()`
 and `newest()` (P3-R11), which Phase 7 checks coverage against and falls back
 to (P7-R15.4); the pedigree pair (P3-R3); the `set_lineage` derivation of
 `fix:aliases` (P3-R8b), which Phase 5 must preserve and Phase 6 writes
