@@ -436,6 +436,8 @@ declare module './index' {
      * IPC bytes - to this exact Field, batch by batch, as a Table.
      */
     castArrow(rows: BatchSource, options?: { safe?: boolean }): unknown
+    /** Bit-cast an opposite-signed, same-width Arrow integer vector. */
+    castArrowArrayBits(values: ArrowVector): ArrowVector
     /** The same cast under the generic name. */
     cast(rows: BatchSource, options?: { safe?: boolean }): unknown
   }

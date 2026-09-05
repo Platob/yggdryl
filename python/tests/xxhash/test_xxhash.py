@@ -261,6 +261,67 @@ class TestStates:
         assert filled.column("row_digest").type == pa.uint32()
         assert filled.column("row_digest").to_pylist() == [int(expected.as_digest())]
 
+    def test_signed_holders_retain_the_complete_digest_bits(self) -> None:
+        signed32 = yggdryl.Field("signed32", "int32", nullable=False)
+        signed32.digest["role"] = "holder"
+        signed64 = yggdryl.Field("signed64", "int64", nullable=False)
+        signed64.digest["role"] = "holder"
+        root = yggdryl.Field(
+            "row",
+            yggdryl.DataType.from_fields(
+                [
+                    yggdryl.Field("symbol", "utf8", nullable=False),
+                    signed32,
+                    signed64,
+                ]
+            ),
+            nullable=False,
+        )
+        source = pa.record_batch(
+            [pa.array(["AAPL", "8"], type=pa.string())], names=["symbol"]
+        )
+
+        filled = xxhash.Xxh3().fill_arrow_batch(root, source)
+        expected32 = [
+            int.from_bytes(bytes(Scalar.from_py([value]).digest("xxh32")), "big", signed=True)
+            for value in ("AAPL", "8")
+        ]
+        expected64 = [
+            int.from_bytes(
+                bytes(Scalar.from_py([value]).digest("xxh3-64")),
+                "big",
+                signed=True,
+            )
+            for value in ("AAPL", "8")
+        ]
+
+        assert filled.column("signed32").type == pa.int32()
+        assert filled.column("signed64").type == pa.int64()
+        assert filled.column("signed32").to_pylist() == expected32
+        assert filled.column("signed64").to_pylist() == expected64
+        assert expected32[1] < 0 and expected64[0] < 0
+
+        conditional_root = yggdryl.Field(
+            "row",
+            yggdryl.DataType.from_fields(
+                [yggdryl.Field("symbol", "utf8", nullable=False), signed64]
+            ),
+            nullable=False,
+        )
+        populated = pa.record_batch(
+            [
+                pa.array(["AAPL", "8"]),
+                pa.array([0, -1], type=pa.int64()),
+            ],
+            names=["symbol", "signed64"],
+        )
+        conditional = xxhash.Xxh3().fill_arrow_batch(conditional_root, populated)
+        assert conditional.column("signed64").to_pylist() == [expected64[0], -1]
+        forced = xxhash.Xxh3().fill_arrow_batch(
+            conditional_root, populated, force=True
+        )
+        assert forced.column("signed64").to_pylist() == expected64
+
 
 class TestDigest:
     def test_the_canonical_spelling_round_trips(self) -> None:

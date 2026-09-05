@@ -294,6 +294,53 @@ test('batch filling preserves populated holders and resolves holder algorithms',
   )
 })
 
+test('signed holders retain the complete digest bits', () => {
+  const symbol = new Field('symbol', 'utf8', false)
+  const signed32 = new Field('signed32', 'int32', false, {
+    'digest:role': 'holder',
+  })
+  const signed64 = new Field('signed64', 'int64', false, {
+    'digest:role': 'holder',
+  })
+  const root = new Field(
+    'row',
+    DataType.fromFields([symbol, signed32, signed64]),
+    false,
+  )
+  const source = new arrow.Table({
+    symbol: arrow.vectorFromArray(['AAPL', '8'], new arrow.Utf8()),
+  }).batches[0]
+
+  const filled = new xxhash.Xxh3().fillArrowBatch(root, source)
+  const expected32 = ['AAPL', '8'].map((value) => Number(BigInt.asIntN(
+    32,
+    BigInt(Scalar.fromJs([value]).digest('xxh32').value()),
+  )))
+  const expected64 = ['AAPL', '8'].map((value) => BigInt.asIntN(
+    64,
+    Scalar.fromJs([value]).digest('xxh3-64').value(),
+  ))
+
+  assert.deepEqual([...filled.getChild('signed32')], expected32)
+  assert.deepEqual([...filled.getChild('signed64')], expected64)
+  assert.ok(expected32[1] < 0)
+  assert.ok(expected64[0] < 0n)
+
+  const conditionalRoot = new Field(
+    'row',
+    DataType.fromFields([symbol, signed64]),
+    false,
+  )
+  const populated = new arrow.Table({
+    symbol: arrow.vectorFromArray(['AAPL', '8'], new arrow.Utf8()),
+    signed64: arrow.vectorFromArray([0n, -1n], new arrow.Int64()),
+  }).batches[0]
+  const conditional = new xxhash.Xxh3().fillArrowBatch(conditionalRoot, populated)
+  assert.deepEqual([...conditional.getChild('signed64')], [expected64[0], -1n])
+  const forced = new xxhash.Xxh3().fillArrowBatch(conditionalRoot, populated, true)
+  assert.deepEqual([...forced.getChild('signed64')], expected64)
+})
+
 test('a handle digests its bytes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-xxhash-'))
   try {

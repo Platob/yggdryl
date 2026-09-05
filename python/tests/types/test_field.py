@@ -865,6 +865,42 @@ class TestGenericCast:
         assert list(cast.columns) == ["id", "symbol"]
 
 
+def test_arrow_integer_bits_cast_across_the_full_signed_domain() -> None:
+    import pyarrow as pa
+
+    unsigned32 = pa.array(
+        [0, 2**31 - 1, 2**31, 2**32 - 1, None],
+        type=pa.uint32(),
+    )
+    signed32 = Field("digest", "int32").cast_arrow_array_bits(unsigned32)
+    assert signed32.type == pa.int32()
+    assert signed32.to_pylist() == [0, 2**31 - 1, -(2**31), -1, None]
+    assert Field("digest", "uint32").cast_arrow_array_bits(signed32).equals(
+        unsigned32
+    )
+
+    unsigned64 = pa.array(
+        [0, 2**63 - 1, 2**63, 2**64 - 1, None],
+        type=pa.uint64(),
+    )
+    signed64 = Field("digest", "int64").cast_arrow_array_bits(unsigned64)
+    assert signed64.type == pa.int64()
+    assert signed64.to_pylist() == [0, 2**63 - 1, -(2**63), -1, None]
+    assert Field("digest", "uint64").cast_arrow_array_bits(signed64).equals(
+        unsigned64
+    )
+
+    required = Field("digest", "int64", nullable=False).cast_arrow_array_bits(
+        pa.array([None, 2**64 - 1], type=pa.uint64())
+    )
+    assert required.to_pylist() == [0, -1]
+
+    with pytest.raises(ValueError, match="uint64"):
+        Field("digest", "int64").cast_arrow_array_bits(unsigned32)
+    with pytest.raises(ValueError, match="bit-preserving Arrow integer casts require"):
+        Field("digest", "utf8").cast_arrow_array_bits(unsigned32)
+
+
 def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:
     """Subscripting a `Field` or a `DataType` descends the schema.
 

@@ -2763,8 +2763,9 @@ empty ordered sequence. Any metadata entry point rejects a `digest:role` other t
 `digest:paths` is a holder-local ordered JSON array; absence retains the component fallback while
 `[]` selects the empty sequence. `digest:algorithm` is an optional canonical
 [`DigestAlgorithm`](xxhash.md#digest-values); its storage must match the result width:
-XXH32 uses `uint32`, XXH64 and XXH3-64 use `uint64`, and XXH3-128 uses
-`fixed_size_binary(16)`. Typed setters require `holder`, validate the width, and fail atomically.
+XXH32 uses `int32` or `uint32`, XXH64 and XXH3-64 use `int64` or `uint64`, and XXH3-128 uses
+`fixed_size_binary(16)`. Signed storage keeps the same digest bits rather than applying a checked
+numeric conversion. Typed setters require `holder`, validate the width, and fail atomically.
 Changing or removing that role first requires removing `algorithm` and `paths`. Generic metadata
 writes canonicalize the algorithm token and path JSON; the Arrow fill operation validates their
 holder ownership and datatype together. Path resolution, nested-holder reuse, algorithm fallback,
@@ -3306,6 +3307,73 @@ key type decide the physical array, so there is no single concrete type to name.
 `safe` is Arrow's own cast option. When it is true a supported conversion failure becomes null, and
 a non-nullable field then replaces that null with its canonical default (`Field::default_value`);
 when it is false the failure is an error. A nullable field keeps the null either way.
+
+#### Bit-preserving signed and unsigned casts
+
+`cast_arrow_array_bits` is the explicit representation cast for `int32` <-> `uint32` and
+`int64` <-> `uint64`. It accepts every source bit pattern: the unsigned high half becomes the
+negative signed half and the reverse direction restores the original unsigned value. It has no
+`safe` flag because no value can overflow. Any other width, sign pairing, or target datatype is an
+error; ordinary `cast_arrow_array` remains a numeric, range-checked conversion.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int32Array, UInt32Array};
+    use yggdryl::types::{Int32Field, UInt32Field};
+
+    let source: ArrayRef = Arc::new(UInt32Array::from(vec![
+        0,
+        0x8000_0000,
+        u32::MAX,
+    ]));
+    let signed: Int32Array = Int32Field::new("bits", true)
+        .cast_arrow_array_bits(source)?;
+    assert_eq!(signed.values(), &[0, i32::MIN, -1]);
+
+    let restored = UInt32Field::new("bits", true)
+        .cast_arrow_array_bits(Arc::new(signed))?;
+    assert_eq!(restored.values(), &[0, 0x8000_0000, u32::MAX]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import Field
+
+    signed = Field("bits", "int32").cast_arrow_array_bits(
+        pa.array([0, 2**31, 2**32 - 1], type=pa.uint32())
+    )
+    assert signed.to_pylist() == [0, -(2**31), -1]
+
+    restored = Field("bits", "uint32").cast_arrow_array_bits(signed)
+    assert restored.to_pylist() == [0, 2**31, 2**32 - 1]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field } = require('yggdryl')
+
+    const source = arrow.vectorFromArray(
+      [0, 0x80000000, 0xffffffff],
+      new arrow.Uint32(),
+    )
+    const signed = new Field('bits', 'int32').castArrowArrayBits(source)
+    assert.deepEqual([...signed], [0, -0x80000000, -1])
+
+    const restored = new Field('bits', 'uint32').castArrowArrayBits(signed)
+    assert.deepEqual([...restored], [0, 0x80000000, 0xffffffff])
+    ```
+
+The Rust cast shares the source value buffer unless a required target must fill source nulls with
+the canonical zero default. Nullable targets retain nulls. The 64-bit pair follows the identical
+rule with `i64`/`u64` and Arrow `Int64`/`UInt64`.
 
 Text and temporals cross through this crate's own spellings rather than Arrow's, so a column and a
 row answer alike. Reading text into a `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`,

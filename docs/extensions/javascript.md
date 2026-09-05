@@ -511,6 +511,11 @@ assert.equal(explicit.digestFieldLen, 1)
 assert.equal(explicit.onlyDigestFields().dtype.length, 1)
 ```
 
+Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit
+algorithms. Signed Arrow vectors expose high-bit results as negative `number` or `bigint` values
+while retaining the complete digest bits; `field.castArrowArrayBits(...)` performs the same
+explicit, reversible representation cast outside holder filling.
+
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.
 

@@ -154,6 +154,9 @@ default_field_scalar: pa.Scalar = field.default_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 cast_dtype_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
 cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(source_array)
+bit_cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array_bits(
+    pa.array([2**64 - 1], type=pa.uint64())
+)
 source_batch = pa.record_batch([source_array], names=["value"])
 cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
     [Field("value", "int64")]
@@ -185,6 +188,9 @@ typed_id_value: int | None = typed_id.default_pyvalue()
 typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
+typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array_bits(
+    pa.array([2**32 - 1], type=pa.uint32())
+)
 typed_clock: TimeField = types.time("clock", "microseconds", nullable=False)
 typed_ids: ListField[int] = types.list("ids", typed_id)
 nullable_item: Int32Field = types.int32("item")

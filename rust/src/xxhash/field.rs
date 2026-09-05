@@ -22,19 +22,21 @@ pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
 /// Return whether a holder's physical datatype carries this algorithm exactly.
 pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool {
     match algorithm {
-        DigestAlgorithm::Xxh32 => matches!(field.dtype(), DataType::UInt32),
+        DigestAlgorithm::Xxh32 => {
+            matches!(field.dtype(), DataType::Int32 | DataType::UInt32)
+        }
         DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => {
-            matches!(field.dtype(), DataType::UInt64)
+            matches!(field.dtype(), DataType::Int64 | DataType::UInt64)
         }
         DigestAlgorithm::Xxh128 => matches!(field.dtype(), DataType::FixedSizeBinary(16)),
     }
 }
 
-/// Return the canonical datatype spelling an algorithm's holder requires.
-pub(crate) const fn expected_holder_dtype(algorithm: DigestAlgorithm) -> &'static str {
+/// Return the canonical datatype spellings an algorithm's holder accepts.
+pub(crate) const fn expected_holder_dtypes(algorithm: DigestAlgorithm) -> &'static str {
     match algorithm {
-        DigestAlgorithm::Xxh32 => "uint32",
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "uint64",
+        DigestAlgorithm::Xxh32 => "int32 or uint32",
+        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "int64 or uint64",
         DigestAlgorithm::Xxh128 => "fixed_size_binary[16]",
     }
 }
@@ -198,7 +200,8 @@ impl DigestFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when this field is not a holder, leaving it unchanged.
+    /// Returns an error when this field is not a holder or its datatype cannot
+    /// store the algorithm's width, leaving it unchanged.
     pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()> {
         if !self.as_protocol().is_holder() {
             return Err(self.rejected(ALGORITHM, "requires digest:role=holder".into()));
@@ -208,7 +211,7 @@ impl DigestFieldMut<'_> {
                 ALGORITHM,
                 format_smolstr!(
                     "algorithm {algorithm} requires {}, got {}",
-                    expected_holder_dtype(algorithm),
+                    expected_holder_dtypes(algorithm),
                     self.as_field().dtype()
                 ),
             ));

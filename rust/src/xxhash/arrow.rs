@@ -5,7 +5,7 @@
 //! rather than one materialized value per cell.
 //!
 //! The answer is defined by the value model, not by the layout: a row digest
-//! feeds its metadata-selected values as one ordered [`Scalar`](crate::Scalar)
+//! feeds its metadata-selected values as one ordered [`Scalar`]
 //! sequence, and a column digest feeds that cell's value. Where the layout
 //! allows it the bytes are read straight from the Arrow buffer into the same
 //! encoding; everything else falls back to the shared scalar boundary, so the
@@ -40,7 +40,7 @@ use crate::{
 };
 
 use super::field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, expected_holder_dtype, has_explicit_components,
+    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, expected_holder_dtypes, has_explicit_components,
     holder_accepts, is_effective_component,
 };
 use super::scalar::{
@@ -317,8 +317,8 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 
 fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
     match field.dtype() {
-        DataType::UInt32 => Some(DigestAlgorithm::Xxh32),
-        DataType::UInt64 => Some(DigestAlgorithm::Xxh3),
+        DataType::Int32 | DataType::UInt32 => Some(DigestAlgorithm::Xxh32),
+        DataType::Int64 | DataType::UInt64 => Some(DigestAlgorithm::Xxh3),
         DataType::FixedSizeBinary(16) => Some(DigestAlgorithm::Xxh128),
         _ => None,
     }
@@ -336,7 +336,7 @@ fn resolve_holder_algorithm(
                 holder_path,
                 format!(
                     "algorithm {algorithm} requires {}, got {}",
-                    expected_holder_dtype(algorithm),
+                    expected_holder_dtypes(algorithm),
                     field.dtype()
                 ),
             ));
@@ -348,7 +348,7 @@ fn resolve_holder_algorithm(
     }
     default_holder_algorithm(field).ok_or_else(|| {
         Error::IncompatibleSchema(format!(
-            "digest holder {holder_path} must be uint32, uint64, or fixed_size_binary[16], got {}",
+            "digest holder {holder_path} must be int32, uint32, int64, uint64, or fixed_size_binary[16], got {}",
             field.dtype()
         ))
     })
@@ -511,6 +511,11 @@ fn fill_struct<S: ArrowDigestState>(
             continue;
         }
         let computed = collect(&values, holder.algorithm);
+        let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
+            holder.field.cast_arrow_array_bits(computed)?
+        } else {
+            computed
+        };
         let mask = BooleanArray::from(mask);
         columns[holder.index] = zip(&mask, &computed.as_ref(), &original.as_ref())?;
         changed = true;
@@ -531,7 +536,7 @@ fn feed_selection(
         let field = &fields[index];
         let array = arrays[index].as_ref();
         if depth + 1 == selected.steps.len() {
-            return feed_cell(digester, selected.field.dtype(), array, row);
+            return feed_selected_cell(digester, selected.field, array, row);
         }
         if array.is_null(row) {
             write_null(digester);
@@ -544,6 +549,38 @@ fn feed_selection(
     Err(Error::IncompatibleSchema(
         "a digest selection cannot have an empty path".to_owned(),
     ))
+}
+
+/// Feed a selected holder by its unsigned digest payload, independent of the
+/// signed or unsigned same-width Arrow storage chosen for that payload.
+fn feed_selected_cell(
+    digester: &mut impl Hasher,
+    field: &Field,
+    array: &dyn Array,
+    index: usize,
+) -> Result<()> {
+    if field.as_digest().is_holder() && !array.is_null(index) {
+        match field.dtype() {
+            DataType::Int32 => {
+                let value = array.as_primitive::<Int32Type>().value(index);
+                write_unsigned(
+                    digester,
+                    u128::from(u32::from_ne_bytes(value.to_ne_bytes())),
+                );
+                return Ok(());
+            }
+            DataType::Int64 => {
+                let value = array.as_primitive::<Int64Type>().value(index);
+                write_unsigned(
+                    digester,
+                    u128::from(u64::from_ne_bytes(value.to_ne_bytes())),
+                );
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+    feed_cell(digester, field.dtype(), array, index)
 }
 
 /// Digest every row of a batch, in selected schema order.

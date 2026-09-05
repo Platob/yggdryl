@@ -17,8 +17,11 @@ import {
   type VariantField,
   type VersionField,
 } from '../..'
+import type { Vector as ArrowVector } from 'apache-arrow'
 
 const id: Int32Field = fields.int32('id', { nullable: false })
+declare const unsignedBits: ArrowVector
+const signedBits: ArrowVector = id.castArrowArrayBits(unsignedBits)
 // `kind` is the coarse family a variant belongs to; `id` is the variant itself.
 const idKind: 'integer' = id.dtype.kind
 const idId: 'int32' = id.dtype.id
@@ -95,6 +98,8 @@ const defaultedValue: number | null = defaulted.defaultJSValue()
 
 // @ts-expect-error internal factory bridges are not part of the package API
 DataType._simple('int32')
+// @ts-expect-error bit casts accept an Arrow Vector, not a JavaScript array
+id.castArrowArrayBits([0])
 // @ts-expect-error the native diff bridge is hidden behind showDiffs
 id._showDiffs(fields.int32('native_other'))
 // @ts-expect-error metadata values are never string-coerced
@@ -109,6 +114,7 @@ const nonNullDefault: number = fields.int32('defaulted').defaultJSValue()
 const nonNullAlias: Int32Field = fields.int32('defaulted')
 
 void idKind
+void signedBits
 void idId
 void eventTime
 void labels

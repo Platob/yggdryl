@@ -1492,6 +1492,17 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         wide.as_digest().algorithm().unwrap(),
         Some(DigestAlgorithm::Xxh128)
     );
+
+    for (dtype, algorithm) in [
+        (DataType::Int32, DigestAlgorithm::Xxh32),
+        (DataType::Int64, DigestAlgorithm::Xxh64),
+        (DataType::Int64, DigestAlgorithm::Xxh3),
+    ] {
+        let mut signed = dtype.required_field("signed_digest");
+        signed.as_digest_mut().set_holder().unwrap();
+        signed.as_digest_mut().set_algorithm(algorithm).unwrap();
+        assert_eq!(signed.as_digest().algorithm().unwrap(), Some(algorithm));
+    }
 }
 
 #[test]

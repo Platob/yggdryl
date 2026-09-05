@@ -121,9 +121,21 @@ function main() {
       new arrow.Uint64(),
     ),
   }).batches[0]
+  const signedHolder = new Field('row_digest', 'int64', false, {
+    'digest:role': 'holder',
+    'digest:paths': '["symbol"]',
+  })
+  const signedRoot = new Field(
+    'row',
+    DataType.fromFields([new Field('symbol', 'utf8', false), signedHolder]),
+    false,
+  )
   const state = new xxhash.Xxh3(7n)
   measureRows('fillArrowBatch (missing holder)', BATCH_ROWS, 100, () => {
     state.fillArrowBatch(root, missing)
+  })
+  measureRows('fillArrowBatch (missing signed holder)', BATCH_ROWS, 100, () => {
+    state.fillArrowBatch(signedRoot, missing)
   })
   measureRows('fillArrowBatch (default holders)', BATCH_ROWS, 100, () => {
     state.fillArrowBatch(root, defaults)

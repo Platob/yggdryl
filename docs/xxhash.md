@@ -666,9 +666,11 @@ whole but cannot be traversed. An absent key uses the containing Struct's compon
 `[]` deliberately hashes an empty sequence.
 
 Nested Struct holders are filled deepest first. Selecting a nested Struct with one direct holder
-feeds that holder's typed `Scalar` instead of hashing the Struct again. With no holder the Struct
-feeds normally; multiple direct holders are ambiguous and must be replaced by a path to the
-intended nested holder. A holder cannot select itself or another holder in the same Struct.
+feeds that holder's digest payload instead of hashing the Struct again. Signed integer holder
+storage is first bit-cast back to the same-width unsigned payload, so `int32`/`uint32` and
+`int64`/`uint64` schemas produce the same containing digest. With no holder the Struct feeds
+normally; multiple direct holders are ambiguous and must be replaced by a path to the intended
+nested holder. A holder cannot select itself or another holder in the same Struct.
 
 Each visible row is framed as an ordered `Scalar::Sequence` and streamed through the state's
 canonical value feed. With `force=false`, a cell equal to its holder Field's default is computed
@@ -680,9 +682,12 @@ secret produced it; set `force` when that provenance is not trusted.
 
 `digest:algorithm` is the canonical algorithm token a holder explicitly requests: `xxh32`,
 `xxh64`, `xxh3-64`, or `xxh3-128`. Without it, a receiver whose output width fits the holder is
-used with its seed and secret. Otherwise the holder type selects the best fresh default: `uint32`
-selects XXH32, `uint64` XXH3-64, and `fixed_size_binary(16)` XXH3-128. An explicit algorithm must
-fit the same storage mapping. If it differs from the receiver, its state is fresh and unseeded
+used with its seed and secret. Otherwise the holder type selects the best fresh default: `int32`
+or `uint32` selects XXH32, `int64` or `uint64` selects XXH3-64, and
+`fixed_size_binary(16)` selects XXH3-128. Signed holders store the identical output bits through
+the explicit signed/unsigned field bit cast; a set high bit therefore appears as a negative integer,
+without overflow or loss. An explicit algorithm must fit the same storage mapping. If it differs
+from the receiver, its state is fresh and unseeded
 because the receiver's configuration
 belongs to a different algorithm. Python spells the operation
 `state.fill_arrow_batch(root, batch, force=True)`; JavaScript spells it

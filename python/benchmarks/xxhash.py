@@ -163,9 +163,23 @@ def main() -> int:
         [symbols, pa.array(range(1, BATCH_ROWS + 1), type=pa.uint64())],
         names=["symbol", "row_digest"],
     )
+    signed_holder = Field("row_digest", "int64", nullable=False)
+    signed_holder.digest["role"] = "holder"
+    signed_holder.digest["paths"] = '["symbol"]'
+    signed_root = Field(
+        "row",
+        DataType.from_fields(
+            [Field("symbol", "utf8", nullable=False), signed_holder]
+        ),
+        nullable=False,
+    )
     state = xxhash.Xxh3(seed=7)
     fill_cases = [
         ("fill batch (missing holder)", lambda: state.fill_arrow_batch(root, missing)),
+        (
+            "fill batch (missing signed holder)",
+            lambda: state.fill_arrow_batch(signed_root, missing),
+        ),
         ("fill batch (default holders)", lambda: state.fill_arrow_batch(root, defaults)),
         ("fill batch (preserve populated)", lambda: state.fill_arrow_batch(root, populated)),
         (

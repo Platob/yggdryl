@@ -165,6 +165,67 @@ impl JsField {
         Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
     }
 
+    /// Bit-cast one opposite-signed, same-width Arrow JS integer vector.
+    ///
+    /// The JavaScript loader owns the copied one-column IPC boundary and
+    /// removes this private bridge from the published class.
+    #[napi(js_name = "_castArrowArrayBitsIpcNative", skip_typescript)]
+    pub fn cast_arrow_array_bits_ipc(&self, bytes: Uint8Array) -> Result<Buffer> {
+        use std::sync::Arc;
+
+        use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
+        use arrow_ipc::writer::StreamWriter;
+        use arrow_schema::Schema;
+
+        use crate::text::codec::{arrow_batches, ensure_one_column};
+
+        let (source_schema, batches) = arrow_batches(&bytes)?;
+        ensure_one_column(&source_schema, "Arrow array")?;
+        let target_schema = Arc::new(Schema::new([self
+            .inner
+            .clone()
+            .into_arrow_ref()
+            .map_err(napi_error)?]));
+        let mut writer =
+            StreamWriter::try_new(Vec::new(), target_schema.as_ref()).map_err(napi_error)?;
+
+        if batches.is_empty() {
+            let source = new_empty_array(source_schema.field(0).data_type());
+            let cast = self
+                .inner
+                .cast_arrow_array_bits(source)
+                .map_err(napi_error)?;
+            let options = RecordBatchOptions::new().with_row_count(Some(0));
+            let batch =
+                RecordBatch::try_new_with_options(Arc::clone(&target_schema), vec![cast], &options)
+                    .map_err(napi_error)?;
+            writer.write(&batch).map_err(napi_error)?;
+        } else {
+            for batch in batches {
+                let source = batch
+                    .columns()
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
+                let cast = self
+                    .inner
+                    .cast_arrow_array_bits(source)
+                    .map_err(napi_error)?;
+                let options = RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
+                let cast_batch = RecordBatch::try_new_with_options(
+                    Arc::clone(&target_schema),
+                    vec![cast],
+                    &options,
+                )
+                .map_err(napi_error)?;
+                writer.write(&cast_batch).map_err(napi_error)?;
+            }
+        }
+
+        writer.finish().map_err(napi_error)?;
+        Ok(writer.into_inner().map_err(napi_error)?.into())
+    }
+
     /// Build an empty native reader carrying exactly this Field's Arrow schema.
     ///
     /// The JavaScript records adapter captures and removes this private bridge;

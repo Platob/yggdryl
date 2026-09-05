@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use arrow_array::cast::AsArray as _;
-use arrow_array::types::{UInt32Type, UInt64Type};
+use arrow_array::types::{Int32Type, Int64Type, UInt32Type, UInt64Type};
 use arrow_array::{
     Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray, StructArray,
     UInt64Array,
@@ -628,14 +628,16 @@ fn a_row_is_the_sequence_of_its_columns() {
 fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
     let value = DataType::Int64.required_field("value");
     let digest = holder("digest", DataType::UInt64);
-    let root = root([value.clone(), digest.clone()]);
+    let required_root = root([value.clone(), digest.clone()]);
     let values = Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef;
     let source = batch(std::slice::from_ref(&value), vec![Arc::clone(&values)]);
 
     let mut state = Xxh64::with_seed(7);
     state.write_bytes(b"prior bytes are not row input");
     let before = state.as_u64();
-    let filled = state.fill_arrow_batch(&root, source, false).unwrap();
+    let filled = state
+        .fill_arrow_batch(&required_root, source, false)
+        .unwrap();
     assert_eq!(state.as_u64(), before, "the prototype is unchanged");
     assert!(Arc::ptr_eq(filled.column(0), &values));
     assert_eq!(
@@ -649,23 +651,49 @@ fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
         vec![Arc::clone(&values), populated],
     );
     let conditional = state
-        .fill_arrow_batch(&root, source.clone(), false)
+        .fill_arrow_batch(&required_root, source.clone(), false)
         .unwrap();
     assert_eq!(
         conditional.column(1).as_primitive::<UInt64Type>().values(),
         &[seeded_xxh64_row(7, 1), 99]
     );
-    let forced = state.fill_arrow_batch(&root, source, true).unwrap();
+    let forced = state
+        .fill_arrow_batch(&required_root, source, true)
+        .unwrap();
     assert_eq!(
         forced.column(1).as_primitive::<UInt64Type>().values(),
         &[seeded_xxh64_row(7, 1), seeded_xxh64_row(7, 2)]
+    );
+
+    let mut nullable = holder("digest", DataType::UInt64);
+    nullable.set_nullable(true);
+    let nullable_root = root([value.clone(), nullable.clone()]);
+    let source = batch(
+        &[value.clone(), nullable],
+        vec![
+            Arc::clone(&values),
+            Arc::new(UInt64Array::from(vec![None, Some(0)])),
+        ],
+    );
+    let conditional = state
+        .fill_arrow_batch(&nullable_root, source, false)
+        .unwrap();
+    let conditional = conditional.column(1).as_primitive::<UInt64Type>();
+    assert_eq!(conditional.value(0), seeded_xxh64_row(7, 1));
+    assert!(conditional.is_valid(0));
+    assert_eq!(
+        conditional.value(1),
+        0,
+        "a present zero is not a nullable holder's null default"
     );
 
     let empty = batch(
         std::slice::from_ref(&value),
         vec![Arc::new(Int64Array::from(Vec::<i64>::new()))],
     );
-    let empty = state.fill_arrow_batch(&root, empty, false).unwrap();
+    let empty = state
+        .fill_arrow_batch(&required_root, empty, false)
+        .unwrap();
     assert_eq!(empty.num_rows(), 0);
     assert_eq!(empty.num_columns(), 2);
 }
@@ -715,7 +743,7 @@ fn holder_paths_are_ordered_override_roles_and_preserve_explicit_empty() {
 #[test]
 fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let inner_value = DataType::Int64.required_field("value");
-    let inner_digest = holder("digest", DataType::UInt64);
+    let inner_digest = holder("digest", DataType::Int64);
     let nested = DataType::from_fields([inner_value, inner_digest])
         .unwrap()
         .nullable_field("nested");
@@ -723,12 +751,37 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let root = root([nested, outer_digest]);
     let rows = Scalar::from_sequence([
         Scalar::from_sequence([
-            Scalar::from_sequence([Scalar::from(7), Scalar::from(0_u64)]),
+            Scalar::from_sequence([Scalar::from(7), Scalar::from(-1_i64)]),
             Scalar::from(0_u64),
         ]),
         Scalar::from_sequence([Scalar::Null, Scalar::from(0_u64)]),
     ]);
     let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
+
+    let conditional = Xxh3::new()
+        .fill_arrow_batch(&root, source.clone(), false)
+        .unwrap();
+    let conditional_nested = conditional
+        .column(0)
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .unwrap();
+    assert_eq!(
+        conditional_nested
+            .column(1)
+            .as_primitive::<Int64Type>()
+            .value(0),
+        -1,
+        "a populated nested holder is preserved"
+    );
+    assert_eq!(
+        conditional.column(1).as_primitive::<UInt64Type>().value(0),
+        row_digest(u64::MAX, DigestAlgorithm::Xxh3)
+            .as_u64()
+            .unwrap(),
+        "the parent consumes the preserved holder's unsigned payload"
+    );
+
     let filled = Xxh3::new().fill_arrow_batch(&root, source, true).unwrap();
 
     let nested = filled
@@ -736,9 +789,12 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
         .as_any()
         .downcast_ref::<StructArray>()
         .unwrap();
-    let inner = nested.column(1).as_primitive::<UInt64Type>();
+    let inner = nested.column(1).as_primitive::<Int64Type>();
     let inner_expected = row_digest(7, DigestAlgorithm::Xxh3).as_u64().unwrap();
-    assert_eq!(inner.value(0), inner_expected);
+    assert_eq!(
+        u64::from_ne_bytes(inner.value(0).to_ne_bytes()),
+        inner_expected
+    );
     assert_eq!(inner.value(1), 0, "a null parent hides its child holder");
 
     let outer = filled.column(1).as_primitive::<UInt64Type>();
@@ -747,7 +803,7 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
         row_digest(inner_expected, DigestAlgorithm::Xxh3)
             .as_u64()
             .unwrap(),
-        "the containing row consumes the filled nested holder"
+        "signed holder storage normalizes back to its unsigned digest payload"
     );
     assert_eq!(
         outer.value(1),
@@ -755,6 +811,72 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
             .as_u64()
             .unwrap(),
         "the shortcut retains the selected Struct's null"
+    );
+}
+
+#[test]
+fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
+    let value = DataType::Utf8.required_field("value");
+    let signed32 = holder("signed32", DataType::Int32);
+    let unsigned32 = holder("unsigned32", DataType::UInt32);
+    let signed64 = holder("signed64", DataType::Int64);
+    let unsigned64 = holder("unsigned64", DataType::UInt64);
+    let all_holders_root = root([value.clone(), signed32, unsigned32, signed64, unsigned64]);
+    let source = batch(
+        std::slice::from_ref(&value),
+        vec![Arc::new(StringArray::from(vec!["AAPL", "8"]))],
+    );
+
+    let filled = Xxh3::new()
+        .fill_arrow_batch(&all_holders_root, source, false)
+        .unwrap();
+    let signed32 = filled.column(1).as_primitive::<Int32Type>();
+    let unsigned32 = filled.column(2).as_primitive::<UInt32Type>();
+    let signed64 = filled.column(3).as_primitive::<Int64Type>();
+    let unsigned64 = filled.column(4).as_primitive::<UInt64Type>();
+
+    for row in 0..filled.num_rows() {
+        assert_eq!(
+            u32::from_ne_bytes(signed32.value(row).to_ne_bytes()),
+            unsigned32.value(row)
+        );
+        assert_eq!(
+            u64::from_ne_bytes(signed64.value(row).to_ne_bytes()),
+            unsigned64.value(row)
+        );
+    }
+    assert!(signed32.value(1) < 0, "the XXH32 high bit is retained");
+    assert!(signed64.value(0) < 0, "the XXH3-64 high bit is retained");
+
+    let value = DataType::Utf8.required_field("value");
+    let signed = holder("digest", DataType::Int64);
+    let root = root([value.clone(), signed.clone()]);
+    let source = batch(
+        &[value, signed],
+        vec![
+            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+            Arc::new(Int64Array::from(vec![0, -1])),
+        ],
+    );
+    let stored = |value| {
+        i64::from_ne_bytes(
+            row_digest(value, DigestAlgorithm::Xxh3)
+                .as_u64()
+                .unwrap()
+                .to_ne_bytes(),
+        )
+    };
+    let conditional = Xxh3::new()
+        .fill_arrow_batch(&root, source.clone(), false)
+        .unwrap();
+    assert_eq!(
+        conditional.column(1).as_primitive::<Int64Type>().values(),
+        &[stored("AAPL"), -1]
+    );
+    let forced = Xxh3::new().fill_arrow_batch(&root, source, true).unwrap();
+    assert_eq!(
+        forced.column(1).as_primitive::<Int64Type>().values(),
+        &[stored("AAPL"), stored("MSFT")]
     );
 }
 

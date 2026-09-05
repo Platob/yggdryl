@@ -1745,6 +1745,15 @@ pub const CURRENCIES: &'static [&'static str]
 
 ### yggdryl::types::cast  [rust\src\types\cast.rs]
 pub trait ArrowFieldType: FieldType
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<ArrayRef>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
   pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
   pub fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<K::Array>>
   pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>

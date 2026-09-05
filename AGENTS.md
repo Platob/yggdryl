@@ -129,6 +129,9 @@ pin an unsettled design by implementing a binding first.
   types never appear in a public signature, a doc example, an error, or a
   binding. `stable_hash` is XXH3-64 over that feed everywhere; there is no
   second hash family and no second spelling of this one.
+- Integer digest holders accept signed or unsigned storage at the algorithm's
+  exact width. Signed storage is a bit-preserving view of the unsigned digest;
+  nested holder reuse normalizes it back to that unsigned payload before feed.
 - A row digest reads direct Struct children in declaration order. One or more
   `digest:role=component` fields are the exact input; with none, every field
   except `digest:role=holder` is input. Holders never feed themselves back into
@@ -498,6 +501,10 @@ Iceberg contract:
 - `ArrowCast` owns recursive array/batch casting. Struct casts reconcile names,
   reject ambiguous folds, follow target order, fill valid missing fields, and
   preserve exact arrays after logical validation.
+- `Field::cast_arrow_array_bits` is the explicit full-domain `int32`/`uint32`
+  and `int64`/`uint64` representation cast. It shares value buffers unless a
+  required target must fill nulls, preserves every present value's bits, and
+  never changes ordinary numeric cast semantics.
 - Wrapper exposure propagates: hidden child failures/nulls remain hidden.
   Preflight slot and fixed-buffer budgets before allocating.
 - IPC dictionary IDs are transport-local. Preserve native IDs in one reserved

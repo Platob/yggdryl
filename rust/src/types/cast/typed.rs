@@ -1,10 +1,14 @@
 //! Typed-field Arrow array projections.
 
-use arrow_array::{Array, ArrayRef, Scalar};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, Scalar, UInt32Array, UInt64Array};
+use arrow_buffer::ScalarBuffer;
 
 use super::ArrowCast as _;
 use crate::arrow::{Error, Result};
 use crate::types::typed::{FieldType, TypedField, TypedFieldRef};
+use crate::{DataType, Field};
 
 /// The Arrow array a field's values materialize into.
 ///
@@ -196,6 +200,115 @@ opaque_array!(crate::types::temporal::Duration64Type);
 opaque_array!(crate::types::temporal::IntervalType);
 opaque_array!(crate::types::nested::DictionaryTypeMarker);
 opaque_array!(crate::types::nested::RunEndEncodedTypeMarker);
+
+impl Field {
+    /// Casts between same-width signed and unsigned Arrow integers by bits.
+    ///
+    /// This is deliberately separate from [`ArrowCast::cast_arrow_array`],
+    /// which preserves the numeric value and therefore rejects values outside
+    /// the target integer's range. A bit cast instead maps every bit pattern:
+    /// `u32::MAX` becomes `-1_i32`, and the reverse cast restores `u32::MAX`.
+    /// Only `uint32` <-> `int32` and `uint64` <-> `int64` are accepted.
+    ///
+    /// The value buffer is shared without copying unless a required target
+    /// must replace source nulls with its canonical default. A nullable target
+    /// retains nulls.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this Field is not one of the four supported
+    /// integer targets, when `array` is not its opposite-signed counterpart,
+    /// or when the target's null/default contract cannot be satisfied.
+    pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<ArrayRef> {
+        self.validate_bounded()?;
+        let cast: ArrayRef = match self.dtype() {
+            DataType::Int32 => {
+                let source = opposite_array::<UInt32Array>(self, array.as_ref(), "uint32")?;
+                let values = ScalarBuffer::<i32>::from(source.values().inner().clone());
+                Arc::new(Int32Array::new(values, source.nulls().cloned()))
+            }
+            DataType::UInt32 => {
+                let source = opposite_array::<Int32Array>(self, array.as_ref(), "int32")?;
+                let values = ScalarBuffer::<u32>::from(source.values().inner().clone());
+                Arc::new(UInt32Array::new(values, source.nulls().cloned()))
+            }
+            DataType::Int64 => {
+                let source = opposite_array::<UInt64Array>(self, array.as_ref(), "uint64")?;
+                let values = ScalarBuffer::<i64>::from(source.values().inner().clone());
+                Arc::new(Int64Array::new(values, source.nulls().cloned()))
+            }
+            DataType::UInt64 => {
+                let source = opposite_array::<Int64Array>(self, array.as_ref(), "int64")?;
+                let values = ScalarBuffer::<u64>::from(source.values().inner().clone());
+                Arc::new(UInt64Array::new(values, source.nulls().cloned()))
+            }
+            dtype => {
+                return Err(Error::IncompatibleSchema(format!(
+                    "field {:?} bit-preserving Arrow integer casts require an int32, uint32, int64, or uint64 target, got {} for source {}",
+                    self.name(),
+                    dtype,
+                    array.data_type()
+                )));
+            }
+        };
+        self.cast_arrow_array(cast, false)
+    }
+}
+
+fn opposite_array<'array, A: Array + 'static>(
+    field: &Field,
+    array: &'array dyn Array,
+    expected: &'static str,
+) -> Result<&'array A> {
+    array.as_any().downcast_ref::<A>().ok_or_else(|| {
+        Error::IncompatibleSchema(format!(
+            "field {:?} bit-preserving Arrow cast to {} requires a {expected} array, got {}",
+            field.name(),
+            field.dtype(),
+            array.data_type()
+        ))
+    })
+}
+
+macro_rules! typed_bit_cast {
+    ($marker:path, $array:ty) => {
+        impl TypedField<$marker> {
+            /// Casts the opposite-signed same-width Arrow integer array by bits.
+            ///
+            /// Every bit pattern is accepted. The value buffer is shared unless
+            /// a required target must fill nulls with its canonical default.
+            ///
+            /// # Errors
+            ///
+            /// Returns any error [`Field::cast_arrow_array_bits`] returns.
+            pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<$array> {
+                downcast(
+                    self.as_field().cast_arrow_array_bits(array)?,
+                    stringify!($array),
+                )
+            }
+        }
+
+        impl TypedFieldRef<'_, $marker> {
+            /// Casts the opposite-signed same-width Arrow integer array by bits.
+            ///
+            /// # Errors
+            ///
+            /// Returns any error [`Field::cast_arrow_array_bits`] returns.
+            pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<$array> {
+                downcast(
+                    self.as_field().cast_arrow_array_bits(array)?,
+                    stringify!($array),
+                )
+            }
+        }
+    };
+}
+
+typed_bit_cast!(crate::types::integer::Int32Type, Int32Array);
+typed_bit_cast!(crate::types::integer::UInt32Type, UInt32Array);
+typed_bit_cast!(crate::types::integer::Int64Type, Int64Array);
+typed_bit_cast!(crate::types::integer::UInt64Type, UInt64Array);
 
 impl<K: ArrowFieldType> TypedField<K> {
     /// Cast an incoming Arrow array to this field, returning its exact array.

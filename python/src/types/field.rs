@@ -511,6 +511,19 @@ impl PyField {
         arrow_array_to_pyarrow(py, &array, Some(&self.inner))
     }
 
+    /// Bit-casts one opposite-signed, same-width `PyArrow` integer Array.
+    fn cast_arrow_array_bits<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let array = self
+            .inner
+            .cast_arrow_array_bits(arrow_array_from_pyarrow(value)?)
+            .map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
     /// Reconciles one `PyArrow` `RecordBatch` to this exact Struct Field.
     #[pyo3(signature = (value, *, safe=true))]
     fn cast_arrow_batch<'py>(

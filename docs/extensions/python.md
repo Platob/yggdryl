@@ -470,6 +470,11 @@ assert explicit.digest_field_len == 1
 assert len(explicit.only_digest_fields().dtype) == 1
 ```
 
+Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit
+algorithms. A signed PyArrow column exposes high-bit results as negative Python integers while
+retaining the complete digest bits; `field.cast_arrow_array_bits(...)` performs the same explicit,
+reversible representation cast outside holder filling.
+
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.
 
