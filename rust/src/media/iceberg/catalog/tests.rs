@@ -788,7 +788,7 @@ mod call_counts {
 
     use super::{Catalog, taxi_schema};
     use crate::Result;
-    use crate::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, Folder, MemoryFileSystem};
+    use crate::holder::fs::{FileInfo, FileInfos, FileSystem, Folder, MemoryFileSystem};
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
@@ -807,7 +807,7 @@ mod call_counts {
         }
     }
 
-    impl ArrowFileSystem for Counting {
+    impl FileSystem for Counting {
         fn type_name(&self) -> &str {
             self.inner.type_name()
         }
@@ -846,11 +846,9 @@ mod call_counts {
     /// A catalog over a counting warehouse, with the counter beside it.
     fn counted() -> (Arc<Counting>, Catalog<Folder>) {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = Folder::from_location(
-            Arc::clone(&filesystem) as Arc<dyn ArrowFileSystem>,
-            "warehouse",
-        )
-        .expect("a valid location");
+        let warehouse =
+            Folder::from_location(Arc::clone(&filesystem) as Arc<dyn FileSystem>, "warehouse")
+                .expect("a valid location");
         (filesystem, Catalog::new(warehouse))
     }
 

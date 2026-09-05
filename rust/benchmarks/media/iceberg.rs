@@ -881,7 +881,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
 /// is a regression.
 fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos, MemoryFileSystem};
+    use yggdryl::holder::fs::{FileInfo, FileInfos, FileSystem, MemoryFileSystem};
     use yggdryl::media::iceberg::Catalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
@@ -897,7 +897,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
         }
     }
 
-    impl ArrowFileSystem for Counting {
+    impl FileSystem for Counting {
         fn type_name(&self) -> &str {
             self.inner.type_name()
         }
@@ -940,8 +940,8 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     };
     let counted = || {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = yggdryl::holder::arrowfs::Folder::from_location(
-            Arc::clone(&filesystem) as Arc<dyn ArrowFileSystem>,
+        let warehouse = yggdryl::holder::fs::Folder::from_location(
+            Arc::clone(&filesystem) as Arc<dyn FileSystem>,
             "warehouse",
         )
         .expect("a valid location");

@@ -1,9 +1,9 @@
 //! Byte-level wrapper overhead, against the handle each backend wraps.
 //!
-//! The memory legs compare an `arrowfs` handle over [`MemoryFileSystem`]
+//! The memory legs compare an `fs` handle over [`MemoryFileSystem`]
 //! against the native [`Buffer`](yggdryl::holder::Buffer) - both hold their bytes
 //! in memory, so the difference is purely the vtable plus the staging. The
-//! local legs compare an `arrowfs` handle over [`LocalFileSystem`] against
+//! local legs compare an `fs` handle over [`LocalFileSystem`] against
 //! [`local::File`](yggdryl::holder::local::File), the memory-mapped local backend, on
 //! the same payload.
 
@@ -11,22 +11,22 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::holder::arrowfs::File as ArrowFile;
+use yggdryl::holder::fs::File as FsFile;
 
 use super::{PAYLOAD, buffer, local, local_location, memory, payload};
 
 pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("arrowfs_bytes");
+    let mut group = criterion.benchmark_group("fs_bytes");
     group.throughput(Throughput::Bytes(PAYLOAD as u64));
 
     let bytes = payload();
 
     // A whole-value read: one ranged fetch through the vtable, against the
     // slice copy the native buffer does.
-    group.bench_function("read_all/arrowfs_memory", |bencher| {
+    group.bench_function("read_all/fs_memory", |bencher| {
         let filesystem = memory();
         let mut handle =
-            ArrowFile::from_location(filesystem, "bench/read.bin").expect("a valid location");
+            FsFile::from_location(filesystem, "bench/read.bin").expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         // The whole value is black-boxed rather than its length: observing
@@ -58,10 +58,10 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
 
     // A ranged read, which is the shape a footer-first reader uses: the
     // wrapper must not download the whole value to serve one range.
-    group.bench_function("pread_range/arrowfs_memory", |bencher| {
+    group.bench_function("pread_range/fs_memory", |bencher| {
         let filesystem = memory();
         let mut handle =
-            ArrowFile::from_location(filesystem, "bench/range.bin").expect("a valid location");
+            FsFile::from_location(filesystem, "bench/range.bin").expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         let mut target = vec![0_u8; 4096];
@@ -85,10 +85,10 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
 
     // A whole-value write. The wrapper stages and publishes exactly once on
     // close, so the close is inside the measured region.
-    group.bench_function("write_all/arrowfs_memory", |bencher| {
+    group.bench_function("write_all/fs_memory", |bencher| {
         let filesystem = memory();
         bencher.iter(|| {
-            let mut handle = ArrowFile::from_location(filesystem.clone(), "bench/write.bin")
+            let mut handle = FsFile::from_location(filesystem.clone(), "bench/write.bin")
                 .expect("a valid location");
             handle
                 .write_all_bytes(black_box(&bytes))
@@ -108,10 +108,10 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
 
     let (filesystem, root) = local();
 
-    group.bench_function("read_all/arrowfs_local", |bencher| {
+    group.bench_function("read_all/fs_local", |bencher| {
         let location = local_location(&root, "read.bin");
         let mut handle =
-            ArrowFile::from_location(filesystem.clone(), &location).expect("a valid location");
+            FsFile::from_location(filesystem.clone(), &location).expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         // The whole value is black-boxed rather than its length: observing
@@ -143,11 +143,11 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    group.bench_function("write_all/arrowfs_local", |bencher| {
+    group.bench_function("write_all/fs_local", |bencher| {
         let location = local_location(&root, "write.bin");
         bencher.iter(|| {
             let mut handle =
-                ArrowFile::from_location(filesystem.clone(), &location).expect("a valid location");
+                FsFile::from_location(filesystem.clone(), &location).expect("a valid location");
             handle
                 .write_all_bytes(black_box(&bytes))
                 .expect("a writable value");

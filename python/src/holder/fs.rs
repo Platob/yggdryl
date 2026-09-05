@@ -1,4 +1,4 @@
-//! `pyarrow.fs.FileSystem` as a core [`ArrowFileSystem`], implemented once.
+//! `pyarrow.fs.FileSystem` as a core [`FileSystem`], implemented once.
 //!
 //! The core vtable is modeled on Arrow's own `FileSystem` API, so this is a
 //! transcription rather than an adaptation: each method acquires the GIL,
@@ -16,11 +16,11 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
+use yggdryl::holder::fs::{FileInfo, FileInfos, FileSystem};
 use yggdryl::{Error, IOKind, Result};
 
 /// A held `pyarrow.fs.FileSystem`, presented as the core vtable.
-pub(crate) struct PyArrowFileSystem {
+pub(crate) struct PyFileSystem {
     filesystem: Py<PyAny>,
     /// The filesystem's `type_name`, read once at construction.
     ///
@@ -30,17 +30,17 @@ pub(crate) struct PyArrowFileSystem {
     name: String,
 }
 
-impl PyArrowFileSystem {
+impl PyFileSystem {
     /// Hold `filesystem`, reading the name its own API reports.
     ///
     /// An unreadable name is not a failure: it only decides the scheme a
-    /// handle's location carries, and `arrowfs` is the generic one the core
+    /// handle's location carries, and `fs` is the generic one the core
     /// falls back to anyway.
     pub(crate) fn new(filesystem: &Bound<'_, PyAny>) -> Self {
         let name = filesystem
             .getattr("type_name")
             .and_then(|name| name.extract::<String>())
-            .unwrap_or_else(|_| "arrowfs".to_owned());
+            .unwrap_or_else(|_| "fs".to_owned());
         Self {
             filesystem: filesystem.clone().unbind(),
             name,
@@ -94,7 +94,7 @@ fn file_info_from_py(info: &Bound<'_, PyAny>) -> PyResult<FileInfo> {
     Ok(FileInfo { path, kind, size })
 }
 
-impl ArrowFileSystem for PyArrowFileSystem {
+impl FileSystem for PyFileSystem {
     fn type_name(&self) -> &str {
         &self.name
     }

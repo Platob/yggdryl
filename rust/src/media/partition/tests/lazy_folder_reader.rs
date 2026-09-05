@@ -7,7 +7,7 @@ use arrow_ipc::writer::StreamWriter;
 use super::super::folder_reader;
 use super::prices;
 use crate::holder::Holder;
-use crate::holder::arrowfs::{ArrowFileSystem, File, FileInfo, FileInfos, MemoryFileSystem};
+use crate::holder::fs::{File, FileInfo, FileInfos, FileSystem, MemoryFileSystem};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
 use crate::{IOBase, Listing};
@@ -47,7 +47,7 @@ impl ProbeFilesystem {
     }
 }
 
-impl ArrowFileSystem for ProbeFilesystem {
+impl FileSystem for ProbeFilesystem {
     fn type_name(&self) -> &str {
         "probe"
     }
@@ -165,7 +165,7 @@ impl IOBase for ProbeFolder {
     fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing> {
         assert!(filters.is_empty());
         assert!(!include_private);
-        let filesystem: Arc<dyn ArrowFileSystem> = self.filesystem.clone();
+        let filesystem: Arc<dyn FileSystem> = self.filesystem.clone();
         let pulls = Arc::clone(&self.pulls);
         let width = self.width;
         let failing_entry = self.failing_entry;
@@ -174,7 +174,7 @@ impl IOBase for ProbeFolder {
             if failing_entry == Some(index) {
                 return Err(Error::Io(std::io::Error::other(LISTING_FAILURE)));
             }
-            File::from_location(Arc::clone(&filesystem), &part_path(index)).map(Holder::ArrowFile)
+            File::from_location(Arc::clone(&filesystem), &part_path(index)).map(Holder::FsFile)
         })))
     }
 }

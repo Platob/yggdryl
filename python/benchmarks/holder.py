@@ -74,7 +74,7 @@ TABLE = pa.Table.from_batches(
 
 PAYLOAD = bytes(index % 251 for index in range(PAYLOAD_BYTES))
 
-ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrowfs-bench-"))
+ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-fs-bench-"))
 LOCAL = pafs.LocalFileSystem()
 
 
@@ -100,7 +100,7 @@ class Benchmark:
 
 
 def _wrapper_write_bytes() -> object:
-    handle = IOBase.from_arrow_fs(LOCAL, _path("sink-wrapper.bin"))
+    handle = IOBase.from_fs(LOCAL, _path("sink-wrapper.bin"))
     with handle:
         handle.write_bytes(PAYLOAD)
     return handle.size
@@ -114,7 +114,7 @@ def _pyarrow_write_bytes() -> object:
 
 
 def _wrapper_read_bytes() -> object:
-    return len(IOBase.from_arrow_fs(LOCAL, _SOURCE_BYTES).read_bytes())
+    return len(IOBase.from_fs(LOCAL, _SOURCE_BYTES).read_bytes())
 
 
 def _pyarrow_read_bytes() -> object:
@@ -123,7 +123,7 @@ def _pyarrow_read_bytes() -> object:
 
 
 def _wrapper_read_range() -> object:
-    handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_BYTES)
+    handle = IOBase.from_fs(LOCAL, _SOURCE_BYTES)
     return len(handle.read_range_bytes(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES))
 
 
@@ -133,7 +133,7 @@ def _pyarrow_read_range() -> object:
 
 
 def _wrapper_write_parquet() -> object:
-    handle = IOBase.from_arrow_fs(LOCAL, _path("sink-wrapper.parquet"))
+    handle = IOBase.from_fs(LOCAL, _path("sink-wrapper.parquet"))
     with handle:
         handle.overwrite_arrow_table(TABLE)
     return handle.size
@@ -145,7 +145,7 @@ def _pyarrow_write_parquet() -> object:
 
 
 def _wrapper_read_parquet() -> object:
-    handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_PARQUET)
+    handle = IOBase.from_fs(LOCAL, _SOURCE_PARQUET)
     return handle.read_arrow_reader().read_all().num_rows
 
 
@@ -154,7 +154,7 @@ def _pyarrow_read_parquet() -> object:
 
 
 def _wrapper_list() -> object:
-    return len(IOBase.from_arrow_fs(LOCAL, _path("lake")).ls(recursive=True))
+    return len(IOBase.from_fs(LOCAL, _path("lake")).ls(recursive=True))
 
 
 def _pyarrow_list() -> object:
@@ -230,7 +230,7 @@ def main() -> None:
         # A wrapper that stopped reading ranges would still be correct and
         # would still look fast enough, so the range read is asserted to be a
         # range read before it is timed.
-        handle = IOBase.from_arrow_fs(LOCAL, _SOURCE_BYTES)
+        handle = IOBase.from_fs(LOCAL, _SOURCE_BYTES)
         assert len(handle.read_range_bytes(PAYLOAD_BYTES - RANGE_BYTES, RANGE_BYTES)) == RANGE_BYTES
         assert handle.read_bytes() == PAYLOAD
         assert _wrapper_read_parquet() == _pyarrow_read_parquet()

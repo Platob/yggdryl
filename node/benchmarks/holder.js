@@ -87,7 +87,7 @@ const handler = {
 const PAYLOAD_BYTES = 64 * 1_024
 const RANGE_BYTES = 4_096
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-arrowfs-bench-'))
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fs-bench-'))
 const lake = path.join(root, 'lake')
 for (const year of ['2024', '2025']) {
   for (const month of ['01', '02']) {
@@ -118,43 +118,43 @@ const wrapperRecords = path.join(root, 'wrapper.arrows')
 const directRecords = path.join(root, 'direct.arrows')
 // Flushed, because a staged whole value is published on flush: an unflushed
 // fixture would leave the read rows below measuring an empty file.
-const records = IOBase.fromArrowFs(handler, wrapperRecords)
+const records = IOBase.fromFs(handler, wrapperRecords)
 records.overwriteArrowTable(table)
 records.flush()
 new IOBase(directRecords).overwriteArrowTable(table)
 
-const handle = IOBase.fromArrowFs(handler, source)
-const folder = IOBase.fromArrowFs(handler, lake)
+const handle = IOBase.fromFs(handler, source)
+const folder = IOBase.fromFs(handler, lake)
 const localFolder = new IOBase(lake)
 
 // Construction: what holding a handler costs beside naming a local path.
-benchmark('arrowfs/handle_from_path', () => IOBase.fromArrowFs(handler, source))
+benchmark('fs/handle_from_path', () => IOBase.fromFs(handler, source))
 benchmark('local/handle_from_path', () => new IOBase(source))
 
 // Whole-value writes, which is the one write shape an Arrow file system has:
 // the wrapper stages and publishes exactly one `writeFull` per flush.
-benchmark('arrowfs/write_bytes', () => {
-  const sink = IOBase.fromArrowFs(handler, wrapperSink)
+benchmark('fs/write_bytes', () => {
+  const sink = IOBase.fromFs(handler, wrapperSink)
   sink.writeBytes(payload)
   sink.flush()
 })
 benchmark('node:fs/write_bytes', () => fs.writeFileSync(directSink, payload))
 
-benchmark('arrowfs/read_bytes', () => IOBase.fromArrowFs(handler, source).readBytes())
+benchmark('fs/read_bytes', () => IOBase.fromFs(handler, source).readBytes())
 benchmark('node:fs/read_bytes', () => fs.readFileSync(source))
 
 // The row that says whether a range stayed a range.
-benchmark('arrowfs/read_range_4k', () => handle.readRangeBytes(0, RANGE_BYTES))
+benchmark('fs/read_range_4k', () => handle.readRangeBytes(0, RANGE_BYTES))
 benchmark('node:fs/read_range_4k', () => handler.readRange(source, 0n, RANGE_BYTES))
 
-benchmark('arrowfs/size', () => IOBase.fromArrowFs(handler, source).size)
+benchmark('fs/size', () => IOBase.fromFs(handler, source).size)
 benchmark('node:fs/size', () => fs.statSync(source).size)
 
-benchmark('arrowfs/list_children', () => folder.iterdir())
+benchmark('fs/list_children', () => folder.iterdir())
 benchmark('local/list_children', () => localFolder.iterdir())
 benchmark('node:fs/list_children', () => fs.readdirSync(lake, { withFileTypes: true }))
 
-benchmark('arrowfs/glob_parquet', () => folder.rglob('*.parquet'))
+benchmark('fs/glob_parquet', () => folder.rglob('*.parquet'))
 benchmark('node:fs/glob_parquet', () =>
   fs.readdirSync(lake, { recursive: true }).filter((name) => name.endsWith('.parquet')),
 )
@@ -173,14 +173,14 @@ function recordBenchmark(name, operation) {
   console.log(`${name}: ${rate.toLocaleString('en-US')} rows/second`)
 }
 
-recordBenchmark('arrowfs/read_records', () =>
-  IOBase.fromArrowFs(handler, wrapperRecords).readArrowReader().intoTable(),
+recordBenchmark('fs/read_records', () =>
+  IOBase.fromFs(handler, wrapperRecords).readArrowReader().intoTable(),
 )
 recordBenchmark('local/read_records', () =>
   new IOBase(directRecords).readArrowReader().intoTable(),
 )
-recordBenchmark('arrowfs/write_records', () => {
-  const sink = IOBase.fromArrowFs(handler, wrapperRecords)
+recordBenchmark('fs/write_records', () => {
+  const sink = IOBase.fromFs(handler, wrapperRecords)
   sink.overwriteArrowTable(table)
   sink.flush()
 })

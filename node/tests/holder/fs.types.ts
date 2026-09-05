@@ -2,7 +2,7 @@ import {
   IOBase,
   type ArrowFileInfo,
   type ArrowFileKind,
-  type ArrowFileSystemHandler,
+  type FileSystemHandler,
   type BatchReader,
   type Field,
 } from '../..'
@@ -12,7 +12,7 @@ import type { Buffer } from 'node:buffer'
 // what says so: an implementation that answers the wrong shape is a type
 // error here rather than a failure at the first read. State of its own is
 // state of its own - the methods reach it through `this`.
-interface MemoryHandler extends ArrowFileSystemHandler {
+interface MemoryHandler extends FileSystemHandler {
   readonly files: Map<string, Buffer>
 }
 
@@ -49,7 +49,7 @@ const absent: ArrowFileInfo = { kind: 'unknown' }
 
 // Both spellings of the same construction: the factory says the file system
 // outright, the constructor infers it from a first argument that is one.
-const handle: IOBase = IOBase.fromArrowFs(handler, 'bucket/key.arrows')
+const handle: IOBase = IOBase.fromFs(handler, 'bucket/key.arrows')
 const inferred: IOBase = new IOBase(handler, 'bucket/key.arrows')
 
 // What comes back is an ordinary handle, so the whole surface is the same.

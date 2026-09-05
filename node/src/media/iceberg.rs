@@ -1487,7 +1487,7 @@ impl JsTable {
     /// file system, not the local path its URL happens to spell.
     #[napi(getter)]
     pub fn root(&self) -> Result<JsIOBase> {
-        if let Some(holder) = crate::iobase::arrow_folder_holder(self.inner.root()) {
+        if let Some(holder) = crate::iobase::fs_folder_holder(self.inner.root()) {
             return Ok(JsIOBase::from_core(holder));
         }
         JsIOBase::folder_at(&self.location())

@@ -1,4 +1,4 @@
-//! A caller-supplied JavaScript file system as a core [`ArrowFileSystem`].
+//! A caller-supplied JavaScript file system as a core [`FileSystem`].
 //!
 //! Arrow JS ships no file system, so where the Python binding hands the core
 //! a `pyarrow.fs.FileSystem` that already exists, this one takes the same
@@ -10,7 +10,7 @@
 //!
 //! # A handler-backed handle belongs to one JavaScript thread
 //!
-//! [`ArrowFileSystem`] is `Send + Sync`, because the core holds one behind an
+//! [`FileSystem`] is `Send + Sync`, because the core holds one behind an
 //! `Arc` and never assumes which thread reads through it. A JavaScript object
 //! is the opposite: it lives in one isolate and may only be touched from the
 //! thread that owns it. Node-API's one way across that line is a threadsafe
@@ -42,13 +42,13 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 
-use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, FileInfos};
+use yggdryl::holder::fs::{FileInfo, FileInfos, FileSystem};
 use yggdryl::{Error, IOKind, Result};
 
 use crate::napi_error;
 
 /// A caller-supplied Arrow file system: the vtable as a plain object.
-pub(crate) type ArrowFileSystemInput<'a> = Object<'a>;
+pub(crate) type FileSystemInput<'a> = Object<'a>;
 
 /// What a file system handler reports about one path.
 ///
@@ -159,12 +159,12 @@ fn bound_method<Args: JsValuesTupleIntoVec, Return: FromNapiValue>(
 }
 
 /// A held JavaScript file system handler, presented as the core vtable.
-pub(crate) struct JsArrowFileSystem {
+pub(crate) struct JsFileSystem {
     /// The handler's `typeName`, read once at construction.
     ///
     /// It is the one thing the core asks for outside a fallible call - the
     /// scheme a handle's location carries - and it never changes for a given
-    /// handler, so reading it eagerly keeps [`ArrowFileSystem::type_name`]
+    /// handler, so reading it eagerly keeps [`FileSystem::type_name`]
     /// from needing the JavaScript thread at all.
     name: String,
     file_info: FunctionRef<String, ArrowFileInfo>,
@@ -184,17 +184,17 @@ pub(crate) struct JsArrowFileSystem {
     thread: ThreadId,
 }
 
-impl JsArrowFileSystem {
+impl JsFileSystem {
     /// Hold `handler`, taking the six calls and the name it reports.
     pub(crate) fn new(env: Env, handler: &Object<'_>) -> napi::Result<Self> {
         // A missing or unreadable name is not a failure: it only decides the
-        // scheme the handle's location carries, and `arrowfs` is the generic
+        // scheme the handle's location carries, and `fs` is the generic
         // one the core falls back to anyway.
         let name = handler
             .get::<String>("typeName")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "arrowfs".to_owned());
+            .unwrap_or_else(|| "fs".to_owned());
         Ok(Self {
             name,
             file_info: bound_method(handler, "fileInfo", "fileInfo(path)")?,
@@ -258,7 +258,7 @@ impl JsArrowFileSystem {
     }
 }
 
-impl ArrowFileSystem for JsArrowFileSystem {
+impl FileSystem for JsFileSystem {
     fn type_name(&self) -> &str {
         &self.name
     }
@@ -341,7 +341,7 @@ impl ArrowFileSystem for JsArrowFileSystem {
     }
 }
 
-impl JsArrowFileSystem {
+impl JsFileSystem {
     /// The JavaScript listing, whole, as that side hands it over.
     fn list_collected(&self, path: &str, recursive: bool) -> Result<Vec<FileInfo>> {
         let listed = self.on_js_thread(|env| {

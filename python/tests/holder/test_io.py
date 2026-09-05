@@ -102,7 +102,7 @@ class TestNativeHandleLayers:
             }
         )
         filesystem = pafs.LocalFileSystem()
-        handle = IOBase.from_arrow_fs(filesystem, location)
+        handle = IOBase.from_fs(filesystem, location)
         handle.overwrite_arrow_table(original)
         IOBase(replacement).overwrite_arrow_table(changed)
 
@@ -114,7 +114,7 @@ class TestNativeHandleLayers:
 
         # Replace the resource outside this handle. Repeated metadata reads in
         # the opened scope stay on the retained native media cache.
-        IOBase.from_arrow_fs(filesystem, location).write_bytes(replacement.read_bytes())
+        IOBase.from_fs(filesystem, location).write_bytes(replacement.read_bytes())
         assert [child.name for child in handle.read_arrow_field().dtype] == ["id"]
         assert handle.row_size == 2
 

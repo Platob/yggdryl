@@ -21,7 +21,7 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::holder::arrowfs::{ArrowFileSystemInput, JsArrowFileSystem};
+use crate::holder::fs::{FileSystemInput, JsFileSystem};
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
 use crate::media::text::JsTextOptions;
@@ -73,12 +73,8 @@ pub(crate) type LocationInput<'a> =
 
 /// What the constructor takes first: a location, or the file system one of
 /// its locations sits on.
-pub(crate) type LocationOrFileSystemInput<'a> = Either4<
-    ClassInstance<'a, JsIOBase>,
-    ClassInstance<'a, JsUrl>,
-    String,
-    ArrowFileSystemInput<'a>,
->;
+pub(crate) type LocationOrFileSystemInput<'a> =
+    Either4<ClassInstance<'a, JsIOBase>, ClassInstance<'a, JsUrl>, String, FileSystemInput<'a>>;
 
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
@@ -93,12 +89,12 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 /// `None` for anything else, so the local rebuild stays the default path.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
-        Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
-        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::holder::arrowfs::File::new(
+        Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
+        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::holder::fs::File::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),
-        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::holder::arrowfs::Path::new(
+        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::holder::fs::Path::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
@@ -107,18 +103,18 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Address a foreign-file-system handle's location as a container.
-pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
-        Holder::ArrowFolder(folder) => folder.clone(),
-        Holder::ArrowFile(file) => {
-            yggdryl::holder::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+        Holder::FsFolder(folder) => folder.clone(),
+        Holder::FsFile(file) => {
+            yggdryl::holder::fs::Folder::new(file.filesystem().clone(), file.url().clone())
         }
-        Holder::ArrowPath(path) => {
-            yggdryl::holder::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+        Holder::FsPath(path) => {
+            yggdryl::holder::fs::Folder::new(path.filesystem().clone(), path.url().clone())
         }
         _ => return None,
     };
-    Some(Holder::ArrowFolder(folder))
+    Some(Holder::FsFolder(folder))
 }
 
 /// Build a container handle for the location `value` names.
@@ -132,7 +128,7 @@ pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
     let url = match value {
         Either3::A(handle) => {
-            if let Some(holder) = arrow_folder_holder(&handle.inner) {
+            if let Some(holder) = fs_folder_holder(&handle.inner) {
                 return Ok(holder);
             }
             handle
@@ -186,14 +182,11 @@ impl JsIOBase {
     }
 
     /// Build a handle on `path` over a held JavaScript file system handler.
-    fn over_arrow_fs(env: Env, filesystem: &ArrowFileSystemInput<'_>, path: &str) -> Result<Self> {
-        let backend: std::sync::Arc<dyn yggdryl::holder::arrowfs::ArrowFileSystem> =
-            std::sync::Arc::new(JsArrowFileSystem::new(env, filesystem)?);
-        let url =
-            yggdryl::holder::arrowfs::location_url(backend.as_ref(), path).map_err(napi_error)?;
-        Ok(Self::from_core(yggdryl::holder::arrowfs::located(
-            backend, url,
-        )))
+    fn over_fs(env: Env, filesystem: &FileSystemInput<'_>, path: &str) -> Result<Self> {
+        let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+            std::sync::Arc::new(JsFileSystem::new(env, filesystem)?);
+        let url = yggdryl::holder::fs::location_url(backend.as_ref(), path).map_err(napi_error)?;
+        Ok(Self::from_core(yggdryl::holder::fs::located(backend, url)))
     }
 
     /// Build a container handle for one recorded location.
@@ -233,7 +226,7 @@ impl JsIOBase {
                         "expected a path on the file system as the second argument, got none",
                     )
                 })?;
-                return Self::over_arrow_fs(env, &filesystem, &path);
+                return Self::over_fs(env, &filesystem, &path);
             }
         };
         if let Some(path) = path {
@@ -274,7 +267,7 @@ impl JsIOBase {
     /// none of them needs code of its own here.
     ///
     /// ```js
-    /// const handle = IOBase.fromArrowFs(handler, 'bucket/key.parquet')
+    /// const handle = IOBase.fromFs(handler, 'bucket/key.parquet')
     /// const rows = handle.readArrowReader().intoTable()
     /// ```
     ///
@@ -292,12 +285,8 @@ impl JsIOBase {
     /// `Worker`, because a JavaScript value belongs to one isolate and this
     /// boundary refuses rather than pretending otherwise.
     #[napi(factory)]
-    pub fn from_arrow_fs(
-        env: Env,
-        filesystem: ArrowFileSystemInput<'_>,
-        path: String,
-    ) -> Result<Self> {
-        Self::over_arrow_fs(env, &filesystem, &path)
+    pub fn from_fs(env: Env, filesystem: FileSystemInput<'_>, path: String) -> Result<Self> {
+        Self::over_fs(env, &filesystem, &path)
     }
 
     /// Describe an in-memory resource holding `data`.
@@ -778,7 +767,7 @@ impl JsIOBase {
         // system. Rebuilding from the location alone would silently move the
         // handle to the local disk, because a location does not say which
         // backend it belongs to.
-        let mut folder = if let Some(holder) = arrow_folder_holder(&self.inner) {
+        let mut folder = if let Some(holder) = fs_folder_holder(&self.inner) {
             holder
         } else {
             let url = self

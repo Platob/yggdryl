@@ -50,7 +50,7 @@ impl Counting {
     /// Return how many `size` calls have reached the buffer.
     ///
     /// A `Buffer` answers this from a field, but the backends the cache
-    /// exists for do not: an `arrowfs` handle answers it with one metadata
+    /// exists for do not: an `fs` handle answers it with one metadata
     /// call through the foreign filesystem's vtable, which over an object
     /// store is a round trip. Counting it is how the tests keep a cache hit
     /// from quietly costing one.

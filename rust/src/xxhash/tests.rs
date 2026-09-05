@@ -506,13 +506,13 @@ mod handles {
     fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
         use std::sync::Arc;
 
-        use crate::holder::arrowfs::{Folder, MemoryFileSystem};
+        use crate::holder::fs::{Folder, MemoryFileSystem};
 
         let lake = Folder::from_location(Arc::new(MemoryFileSystem::new()), "lake").unwrap();
         let mut leaf = lake.child_by_path("trades.csv").unwrap();
         leaf.write_all_bytes(&payload()).unwrap();
         leaf.close().unwrap();
-        agrees("arrowfs file", &lake.child_by_path("trades.csv").unwrap());
+        agrees("fs file", &lake.child_by_path("trades.csv").unwrap());
     }
 
     #[test]
@@ -869,7 +869,7 @@ mod hashed {
     fn pending_writes_count_only_after_flush() {
         use std::sync::Arc;
 
-        use crate::holder::arrowfs::{Folder, MemoryFileSystem};
+        use crate::holder::fs::{Folder, MemoryFileSystem};
 
         // An Arrow filesystem file stages writes in memory and publishes the
         // whole value on flush, which is exactly the case the size check is

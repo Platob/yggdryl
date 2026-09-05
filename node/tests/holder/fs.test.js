@@ -121,7 +121,7 @@ function trimmed(location) {
 }
 
 function scratch() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-arrowfs-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fs-'))
 }
 
 function names(handles) {
@@ -136,7 +136,7 @@ function trades() {
 }
 
 test('a handler-backed handle is an ordinary handle', () => {
-  const handle = IOBase.fromArrowFs(memory(), 'bucket/trades.parquet')
+  const handle = IOBase.fromFs(memory(), 'bucket/trades.parquet')
 
   // The file system's own name is the scheme its locations carry.
   assert.equal(handle.toString(), 'memory://bucket/trades.parquet')
@@ -152,7 +152,7 @@ test('a handler-backed handle is an ordinary handle', () => {
 test('the constructor infers a file system first argument', () => {
   const handler = memory()
   const inferred = new IOBase(handler, 'bucket/inferred.bin')
-  const explicit = IOBase.fromArrowFs(handler, 'bucket/inferred.bin')
+  const explicit = IOBase.fromFs(handler, 'bucket/inferred.bin')
   assert.equal(inferred.toString(), explicit.toString())
 
   inferred.writeText('same')
@@ -170,20 +170,20 @@ test('a handler missing a method is refused by that method', () => {
   delete partial.readRange
 
   assert.throws(
-    () => IOBase.fromArrowFs(partial, 'bucket/key.bin'),
+    () => IOBase.fromFs(partial, 'bucket/key.bin'),
     /readRange\(path, offset, length\)/,
   )
-  assert.throws(() => IOBase.fromArrowFs({}, 'bucket/key.bin'), /fileInfo\(path\)/)
+  assert.throws(() => IOBase.fromFs({}, 'bucket/key.bin'), /fileInfo\(path\)/)
   // A method that is not callable is no method at all.
   assert.throws(
-    () => IOBase.fromArrowFs({ ...memory(), list: 'everything' }, 'bucket/key.bin'),
+    () => IOBase.fromFs({ ...memory(), list: 'everything' }, 'bucket/key.bin'),
     /list\(path, recursive\)/,
   )
 })
 
 test('bytes round trip, and a write publishes when the handle is flushed', () => {
   const handler = memory()
-  const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
+  const handle = IOBase.fromFs(handler, 'bucket/staged.bin')
 
   // Positional writes are pieces of a value, so they stage: an Arrow file
   // system replaces whole files rather than writing ranges, and must never be
@@ -200,7 +200,7 @@ test('bytes round trip, and a write publishes when the handle is flushed', () =>
 
   // A whole-value write needs no scope at all: it is one replacement, so it
   // publishes when it finishes.
-  const whole = IOBase.fromArrowFs(handler, 'bucket/whole.bin')
+  const whole = IOBase.fromFs(handler, 'bucket/whole.bin')
   whole.writeText('published')
   assert.equal(handler.files.get('bucket/whole.bin').toString(), 'published')
 
@@ -225,11 +225,11 @@ test('a size crosses as a bigint and as an exact number', (t) => {
 
   // The `node:fs` handler reports a plain number, the memory one a bigint;
   // both are the same length to the core.
-  assert.equal(IOBase.fromArrowFs(local(), path.join(root, 'sized.bin')).size, 12)
+  assert.equal(IOBase.fromFs(local(), path.join(root, 'sized.bin')).size, 12)
 
   const handler = memory()
   handler.files.set('bucket/sized.bin', Buffer.from('symbol,price'))
-  assert.equal(IOBase.fromArrowFs(handler, 'bucket/sized.bin').size, 12)
+  assert.equal(IOBase.fromFs(handler, 'bucket/sized.bin').size, 12)
 
   // A length no length can be is refused rather than truncated. The write is
   // what asks: it loads the stored value before staging over it.
@@ -238,7 +238,7 @@ test('a size crosses as a bigint and as an exact number', (t) => {
     fileInfo: (location) => ({ path: location, kind: 'file', size: -1n }),
   }
   assert.throws(
-    () => IOBase.fromArrowFs(lying, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(lying, 'bucket/key.bin').writeText('AAPL'),
     /unsigned 64-bit integer/,
   )
 })
@@ -251,7 +251,7 @@ test('folders list, glob, and carry the file system', () => {
       handler.files.set(`lake/year=${year}/month=${month}/notes.txt`, Buffer.from('notes'))
     }
   }
-  const lake = IOBase.fromArrowFs(handler, 'lake')
+  const lake = IOBase.fromFs(handler, 'lake')
 
   assert.ok(lake.isDir())
   assert.deepEqual(names([...lake.iterdir()]), ['year=2024', 'year=2025'])
@@ -284,7 +284,7 @@ test('a missing location reads empty rather than throwing', (t) => {
 
   // `node:fs` throws `ENOENT` where the vtable answers with nothing, so this
   // is the boundary turning a handler's failure back into the contract.
-  const absent = IOBase.fromArrowFs(local(), path.join(root, 'nowhere', 'absent.arrows'))
+  const absent = IOBase.fromFs(local(), path.join(root, 'nowhere', 'absent.arrows'))
   assert.ok(!absent.exists())
   assert.equal(absent.size, 0)
   assert.equal(absent.readBytes().length, 0)
@@ -293,7 +293,7 @@ test('a missing location reads empty rather than throwing', (t) => {
   absent.unlink()
 
   // A write creates the file and the parents it needs.
-  const nested = IOBase.fromArrowFs(local(), path.join(root, 'deep', 'nested', 'trades.txt'))
+  const nested = IOBase.fromFs(local(), path.join(root, 'deep', 'nested', 'trades.txt'))
   nested.writeText('AAPL')
   nested.flush()
   assert.equal(fs.readFileSync(path.join(root, 'deep', 'nested', 'trades.txt'), 'utf8'), 'AAPL')
@@ -304,7 +304,7 @@ test('records round trip through the wrapper, in both encodings', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   for (const name of ['trades.arrows', 'trades.parquet']) {
-    const handle = IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
+    const handle = IOBase.fromFs(local(), path.join(root, 'lake', name))
     handle.overwriteArrowTable(trades())
     handle.flush()
 
@@ -315,7 +315,7 @@ test('records round trip through the wrapper, in both encodings', (t) => {
     assert.equal(outside.readArrowReader().intoTable().numRows, 2)
     outside.close()
 
-    const table = IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
+    const table = IOBase.fromFs(local(), path.join(root, 'lake', name))
       .readArrowReader()
       .intoTable()
     assert.equal(table.numRows, 2)
@@ -329,7 +329,7 @@ test('records round trip through the wrapper, in both encodings', (t) => {
     handle.appendArrowTable(trades())
     handle.flush()
     assert.equal(
-      IOBase.fromArrowFs(local(), path.join(root, 'lake', name))
+      IOBase.fromFs(local(), path.join(root, 'lake', name))
         .readArrowReader()
         .intoTable().numRows,
       4,
@@ -339,7 +339,7 @@ test('records round trip through the wrapper, in both encodings', (t) => {
 
 test('records round trip over storage that is only a Map', () => {
   const handler = memory()
-  const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
+  const handle = IOBase.fromFs(handler, 'bucket/trades.arrows')
 
   handle.overwriteArrowTable(trades())
   handle.flush()
@@ -348,13 +348,13 @@ test('records round trip over storage that is only a Map', () => {
   assert.ok(handler.files.has('bucket/trades.arrows'))
   assert.equal(handle.readArrowField().dtype.length, 2)
   assert.equal(
-    IOBase.fromArrowFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable().numRows,
+    IOBase.fromFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable().numRows,
     2,
   )
 
   // Plain text reaches the same generic record path over a handler-backed
   // handle; each physical line is the binary body of one row.
-  const lines = IOBase.fromArrowFs(handler, 'bucket/rows.txt')
+  const lines = IOBase.fromFs(handler, 'bucket/rows.txt')
   lines.writeText('{"id":1}\n{"id":2}\n')
   lines.flush()
   assert.deepEqual(
@@ -373,7 +373,7 @@ test("a handler that throws surfaces its own message", () => {
       throw new Error('the bucket refused the request: 403 Forbidden')
     },
   }
-  const handle = IOBase.fromArrowFs(refusing, 'bucket/key.bin')
+  const handle = IOBase.fromFs(refusing, 'bucket/key.bin')
   // The file is there as far as the handler is concerned, so the refusal is
   // a real failure rather than absence, and its own words cross unchanged.
   assert.throws(() => handle.readBytes(), /403 Forbidden/)
@@ -385,7 +385,7 @@ test("a handler that throws surfaces its own message", () => {
     },
   }
   assert.throws(
-    () => IOBase.fromArrowFs(failing, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(failing, 'bucket/key.bin').writeText('AAPL'),
     /the credential chain is empty/,
   )
 
@@ -395,14 +395,14 @@ test("a handler that throws surfaces its own message", () => {
     fileInfo: (location) => ({ path: location, kind: 'blob' }),
   }
   assert.throws(
-    () => IOBase.fromArrowFs(inventing, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(inventing, 'bucket/key.bin').writeText('AAPL'),
     /memory, file, directory, table, namespace, catalog, unknown/,
   )
 })
 
 test('an Iceberg table lives on a file system a caller wrote', () => {
   const handler = memory()
-  const warehouse = IOBase.fromArrowFs(handler, 'warehouse/trades')
+  const warehouse = IOBase.fromFs(handler, 'warehouse/trades')
   const schema = iceberg.assignFieldIds(
     fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
       nullable: false,
@@ -434,7 +434,7 @@ test('a scope publishes the staged value it wrote', () => {
   // is called directly because the `using` *declaration* is newer than the
   // Node this suite runs on, while the protocol it calls is not.
   {
-    const handle = IOBase.fromArrowFs(handler, 'bucket/scoped.bin')
+    const handle = IOBase.fromFs(handler, 'bucket/scoped.bin')
     handle.pwrite(0, Buffer.from('AAPL'))
     // Still staged: the handler has not been asked to store anything yet.
     assert.equal(handler.files.has('bucket/scoped.bin'), false)
@@ -446,12 +446,12 @@ test('a scope publishes the staged value it wrote', () => {
     Buffer.from(handler.files.get('bucket/scoped.bin')).toString(),
     'AAPL',
   )
-  assert.equal(IOBase.fromArrowFs(handler, 'bucket/scoped.bin').readText(), 'AAPL')
+  assert.equal(IOBase.fromFs(handler, 'bucket/scoped.bin').readText(), 'AAPL')
 })
 
 test('open and close bracket the staged state without creating anything', () => {
   const handler = memory()
-  const handle = IOBase.fromArrowFs(handler, 'bucket/absent.bin')
+  const handle = IOBase.fromFs(handler, 'bucket/absent.bin')
 
   // Opening a resource that does not exist yet caches nothing to publish.
   handle.open()
@@ -469,7 +469,7 @@ test('open and close bracket the staged state without creating anything', () => 
 
 test('mkdir creates the container on the same file system', () => {
   const handler = memory()
-  const handle = IOBase.fromArrowFs(handler, 'bucket/lake')
+  const handle = IOBase.fromFs(handler, 'bucket/lake')
 
   // A location does not say which backend it belongs to, so mkdir must not
   // quietly rebuild the handle on the local disk.
@@ -484,7 +484,7 @@ test('mkdir creates the container on the same file system', () => {
 
 test('a table hands back a root on its own file system', () => {
   const handler = memory()
-  const warehouse = IOBase.fromArrowFs(handler, 'warehouse/trades')
+  const warehouse = IOBase.fromFs(handler, 'warehouse/trades')
   const schema = iceberg.assignFieldIds(
     fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
       nullable: false,

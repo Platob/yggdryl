@@ -90,9 +90,9 @@ codings do.
 Arrow JS ships no filesystem, so where Python hands the core a `pyarrow.fs.FileSystem` that already
 exists, JavaScript supplies the vtable itself: a plain object whose methods are Arrow's own
 `FileSystem` calls in camelCase - `fileInfo`, `list`, `readRange`, `writeFull`, `createDir`,
-`deleteFile`, plus a `typeName`. `IOBase.fromArrowFs(handler, path)` turns one into an ordinary
+`deleteFile`, plus a `typeName`. `IOBase.fromFs(handler, path)` turns one into an ordinary
 handle, so a `Map`, `node:fs`, an S3 client, or a caching layer over any of them becomes storage
-the rest of the package can read and write. [`arrowfs`](../holder.md) documents the backend and
+the rest of the package can read and write. [`fs`](../holder.md) documents the backend and
 shows a complete handler.
 
 Two things belong to this boundary rather than to the backend. Sizes cross as `bigint`, because a

@@ -1,12 +1,12 @@
 //! Byte storage handles and the concrete [`Holder`] that unifies them.
 //!
-//! [`Buffer`] owns in-memory bytes, [`local`] and [`arrowfs`] supply the
+//! [`Buffer`] owns in-memory bytes, [`local`] and [`fs`] supply the
 //! path/folder/file backend roles, and [`buffered`] adds a page cache over any
 //! [`IOBase`] implementation.
 
-pub mod arrowfs;
 mod buffer;
 pub mod buffered;
+pub mod fs;
 pub mod local;
 
 pub use buffer::Buffer;
@@ -55,13 +55,13 @@ pub enum Holder {
     Path(crate::holder::local::Path),
     /// A memory-mapped local file.
     File(File),
-    /// A directory on a foreign Arrow filesystem.
-    ArrowFolder(crate::holder::arrowfs::Folder),
+    /// A directory on a foreign filesystem.
+    FsFolder(crate::holder::fs::Folder),
     /// A foreign-filesystem location that resolves to whatever it turns out
     /// to be.
-    ArrowPath(crate::holder::arrowfs::Path),
-    /// A staged whole-value file on a foreign Arrow filesystem.
-    ArrowFile(crate::holder::arrowfs::File),
+    FsPath(crate::holder::fs::Path),
+    /// A staged whole-value file on a foreign filesystem.
+    FsFile(crate::holder::fs::File),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -267,9 +267,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
-            Self::ArrowFolder(inner) => inner,
-            Self::ArrowPath(inner) => inner,
-            Self::ArrowFile(inner) => inner,
+            Self::FsFolder(inner) => inner,
+            Self::FsPath(inner) => inner,
+            Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
@@ -284,9 +284,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
-            Self::ArrowFolder(inner) => inner,
-            Self::ArrowPath(inner) => inner,
-            Self::ArrowFile(inner) => inner,
+            Self::FsFolder(inner) => inner,
+            Self::FsPath(inner) => inner,
+            Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
@@ -302,9 +302,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
-            Self::ArrowFolder(inner) => inner,
-            Self::ArrowPath(inner) => inner,
-            Self::ArrowFile(inner) => inner,
+            Self::FsFolder(inner) => inner,
+            Self::FsPath(inner) => inner,
+            Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
@@ -320,9 +320,9 @@ impl Holder {
             Self::Folder(inner) => inner,
             Self::Path(inner) => inner,
             Self::File(inner) => inner,
-            Self::ArrowFolder(inner) => inner,
-            Self::ArrowPath(inner) => inner,
-            Self::ArrowFile(inner) => inner,
+            Self::FsFolder(inner) => inner,
+            Self::FsPath(inner) => inner,
+            Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
@@ -561,21 +561,21 @@ impl From<File> for Holder {
     }
 }
 
-impl From<crate::holder::arrowfs::Folder> for Holder {
-    fn from(value: crate::holder::arrowfs::Folder) -> Self {
-        Self::ArrowFolder(value)
+impl From<crate::holder::fs::Folder> for Holder {
+    fn from(value: crate::holder::fs::Folder) -> Self {
+        Self::FsFolder(value)
     }
 }
 
-impl From<crate::holder::arrowfs::Path> for Holder {
-    fn from(value: crate::holder::arrowfs::Path) -> Self {
-        Self::ArrowPath(value)
+impl From<crate::holder::fs::Path> for Holder {
+    fn from(value: crate::holder::fs::Path) -> Self {
+        Self::FsPath(value)
     }
 }
 
-impl From<crate::holder::arrowfs::File> for Holder {
-    fn from(value: crate::holder::arrowfs::File) -> Self {
-        Self::ArrowFile(value)
+impl From<crate::holder::fs::File> for Holder {
+    fn from(value: crate::holder::fs::File) -> Self {
+        Self::FsFile(value)
     }
 }
 

@@ -19,7 +19,7 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("a writable temporary root");
 
-    let memory = Arc::new(crate::holder::arrowfs::MemoryFileSystem::new());
+    let memory = Arc::new(crate::holder::fs::MemoryFileSystem::new());
     vec![
         ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
         (
@@ -30,9 +30,9 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
             ),
         ),
         (
-            "arrowfs::File",
+            "fs::File",
             Box::new(
-                crate::holder::arrowfs::File::from_location(memory, &format!("bench/{label}.bin"))
+                crate::holder::fs::File::from_location(memory, &format!("bench/{label}.bin"))
                     .expect("a valid location"),
             ),
         ),
@@ -120,7 +120,7 @@ fn every_backend_reads_positionally_without_a_shared_cursor() {
 fn every_backend_reads_a_missing_resource_as_empty() {
     // The laziness contract: absence is emptiness on the read path, so a
     // caller probes a location without an existence check first.
-    let memory = Arc::new(crate::holder::arrowfs::MemoryFileSystem::new());
+    let memory = Arc::new(crate::holder::fs::MemoryFileSystem::new());
     let mut root = crate::holder::local::Folder::temporary()
         .unwrap()
         .path()
@@ -136,9 +136,9 @@ fn every_backend_reads_a_missing_resource_as_empty() {
             ),
         ),
         (
-            "arrowfs::File",
+            "fs::File",
             Box::new(
-                crate::holder::arrowfs::File::from_location(memory, "nowhere/absent.bin")
+                crate::holder::fs::File::from_location(memory, "nowhere/absent.bin")
                     .expect("a valid location"),
             ),
         ),

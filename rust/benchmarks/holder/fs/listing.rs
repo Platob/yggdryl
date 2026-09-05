@@ -9,26 +9,26 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::IOBase;
-use yggdryl::holder::arrowfs::Folder;
+use yggdryl::holder::fs::Folder;
 
 use super::{local, local_location, memory, tree};
 
 pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("arrowfs_listing");
+    let mut group = criterion.benchmark_group("fs_listing");
 
     let filesystem = memory();
     tree(filesystem.as_ref(), "lake");
     let lake = Folder::from_location(filesystem, "lake").expect("a valid location");
 
-    group.bench_function("ls_flat/arrowfs_memory", |bencher| {
+    group.bench_function("ls_flat/fs_memory", |bencher| {
         bencher.iter(|| black_box(&lake).ls(false, false).count());
     });
 
-    group.bench_function("ls_recursive/arrowfs_memory", |bencher| {
+    group.bench_function("ls_recursive/fs_memory", |bencher| {
         bencher.iter(|| black_box(&lake).ls(true, false).count());
     });
 
-    group.bench_function("glob_all/arrowfs_memory", |bencher| {
+    group.bench_function("glob_all/fs_memory", |bencher| {
         bencher.iter(|| {
             black_box(&lake)
                 .glob("**/*.parquet", false)
@@ -39,7 +39,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
 
     // A fixed prefix is descended rather than listed and filtered, so this
     // leg should stay well under the whole-tree one.
-    group.bench_function("glob_prefixed/arrowfs_memory", |bencher| {
+    group.bench_function("glob_prefixed/fs_memory", |bencher| {
         bencher.iter(|| {
             black_box(&lake)
                 .glob("year=2024/**/*.parquet", false)
@@ -48,7 +48,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    group.bench_function("children_where/arrowfs_memory", |bencher| {
+    group.bench_function("children_where/fs_memory", |bencher| {
         bencher.iter(|| {
             black_box(&lake)
                 .children_where(&[("year", "2024")], false)
@@ -62,7 +62,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     tree(local_filesystem.as_ref(), &location);
     let local_lake = Folder::from_location(local_filesystem, &location).expect("a valid location");
 
-    group.bench_function("ls_recursive/arrowfs_local", |bencher| {
+    group.bench_function("ls_recursive/fs_local", |bencher| {
         bencher.iter(|| black_box(&local_lake).ls(true, false).count());
     });
 

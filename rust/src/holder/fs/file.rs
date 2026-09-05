@@ -1,4 +1,4 @@
-//! A staged whole-value file over a foreign Arrow filesystem.
+//! A staged whole-value file over a foreign filesystem.
 
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -6,20 +6,20 @@ use crate::holder::Holder;
 use crate::{Error, MediaType, MimeType, Result, Url};
 use crate::{IOBase, IOFile, Listing};
 
-use super::system::{ArrowFileSystem, filesystem_location};
+use super::system::{FileSystem, filesystem_location};
 use super::{Folder, location_url};
 
-/// A leaf on a foreign Arrow filesystem, staged in memory between writes.
+/// A leaf on a foreign filesystem, staged in memory between writes.
 ///
 /// Reads map straight through: [`IOBase::pread`] is one
-/// [`ArrowFileSystem::read_range`] - an S3 range GET - and [`IOBase::size`]
-/// one [`ArrowFileSystem::file_info`], so asking for a range transfers that
+/// [`FileSystem::read_range`] - an S3 range GET - and [`IOBase::size`]
+/// one [`FileSystem::file_info`], so asking for a range transfers that
 /// range rather than the value. What a reader above does with that is its
 /// own business: the Parquet reader still fetches whole, as it documents.
 ///
 /// Writes cannot map through, because an Arrow filesystem
 /// replaces whole files while [`IOBase::pwrite`] is positional; they stage,
-/// and one [`ArrowFileSystem::write_full`] publishes the staged value on
+/// and one [`FileSystem::write_full`] publishes the staged value on
 /// [`IOBase::flush`] or [`IOBase::close`]. Until then the stored value is
 /// unchanged, which is why a file meant for another reader is written inside
 /// an open/close pair.
@@ -28,7 +28,7 @@ use super::{Folder, location_url};
 /// reads as empty, and the first published write creates the file and its
 /// parents.
 pub struct File {
-    filesystem: Arc<dyn ArrowFileSystem>,
+    filesystem: Arc<dyn FileSystem>,
     url: Url,
     /// The filesystem-relative spelling of `url`, derived once so every
     /// vtable call names the same path.
@@ -78,7 +78,7 @@ fn resize_stage(bytes: &mut Vec<u8>, size: usize) -> Result<()> {
 
 impl File {
     /// Describe a leaf on `filesystem` without touching it.
-    pub fn new(filesystem: Arc<dyn ArrowFileSystem>, url: Url) -> Self {
+    pub fn new(filesystem: Arc<dyn FileSystem>, url: Url) -> Self {
         let location = filesystem_location(&url);
         Self {
             filesystem,
@@ -95,13 +95,13 @@ impl File {
     /// # Errors
     ///
     /// Returns an error when `location` cannot form a canonical URL.
-    pub fn from_location(filesystem: Arc<dyn ArrowFileSystem>, location: &str) -> Result<Self> {
+    pub fn from_location(filesystem: Arc<dyn FileSystem>, location: &str) -> Result<Self> {
         let url = location_url(filesystem.as_ref(), location)?;
         Ok(Self::new(filesystem, url))
     }
 
     /// Borrow the foreign filesystem this leaf lives on.
-    pub fn filesystem(&self) -> &Arc<dyn ArrowFileSystem> {
+    pub fn filesystem(&self) -> &Arc<dyn FileSystem> {
         &self.filesystem
     }
 
@@ -178,7 +178,7 @@ impl File {
     /// Publish the staged value when it holds unseen changes.
     fn publish(
         stage: &mut Option<Stage>,
-        filesystem: &dyn ArrowFileSystem,
+        filesystem: &dyn FileSystem,
         location: &str,
     ) -> Result<()> {
         if let Some(stage) = stage.as_mut() {
@@ -191,7 +191,7 @@ impl File {
     }
 }
 
-/// A staged foreign leaf is the leaf role over an Arrow filesystem.
+/// A staged foreign leaf is the leaf role over a filesystem.
 impl IOFile for File {
     fn file_url(&self) -> &Url {
         &self.url
@@ -388,7 +388,7 @@ impl IOBase for File {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        Some(Holder::ArrowFolder(Folder::new(
+        Some(Holder::FsFolder(Folder::new(
             self.filesystem.clone(),
             parent,
         )))

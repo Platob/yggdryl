@@ -153,7 +153,7 @@ class TestConstruction:
     def test_the_explicit_constructor_names_the_filesystem_and_the_path(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/trades.bin")
+        handle = IOBase.from_fs(local, f"{root}/trades.bin")
 
         # Per the laziness contract nothing exists until something is written.
         assert not handle.exists()
@@ -168,9 +168,9 @@ class TestConstruction:
     def test_the_constructor_infers_a_filesystem_first_argument(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        # IOBase(fs, path) means the same as IOBase.from_arrow_fs(fs, path).
+        # IOBase(fs, path) means the same as IOBase.from_fs(fs, path).
         inferred = IOBase(local, f"{root}/inferred.bin")
-        explicit = IOBase.from_arrow_fs(local, f"{root}/inferred.bin")
+        explicit = IOBase.from_fs(local, f"{root}/inferred.bin")
         assert str(inferred.url) == str(explicit.url)
 
         inferred.write_bytes(b"same")
@@ -180,7 +180,7 @@ class TestConstruction:
     def test_the_returned_handle_is_an_ordinary_iobase(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/trades.parquet")
+        handle = IOBase.from_fs(local, f"{root}/trades.parquet")
 
         # Nothing filesystem-specific leaks into the surface: it is the same
         # class, with the same pathlib-shaped names.
@@ -190,7 +190,7 @@ class TestConstruction:
 
     def test_a_non_filesystem_first_argument_is_refused_by_name(self) -> None:
         with pytest.raises(ValueError) as failure:
-            IOBase.from_arrow_fs(object(), "bucket/key")
+            IOBase.from_fs(object(), "bucket/key")
         assert "expected a pyarrow.fs.FileSystem" in str(failure.value)
         assert "object" in str(failure.value)
 
@@ -206,7 +206,7 @@ class TestBytesAndFolders:
     def test_bytes_round_trip_and_publish_on_close(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/staged.bin")
+        handle = IOBase.from_fs(local, f"{root}/staged.bin")
         # Positional writes are pieces of a value, so they stage: an Arrow
         # filesystem replaces whole files and must never see a half-written one.
         handle.pwrite(0, b"pend")
@@ -219,7 +219,7 @@ class TestBytesAndFolders:
     def test_a_whole_value_write_publishes_without_a_close(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/whole.bin")
+        handle = IOBase.from_fs(local, f"{root}/whole.bin")
         # A complete value is one store operation, so it needs no scope; the
         # staging above exists to fold many positional writes into one.
         handle.write_bytes(b"published")
@@ -228,7 +228,7 @@ class TestBytesAndFolders:
     def test_a_with_block_publishes_what_it_wrote(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        with IOBase.from_arrow_fs(local, f"{root}/scoped.bin") as handle:
+        with IOBase.from_fs(local, f"{root}/scoped.bin") as handle:
             handle.write_bytes(b"scoped")
         assert pathlib.Path(root, "scoped.bin").read_bytes() == b"scoped"
 
@@ -242,7 +242,7 @@ class TestBytesAndFolders:
             (leaf / "part-0.parquet").write_bytes(b"PAR1")
             (leaf / "notes.txt").write_text("notes", encoding="utf-8")
 
-        folder = IOBase.from_arrow_fs(local, lake.as_posix())
+        folder = IOBase.from_fs(local, lake.as_posix())
         assert folder.is_dir()
         assert len(list(folder.iterdir())) == 2
         assert len(list(folder.ls(recursive=True))) == 6
@@ -262,7 +262,7 @@ class TestBytesAndFolders:
     def test_a_missing_location_reads_empty_rather_than_raising(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        absent = IOBase.from_arrow_fs(local, f"{root}/nowhere/absent.arrows")
+        absent = IOBase.from_fs(local, f"{root}/nowhere/absent.arrows")
         assert absent.read_bytes() == b""
         assert absent.size == 0
         assert not absent.exists()
@@ -275,7 +275,7 @@ class TestRecords:
     def test_records_round_trip_through_the_wrapper(
         self, local: pafs.LocalFileSystem, root: str, name: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/{name}")
+        handle = IOBase.from_fs(local, f"{root}/{name}")
         with handle:
             handle.overwrite_arrow_table(table())
 
@@ -291,7 +291,7 @@ class TestRecords:
     def test_yggdryl_writes_what_pyarrow_reads(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_arrow_fs(local, f"{root}/written.parquet")
+        handle = IOBase.from_fs(local, f"{root}/written.parquet")
         with handle:
             handle.overwrite_arrow_table(table())
 
@@ -305,7 +305,7 @@ class TestRecords:
     ) -> None:
         pq.write_table(table(), f"{root}/foreign.parquet")
 
-        handle = IOBase.from_arrow_fs(local, f"{root}/foreign.parquet")
+        handle = IOBase.from_fs(local, f"{root}/foreign.parquet")
         assert handle.read_arrow_reader().read_all().equals(table())
 
         # And the bytes the wrapper reads are the bytes on disk.
@@ -319,7 +319,7 @@ class TestCustomFilesystems:
         handler = MemoryHandler()
         filesystem = pafs.PyFileSystem(handler)
 
-        handle = IOBase.from_arrow_fs(filesystem, "bucket/trades.parquet")
+        handle = IOBase.from_fs(filesystem, "bucket/trades.parquet")
         with handle:
             handle.overwrite_arrow_table(table())
 
@@ -333,7 +333,7 @@ class TestCustomFilesystems:
         handler.files["lake/year=2025/part-0.parquet"] = b"PAR1"
         filesystem = pafs.PyFileSystem(handler)
 
-        folder = IOBase.from_arrow_fs(filesystem, "lake")
+        folder = IOBase.from_fs(filesystem, "lake")
         assert folder.is_dir()
         assert len(list(folder.glob("**/*.parquet"))) == 2
 
@@ -346,7 +346,7 @@ class TestCustomFilesystems:
         base.mkdir()
         subtree = pafs.SubTreeFileSystem(base.as_posix(), local)
 
-        handle = IOBase.from_arrow_fs(subtree, "trades/part-0.parquet")
+        handle = IOBase.from_fs(subtree, "trades/part-0.parquet")
         with handle:
             handle.overwrite_arrow_table(table())
 
@@ -360,7 +360,7 @@ class TestCustomFilesystems:
         # PyArrow's output stream infers a codec from the suffix unless told
         # not to, which would gzip a value the handle had already coded - and
         # store something nothing reads back.
-        handle = IOBase.from_arrow_fs(local, f"{root}/trades.json.gz")
+        handle = IOBase.from_fs(local, f"{root}/trades.json.gz")
         handle.write_bytes(b"AAPL")
         handle.close()
 
@@ -373,7 +373,7 @@ class TestCustomFilesystems:
         import gzip
 
         # The coding belongs to the handle, so what lands is gzip exactly once.
-        handle = IOBase.from_arrow_fs(local, f"{root}/coded.json.gz")
+        handle = IOBase.from_fs(local, f"{root}/coded.json.gz")
         handle.write_bytes(gzip.compress(b'{"symbol":"AAPL"}'))
         handle.close()
 
@@ -382,7 +382,7 @@ class TestCustomFilesystems:
 
     def test_mkdir_creates_the_container_on_the_same_filesystem(self) -> None:
         handler = MemoryHandler()
-        handle = IOBase.from_arrow_fs(pafs.PyFileSystem(handler), "bucket/lake")
+        handle = IOBase.from_fs(pafs.PyFileSystem(handler), "bucket/lake")
 
         # A location does not say which backend it belongs to, so mkdir must
         # not quietly rebuild the handle on the local disk.
@@ -398,7 +398,7 @@ class TestCustomFilesystems:
         from yggdryl.media import iceberg
 
         handler = MemoryHandler()
-        warehouse = IOBase.from_arrow_fs(pafs.PyFileSystem(handler), "warehouse/trades")
+        warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
         stored = iceberg.Table.create(warehouse, table().schema)
         stored.append(table())
 
@@ -420,7 +420,7 @@ class TestCustomFilesystems:
                     for path in paths
                 ]
 
-        handle = IOBase.from_arrow_fs(pafs.PyFileSystem(Broken()), "bucket/key.bin")
+        handle = IOBase.from_fs(pafs.PyFileSystem(Broken()), "bucket/key.bin")
         with pytest.raises(ValueError) as failure:
             handle.read_bytes()
 
@@ -439,7 +439,7 @@ class TestCustomFilesystems:
                     for path in paths
                 ]
 
-        handle = IOBase.from_arrow_fs(pafs.PyFileSystem(Bare()), "bucket/key.bin")
+        handle = IOBase.from_fs(pafs.PyFileSystem(Bare()), "bucket/key.bin")
         with pytest.raises(ValueError) as failure:
             handle.read_bytes()
 
@@ -460,7 +460,7 @@ class TestCustomFilesystems:
                 return super().open_input_file(path)
 
         handler = FailsAfterOneChunk()
-        handle = IOBase.from_arrow_fs(
+        handle = IOBase.from_fs(
             pafs.PyFileSystem(handler), "bucket/key.bin"
         )
         stream = handle.pstream_bytes(batch_size=3)
@@ -483,7 +483,7 @@ class TestTables:
         from yggdryl.media import iceberg
 
         handler = MemoryHandler()
-        warehouse = IOBase.from_arrow_fs(pafs.PyFileSystem(handler), "warehouse/trades")
+        warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
 
         table_handle = iceberg.Table.create(warehouse, table().schema)
         table_handle.append(table())

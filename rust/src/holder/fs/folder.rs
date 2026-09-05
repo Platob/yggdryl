@@ -6,15 +6,15 @@ use crate::holder::Holder;
 use crate::{IOBase, IOFolder, Listing};
 use crate::{IOKind, MediaType, Result, Url};
 
-use super::system::{ArrowFileSystem, encoded_relative, filesystem_location};
+use super::system::{FileSystem, encoded_relative, filesystem_location};
 use super::{File, location_url};
 
-/// A directory on a foreign Arrow filesystem, addressed as a container.
+/// A directory on a foreign filesystem, addressed as a container.
 ///
 /// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
 /// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
 /// [`IOBase::child_by_path`], and [`IOBase::parent`] - answered through one
-/// [`ArrowFileSystem::list`] and [`ArrowFileSystem::file_info`] per ask.
+/// [`FileSystem::list`] and [`FileSystem::file_info`] per ask.
 ///
 /// On an object store a directory is a prefix, so existence here is what the
 /// filesystem itself reports: the marker exists or the prefix has entries.
@@ -25,7 +25,7 @@ use super::{File, location_url};
 /// zero is what brings it into being.
 #[derive(Clone)]
 pub struct Folder {
-    filesystem: Arc<dyn ArrowFileSystem>,
+    filesystem: Arc<dyn FileSystem>,
     url: Url,
     /// The filesystem-relative spelling of `url`, derived once so every
     /// vtable call names the same path.
@@ -34,7 +34,7 @@ pub struct Folder {
 
 impl Folder {
     /// Describe a directory on `filesystem` without touching it.
-    pub fn new(filesystem: Arc<dyn ArrowFileSystem>, url: Url) -> Self {
+    pub fn new(filesystem: Arc<dyn FileSystem>, url: Url) -> Self {
         let location = filesystem_location(&url);
         Self {
             filesystem,
@@ -48,13 +48,13 @@ impl Folder {
     /// # Errors
     ///
     /// Returns an error when `location` cannot form a canonical URL.
-    pub fn from_location(filesystem: Arc<dyn ArrowFileSystem>, location: &str) -> Result<Self> {
+    pub fn from_location(filesystem: Arc<dyn FileSystem>, location: &str) -> Result<Self> {
         let url = location_url(filesystem.as_ref(), location)?;
         Ok(Self::new(filesystem, url))
     }
 
     /// Borrow the foreign filesystem this directory lives on.
-    pub fn filesystem(&self) -> &Arc<dyn ArrowFileSystem> {
+    pub fn filesystem(&self) -> &Arc<dyn FileSystem> {
         &self.filesystem
     }
 
@@ -96,7 +96,7 @@ fn relative_to<'entry>(base: &str, entry: &'entry str) -> Option<&'entry str> {
         .filter(|rest| !rest.is_empty())
 }
 
-/// A foreign directory is the container role over an Arrow filesystem.
+/// A foreign directory is the container role over a filesystem.
 impl IOFolder for Folder {
     fn folder_url(&self) -> &Url {
         &self.url
@@ -150,10 +150,8 @@ impl IOFolder for Folder {
                         Err(error) => return Some(Err(error)),
                     };
                     Some(Ok(match entry.kind {
-                        IOKind::Directory => {
-                            Holder::ArrowFolder(Self::new(filesystem.clone(), url))
-                        }
-                        _ => Holder::ArrowFile(File::new(filesystem.clone(), url)),
+                        IOKind::Directory => Holder::FsFolder(Self::new(filesystem.clone(), url)),
+                        _ => Holder::FsFile(File::new(filesystem.clone(), url)),
                     }))
                 }),
         )
@@ -235,10 +233,7 @@ impl IOBase for Folder {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        Some(Holder::ArrowFolder(Self::new(
-            self.filesystem.clone(),
-            parent,
-        )))
+        Some(Holder::FsFolder(Self::new(self.filesystem.clone(), parent)))
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
@@ -257,9 +252,9 @@ impl IOBase for Folder {
             self.filesystem.file_info(&child.location),
             Ok(info) if info.kind == IOKind::Directory
         ) {
-            return Ok(Holder::ArrowFolder(child));
+            return Ok(Holder::FsFolder(child));
         }
-        Ok(Holder::ArrowFile(File::new(
+        Ok(Holder::FsFile(File::new(
             self.filesystem.clone(),
             child.url,
         )))

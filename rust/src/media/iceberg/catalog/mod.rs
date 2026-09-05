@@ -236,7 +236,7 @@ fn classify(folder: Holder) -> Result<Occupant> {
 fn folder_present(folder: &Holder) -> Result<bool> {
     match folder {
         Holder::Folder(folder) => Ok(folder.exists()),
-        Holder::ArrowFolder(folder) => Ok(folder.exists()),
+        Holder::FsFolder(folder) => Ok(folder.exists()),
         other => match other.ls(false, true).next() {
             None => Ok(false),
             Some(Ok(_)) => Ok(true),
@@ -271,7 +271,7 @@ fn resolve(warehouse: &(impl IOBase + ?Sized), name: &str) -> Result<Holder> {
 /// as the same backend's folder, keeping the handle's filesystem and URL.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
-        Holder::Folder(_) | Holder::ArrowFolder(_) => Ok(child),
+        Holder::Folder(_) | Holder::FsFolder(_) => Ok(child),
         Holder::Path(path) => Ok(Holder::Folder(crate::holder::local::Folder::from_url(
             path.url().clone(),
         )?)),
@@ -283,11 +283,11 @@ fn folder_role(child: Holder) -> Result<Holder> {
                 "expected a located folder for a catalog name, got a handle with no URL",
             ))),
         },
-        Holder::ArrowPath(path) => Ok(Holder::ArrowFolder(crate::holder::arrowfs::Folder::new(
+        Holder::FsPath(path) => Ok(Holder::FsFolder(crate::holder::fs::Folder::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
-        Holder::ArrowFile(file) => Ok(Holder::ArrowFolder(crate::holder::arrowfs::Folder::new(
+        Holder::FsFile(file) => Ok(Holder::FsFolder(crate::holder::fs::Folder::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),

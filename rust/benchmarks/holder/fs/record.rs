@@ -9,14 +9,14 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::holder::arrowfs::File as ArrowFile;
+use yggdryl::holder::fs::File as FsFile;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{IOBase, IOMedia};
 
 use super::{ROWS, batch, buffer, memory, store, wide};
 
 pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("arrowfs_record");
+    let mut group = criterion.benchmark_group("fs_record");
     group.throughput(Throughput::Elements(ROWS as u64));
 
     let source = batch();
@@ -30,11 +30,11 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
     for name in names {
         let encoding = name.rsplit('.').next().unwrap_or("arrows");
 
-        group.bench_function(format!("write/arrowfs_memory/{encoding}"), |bencher| {
+        group.bench_function(format!("write/fs_memory/{encoding}"), |bencher| {
             let filesystem = memory();
             bencher.iter(|| {
                 let mut handle =
-                    ArrowFile::from_location(filesystem.clone(), name).expect("a valid location");
+                    FsFile::from_location(filesystem.clone(), name).expect("a valid location");
                 let options = handle
                     .record_options()
                     .expect("an implemented encoding")
@@ -65,9 +65,9 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
             });
         });
 
-        group.bench_function(format!("read/arrowfs_memory/{encoding}"), |bencher| {
+        group.bench_function(format!("read/fs_memory/{encoding}"), |bencher| {
             let filesystem = memory();
-            let mut handle = ArrowFile::from_location(filesystem, name).expect("a valid location");
+            let mut handle = FsFile::from_location(filesystem, name).expect("a valid location");
             store(&mut handle, &source);
             let options = handle.record_options().expect("an implemented encoding");
             bencher.iter(|| {

@@ -12,7 +12,7 @@
 //!   `memcpy` out of the page cache the *kernel* already keeps. Wrapping
 //!   either can only add a lock, a clock read, a map lookup, and a second
 //!   copy. These rows measure that overhead honestly.
-//! - **A fetch per read.** An [`ArrowFile`](yggdryl::holder::arrowfs::File) answers
+//! - **A fetch per read.** An [`FsFile`](yggdryl::holder::fs::File) answers
 //!   every `pread` with one `read_range` call through the foreign-filesystem
 //!   vtable. Over [`MemoryFileSystem`] that is a lock and a copy; over
 //!   [`LocalFileSystem`] it is an `open`, a `seek`, and a `read` **per call**,
@@ -47,10 +47,8 @@ use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
 use yggdryl::coding::gzip::Gzip;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::arrowfs::{
-    ArrowFileSystem, File as ArrowFile, LocalFileSystem, MemoryFileSystem,
-};
 use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::holder::fs::{File as FsFile, FileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::holder::local::{File, Folder};
 
 /// The fixture's size: twice the default byte budget, so a full scan evicts.
@@ -306,21 +304,21 @@ fn coded_scan(handle: &dyn IOBase) -> usize {
 ///
 /// They are boxed because the set spans four types and one battery runs over
 /// all of them; `IOBase` is implemented for the box, so the byte half of the
-/// contract forwards unchanged. The two `arrowfs` filesystems are what turn
+/// contract forwards unchanged. The two `fs` filesystems are what turn
 /// this from an overhead table into a comparison: over `LocalFileSystem`
 /// every `pread` is its own `open`/`seek`/`read`, so what the cache removes
 /// is a syscall rather than a copy.
 fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<dyn IOBase>)> {
     // One shared memory filesystem, written once through the vtable, so both
     // memory legs read the same object.
-    let in_memory: Arc<dyn ArrowFileSystem> = Arc::new(MemoryFileSystem::new());
+    let in_memory: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     in_memory
         .write_full(MEMORY_LOCATION, &payload)
         .expect("the fixture must be written");
 
     // The local filesystem reads the very file the mapped legs read, so the
     // two local rows differ in how they reach the bytes and in nothing else.
-    let on_disk: Arc<dyn ArrowFileSystem> = Arc::new(LocalFileSystem::new());
+    let on_disk: Arc<dyn FileSystem> = Arc::new(LocalFileSystem::new());
     let location = path.to_string_lossy().replace('\\', "/");
 
     vec![
@@ -341,31 +339,30 @@ fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<d
             ),
         ),
         (
-            "arrowfs_memory",
+            "fs_memory",
             Box::new(
-                ArrowFile::from_location(Arc::clone(&in_memory), MEMORY_LOCATION)
+                FsFile::from_location(Arc::clone(&in_memory), MEMORY_LOCATION)
                     .expect("a valid location"),
             ),
         ),
         (
-            "arrowfs_memory_buffered",
+            "fs_memory_buffered",
             Box::new(
-                ArrowFile::from_location(in_memory, MEMORY_LOCATION)
+                FsFile::from_location(in_memory, MEMORY_LOCATION)
                     .expect("a valid location")
                     .buffered(BufferedOptions::default()),
             ),
         ),
         (
-            "arrowfs_local",
+            "fs_local",
             Box::new(
-                ArrowFile::from_location(Arc::clone(&on_disk), &location)
-                    .expect("a valid location"),
+                FsFile::from_location(Arc::clone(&on_disk), &location).expect("a valid location"),
             ),
         ),
         (
-            "arrowfs_local_buffered",
+            "fs_local_buffered",
             Box::new(
-                ArrowFile::from_location(on_disk, &location)
+                FsFile::from_location(on_disk, &location)
                     .expect("a valid location")
                     .buffered(BufferedOptions::default()),
             ),

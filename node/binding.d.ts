@@ -1643,10 +1643,10 @@ declare module './index' {
 
   /** A native handle, a native `Url`, or anything that names a location. */
   type LocationInput = IOBase | Url | string
-  /** A caller-supplied Arrow file system: the vtable as a plain object. */
-  type ArrowFileSystemInput = ArrowFileSystemHandler
+  /** A caller-supplied Arrow-compatible file system as a plain object. */
+  type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */
-  type LocationOrFileSystemInput = LocationInput | ArrowFileSystemHandler
+  type LocationOrFileSystemInput = LocationInput | FileSystemHandler
   /** A partition spec, or the column names one would be built from. */
   type PartitionInput = PartitionSpec | readonly string[]
   /** A native zone wrapper or an IANA name, alias, or fixed offset. */
@@ -2085,7 +2085,7 @@ export interface ArrowFileInfo {
  *
  * Arrow JS ships no file system, so this is the vtable `pyarrow.fs` already
  * implements, spelled in camelCase: implement it over a `Map`, `node:fs`, an
- * S3 client, or anything else, and `IOBase.fromArrowFs` turns it into an
+ * S3 client, or anything else, and `IOBase.fromFs` turns it into an
  * ordinary handle - globs, Hive partitions, IPC, Parquet, and Iceberg tables
  * included - with no code per backend.
  *
@@ -2097,7 +2097,7 @@ export interface ArrowFileInfo {
  * that throws instead is asked what is at the path before its failure is
  * surfaced, so `node:fs`'s own `ENOENT` needs no guarding.
  */
-export interface ArrowFileSystemHandler {
+export interface FileSystemHandler {
   /** This file system's own name, and the scheme its locations carry. */
   readonly typeName?: string
   /** What is at `path` right now. */

@@ -1472,7 +1472,7 @@ export declare class IOBase {
    * none of them needs code of its own here.
    *
    * ```js
-   * const handle = IOBase.fromArrowFs(handler, 'bucket/key.parquet')
+   * const handle = IOBase.fromFs(handler, 'bucket/key.parquet')
    * const rows = handle.readArrowReader().intoTable()
    * ```
    *
@@ -1490,7 +1490,7 @@ export declare class IOBase {
    * `Worker`, because a JavaScript value belongs to one isolate and this
    * boundary refuses rather than pretending otherwise.
    */
-  static fromArrowFs(filesystem: ArrowFileSystemInput, path: string): IOBase
+  static fromFs(filesystem: FileSystemInput, path: string): IOBase
   /** Describe an in-memory resource holding `data`. */
   static fromBytes(data?: Uint8Array | undefined | null): IOBase
   /** The location this handle addresses. */

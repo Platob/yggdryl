@@ -41,12 +41,12 @@ pub(crate) struct PyIOBase {
 /// `None` for anything else, so the local rebuild stays the default path.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
-        Holder::ArrowFolder(folder) => Some(Holder::ArrowFolder(folder.clone())),
-        Holder::ArrowFile(file) => Some(Holder::ArrowFile(yggdryl::holder::arrowfs::File::new(
+        Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
+        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::holder::fs::File::new(
             file.filesystem().clone(),
             file.url().clone(),
         ))),
-        Holder::ArrowPath(path) => Some(Holder::ArrowPath(yggdryl::holder::arrowfs::Path::new(
+        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::holder::fs::Path::new(
             path.filesystem().clone(),
             path.url().clone(),
         ))),
@@ -55,18 +55,18 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Address a foreign-filesystem handle's location as a container.
-pub(crate) fn arrow_folder_holder(inner: &Holder) -> Option<Holder> {
+pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
-        Holder::ArrowFolder(folder) => folder.clone(),
-        Holder::ArrowFile(file) => {
-            yggdryl::holder::arrowfs::Folder::new(file.filesystem().clone(), file.url().clone())
+        Holder::FsFolder(folder) => folder.clone(),
+        Holder::FsFile(file) => {
+            yggdryl::holder::fs::Folder::new(file.filesystem().clone(), file.url().clone())
         }
-        Holder::ArrowPath(path) => {
-            yggdryl::holder::arrowfs::Folder::new(path.filesystem().clone(), path.url().clone())
+        Holder::FsPath(path) => {
+            yggdryl::holder::fs::Folder::new(path.filesystem().clone(), path.url().clone())
         }
         _ => return None,
     };
-    Some(Holder::ArrowFolder(folder))
+    Some(Holder::FsFolder(folder))
 }
 
 impl PyIOBase {
@@ -111,7 +111,7 @@ impl PyIOBase {
     /// foreign filesystem's handle becomes a container on that filesystem, so
     /// a table reached this way never learns which backend it stands on.
     pub(crate) fn folder_holder(&self) -> PyResult<Holder> {
-        if let Some(holder) = arrow_folder_holder(&self.inner) {
+        if let Some(holder) = fs_folder_holder(&self.inner) {
             return Ok(holder);
         }
         let url = self
@@ -122,15 +122,13 @@ impl PyIOBase {
     }
 
     /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
-    fn over_arrow_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn over_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
         let location = crate::uri::path_string_from_value(path)?;
-        let backend: std::sync::Arc<dyn yggdryl::holder::arrowfs::ArrowFileSystem> =
-            std::sync::Arc::new(crate::holder::arrowfs::PyArrowFileSystem::new(filesystem));
-        let url = yggdryl::holder::arrowfs::location_url(backend.as_ref(), &location)
-            .map_err(value_error)?;
-        Ok(Self::from_core(yggdryl::holder::arrowfs::located(
-            backend, url,
-        )))
+        let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+            std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem));
+        let url =
+            yggdryl::holder::fs::location_url(backend.as_ref(), &location).map_err(value_error)?;
+        Ok(Self::from_core(yggdryl::holder::fs::located(backend, url)))
     }
 
     /// Resolve the options a record call runs under.
@@ -252,13 +250,13 @@ impl PyIOBase {
     #[new]
     #[pyo3(signature = (value, path = None))]
     fn new(value: &Bound<'_, PyAny>, path: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        if crate::holder::arrowfs::is_arrow_filesystem(value) {
+        if crate::holder::fs::is_arrow_filesystem(value) {
             let path = path.ok_or_else(|| {
                 PyValueError::new_err(
                     "expected a path on the filesystem as the second argument, got none",
                 )
             })?;
-            return Self::over_arrow_fs(value, path);
+            return Self::over_fs(value, path);
         }
         if let Some(path) = path {
             return Err(PyValueError::new_err(format!(
@@ -316,7 +314,7 @@ impl PyIOBase {
     /// of its own here.
     ///
     /// ```python
-    /// handle = IOBase.from_arrow_fs(S3FileSystem(region="eu-west-1"), "bucket/key.parquet")
+    /// handle = IOBase.from_fs(S3FileSystem(region="eu-west-1"), "bucket/key.parquet")
     /// reader = handle.read_arrow_reader()
     /// ```
     ///
@@ -329,18 +327,18 @@ impl PyIOBase {
     /// replaces whole files rather than writing ranges - so a file another
     /// reader will open is written inside a `with` block.
     #[classmethod]
-    fn from_arrow_fs(
+    fn from_fs(
         _cls: &Bound<'_, PyType>,
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
     ) -> PyResult<Self> {
-        if !crate::holder::arrowfs::is_arrow_filesystem(filesystem) {
+        if !crate::holder::fs::is_arrow_filesystem(filesystem) {
             return Err(PyValueError::new_err(format!(
                 "expected a pyarrow.fs.FileSystem, got {}",
                 filesystem.get_type().name()?,
             )));
         }
-        Self::over_arrow_fs(filesystem, path)
+        Self::over_fs(filesystem, path)
     }
 
     /// Describe an in-memory resource holding `data`.
@@ -812,7 +810,7 @@ impl PyIOBase {
         // filesystem. Rebuilding from the location alone would silently move
         // the handle to the local disk, because a location does not say which
         // backend it belongs to.
-        let mut folder = if let Some(holder) = arrow_folder_holder(&self.inner) {
+        let mut folder = if let Some(holder) = fs_folder_holder(&self.inner) {
             holder
         } else {
             let url = self.inner.url().ok_or_else(|| {

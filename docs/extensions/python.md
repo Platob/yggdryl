@@ -763,12 +763,12 @@ root is a `ValueError`, and `touch` on a directory is an `IsADirectoryError`. Wh
 the difference is the point - a URL carries a scheme, so the same code addresses a local directory
 and a bucket.
 
-That is not a promise about a future backend. `IOBase.from_arrow_fs` takes any
+That is not a promise about a future backend. `IOBase.from_fs` takes any
 `pyarrow.fs.FileSystem` and returns this same class, so everything above works unchanged over S3,
 GCS, Azure, a `SubTreeFileSystem`, or a filesystem you wrote yourself as a `FileSystemHandler` -
 which is also how an `fsspec` filesystem arrives. The boundary is only inference: the filesystem
 is recognized without importing `pyarrow`, handed to the core's seven-method vtable, and never
-seen again by the Python layer. [`arrowfs`](../holder.md) documents the backend itself.
+seen again by the Python layer. [`fs`](../holder.md) documents the backend itself.
 
 ```python
 import pathlib
@@ -779,7 +779,7 @@ import pyarrow.fs as pafs
 from yggdryl import IOBase
 
 root = pathlib.Path(tempfile.mkdtemp())
-handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix())
+handle = IOBase.from_fs(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix())
 
 # An Arrow filesystem replaces whole files, so the write publishes on close.
 with handle:

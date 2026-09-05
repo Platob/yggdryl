@@ -6,7 +6,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 
 
 `Holder` names every [`IOBase`](holder.md) implementation the core ships: the local `Buffer`, `Folder`,
-`Path`, and `File`, the [`arrowfs`](holder.md) trio, and the generic `Buffered`, `Text`, and `Media`
+`Path`, and `File`, the [`fs`](holder.md) trio, and the generic `Buffered`, `Text`, and `Media`
 wrappers. `into_text`, `buffered`, and `into_media` are idempotent, so a dynamic caller can request
 the optimized view without stacking wrappers.
 
@@ -3413,13 +3413,13 @@ std::fs::remove_dir_all(&root)?;
 A private directory is not descended into either, so a recursive listing stays
 out of them entirely.
 
-## Arrow filesystems
+## Filesystems
 
 
-`yggdryl::holder::arrowfs` puts any existing Arrow filesystem - S3, GCS, Azure, a local tree, or one you
-wrote yourself - behind the crate's one storage abstraction, [`IOBase`](holder.md).
+`yggdryl::holder::fs` puts any filesystem - S3, GCS, Azure, a local tree, or one you wrote yourself -
+behind the crate's one storage abstraction, [`IOBase`](holder.md).
 
-Nothing here implements a transport. `ArrowFileSystem` is a seven-method contract modeled on
+Nothing here implements a transport. `FileSystem` is a seven-method contract modeled on
 Arrow's own `FileSystem` API, so an implementation that already exists - `pyarrow.fs`, Arrow C++,
 Arrow Java - maps onto it method for method, and the three roles above it inherit every wrapper the
 crate already has. A handle over a bucket reads and writes folders and files, streams Arrow
@@ -3433,7 +3433,7 @@ records, and composes with [`Coded`](holder.md), [`ipc`](media.md), [`parquet`](
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::holder::fs::{File, MemoryFileSystem};
     use yggdryl::IOBase;
 
     let filesystem = Arc::new(MemoryFileSystem::new());
@@ -3459,7 +3459,7 @@ records, and composes with [`Coded`](holder.md), [`ipc`](media.md), [`parquet`](
     from yggdryl import IOBase
 
     root = pathlib.Path(tempfile.mkdtemp())
-    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.bin").as_posix())
+    handle = IOBase.from_fs(pafs.LocalFileSystem(), (root / "trades.bin").as_posix())
 
     # Per the laziness contract nothing exists until something is written.
     assert not handle.exists()
@@ -3496,7 +3496,7 @@ records, and composes with [`Coded`](holder.md), [`ipc`](media.md), [`parquet`](
       deleteFile: (path) => { files.delete(path) },
     }
 
-    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.bin')
+    const handle = IOBase.fromFs(handler, 'bucket/trades.bin')
 
     // Per the laziness contract nothing exists until something is written.
     assert.equal(handle.exists(), false)
@@ -3511,7 +3511,7 @@ records, and composes with [`Coded`](holder.md), [`ipc`](media.md), [`parquet`](
 
 The first path segment is the authority, which is exactly what a bucket is, so `"bucket/key"` on an
 S3 filesystem spells `s3://bucket/key`. In Python the filesystem may also be inferred from the
-first argument: `IOBase(fs, "bucket/key")` means the same as `IOBase.from_arrow_fs(fs, "bucket/key")`,
+first argument: `IOBase(fs, "bucket/key")` means the same as `IOBase.from_fs(fs, "bucket/key")`,
 and JavaScript infers the same way with `new IOBase(handler, 'bucket/key')`.
 
 !!! note "A JavaScript handler belongs to one thread"
@@ -3530,7 +3530,7 @@ The real thing looks like this, and needs credentials and a network, so it is sh
     from yggdryl import IOBase
     from yggdryl.media import iceberg
 
-    handle = IOBase.from_arrow_fs(S3FileSystem(region="eu-west-1"), "bucket/table")
+    handle = IOBase.from_fs(S3FileSystem(region="eu-west-1"), "bucket/table")
     table = iceberg.Table.open(handle)
     rows = table.scan().read_all()
     ```
@@ -3547,7 +3547,7 @@ five bytes in the middle of an object - while `IOBase::pwrite` is positional. So
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{ArrowFileSystem, File, MemoryFileSystem};
+    use yggdryl::holder::fs::{FileSystem, File, MemoryFileSystem};
     use yggdryl::IOBase;
 
     let filesystem = Arc::new(MemoryFileSystem::new());
@@ -3575,7 +3575,7 @@ five bytes in the middle of an object - while `IOBase::pwrite` is positional. So
     from yggdryl import IOBase
 
     root = pathlib.Path(tempfile.mkdtemp())
-    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "staged.bin").as_posix())
+    handle = IOBase.from_fs(pafs.LocalFileSystem(), (root / "staged.bin").as_posix())
 
     handle.pwrite(0, b"pend")
     handle.pwrite(4, b"ing")
@@ -3606,7 +3606,7 @@ five bytes in the middle of an object - while `IOBase::pwrite` is positional. So
       deleteFile: (path) => { files.delete(path) },
     }
 
-    const handle = IOBase.fromArrowFs(handler, 'bucket/staged.bin')
+    const handle = IOBase.fromFs(handler, 'bucket/staged.bin')
     handle.pwrite(0, Buffer.from('pend'))
     handle.pwrite(4, Buffer.from('ing'))
 
@@ -3645,7 +3645,7 @@ not have written.
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{ArrowFileSystem, Folder, MemoryFileSystem};
+    use yggdryl::holder::fs::{FileSystem, Folder, MemoryFileSystem};
     use yggdryl::IOBase;
 
     let filesystem = Arc::new(MemoryFileSystem::new());
@@ -3682,7 +3682,7 @@ not have written.
         leaf.mkdir(parents=True)
         (leaf / "part-0.parquet").write_bytes(b"PAR1")
 
-    lake = IOBase.from_arrow_fs(pafs.LocalFileSystem(), root.as_posix())
+    lake = IOBase.from_fs(pafs.LocalFileSystem(), root.as_posix())
 
     assert lake.is_dir()
     assert len(list(lake.iterdir())) == 2
@@ -3737,7 +3737,7 @@ not have written.
       deleteFile: (path) => { files.delete(path) },
     }
 
-    const lake = IOBase.fromArrowFs(handler, 'bucket')
+    const lake = IOBase.fromFs(handler, 'bucket')
 
     assert.equal(lake.isDir(), true)
     assert.equal([...lake.ls()].length, 2)
@@ -3763,7 +3763,7 @@ apply unchanged to an Arrow filesystem handle.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::holder::fs::{File, MemoryFileSystem};
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::DataType;
@@ -3812,7 +3812,7 @@ apply unchanged to an Arrow filesystem handle.
     root = pathlib.Path(tempfile.mkdtemp())
     table = pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
 
-    handle = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades.parquet").as_posix())
+    handle = IOBase.from_fs(pafs.LocalFileSystem(), (root / "trades.parquet").as_posix())
     with handle:
         handle.overwrite_arrow_table(table)
 
@@ -3849,7 +3849,7 @@ apply unchanged to an Arrow filesystem handle.
       symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
     })
 
-    const handle = IOBase.fromArrowFs(handler, 'bucket/trades.arrows')
+    const handle = IOBase.fromFs(handler, 'bucket/trades.arrows')
     handle.overwriteArrowReader(BatchReader.from(table))
     handle.close()
 
@@ -3875,7 +3875,7 @@ Nothing about a foreign filesystem is special to the wrappers, because they only
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{File, MemoryFileSystem};
+    use yggdryl::holder::fs::{File, MemoryFileSystem};
     use yggdryl::IOBase;
     use yggdryl::coding::Coded;
     use yggdryl::{Codec, MimeType};
@@ -3905,7 +3905,7 @@ needs nothing from the table format:
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::holder::arrowfs::{Folder, MemoryFileSystem};
+    use yggdryl::holder::fs::{Folder, MemoryFileSystem};
     use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::DataType;
@@ -3948,7 +3948,7 @@ needs nothing from the table format:
     root = pathlib.Path(tempfile.mkdtemp())
     table_rows = pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
 
-    warehouse = IOBase.from_arrow_fs(pafs.LocalFileSystem(), (root / "trades").as_posix())
+    warehouse = IOBase.from_fs(pafs.LocalFileSystem(), (root / "trades").as_posix())
     table = iceberg.Table.create(warehouse, table_rows.schema)
     table.append(table_rows)
 
@@ -3973,11 +3973,11 @@ replaces [`local`](holder.md)**, whose memory-mapped `File` remains the local ba
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{File, LocalFileSystem};
+    use yggdryl::holder::fs::{File, LocalFileSystem};
     use yggdryl::IOBase;
     use yggdryl::holder::local::Folder;
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-arrowfs-{}", std::process::id()));
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-fs-{}", std::process::id()));
     std::fs::create_dir_all(&root)?;
     let location = root.join("trades.bin").to_string_lossy().replace('\\', "/");
 
@@ -3991,7 +3991,7 @@ replaces [`local`](holder.md)**, whose memory-mapped `File` remains the local ba
 
 ### Bringing your own filesystem
 
-In Rust, implement `ArrowFileSystem`. Seven methods, all synchronous, and the semantics are the
+In Rust, implement `FileSystem`. Seven methods, all synchronous, and the semantics are the
 ones Arrow already specifies: a path that is not there is `Unknown` rather than an error, a missing
 directory lists empty, a read past the end is short, and a write replaces the whole value.
 
@@ -4000,14 +4000,14 @@ directory lists empty, a read past the end is short, and a write replaces the wh
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::arrowfs::{ArrowFileSystem, FileInfo, File};
+    use yggdryl::holder::fs::{FileSystem, FileInfo, File};
     use yggdryl::IOBase;
     use yggdryl::Result;
 
     /// A filesystem holding exactly one read-only object.
     struct OneObject;
 
-    impl ArrowFileSystem for OneObject {
+    impl FileSystem for OneObject {
         fn type_name(&self) -> &str {
             "memory"
         }
@@ -4020,8 +4020,8 @@ directory lists empty, a read past the end is short, and a write replaces the wh
             })
         }
 
-        fn list(&self, _path: &str, _recursive: bool) -> yggdryl::holder::arrowfs::FileInfos {
-            yggdryl::holder::arrowfs::FileInfos::new(
+        fn list(&self, _path: &str, _recursive: bool) -> yggdryl::holder::fs::FileInfos {
+            yggdryl::holder::fs::FileInfos::new(
                 [Ok(FileInfo::file("bucket/only.bin", 5))].into_iter(),
             )
         }
@@ -4070,11 +4070,11 @@ also how an `fsspec` filesystem arrives, so this one shape covers both:
     class MyHandler(pafs.FileSystemHandler):
         ...  # get_file_info, get_file_info_selector, open_input_file, open_output_stream, ...
 
-    handle = IOBase.from_arrow_fs(pafs.PyFileSystem(MyHandler()), "bucket/key.parquet")
+    handle = IOBase.from_fs(pafs.PyFileSystem(MyHandler()), "bucket/key.parquet")
     ```
 
 A working handler is longer than a documentation page wants, so the complete one lives in
-`python/tests/test_arrowfs.py`, where it is exercised end to end - including an Iceberg table whose
+`python/tests/test_fs.py`, where it is exercised end to end - including an Iceberg table whose
 every byte goes through it.
 
 In JavaScript there is nothing to wrap, because Arrow JS ships no filesystem - so the handler
@@ -4090,7 +4090,7 @@ already reach answers them:
     const path = require('node:path')
     const { IOBase } = require('yggdryl')
 
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-arrowfs-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-fs-'))
 
     // The same six calls, over node:fs. Absence may throw the way node:fs
     // does - the boundary asks what is there and turns ENOENT into the
@@ -4140,7 +4140,7 @@ already reach answers them:
       deleteFile: (location) => fs.rmSync(location, { force: true }),
     }
 
-    const handle = IOBase.fromArrowFs(handler, path.posix.join(root, 'lake', 'trades.bin'))
+    const handle = IOBase.fromFs(handler, path.posix.join(root, 'lake', 'trades.bin'))
     handle.writeText('AAPL')
     handle.close()
 
@@ -4154,16 +4154,16 @@ already reach answers them:
 
 Putting an existing Arrow filesystem behind `IOBase`, the only honest
 question is what the wrapper adds to the transport underneath it. Every row below is the same
-payload landing in the same place twice: once through an `arrowfs` handle, once through the native
+payload landing in the same place twice: once through an `fs` handle, once through the native
 handle (or the language's own filesystem calls) holding those same bytes.
 
 === "Rust"
 
-    `cargo bench --bench arrowfs --features "parquet"`, Criterion medians,
+    `cargo bench --bench fs --features "parquet"`, Criterion medians,
     512 KiB payloads and 65,536 rows:
 
     ```text
-                                      arrowfs      native handle
+                                      fs      native handle
     bytes read_all   (memory)         22.99 us     23.68 us   Buffer
     bytes write_all  (memory)         67.00 us     24.85 us   Buffer
     bytes pread 4KiB (memory)         63.91 ns     35.05 ns   Buffer
@@ -4208,7 +4208,7 @@ handle (or the language's own filesystem calls) holding those same bytes.
     The baseline is PyArrow's own calls against the same
     `pyarrow.fs.LocalFileSystem` - the implementation the wrapper delegates
     to - so the difference is the vtable crossing and nothing else.
-    `arrowfs.py --min-time 0.2 --repeat 7`, release wheel, medians:
+    `fs.py --min-time 0.2 --repeat 7`, release wheel, medians:
 
     ```text
                             wrapper      PyArrow
@@ -4238,7 +4238,7 @@ handle (or the language's own filesystem calls) holding those same bytes.
 
     JavaScript pays the same shape of cost against `node:fs`, with the handler
     crossing the boundary on every call rather than only the handle.
-    `bench:arrowfs`, release build:
+    `bench:fs`, release build:
 
     ```text
                                 wrapper       node:fs
@@ -4627,7 +4627,7 @@ cache the kernel keeps, so wrapping one buys little and costs a lock and a secon
 [measurements below](#what-the-cache-buys-and-what-it-costs) say by how much.
 
 The cache earns its keep where a fetch is not a `memcpy`, and the core ships two such
-handles. An [`arrowfs`](holder.md) handle answers every read with one `read_range` call
+handles. An [`fs`](holder.md) handle answers every read with one `read_range` call
 through the foreign-filesystem vtable - over `LocalFileSystem` an `open`, a `seek` and a
 `read` per call, and over an object store a round trip - and a [coded](holder.md) handle decodes.
 Both are the same code as the mapped case, which is the point of the wrapper: what changes is
@@ -4640,9 +4640,9 @@ ships, plus a fourth workload over a compressed one. The handles fall into two f
 that split is the whole result:
 
 - **Already memory.** An in-memory `Buffer`, a memory-mapped `local::File`, and an
-  [`arrowfs`](holder.md) handle over `MemoryFileSystem`. A read is a `memcpy` - out of a
+  [`fs`](holder.md) handle over `MemoryFileSystem`. A read is a `memcpy` - out of a
   `Vec`, out of the mapping the kernel already caches, or out of the vtable's own map.
-- **A fetch per read.** An `arrowfs` handle over `LocalFileSystem`, where every `pread` is an
+- **A fetch per read.** An `fs` handle over `LocalFileSystem`, where every `pread` is an
   `open`, a `seek` and a `read`, and every `size` is a `stat`. That is the shape of every
   object store, and the only such backend the core ships.
 
@@ -4661,16 +4661,16 @@ the multiples, never the percentages:
 buffer                             10.041 µs        606.58 µs      439.58 µs
 file                               28.037 µs        517.80 µs      367.66 µs
 buffered  (over file)              75.362 µs      1.9495 ms        507.49 µs
-arrowfs_memory                     46.739 µs        734.30 µs      392.83 µs
-arrowfs_memory_buffered            77.633 µs      2.0068 ms        503.69 µs
-arrowfs_local                     1.0832 ms       2.7574 ms       2.0924 ms
-arrowfs_local_buffered             73.668 µs      2.3841 ms        532.18 µs
+fs_memory                     46.739 µs        734.30 µs      392.83 µs
+fs_memory_buffered            77.633 µs      2.0068 ms        503.69 µs
+fs_local                     1.0832 ms       2.7574 ms       2.0924 ms
+fs_local_buffered             73.668 µs      2.3841 ms        532.18 µs
 ```
 
 **Over a backend that is already memory, the cache is a cost; over one that fetches, it is
 worth 4x to 15x.** The same code, the same page table, the same pinning:
 
-| Workload | `arrowfs_local` | with the cache | |
+| Workload | `fs_local` | with the cache | |
 | --- | --- | --- | --- |
 | `random` (a hot region, re-read) | 1.0832 ms | 73.668 µs | **14.7x faster** |
 | `footer` (both ends, big middle) | 2.0924 ms | 532.18 µs | **3.9x faster** |
@@ -4690,9 +4690,9 @@ handed, and it is why the wrapper is opt-in rather than automatic.
 **Two changes during this work moved these numbers, and both are in the diff:**
 
 - *A hit asks the handle for nothing.* `read_at` used to call `size()` on every read, for the
-  end-of-value bound and the pin. On `arrowfs_local` that is a `stat` per read - the cache
+  end-of-value bound and the pin. On `fs_local` that is a `stat` per read - the cache
   paying exactly the cost it exists to remove. The size is now remembered beside the pages and
-  re-asked only when a read runs past what the cache knows. `random/arrowfs_local_buffered`
+  re-asked only when a read runs past what the cache knows. `random/fs_local_buffered`
   went **597.88 µs to 73.668 µs** and `sequential` turned from a 1.2x *loss* into a win.
 - *Dense page indexes hash with a multiply and a rotation* rather than SipHash, and the offset
   arithmetic shifts rather than divides - which is what the power-of-two page size is for.
@@ -4701,7 +4701,7 @@ handed, and it is why the wrapper is opt-in rather than automatic.
 **What pinning buys cannot be timed over a backend whose re-read is a `memcpy`**, so the
 target asserts it as a count before any timer starts, over a counting handle: after a 12 MiB
 middle scan four times wider than the whole budget, re-reading the head and the tail costs
-**zero** inner fetches. On `arrowfs_local`, where a fetch is real, that count is what the
+**zero** inner fetches. On `fs_local`, where a fetch is real, that count is what the
 `footer` row's 3.9x is made of.
 
 #### Over a compressed handle

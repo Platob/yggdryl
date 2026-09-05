@@ -109,9 +109,11 @@ pin an unsettled design by implementing a binding first.
 - `IOMode` modes are `ReadOnly`, `Overwrite`, `Append`, `Merge`, and `Random`;
   operations reject modes that do not apply. No alternate alias.
 - Root `iobase.rs` owns the single `IOBase` storage trait and its behavior
-  modules. `holder/` owns `Buffer`, local and Arrow-filesystem handles, and
+  modules. `holder/` owns `Buffer`, local handles, generic `fs` handles, and
   `Buffered<H>`; `coding/` owns transparent `Coded` handles; `media/` owns
-  record routing.
+  record routing. `holder::fs::FileSystem` keeps Arrow's seven-method
+  filesystem shape so existing implementations interoperate, but the core
+  contract and holder variants are generic `FileSystem` and `Fs*` names.
 - `rust/src/media/text/` owns `Text<H>`, the flat `TextOptions`, bounded
   physical-line splitting, row-header capture, and body rendering. `Text<H>`
   only retains options and delegates ordinary `IOMedia`; never add a line

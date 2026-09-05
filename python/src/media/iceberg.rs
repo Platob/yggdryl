@@ -985,7 +985,7 @@ impl PyTable {
     #[getter]
     fn root(&self) -> PyResult<PyIOBase> {
         let root = self.inner.root();
-        if let Some(holder) = crate::iobase::arrow_folder_holder(root) {
+        if let Some(holder) = crate::iobase::fs_folder_holder(root) {
             return Ok(PyIOBase::from_core(holder));
         }
         Ok(PyIOBase::from_core(

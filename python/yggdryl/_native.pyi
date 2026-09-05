@@ -1670,7 +1670,7 @@ class IOBase:
         path: str | PathLike[str] | None = None,
     ) -> None: ...
     @classmethod
-    def from_arrow_fs(
+    def from_fs(
         cls, filesystem: Any, path: str | PathLike[str]
     ) -> IOBase: ...
     @classmethod

@@ -1,4 +1,4 @@
-//! Foreign Arrow filesystems behind the one storage trait.
+//! Foreign filesystems behind the one storage trait.
 //!
 //! The shared byte contract is exercised for this backend alongside every
 //! other in `io::tests::conformance`; what is tested here is what only this
@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::holder::arrowfs::{ArrowFileSystem, File, FileInfo, Folder, MemoryFileSystem, Path};
+use crate::holder::fs::{File, FileInfo, FileSystem, Folder, MemoryFileSystem, Path};
 use crate::{IOBase, IOMedia};
 use crate::{IOKind, MediaType, MimeType, Result};
 
@@ -48,7 +48,7 @@ impl Counting {
     }
 }
 
-impl ArrowFileSystem for Counting {
+impl FileSystem for Counting {
     fn type_name(&self) -> &str {
         // Naming is not a filesystem operation, so it is deliberately uncounted.
         self.inner.type_name()
@@ -59,7 +59,7 @@ impl ArrowFileSystem for Counting {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::fs::FileInfos {
         self.count();
         self.inner.list(path, recursive)
     }
@@ -97,7 +97,7 @@ impl Failing {
     }
 }
 
-impl ArrowFileSystem for Failing {
+impl FileSystem for Failing {
     fn type_name(&self) -> &str {
         "s3"
     }
@@ -106,8 +106,8 @@ impl ArrowFileSystem for Failing {
         Self::refusal()
     }
 
-    fn list(&self, _path: &str, _recursive: bool) -> crate::holder::arrowfs::FileInfos {
-        crate::holder::arrowfs::FileInfos::failing(
+    fn list(&self, _path: &str, _recursive: bool) -> crate::holder::fs::FileInfos {
+        crate::holder::fs::FileInfos::failing(
             Self::refusal::<()>().expect_err("the refusal this filesystem always answers with"),
         )
     }
@@ -141,11 +141,11 @@ mod laziness {
         let file = File::from_location(filesystem.clone(), "bucket/key.parquet").unwrap();
         let folder = Folder::from_location(filesystem.clone(), "bucket/lake").unwrap();
         let path = Path::from_location(filesystem.clone(), "bucket/anything").unwrap();
-        let located = crate::holder::arrowfs::located(filesystem.clone(), path.url().clone());
+        let located = crate::holder::fs::located(filesystem.clone(), path.url().clone());
 
         // Not one call reached the vtable while direct and generic handles were built.
         assert_eq!(filesystem.calls(), 0);
-        assert!(matches!(located, crate::holder::Holder::ArrowPath(_)));
+        assert!(matches!(located, crate::holder::Holder::FsPath(_)));
 
         // Nor does borrowing what a handle already knows about itself.
         let _ = (file.url(), folder.url(), path.url());
@@ -388,7 +388,7 @@ mod staging {
 
     #[test]
     fn a_foreign_failure_crosses_with_its_own_message() {
-        let filesystem: Arc<dyn ArrowFileSystem> = Arc::new(Failing);
+        let filesystem: Arc<dyn FileSystem> = Arc::new(Failing);
         let mut handle = File::from_location(filesystem, "bucket/key.bin").unwrap();
 
         handle.pwrite(0, b"x").unwrap_err();
@@ -739,10 +739,10 @@ mod hierarchy {
         assert!(message.contains("expected a container"), "{message}");
 
         let child = directory.child_by_path("a.bin").unwrap();
-        assert!(matches!(&child, crate::holder::Holder::ArrowPath(_)));
+        assert!(matches!(&child, crate::holder::Holder::FsPath(_)));
         assert_eq!(child.media_type().base(), &MimeType::OCTET_STREAM);
         let parent = child.parent().expect("the generic child has a parent");
-        assert!(matches!(&parent, crate::holder::Holder::ArrowPath(_)));
+        assert!(matches!(&parent, crate::holder::Holder::FsPath(_)));
         assert_eq!(parent.kind(), IOKind::Directory);
 
         // Nothing there yet has not decided what it is; a write settles it.
@@ -811,7 +811,7 @@ mod identity {
         assert_eq!(memory_file.url().to_string(), "memory://bucket/key.parquet");
 
         // A bucket-shaped filesystem spells its authority the way S3 does.
-        let s3: Arc<dyn ArrowFileSystem> = Arc::new(Failing);
+        let s3: Arc<dyn FileSystem> = Arc::new(Failing);
         let object = File::from_location(s3.clone(), "bucket/prefix/key.parquet").unwrap();
         assert_eq!(object.url().to_string(), "s3://bucket/prefix/key.parquet");
         // And the path handed back to the vtable is the one it was given.
@@ -969,7 +969,7 @@ mod records {
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
 
-    use crate::holder::arrowfs::LocalFileSystem;
+    use crate::holder::fs::LocalFileSystem;
     use crate::media::{IORecordOptions, RecordOptions};
     use crate::{DataType, Field};
 
@@ -1008,7 +1008,7 @@ mod records {
             .unwrap()
             .path()
             .unwrap();
-        path.push(format!("yggdryl-arrowfs-{label}-{}", std::process::id()));
+        path.push(format!("yggdryl-fs-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         path
@@ -1026,7 +1026,7 @@ mod records {
     #[test]
     fn batches_round_trip_over_both_reference_filesystems() {
         let local_root = root("records");
-        let cases: Vec<(&str, Arc<dyn ArrowFileSystem>, String)> = vec![
+        let cases: Vec<(&str, Arc<dyn FileSystem>, String)> = vec![
             ("memory", memory(), "bucket".to_owned()),
             (
                 "local",
@@ -1200,7 +1200,7 @@ mod listing_cost {
 
     use super::{Counting, Result};
     use crate::IOBase;
-    use crate::holder::arrowfs::{ArrowFileSystem, Folder};
+    use crate::holder::fs::{FileSystem, Folder};
 
     /// A tree `depth` levels deep, `width` leaves per level.
     fn tree(filesystem: &Counting, depth: usize, width: usize) {

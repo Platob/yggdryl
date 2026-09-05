@@ -1,7 +1,7 @@
 //! Fixtures shared by the foreign-filesystem benchmarks.
 //!
 //! Every measurement here is a *wrapper overhead* measurement: the same
-//! payload, the same operation, once through an `arrowfs` handle and once
+//! payload, the same operation, once through an `fs` handle and once
 //! through the native handle the reader already trusts - `holder::Buffer` for the
 //! memory filesystem, `local::File` for the local one. The difference is what
 //! the vtable and the staging cost.
@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOBase;
-use yggdryl::holder::arrowfs::{ArrowFileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::holder::fs::{FileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, Field, Url};
 
@@ -77,7 +77,7 @@ pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
         .expect("the temporary directory")
         .path()
         .expect("a platform path");
-    root.push(format!("yggdryl-arrowfs-bench-{}", std::process::id()));
+    root.push(format!("yggdryl-fs-bench-{}", std::process::id()));
     std::fs::create_dir_all(&root).expect("a writable temporary root");
     (Arc::new(LocalFileSystem::new()), root)
 }
@@ -100,7 +100,7 @@ pub(crate) fn buffer(name: &str) -> yggdryl::holder::Buffer {
 ///
 /// Two years, two months each, four leaves per month, so a flat listing, a
 /// recursive one, and a glob all have real work to do.
-pub(crate) fn tree(filesystem: &dyn ArrowFileSystem, root: &str) {
+pub(crate) fn tree(filesystem: &dyn FileSystem, root: &str) {
     for year in ["2024", "2025"] {
         for month in ["01", "02"] {
             for part in 0..4 {

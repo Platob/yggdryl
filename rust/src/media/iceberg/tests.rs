@@ -302,7 +302,7 @@ fn table_metadata_state_is_read_only_through_complete_accessors() {
 /// without teaching the table about a test-only storage hook.
 #[derive(Debug, Default)]
 struct PublishedHintFailure {
-    inner: crate::holder::arrowfs::MemoryFileSystem,
+    inner: crate::holder::fs::MemoryFileSystem,
     fail_next_hint: AtomicBool,
 }
 
@@ -312,16 +312,16 @@ impl PublishedHintFailure {
     }
 }
 
-impl crate::holder::arrowfs::ArrowFileSystem for PublishedHintFailure {
+impl crate::holder::fs::FileSystem for PublishedHintFailure {
     fn type_name(&self) -> &str {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::holder::arrowfs::FileInfo> {
+    fn file_info(&self, path: &str) -> crate::Result<crate::holder::fs::FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::fs::FileInfos {
         self.inner.list(path, recursive)
     }
 
@@ -359,7 +359,7 @@ impl crate::holder::arrowfs::ArrowFileSystem for PublishedHintFailure {
 /// valid competing document and must return through the retry gate.
 #[derive(Debug, Default)]
 struct SameVersionWinner {
-    inner: crate::holder::arrowfs::MemoryFileSystem,
+    inner: crate::holder::fs::MemoryFileSystem,
     armed: AtomicBool,
     injections: AtomicUsize,
 }
@@ -382,16 +382,16 @@ impl SameVersionWinner {
     }
 }
 
-impl crate::holder::arrowfs::ArrowFileSystem for SameVersionWinner {
+impl crate::holder::fs::FileSystem for SameVersionWinner {
     fn type_name(&self) -> &str {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::holder::arrowfs::FileInfo> {
+    fn file_info(&self, path: &str) -> crate::Result<crate::holder::fs::FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::holder::arrowfs::FileInfos {
+    fn list(&self, path: &str, recursive: bool) -> crate::holder::fs::FileInfos {
         self.inner.list(path, recursive)
     }
 
@@ -3872,7 +3872,7 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
 fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let filesystem = Arc::new(PublishedHintFailure::default());
     let folder =
-        crate::holder::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+        crate::holder::fs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -3908,7 +3908,7 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
     let folder =
-        crate::holder::arrowfs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+        crate::holder::fs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,

@@ -1,6 +1,6 @@
 //! The foreign-filesystem vtable and the two reference implementations.
 //!
-//! [`ArrowFileSystem`] is the minimal synchronous surface the three roles in
+//! [`FileSystem`] is the minimal synchronous surface the three roles in
 //! this module need, modeled on Arrow's `FileSystem` API - the contract
 //! `pyarrow.fs`, Arrow C++, and Arrow Java already share - so an existing
 //! implementation maps onto it method-for-method with no adaptation logic.
@@ -25,7 +25,7 @@ use crate::{Error, IOKind, Result, Scheme, Url};
 /// Implementations report failures as [`crate::Error`]; a transport failure
 /// wraps as [`Error::Io`] with its source chain intact, so the foreign message
 /// crosses unchanged.
-pub trait ArrowFileSystem: Send + Sync {
+pub trait FileSystem: Send + Sync {
     /// The filesystem's own name for diagnostics (`"s3"`, `"local"`,
     /// `"memory"`).
     fn type_name(&self) -> &str;
@@ -198,15 +198,15 @@ impl FileInfo {
 ///
 /// A full URL (`s3://bucket/key`) passes through as it stands, an absolute
 /// path becomes a `file:` URL, and a relative location is placed under the
-/// filesystem's own [`ArrowFileSystem::type_name`] as its scheme - `"s3"` and
+/// filesystem's own [`FileSystem::type_name`] as its scheme - `"s3"` and
 /// `"bucket/key"` spell `s3://bucket/key`. A type name that is not a valid
-/// URL scheme falls back to the generic `arrowfs` scheme, so a wrapped or
+/// URL scheme falls back to the generic `fs` scheme, so a wrapped or
 /// composite filesystem still gets a canonical identity.
 ///
 /// # Errors
 ///
 /// Returns an error when `location` is empty or cannot form a valid URL.
-pub fn location_url(filesystem: &dyn ArrowFileSystem, location: &str) -> Result<Url> {
+pub fn location_url(filesystem: &dyn FileSystem, location: &str) -> Result<Url> {
     if location.contains("://") {
         return Url::from_str(location);
     }
@@ -220,7 +220,7 @@ pub fn location_url(filesystem: &dyn ArrowFileSystem, location: &str) -> Result<
         )));
     }
     let scheme = Scheme::from_str(filesystem.type_name())
-        .or_else(|_| Scheme::from_str("arrowfs"))
+        .or_else(|_| Scheme::from_str("fs"))
         .map_err(|error| {
             Error::Io(std::io::Error::other(format!(
                 "expected a filesystem type name usable as a URL scheme, got {:?}: {error}",
@@ -372,19 +372,19 @@ struct MemoryState {
     directories: BTreeSet<String>,
 }
 
-/// An in-memory [`ArrowFileSystem`], the reference "memory" filesystem.
+/// An in-memory [`FileSystem`], the reference "memory" filesystem.
 ///
 /// One map of paths to byte values plus a set of explicitly created
 /// directories. As on an object store, a directory is a prefix: a path with
 /// entries beneath it reports [`IOKind::Directory`] whether or not
-/// [`ArrowFileSystem::create_dir`] ever named it, and creating one stores
+/// [`FileSystem::create_dir`] ever named it, and creating one stores
 /// only the marker.
 ///
 /// This is the test and benchmark substrate, and it gives Rust callers a
 /// working backend with no foreign runtime in sight.
 ///
 /// ```
-/// use yggdryl::holder::arrowfs::{ArrowFileSystem, MemoryFileSystem};
+/// use yggdryl::holder::fs::{FileSystem, MemoryFileSystem};
 /// use yggdryl::IOKind;
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -425,7 +425,7 @@ impl MemoryFileSystem {
     }
 }
 
-impl ArrowFileSystem for MemoryFileSystem {
+impl FileSystem for MemoryFileSystem {
     fn type_name(&self) -> &str {
         "memory"
     }
@@ -580,11 +580,11 @@ impl ArrowFileSystem for MemoryFileSystem {
 
 /// A thin `std::fs` mapping of the vtable, the reference "local" filesystem.
 ///
-/// It exists to prove [`ArrowFileSystem`] against a real OS filesystem and to
+/// It exists to prove [`FileSystem`] against a real OS filesystem and to
 /// benchmark the wrapper against [`crate::holder::local::File`]; it does not replace
 /// [`crate::holder::local`], whose memory-mapped `File` remains the local backend.
 ///
-/// Publication is atomic: [`ArrowFileSystem::write_full`] writes a temporary
+/// Publication is atomic: [`FileSystem::write_full`] writes a temporary
 /// sibling and renames it into place, so a reader never observes a
 /// half-written value.
 #[derive(Clone, Copy, Debug, Default)]
@@ -647,7 +647,7 @@ fn read_level(directory: &str) -> FileInfos {
 /// Distinguishes concurrent temporary files within one process.
 static TEMPORARY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-impl ArrowFileSystem for LocalFileSystem {
+impl FileSystem for LocalFileSystem {
     fn type_name(&self) -> &str {
         "local"
     }

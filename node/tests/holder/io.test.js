@@ -42,7 +42,7 @@ function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-io-'))
 }
 
-function memoryArrowFs() {
+function memoryFs() {
   const files = new Map()
   return {
     files,
@@ -130,7 +130,7 @@ test('buffered adds one reconfigurable native cache without changing identity', 
 })
 
 test('open promotes record handles and retains media metadata until close', () => {
-  const filesystem = memoryArrowFs()
+  const filesystem = memoryFs()
   const rows = (withQuantity) => new arrow.Table({
     id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
     venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
@@ -138,7 +138,7 @@ test('open promotes record handles and retains media metadata until close', () =
       ? { quantity: arrow.vectorFromArray([10, 20], new arrow.Int32()) }
       : {}),
   })
-  const handle = IOBase.fromArrowFs(filesystem, 'cache.arrows')
+  const handle = IOBase.fromFs(filesystem, 'cache.arrows')
   handle.mediaType = 'application/vnd.apache.arrow.stream'
   handle.overwriteArrowTable(rows(false))
 
@@ -458,7 +458,7 @@ test('a byte stream throws once and then stays fused', () => {
     createDir() {},
     deleteFile() {},
   }
-  const stream = IOBase.fromArrowFs(refusing, 'bucket/key.bin').pstreamBytes(0, 4)
+  const stream = IOBase.fromFs(refusing, 'bucket/key.bin').pstreamBytes(0, 4)
   assert.throws(() => stream.next(), /byte source refused/)
   assert.deepEqual(stream.next(), { value: undefined, done: true })
 })

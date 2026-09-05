@@ -6,7 +6,7 @@ use crate::holder::Holder;
 use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
 use crate::{IOBase, IOPath, Listing};
 
-use super::system::{ArrowFileSystem, filesystem_location};
+use super::system::{FileSystem, filesystem_location};
 use super::{File, Folder, location_url};
 
 /// A foreign location that resolves to the implementation it turns out to need.
@@ -14,7 +14,7 @@ use super::{File, Folder, location_url};
 /// A caller often knows a location without knowing whether it names a
 /// directory or a file - a listing entry, a configuration value, a
 /// command-line argument. `Path` is that value: it answers [`IOBase::kind`]
-/// with one [`ArrowFileSystem::file_info`], and every other operation runs
+/// with one [`FileSystem::file_info`], and every other operation runs
 /// through [`Folder`] or [`File`] accordingly.
 ///
 /// Resolution follows the laziness contract. Construction touches nothing.
@@ -23,7 +23,7 @@ use super::{File, Folder, location_url};
 /// container. Use [`Self::as_directory`] when the location must become a
 /// container.
 pub struct Path {
-    filesystem: Arc<dyn ArrowFileSystem>,
+    filesystem: Arc<dyn FileSystem>,
     url: Url,
     /// The filesystem-relative spelling of `url`, derived once so every
     /// vtable call names the same path.
@@ -65,7 +65,7 @@ impl Resolved {
 
 impl Path {
     /// Describe a location on `filesystem` without touching it.
-    pub fn new(filesystem: Arc<dyn ArrowFileSystem>, url: Url) -> Self {
+    pub fn new(filesystem: Arc<dyn FileSystem>, url: Url) -> Self {
         let location = filesystem_location(&url);
         Self {
             filesystem,
@@ -82,13 +82,13 @@ impl Path {
     /// # Errors
     ///
     /// Returns an error when `location` cannot form a canonical URL.
-    pub fn from_location(filesystem: Arc<dyn ArrowFileSystem>, location: &str) -> Result<Self> {
+    pub fn from_location(filesystem: Arc<dyn FileSystem>, location: &str) -> Result<Self> {
         let url = location_url(filesystem.as_ref(), location)?;
         Ok(Self::new(filesystem, url))
     }
 
     /// Borrow the foreign filesystem this location lives on.
-    pub fn filesystem(&self) -> &Arc<dyn ArrowFileSystem> {
+    pub fn filesystem(&self) -> &Arc<dyn FileSystem> {
         &self.filesystem
     }
 
@@ -199,7 +199,7 @@ impl Path {
     }
 }
 
-/// A foreign location is the generic role over an Arrow filesystem.
+/// A foreign location is the generic role over a filesystem.
 impl IOPath for Path {
     fn path_url(&self) -> &Url {
         &self.url
@@ -357,10 +357,7 @@ impl IOBase for Path {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        Some(Holder::ArrowPath(Self::new(
-            self.filesystem.clone(),
-            parent,
-        )))
+        Some(Holder::FsPath(Self::new(self.filesystem.clone(), parent)))
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
@@ -369,7 +366,7 @@ impl IOBase for Path {
         }
         // `name` is URI-path text, exactly as the reference backend and the
         // trait's own contract resolve it; see `Folder::child_by_path`.
-        Ok(Holder::ArrowPath(Self::new(
+        Ok(Holder::FsPath(Self::new(
             self.filesystem.clone(),
             self.url.joinpath(name)?,
         )))
