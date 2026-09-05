@@ -121,27 +121,96 @@ markdown_extensions:
 
 nav:
   - Home:
-      - index.md
-      - Architecture: architecture.md
-      - Testing: testing.md
-      - Benchmarks: benchmarks.md
-      - Contributing: contributing.md
-  - Getting started: getting-started.md
-  - Layers:
-      - Types: types.md
-      - Holder: holder.md
-      - Coding: coding.md
-      - Media: media.md
-      - Text: text.md
-      - URI: uri.md
-      - Arrow: arrow.md
-      - Expression: expression.md
-      - xxHash: xxhash.md
-      - FIX: fix.md
-      - Playground: playground.md
+    - index.md
+    - Getting started: getting-started.md
+    - Architecture: architecture.md
+    - Testing: testing.md
+    - Benchmarks: benchmarks.md
+    - Contributing: contributing.md
+  - Types:
+    - types/index.md
+    - Core:
+      - DataType: types/datatype.md
+      - Field: types/field.md
+      - Scalar: types/scalar.md
+      - Cast: types/cast.md
+    - Families:
+      - Numeric & temporal: types/numeric.md
+      - Text & bytes: types/text.md
+      - ASCII: types/ascii.md
+      - UUID: types/uuid.md
+      - Nested: types/nested.md
+      - Geospatial: types/geospatial.md
+      - Protocol: types/protocol.md
+    - Playground: types/playground.md
+  - Holder:
+    - holder/index.md
+    - IOBase:
+      - Bytes: holder/iobase/bytes.md
+      - Values: holder/iobase/values.md
+      - Records: holder/iobase/records.md
+      - Partitions: holder/iobase/partitions.md
+    - Backends:
+      - Buffer: holder/backends/buffer.md
+      - Local: holder/backends/local.md
+      - Filesystems: holder/backends/filesystems.md
+      - Buffered: holder/backends/buffered.md
+  - Coding:
+    - coding/index.md
+    - gzip: coding/gzip.md
+    - zlib: coding/zlib.md
+    - zstd: coding/zstd.md
+  - Media:
+    - media/index.md
+    - Options: media/options.md
+    - Encodings:
+      - Arrow IPC: media/ipc.md
+      - Parquet: media/parquet.md
+      - Parquet footer: media/parquet-footer.md
+      - Avro: media/avro.md
+      - Text records: media/text.md
+    - Iceberg:
+      - media/iceberg/index.md
+      - Reading: media/iceberg/read.md
+      - Writing: media/iceberg/write.md
+      - Catalog: media/iceberg/catalog.md
+      - Schemas: media/iceberg/schema.md
+  - Text:
+    - text/index.md
+    - Placeholders: text/placeholders.md
+    - Formats:
+      - JSON: text/json.md
+      - YAML: text/yaml.md
+      - TOML: text/toml.md
+  - URI:
+    - uri/index.md
+    - Path: uri/path.md
+    - URL and URN: uri/url-urn.md
+    - Patterns: uri/patterns.md
+  - Arrow:
+    - arrow/index.md
+    - Scalars: arrow/scalars.md
+    - Schema: arrow/schema.md
+    - Readers: arrow/readers.md
+  - Expression:
+    - expression/index.md
+    - Holder attributes: expression/holder.md
+    - Evaluate: expression/evaluate.md
+    - Grammar: expression/grammar.md
+  - xxHash:
+    - xxhash/index.md
+    - Streaming: xxhash/streaming.md
+    - Handles: xxhash/handles.md
+    - Values: xxhash/values.md
+  - FIX:
+    - fix/index.md
+    - Registry: fix/registry.md
+    - Store: fix/store.md
+    - Message: fix/message.md
   - Extensions:
-      - Python: extensions/python.md
-      - JavaScript: extensions/javascript.md
+    - extensions/index.md
+    - Python: extensions/python.md
+    - JavaScript: extensions/javascript.md
 
 validation:
   links:
