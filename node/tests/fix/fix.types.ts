@@ -1,6 +1,7 @@
 import {
   Field,
   IOBase,
+  MimeType,
   Scalar,
   Url,
   fix,
@@ -15,9 +16,10 @@ declare const handle: IOBase
 declare const url: Url
 declare const value: Scalar
 
-// The namespace holds two classes, two functions and the two constants.
+// The namespace holds two classes, two functions and the three constants.
 const standardBranch: string = fix.STANDARD_BRANCH
-const standardTagLimit: number = fix.STANDARD_TAG_LIMIT
+const userTagMin: number = fix.USER_TAG_MIN
+const userTagMax: number = fix.USER_TAG_MAX
 const registryClass: typeof FixRegistry = fix.FixRegistry
 const empty: FixRegistry = new fix.FixRegistry()
 const built: FixRegistry = fix.FixRegistry.fromFields([field, field])
@@ -34,14 +36,18 @@ void fromString
 void fromHandle
 
 const size: number = loaded.size
-const byId: Field | null = loaded.getFieldById('cme:5001')
-const requiredById: Field = loaded.fieldById('cme:5001')
+const byId: Field | null = loaded.getFieldById('5001:cme')
+const requiredById: Field = loaded.fieldById('5001:cme')
 const byTag: Field | null = loaded.getFieldByTag(55)
 const requiredByTag: Field = loaded.fieldByTag(55)
-const byName: Field | null = loaded.getFieldByName(standardBranch, 'Symbol')
-const requiredByName: Field = loaded.fieldByName('standard', 'Symbol')
-const byPath: Field | null = loaded.getFieldByPath('standard', 'NoPartyIDs.PartyID')
-const requiredByPath: Field = loaded.fieldByPath('standard', 'NoPartyIDs.PartyID')
+const byName: Field | null = loaded.getFieldByName('Symbol', standardBranch)
+const requiredByName: Field = loaded.fieldByName('Symbol', '')
+const byPath: Field | null = loaded.getFieldByPath('NoPartyIDs.PartyID', '')
+const requiredByPath: Field = loaded.fieldByPath('NoPartyIDs.PartyID', '')
+const bytesProtocol: MimeType = loaded.inferBytesProtocol(Buffer.from('35=D|'))
+const textProtocol: MimeType = loaded.inferTextProtocol('35=D|')
+const bytesMsgtype: Buffer | null = loaded.inferBytesMsgtype(Buffer.from('35=D|'))
+const textMsgtype: string | null = loaded.inferTextMsgtype('35=D|')
 const byKey: Field | null = loaded.getField(55)
 const byNameKey: Field | null = loaded.getField('Symbol')
 const requiredByKey: Field = loaded.field('Symbol')
@@ -50,7 +56,7 @@ const present: boolean = loaded.has('Symbol')
 const inserted: Field | null = loaded.insert(field)
 loaded.update(field)
 const removed: Field | null = loaded.remove(55)
-const removedById: Field | null = loaded.removeById('cme:5001')
+const removedById: Field | null = loaded.removeById('5001:cme')
 const walk: Generator<Field> = loaded.keys()
 const drained: Field[] = [...loaded]
 const forOf: Field[] = [...loaded.keys()]
@@ -61,7 +67,8 @@ const rendered: string = loaded.toString()
 const document: unknown[] = loaded.toJSON()
 
 void size
-void standardTagLimit
+void userTagMin
+void userTagMax
 void byId
 void requiredById
 void byTag
@@ -70,6 +77,10 @@ void byName
 void requiredByName
 void byPath
 void requiredByPath
+void bytesProtocol
+void textProtocol
+void bytesMsgtype
+void textMsgtype
 void byKey
 void byNameKey
 void requiredByKey
@@ -95,9 +106,9 @@ loaded.get({ tag: 55 })
 // @ts-expect-error a tag is a number, never a string
 loaded.getFieldByTag('55')
 // @ts-expect-error a name is a string, never a number
-loaded.fieldByName('standard', 55)
-// @ts-expect-error a branch-qualified name takes both halves
-loaded.fieldByName('Symbol')
+loaded.fieldByName('std', 55)
+// @ts-expect-error a name is required even though its branch is optional
+loaded.fieldByName()
 // @ts-expect-error an identifier is a string, never a number
 loaded.fieldById(5001)
 // @ts-expect-error an identifier is a string, never a number
@@ -112,8 +123,8 @@ const schema: Field = message.field
 const row: Scalar = message.value
 const valueCount: number = message.size
 const messageBranch: string = message.branch
-const valueById: Scalar | null = message.getById('standard:55')
-const requiredValueById: Scalar = message.byId('standard:55')
+const valueById: Scalar | null = message.getById('55:')
+const requiredValueById: Scalar = message.byId('55:')
 const valueByTag: Scalar | null = message.getByTag(55)
 const requiredValueByTag: Scalar = message.byTag(55)
 const valueByName: Scalar | null = message.getByName('Symbol')
@@ -169,7 +180,7 @@ fix.installGlobalRegistry(global)
 const branch: string = field.fix.branch
 field.fix.branch = 'cme'
 const identity: string | null = field.fix.id
-field.fix.id = 'cme:5001'
+field.fix.id = '5001:cme'
 const tag: number | null = field.fix.tag
 field.fix.tag = 55
 const tags: number[] = field.fix.tags

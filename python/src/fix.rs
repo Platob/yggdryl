@@ -10,14 +10,14 @@
 //! A branch and an identifier cross as `str` and are parsed once here through
 //! [`branch_from_py`] and [`id_from_py`], so neither gets a class of its own in
 //! Python and the grammar, the folding and the standard-tag rule all stay the
-//! core's. A bare tag and a bare name still mean the standard branch, and a
+//! core's. A bare tag or name uses the core's deterministic best match, and a
 //! colon-bearing string is a name, never an identifier.
 
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyInt};
+use pyo3::types::{PyBool, PyBytes, PyInt};
 
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
@@ -25,6 +25,7 @@ use yggdryl::{
     from_json_scalar_with_field, into_json_scalar,
 };
 
+use crate::enums::PyMimeType;
 use crate::media::iceberg::folder_holder_from_value;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
@@ -62,17 +63,26 @@ pub(crate) fn branch_from_py(text: &str) -> PyResult<CoreFixBranch> {
 
 /// Read one identifier, or report the native parse failure as a `ValueError`.
 ///
-/// The text is `branch:tag`, and `FixId::from_str` is what parses it - the
-/// standard-tag rule included, so `cme:35` is refused here exactly as it is in
+/// The text is `tag:branch`, and `FixId::from_str` is what parses it - the
+/// standard-tag rule included, so `35:cme` is refused here exactly as it is in
 /// Rust.
 pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
     CoreFixId::from_str(text).map_err(value_error)
 }
 
+/// Retain the branch spelling beside the packed identifier for a field write.
+pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
+    let branch = text
+        .split_once(':')
+        .map(|(_, branch)| branch)
+        .ok_or_else(|| PyValueError::new_err("a FIX identifier requires tag:branch"))?;
+    Ok((branch_from_py(branch)?, id_from_py(text)?))
+}
+
 /// One lookup key, read once at the boundary.
 ///
-/// An `int` is a tag in the standard branch and a `str` is a name or a dotted
-/// path in the standard branch, exactly as the core's `FixKey` splits them; a
+/// An `int` is a tag and a `str` is a name or dotted path, exactly as the
+/// core's `FixKey` splits them; a
 /// colon-bearing string is a name, never an identifier. The owned name is what
 /// lets the borrowed key be rebuilt for each call without the caller's object
 /// staying alive.
@@ -203,13 +213,13 @@ impl PyFixRegistry {
 
     /// The field a canonical or alternate identifier names, or `None`.
     ///
-    /// `id` is the `branch:tag` text; a malformed one is a `ValueError`
+    /// `id` is the `tag:branch` text; a malformed one is a `ValueError`
     /// carrying the native parse failure, never a miss.
     fn get_field_by_id(&self, id: &str) -> PyResult<Option<PyField>> {
         let id = id_from_py(id)?;
         Ok(self
             .inner
-            .get_field_by_id(&id)
+            .get_field_by_id(id)
             .cloned()
             .map(PyField::from_inner))
     }
@@ -218,15 +228,15 @@ impl PyFixRegistry {
     fn field_by_id(&self, id: &str) -> PyResult<PyField> {
         let id = id_from_py(id)?;
         self.inner
-            .field_by_id(&id)
+            .field_by_id(id)
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
 
     /// The field a canonical or alternate tag names, or `None`.
     ///
-    /// A bare tag is the standard branch exactly, never whichever dictionary
-    /// happens to be loaded.
+    /// The standard dictionary wins, then named dictionaries in canonical
+    /// name order.
     fn get_field_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner
             .get_field_by_tag(tag.0)
@@ -242,52 +252,78 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
-    /// The field a canonical name or alias names inside one dictionary, ASCII
-    /// case folded.
+    /// The field a canonical name or alias names, ASCII case folded.
     ///
-    /// A name is unique per branch, not registry-wide, so the dictionary is
-    /// named: `"standard"` is the specification's own.
-    fn get_field_by_name(&self, branch: &str, name: &str) -> PyResult<Option<PyField>> {
-        let branch = branch_from_py(branch)?;
+    /// Supplying `branch` restricts the lookup. Otherwise the core infers the
+    /// best match: canonical before alias, standard before named branches.
+    #[pyo3(signature = (name, branch=None))]
+    fn get_field_by_name(&self, name: &str, branch: Option<&str>) -> PyResult<Option<PyField>> {
+        let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_field_by_name(&branch, name)
+            .get_field_by_name(name, branch.as_ref())
             .cloned()
             .map(PyField::from_inner))
     }
 
-    /// The field a canonical name or alias names inside one dictionary, ASCII
-    /// case folded.
-    fn field_by_name(&self, branch: &str, name: &str) -> PyResult<PyField> {
-        let branch = branch_from_py(branch)?;
+    /// The field a canonical name or alias names, raising absence.
+    #[pyo3(signature = (name, branch=None))]
+    fn field_by_name(&self, name: &str, branch: Option<&str>) -> PyResult<PyField> {
+        let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .field_by_name(&branch, name)
+            .field_by_name(name, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
 
-    /// The field a dotted path reaches through a component or a group, in one
-    /// dictionary.
-    fn get_field_by_path(&self, branch: &str, path: &str) -> PyResult<Option<PyField>> {
-        let branch = branch_from_py(branch)?;
+    /// The field a dotted path reaches through a component or a group.
+    #[pyo3(signature = (path, branch=None))]
+    fn get_field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<Option<PyField>> {
+        let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_field_by_path(&branch, path)
+            .get_field_by_path(path, branch.as_ref())
             .cloned()
             .map(PyField::from_inner))
     }
 
-    /// The field a dotted path reaches through a component or a group, in one
-    /// dictionary.
-    fn field_by_path(&self, branch: &str, path: &str) -> PyResult<PyField> {
-        let branch = branch_from_py(branch)?;
+    /// The field a dotted path reaches through a component or a group.
+    #[pyo3(signature = (path, branch=None))]
+    fn field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<PyField> {
+        let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .field_by_path(&branch, path)
+            .field_by_path(path, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
 
-    /// The field a tag or a name reaches in the standard branch, or `None`.
+    /// Infer the native MIME classifier for a byte log line.
+    fn infer_bytes_protocol(&self, line: &[u8]) -> PyMimeType {
+        PyMimeType::from_core(self.inner.infer_bytes_protocol(line))
+    }
+
+    /// Infer the native MIME classifier for a text log line.
+    fn infer_text_protocol(&self, line: &str) -> PyMimeType {
+        PyMimeType::from_core(self.inner.infer_text_protocol(line))
+    }
+
+    /// Infer MsgType from a byte log line without parsing its FIX frame.
+    fn infer_bytes_msgtype<'py>(
+        &self,
+        py: Python<'py>,
+        line: &[u8],
+    ) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .infer_bytes_msgtype(line)
+            .map(|value| PyBytes::new(py, value))
+    }
+
+    /// Infer MsgType from a text log line without parsing its FIX frame.
+    fn infer_text_msgtype(&self, line: &str) -> Option<String> {
+        self.inner.infer_text_msgtype(line).map(str::to_owned)
+    }
+
+    /// The field a tag or name reaches by deterministic best match, or `None`.
     fn get_field(&self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let key = FixKeyArg::from_py(key)?;
         Ok(self
@@ -297,7 +333,7 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// The field a tag or a name reaches in the standard branch.
+    /// The field a tag or name reaches by deterministic best match.
     fn field(&self, key: &Bound<'_, PyAny>) -> PyResult<PyField> {
         let key = FixKeyArg::from_py(key)?;
         self.inner
@@ -341,7 +377,7 @@ impl PyFixRegistry {
     /// leaves the dictionary.
     fn remove_by_id(&mut self, id: &str) -> PyResult<Option<PyField>> {
         let id = id_from_py(id)?;
-        Ok(self.inner_mut()?.remove(&id).map(PyField::from_inner))
+        Ok(self.inner_mut()?.remove(id).map(PyField::from_inner))
     }
 
     /// The field a tag or a name reaches; absence is a `KeyError`.
@@ -349,8 +385,7 @@ impl PyFixRegistry {
         self.field(key)
     }
 
-    /// The field a tag or a name reaches in the standard branch, or
-    /// `default`.
+    /// The field a tag or name reaches by deterministic best match, or `default`.
     #[pyo3(signature = (key, default=None, /))]
     fn get(
         &self,
@@ -379,7 +414,7 @@ impl PyFixRegistry {
 
     /// The fields in ascending canonical-identifier order, lazily.
     ///
-    /// The order is the core's: branch-major, then by tag. The iterator holds
+    /// The order is the core's: tag-major, then by branch digest. The iterator holds
     /// the registry's `Arc` and the identifier it stopped at, so nothing is
     /// collected crossing the boundary and the dictionary is never cloned to
     /// walk it. Holding it is therefore sharing it: a mutation refuses while a
@@ -440,7 +475,7 @@ impl PyFixFieldIterator {
         if self.done {
             return None;
         }
-        let field = self.registry.next_field_after(self.after.as_ref())?;
+        let field = self.registry.next_field_after(self.after)?;
         // The cursor is the canonical identifier every registered field
         // carries; a field without one cannot be advanced past, so the walk
         // stops there rather than answering it forever.
@@ -617,11 +652,11 @@ impl PyFixMsg {
     /// The dictionary this message is spelled in.
     ///
     /// Derived from the root field's own `fix:branch` at construction, never
-    /// declared, so nothing can disagree with it; `"standard"` when the root
-    /// states none.
+    /// declared, so nothing can disagree with it; empty when the root states
+    /// none.
     #[getter]
     fn branch(&self) -> String {
-        self.inner.branch().as_str().to_owned()
+        self.inner.branch().name().to_owned()
     }
 
     /// The value of the root child an identifier names, or `None`.
@@ -630,14 +665,14 @@ impl PyFixMsg {
     /// does not speak simply misses.
     fn get_by_id(&self, id: &str) -> PyResult<Option<PyScalar>> {
         let id = id_from_py(id)?;
-        Ok(Self::answered(self.inner.get_by_id(&id)))
+        Ok(Self::answered(self.inner.get_by_id(id)))
     }
 
     /// The value of the root child an identifier names.
     fn by_id(&self, id: &str) -> PyResult<PyScalar> {
         let id = id_from_py(id)?;
         self.inner
-            .by_id(&id)
+            .by_id(id)
             .map(|value| PyScalar::from_inner(value.clone()))
             .map_err(|error| absent(&error))
     }

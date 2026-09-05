@@ -88,6 +88,7 @@ impl JsMimeType {
             "PLAIN_TEXT" => CoreMimeType::PLAIN_TEXT,
             "ULLINK" => CoreMimeType::ULLINK,
             "FIX" => CoreMimeType::FIX,
+            "FIXUL" => CoreMimeType::FIXUL,
             "FIXML" => CoreMimeType::FIXML,
             "MARKDOWN" => CoreMimeType::MARKDOWN,
             "HTML" => CoreMimeType::HTML,

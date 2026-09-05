@@ -16,7 +16,7 @@ use crate::{
         mime_type_from_input,
     },
     exact_i32,
-    fix::{branch_from_js, id_from_js},
+    fix::{branch_from_js, id_parts_from_js},
     napi_error, napi_type_error, ordering_value,
     types::datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
     types::value::arrow_scalar_to_ipc,
@@ -1788,7 +1788,7 @@ impl JsProtocolField {
 
     /// The dictionary this field belongs to, on the `fix` view.
     ///
-    /// A branch crosses as text: `'standard'` is the FIX specification's own
+    /// A branch crosses as text: `''` is the FIX specification's own
     /// dictionary and what an absent `fix:branch` means, and assigning it
     /// removes the key rather than storing it. A spelling that is not a branch
     /// throws the native parse failure, and a refusal - a tag the specification
@@ -1800,7 +1800,7 @@ impl JsProtocolField {
             .inner
             .as_fix()
             .branch()
-            .map(|branch| branch.as_str().to_owned())
+            .map(|branch| branch.name().to_owned())
             .map_err(napi_error)
     }
 
@@ -1816,7 +1816,7 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
-    /// This field's identity, `branch:tag`, on the `fix` view.
+    /// This field's identity, `tag:branch`, on the `fix` view.
     ///
     /// Derived from the branch and the canonical tag on every read and never
     /// stored, so it is `null` exactly when `fix:tag` is absent. Assigning one
@@ -1825,24 +1825,23 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn id(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "id")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
-            .id()
-            .map_err(napi_error)?
-            .map(|id| id.to_string()))
+        let view = self.field.inner.as_fix();
+        let Some(tag) = view.tag().map_err(napi_error)? else {
+            return Ok(None);
+        };
+        let branch = view.branch().map_err(napi_error)?;
+        Ok(Some(format!("{tag}:{branch}")))
     }
 
     /// Record both halves of this field's identity at once.
     #[napi(setter)]
     pub fn set_id(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "id")?;
-        let id = id_from_js(&value)?;
+        let (branch, id) = id_parts_from_js(&value)?;
         self.field
             .inner
             .as_fix_mut()
-            .set_id(&id)
+            .set_id(&branch, id.tag())
             .map_err(napi_error)
     }
 
@@ -1850,9 +1849,8 @@ impl JsProtocolField {
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `view.delete('tag')`
-    /// removes it, the way every other property is removed. A tag below
-    /// `fix.STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
-    /// another branch cannot claim it.
+    /// removes it, the way every other property is removed. A field in another
+    /// branch can claim only `fix.USER_TAG_MIN..fix.USER_TAG_MAX`.
     #[napi(getter)]
     pub fn tag(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "tag")?;

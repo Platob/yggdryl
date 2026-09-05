@@ -29,6 +29,7 @@ enum MimeTypeValue {
     PlainText,
     Ullink,
     Fix,
+    Fixul,
     Fixml,
     Markdown,
     Html,
@@ -123,7 +124,9 @@ impl MimeType {
     pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
     /// A numeric-tag FIX text frame.
     pub const FIX: Self = Self(MimeTypeValue::Fix);
-    /// A FIX text frame containing both numeric tags and symbolic keys.
+    /// A FIX text frame containing Ullink symbolic key/value entries.
+    pub const FIXUL: Self = Self(MimeTypeValue::Fixul);
+    /// A FIXML frame carrying XML.
     pub const FIXML: Self = Self(MimeTypeValue::Fixml);
     /// Markdown text.
     pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
@@ -377,6 +380,7 @@ impl MimeType {
             MimeTypeValue::PlainText => "text/plain",
             MimeTypeValue::Ullink => "text/ullink",
             MimeTypeValue::Fix => "text/fix",
+            MimeTypeValue::Fixul => "text/fixul",
             MimeTypeValue::Fixml => "text/fixml",
             MimeTypeValue::Markdown => "text/markdown",
             MimeTypeValue::Html => "text/html",
@@ -473,7 +477,10 @@ impl MimeType {
             MimeTypeValue::Puffin => Some("puffin"),
             MimeTypeValue::PlainText => Some("txt"),
             // These classify embedded frame syntax, not a filename format.
-            MimeTypeValue::Ullink | MimeTypeValue::Fix | MimeTypeValue::Fixml => None,
+            MimeTypeValue::Ullink
+            | MimeTypeValue::Fix
+            | MimeTypeValue::Fixul
+            | MimeTypeValue::Fixml => None,
             MimeTypeValue::Markdown => Some("md"),
             MimeTypeValue::Html => Some("html"),
             MimeTypeValue::Css => Some("css"),

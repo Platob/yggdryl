@@ -151,32 +151,32 @@ specification field - and the whole tracked seed - carries no branch line at all
 
 ## Identity is a branch and a tag
 
-`FixBranch` names the dictionary a field belongs to: `FixBranch::STANDARD` is the FIX
-specification's own, spelled `standard`, and any other spelling is a venue's. It parses from text
-with ASCII case folded once on the way in - `CME` and `cme` are one branch - and refuses what a
+`FixBranch` names the dictionary a field belongs to. `FixBranch::STANDARD` has an empty name,
+digest zero, `Version::default()`, and empty sender/target component IDs; any non-empty spelling
+names another dictionary. It parses from text with ASCII case folded once on the way in - `CME`
+and `cme` are one branch - and refuses what a
 branch may not be: a first byte that is not an ASCII letter, a byte outside letters, digits,
 `-`, `.` and `_`, or more than `FixBranch::MAX_LENGTH` (23) bytes. That bound is
-`smol_str`'s inline capacity, which is what keeps every registry probe carrying a branch
-allocation-free.
+`smol_str`'s inline capacity, which keeps name lookup probes allocation-free. `std` and
+`standard` are ordinary named branches, not reserved spellings.
 
-`FixId` is that branch plus a tag, rendered and parsed as `branch:tag` - `standard:35`,
-`cme:5001`. It is **derived on every read** from `fix:branch` and `fix:tag`, never stored: there
-is no `fix:id` key, on disk or in the map, so the identity cannot drift from the two facts it is
-computed from. `field.as_fix().id()` answers `None` exactly when `fix:tag` is absent, and orders
-branch-major then by tag, which is the order a registry iterates and a store writes in.
+`FixBranch::from_parts` fills the complete immutable branch value: canonical name, derived
+digest, FIX `Version`, `target_comp_id`, and `sender_comp_id`. The registry stores that value
+directly; there is no parallel branch-info type.
 
-`FixId::from_parts` is the one place the standard-tag rule lives: **a tag below
-`FixId::STANDARD_TAG_LIMIT` (5000) forces the standard branch**, because 0-4999 is what the FIX
-specification assigns itself; 5000-9999 is its user-defined range and everything above is vendor
-space. The rule is one-way - the standard branch holds any tag, and the seed and these examples
-already use 10000. Because the constructor carries it, an inadmissible identity is unconstructible
-rather than refused in several places, and every door reaches the same refusal: `set_branch`
-(checking the canonical tag *and* every alternate tag first), `set_tag`, `set_tags`, `FixField::id`
-on read, and the registry's insert, update and shard loader. The refusal is an
-`InvalidMetadataValue` naming `fix:branch`, the limit and both sides, and it leaves the field or
-the registry unchanged.
+`FixId` packs the tag in the high 32 bits and the branch's cached XXH32 digest in the low 32 bits
+of one positive `i64`. It is `Copy`, eight bytes, and naturally tag-major. A parser accepts
+`tag:branch`; display answers `35:` for the standard branch and the one-way digest form
+`5001:#7f3a1c02` for another. Fields retain their branch text and therefore expose `35:` or
+`5001:cme` through `field.fix.id`.
 
-`set_id` moves both halves at once. Without it, `standard:35` → `cme:5001` works only in the order
+The identifier is **derived on every read** from `fix:branch` and `fix:tag`, never stored. A
+non-standard branch may claim only the half-open range
+`FixId::USER_TAG_MIN..FixId::USER_TAG_MAX`, currently `[5000, 40000)`; the standard branch may
+hold every non-negative tag. The one `FixId::from_parts` gate enforces that rule for canonical and
+alternate tags and names both bounds on refusal.
+
+`set_id` moves both halves at once. Without it, `35:` → `5001:cme` works only in the order
 set-tag-then-set-branch and the reverse move only in the opposite order, because each single
 setter holds the field to the rule as it stands; `set_id` writes the branch, then the tag, and
 puts the prior branch entry back if the tag write fails.
@@ -187,7 +187,7 @@ puts the prior branch entry back if the tag write fails.
     use yggdryl::{DataType, FixId, FixBranch};
 
     let cme = FixBranch::from_str("CME")?;
-    assert_eq!(cme.as_str(), "cme", "folded once, on the way in");
+    assert_eq!(cme.name(), "cme", "folded once, on the way in");
     assert!(FixBranch::from_str("2cme").is_err());
 
     let mut trade = DataType::Utf8.nullable_field("TradeID");
@@ -195,25 +195,21 @@ puts the prior branch entry back if the tag write fails.
     assert_eq!(trade.as_fix().branch()?, FixBranch::STANDARD);
     assert_eq!(trade.as_fix().id()?, None);
 
-    trade.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5001)?)?;
-    assert_eq!(trade.as_fix().id()?.map(|id| id.to_string()), Some("cme:5001".into()));
+    trade.as_fix_mut().set_id(&cme, 5001)?;
     assert_eq!(trade.get_metadata("fix:branch"), Some("cme"));
-    assert_eq!(trade.as_fix().id()?, Some(FixId::from_str("cme:5001")?));
+    assert_eq!(trade.as_fix().id()?, Some(FixId::from_parts(&cme, 5001)?));
+    assert_eq!(std::mem::size_of::<FixId>(), 8);
 
-    // A tag the FIX specification assigns belongs to the standard branch,
-    // at every door, and a refusal leaves the field unchanged.
-    let error = FixId::from_parts(cme.clone(), 35).unwrap_err();
-    assert!(error.to_string().contains("fix:branch"), "{error}");
-    assert!(trade.as_fix_mut().set_tag(35).is_err());
-    assert_eq!(trade.as_fix().id()?, Some(FixId::from_str("cme:5001")?));
-    let mut msg_type = DataType::Utf8.nullable_field("MsgType");
-    msg_type.as_fix_mut().set_tag(35)?;
-    assert!(msg_type.as_fix_mut().set_branch(&cme).is_err());
-    // The rule is one-way: the standard branch holds any tag.
-    assert!(FixId::from_parts(FixBranch::STANDARD, 10_000).is_ok());
+    assert_eq!(FixId::USER_TAG_MIN, 5_000);
+    assert_eq!(FixId::USER_TAG_MAX, 40_000);
+    assert!(FixId::from_parts(&cme, 4_999).is_err());
+    assert!(FixId::from_parts(&cme, 5_000).is_ok());
+    assert!(FixId::from_parts(&cme, 39_999).is_ok());
+    assert!(FixId::from_parts(&cme, 40_000).is_err());
+    assert!(!FixBranch::from_str("standard")?.is_standard());
 
     // Setting the standard branch removes the key rather than storing it.
-    trade.as_fix_mut().set_id(&FixId::standard(9001))?;
+    trade.as_fix_mut().set_id(&FixBranch::STANDARD, 9_001)?;
     assert!(!trade.has_metadata("fix:branch"));
     assert_eq!(trade.as_fix().id()?, Some(FixId::standard(9001)));
     ```
@@ -224,17 +220,17 @@ puts the prior branch entry back if the tag write fails.
     import pytest
 
     from yggdryl import Field
-    from yggdryl.fix import STANDARD_BRANCH, STANDARD_TAG_LIMIT
+    from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN
 
     trade = Field("TradeID", "utf8")
     # Absent means standard, and there is no identity without a tag.
-    assert trade.fix.branch == STANDARD_BRANCH == "standard"
+    assert trade.fix.branch == STANDARD_BRANCH == ""
     assert trade.fix.id is None
 
     # A branch and an identifier cross as text, parsed once at the boundary,
     # so there is no class for either in Python.
-    trade.fix.id = "CME:5001"
-    assert trade.fix.id == "cme:5001", "folded once, on the way in"
+    trade.fix.id = "5001:CME"
+    assert trade.fix.id == "5001:cme", "folded once, on the way in"
     assert trade.fix.branch == "cme"
     assert trade.metadata["fix:branch"] == "cme"
     with pytest.raises(ValueError, match="fix branch"):
@@ -242,28 +238,16 @@ puts the prior branch entry back if the tag write fails.
     with pytest.raises(ValueError, match="fix identifier"):
         trade.fix.id = "5001"
 
-    # A tag the FIX specification assigns belongs to the standard branch, at
-    # every door, and a refusal leaves the field unchanged.
-    assert STANDARD_TAG_LIMIT == 5000
-    with pytest.raises(ValueError, match="fix:branch"):
-        trade.fix.tag = 35
-    with pytest.raises(ValueError, match="fix:branch"):
-        trade.fix.tags = [35]
-    assert trade.fix.id == "cme:5001"
-    msg_type = Field("MsgType", "utf8")
-    msg_type.fix.tag = 35
-    with pytest.raises(ValueError, match="fix:branch"):
-        msg_type.fix.branch = "cme"
-    # The rule is one-way: the standard branch holds any tag.
-    high = Field("Vendorish", "utf8")
-    high.fix.tag = 10_000
-    assert high.fix.id == "standard:10000"
-
+    assert (USER_TAG_MIN, USER_TAG_MAX) == (5_000, 40_000)
+    for tag in (4_999, 40_000):
+        with pytest.raises(ValueError, match="5000.*40000"):
+            trade.fix.id = f"{tag}:cme"
+    assert trade.fix.id == "5001:cme"
     # Setting the standard branch removes the key rather than storing it.
-    trade.fix.id = "standard:9001"
+    trade.fix.id = "9001:"
     assert "fix:branch" not in trade.metadata
-    assert trade.fix.branch == "standard"
-    assert trade.fix.id == "standard:9001"
+    assert trade.fix.branch == ""
+    assert trade.fix.id == "9001:"
     ```
 
 === "JavaScript"
@@ -275,13 +259,13 @@ puts the prior branch entry back if the tag write fails.
     const trade = Field.from('TradeID: utf8')
     // Absent means standard, and there is no identity without a tag.
     assert.equal(trade.fix.branch, fix.STANDARD_BRANCH)
-    assert.equal(fix.STANDARD_BRANCH, 'standard')
+    assert.equal(fix.STANDARD_BRANCH, '')
     assert.equal(trade.fix.id, null)
 
     // A branch and an identifier cross as text, parsed once at the boundary,
     // so there is no class for either in JavaScript.
-    trade.fix.id = 'CME:5001'
-    assert.equal(trade.fix.id, 'cme:5001', 'folded once, on the way in')
+    trade.fix.id = '5001:CME'
+    assert.equal(trade.fix.id, '5001:cme', 'folded once, on the way in')
     assert.equal(trade.fix.branch, 'cme')
     assert.equal(trade.get('fix:branch'), 'cme')
     assert.throws(() => {
@@ -291,31 +275,16 @@ puts the prior branch entry back if the tag write fails.
       trade.fix.id = '5001'
     }, /fix identifier/)
 
-    // A tag the FIX specification assigns belongs to the standard branch, at
-    // every door, and a refusal leaves the field unchanged.
-    assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
+    assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
     assert.throws(() => {
-      trade.fix.tag = 35
-    }, /fix:branch/)
-    assert.throws(() => {
-      trade.fix.tags = [35]
-    }, /fix:branch/)
-    assert.equal(trade.fix.id, 'cme:5001')
-    const msgType = Field.from('MsgType: utf8')
-    msgType.fix.tag = 35
-    assert.throws(() => {
-      msgType.fix.branch = 'cme'
-    }, /fix:branch/)
-    // The rule is one-way: the standard branch holds any tag.
-    const high = Field.from('Vendorish: utf8')
-    high.fix.tag = 10_000
-    assert.equal(high.fix.id, 'standard:10000')
-
+      trade.fix.id = '40000:cme'
+    }, /5000.*40000/)
+    assert.equal(trade.fix.id, '5001:cme')
     // Setting the standard branch removes the key rather than storing it.
-    trade.fix.id = 'standard:9001'
+    trade.fix.id = '9001:'
     assert.equal(trade.has('fix:branch'), false)
-    assert.equal(trade.fix.branch, 'standard')
-    assert.equal(trade.fix.id, 'standard:9001')
+    assert.equal(trade.fix.branch, '')
+    assert.equal(trade.fix.id, '9001:')
     ```
 
 ## Nesting needs no second type
@@ -327,9 +296,8 @@ carries its own tag, and the one path resolver every [`Field`](types.md) has rea
 path, and `NoPartyIDs.item.PartyID` spells the same route.
 
 Those two shapes are exactly what `field.dtype().is_nested()` answers `true` for, and that one
-core predicate is what puts a field in the registry's nested index half and in the `nested/`
-storage tree - see [the registry](#the-registry-resolves-in-tiers) and
-[storage](#storage-is-two-trees-of-shards-under-one-handle).
+core predicate routes a field into the `nested/` storage tree. Resolution still uses one identity
+space and one field vector.
 
 === "Rust"
 
@@ -346,11 +314,11 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
     group.as_fix_mut().set_tag(453)?;
 
     let registry = FixRegistry::from_fields([group])?;
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs")?.as_fix().tag()?, Some(453));
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.PartyID")?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.item.PartyRole")?.name(), "PartyRole");
+    assert_eq!(registry.field_by_path("NoPartyIDs", Some(&standard))?.as_fix().tag()?, Some(453));
+    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path("NoPartyIDs.item.PartyRole", Some(&standard))?.name(), "PartyRole");
     // A member is reached through its group, not registered on its own.
-    assert!(registry.get_field_by_name(&standard, "PartyID").is_none());
+    assert!(registry.get_field_by_name("PartyID", Some(&standard)).is_none());
     ```
 
 === "Python"
@@ -368,14 +336,14 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
     group.fix.tag = 453
 
     registry = FixRegistry.from_fields([group])
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs").fix.tag == 453
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
+    assert registry.field_by_path("NoPartyIDs", STANDARD_BRANCH).fix.tag == 453
+    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
     assert (
-        registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.item.PartyRole").name
+        registry.field_by_path("NoPartyIDs.item.PartyRole", STANDARD_BRANCH).name
         == "PartyRole"
     )
     # A member is reached through its group, not registered on its own.
-    assert registry.get_field_by_name(STANDARD_BRANCH, "PartyID") is None
+    assert registry.get_field_by_name("PartyID", STANDARD_BRANCH) is None
     ```
 
 === "JavaScript"
@@ -394,75 +362,55 @@ storage tree - see [the registry](#the-registry-resolves-in-tiers) and
 
     const standard = fix.STANDARD_BRANCH
     const registry = fix.FixRegistry.fromFields([group])
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs').fix.tag, 453)
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.item.PartyRole').name, 'PartyRole')
+    assert.equal(registry.fieldByPath('NoPartyIDs', standard).fix.tag, 453)
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByPath('NoPartyIDs.item.PartyRole', standard).name, 'PartyRole')
     // A member is reached through its group, not registered on its own.
     assert.equal(registry.getFieldByName(standard, 'PartyID'), null)
     ```
 
 ## The registry resolves in tiers
 
-`FixRegistry` holds its fields in one vector and four indexes of positions over it: canonical and
-alternate `FixId`s in two ordered maps, canonical names and aliases in two maps keyed by a
-branch beside ASCII-case-folded text. Each of the four is kept in two halves, one for the
-primitive fields and one for the nested ones. A lookup consults a later tier only when every
-earlier one missed, **inside one branch**:
+`FixRegistry` holds its fields in one vector and four hash indexes of positions over it. Canonical
+and alternate identities use `FixId` directly; canonical names and aliases use independent seeded
+XXH64 digests over the branch digest and ASCII-folded name. A read rechecks the field behind every
+name digest, so a collision is a miss; mutation refuses it loudly. A lookup consults a later tier
+only when every earlier one missed, **inside one branch**:
 
 1. canonical identifier, then alternate identifiers;
 2. canonical name folded, then aliases folded.
-
-Each of those four indexes is **split into a primitive and a nested half**, by the same
-`field.dtype().is_nested()` that decides [which tree a field is stored in](#storage-is-two-trees-of-shards-under-one-handle),
-and each tier reads the primitive half before the nested one:
-
-1. primitive canonical identifier, then nested canonical identifier;
-2. primitive alternate identifier, then nested alternate identifier;
-3. primitive canonical name folded, then nested canonical name folded;
-4. primitive alias folded, then nested alias folded.
-
-**The split is a locality optimization and cannot change which field a key resolves to.** The
-identity space is not split: a nested field can never claim a primitive field's identifier, name,
-alternate identifier or alias, because every insert and merge checks *both* halves before anything
-is written, and the conflict it raises names both fields exactly as a conflict between two
-primitives does. The split is also a partition of each index rather than a fifth tier above them,
-so a canonical key of the nested half still beats an alternate key of the primitive one. What
-changes is only how many entries the hot probe walks: components and repeating groups are a small
-minority of a dictionary, so the primitive half a transcriber probes per wire tag stays nearly the
-whole of it and the cold half stays small.
 
 A tag query never consults names and a name query never consults tags. Either answers the canonical
 field - its own `name()`, never the spelling the query used - and an alias can never take a name
 away from a field that claims it canonically. Folding happens once, at insert; a probe hashes the
 caller's text folded as it reads it and carries an inline branch beside it, so a hit allocates
-nothing, in either half.
+nothing.
 
-No lookup ever crosses a branch. **A bare tag and a bare name are the standard branch** -
-never whichever dictionaries happen to be loaded, which would make an answer depend on a process's
-configuration. Below `FixId::STANDARD_TAG_LIMIT` no other branch may hold a tag at all; at or
-above it, a vendor field is reached by its `FixId` or through the branch-qualified name
-accessors. **A colon-bearing string is a name, not an identifier**: `From<&str>` cannot fail, so
+An explicit branch never crosses into another dictionary. With no branch, lookup uses one
+deterministic order: standard canonical key, named-branch canonical keys in branch-name order,
+standard alternate key, then named-branch alternate keys in branch-name order. Outside
+`[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` no named branch may hold a tag. A `FixId` remains the
+exact spelling when the caller already knows the dictionary.
+**A colon-bearing string is a name, not an identifier**: `From<&str>` cannot fail, so
 parsing there would need a silent fallback to a name lookup. An identifier is parsed explicitly -
-`registry.field(&FixId::from_str("cme:5001")?)`.
+`registry.field(FixId::from_str("5001:cme")?)`.
 
 Every lookup has a specialized form for a key the caller already holds and a failing twin that
-raises a typed absence naming the key (`tag 35`, `identifier cme:5001`, `name "MsgType"`,
+raises a typed absence naming the key (`tag 35`, `identifier 5001:cme`, `name "MsgType"`,
 `path "a.b"`):
 
 | optional | failing | key |
 | --- | --- | --- |
-| `get_field_by_id(&FixId)` | `field_by_id` | canonical or alternate identifier, in any branch; carries the implementation |
-| `get_field_by_tag(i32)` | `field_by_tag` | canonical or alternate tag in the standard branch, which is `get_field_by_id(&FixId::standard(tag))` |
-| `get_field_by_name(&FixBranch, &str)` | `field_by_name` | canonical name or alias, folded, inside one branch |
-| `get_field_by_path(&FixBranch, &str)` | `field_by_path` | the whole string as a name first, else the first segment here and the rest through `Field::get_field_by_path` |
-| `get_field(impl Into<FixKey>)` | `field` | matches `FixKey::Tag` / `FixKey::Id` / `FixKey::Name` once and redirects to the rows above, a bare key meaning the standard branch |
+| `get_field_by_id(FixId)` | `field_by_id` | canonical or alternate identifier, in any branch; carries the implementation |
+| `get_field_by_tag(i32)` | `field_by_tag` | canonical or alternate tag using deterministic best-match order |
+| `get_field_by_name(&str, Option<&FixBranch>)` | `field_by_name` | canonical name or alias, folded; an omitted branch chooses the best match |
+| `get_field_by_path(&str, Option<&FixBranch>)` | `field_by_path` | the whole string as a name first, else the first segment here and the rest through `Field::get_field_by_path` |
+| `get_field(impl Into<FixKey>)` | `field` | matches `FixKey::Tag` / `FixKey::Id` / `FixKey::Name` once and redirects to the rows above |
 
-`FixKey` is built from an `i32`, a `&FixId`, a `&str` or a `&String`, exactly as `FieldKey` is, so
+`FixKey` is built from an `i32`, a `FixId`, a `&str` or a `&String`, exactly as `FieldKey` is, so
 `registry.field(35)` and `registry.field("MsgType")` are one call. `contains` takes the same key,
-`iter` walks the fields in ascending identifier order - branch-major, then by tag - merging the two
-halves as it goes, so a nested field takes its place among the primitives rather than after them
-and the order is exactly what one undivided index would give. `next_field_after`, the cursor a
-binding advances with, walks the same merge, and `len` / `is_empty` count both halves.
+`iter` walks the fields in ascending packed-identifier order - tag-major, then branch digest.
+`next_field_after`, the cursor each binding advances with, walks the same order.
 
 Identity is the `FixId` and, separately, the pair of branch and folded canonical name. Two
 fields may share neither, nor an alternate identifier, nor an alias. **Two branches may define
@@ -477,7 +425,7 @@ the identity: the incoming field wins the name spelling, nullability and every m
 declare; the stored field keeps the keys only it declares; `tags` and `aliases` concatenate,
 incoming first, deduplicated, order kept; a datatype disagreement is a typed error naming both,
 never a silent widening. Both build the result first and check every key it would claim, so a
-refusal leaves the vector and both halves of all four indexes untouched. `remove` takes a tag, an identifier or a
+refusal leaves the vector and all four indexes untouched. `remove` takes a tag, an identifier or a
 name and answers the field.
 
 === "Rust"
@@ -496,11 +444,11 @@ name and answers the field.
     price.as_fix_mut().set_aliases(["Px"])?;
     // The venue dictionary reuses the name `Symbol`, which is the normal case.
     let mut venue = DataType::Utf8.nullable_field("Symbol");
-    venue.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5055)?)?;
+    venue.as_fix_mut().set_id(&cme, 5055)?;
     let mut registry = FixRegistry::from_fields([symbol, price, venue])?;
 
     // Any spelling of a name or alias answers the canonical field.
-    assert_eq!(registry.field_by_name(&standard, "TICKER")?.name(), "Symbol");
+    assert_eq!(registry.field_by_name("TICKER", Some(&standard))?.name(), "Symbol");
     assert_eq!(registry.field("px")?.name(), "Price");
     assert_eq!(registry.get_field(55), registry.get_field("symbol"));
     assert!(registry.contains(FixKey::Tag(44)));
@@ -508,15 +456,15 @@ name and answers the field.
     let error = registry.field_by_tag(35).unwrap_err();
     assert!(error.is_absent());
 
-    // A bare tag and a bare name are the standard branch; the venue field
-    // is reached by its identifier or by name inside its own dictionary.
-    let venue_id = FixId::from_str("cme:5055")?;
-    assert_eq!(registry.field_by_id(&venue_id)?.as_fix().branch()?, cme);
-    assert_eq!(registry.field(&venue_id)?.as_fix().tag()?, Some(5055));
-    assert_eq!(registry.field_by_name(&cme, "SYMBOL")?.as_fix().tag()?, Some(5055));
-    assert_eq!(registry.field_by_name(&standard, "symbol")?.as_fix().tag()?, Some(55));
-    assert!(registry.get_field_by_tag(5055).is_none(), "never crosses a branch");
-    assert!(registry.get_field("cme:5055").is_none(), "a string key is a name");
+    // Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    // matching venue definition, while the standard canonical name wins.
+    let venue_id = FixId::from_str("5055:cme")?;
+    assert_eq!(registry.field_by_id(venue_id)?.as_fix().branch()?, cme);
+    assert_eq!(registry.field(venue_id)?.as_fix().tag()?, Some(5055));
+    assert_eq!(registry.field_by_name("SYMBOL", Some(&cme))?.as_fix().tag()?, Some(5055));
+    assert_eq!(registry.field_by_name("symbol", Some(&standard))?.as_fix().tag()?, Some(55));
+    assert_eq!(registry.field_by_tag(5055)?.as_fix().branch()?, cme);
+    assert!(registry.get_field("5055:cme").is_none(), "a string key is a name");
 
     // A key another field holds *in the same branch* is a conflict naming
     // both, and the branch; nothing changes.
@@ -544,14 +492,14 @@ name and answers the field.
     assert!(registry.update(widened).is_err());
     assert_eq!(registry.field_by_tag(55)?.dtype(), &DataType::Utf8);
 
-    // Iteration is branch-major, then by tag.
+    // Iteration is tag-major, then by branch digest.
     assert_eq!(
         registry.iter().map(|field| field.name()).collect::<Vec<_>>(),
-        ["Symbol", "Price", "SYMBOL"],
+        ["Price", "SYMBOL", "Symbol"],
     );
     assert_eq!(registry.remove("sym").map(|field| field.name().to_owned()), Some("SYMBOL".into()));
     assert!(registry.get_field_by_tag(65).is_none());
-    assert_eq!(registry.remove(&venue_id).map(|field| field.name().to_owned()), Some("Symbol".into()));
+    assert_eq!(registry.remove(venue_id).map(|field| field.name().to_owned()), Some("Symbol".into()));
     ```
 
 === "Python"
@@ -573,15 +521,15 @@ name and answers the field.
 
     registry = FixRegistry.from_fields(
         [
-            fix_field("Symbol", "utf8", "standard:55", "Ticker"),
-            fix_field("Price", "decimal128(20, 8)", "standard:44", "Px"),
+            fix_field("Symbol", "utf8", "55:", "Ticker"),
+            fix_field("Price", "decimal128(20, 8)", "44:", "Px"),
             # The venue dictionary reuses the name `Symbol`, the normal case.
-            fix_field("Symbol", "utf8", "cme:5055"),
+            fix_field("Symbol", "utf8", "5055:cme"),
         ]
     )
 
     # Any spelling of a name or alias answers the canonical field.
-    assert registry.field_by_name(STANDARD_BRANCH, "TICKER").name == "Symbol"
+    assert registry.field_by_name("TICKER", STANDARD_BRANCH).name == "Symbol"
     assert registry.field("px").name == "Price"
     assert registry.get_field(55) == registry.get_field("symbol")
     assert 44 in registry
@@ -589,23 +537,23 @@ name and answers the field.
     with pytest.raises(KeyError, match="tag 35"):
         registry.field_by_tag(35)
 
-    # A bare tag and a bare name are the standard branch; the venue field is
-    # reached by its identifier or by name inside its own dictionary.
-    assert registry.field_by_id("cme:5055").fix.branch == "cme"
-    assert registry.field_by_name("cme", "SYMBOL").fix.tag == 5055
-    assert registry.field_by_name("standard", "symbol").fix.tag == 55
-    assert registry.get_field_by_tag(5055) is None, "never crosses a branch"
-    assert registry.get_field("cme:5055") is None, "a string key is a name"
+    # Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    # matching venue definition, while the standard canonical name wins.
+    assert registry.field_by_id("5055:cme").fix.branch == "cme"
+    assert registry.field_by_name("SYMBOL", "cme").fix.tag == 5055
+    assert registry.field_by_name("symbol", "").fix.tag == 55
+    assert registry.field_by_tag(5055).fix.branch == "cme"
+    assert registry.get_field("5055:cme") is None, "a string key is a name"
 
     # A key another field holds *in the same branch* is a conflict naming
     # both, and the branch; nothing changes.
     with pytest.raises(ValueError, match="held by Symbol") as conflict:
-        registry.insert(fix_field("SymbolSfx", "utf8", "standard:65", "ticker"))
-    assert 'branch \\"standard\\"' in str(conflict.value)
+        registry.insert(fix_field("SymbolSfx", "utf8", "65:", "ticker"))
+    assert 'branch \\"\\"' in str(conflict.value)
     assert len(registry) == 3
 
     # A merge keeps what only the stored field declared and adds the rest.
-    incoming = fix_field("SYMBOL", "utf8", "standard:55", "Sym")
+    incoming = fix_field("SYMBOL", "utf8", "55:", "Sym")
     incoming.fix.tags = [65]
     registry.update(incoming)
     merged = registry.field_by_tag(65)
@@ -613,14 +561,14 @@ name and answers the field.
     assert merged.fix.aliases == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
-        registry.update(fix_field("Symbol", "large_utf8", "standard:55"))
+        registry.update(fix_field("Symbol", "large_utf8", "55:"))
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
-    # Iteration is branch-major, then by tag.
+    # Iteration is tag-major, then by branch digest.
     assert [field.fix.id for field in registry] == [
-        "cme:5055",
-        "standard:44",
-        "standard:55",
+        "44:",
+        "55:",
+        "5055:cme",
     ]
     assert registry.remove("sym").name == "SYMBOL"
     assert registry.get_field_by_tag(65) is None
@@ -640,68 +588,121 @@ name and answers the field.
     }
 
     const registry = fix.FixRegistry.fromFields([
-      fixField('Symbol', 'utf8', 'standard:55', 'Ticker'),
-      fixField('Price', 'decimal128(20, 8)', 'standard:44', 'Px'),
+      fixField('Symbol', 'utf8', '55:', 'Ticker'),
+      fixField('Price', 'decimal128(20, 8)', '44:', 'Px'),
       // The venue dictionary reuses the name `Symbol`, the normal case.
-      fixField('Symbol', 'utf8', 'cme:5055'),
+      fixField('Symbol', 'utf8', '5055:cme'),
     ])
 
     // Any spelling of a name or alias answers the canonical field.
-    assert.equal(registry.fieldByName(fix.STANDARD_BRANCH, 'TICKER').name, 'Symbol')
+    assert.equal(registry.fieldByName('TICKER', fix.STANDARD_BRANCH).name, 'Symbol')
     assert.equal(registry.field('px').name, 'Price')
     assert.ok(registry.getField(55).equals(registry.getField('symbol')))
     assert.equal(registry.has(44), true)
     assert.equal(registry.has('44'), false, 'a tag query never consults names')
     assert.throws(() => registry.fieldByTag(35), /tag 35/)
 
-    // A bare tag and a bare name are the standard branch; the venue field is
-    // reached by its identifier or by name inside its own dictionary.
-    assert.equal(registry.fieldById('cme:5055').fix.branch, 'cme')
-    assert.equal(registry.fieldByName('cme', 'SYMBOL').fix.tag, 5055)
-    assert.equal(registry.fieldByName('standard', 'symbol').fix.tag, 55)
-    assert.equal(registry.getFieldByTag(5055), null, 'never crosses a branch')
-    assert.equal(registry.getField('cme:5055'), null, 'a string key is a name')
+    // Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    // matching venue definition, while the standard canonical name wins.
+    assert.equal(registry.fieldById('5055:cme').fix.branch, 'cme')
+    assert.equal(registry.fieldByName('SYMBOL', 'cme').fix.tag, 5055)
+    assert.equal(registry.fieldByName('symbol', '').fix.tag, 55)
+    assert.equal(registry.fieldByTag(5055).fix.branch, 'cme')
+    assert.equal(registry.getField('5055:cme'), null, 'a string key is a name')
 
     // A key another field holds *in the same branch* is a conflict naming
     // both, and the branch; nothing changes.
     assert.throws(
-      () => registry.insert(fixField('SymbolSfx', 'utf8', 'standard:65', 'ticker')),
+      () => registry.insert(fixField('SymbolSfx', 'utf8', '65:', 'ticker')),
       /held by Symbol/,
     )
     assert.equal(registry.size, 3)
 
     // A merge keeps what only the stored field declared and adds the rest.
-    const incoming = fixField('SYMBOL', 'utf8', 'standard:55', 'Sym')
+    const incoming = fixField('SYMBOL', 'utf8', '55:', 'Sym')
     incoming.fix.tags = [65]
     registry.update(incoming)
     const merged = registry.fieldByTag(65)
     assert.equal(merged.name, 'SYMBOL')
     assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
     // A datatype disagreement is refused, never widened.
-    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 'standard:55')))
+    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', '55:')))
     assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
 
-    // Iteration is branch-major, then by tag.
+    // Iteration is tag-major, then by branch digest.
     assert.deepEqual(
       [...registry].map((field) => field.fix.id),
-      ['cme:5055', 'standard:44', 'standard:55'],
+      ['44:', '55:', '5055:cme'],
     )
     assert.equal(registry.remove('sym').name, 'SYMBOL')
     assert.equal(registry.getFieldByTag(65), null)
     // `remove` reads a string as a standard name, so a vendor field leaves by
     // its identifier.
-    assert.equal(registry.removeById('cme:5055').name, 'Symbol')
+    assert.equal(registry.removeById('5055:cme').name, 'Symbol')
     assert.equal(registry.size, 1)
+    ```
+
+## Shallow protocol and MsgType inference
+
+`infer_bytes_protocol` / `infer_text_protocol` classify one arbitrary log line without parsing a
+message: numeric pairs answer `text/fix`, known symbolic pairs answer `text/ullink`, and a numeric
+frame that also carries key/value names answers `text/fixul`. Official `XmlData(213)` proves
+`text/fixml` when its payload begins with XML. Unrelated text answers
+`application/octet-stream`. The scan locates `8=` first, then `35=`, then the first pair-shaped run;
+it holds one separator, stops at checksum tag 10, and does not mistake prefix, suffix, XML
+attributes, or `#A=1` inside a value for fields.
+
+`infer_bytes_msgtype` / `infer_text_msgtype` borrow the value of numeric tag 35 or symbolic
+`MSGTYPE`. A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an
+alphanumeric suffix routes to the canonical `UDF` root. Canonical spellings work even in an empty registry; loaded aliases and alternate tags
+extend the same lookup. The Rust byte path allocates nothing and returns a slice of the input.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{FixRegistry, MimeType};
+
+    let registry = FixRegistry::new();
+    let line = b"sending 8=FIX.4.4|35=D|55=AAPL|10=001| queued seq=7";
+    assert_eq!(registry.infer_bytes_protocol(line), MimeType::FIX);
+    assert_eq!(registry.infer_bytes_msgtype(line), Some(&b"D"[..]));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import MimeType
+    from yggdryl.fix import FixRegistry
+
+    registry = FixRegistry()
+    line = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
+    assert registry.infer_text_protocol(line) == MimeType.ULLINK
+    assert registry.infer_text_msgtype(line) == "D"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { MimeType, fix } = require('yggdryl')
+
+    const registry = new fix.FixRegistry()
+    const line = '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|'
+    assert.ok(registry.inferTextProtocol(line).equals(MimeType.FIXUL))
+    assert.equal(registry.inferTextMsgtype(line), 'D')
     ```
 
 ## Storage is two trees of shards under one handle
 
-A registry reads and writes through one [`IOBase`](holder.md) folder handle and nothing else, into two
-trees:
+A registry reads and writes through one [`IOBase`](holder.md) folder handle and nothing else, into
+two trees plus one branch manifest:
 
 ```text
+<root>/primitive/<shard>.json
 <root>/primitive/<branch>/<shard>.json
+<root>/nested/<shard>.json
 <root>/nested/<branch>/<shard>.json
+<root>/branches.json
 ```
 
 **`primitive` holds the fields whose datatype is one scalar value and `nested` the ones whose
@@ -710,21 +711,29 @@ predicate and the only one: it already unwraps a dictionary to its value type an
 encoding to its values, so a dictionary-encoded Struct is nested and a dictionary-encoded Utf8 is
 not. In FIX terms the nested fields are exactly the components - a Struct whose children are its
 members - and the repeating groups - a List of that Struct; every price, quantity, timestamp and
-character code is primitive. Components and groups are a small minority of any dictionary but they
-carry a whole subtree each, so isolating them means the lookup a transcriber performs thousands of
-times per message touches only the small, hot half, and a dictionary's nested definitions can be
-read, written and skipped as a unit.
+character code is primitive. The split keeps authored and loaded dictionary shapes legible; the
+in-memory indexes still cover both trees together.
 
-`shard = tag / 100` is unchanged inside each tree, so `standard:55` is
-`primitive/standard/0.json` and `cme:5001` is `primitive/cme/50.json`: the branch level sits above
-the shard level because a shard index is only unique inside one dictionary, a tag then reaches
+`shard = tag / 100` is unchanged inside each tree, so `55:` is
+`primitive/0.json` and `5001:cme` is `primitive/cme/50.json`. Named branches add one folder;
+the absent standard branch adds none. A tag then reaches
 exactly one shard by arithmetic, and an alternate tag is an index entry that never fans a field
 across shards. Each shard is a JSON array of the core field document - what `Field::into_value`
 projects - ordered by canonical identifier and rendered indented, so the whole `fix:` namespace
-persists through the path every field already has and the tracked seed reads in a diff. Nothing
-else is composed: no envelope, no version marker. The branch segment is the canonical lowercase
+persists through the path every field already has and the tracked seed reads in a diff. A named
+branch segment is the canonical lowercase
 text, whose grammar - a leading letter, no separators, no `.` or `..` - makes it a safe single path
 segment.
+
+`branches.json` is a canonically rendered JSON array ordered by branch name. Each named
+`FixBranch` stores `name`, derived `digest`, `version`, `targetcompid`, and `sendercompid`; parsing
+defaults absent values to the branch defaults and verifies a declared digest. The standard branch
+is omitted. An absent manifest is valid and reconstructs default branch values from shards. An entry
+with no field in either tree is a typed error rather than an invented dictionary.
+
+`branch_of`, `branch_named`, and `branch_for_session` borrow the stored `FixBranch`;
+`branches` iterates them and `set_branch` installs one atomically. Component IDs preserve their
+spelling and session lookup folds ASCII case.
 
 **Both trees are optional.** A dictionary of only scalars writes no `nested/` folder at all, a
 dictionary of only components and groups writes no `primitive/`, and a root holding neither loads
@@ -735,11 +744,10 @@ which dictionary it belongs to and its own datatype decides which tree it belong
 branch contradicts the folder, or whose datatype contradicts the tree, is a typed error naming
 both. A standard field states nothing, so it costs no key.
 
-`from_handle` is the one loader. It lists each tree and expects **branch folders only**: a leaf
-directly under `primitive/` or `nested/` is a typed error naming it, and a folder whose name is not
-a branch keeps `FixBranch::from_str`'s typed parse failure and its byte position with the folder
-URL attached. Inside a branch folder it reads every `<n>.json` leaf and inserts its fields, leaving
-anything else alone; every shard of both trees is loaded on open, because a name has no numeric
+`from_handle` is the one loader. It reads standard `<n>.json` shards directly under each tree and
+named branches from one folder below it. A folder whose name is not a branch keeps
+`FixBranch::from_str`'s typed parse failure and its byte position with the folder URL attached.
+Other leaves are ignored. Every shard of both trees is loaded on open, because a name has no numeric
 structure to pick a shard with and a dictionary is small enough that loading it whole costs less
 than lazy machinery. A folder that does not exist lists nothing and answers the empty registry, as
 every handle's laziness contract says; a shard that exists but does not parse, holds a field
@@ -779,7 +787,7 @@ folder, or point at a root written by this version.
     // One venue field, which lands in its own branch folder.
     let cme = FixBranch::from_str("cme")?;
     let mut trade = DataType::Utf8.nullable_field("TradeID");
-    trade.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5001)?)?;
+    trade.as_fix_mut().set_id(&cme, 5001)?;
     fields.push(trade);
     // One repeating group, which is the only field of the nested tree.
     let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])?
@@ -792,23 +800,24 @@ folder, or point at a root written by this version.
 
     let shards = |tree: &str, branch: &str| -> yggdryl::Result<Vec<String>> {
         let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))?
+            .filter(|entry| entry.as_ref().is_ok_and(|entry| entry.path().is_file()))
             .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
             .collect::<Result<_, _>>()?;
         names.sort();
         Ok(names)
     };
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert_eq!(shards("primitive", "standard")?, ["0.json", "1.json"]);
+    assert_eq!(shards("primitive", "")?, ["0.json", "1.json"]);
     // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert_eq!(shards("primitive", "cme")?, ["50.json"]);
     // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert_eq!(shards("nested", "standard")?, ["4.json"]);
+    assert_eq!(shards("nested", "")?, ["4.json"]);
 
     let reloaded = FixRegistry::from_handle(&folder)?;
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.field_by_tag(20)?.name(), "ExecType");
     assert_eq!(reloaded.field_by_tag(453)?.name(), "NoPartyIDs");
-    assert_eq!(reloaded.field_by_id(&FixId::from_str("cme:5001")?)?.name(), "TradeID");
+    assert_eq!(reloaded.field_by_id(FixId::from_str("5001:cme")?)?.name(), "TradeID");
 
     // Removing the only field of a shard removes the shard on the next write,
     // emptying a branch removes its folder whole, and emptying a tree removes
@@ -816,19 +825,12 @@ folder, or point at a root written by this version.
     registry.remove(100);
     registry.remove(150);
     registry.remove(453);
-    registry.remove(&FixId::from_str("cme:5001")?);
+    registry.remove(FixId::from_str("5001:cme")?);
     registry.write_into(&mut folder)?;
-    assert!(!root.join("primitive").join("standard").join("1.json").exists());
+    assert!(!root.join("primitive").join("").join("1.json").exists());
     assert!(!root.join("primitive").join("cme").exists());
     assert!(!root.join("nested").exists());
     assert_eq!(FixRegistry::from_handle(&folder)?.len(), 2);
-
-    // A leaf directly under a tree root is a typed error, never a silent
-    // empty load.
-    std::fs::write(root.join("primitive").join("0.json"), b"[]")?;
-    let error = FixRegistry::from_handle(&folder).unwrap_err();
-    assert!(error.to_string().contains("only branch folders"), "{error}");
-    std::fs::remove_file(root.join("primitive").join("0.json"))?;
 
     // A folder that is not there loads as empty and is not created.
     let absent = Folder::new(root.join("absent"))?;
@@ -860,7 +862,7 @@ folder, or point at a root written by this version.
     declared[3].fix.tags = [20]
     # One venue field, which lands in its own branch folder.
     trade = Field("TradeID", "utf8")
-    trade.fix.id = "cme:5001"
+    trade.fix.id = "5001:cme"
     declared.append(trade)
     # One repeating group, which is the only field of the nested tree.
     item = Field("item", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
@@ -872,21 +874,21 @@ folder, or point at a root written by this version.
 
 
     def shards(tree: str, branch: str) -> list[str]:
-        return sorted(path.name for path in (root / tree / branch).iterdir())
+        return sorted(path.name for path in (root / tree / branch).iterdir() if path.is_file())
 
 
     # The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert shards("primitive", "standard") == ["0.json", "1.json"]
+    assert shards("primitive", "") == ["0.json", "1.json"]
     # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert shards("primitive", "cme") == ["50.json"]
     # The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert shards("nested", "standard") == ["4.json"]
+    assert shards("nested", "") == ["4.json"]
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
     assert reloaded.field_by_tag(20).name == "ExecType"
     assert reloaded.field_by_tag(453).name == "NoPartyIDs"
-    assert reloaded.field_by_id("cme:5001").name == "TradeID"
+    assert reloaded.field_by_id("5001:cme").name == "TradeID"
 
     # Removing the only field of a shard removes the shard on the next write,
     # emptying a branch removes its folder whole, and emptying a tree removes
@@ -896,25 +898,17 @@ folder, or point at a root written by this version.
     registry.remove(150)
     registry.remove(453)
     kept = FixRegistry.from_fields(
-        [field for field in registry if field.fix.branch == "standard"]
+        [field for field in registry if field.fix.branch == ""]
     )
     kept.write_into(root)
-    assert not (root / "primitive" / "standard" / "1.json").exists()
+    assert not (root / "primitive" / "1.json").exists()
     assert not (root / "primitive" / "cme").exists()
     assert not (root / "nested").exists()
     assert len(FixRegistry.from_handle(root)) == 2
 
-    # A leaf directly under a tree root is a typed error, never a silent
-    # empty load.
-    stray = root / "primitive" / "0.json"
-    stray.write_bytes(b"[]")
-    with pytest.raises(ValueError, match="only branch folders"):
-        FixRegistry.from_handle(root)
-    stray.unlink()
-
     # A root left in the retired `records/` layout is refused, not read empty.
     retired = workspace / "retired"
-    (retired / "records" / "standard").mkdir(parents=True)
+    (retired / "records" / "old").mkdir(parents=True)
     with pytest.raises(ValueError, match="records"):
         FixRegistry.from_handle(retired)
 
@@ -947,7 +941,7 @@ folder, or point at a root written by this version.
     declared[3].fix.tags = [20]
     // One venue field, which lands in its own branch folder.
     const trade = Field.from('TradeID: utf8')
-    trade.fix.id = 'cme:5001'
+    trade.fix.id = '5001:cme'
     declared.push(trade)
     // One repeating group, which is the only field of the nested tree.
     const item = fields.struct('item', [Field.from('PartyID: utf8')], { nullable: false })
@@ -957,19 +951,21 @@ folder, or point at a root written by this version.
     const registry = fix.FixRegistry.fromFields(declared)
     registry.writeInto(root)
 
-    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch)).sort()
+    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch))
+      .filter((name) => fs.statSync(path.join(root, tree, branch, name)).isFile())
+      .sort()
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert.deepEqual(shards('primitive', 'standard'), ['0.json', '1.json'])
+    assert.deepEqual(shards('primitive', ''), ['0.json', '1.json'])
     // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert.deepEqual(shards('primitive', 'cme'), ['50.json'])
     // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert.deepEqual(shards('nested', 'standard'), ['4.json'])
+    assert.deepEqual(shards('nested', ''), ['4.json'])
 
     const reloaded = fix.FixRegistry.fromHandle(root)
     assert.ok(reloaded.equals(registry))
     assert.equal(reloaded.fieldByTag(20).name, 'ExecType')
     assert.equal(reloaded.fieldByTag(453).name, 'NoPartyIDs')
-    assert.equal(reloaded.fieldById('cme:5001').name, 'TradeID')
+    assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
 
     // Removing the only field of a shard removes the shard on the next write,
     // emptying a branch removes its folder whole, and emptying a tree removes
@@ -978,23 +974,16 @@ folder, or point at a root written by this version.
     registry.remove(100)
     registry.remove(150)
     registry.remove(453)
-    registry.removeById('cme:5001')
+    registry.removeById('5001:cme')
     registry.writeInto(root)
-    assert.equal(fs.existsSync(path.join(root, 'primitive', 'standard', '1.json')), false)
+    assert.equal(fs.existsSync(path.join(root, 'primitive', '1.json')), false)
     assert.equal(fs.existsSync(path.join(root, 'primitive', 'cme')), false)
     assert.equal(fs.existsSync(path.join(root, 'nested')), false)
     assert.equal(fix.FixRegistry.fromHandle(root).size, 2)
 
-    // A leaf directly under a tree root is a typed error, never a silent
-    // empty load.
-    const stray = path.join(root, 'primitive', '0.json')
-    fs.writeFileSync(stray, '[]')
-    assert.throws(() => fix.FixRegistry.fromHandle(root), /only branch folders/)
-    fs.rmSync(stray)
-
     // A root left in the retired `records/` layout is refused, not read empty.
     const retired = path.join(workspace, 'retired')
-    fs.mkdirSync(path.join(retired, 'records', 'standard'), { recursive: true })
+    fs.mkdirSync(path.join(retired, 'records', 'old'), { recursive: true })
     assert.throws(() => fix.FixRegistry.fromHandle(retired), /records/)
 
     // A folder that is not there loads as empty and is not created.
@@ -1005,8 +994,9 @@ folder, or point at a root written by this version.
     fs.rmSync(workspace, { recursive: true, force: true })
     ```
 
-The repository ships a seed dictionary at `config/fix/primitive/standard/<shard>.json` and
-`config/fix/nested/standard/4.json`, written by `write_into` itself: a small FIX 4.4 subset - the
+The repository ships a seed dictionary at `config/fix/primitive/<shard>.json`,
+`config/fix/nested/4.json`, written by `write_into` itself: a
+small FIX 4.4 subset - the
 standard header and trailer, the order and execution fields,
 the `Parties` component as a repeating group - with the specification's wording as each
 description, a display name where FIX has one, declared aliases such as `Ticker` for `Symbol`, and
@@ -1025,10 +1015,10 @@ resolution order.
     let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
 
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol");
-    assert_eq!(registry.field_by_name(&standard, "ticker")?.name(), "Symbol");
+    assert_eq!(registry.field_by_name("ticker", Some(&standard))?.name(), "Symbol");
     assert_eq!(registry.field_by_tag(20)?.name(), "ExecType");
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.PartyID")?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_name(&standard, "ClOrdID")?.display(), Some("Client order ID"));
+    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("Client order ID"));
     // Every seed field is a specification field, so none states a branch.
     assert!(registry.iter().all(|field| !field.has_metadata("fix:branch")));
     assert!(registry.len() < 40);
@@ -1046,11 +1036,11 @@ resolution order.
     registry = FixRegistry.from_handle(seed)
 
     assert registry.field_by_tag(55).name == "Symbol"
-    assert registry.field_by_id("standard:55").name == "Symbol"
-    assert registry.field_by_name(STANDARD_BRANCH, "ticker").name == "Symbol"
+    assert registry.field_by_id("55:").name == "Symbol"
+    assert registry.field_by_name("ticker", STANDARD_BRANCH).name == "Symbol"
     assert registry.field_by_tag(20).name == "ExecType"
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
-    assert registry.field_by_name(STANDARD_BRANCH, "ClOrdID").display == "Client order ID"
+    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
+    assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "Client order ID"
     # Every seed field is a specification field, so none states a branch.
     assert all("fix:branch" not in field.metadata for field in registry)
     assert len(registry) < 40
@@ -1068,11 +1058,11 @@ resolution order.
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
 
     assert.equal(registry.fieldByTag(55).name, 'Symbol')
-    assert.equal(registry.fieldById('standard:55').name, 'Symbol')
-    assert.equal(registry.fieldByName(standard, 'ticker').name, 'Symbol')
+    assert.equal(registry.fieldById('55:').name, 'Symbol')
+    assert.equal(registry.fieldByName('ticker', standard).name, 'Symbol')
     assert.equal(registry.fieldByTag(20).name, 'ExecType')
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByName(standard, 'ClOrdID').display, 'Client order ID')
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByName('ClOrdID', standard).display, 'Client order ID')
     // Every seed field is a specification field, so none states a branch.
     assert.ok([...registry].every((field) => field.has('fix:branch') === false))
     assert.ok(registry.size < 40)
@@ -1192,7 +1182,7 @@ with it.
 A bare tag or name then resolves in a fixed **two-step tier and no further**:
 
 1. this message's own branch, when the identifier that would name is legal at all - that is,
-   the tag is at or above `FixId::STANDARD_TAG_LIMIT`, or the message is already standard;
+   the tag is in `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)`, or the message is already standard;
 2. the standard branch.
 
 That is what makes both halves of a real venue message reachable: `get_by_tag(5001)` finds the
@@ -1257,10 +1247,10 @@ ordered and canonicalized against the same root.
     // The message's branch is the root's own, and an identifier is exact.
     assert_eq!(msg.branch(), &yggdryl::FixBranch::STANDARD);
     assert_eq!(
-        msg.by_id(&yggdryl::FixId::standard(38))?,
+        msg.by_id(yggdryl::FixId::standard(38))?,
         &Scalar::from(100_i64)
     );
-    assert!(msg.get_by_id(&yggdryl::FixId::from_str("cme:5001")?).is_none());
+    assert!(msg.get_by_id(yggdryl::FixId::from_str("5001:cme")?).is_none());
 
     // Schema and value serialize through the paths every field and value share.
     let schema = root.clone().into_json()?;
@@ -1321,8 +1311,8 @@ ordered and canonicalized against the same root.
 
     # The message's branch is the root's own, and an identifier is exact.
     assert message.branch == STANDARD_BRANCH
-    assert message.by_id("standard:38").as_py() == 100
-    assert message.get_by_id("cme:5001") is None
+    assert message.by_id("38:").as_py() == 100
+    assert message.get_by_id("5001:cme") is None
 
     # The schema serializes through the path every field already has, and the
     # value the message holds names the same row.
@@ -1379,8 +1369,8 @@ ordered and canonicalized against the same root.
 
     // The message's branch is the root's own, and an identifier is exact.
     assert.equal(message.branch, fix.STANDARD_BRANCH)
-    assert.equal(message.byId('standard:38').asJs(), 100)
-    assert.equal(message.getById('cme:5001'), null)
+    assert.equal(message.byId('38:').asJs(), 100)
+    assert.equal(message.getById('5001:cme'), null)
 
     // Schema and value serialize through the paths every field and value share.
     const document = message.toJSON()
@@ -1402,20 +1392,18 @@ ordered and canonicalized against the same root.
 - An alternate tag equal to another field's canonical tag, or an alias equal to another field's
   canonical name, is legal and simply never wins. The same key twice in the *same* tier across two
   fields is a conflict.
-- A tag below `FixId::STANDARD_TAG_LIMIT` is the FIX specification's own, so no other branch may
-  claim it - as a canonical tag or as an alternate one, since an alternate tag resolves with the
-  same power. The refusal names `fix:branch`, the limit and both sides, and it comes from
+- A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` is the FIX specification's own, so no
+  other branch may claim it - as a canonical tag or as an alternate one, since an alternate tag
+  resolves with the same power. The refusal names `fix:branch`, both bounds and the tag, and it comes from
   `FixId::from_parts` wherever an identity is built: a setter, a read, an insert, or a shard load.
 - `remove` takes a tag, an identifier or a name, never a path: a component's member is not a
   registry entry. A bare tag or name means the standard branch here too.
-- `from_handle` admits only branch folders directly under `primitive/` and `nested/`; a leaf there
-  is a typed error, never a folder skipped into an empty load. Inside a branch
-  folder it reads only leaves named `<n>.json` with a decimal `n`; a README beside them is ignored
+- `from_handle` reads standard shards directly under `primitive/` and `nested/`, and named branch
+  folders one level below. It reads only leaves named `<n>.json` with a decimal `n`; a README is ignored
   and left alone by `write_into`'s cleanup. A field stored in the wrong shard, in a folder its
   own `fix:branch` contradicts, or in the tree its own datatype contradicts, is refused with both
   sides named.
-- The primitive and nested halves partition every index but not the identity space. A conflict is
-  looked for in both halves before anything is written, so a repeating group can no more take a
+- Primitive and nested fields share one identity space. A repeating group can no more take a
   scalar's tag, name, alternate tag or alias than another scalar can.
 - `YGGDRYL_FIX_REGISTRY` must name an existing directory: a configured location that is not there
   is a misconfiguration, not a first run, so it is an error where `~/.config/fix` would be empty.
@@ -1424,252 +1412,21 @@ ordered and canonicalized against the same root.
 - `Field::get_field_by_path` is transparent to a list on a read; a write through
   `set_field_by_path` or `remove_field_by_path` still spells the item (`NoPartyIDs.item.PartyID`).
 
-## Measured resolution cost
+## Lightweight performance checks
 
-One local Windows x86_64 release run of the Criterion target (point estimates), over the tracked
-seed of 34 fields unless a name says otherwise:
-
-```console
-cargo bench -p yggdryl --bench fix -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10
-```
-
-| resolution | estimate |
-| --- | ---: |
-| `get_field_by_tag` primitive hit | 32.3 ns |
-| `get_field_by_tag` nested hit (`NoPartyIDs`, tag 453) | 93.1 ns |
-| `get_field_by_tag` alternate-tag hit | 65.8 ns |
-| `get_field_by_tag` miss | 72.2 ns |
-| `get_field_by_id` vendor hit, over 1034 fields in two branches | 128.1 ns |
-| `get_field_by_name` hit | 81.8 ns |
-| `get_field_by_name` hit, query differently cased | 81.2 ns |
-| `get_field_by_name` alias hit | 191.5 ns |
-| `get_field_by_name` miss | 175.4 ns |
-| `get_field_by_name` vendor-branch hit, over 1034 fields | 89.7 ns |
-| `get_field_by_name` vendor-branch alias hit, over 1034 fields | 175.2 ns |
-| `get_field_by_tag` cross-branch miss, over 1034 fields | 222.1 ns |
-| `get_field_by_tag` standard hit, over 1034 fields in two branches | 137.8 ns |
-| `get_field(FixKey::Tag)` generic tag hit | 32.4 ns |
-| `get_field("Symbol")` generic name hit | 89.2 ns |
-| `field(55)` failing-half tag hit | 31.4 ns |
-| `get_field_by_path`, one segment | 142.6 ns |
-| `get_field_by_path`, two segments (`NoPartyIDs.PartyID`) | 389.4 ns |
-| `get_field_by_path`, three segments (`NoPartyIDs.item.PartyRole`) | 389.2 ns |
-| `FixId::to_string` | 197.6 ns |
-| `FixId::from_str("cme:5001")` | 143.1 ns |
-| baseline `HashMap<FixId, Field>` hit | 39.4 ns |
-| baseline `HashMap<i32, Field>` tag hit | 19.3 ns |
-| baseline `HashMap<String, Field>` hit after lowercasing the query | 97.0 ns |
-| tag hit over 4034 fields, all primitive | 179.5 ns |
-| name hit over 4034 fields, all primitive | 106.4 ns |
-| alias hit over 4034 fields, all primitive | 188.0 ns |
-| primitive tag hit over 4034 fields, one in fifty nested | 201.3 ns |
-| nested tag hit over 4034 fields, one in fifty nested | 268.2 ns |
-
-Mutation clones the dictionary in the batch setup and hands it back as the
-routine's output, so neither the clone nor the drop is inside the timer:
-
-| mutation | estimate |
-| --- | ---: |
-| `insert` into the seed | 5.13 us |
-| `insert` into 4034 fields | 115 us |
-| `from_fields` over 4034 fields | 14.1 ms |
-| `update` merging an alias and an alternate tag into the seed | 9.93 us |
-| the same `update` over 4034 fields | 17.9 us |
-| `remove` from 4034 fields | 10.6 us |
-| `set_branch` on a field whose tags allow it | 816 ns |
-| `set_id` moving a field into a vendor branch | 1.05 us |
-| `set_id` back to the standard branch | 569 ns |
-| `set_branch` refused for a specification tag | 654 ns |
-
-| storage | estimate |
-| --- | ---: |
-| `from_handle`, 1 shard of 10 fields | 962 us |
-| `from_handle`, 10 shards of 10 fields | 5.55 ms |
-| `from_handle`, 100 shards of 10 fields | 62.1 ms |
-| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.87 ms |
-| `from_handle`, two branches (1034 fields, 14 shards) | 19.8 ms |
-| `write_into`, 100 shards | 324 ms |
-| `write_into`, two branches (1034 fields, 14 shards) | 150 ms |
-| explicit-location autoload of the seed (URL parse, folder, load) | 2.82 ms |
-
-The generic accessor costs the specialized one plus its dispatch, which on a tag is within the
-noise of the lookup itself: 32.4 ns against 32.3 ns. The specialized pair still exists so a caller
-that already knows which key it holds pays no dispatch, but the dispatch is no longer most of the
-call the way it was when a tag probe was four nanoseconds.
-
-A folded name hit costs what the plain `HashMap<String, Field>` baseline costs *before* that
-baseline lowercases its query - the fold happens inside the hash, so no folded copy is built.
-
-**What the primitive/nested split cost and did not buy.** The point of the split is locality: the
-hot half a transcriber probes per wire tag holds only the scalars. On this dictionary shape the
-numbers do not show that as a win, and the honest reading is that they show a small loss:
-
-- the primitive tag hit over the seed is 32.3 ns, where the single index measured 27.4 ns. The
-  seed's nested half holds one field of 34, so the primitive map is one entry smaller than the
-  undivided one was - far too little to change a B-tree's depth, and the extra structure costs
-  more than the one entry saves;
-- the primitive tag hit over 4034 fields with one in fifty nested is 201.3 ns, against 179.5 ns for
-  the same hit over 4034 all-primitive fields in the undivided shape. Again: 2% fewer entries in
-  the hot map buys nothing measurable;
-- what clearly did get slower is every probe that misses its first map. A tag miss went from
-  48.4 ns to 72.2 ns, an alias hit from 136.5 ns to 191.5 ns, and a one-segment path from 86.5 ns
-  to 142.6 ns, because each tier now reads two maps instead of one. A nested hit pays that too:
-  93.1 ns over the seed, against 32.3 ns for a primitive one;
-- `from_handle` of the seed went from 2.06 ms to 2.87 ms, because a load now lists two trees where
-  it listed one, and reads four shards where it read three.
-
-So the split earns its place on the layout, not on the lookup: the nested definitions are a
-contiguous half that can be read, written and skipped as a unit, and a field's tree is decided by
-the same predicate that decides its index half. **A dictionary whose nested share is a minority
-does not get a faster primitive hit out of it, and this page does not claim one.** A dictionary
-whose nested half were a large fraction would be the case that pays, and none is measured here.
-
-The tag hit itself is still the number the `FixId` key moved: it was 4.5 ns against an 18.1 ns
-`HashMap<i32, Field>`, and it is 32.3 ns against 19.3 ns. Every level of the identifier index
-compares an inline branch string before an `i32`, and a `FixId` key is 32 bytes where an `i32`
-was 4, so a node spans six cache lines rather than one. Against the baseline that answers the same
-question - `HashMap<FixId, Field>`, 39.4 ns - the ordered index is still faster, and it is the
-only one of the two that can answer `next_field_after`, `iter` and the store's branch-major
-grouping at all. `HashMap<i32, Field>` is faster only because it cannot hold two branches: it
-answers the ambiguous question the identity carries.
-
-`from_handle` scales with the number of shards rather than with the fields in them: a shard costs
-roughly half a millisecond to open, read and parse, so the seed's four shards cost about four
-times one shard and a hundred shards cost about a hundred times one. The storage rows are
-filesystem-bound and the wider ones move by tens of percent between runs; read them as orders of
-magnitude rather than as a ranking.
-
-### The Python boundary
+Performance is a guardrail, not a second contract. The release target uses 400 generated fields
+and 100 fields in the second branch; Python and JavaScript use 200 of each. Criterion uses ten
+samples with short warm-up and measurement windows for this phase:
 
 ```console
-cd python && .venv/Scripts/python benchmarks/fix.py --iterations 2000
+cargo bench -p yggdryl --bench fix -- fix/resolve --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+python python/benchmarks/fix.py --iterations 2000
+set YGGDRYL_BENCH_ITERATIONS=5000 && npm run --prefix node bench:fix
 ```
 
-One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12,
-median time per call over the same tracked seed of 34 fields, except the vendor rows, which run
-over the seed beside a generated `cme` dictionary of 1000 fields. The sub-microsecond rows move by
-a third between runs on this machine, so read them as one order of magnitude rather than as a
-ranking of one against another:
+The timing tables report release builds on the same Windows x86_64 host. They are boundary-scale
+comparisons, not promises. The allocation test is the stronger hot-path assertion: canonical tag,
+identifier, folded name, alias, miss, path, protocol inference, MsgType inference and iteration
+perform zero allocations in Rust.
 
-| Python operation | estimate |
-| --- | ---: |
-| `get_field_by_tag(55)` hit | 196 ns |
-| `get_field_by_tag(20)` alternate-tag hit | 235 ns |
-| `get_field_by_id("standard:55")` hit | 408 ns |
-| `get_field_by_name("standard", "Symbol")` hit | 303 ns |
-| `get_field_by_name("standard", "symbol")` hit, folded query | 298 ns |
-| `get_field_by_name("standard", "ticker")` alias hit | 404 ns |
-| `get_field_by_tag(9999)` miss | 186 ns |
-| `get_field_by_name("standard", "Nope")` miss | 264 ns |
-| `get_field_by_id("cme:5001")` miss | 308 ns |
-| `get_field(55)` generic tag hit | 205 ns |
-| `field_by_path`, one segment | 357 ns |
-| `field_by_path`, two segments (`NoPartyIDs.PartyID`) | 568 ns |
-| `get_field_by_id("cme:5001")` vendor hit, two branches | 519 ns |
-| `get_field_by_name("cme", ...)` vendor hit, two branches | 304 ns |
-| `get_field_by_name("cme", ...)` vendor alias hit, two branches | 493 ns |
-| `get_field_by_tag(5001)` cross-branch miss, two branches | 288 ns |
-| `get_field_by_tag(55)` standard hit, two branches | 304 ns |
-| `field.fix.branch` | 549 ns |
-| `field.fix.id` | 625 ns |
-| `FixMsg.get_by_tag(55)` | 251 ns |
-| `FixMsg.get_by_id("standard:55")` | 386 ns |
-| `FixMsg.get_by_name("ticker")` | 367 ns |
-| `FixMsg.get_by_path("NoPartyIDs.0.PartyID")` | 711 ns |
-| `FixMsg.branch` | 148 ns |
-| `from_handle`, the seed (4 shards in two trees, 34 fields) | 2.99 ms |
-| `from_handle`, 1000 generated fields (11 shards) | 16.7 ms |
-
-A hit costs the native lookup plus one crossing: the key is read once at the boundary and the
-answer is wrapped as a `Field` or a `Scalar`, which clones the stored value rather than borrowing
-it. That wrapping is what the numbers are almost entirely made of - the native tag hit is 32.3 ns,
-an order of magnitude below the crossing - which is why the tiers the Rust table separates are
-indistinguishable here, and why a caller resolving the same field repeatedly should hold the
-answer rather than ask again. A miss is the one case that is reliably cheaper, because nothing is
-wrapped.
-
-**What a branch and an identifier cost at the boundary.** Both cross as text and are parsed on
-every call, which is the price of having no class for either: `get_field_by_id("standard:55")` is
-408 ns against 196 ns for the same field by tag, and the 212 ns between them is
-`FixId::from_str` - a branch validated and folded, then a decimal tag - not a slower lookup, since
-the native identifier probe is what the tag probe redirects to anyway. A branch-qualified name is
-303 ns against 264 ns for the same call's miss, so the extra argument costs about what one short
-string coercion costs. `field.fix.branch` and `field.fix.id` are the dearest rows on the table
-because each is a metadata read plus a fresh Python `str`, and `id` renders one. A caller in a
-loop should hold the answer, exactly as it should hold a resolved `Field`.
-
-`from_handle` stays within a few percent of the native load - 2.99 ms against 2.87 ms - because
-the shards are listed, read and parsed natively and only the finished registry crosses; it also
-moved with the core, which now lists two trees and reads four shards where it listed one and read
-three.
-
-### The JavaScript boundary
-
-```console
-npm run --prefix node bench:fix
-```
-
-One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon
-(`npm run --prefix node build`) under Node.js v24.18.0, whole-loop rate over the same tracked seed
-of 34 fields, except the vendor rows, which run over the seed beside a generated `cme` dictionary
-of 1000 fields; the two loads run a thousandth of the hit count. The sub-microsecond rows move by a
-third between runs on this machine, so read them as one order of magnitude rather than as a ranking
-of one against another:
-
-| JavaScript operation | rate | per call |
-| --- | ---: | ---: |
-| `getFieldByTag(55)` hit | 320k/s | 3.12 us |
-| `getFieldByTag(20)` alternate-tag hit | 308k/s | 3.25 us |
-| `getFieldById('standard:55')` hit | 268k/s | 3.73 us |
-| `getFieldByName('standard', 'Symbol')` hit | 287k/s | 3.48 us |
-| `getFieldByName('standard', 'symbol')` hit, folded query | 265k/s | 3.78 us |
-| `getFieldByName('standard', 'ticker')` alias hit | 242k/s | 4.14 us |
-| `getFieldByTag(9999)` miss | 1.23M/s | 815 ns |
-| `getFieldByName('standard', 'Nope')` miss | 884k/s | 1.13 us |
-| `getFieldById('cme:5001')` miss | 929k/s | 1.08 us |
-| `getField(55)` generic tag hit | 319k/s | 3.14 us |
-| `getField('Symbol')` generic name hit | 283k/s | 3.53 us |
-| `fieldByPath`, one segment | 273k/s | 3.66 us |
-| `fieldByPath`, two segments (`NoPartyIDs.PartyID`) | 223k/s | 4.48 us |
-| `getFieldById('cme:5001')` vendor hit, two branches | 219k/s | 4.56 us |
-| `getFieldByName('cme', ...)` vendor hit, two branches | 269k/s | 3.72 us |
-| `getFieldByName('cme', ...)` vendor alias hit, two branches | 264k/s | 3.79 us |
-| `getFieldByTag(5001)` cross-branch miss, two branches | 1.13M/s | 886 ns |
-| `getFieldByTag(55)` standard hit, two branches | 302k/s | 3.31 us |
-| `removeById('cme:9999')` miss, two branches | 848k/s | 1.18 us |
-| `field.fix.branch` | 238k/s | 4.19 us |
-| `field.fix.id` | 223k/s | 4.48 us |
-| `FixMsg.getByTag(55)` | 311k/s | 3.21 us |
-| `FixMsg.getById('standard:55')` | 261k/s | 3.83 us |
-| `FixMsg.getByName('ticker')` | 211k/s | 4.73 us |
-| `FixMsg.getByPath('NoPartyIDs.0.PartyID')` | 249k/s | 4.01 us |
-| `FixMsg.branch` | 1.20M/s | 834 ns |
-| `fromHandle`, the seed (4 shards in two trees, 34 fields) | 281/s | 3.56 ms |
-| `fromHandle`, 1000 generated fields (11 shards) | 38/s | 26.3 ms |
-
-A miss is the honest price of the crossing itself: 815 ns for the key coercion, the native probe,
-and `null` back - the same order as the 641 ns a bare `registry.size` costs on this machine, which
-is the crossing with no lookup in it at all. Every hit adds the wrapper the answer is put in, and
-that wrapper is what the rest of the numbers are made of: `field.clone()` on an already-held native
-`Field` costs 2.99 us here, so a 3.12 us tag hit is very nearly one `Field` materialization and
-nothing else. The native tag hit is 32.3 ns, two orders of magnitude below the crossing, which is
-why the tiers the Rust table separates are indistinguishable here and why a caller resolving the
-same field repeatedly should hold the answer rather than ask again. `FixMsg`'s accessors wrap a
-`Scalar` instead and cost the same shape.
-
-**What a branch and an identifier cost at the boundary.** Both cross as text and are parsed on
-every call, which is the price of having no class for either. The misses isolate that price,
-because nothing is wrapped in them: `getFieldById('cme:5001')` is 1.08 us against 815 ns for a tag
-miss, so `FixId::from_str` - a branch validated and folded, then a decimal tag - is a few hundred
-nanoseconds, not a slower lookup, since the native identifier probe is what the tag probe redirects
-to anyway. `removeById`'s miss is 1.18 us, the same parse plus the mutation's uniqueness check.
-`field.fix.branch` and `field.fix.id` are the dearest rows on the table because `field.fix` builds
-a fresh protocol view per access before the property is even read, and `id` then renders a new
-JavaScript string; a caller in a loop should hold the view, exactly as it should hold a resolved
-`Field`. `FixMsg.branch` is 834 ns because the branch was resolved once at construction and only
-the string crosses.
-
-`fromHandle` stays close to the native load - the shards are listed, read and parsed natively, and
-only the finished registry crosses - and scales with shard count, not with the fields in them; it
-also moved with the core, which now lists two trees and reads four shards where it listed one and
-read three.
+<!-- PHASE2_BENCHMARK_RESULTS -->

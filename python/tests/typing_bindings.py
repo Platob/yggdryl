@@ -1044,10 +1044,11 @@ fix_description: str | None = fix_field.fix.description
 fix_branch: str = fix_field.fix.branch
 fix_id: str | None = fix_field.fix.id
 fix_standard_branch: str = fix.STANDARD_BRANCH
-fix_standard_tag_limit: int = fix.STANDARD_TAG_LIMIT
+fix_user_tag_min: int = fix.USER_TAG_MIN
+fix_user_tag_max: int = fix.USER_TAG_MAX
 
 fix_vendor: Field = Field("TradeID", "utf8")
-fix_vendor.fix.id = "cme:5001"
+fix_vendor.fix.id = "5001:cme"
 fix_vendor.fix.branch = "cme"
 fix_vendor_id: str | None = fix_vendor.fix.id
 
@@ -1065,18 +1066,22 @@ fix_registry_from_handle: fix.FixRegistry = fix.FixRegistry.from_handle(
 fix_registry_from_text: fix.FixRegistry = fix.FixRegistry.from_handle(
     "file:///dictionary"
 )
-fix_by_id: Field = fix_registry_from_fields.field_by_id("standard:38")
-fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("standard:38")
+fix_by_id: Field = fix_registry_from_fields.field_by_id("38:")
+fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("38:")
 fix_by_tag: Field = fix_registry_from_fields.field_by_tag(38)
 fix_maybe_by_tag: Field | None = fix_registry_from_fields.get_field_by_tag(38)
-fix_by_name: Field = fix_registry_from_fields.field_by_name(fix.STANDARD_BRANCH, "qty")
+fix_by_name: Field = fix_registry_from_fields.field_by_name("qty", fix.STANDARD_BRANCH)
 fix_maybe_by_name: Field | None = fix_registry_from_fields.get_field_by_name(
-    "standard", "qty"
+    "qty", ""
 )
-fix_by_path: Field = fix_registry_from_fields.field_by_path("standard", "OrderQty")
+fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty", "")
 fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
-    "standard", "OrderQty"
+    "OrderQty", ""
 )
+fix_bytes_protocol: MimeType = fix_registry_from_fields.infer_bytes_protocol(b"35=D|")
+fix_text_protocol: MimeType = fix_registry_from_fields.infer_text_protocol("35=D|")
+fix_bytes_msgtype: bytes | None = fix_registry_from_fields.infer_bytes_msgtype(b"35=D|")
+fix_text_msgtype: str | None = fix_registry_from_fields.infer_text_msgtype("35=D|")
 fix_generic: Field = fix_registry_from_fields.field(38)
 fix_maybe_generic: Field | None = fix_registry_from_fields.get_field("OrderQty")
 fix_item: Field = fix_registry_from_fields[38]
@@ -1084,7 +1089,7 @@ fix_default: object = fix_registry_from_fields.get("nope", None)
 fix_replaced: Field | None = fix_registry.insert(fix_field)
 fix_registry.update(fix_field)
 fix_removed: Field | None = fix_registry.remove(38)
-fix_removed_by_id: Field | None = fix_registry.remove_by_id("cme:5001")
+fix_removed_by_id: Field | None = fix_registry.remove_by_id("5001:cme")
 fix_size: int = len(fix_registry_from_fields)
 fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
@@ -1101,8 +1106,8 @@ fix_message_registry: fix.FixRegistry = fix_message.registry
 fix_message_field: Field = fix_message.field
 fix_message_value: Scalar = fix_message.value
 fix_message_branch: str = fix_message.branch
-fix_message_by_id: Scalar = fix_message.by_id("standard:38")
-fix_message_maybe_id: Scalar | None = fix_message.get_by_id("standard:38")
+fix_message_by_id: Scalar = fix_message.by_id("38:")
+fix_message_maybe_id: Scalar | None = fix_message.get_by_id("38:")
 fix_message_by_tag: Scalar = fix_message.by_tag(38)
 fix_message_maybe_tag: Scalar | None = fix_message.get_by_tag(38)
 fix_message_by_name: Scalar = fix_message.by_name("qty")
@@ -1118,13 +1123,17 @@ fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
 
 assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
-assert fix_branch == fix_standard_branch and fix_standard_tag_limit == 5000
-assert fix_id == "standard:38" and fix_vendor_id == "cme:5001"
+assert fix_branch == fix_standard_branch and fix_user_tag_min == 5000
+assert fix_user_tag_max == 40_000
+assert fix_id == "38:" and fix_vendor_id == "5001:cme"
 assert fix_by_id and fix_maybe_by_id
 assert fix_registry_loaded is not None and fix_registry_from_url is not None
 assert fix_registry_from_handle is not None and fix_registry_from_text is not None
 assert fix_by_tag and fix_maybe_by_tag and fix_by_name and fix_maybe_by_name
 assert fix_by_path and fix_maybe_by_path and fix_generic and fix_maybe_generic
+assert fix_bytes_protocol and fix_text_protocol
+assert fix_bytes_msgtype is None or fix_bytes_msgtype
+assert fix_text_msgtype is None or fix_text_msgtype
 assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert fix_removed is None or fix_removed
@@ -1132,7 +1141,7 @@ assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has
 assert fix_names == [] or fix_names
 assert fix_message_registry and fix_message_field and fix_message_value
-assert fix_message_branch == "standard"
+assert fix_message_branch == ""
 assert fix_message_by_id and fix_message_maybe_id
 assert fix_message_by_tag and fix_message_maybe_tag
 assert fix_message_by_name and fix_message_maybe_name

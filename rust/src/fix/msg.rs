@@ -76,10 +76,9 @@ use crate::{DataType, Error, Field, Result, Scalar};
 #[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
-    /// The root field's own branch, resolved once so a lookup stays total
-    /// and allocation-free and corruption is reported at construction. It is
-    /// derived from `field`, which is what equality, hashing and
-    /// serialization already carry, so it is not state of its own.
+    /// The root field's branch, enriched from the linked registry when that
+    /// dictionary declares a version or session defaults. Resolving it once
+    /// keeps every message lookup allocation-free.
     branch: FixBranch,
     field: Field,
     value: Scalar,
@@ -108,7 +107,11 @@ impl FixMsg {
     /// the root is not a Struct field, or when the value violates it, naming
     /// the path of the first value that does not fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
-        let branch = field.as_fix().branch()?;
+        let declared = field.as_fix().branch()?;
+        let branch = registry
+            .branch_named(declared.name())
+            .cloned()
+            .unwrap_or(declared);
         let value = field.canonicalize_value(value)?;
         Ok(Self {
             registry,
@@ -142,7 +145,7 @@ impl FixMsg {
     ///
     /// An identifier is exact and does not tier: it names one dictionary, and
     /// a dictionary this message does not speak simply misses.
-    pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar> {
+    pub fn get_by_id(&self, id: FixId) -> Option<&Scalar> {
         let known = self.registry.get_field_by_id(id)?;
         let index = self.field.index_of(known.name())?;
         self.value.get(index)
@@ -154,7 +157,7 @@ impl FixMsg {
     /// # Errors
     ///
     /// Returns a typed absence naming the identifier.
-    pub fn by_id(&self, id: &FixId) -> Result<&Scalar> {
+    pub fn by_id(&self, id: FixId) -> Result<&Scalar> {
         self.get_by_id(id).ok_or_else(|| absent(FixKey::Id(id)))
     }
 
@@ -277,22 +280,23 @@ impl FixMsg {
         let own = if self.branch.is_standard() || !FixId::is_admissible(&self.branch, tag) {
             None
         } else {
-            FixId::from_parts(self.branch.clone(), tag)
+            FixId::from_parts(&self.branch, tag)
                 .ok()
-                .and_then(|id| self.registry.get_field_by_id(&id))
+                .and_then(|id| self.registry.get_field_by_id(id))
         };
-        own.or_else(|| self.registry.get_field_by_id(&FixId::standard(tag)))
+        own.or_else(|| self.registry.get_field_by_id(FixId::standard(tag)))
     }
 
     /// The field a bare name reaches: this message's branch, then the
     /// standard one.
     fn known_by_name(&self, name: &str) -> Option<&Field> {
         if !self.branch.is_standard() {
-            if let Some(field) = self.registry.get_field_by_name(&self.branch, name) {
+            if let Some(field) = self.registry.get_field_by_name(name, Some(&self.branch)) {
                 return Some(field);
             }
         }
-        self.registry.get_field_by_name(&FixBranch::STANDARD, name)
+        self.registry
+            .get_field_by_name(name, Some(&FixBranch::STANDARD))
     }
 
     /// The position of the child `name` reaches under `parent`: the

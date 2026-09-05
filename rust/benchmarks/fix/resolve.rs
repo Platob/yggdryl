@@ -15,9 +15,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
     });
-    // The same hit named by the half it lands in, beside the nested one it
-    // does not: `Symbol` is a scalar and `NoPartyIDs` a repeating group, so a
-    // nested hit is the primitive probe missing and the nested one hitting.
+    // The same indexed lookup for a scalar and a repeating-group field.
     group.bench_function("primitive_tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
     });
@@ -28,19 +26,30 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(20)));
     });
     group.bench_function("name_hit", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_name(&standard, black_box("Symbol")));
+        bencher
+            .iter(|| black_box(&registry).get_field_by_name(black_box("Symbol"), Some(&standard)));
     });
     group.bench_function("name_hit_folded", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_name(&standard, black_box("SYMBOL")));
+        bencher
+            .iter(|| black_box(&registry).get_field_by_name(black_box("SYMBOL"), Some(&standard)));
     });
     group.bench_function("alias_hit", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_name(&standard, black_box("ticker")));
+        bencher
+            .iter(|| black_box(&registry).get_field_by_name(black_box("ticker"), Some(&standard)));
     });
     group.bench_function("tag_miss", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(7)));
     });
     group.bench_function("name_miss", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_name(&standard, black_box("absent")));
+        bencher
+            .iter(|| black_box(&registry).get_field_by_name(black_box("absent"), Some(&standard)));
+    });
+    let fixml = b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|";
+    group.bench_function("infer_fixml_protocol", |bencher| {
+        bencher.iter(|| black_box(&registry).infer_bytes_protocol(black_box(fixml)));
+    });
+    group.bench_function("infer_fixml_msgtype", |bencher| {
+        bencher.iter(|| black_box(&registry).infer_bytes_msgtype(black_box(fixml)));
     });
 
     // The identifier's own render and parse, which is what a config file or a
@@ -50,7 +59,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&standard_id).to_string());
     });
     group.bench_function("id_parse", |bencher| {
-        bencher.iter(|| FixId::from_str(black_box("cme:5001")).unwrap());
+        bencher.iter(|| FixId::from_str(black_box("5001:cme")).unwrap());
     });
 
     // The generic pair against the specialized one it redirects to.
@@ -66,17 +75,19 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     // A path at one, two and three segments.
     group.bench_function("path_1_segment", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_path(&standard, black_box("NoPartyIDs")));
+        bencher.iter(|| {
+            black_box(&registry).get_field_by_path(black_box("NoPartyIDs"), Some(&standard))
+        });
     });
     group.bench_function("path_2_segments", |bencher| {
         bencher.iter(|| {
-            black_box(&registry).get_field_by_path(&standard, black_box("NoPartyIDs.PartyID"))
+            black_box(&registry).get_field_by_path(black_box("NoPartyIDs.PartyID"), Some(&standard))
         });
     });
     group.bench_function("path_3_segments", |bencher| {
         bencher.iter(|| {
             black_box(&registry)
-                .get_field_by_path(&standard, black_box("NoPartyIDs.item.PartyRole"))
+                .get_field_by_path(black_box("NoPartyIDs.item.PartyRole"), Some(&standard))
         });
     });
 
@@ -110,32 +121,33 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&by_name).get(&black_box("SYMBOL").to_ascii_lowercase()));
     });
 
-    // Two branches in one registry: a venue identifier, a venue name, and
-    // the cross-branch miss a bare tag must be.
+    // Two branches in one registry: explicit venue identifiers/names and an
+    // inferred venue tag.
     let venue = venue();
     let mixed = two_branches(BRANCH_FIELDS);
     let branch_middle = BRANCH_FIELDS / 2;
     let vendor_tag = i32::try_from(5_000 + branch_middle).expect("the vendor tag fits i32");
     let vendor_name = format!("vendor{branch_middle:05}");
     let vendor_alias = format!("VendorAlias{branch_middle:05}");
-    let vendor_id = FixId::from_parts(venue.clone(), vendor_tag).expect("a vendor identifier");
+    let vendor_id = FixId::from_parts(&venue, vendor_tag).expect("a vendor identifier");
     group.bench_function("id_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(&vendor_id)));
+        bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(vendor_id)));
     });
     group.bench_function("name_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box(&vendor_name)));
+        bencher.iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_name), Some(&venue)));
     });
     group.bench_function("alias_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_name(&venue, black_box(&vendor_alias)));
+        bencher
+            .iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_alias), Some(&venue)));
     });
-    group.bench_function("cross_branch_miss", |bencher| {
+    group.bench_function("tag_hit_vendor_inferred", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(vendor_tag)));
     });
     group.bench_function("tag_hit_two_branches", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(55)));
     });
 
-    // The same hits over a few thousand fields.
+    // The same hits over the lightweight release corpus.
     let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(LARGE_FIELDS)))
         .expect("the generated dictionary has no conflict");
     let middle = LARGE_FIELDS / 2;
@@ -146,15 +158,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&large).get_field_by_tag(black_box(middle_tag)));
     });
     group.bench_function(format!("name_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| black_box(&large).get_field_by_name(&standard, black_box(&middle_name)));
+        bencher
+            .iter(|| black_box(&large).get_field_by_name(black_box(&middle_name), Some(&standard)));
     });
     group.bench_function(format!("alias_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| black_box(&large).get_field_by_name(&standard, black_box(&middle_alias)));
+        bencher.iter(|| {
+            black_box(&large).get_field_by_name(black_box(&middle_alias), Some(&standard))
+        });
     });
 
-    // The realistic shape: a few thousand fields of which one in fifty is a
-    // repeating group, so the primitive half holds nearly all of them. Tag
-    // 7000 is one of the groups and 7001 the scalar beside it.
+    // The representative shape: one field in fifty is a repeating group; tag
+    // 5000 is one of those groups and 5001 is the scalar beside it.
     let realistic = FixRegistry::from_fields(
         registry
             .iter()
@@ -163,10 +177,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     )
     .expect("the generated dictionary has no conflict");
     group.bench_function(format!("primitive_tag_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(middle_tag + 1)));
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(5_001)));
     });
     group.bench_function(format!("nested_tag_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(middle_tag)));
+        bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(5_000)));
     });
     group.finish();
 }

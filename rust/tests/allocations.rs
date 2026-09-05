@@ -218,12 +218,11 @@ fn venue() -> FixBranch {
 }
 
 /// A FIX registry of `extra` generated fields around two fully keyed fields,
-/// one in the standard branch and one in a venue's, plus one repeating group
-/// in the nested half.
+/// one in the standard branch and one in a venue's, plus one repeating group.
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
-/// ones are what every hit lands on. The group is there so a nested hit is
-/// measured through the second half rather than only the first.
+/// ones are what every hit lands on. The group keeps a nested shape in the
+/// same index corpus.
 fn fix_registry(extra: usize) -> FixRegistry {
     let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
         .expect("a struct item")
@@ -244,10 +243,12 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .as_fix_mut()
         .set_aliases(["Ticker", "SecuritySymbolIdentifier"])
         .expect("static aliases");
+    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let mut trade = DataType::Utf8.nullable_field("TradeID");
     trade
         .as_fix_mut()
-        .set_id(&FixId::from_parts(venue(), 5_001).expect("a vendor identifier"))
+        .set_id(&venue(), 5_001)
         .expect("a static identifier");
     trade
         .as_fix_mut()
@@ -263,8 +264,12 @@ fn fix_registry(extra: usize) -> FixRegistry {
             .expect("a generated alias");
         field
     });
-    FixRegistry::from_fields([symbol, trade, parties].into_iter().chain(generated))
-        .expect("the generated dictionary has no conflict")
+    FixRegistry::from_fields(
+        [symbol, msgtype, trade, parties]
+            .into_iter()
+            .chain(generated),
+    )
+    .expect("the generated dictionary has no conflict")
 }
 
 #[test]
@@ -273,10 +278,9 @@ fn a_fix_registry_lookup_allocates_nothing() {
     let registry = fix_registry(512);
     let standard = FixBranch::STANDARD;
     let venue = venue();
-    let vendor = FixId::from_parts(venue.clone(), 5_001).expect("a vendor identifier");
+    let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
 
-    // The primitive half is probed first and the nested half only on a miss,
-    // so a nested hit costs one more map probe - and no allocation either.
+    // Scalar and nested definitions share the same compact indexes.
     free("get_field_by_tag primitive hit", || {
         let _ = black_box(registry.get_field_by_tag(55));
     });
@@ -284,10 +288,10 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(registry.get_field_by_tag(453));
     });
     free("get_field_by_name nested hit", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "nopartyids"));
+        let _ = black_box(registry.get_field_by_name("nopartyids", Some(&standard)));
     });
     free("get_field_by_name nested alias hit", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "PARTIES"));
+        let _ = black_box(registry.get_field_by_name("PARTIES", Some(&standard)));
     });
     free("get_field_by_tag alternate hit", || {
         let _ = black_box(registry.get_field_by_tag(65));
@@ -295,41 +299,62 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("get_field_by_tag miss", || {
         let _ = black_box(registry.get_field_by_tag(7));
     });
-    // An identifier probe is an inline branch clone plus an `i32`, so the
-    // vendor tiers cost what the standard ones do.
+    // A packed identifier is the hash key itself, so vendor probes cost what
+    // standard ones do.
     free("get_field_by_id vendor hit", || {
-        let _ = black_box(registry.get_field_by_id(&vendor));
+        let _ = black_box(registry.get_field_by_id(vendor));
     });
     free("get_field_by_id vendor miss", || {
-        let _ = black_box(registry.get_field_by_id(&FixId::standard(5_001)));
+        let _ = black_box(registry.get_field_by_id(FixId::standard(5_001)));
     });
     // The name index is probed with the caller's text folded as it is
     // hashed, so a differently cased query builds no folded copy.
     free("get_field_by_name differently cased hit", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "sYmBoL"));
+        let _ = black_box(registry.get_field_by_name("sYmBoL", Some(&standard)));
     });
     free("get_field_by_name alias hit", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "TICKER"));
+        let _ = black_box(registry.get_field_by_name("TICKER", Some(&standard)));
     });
     free("get_field_by_name long alias hit", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "securitysymbolidentifier"));
+        let _ = black_box(registry.get_field_by_name("securitysymbolidentifier", Some(&standard)));
     });
     free("get_field_by_name vendor hit", || {
-        let _ = black_box(registry.get_field_by_name(&venue, "tradeid"));
+        let _ = black_box(registry.get_field_by_name("tradeid", Some(&venue)));
+    });
+    free("get_field_by_name inferred vendor hit", || {
+        let _ = black_box(registry.get_field_by_name("tradeid", None));
+    });
+    free("get_field_by_name inferred standard hit", || {
+        let _ = black_box(registry.get_field_by_name("ticker", None));
     });
     free("get_field_by_name miss", || {
-        let _ = black_box(registry.get_field_by_name(&standard, "absent"));
+        let _ = black_box(registry.get_field_by_name("absent", Some(&standard)));
+    });
+    free("get_field_by_name inferred miss", || {
+        let _ = black_box(registry.get_field_by_name("absent", None));
     });
     free("get_field generic", || {
         let _ = black_box(registry.get_field("ticker"));
         let _ = black_box(registry.get_field(65));
-        let _ = black_box(registry.get_field(&vendor));
+        let _ = black_box(registry.get_field(vendor));
     });
     free("get_field_by_path member", || {
-        let _ = black_box(registry.get_field_by_path(&standard, "Symbol.absent"));
+        let _ = black_box(registry.get_field_by_path("Symbol.absent", Some(&standard)));
     });
     free("contains", || {
         let _ = black_box(registry.contains("Symbol"));
+    });
+    free("infer_bytes_protocol FIXML", || {
+        let _ = black_box(registry.infer_bytes_protocol(black_box(b"35=D|Symbol=AAPL|")));
+    });
+    free("infer_text_protocol UL", || {
+        let _ = black_box(registry.infer_text_protocol(black_box("MsgType=D Symbol=AAPL")));
+    });
+    free("infer_bytes_msgtype FIX", || {
+        let _ = black_box(registry.infer_bytes_msgtype(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
+    });
+    free("infer_text_msgtype UL", || {
+        let _ = black_box(registry.infer_text_msgtype(black_box("MsgType=D Symbol=AAPL")));
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());
@@ -340,13 +365,13 @@ fn a_fix_registry_lookup_allocates_nothing() {
 fn a_fix_message_tag_lookup_allocates_nothing() {
     let registry = Arc::new(fix_registry(64));
     let venue = venue();
-    let vendor = FixId::from_parts(venue.clone(), 5_001).expect("a vendor identifier");
+    let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
     let mut symbol = DataType::Utf8.nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     let mut trade = DataType::Utf8.nullable_field("TradeID");
     trade
         .as_fix_mut()
-        .set_id(&vendor)
+        .set_id(&venue, 5_001)
         .expect("a static identifier");
     let mut root = DataType::from_fields([symbol, trade, DataType::Utf8.nullable_field("9999")])
         .expect("three children")
@@ -369,10 +394,10 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         let _ = black_box(msg.get_by_tag(55));
     });
     free("get_by_id vendor", || {
-        let _ = black_box(msg.get_by_id(&vendor));
+        let _ = black_box(msg.get_by_id(vendor));
     });
     free("get_by_id foreign", || {
-        let _ = black_box(msg.get_by_id(&FixId::standard(5_001)));
+        let _ = black_box(msg.get_by_id(FixId::standard(5_001)));
     });
     // An unknown tag is rendered on the stack and looked up by that name.
     free("get_by_tag unknown retained", || {

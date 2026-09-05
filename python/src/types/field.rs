@@ -16,7 +16,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
-use crate::fix::{FixTag, branch_from_py, id_from_py};
+use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
@@ -2174,8 +2174,8 @@ impl PyProtocolField {
 
     /// The dictionary this field belongs to, on the `fix` view.
     ///
-    /// A branch crosses as text: `"standard"` is the FIX specification's own
-    /// dictionary and what an absent `fix:branch` means, and assigning it
+    /// A branch crosses as text: an empty string is the FIX specification's
+    /// own dictionary and what an absent `fix:branch` means, and assigning it
     /// removes the key rather than storing it. A spelling that is not a branch
     /// is a `ValueError` carrying the native parse failure, and a refusal -
     /// a tag the specification assigns cannot move to another dictionary -
@@ -2188,7 +2188,7 @@ impl PyProtocolField {
             .inner
             .as_fix()
             .branch()
-            .map(|branch| branch.as_str().to_owned())
+            .map(|branch| branch.name().to_owned())
             .map_err(value_error)
     }
 
@@ -2204,7 +2204,7 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
-    /// This field's identity, `branch:tag`, on the `fix` view.
+    /// This field's identity, `tag:branch`, on the `fix` view.
     ///
     /// Derived from the branch and the canonical tag on every read and never
     /// stored, so it is `None` exactly when `fix:tag` is absent. Assigning one
@@ -2214,29 +2214,32 @@ impl PyProtocolField {
     fn id(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("id")?;
         let field = self.borrow_field(py)?;
-        Ok(field
-            .inner
-            .as_fix()
-            .id()
-            .map_err(value_error)?
-            .map(|id| id.to_string()))
+        let view = field.inner.as_fix();
+        let Some(tag) = view.tag().map_err(value_error)? else {
+            return Ok(None);
+        };
+        let branch = view.branch().map_err(value_error)?;
+        Ok(Some(format!("{tag}:{branch}")))
     }
 
     #[setter]
     fn set_id(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_fix("id")?;
-        let id = id_from_py(&value.extract::<String>()?)?;
+        let (branch, id) = id_parts_from_py(&value.extract::<String>()?)?;
         let mut field = self.borrow_field_mut(value.py())?;
-        field.inner.as_fix_mut().set_id(&id).map_err(value_error)
+        field
+            .inner
+            .as_fix_mut()
+            .set_id(&branch, id.tag())
+            .map_err(value_error)
     }
 
     /// The canonical FIX tag, on the `fix` view.
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
-    /// removes it, the way every other property is removed. A tag below
-    /// `STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
-    /// another branch cannot claim it.
+    /// removes it, the way every other property is removed. A field in another
+    /// branch can claim only `USER_TAG_MIN..USER_TAG_MAX`.
     #[getter]
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;

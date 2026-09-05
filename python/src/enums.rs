@@ -182,6 +182,12 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "FIXUL")]
+    fn fixul_constant() -> Self {
+        Self::from_core(CoreMimeType::FIXUL)
+    }
+
+    #[classattr]
     #[pyo3(name = "FIXML")]
     fn fixml_constant() -> Self {
         Self::from_core(CoreMimeType::FIXML)

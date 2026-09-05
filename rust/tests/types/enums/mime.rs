@@ -20,6 +20,7 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
         ),
         ("TEXT/ULLINK", MimeType::ULLINK, "text/ullink"),
         ("TEXT/FIX", MimeType::FIX, "text/fix"),
+        ("TEXT/FIXUL", MimeType::FIXUL, "text/fixul"),
         ("TEXT/FIXML", MimeType::FIXML, "text/fixml"),
         ("IMAGE/JPEG", MimeType::JPEG, "image/jpeg"),
         (
@@ -161,7 +162,12 @@ fn content_type_parameters_are_validated_without_becoming_mime_state() {
 
 #[test]
 fn category_helpers_cover_known_and_structured_suffix_values() {
-    for mime in [MimeType::ULLINK, MimeType::FIX, MimeType::FIXML] {
+    for mime in [
+        MimeType::ULLINK,
+        MimeType::FIX,
+        MimeType::FIXUL,
+        MimeType::FIXML,
+    ] {
         assert!(mime.is_known());
         assert!(mime.is_textual());
         assert!(!mime.is_binary());

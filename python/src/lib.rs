@@ -280,8 +280,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     // The two FIX facts a caller spells rather than derives: what an absent
     // `fix:branch` means, and where the FIX specification's own tag range ends.
-    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.as_str())?;
-    module.add("STANDARD_TAG_LIMIT", yggdryl::FixId::STANDARD_TAG_LIMIT)?;
+    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
+    module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
+    module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
     Ok(())
 }
 

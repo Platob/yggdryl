@@ -462,6 +462,7 @@ const knownMimeNames = Object.freeze([
   'PLAIN_TEXT',
   'ULLINK',
   'FIX',
+  'FIXUL',
   'FIXML',
   'MARKDOWN',
   'HTML',
@@ -3355,11 +3356,12 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
 })
 
 // The two FIX facts a caller spells rather than derives - what an absent
-// `fix:branch` means, and where the FIX specification's own tag range ends -
+// `fix:branch` means, and the half-open range another branch may claim -
 // come from the core's own constants, so neither can drift from it.
 const fix = Object.freeze({
   STANDARD_BRANCH: binding._fixStandardBranchNative(),
-  STANDARD_TAG_LIMIT: binding._fixStandardTagLimitNative(),
+  USER_TAG_MIN: binding._fixUserTagMinNative(),
+  USER_TAG_MAX: binding._fixUserTagMaxNative(),
   FixRegistry: binding.FixRegistry,
   FixMsg,
   globalRegistry: binding.fixGlobalRegistryNative,
@@ -3378,7 +3380,8 @@ for (const name of [
   'JsFixMsgEntries',
   'JsFixRegistry',
   '_fixStandardBranchNative',
-  '_fixStandardTagLimitNative',
+  '_fixUserTagMinNative',
+  '_fixUserTagMaxNative',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
 ]) {

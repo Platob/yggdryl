@@ -37,6 +37,7 @@ pub(super) fn known_from_mime(value: &str) -> Option<MimeType> {
         ("text/plain", PLAIN_TEXT),
         ("text/ullink", ULLINK),
         ("text/fix", FIX),
+        ("text/fixul", FIXUL),
         ("text/fixml", FIXML),
         ("text/markdown", MARKDOWN),
         ("text/html", HTML),

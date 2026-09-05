@@ -2092,6 +2092,7 @@ declare module './index' {
     const PLAIN_TEXT: MimeType
     const ULLINK: MimeType
     const FIX: MimeType
+    const FIXUL: MimeType
     const FIXML: MimeType
     const MARKDOWN: MimeType
     const HTML: MimeType
@@ -2660,14 +2661,13 @@ export interface FixMsgConstructor {
 export interface Fix {
   /**
    * The FIX specification's own dictionary, and what an absent `fix:branch`
-   * means: the branch every bare tag and every bare name resolves in.
+   * means. Its spelling is the empty string.
    */
   readonly STANDARD_BRANCH: string
-  /**
-   * The first tag the FIX specification does not assign itself. Below it a tag
-   * forces `STANDARD_BRANCH`, so no other dictionary may claim one.
-   */
-  readonly STANDARD_TAG_LIMIT: number
+  /** Inclusive lower bound of the user-defined tag range. */
+  readonly USER_TAG_MIN: number
+  /** Exclusive upper bound of the user-defined tag range. */
+  readonly USER_TAG_MAX: number
   /**
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path.

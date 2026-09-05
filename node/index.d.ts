@@ -1238,8 +1238,8 @@ export declare class FixRegistry {
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
-   * Write every populated shard under `<location>/<tree>/<branch>`, removing
-   * the shards, branch folders and trees no field populates any more.
+   * Write standard shards under `<location>/<tree>` and named dictionaries
+   * under `<location>/<tree>/<branch>`, removing empty paths.
    */
   writeInto(location: LocationInput): void
   /** How many fields are registered. */
@@ -1247,7 +1247,7 @@ export declare class FixRegistry {
   /**
    * The field a canonical or alternate identifier names, or `null`.
    *
-   * `id` is the `branch:tag` text; a malformed one throws the native parse
+   * `id` is the `tag:branch` text; a malformed one throws the native parse
    * failure, never a miss.
    */
   getFieldById(id: string): JsField | null
@@ -1256,45 +1256,49 @@ export declare class FixRegistry {
   /**
    * The field a canonical or alternate tag names, or `null`.
    *
-   * A bare tag is the standard branch exactly, never whichever dictionary
-   * happens to be loaded.
+   * The standard dictionary wins, then named dictionaries in canonical name
+   * order.
    */
   getFieldByTag(tag: number): JsField | null
   /** The field a canonical or alternate tag names. */
   fieldByTag(tag: number): JsField
   /**
-   * The field a canonical name or alias names inside one dictionary, ASCII
-   * case folded, or `null`.
+   * The field a canonical name or alias names, ASCII case folded, or `null`.
    *
-   * A name is unique per branch, not registry-wide, so the dictionary is
-   * named: `'standard'` is the specification's own.
+   * Supplying `branch` pins one dictionary. Omitting it selects the best
+   * canonical match before any alias, standard before named branches.
    */
-  getFieldByName(branch: string, name: string): JsField | null
+  getFieldByName(name: string, branch?: string): JsField | null
   /**
-   * The field a canonical name or alias names inside one dictionary, ASCII
-   * case folded.
+   * The field a canonical name or alias names, ASCII case folded.
    */
-  fieldByName(branch: string, name: string): JsField
+  fieldByName(name: string, branch?: string): JsField
   /**
-   * The field a dotted path reaches through a component or a group, in one
-   * dictionary, or `null`.
+   * The field a dotted path reaches through a component or group, or `null`.
    */
-  getFieldByPath(branch: string, path: string): JsField | null
+  getFieldByPath(path: string, branch?: string): JsField | null
   /**
-   * The field a dotted path reaches through a component or a group, in one
-   * dictionary.
+   * The field a dotted path reaches through a component or group.
    */
-  fieldByPath(branch: string, path: string): JsField
-  /** The field a tag or a name reaches in the standard branch, or `null`. */
+  fieldByPath(path: string, branch?: string): JsField
+  /** Classify one byte log line without parsing its FIX frame. */
+  inferBytesProtocol(line: Buffer): MimeType
+  /** Classify one text log line without parsing its FIX frame. */
+  inferTextProtocol(line: string): MimeType
+  /** Borrow MsgType from one byte log line, or return `null`. */
+  inferBytesMsgtype(line: Buffer): Buffer | null
+  /** Borrow MsgType from one text log line, or return `null`. */
+  inferTextMsgtype(line: string): string | null
+  /** The field a tag or name reaches by deterministic best match, or `null`. */
   getField(key: number | string): JsField | null
-  /** The field a tag or a name reaches in the standard branch. */
+  /** The field a tag or name reaches by deterministic best match. */
   field(key: number | string): JsField
   /**
-   * The field a tag or a name reaches in the standard branch, or `null`:
+   * The field a tag or name reaches by deterministic best match, or `null`:
    * the Map-like spelling of `getField`.
    */
   get(key: number | string): JsField | null
-  /** Whether a tag or a name reaches a field in the standard branch. */
+  /** Whether a tag or name reaches a field by deterministic best match. */
   has(key: number | string): boolean
   /** Add a field, answering the one it replaced. */
   insert(field: JsField): JsField | null
@@ -1320,7 +1324,7 @@ export declare class FixRegistry {
   /**
    * The fields in ascending canonical-identifier order, lazily.
    *
-   * The order is the core's: branch-major, then by tag. The iterator holds
+   * The order is the core's: tag-major, then by branch digest. The iterator holds
    * the registry and the identifier it stopped at, so nothing is collected
    * crossing the boundary and the dictionary is never cloned to walk it.
    * Holding it is therefore sharing it: a mutation refuses until the walk

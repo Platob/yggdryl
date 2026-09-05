@@ -22,6 +22,7 @@ const knownMimeTypes = Object.freeze({
   PLAIN_TEXT: 'text/plain',
   ULLINK: 'text/ullink',
   FIX: 'text/fix',
+  FIXUL: 'text/fixul',
   FIXML: 'text/fixml',
   MARKDOWN: 'text/markdown',
   HTML: 'text/html',

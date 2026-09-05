@@ -19,10 +19,11 @@ from typing import Any, Iterable
 
 import pytest
 
-from yggdryl import DataType, Field, IOBase, Scalar, Url
+from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
     STANDARD_BRANCH,
-    STANDARD_TAG_LIMIT,
+    USER_TAG_MAX,
+    USER_TAG_MIN,
     FixMsg,
     FixRegistry,
     global_registry,
@@ -46,7 +47,7 @@ def _field(
 ) -> Field:
     """One FIX field, written through the protocol view alone."""
     field = Field(name, dtype, nullable=nullable)
-    field.fix.id = f"{branch}:{tag}"
+    field.fix.id = f"{tag}:{branch}"
     if tags:
         field.fix.tags = tags
     if aliases:
@@ -112,7 +113,7 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
         with pytest.raises(TypeError, match=scheme):
             view.branch = "cme"
         with pytest.raises(TypeError, match=scheme):
-            view.id = "cme:5001"
+            view.id = "5001:cme"
     # The mapping protocol still works on every view, including this one.
     assert field.protocol("fix")["tag"] == "55"
 
@@ -144,47 +145,47 @@ def test_branch_and_id_round_trip_as_text() -> None:
     trade = Field("TradeID", "utf8")
     # An absent property is the standard branch, and there is no identity
     # without a tag.
-    assert trade.fix.branch == STANDARD_BRANCH == "standard"
+    assert trade.fix.branch == STANDARD_BRANCH == ""
     assert trade.fix.id is None
     assert "fix:branch" not in trade.metadata
 
-    trade.fix.id = "CME:5001"
-    assert trade.fix.id == "cme:5001", "ASCII case folded once, on the way in"
+    trade.fix.id = "5001:CME"
+    assert trade.fix.id == "5001:cme", "ASCII case folded once, on the way in"
     assert trade.fix.branch == "cme"
     assert trade.metadata["fix:branch"] == "cme"
     assert trade.fix.tag == 5001
 
     # Setting the standard branch removes the key rather than storing it.
-    trade.fix.branch = "STANDARD"
-    assert trade.fix.branch == "standard"
+    trade.fix.branch = ""
+    assert trade.fix.branch == ""
     assert "fix:branch" not in trade.metadata
-    assert trade.fix.id == "standard:5001"
+    assert trade.fix.id == "5001:"
 
     # `set_id` moves both halves at once, in either direction.
-    trade.fix.id = "cme:5002"
-    assert trade.fix.id == "cme:5002"
-    trade.fix.id = "standard:35"
-    assert trade.fix.id == "standard:35"
+    trade.fix.id = "5002:cme"
+    assert trade.fix.id == "5002:cme"
+    trade.fix.id = "35:"
+    assert trade.fix.id == "35:"
     assert "fix:branch" not in trade.metadata
 
     # The branch alone still moves a field whose tags allow it.
     vendor = Field("VendorID", "utf8")
     vendor.fix.tag = 9001
     vendor.fix.branch = "cme"
-    assert vendor.fix.id == "cme:9001"
+    assert vendor.fix.id == "9001:cme"
 
 
 def test_branch_and_id_parse_failures_are_value_errors() -> None:
     field = Field("TradeID", "utf8")
 
-    for bad in ("2cme", "", "cme:x", "c,me", "a" * 24):
+    for bad in ("2cme", "cme:x", "c,me", "a" * 24):
         with pytest.raises(ValueError, match="fix branch"):
             field.fix.branch = bad
-    for bad in ("5001", "cme:", "cme:+5001", "cme:-1", ":5001", "cme:5001x"):
+    for bad in ("5001", "+5001:cme", "-1:cme", ":cme", "5001:2cme"):
         with pytest.raises(ValueError, match="fix identifier|fix branch"):
             field.fix.id = bad
     # Nothing was written by any refusal.
-    assert field.fix.branch == "standard"
+    assert field.fix.branch == ""
     assert field.fix.id is None
 
     # A branch and an identifier are text, never a number.
@@ -195,43 +196,52 @@ def test_branch_and_id_parse_failures_are_value_errors() -> None:
 
 
 def test_a_specification_tag_forces_the_standard_branch() -> None:
-    assert STANDARD_TAG_LIMIT == 5000
+    assert USER_TAG_MIN == 5000
+    assert USER_TAG_MAX == 40_000
 
     # A canonical tag: the branch may not claim it.
     vendor = Field("TradeID", "utf8")
-    vendor.fix.id = "cme:5001"
+    vendor.fix.id = "5001:cme"
     with pytest.raises(ValueError, match="fix:branch"):
         vendor.fix.tag = 35
-    assert vendor.fix.id == "cme:5001"
+    assert vendor.fix.id == "5001:cme"
     with pytest.raises(ValueError, match="fix:branch"):
-        vendor.fix.id = "cme:35"
-    assert vendor.fix.id == "cme:5001"
+        vendor.fix.id = "35:cme"
+    assert vendor.fix.id == "5001:cme"
 
     # An alternate tag resolves with the same power, so it obeys the same rule.
     with pytest.raises(ValueError, match="fix:branch"):
         vendor.fix.tags = [35]
     assert vendor.fix.tags == []
-    assert vendor.fix.id == "cme:5001"
+    assert vendor.fix.id == "5001:cme"
 
     # A branch change is refused against the tags the field already holds.
     msg_type = Field("MsgType", "utf8")
     msg_type.fix.tag = 35
     with pytest.raises(ValueError, match="fix:branch"):
         msg_type.fix.branch = "cme"
-    assert msg_type.fix.branch == "standard"
-    assert msg_type.fix.id == "standard:35"
+    assert msg_type.fix.branch == ""
+    assert msg_type.fix.id == "35:"
 
     alternates = Field("Wide", "utf8")
     alternates.fix.tag = 9001
     alternates.fix.tags = [35]
     with pytest.raises(ValueError, match="fix:branch"):
         alternates.fix.branch = "cme"
-    assert alternates.fix.branch == "standard"
+    assert alternates.fix.branch == ""
 
     # The rule is one-way: the standard branch holds any tag.
     high = Field("Vendorish", "utf8")
     high.fix.tag = 10_000
-    assert high.fix.id == "standard:10000"
+    assert high.fix.id == "10000:"
+
+    for admitted in (USER_TAG_MIN, USER_TAG_MAX - 1):
+        field = Field("Venue", "utf8")
+        field.fix.id = f"{admitted}:cme"
+        assert field.fix.tag == admitted
+    for refused in (USER_TAG_MIN - 1, USER_TAG_MAX):
+        with pytest.raises(ValueError, match=r"5000.*40000"):
+            Field("Venue", "utf8").fix.id = f"{refused}:cme"
 
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
@@ -240,21 +250,21 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
 
     assert seed.field_by_tag(55).name == "Symbol"
     assert seed.get_field_by_tag(55) == seed.field_by_tag(55)
-    assert seed.field_by_id("standard:55").name == "Symbol"
-    assert seed.get_field_by_id("standard:55") == seed.field_by_tag(55)
+    assert seed.field_by_id("55:").name == "Symbol"
+    assert seed.get_field_by_id("55:") == seed.field_by_tag(55)
     # The alternate tag 20 reaches ExecType, which claims 150 canonically.
     assert seed.field_by_tag(20).name == "ExecType"
     assert seed.field_by_tag(150).name == "ExecType"
-    assert seed.field_by_id("standard:20").name == "ExecType"
+    assert seed.field_by_id("20:").name == "ExecType"
     # A name answers the canonical spelling whatever case it was asked in.
-    assert seed.field_by_name("standard", "symbol").name == "Symbol"
-    assert seed.field_by_name(STANDARD_BRANCH, "SYMBOL").name == "Symbol"
-    assert seed.field_by_name("standard", "ticker").name == "Symbol"
-    assert seed.field_by_name("standard", "clientorderid").name == "ClOrdID"
+    assert seed.field_by_name("symbol", "").name == "Symbol"
+    assert seed.field_by_name("SYMBOL", STANDARD_BRANCH).name == "Symbol"
+    assert seed.field_by_name("ticker", "").name == "Symbol"
+    assert seed.field_by_name("clientorderid", "").name == "ClOrdID"
     # A path reaches a repeating group and one of its members.
-    assert seed.field_by_path("standard", "NoPartyIDs").fix.tag == 453
-    assert seed.field_by_path("standard", "NoPartyIDs.PartyID").fix.tag == 448
-    assert seed.field_by_path("standard", "nopartyids.item.PartyRole").name == "PartyRole"
+    assert seed.field_by_path("NoPartyIDs", "").fix.tag == 453
+    assert seed.field_by_path("NoPartyIDs.PartyID", "").fix.tag == 448
+    assert seed.field_by_path("nopartyids.item.PartyRole", "").name == "PartyRole"
 
     # The generic pair answers exactly what the specialized one does.
     for key in (55, "Symbol", "ticker", "NoPartyIDs.PartyID", 20):
@@ -269,7 +279,37 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     assert seed.get(55) == seed[55]
 
 
-def test_no_lookup_ever_crosses_a_branch() -> None:
+def test_protocol_and_msgtype_inference_stays_native_and_shallow(
+    seed: FixRegistry,
+) -> None:
+    cases = (
+        (b"prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix", MimeType.FIX, b"D"),
+        (b"ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL", MimeType.ULLINK, b"8"),
+        (b"8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|", MimeType.FIXUL, b"UDF"),
+        (
+            b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|",
+            MimeType.FIXUL,
+            b"D",
+        ),
+        (b"level=INFO message=random", MimeType.OCTET_STREAM, None),
+    )
+    for line, protocol, msgtype in cases:
+        assert seed.infer_bytes_protocol(line) == protocol
+        assert seed.infer_bytes_protocol(bytearray(line)) == protocol
+        assert seed.infer_bytes_protocol(memoryview(line)) == protocol
+        assert seed.infer_bytes_msgtype(line) == msgtype
+        text = line.decode()
+        assert seed.infer_text_protocol(text) == protocol
+        assert seed.infer_text_msgtype(text) == (
+            msgtype.decode() if msgtype is not None else None
+        )
+
+    empty = FixRegistry()
+    assert empty.infer_bytes_msgtype(b"35=AE|") == b"AE"
+    assert empty.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+
+
+def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:
     registry = FixRegistry.from_fields(
         [
             _field("Symbol", "utf8", 55, aliases=["Ticker"]),
@@ -280,37 +320,36 @@ def test_no_lookup_ever_crosses_a_branch() -> None:
     )
 
     # A name is unique per branch, not registry-wide.
-    assert registry.field_by_name("standard", "symbol").fix.id == "standard:55"
-    assert registry.field_by_name("cme", "SYMBOL").fix.id == "cme:5055"
-    assert registry.field_by_name("CME", "venueticker").name == "Symbol"
-    assert registry.get_field_by_name("standard", "venueticker") is None
-    assert registry.get_field_by_name("cme", "ticker") is None
-    assert registry.get_field_by_path("cme", "Symbol").fix.id == "cme:5055"
+    assert registry.field_by_name("symbol", "").fix.id == "55:"
+    assert registry.field_by_name("SYMBOL", "cme").fix.id == "5055:cme"
+    assert registry.field_by_name("venueticker", "CME").name == "Symbol"
+    assert registry.get_field_by_name("venueticker", "") is None
+    assert registry.get_field_by_name("ticker", "cme") is None
+    assert registry.get_field_by_path("Symbol", "cme").fix.id == "5055:cme"
 
-    # A bare tag is the standard branch exactly, never whichever dictionary
-    # happens to be loaded.
-    assert registry.get_field_by_tag(5055) is None
-    assert registry.get_field_by_tag(5001) is None
-    assert 5055 not in registry
-    assert registry.field_by_id("cme:5055").fix.id == "cme:5055"
+    # A bare tag uses the same deterministic best-match order.
+    assert registry.get_field_by_tag(5055).fix.id == "5055:cme"
+    assert registry.get_field_by_tag(5001).fix.id == "5001:cme"
+    assert 5055 in registry
+    assert registry.field_by_id("5055:cme").fix.id == "5055:cme"
 
-    # A bare name is the standard branch too, and a colon-bearing string is a
-    # name, never an identifier.
-    assert registry.get_field("symbol").fix.id == "standard:55"
-    assert registry.get_field("cme:5055") is None
-    assert "cme:5055" not in registry
-    assert registry.get("cme:5001", "fallback") == "fallback"
-    assert registry.remove("cme:5055") is None
+    # A standard canonical name wins; a colon-bearing string is a name, never
+    # an identifier.
+    assert registry.get_field("symbol").fix.id == "55:"
+    assert registry.get_field("5055:cme") is None
+    assert "5055:cme" not in registry
+    assert registry.get("5001:cme", "fallback") == "fallback"
+    assert registry.remove("5055:cme") is None
     assert len(registry) == 3
 
     # A vendor field leaves by its identifier, which is the only spelling that
     # names one: the generic remove reaches the standard branch only.
-    assert registry.remove_by_id("cme:9999") is None
-    removed = registry.remove_by_id("cme:5055")
-    assert removed is not None and removed.fix.id == "cme:5055"
+    assert registry.remove_by_id("9999:cme") is None
+    removed = registry.remove_by_id("5055:cme")
+    assert removed is not None and removed.fix.id == "5055:cme"
     assert len(registry) == 2
-    assert registry.get_field_by_id("cme:5055") is None
-    assert registry.get_field_by_tag(55).fix.id == "standard:55"
+    assert registry.get_field_by_id("5055:cme") is None
+    assert registry.get_field_by_tag(55).fix.id == "55:"
 
 
 def test_registry_absence_is_a_key_error_carrying_the_core_message(
@@ -323,25 +362,25 @@ def test_registry_absence_is_a_key_error_carrying_the_core_message(
     assert by_tag.value.args[0] == 'expected a fix field at "tag 9999", got nothing'
 
     with pytest.raises(KeyError) as by_id:
-        seed.field_by_id("cme:5001")
+        seed.field_by_id("5001:cme")
     assert (
         by_id.value.args[0]
-        == 'expected a fix field at "identifier cme:5001", got nothing'
+        == 'expected a fix field at "identifier 5001:cme", got nothing'
     )
 
     with pytest.raises(KeyError) as by_name:
-        seed.field_by_name("standard", "Nope")
+        seed.field_by_name("Nope", "")
     assert 'name \\"Nope\\"' in by_name.value.args[0]
 
     with pytest.raises(KeyError) as by_path:
-        seed.field_by_path("standard", "Symbol.absent")
+        seed.field_by_path("Symbol.absent", "")
     assert 'path \\"Symbol.absent\\"' in by_path.value.args[0]
 
     with pytest.raises(KeyError):
         seed[9999]
-    assert seed.get_field_by_name("standard", "Nope") is None
-    assert seed.get_field_by_path("standard", "Symbol.absent") is None
-    assert seed.get_field_by_id("cme:5001") is None
+    assert seed.get_field_by_name("Nope", "") is None
+    assert seed.get_field_by_path("Symbol.absent", "") is None
+    assert seed.get_field_by_id("5001:cme") is None
 
 
 def test_registry_keys_are_an_int_tag_or_a_str_name(seed: FixRegistry) -> None:
@@ -364,15 +403,15 @@ def test_registry_coerces_every_branch_and_identifier_argument(
 ) -> None:
     # A branch and an identifier are text, and a malformed one is the native
     # parse failure rather than a miss.
-    for bad_branch in ("2cme", "", "c:me"):
+    for bad_branch in ("2cme", "c:me"):
         with pytest.raises(ValueError, match="fix branch"):
-            seed.field_by_name(bad_branch, "Symbol")
+            seed.field_by_name("Symbol", bad_branch)
         with pytest.raises(ValueError, match="fix branch"):
-            seed.get_field_by_name(bad_branch, "Symbol")
+            seed.get_field_by_name("Symbol", bad_branch)
         with pytest.raises(ValueError, match="fix branch"):
-            seed.field_by_path(bad_branch, "Symbol")
+            seed.field_by_path("Symbol", bad_branch)
         with pytest.raises(ValueError, match="fix branch"):
-            seed.get_field_by_path(bad_branch, "Symbol")
+            seed.get_field_by_path("Symbol", bad_branch)
     for bad_id in ("55", "cme:", "cme:x"):
         with pytest.raises(ValueError, match="fix identifier"):
             seed.field_by_id(bad_id)
@@ -380,15 +419,15 @@ def test_registry_coerces_every_branch_and_identifier_argument(
             seed.get_field_by_id(bad_id)
     # The standard-tag rule reaches the boundary through the same parse.
     with pytest.raises(ValueError, match="fix:branch"):
-        seed.field_by_id("cme:35")
+        seed.field_by_id("35:cme")
 
     for wrong in (55, None, 3.5):
         with pytest.raises(TypeError):
             seed.field_by_id(wrong)
         with pytest.raises(TypeError):
-            seed.get_field_by_name(wrong, "Symbol")
+            seed.get_field_by_name("Symbol", wrong)
         with pytest.raises(TypeError):
-            seed.field_by_path("standard", wrong)
+            seed.field_by_path("std", wrong)
 
 
 def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
@@ -399,20 +438,22 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
             _field("Price", "decimal128(20, 8)", 44),
             _field("VenueQty", "int64", 5002, branch="cme"),
             _field("Account", "utf8", 1),
+            _field("Tail", "utf8", 9001),
         ]
     )
-    # Branch-major, then by tag - the order the core iterates and stores in.
+    # Tag-major, then by branch digest - the packed identifier's order.
     assert [field.fix.id for field in registry] == [
-        "cme:5001",
-        "cme:5002",
-        "standard:1",
-        "standard:44",
-        "standard:55",
+        "1:",
+        "44:",
+        "55:",
+        "5001:cme",
+        "5002:cme",
+        "9001:",
     ]
 
     walk = iter(registry)
-    assert next(walk).name == "TradeID"
-    assert next(walk).name == "VenueQty"
+    assert next(walk).name == "Account"
+    assert next(walk).name == "Price"
     # An unfinished walk shares the registry, so a mutation refuses until it
     # is dropped rather than moving the fields under the cursor.
     with pytest.raises(ValueError, match="shared with a message"):
@@ -420,10 +461,11 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
     del walk
     assert registry.remove(1) is not None
     assert [field.fix.id for field in registry] == [
-        "cme:5001",
-        "cme:5002",
-        "standard:44",
-        "standard:55",
+        "44:",
+        "55:",
+        "5001:cme",
+        "5002:cme",
+        "9001:",
     ]
 
 
@@ -435,7 +477,7 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
     # Every seed field is a specification field, so none states a branch.
-    assert all(field.fix.branch == "standard" for field in seed)
+    assert all(field.fix.branch == "" for field in seed)
     assert all("fix:branch" not in field.metadata for field in seed)
 
 
@@ -460,8 +502,8 @@ def test_registry_takes_every_storage_location(
 
 def test_a_root_in_the_retired_layout_is_refused(tmp_path: pathlib.Path) -> None:
     root = tmp_path / "old"
-    (root / "records" / "standard").mkdir(parents=True)
-    (root / "records" / "standard" / "0.json").write_text("[]", encoding="utf-8")
+    (root / "records" / "std").mkdir(parents=True)
+    (root / "records" / "std" / "0.json").write_text("[]", encoding="utf-8")
 
     with pytest.raises(ValueError, match="records"):
         FixRegistry.from_handle(root)
@@ -473,10 +515,10 @@ def test_registry_round_trips_through_the_two_written_trees(
     root = tmp_path / "dictionary"
     seed.write_into(root)
 
-    primitive = sorted(path.name for path in (root / "primitive" / "standard").iterdir())
+    primitive = sorted(path.name for path in (root / "primitive").iterdir())
     assert primitive == ["0.json", "1.json", "4.json"]
     # The one repeating group is the nested tree's only shard: 453 / 100.
-    nested = sorted(path.name for path in (root / "nested" / "standard").iterdir())
+    nested = sorted(path.name for path in (root / "nested").iterdir())
     assert nested == ["4.json"]
     assert FixRegistry.from_handle(root) == seed
 
@@ -486,7 +528,7 @@ def test_registry_round_trips_through_the_two_written_trees(
     reloaded.remove(447)
     reloaded.remove(452)
     reloaded.write_into(root)
-    assert not (root / "primitive" / "standard" / "4.json").exists()
+    assert not (root / "primitive" / "4.json").exists()
     # Emptying the nested tree removes it whole.
     assert not (root / "nested").exists()
     assert len(FixRegistry.from_handle(root)) == len(seed) - 4
@@ -503,13 +545,13 @@ def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
     registry.write_into(root)
 
     # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert (root / "primitive" / "standard" / "0.json").exists()
+    assert (root / "primitive" / "0.json").exists()
     assert (root / "primitive" / "cme" / "50.json").exists()
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
-    assert reloaded.field_by_id("cme:5001").name == "TradeID"
-    assert reloaded.field_by_name("cme", "tradeid").name == "TradeID"
+    assert reloaded.field_by_id("5001:cme").name == "TradeID"
+    assert reloaded.field_by_name("tradeid", "cme").name == "TradeID"
     assert reloaded.get_field_by_tag(5001) is None
 
 
@@ -528,12 +570,12 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     # nothing changes.
     with pytest.raises(ValueError, match="held by Symbol") as conflict:
         registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
-    assert 'branch \\"standard\\"' in str(conflict.value)
+    assert 'branch \\"\\"' in str(conflict.value)
     assert len(registry) == 3
 
     # The same alias in another branch is not a conflict at all.
     assert registry.insert(_field("VenueSym", "utf8", 5055, branch="cme", aliases=["ticker"])) is None
-    assert registry.field_by_name("cme", "TICKER").name == "VenueSym"
+    assert registry.field_by_name("TICKER", "cme").name == "VenueSym"
 
     # A merge concatenates the two list properties, incoming first.
     registry.update(_field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]))
@@ -553,7 +595,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     # A field with no tag cannot enter at all.
     with pytest.raises(ValueError, match="fix:tag"):
         registry.insert(Field("Untagged", "utf8"))
-    assert seed.get_field_by_name("standard", "Untagged") is None
+    assert seed.get_field_by_name("Untagged", "") is None
 
 
 def test_registry_mutation_refuses_while_something_shares_it(
@@ -587,7 +629,7 @@ def _order(seed: FixRegistry) -> Field:
             [
                 seed.field_by_tag(55),
                 seed.field_by_tag(38),
-                seed.field_by_name("standard", "NoPartyIDs"),
+                seed.field_by_name("NoPartyIDs", ""),
                 Field("9999", "utf8"),
             ]
         ),
@@ -612,14 +654,14 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert message.branch == STANDARD_BRANCH
     assert len(message) == 4
     assert message.by_tag(55).as_py() == "AAPL"
-    assert message.by_id("standard:55").as_py() == "AAPL"
+    assert message.by_id("55:").as_py() == "AAPL"
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_tag(38).as_py() == decimal.Decimal("100")
     assert message.by_path("NoPartyIDs.0.PartyID").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
     # An identifier is exact: a dictionary this message does not speak misses.
-    assert message.get_by_id("cme:5001") is None
+    assert message.get_by_id("5001:cme") is None
 
     assert message[55] == message.by_tag(55)
     assert message["ticker"] == message.by_tag(55)
@@ -632,10 +674,10 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
         message.by_tag(1234)
     assert by_tag.value.args[0] == 'expected a fix value at "tag 1234", got nothing'
     with pytest.raises(KeyError) as by_id:
-        message.by_id("cme:5001")
+        message.by_id("5001:cme")
     assert (
         by_id.value.args[0]
-        == 'expected a fix value at "identifier cme:5001", got nothing'
+        == 'expected a fix value at "identifier 5001:cme", got nothing'
     )
     with pytest.raises(KeyError) as by_name:
         message.by_name("nope")
@@ -700,9 +742,9 @@ def test_a_venue_message_resolves_in_two_steps() -> None:
     assert message.by_name("ticker").as_py() == "AAPL"
 
     # An identifier names one dictionary exactly and does not tier.
-    assert message.by_id("cme:5001").as_py() == "T-1"
-    assert message.by_id("standard:35").as_py() == "D"
-    assert message.get_by_id("standard:5001") is None
+    assert message.by_id("5001:cme").as_py() == "T-1"
+    assert message.by_id("35:").as_py() == "D"
+    assert message.get_by_id("5001:") is None
 
     # A standard message is one step: it never reads a venue dictionary.
     plain = Field(
@@ -711,7 +753,7 @@ def test_a_venue_message_resolves_in_two_steps() -> None:
         nullable=False,
     )
     standard = FixMsg(plain, {"MsgType": "D", "TradeID": "T-1"}, registry)
-    assert standard.branch == "standard"
+    assert standard.branch == ""
     assert standard.by_tag(35).as_py() == "D"
     assert standard.get_by_tag(5001) is None
     assert standard.get_by_name("venuetrade") is None
@@ -788,7 +830,7 @@ seed = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
 install_global_registry(seed)
 assert global_registry() == seed
 assert global_registry().field_by_tag(55).name == "Symbol"
-assert global_registry().field_by_name("standard", "ticker").name == "Symbol"
+assert global_registry().field_by_name("ticker", "").name == "Symbol"
 
 root = Field(
     "row",
