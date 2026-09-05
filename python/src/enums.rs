@@ -170,6 +170,24 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "ULLINK")]
+    fn ullink_constant() -> Self {
+        Self::from_core(CoreMimeType::ULLINK)
+    }
+
+    #[classattr]
+    #[pyo3(name = "FIX")]
+    fn fix_constant() -> Self {
+        Self::from_core(CoreMimeType::FIX)
+    }
+
+    #[classattr]
+    #[pyo3(name = "FIXML")]
+    fn fixml_constant() -> Self {
+        Self::from_core(CoreMimeType::FIXML)
+    }
+
+    #[classattr]
     #[pyo3(name = "MARKDOWN")]
     fn markdown_constant() -> Self {
         Self::from_core(CoreMimeType::MARKDOWN)

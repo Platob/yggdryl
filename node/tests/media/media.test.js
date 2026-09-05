@@ -20,6 +20,9 @@ const knownMimeTypes = Object.freeze({
   ORC: 'application/vnd.apache.orc',
   PUFFIN: 'application/vnd.apache.puffin',
   PLAIN_TEXT: 'text/plain',
+  ULLINK: 'text/ullink',
+  FIX: 'text/fix',
+  FIXML: 'text/fixml',
   MARKDOWN: 'text/markdown',
   HTML: 'text/html',
   CSS: 'text/css',
@@ -66,7 +69,7 @@ const knownMimeTypes = Object.freeze({
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 57)
+  assert.equal(Object.keys(knownMimeTypes).length, 60)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {

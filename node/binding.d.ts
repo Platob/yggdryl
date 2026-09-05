@@ -2090,6 +2090,9 @@ declare module './index' {
     const ORC: MimeType
     const PUFFIN: MimeType
     const PLAIN_TEXT: MimeType
+    const ULLINK: MimeType
+    const FIX: MimeType
+    const FIXML: MimeType
     const MARKDOWN: MimeType
     const HTML: MimeType
     const CSS: MimeType
