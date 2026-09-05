@@ -99,10 +99,13 @@ impl FixMsg {
   resolvable only by someone holding the registry that produced it. `SmolStr`
   inlines a name of 23 bytes, which every dialect name is, so the common
   entry still allocates nothing (P7-R7).
-- **P7-R4.1.** `None` means the standard branch *and* "not resolved yet" —
-  which is why an entry is not simply a `FixId`. The two are one state on
+- **P7-R4.1. `None` means the standard branch *and* "not resolved yet",** and
+  a standard tag never spells `std` (P2-R25). The two are one state on
   purpose: both say "no dialect claimed this", and separating them would put
-  a resolution state into a record of what arrived.
+  a resolution state into a record of what arrived. It is also why an entry
+  is not simply a `FixId`. Writing the name where absence already says it
+  would put the same fact in two places and cost a branch string on the
+  overwhelming majority of entries, which are standard.
 - **P7-R5. A pair is bytes, not text.** FIX is a byte protocol: a
   `data`-typed value may hold anything, including the separator (P7-R72) and
   bytes that are not UTF-8 at all — a signature, an encrypted block, a
@@ -689,8 +692,8 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 6e2. A vendor-branch entry carrying the branch's **name**, printable in a
      debug line, and `id()` answering the same `FixId` as the registry holds
      for that tag in that branch — the digest computed, never stored on the
-     entry (P7-R3, P7-R4); a standard-branch entry carrying `None`
-     (P7-R4.1).
+     entry (P7-R3, P7-R4); a standard-branch entry carrying `None` and never
+     the text `std` (P7-R4.1, P2-R25).
 6f. A valid-UTF-8 value is converted without a validity pass of its own and
     without copying, and a `data` field is typed from the raw bytes rather
     than from its lossy text (P7-R6, P7-R9).

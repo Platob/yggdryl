@@ -194,7 +194,7 @@ impl FixRegistry {
   `Eq`/`Ord` stay text-based; the digest is a function of the text so it can
   only agree. `MAX_LENGTH` stays 23 — the digest sits beside `SmolStr`.
 - **P2-R5. `STANDARD`'s digest is a literal,** pinned by a test asserting
-  `xxh32(b"standard")` equals it.
+  `xxh32(b"std")` equals it (P2-R25).
 - **P2-R6. `from_parts` is a shift and an or,** and stays the one place the
   admissibility rule lives, plus one refusal: a non-standard branch whose
   digest equals the standard branch's, so `is_standard()` stays total.
@@ -302,6 +302,30 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
   parse an id from text and hold one as a cursor; neither renders one back,
   so `Copy` makes those by-value. The one real change is P2-R8: both
   re-export the tag limit and must re-export the two bounds instead.
+- **P2-R25. The standard branch is named `std`, and is never spelled where
+  it can be omitted.** The constant's text changes from `standard` to `std`.
+  It is the one name that recurs everywhere — every branch-qualified key a
+  caller types, a shard folder, a manifest key, a debug print of an entry —
+  and four bytes off it is four bytes off all of them, including the inline
+  budget a 23-byte `SmolStr` gives a *qualified* spelling.
+
+  `standard` becomes a **refused** branch name, naming the reserved spelling
+  in the error: not an alias (N3), and not an ordinary name either, because a
+  caller who types the obvious word must not silently address an empty vendor
+  dictionary. One spelling, and the near-miss is loud (P2-R15's reasoning,
+  applied to the name rather than the digest).
+
+  Omitted wherever it can be: the `fix:branch` property stays absent for a
+  standard field, as it already is; a standard tag's entry carries `None`
+  and never the text (P7-R4.1); a `branch` column is null rather than
+  `"std"`. Absence already means standard, so writing it as well is the same
+  fact in two places — and the shorter name exists for the places that must
+  name one, not to be sprinkled where nothing was.
+
+  Every standard `FixId`'s low half changes with the digest, which is safe
+  for exactly one reason: a `FixId` is derived and never stored (P7-R79's
+  reasoning). Assert that no committed shard, manifest or document holds one
+  before making the change.
 
 ### Decided
 
@@ -321,11 +345,12 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
 2. Admissibility across the range (P2-R7): a vendor branch refused at
    `4999` and `40000`, admitted at `5000` and `39999`; standard admitted
    everywhere; the refusal names both bounds.
-3. `standard(tag)` in a `const` context; the pinned `xxh32(b"standard")`.
+3. `standard(tag)` in a `const` context; the pinned `xxh32(b"std")`.
 4. A branch-digest collision refused, both spellings named; a name-digest
    collision refused.
 5. Ordering across tags and across branches.
-6. `write_into` byte-identical to a shard written before the change — the
+6. `write_into` byte-identical to a shard written before the change, folder
+   name aside — the standard tree's folder is renamed by P2-R25 and the
    manifest is a new leaf (P2-R16).
 7. No manifest loads with bare names and behaves as before; a manifest
    round-trips canonically; one naming a branch no field belongs to is a
@@ -334,6 +359,9 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
    pair, folded, and `None` when none does (P2-R14).
 9. Every existing registry test passes, except vendor-branch `Display` and
    cross-branch iteration order.
+10. `FixBranch::from_str("std")` is standard; `"standard"` is refused and the
+    error names the reserved spelling; no committed document holds a
+    `FixId`, so the digest change moves nothing (P2-R25).
 10. Lookups still allocate nothing; `Mix` control-byte spread over the
     committed dictionary.
 
