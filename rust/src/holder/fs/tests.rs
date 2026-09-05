@@ -948,7 +948,7 @@ mod wrappers {
             .unwrap()
             .unwrap();
         let body = batch
-            .column(2)
+            .column(1)
             .as_any()
             .downcast_ref::<arrow_array::BinaryArray>()
             .unwrap();

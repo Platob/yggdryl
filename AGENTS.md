@@ -198,7 +198,7 @@ bindings redirect through stable inherent methods.
 Canonical core spellings:
 
 - `DataType`: `from_str`, `from_arrow`, `from_json`, `from_fields`,
-  `into_arrow`, `into_json`, `as_fields`,
+  `from_regex`, `into_arrow`, `into_json`, `as_fields`,
   `default_value`, `is_default_value`, `into_scheme_compat`, `dense_union`,
   `decimal`, `time`, `ascii`, `ascii_width`, `is_ascii`, `code_name`,
   `scalar`.
@@ -327,10 +327,13 @@ scheme vocabulary.
   answers without forcing a full read.
 - Encoding comes from `MediaType` through `RecordOptions`; no format argument.
   Generic `write_*` accepts `IOMode` and redirects to specialized core paths.
-- Plain-text rows begin with required `url: utf8`, `rownum: int64`, and
-  `body: binary`. Flat `TextOptions` owns named `rowheader` captures, edge-only
-  regex stripping, a line separator, and first-batch `autotype`. `timezone`
-  remains a shared `RecordOptions` accessor and controls text autotyping;
+- Plain-text rows begin with required `url: utf8` and `body: binary`;
+  `TextOptions.with_rownum: Option<i64>` inserts required `rownum: int64`
+  between them and names its first value. Flat `TextOptions` owns named
+  `rowheader` captures, edge-only regex stripping, a line separator, and
+  syntax-directed `autotype` through `DataType::from_regex`, so the full
+  source field is known before a read. `timezone` remains a shared
+  `RecordOptions` accessor and controls offset-free datetime captures;
   writes consume only non-null binary `body` values.
 - Content coding belongs to the handle. Reject outer compression for formats
   such as Parquet that compress internally.

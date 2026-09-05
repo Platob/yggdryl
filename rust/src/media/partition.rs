@@ -639,7 +639,7 @@ pub(crate) fn folder_reader(
             let (field, remaining) = derived_field(parts, root.as_ref(), options)?;
             parts = remaining;
             match (field, options) {
-                (None, RecordOptions::Text(text)) => Some(text.fallback_field()?),
+                (None, RecordOptions::Text(text)) => Some(text.source_field()?),
                 (field, _) => field,
             }
         }

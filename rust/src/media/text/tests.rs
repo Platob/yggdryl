@@ -43,6 +43,7 @@ fn options_are_flat_and_validate_rowheader_names() {
         .with_linesep(LineSep::CRLF)
         .with_autotype(false)
         .with_timezone(Timezone::UTC);
+    options.with_rownum = Some(-3);
     options.set_batch_row_size(Some(7));
 
     assert_eq!(
@@ -54,6 +55,7 @@ fn options_are_flat_and_validate_rowheader_names() {
     assert_eq!(options.linesep(), Some(&LineSep::CRLF));
     assert!(!options.autotype());
     assert_eq!(options.timezone(), Some(&Timezone::UTC));
+    assert_eq!(options.with_rownum, Some(-3));
     assert_eq!(options.batch_row_size(), Some(7));
 
     let error = TextOptions::new()
@@ -64,12 +66,13 @@ fn options_are_flat_and_validate_rowheader_names() {
 }
 
 #[test]
-fn ordinary_record_reading_emits_base_columns_and_adaptive_captures() {
+fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures() {
     let source = named(
         "app.log",
         b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
     );
     let mut text = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
+    text.with_rownum = Some(10);
     text.set_lstrip(Some(r"^\s+")).unwrap();
     text.set_rstrip(Some(r"\s+$")).unwrap();
     let options = text.into();
@@ -95,7 +98,7 @@ fn ordinary_record_reading_emits_base_columns_and_adaptive_captures() {
             .downcast_ref::<Int64Array>()
             .unwrap()
             .values(),
-        &[1, 2, 3]
+        &[10, 11, 12]
     );
     assert_eq!(
         batch
@@ -124,30 +127,104 @@ fn ordinary_record_reading_emits_base_columns_and_adaptive_captures() {
 }
 
 #[test]
-fn autotype_can_be_disabled_and_is_fixed_after_the_first_batch() {
-    let mut strings = options(r"(?<value>\S+)");
+fn capture_schema_is_derived_from_regex_before_reading() {
+    let mut strings = options(r"(?<value>\d+)");
     strings.set_autotype(false);
-    let strings = strings.into();
-    let batch = named("values.log", b"1\nword\n")
-        .read_arrow_reader(&strings)
+    let field = named("empty.log", b"")
+        .read_arrow_field(&strings.into())
+        .unwrap();
+    assert_eq!(field.field("value").unwrap().dtype(), &DataType::Utf8,);
+
+    let typed = options(r"(?<value>\d+)");
+    let field = named("empty.log", b"")
+        .read_arrow_field(&typed.clone().into())
+        .unwrap();
+    assert_eq!(field.field("value").unwrap().dtype(), &DataType::Int64);
+
+    let batch = named("values.log", b"1\n2\n")
+        .read_arrow_reader(&typed.into())
         .unwrap()
         .next()
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
-        &arrow_schema::DataType::Utf8
+        batch.schema().field(2).data_type(),
+        &arrow_schema::DataType::Int64
     );
 
-    let mut adaptive = options(r"(?<value>\S+)");
-    adaptive.set_batch_row_size(Some(1));
-    let adaptive = adaptive.into();
-    let mut reader = named("values.log", b"1\nword\n")
-        .read_arrow_reader(&adaptive)
+    let broad = options(r"(?<value>\S+)");
+    let batch = named("values.log", b"1\nword\n")
+        .read_arrow_reader(&broad.into())
+        .unwrap()
+        .next()
+        .unwrap()
         .unwrap();
-    assert!(reader.next().unwrap().is_ok());
+    assert_eq!(
+        batch.schema().field(2).data_type(),
+        &arrow_schema::DataType::Utf8
+    );
+    assert_eq!(
+        batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>(),
+        ["url", "body", "value"]
+    );
+}
+
+#[test]
+fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
+    let mut options = TextOptions::new();
+    options.with_rownum = Some(i64::MAX);
+    options.set_batch_row_size(Some(1));
+    let mut reader = named("rows.log", b"first\nsecond\n")
+        .read_arrow_reader(&options.into())
+        .unwrap();
+
+    let first = reader.next().unwrap().unwrap();
+    assert_eq!(
+        first
+            .column(1)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap()
+            .value(0),
+        i64::MAX
+    );
     let error = reader.next().unwrap().unwrap_err().to_string();
-    assert!(error.contains("inferred datatype int64"));
+    assert!(error.contains("text row number exceeds i64::MAX"));
+}
+
+#[test]
+fn url_column_is_rendered_from_the_handlers_real_url() {
+    use crate::holder::local::{File, Folder};
+
+    let mut path = Folder::temporary().unwrap().path().unwrap();
+    path.push(format!("yggdryl-text-url-{}.log", std::process::id()));
+    let mut source = File::new(&path).unwrap();
+    source.remove(false).unwrap();
+    source.write_all_bytes(b"body\n").unwrap();
+    let expected = source.url().unwrap().to_string();
+
+    let batch = source
+        .read_arrow_reader(&TextOptions::new().into())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .value(0),
+        expected
+    );
+
+    source.remove(false).unwrap();
 }
 
 #[test]
@@ -155,19 +232,19 @@ fn autotyping_reads_a_session_clock_past_the_end_of_its_day() {
     // Extended session hours spell the small hours as 24 and up; the capture
     // is a time of day, so each reading folds into its day.
     let batch = named("session.log", b"08:00:00\n25:30:00\n")
-        .read_arrow_reader(&options(r"(?<clock>\S+)").into())
+        .read_arrow_reader(&options(r"(?<clock>\d{2}:\d{2}:\d{2})").into())
         .unwrap()
         .next()
         .unwrap()
         .unwrap();
 
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(2).data_type(),
         &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(2)
             .as_any()
             .downcast_ref::<arrow_array::Time32SecondArray>()
             .unwrap()
@@ -201,12 +278,12 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(2).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(1)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -215,7 +292,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(4)
+            .column(3)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -224,7 +301,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(5)
+            .column(4)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()

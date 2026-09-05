@@ -991,13 +991,7 @@ pub(crate) fn leaf_field(
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => Ok(crate::media::parquet::read_field(handle, parquet)?),
         RecordOptions::Avro(avro) => Ok(crate::media::avro::read_field(handle, avro)?),
-        RecordOptions::Text(text) => {
-            let reader = crate::media::text::arrow::read_arrow_reader(handle, text)?;
-            Ok(crate::arrow::field_from_arrow_schema(
-                text.name(),
-                reader.schema().as_ref(),
-            )?)
-        }
+        RecordOptions::Text(text) => text.source_field(),
     }
 }
 

@@ -92,7 +92,7 @@ pub trait IOMedia: Send {
         if handle.is_container() {
             return Ok(self.read_arrow_field(&options)?.fields().len());
         }
-        if handle.is_empty() {
+        if handle.is_empty() && !matches!(options, RecordOptions::Text(_)) {
             return Ok(0);
         }
         Ok(crate::iobase::leaf_field(handle, &options)?.fields().len())

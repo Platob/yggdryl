@@ -118,11 +118,7 @@ impl<H: IOBase> IOMedia for Text<H> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if self.handle.is_empty() {
-            return Ok(0);
-        }
-        let options = RecordOptions::Text(Box::new(self.options.clone()));
-        Ok(IOMedia::read_arrow_field(self, &options)?.field_len())
+        Ok(self.options.source_field()?.field_len())
     }
 
     #[cfg(feature = "arrow")]
@@ -132,8 +128,8 @@ impl<H: IOBase> IOMedia for Text<H> {
 
     #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        self.require_text_options(options)?;
-        IOMedia::read_arrow_field(&self.handle, options)
+        let text = self.require_text_options(options)?;
+        text.field().map_or_else(|| text.source_field(), Ok)
     }
 
     #[cfg(feature = "arrow")]

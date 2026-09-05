@@ -22,6 +22,7 @@ pub mod nested;
 mod parser;
 mod pretty;
 pub mod protocol;
+mod regex;
 mod scalar;
 pub(crate) mod serde;
 pub mod temporal;

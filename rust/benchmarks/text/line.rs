@@ -9,7 +9,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 
-const ROWS: usize = crate::bench_profile::corpus(50_000, 2_000);
+const ROWS: usize = crate::bench_profile::corpus(10_000, 500);
 const ROWHEADER: &str = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)";
 
 fn corpus() -> Vec<u8> {
@@ -49,6 +49,11 @@ fn drain(handle: &Buffer, options: &RecordOptions) -> usize {
 pub(crate) fn text_options_benchmarks(criterion: &mut Criterion) {
     let options = options(Some(ROWHEADER));
     let mut group = criterion.benchmark_group("text_options");
+    group.bench_function("datatype_from_regex", |bencher| {
+        bencher.iter(|| {
+            yggdryl::DataType::from_regex(black_box(ROWHEADER), true).expect("a capture Struct")
+        });
+    });
     group.bench_function("stable_hash", |bencher| {
         bencher.iter(|| black_box(&options).stable_hash());
     });
@@ -78,7 +83,7 @@ pub(crate) fn text_records_benchmarks(criterion: &mut Criterion) {
     group.bench_function("record/plain", |bencher| {
         bencher.iter(|| drain(black_box(&source), black_box(&plain)));
     });
-    group.bench_function("record/rowheader_autotype", |bencher| {
+    group.bench_function("record/rowheader_regex_types", |bencher| {
         bencher.iter(|| drain(black_box(&source), black_box(&captured)));
     });
     group.finish();

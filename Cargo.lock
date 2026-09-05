@@ -3456,6 +3456,7 @@ dependencies = [
  "memmap2",
  "parquet 59.2.0",
  "regex",
+ "regex-syntax",
  "saphyr-parser",
  "serde",
  "serde_json",

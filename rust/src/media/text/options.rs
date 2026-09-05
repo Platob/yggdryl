@@ -11,7 +11,7 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Timezone};
 
 use super::LineSep;
 
-/// Columns every decoded text row starts with, in emission order.
+/// Reserved columns emitted before decoded row-header captures.
 pub(crate) const BASE_COLUMNS: [&str; 3] = ["url", "rownum", "body"];
 
 /// A regex whose source, rather than its compiled automaton, is value identity.
@@ -66,7 +66,7 @@ impl PartialOrd for Expression {
 /// line; its named captures become nullable columns and its complete match is
 /// removed from `body`. `lstrip` and `rstrip` then remove a match only when it
 /// touches the corresponding edge. With `autotype`, capture datatypes are
-/// inferred from the first row batch and fixed for the rest of the reader.
+/// inferred from the regex syntax before the resource is read.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextOptions {
     /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
@@ -77,7 +77,7 @@ pub struct TextOptions {
     pub metadata: Metadata,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
-    /// Rows per batch, and the capture-type sample size when autotyping.
+    /// Rows per emitted batch.
     pub batch_row_size: Option<usize>,
     /// Most result rows in total.
     pub max_row_size: Option<u64>,
@@ -93,17 +93,19 @@ pub struct TextOptions {
     pub select_by_names: Vec<String>,
     /// Partition equalities a read is pruned and filtered by.
     pub filter_partitions: Vec<(String, String)>,
+    /// First emitted row number; `None` omits the `rownum` column.
+    pub with_rownum: Option<i64>,
     rowheader: Option<Expression>,
     lstrip: Option<Expression>,
     rstrip: Option<Expression>,
     linesep: Option<LineSep>,
     autotype: bool,
     timezone: Option<Timezone>,
-    captures: Vec<SmolStr>,
+    captures: Vec<Field>,
 }
 
 impl TextOptions {
-    /// Build text options with flexible line endings and adaptive captures.
+    /// Build text options with flexible line endings and syntax-typed captures.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -119,6 +121,7 @@ impl TextOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
+            with_rownum: None,
             rowheader: None,
             lstrip: None,
             rstrip: None,
@@ -150,23 +153,32 @@ impl TextOptions {
         let captures = expression
             .as_ref()
             .map(|expression| {
-                expression
-                    .compiled
-                    .capture_names()
-                    .flatten()
-                    .map(SmolStr::new)
-                    .collect::<Vec<_>>()
+                DataType::from_regex(expression.source.as_str(), true).and_then(|dtype| {
+                    dtype.as_fields().map_or_else(
+                        || {
+                            Err(Error::InvalidRecord {
+                                path: SmolStr::new_static("$.rowheader"),
+                                reason: SmolStr::new_static(
+                                    "expected regex capture inference to answer a Struct",
+                                ),
+                            })
+                        },
+                        |fields| Ok(fields.to_vec()),
+                    )
+                })
             })
+            .transpose()?
             .unwrap_or_default();
         for capture in &captures {
             if BASE_COLUMNS
                 .iter()
-                .any(|base| base.eq_ignore_ascii_case(capture))
+                .any(|base| base.eq_ignore_ascii_case(capture.name()))
             {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from url, rownum, and body, got {capture:?}"
+                        "expected named captures distinct from url, rownum, and body, got {:?}",
+                        capture.name()
                     ),
                 });
             }
@@ -248,18 +260,18 @@ impl TextOptions {
         self
     }
 
-    /// Return whether named captures are typed from the first batch.
+    /// Return whether named captures are typed from their regex syntax.
     #[must_use]
     pub const fn autotype(&self) -> bool {
         self.autotype
     }
 
-    /// Enable or disable adaptive capture typing.
+    /// Enable or disable syntax-directed capture typing.
     pub const fn set_autotype(&mut self, autotype: bool) {
         self.autotype = autotype;
     }
 
-    /// Return these options with adaptive capture typing changed.
+    /// Return these options with syntax-directed capture typing changed.
     #[must_use]
     pub const fn with_autotype(mut self, autotype: bool) -> Self {
         self.set_autotype(autotype);
@@ -286,7 +298,7 @@ impl TextOptions {
 
     /// Iterate named row-header captures in regex order.
     pub fn capture_names(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.captures.iter().map(SmolStr::as_str)
+        self.captures.iter().map(Field::name)
     }
 
     /// Return a deterministic hash of the complete flat configuration.
@@ -313,34 +325,33 @@ impl TextOptions {
         self.linesep.as_ref().map_or(b"\n", LineSep::as_bytes)
     }
 
-    /// Build the decoder's source field from capture datatypes.
-    pub(crate) fn source_field(&self, capture_dtypes: &[DataType]) -> Result<Field> {
-        if capture_dtypes.len() != self.captures.len() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.rowheader"),
-                reason: format_smolstr!(
-                    "expected {} capture datatypes, got {}",
-                    self.captures.len(),
-                    capture_dtypes.len()
-                ),
-            });
-        }
-        let mut fields = Vec::with_capacity(BASE_COLUMNS.len() + self.captures.len());
+    /// Build the decoder's source field without reading the resource.
+    pub(crate) fn source_field(&self) -> Result<Field> {
+        let mut fields = Vec::with_capacity(3 + self.captures.len());
         fields.push(DataType::Utf8.required_field("url"));
-        fields.push(DataType::Int64.required_field("rownum"));
+        if self.with_rownum.is_some() {
+            fields.push(DataType::Int64.required_field("rownum"));
+        }
         fields.push(DataType::Binary.required_field("body"));
-        fields.extend(
-            self.captures
-                .iter()
-                .zip(capture_dtypes)
-                .map(|(name, dtype)| dtype.clone().nullable_field(name.clone())),
-        );
+        fields.extend(self.captures.iter().map(|capture| {
+            let dtype = if self.autotype {
+                match (capture.dtype(), self.timezone) {
+                    (DataType::DateTime64 { unit, timezone }, Some(configured))
+                        if timezone.is_naive() =>
+                    {
+                        DataType::DateTime64 {
+                            unit: *unit,
+                            timezone: configured,
+                        }
+                    }
+                    (dtype, _) => dtype.clone(),
+                }
+            } else {
+                DataType::Utf8
+            };
+            dtype.nullable_field(capture.name())
+        }));
         Ok(DataType::from_fields(fields)?.required_field(self.name.clone()))
-    }
-
-    /// Build the schema available without sampling data.
-    pub(crate) fn fallback_field(&self) -> Result<Field> {
-        self.source_field(&vec![DataType::Utf8; self.captures.len()])
     }
 }
 

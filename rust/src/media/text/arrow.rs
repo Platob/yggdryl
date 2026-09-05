@@ -1,6 +1,5 @@
 //! `text/plain` rows through the shared Scalar/Arrow record boundary.
 
-use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::Arc;
 
@@ -13,7 +12,7 @@ use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::types::ascii::iso;
-use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
 use crate::{Cursor, IOBase};
 
 use super::options::TextOptions;
@@ -24,7 +23,7 @@ pub(crate) fn read_arrow_reader(
     handle: &(impl IOBase + ?Sized),
     options: &TextOptions,
 ) -> Result<BatchReader> {
-    let url = url_text(handle);
+    let url = handle.url().cloned();
     read_owned_arrow_reader_at(reopened(handle)?, url, options)
 }
 
@@ -33,48 +32,31 @@ pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
     handle: H,
     options: &TextOptions,
 ) -> Result<BatchReader> {
-    let url = url_text(&handle);
+    let url = handle.url().cloned();
     read_owned_arrow_reader_at(handle, url, options)
 }
 
 fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     handle: H,
-    url: SmolStr,
+    url: Option<Url>,
     options: &TextOptions,
 ) -> Result<BatchReader> {
+    let field = options.source_field()?;
+    let base_count = 2 + usize::from(options.with_rownum.is_some());
+    let capture_dtypes = field
+        .fields()
+        .iter()
+        .skip(base_count)
+        .map(|capture| capture.dtype().clone())
+        .collect();
     let codings = handle.media_type().encodings().to_vec();
     let mut source: Box<dyn Read + Send + 'static> = Box::new(Cursor::new(handle));
     for coding in codings.iter().rev() {
         source = Codec::from_mime_type(coding).reader_send(source);
     }
 
-    let mut raw = RawRows::new(source, url, Arc::new(options.clone()));
-    let adaptive = options.autotype()
-        && options.dtype().is_none()
-        && options.capture_names().len() > 0
-        && options.max_row_size() != Some(0)
-        && options.max_byte_size() != Some(0);
-    let mut prefetched = VecDeque::new();
-    let capture_dtypes = if adaptive {
-        let mut sample_size = options
-            .batch_row_size()
-            .unwrap_or(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
-            .max(1);
-        if let Some(maximum) = options.max_row_size() {
-            sample_size = sample_size.min(usize::try_from(maximum).unwrap_or(usize::MAX));
-        }
-        for _ in 0..sample_size {
-            let Some(row) = raw.next() else { break };
-            prefetched.push_back(row?);
-        }
-        inferred_capture_dtypes(&prefetched, options)?
-    } else {
-        vec![DataType::Utf8; options.capture_names().len()]
-    };
-    let field = options.source_field(&capture_dtypes)?;
     let rows = Records {
-        raw,
-        prefetched,
+        raw: RawRows::new(source, url, Arc::new(options.clone())),
         capture_dtypes,
         timezone: options.timezone().copied(),
     };
@@ -121,42 +103,46 @@ fn reopened(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     Ok(Holder::buffer(buffer))
 }
 
-fn url_text(handle: &(impl IOBase + ?Sized)) -> SmolStr {
-    handle.url().map_or_else(
-        || SmolStr::new_static(""),
-        |url| SmolStr::new(url.to_string()),
-    )
-}
-
-/// One parsed line before capture types are fixed.
+/// One parsed physical line with still-textual named captures.
 struct RawRow {
-    url: SmolStr,
-    rownum: i64,
+    index: u64,
+    rownum: Option<i64>,
     body: Arc<[u8]>,
     captures: Vec<Option<SmolStr>>,
 }
 
-/// Physical lines parsed into the three base values and raw captures.
+/// Physical lines parsed against one handler URL and one precomputed schema.
 struct RawRows<R> {
     lines: Lines<R>,
-    url: SmolStr,
+    url: Option<Url>,
+    url_value: Scalar,
     options: Arc<TextOptions>,
-    rownum: i64,
+    index: u64,
     done: bool,
 }
 
 impl<R: Read> RawRows<R> {
-    fn new(source: R, url: SmolStr, options: Arc<TextOptions>) -> Self {
+    fn new(source: R, url: Option<Url>, options: Arc<TextOptions>) -> Self {
+        let url_value = url
+            .as_ref()
+            .map_or_else(|| Scalar::from(""), |url| Scalar::from(url.to_string()));
         Self {
             lines: Lines::new(source),
             url,
+            url_value,
             options,
-            rownum: 0,
+            index: 0,
             done: false,
         }
     }
 
-    fn parse(options: &TextOptions, url: &str, line: &[u8], rownum: i64) -> Result<RawRow> {
+    fn parse(
+        options: &TextOptions,
+        url: Option<&Url>,
+        line: &[u8],
+        index: u64,
+        rownum: Option<i64>,
+    ) -> Result<RawRow> {
         let mut captures = vec![None; options.capture_names().len()];
         let mut body = Vec::with_capacity(line.len());
         if let Some(rowheader) = options.rowheader_regex() {
@@ -167,17 +153,18 @@ impl<R: Read> RawRows<R> {
                 } else {
                     body.extend_from_slice(line);
                 }
-                for (target, (index, name)) in captures.iter_mut().zip(
+                for (target, (capture_index, name)) in captures.iter_mut().zip(
                     rowheader
                         .capture_names()
                         .enumerate()
                         .filter_map(|(index, name)| name.map(|name| (index, name))),
                 ) {
-                    let Some(value) = found.get(index) else {
+                    let Some(value) = found.get(capture_index) else {
                         continue;
                     };
                     let value = std::str::from_utf8(value.as_bytes()).map_err(|error| {
                         row_error(
+                            index,
                             rownum,
                             url,
                             name,
@@ -217,7 +204,7 @@ impl<R: Read> RawRows<R> {
         }
 
         Ok(RawRow {
-            url: SmolStr::new(url),
+            index,
             rownum,
             body: Arc::from(&body[start..end]),
             captures,
@@ -233,7 +220,6 @@ impl<R: Read> Iterator for RawRows<R> {
             return None;
         }
         let options = Arc::clone(&self.options);
-        let url = self.url.clone();
         let line = match self.lines.next_line(options.linesep())? {
             Ok(line) => line,
             Err(error) => {
@@ -241,125 +227,42 @@ impl<R: Read> Iterator for RawRows<R> {
                 return Some(Err(error));
             }
         };
-        let Some(rownum) = self.rownum.checked_add(1) else {
+        let index = self.index;
+        let Some(next_index) = index.checked_add(1) else {
             self.done = true;
             return Some(Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.rownum"),
-                reason: SmolStr::new_static("text row number exceeds i64::MAX"),
+                path: SmolStr::new_static("$"),
+                reason: SmolStr::new_static("physical text line count exceeds u64::MAX"),
             }));
         };
-        self.rownum = rownum;
-        Some(Self::parse(&options, &url, line, rownum))
+        self.index = next_index;
+        let rownum = match options.with_rownum {
+            Some(start) => {
+                let Ok(offset) = i64::try_from(index) else {
+                    self.done = true;
+                    return Some(Err(rownum_overflow(index)));
+                };
+                let Some(rownum) = start.checked_add(offset) else {
+                    self.done = true;
+                    return Some(Err(rownum_overflow(index)));
+                };
+                Some(rownum)
+            }
+            None => None,
+        };
+        Some(Self::parse(
+            &options,
+            self.url.as_ref(),
+            line,
+            index,
+            rownum,
+        ))
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum Inferred {
-    Bool,
-    Int,
-    Float,
-    Date,
-    Time(TimeUnit),
-    DateTime64(TimeUnit, Timezone),
-    Text,
-}
-
-fn inferred_capture_dtypes(
-    rows: &VecDeque<RawRow>,
-    options: &TextOptions,
-) -> Result<Vec<DataType>> {
-    let mut inferred = vec![None; options.capture_names().len()];
-    for row in rows {
-        for (slot, value) in inferred.iter_mut().zip(&row.captures) {
-            let Some(value) = value else { continue };
-            let next = infer(value, options.timezone());
-            *slot = Some(match slot.take() {
-                Some(current) => merge_inferred(current, next),
-                None => next,
-            });
-        }
-    }
-    inferred
-        .into_iter()
-        .map(|kind| inferred_dtype(kind.unwrap_or(Inferred::Text)))
-        .collect()
-}
-
-fn infer(value: &str, timezone: Option<&Timezone>) -> Inferred {
-    if matches!(value, "true" | "false") {
-        return Inferred::Bool;
-    }
-    if value.parse::<i64>().is_ok() {
-        return Inferred::Int;
-    }
-    if value.parse::<f64>().is_ok_and(f64::is_finite) {
-        return Inferred::Float;
-    }
-    if let Ok((_, unit, zone)) = iso::parse_timestamp(value) {
-        return Inferred::DateTime64(unit, timezone.copied().unwrap_or(zone));
-    }
-    if let Ok((_, unit)) = iso::parse_datetime(value) {
-        return Inferred::DateTime64(unit, timezone.copied().unwrap_or(Timezone::NAIVE));
-    }
-    if iso::parse_date(value).is_ok() {
-        return Inferred::Date;
-    }
-    if let Ok((_, unit)) = iso::parse_time(value) {
-        return Inferred::Time(unit);
-    }
-    Inferred::Text
-}
-
-fn merge_inferred(left: Inferred, right: Inferred) -> Inferred {
-    use Inferred::{Bool, Date, DateTime64, Float, Int, Text, Time};
-    match (left, right) {
-        (Text, _) | (_, Text) => Text,
-        (Bool, Bool) => Bool,
-        (Int, Int) => Int,
-        (Int | Float, Int | Float) => Float,
-        (Date, Date) => Date,
-        (Time(left), Time(right)) => Time(finer_unit(left, right)),
-        (DateTime64(left, left_zone), DateTime64(right, right_zone)) if left_zone == right_zone => {
-            DateTime64(finer_unit(left, right), left_zone)
-        }
-        _ => Text,
-    }
-}
-
-fn finer_unit(left: TimeUnit, right: TimeUnit) -> TimeUnit {
-    if unit_rank(left) >= unit_rank(right) {
-        left
-    } else {
-        right
-    }
-}
-
-const fn unit_rank(unit: TimeUnit) -> u8 {
-    match unit {
-        TimeUnit::Second => 0,
-        TimeUnit::Millisecond => 1,
-        TimeUnit::Microsecond => 2,
-        TimeUnit::Nanosecond => 3,
-        TimeUnit::Day | TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 4,
-    }
-}
-
-fn inferred_dtype(kind: Inferred) -> Result<DataType> {
-    Ok(match kind {
-        Inferred::Bool => DataType::Boolean,
-        Inferred::Int => DataType::Int64,
-        Inferred::Float => DataType::Float64,
-        Inferred::Date => DataType::Date32,
-        Inferred::Time(unit) => DataType::time(unit)?,
-        Inferred::DateTime64(unit, timezone) => DataType::DateTime64 { unit, timezone },
-        Inferred::Text => DataType::Utf8,
-    })
-}
-
-/// Raw rows converted under the schema fixed by the first batch.
+/// Raw rows converted under the schema inferred before the first read.
 struct Records<R> {
     raw: RawRows<R>,
-    prefetched: VecDeque<RawRow>,
     capture_dtypes: Vec<DataType>,
     timezone: Option<Timezone>,
 }
@@ -368,11 +271,7 @@ impl<R: Read> Iterator for Records<R> {
     type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let raw = self
-            .prefetched
-            .pop_front()
-            .map(Ok)
-            .or_else(|| self.raw.next())?;
+        let raw = self.raw.next()?;
         Some(raw.and_then(|row| self.convert(row)))
     }
 }
@@ -380,8 +279,10 @@ impl<R: Read> Iterator for Records<R> {
 impl<R: Read> Records<R> {
     fn convert(&self, row: RawRow) -> Result<Scalar> {
         let mut entries = Vec::with_capacity(3 + row.captures.len());
-        entries.push((SmolStr::new_static("url"), Scalar::from(row.url.clone())));
-        entries.push((SmolStr::new_static("rownum"), Scalar::from(row.rownum)));
+        entries.push((SmolStr::new_static("url"), self.raw.url_value.clone()));
+        if let Some(rownum) = row.rownum {
+            entries.push((SmolStr::new_static("rownum"), Scalar::from(rownum)));
+        }
         entries.push((SmolStr::new_static("body"), Scalar::from(row.body)));
         for ((name, value), dtype) in self
             .raw
@@ -391,8 +292,11 @@ impl<R: Read> Records<R> {
             .zip(&self.capture_dtypes)
         {
             let value = match value {
-                Some(value) => parse_capture(&value, dtype, self.timezone.as_ref())
-                    .map_err(|reason| row_error(row.rownum, &row.url, name, reason))?,
+                Some(value) => {
+                    parse_capture(&value, dtype, self.timezone.as_ref()).map_err(|reason| {
+                        row_error(row.index, row.rownum, self.raw.url.as_ref(), name, reason)
+                    })?
+                }
                 None => Scalar::Null,
             };
             entries.push((SmolStr::new(name), value));
@@ -491,10 +395,31 @@ const fn nanos(unit: TimeUnit) -> Option<i128> {
     }
 }
 
-fn row_error(rownum: i64, url: &str, column: &str, reason: SmolStr) -> Error {
+fn rownum_overflow(index: u64) -> Error {
     Error::InvalidRecord {
-        path: format_smolstr!("$[{}].{column}", rownum.saturating_sub(1)),
-        reason: format_smolstr!("{reason} in row {rownum} of {url}"),
+        path: format_smolstr!("$[{index}].rownum"),
+        reason: SmolStr::new_static("text row number exceeds i64::MAX"),
+    }
+}
+
+fn row_error(
+    index: u64,
+    rownum: Option<i64>,
+    url: Option<&Url>,
+    column: &str,
+    reason: SmolStr,
+) -> Error {
+    let row = rownum.map_or_else(
+        || format_smolstr!("physical line {}", index.saturating_add(1)),
+        |rownum| format_smolstr!("row {rownum}"),
+    );
+    let url = url.map_or_else(
+        || SmolStr::new_static("<anonymous>"),
+        |url| format_smolstr!("{url}"),
+    );
+    Error::InvalidRecord {
+        path: format_smolstr!("$[{index}].{column}"),
+        reason: format_smolstr!("{reason} in {row} of {url}"),
     }
 }
 
