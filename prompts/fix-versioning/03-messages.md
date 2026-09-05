@@ -681,6 +681,8 @@ impl FixMsg {
     pub fn party(&self, role: &str) -> Option<FixParty<'_>>;
     /// One regulatory timestamp by its type.
     pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>;
+    /// Which lane a side belongs to, or neither (P9-R10).
+    pub fn side_direction(&self) -> Option<FixDirection>;
 }
 ```
 
@@ -711,8 +713,12 @@ impl FixMsg {
   | `secondary_id` | `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, `OrigClOrdID(41)` |
   | `exec_id` | `ExecID(17)` |
   | `symbol` | `Symbol(55)`, then `SecurityID(48)` with `SecurityIDSource(22)` |
-  | `side` | `Side(54)`, packed (P8-R2) |
-  | `price` | `Price(44)`, `LastPx(31)`, `BidPx(132)` / `OfferPx(133)` — by `MsgType` |
+  | `side` | `Side(54)`, packed (P8-R2); else derived (P9-R12) |
+  | `price` | `Price(44)`, `LastPx(31)` — by `MsgType` |
+  | `bid_px` | `BidPx(132)`; else derived (P9-R11) |
+  | `ask_px` | `OfferPx(133)`; else derived (P9-R11) |
+  | `bid_size` | `BidSize(134)`; else derived (P9-R11) |
+  | `ask_size` | `OfferSize(135)`; else derived (P9-R11) |
   | `quantity` | `OrderQty(38)`, `LastQty(32)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
   | `currency` | `Currency(15)` |
   | `transact_time` | `TransactTime(60)`, then `SendingTime(52)` |
@@ -746,12 +752,59 @@ impl FixMsg {
   unchanged, `entries` are unchanged, and two lifts of one message are the
   same walk twice with no cached state to go stale.
 
+#### Enriching a side against its lane
+
+A quote states two prices and no side; an order states one price and a
+side. They are two shapes of one fact, and each can answer for the other —
+but only where the answer is forced, never where it is likely.
+
+- **P9-R10. Direction is an explicit table, never inferred from a
+  spelling.** A `const` list over the standard `SideCodeSet` says which
+  codes buy, which sell, and which do neither:
+
+  | direction | codes |
+  | --- | --- |
+  | buys | `Buy`, `BuyMinus` |
+  | sells | `Sell`, `SellPlus`, `SellShort`, `SellShortExempt`, `SellUndisclosed` |
+  | neither | `Cross`, `CrossShort`, `CrossShortExempt`, `Undisclosed`, `AsDefined`, `Opposite`, and every code not listed |
+
+  A cross is both sides at once and `Opposite` means "whatever the other leg
+  was", so neither has a lane; a code the table does not name is `neither`,
+  never guessed. Direction is **not** taken from the symbolic name's
+  prefix — `SellShortExempt` starting with `Sell` is a fact about English,
+  and P4's Decided refuses that reasoning. Orchestra does not publish
+  direction, so this table is domain knowledge, written out where a reviewer
+  can check it.
+- **P9-R11. A side and a price fill their lane — on an order, not on a
+  fill.** A buy order at `P` is a party willing to pay `P`, which is a bid;
+  a sell order at `P` is an offer. So where the message is an order and
+  carries `Price(44)` with a side whose direction is a lane, `bid_px` or
+  `ask_px` answers that price, and `OrderQty(38)` fills the matching size
+  the same way. **`LastPx(31)` never projects**: a fill's price is a traded
+  price, not a quote lane, and putting it on one would state a quote that
+  never existed. `MsgType` is what tells the two apart (P9-R3).
+- **P9-R12. One lane implies a side; two lanes imply nothing.** A quote
+  carrying only `BidPx` is a party bidding, so `side` answers `Buy`; only
+  `OfferPx`, and it answers `Sell`. A two-sided quote carries both lanes, so
+  no single side is the message's — it answers `None`, which is P9-R1 again
+  and is the case that makes this rule safe to have at all.
+- **P9-R13. Enrichment fills, never overwrites, and never writes.** A
+  derived answer is offered only where the message states nothing: a quote
+  that carries `BidPx` *and* `Side` answers both as stated, and a
+  disagreement between them is reported through `anomalies()` rather than
+  resolved. Nothing derived is stored (P9-R9), so a derived `bid_px` and a
+  stated one are indistinguishable to a reader and neither can go stale.
+
 ### Decided
 
 - **Ambiguity answers nothing.** *Rejected:* taking the first occurrence,
   which is what makes a lifted column quietly wrong on exactly the messages
   that matter — a multi-leg order, a two-sided quote, a trade with several
   parties.
+- **The direction table is explicit and short.** *Rejected:* deriving
+  buy/sell from the code's symbolic name, or from its wire value's ordering.
+  Both are guesses that would silently mis-lane a vendor's own side, and a
+  mis-laned side is a wrong price on the wrong book.
 - **The table lives in the crate, not in the dictionary.** *Rejected:*
   storing lift rules as metadata on fields. A facet is a *consumer's*
   question, not a property of a FIX field, and putting it in the dictionary
@@ -777,6 +830,16 @@ impl FixMsg {
 9. `lift()` twice answers identically and mutates nothing (P9-R9).
 10. A facet whose source resolves to no field in the dictionary is skipped,
     not an error (P9-R4).
+11. A buy order with `Price` answers `bid_px` and no `ask_px`; a sell order
+    the reverse; `OrderQty` fills the matching size (P9-R11).
+12. An ExecutionReport with `LastPx` and a side answers neither lane
+    (P9-R11) — the case that keeps a traded price off a book.
+13. A cross, an `Undisclosed` and an unlisted vendor side each answer no
+    lane (P9-R10).
+14. A one-sided quote answers `Buy` from `BidPx` alone and `Sell` from
+    `OfferPx` alone; a two-sided quote answers no side (P9-R12).
+15. A message stating both `BidPx` and a contradicting `Side` answers both
+    as stated and reports the disagreement (P9-R13).
 
 **Bench.** `lift()` over an ExecutionReport against reading each facet by
 tag, so the table's cost is visible.
