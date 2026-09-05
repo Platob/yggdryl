@@ -14,7 +14,9 @@
 //! ```
 
 use std::cmp::Ordering;
+use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
@@ -32,10 +34,83 @@ pub trait DecimalValue: crate::ScalarValue {
     fn rescale(self, scale: i8) -> Result<Self>;
 }
 
-define_scalar_type!(Decimal32Scalar, super::Decimal32, "decimal32");
-define_scalar_type!(Decimal64Scalar, super::Decimal64, "decimal64");
-define_scalar_type!(Decimal128Scalar, super::Decimal128, "decimal128");
-define_scalar_type!(Decimal256Scalar, super::Decimal256, "decimal256");
+trait IntoI256 {
+    fn into_i256(self) -> I256;
+}
+
+macro_rules! into_i256 {
+    ($($native:ty),+ $(,)?) => {$(
+        impl IntoI256 for $native {
+            fn into_i256(self) -> I256 {
+                I256::from_i128(self as i128)
+            }
+        }
+    )+};
+}
+
+into_i256!(i32, i64, i128);
+
+impl IntoI256 for I256 {
+    fn into_i256(self) -> I256 {
+        self
+    }
+}
+
+macro_rules! decimal_leaf {
+    ($name:ident, $coefficient:ty) => {
+        #[doc = concat!("One exact `", stringify!($coefficient), "` coefficient and scale.")]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Default,
+            Deserialize,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            Serialize,
+        )]
+        pub struct $name {
+            coefficient: $coefficient,
+            scale: i8,
+        }
+
+        impl $name {
+            /// Construct an exact decimal representation.
+            pub const fn new(coefficient: $coefficient, scale: i8) -> Self {
+                Self { coefficient, scale }
+            }
+
+            /// Return the stored coefficient.
+            pub const fn coefficient(self) -> $coefficient {
+                self.coefficient
+            }
+
+            /// Return the base-10 scale.
+            pub const fn scale(self) -> i8 {
+                self.scale
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(&decimal_text(self.coefficient.into_i256(), self.scale))
+            }
+        }
+    };
+}
+
+decimal_leaf!(Decimal32, i32);
+decimal_leaf!(Decimal64, i64);
+decimal_leaf!(Decimal128, i128);
+decimal_leaf!(Decimal256, I256);
+
+define_scalar_type!(Decimal32Scalar, super::Decimal32Type, "decimal32");
+define_scalar_type!(Decimal64Scalar, super::Decimal64Type, "decimal64");
+define_scalar_type!(Decimal128Scalar, super::Decimal128Type, "decimal128");
+define_scalar_type!(Decimal256Scalar, super::Decimal256Type, "decimal256");
 
 impl Scalar {
     /// Build the narrowest exact decimal width that holds `unscaled`.

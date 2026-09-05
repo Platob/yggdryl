@@ -9,5 +9,6 @@ mod scalars;
 
 pub use fields::*;
 pub use scalars::{
-    BinaryScalar, BinaryViewScalar, BytesValue, FixedSizeBinaryScalar, LargeBinaryScalar,
+    Binary, BinaryScalar, BinaryView, BinaryViewScalar, BytesValue, FixedSizeBinary,
+    FixedSizeBinaryScalar, LargeBinary, LargeBinaryScalar,
 };

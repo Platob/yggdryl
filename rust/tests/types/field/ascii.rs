@@ -19,17 +19,17 @@ use super::typed::assert_typed_marker;
 
 #[test]
 fn ascii_markers_cover_the_widths_and_the_codes() {
-    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(4));
-    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(8));
-    assert_typed_marker::<ascii::FixedAscii>(DataType::FixedAscii(16));
-    assert_typed_marker::<ascii::Country>(DataType::Country);
-    assert_typed_marker::<ascii::Currency>(DataType::Currency);
-    assert_typed_marker::<ascii::Mic>(DataType::Mic);
-    assert_typed_marker::<ascii::Cfi>(DataType::Cfi);
+    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(4));
+    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(8));
+    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(16));
+    assert_typed_marker::<ascii::CountryType>(DataType::Country);
+    assert_typed_marker::<ascii::CurrencyType>(DataType::Currency);
+    assert_typed_marker::<ascii::MicType>(DataType::Mic);
+    assert_typed_marker::<ascii::CfiType>(DataType::Cfi);
 
     // The variable shape is parameterless, so it has a static constructor;
     // the fixed one carries a width and takes its datatype through `try_new`.
-    assert_typed_marker::<ascii::Ascii>(DataType::Ascii);
+    assert_typed_marker::<ascii::AsciiType>(DataType::Ascii);
     assert_eq!(AsciiField::new("note", true).dtype(), &DataType::Ascii);
     let ccy = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     assert_eq!(ccy.dtype(), &DataType::FixedAscii(4));

@@ -4,26 +4,30 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_ascii_enum};
 use crate::types::typed::define_field_types;
 use crate::{AsciiEnum, Field, Result, TypedField};
 
-define_field_types!(Ascii, "ascii", crate::DataType::Ascii);
-define_field_types!(FixedAscii, "fixed_ascii", crate::DataType::FixedAscii(_));
+define_field_types!(AsciiType, "ascii", crate::DataType::Ascii);
+define_field_types!(
+    FixedAsciiType,
+    "fixed_ascii",
+    crate::DataType::FixedAscii(_)
+);
 
-define_field_types!(Country, "country", crate::DataType::Country);
-define_field_types!(Currency, "currency", crate::DataType::Currency);
-define_field_types!(Mic, "mic", crate::DataType::Mic);
-define_field_types!(Cfi, "cfi", crate::DataType::Cfi);
+define_field_types!(CountryType, "country", crate::DataType::Country);
+define_field_types!(CurrencyType, "currency", crate::DataType::Currency);
+define_field_types!(MicType, "mic", crate::DataType::Mic);
+define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 
 /// A variable-width ASCII-typed field.
-pub type AsciiField = TypedField<Ascii>;
+pub type AsciiField = TypedField<AsciiType>;
 /// A fixed-width ASCII-typed field.
-pub type FixedAsciiField = TypedField<FixedAscii>;
+pub type FixedAsciiField = TypedField<FixedAsciiType>;
 /// A country-typed field: ISO 3166-1 alpha-2.
-pub type CountryField = TypedField<Country>;
+pub type CountryField = TypedField<CountryType>;
 /// A currency-typed field: ISO 4217.
-pub type CurrencyField = TypedField<Currency>;
+pub type CurrencyField = TypedField<CurrencyType>;
 /// A MIC-typed field: ISO 10383's market identifier.
-pub type MicField = TypedField<Mic>;
+pub type MicField = TypedField<MicType>;
 /// A CFI-typed field: ISO 10962's instrument classification.
-pub type CfiField = TypedField<Cfi>;
+pub type CfiField = TypedField<CfiType>;
 
 impl Field {
     /// The enum this field's ASCII values name, if one is declared.

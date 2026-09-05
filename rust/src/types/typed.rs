@@ -198,7 +198,7 @@ impl<K: FieldType> TypedField<K> {
     }
 }
 
-impl TypedField<super::nested::Struct> {
+impl TypedField<super::nested::StructType> {
     /// Consumes a checked Struct wrapper and returns its generic Struct field.
     ///
     /// This typed spelling is the Rust counterpart of the cached
@@ -878,34 +878,34 @@ macro_rules! static_field_constructor {
     };
 }
 
-static_field_constructor!(super::boolean::Null, DataType::Null);
-static_field_constructor!(super::boolean::Boolean, DataType::Boolean);
-static_field_constructor!(super::integer::Int8, DataType::Int8);
-static_field_constructor!(super::integer::Int16, DataType::Int16);
-static_field_constructor!(super::integer::Int32, DataType::Int32);
-static_field_constructor!(super::integer::Int64, DataType::Int64);
-static_field_constructor!(super::integer::UInt8, DataType::UInt8);
-static_field_constructor!(super::integer::UInt16, DataType::UInt16);
-static_field_constructor!(super::integer::UInt32, DataType::UInt32);
-static_field_constructor!(super::integer::UInt64, DataType::UInt64);
-static_field_constructor!(super::floating::Float16, DataType::Float16);
-static_field_constructor!(super::floating::Float32, DataType::Float32);
-static_field_constructor!(super::floating::Float64, DataType::Float64);
-static_field_constructor!(super::temporal::Date32, DataType::Date32);
-static_field_constructor!(super::temporal::Date64, DataType::Date64);
-static_field_constructor!(super::bytes::Binary, DataType::Binary);
-static_field_constructor!(super::bytes::LargeBinary, DataType::LargeBinary);
-static_field_constructor!(super::bytes::BinaryView, DataType::BinaryView);
-static_field_constructor!(super::text::Utf8, DataType::Utf8);
-static_field_constructor!(super::text::LargeUtf8, DataType::LargeUtf8);
-static_field_constructor!(super::text::Utf8View, DataType::Utf8View);
-static_field_constructor!(super::ascii::Ascii, DataType::Ascii);
-static_field_constructor!(super::ascii::Country, DataType::Country);
-static_field_constructor!(super::ascii::Currency, DataType::Currency);
-static_field_constructor!(super::ascii::Mic, DataType::Mic);
-static_field_constructor!(super::ascii::Cfi, DataType::Cfi);
-static_field_constructor!(super::nested::Variant, DataType::Variant);
-static_field_constructor!(super::guid::Guid, DataType::Guid);
+static_field_constructor!(super::boolean::NullType, DataType::Null);
+static_field_constructor!(super::boolean::BooleanType, DataType::Boolean);
+static_field_constructor!(super::integer::Int8Type, DataType::Int8);
+static_field_constructor!(super::integer::Int16Type, DataType::Int16);
+static_field_constructor!(super::integer::Int32Type, DataType::Int32);
+static_field_constructor!(super::integer::Int64Type, DataType::Int64);
+static_field_constructor!(super::integer::UInt8Type, DataType::UInt8);
+static_field_constructor!(super::integer::UInt16Type, DataType::UInt16);
+static_field_constructor!(super::integer::UInt32Type, DataType::UInt32);
+static_field_constructor!(super::integer::UInt64Type, DataType::UInt64);
+static_field_constructor!(super::floating::Float16Type, DataType::Float16);
+static_field_constructor!(super::floating::Float32Type, DataType::Float32);
+static_field_constructor!(super::floating::Float64Type, DataType::Float64);
+static_field_constructor!(super::temporal::Date32Type, DataType::Date32);
+static_field_constructor!(super::temporal::Date64Type, DataType::Date64);
+static_field_constructor!(super::bytes::BinaryType, DataType::Binary);
+static_field_constructor!(super::bytes::LargeBinaryType, DataType::LargeBinary);
+static_field_constructor!(super::bytes::BinaryViewType, DataType::BinaryView);
+static_field_constructor!(super::text::Utf8Type, DataType::Utf8);
+static_field_constructor!(super::text::LargeUtf8Type, DataType::LargeUtf8);
+static_field_constructor!(super::text::Utf8ViewType, DataType::Utf8View);
+static_field_constructor!(super::ascii::AsciiType, DataType::Ascii);
+static_field_constructor!(super::ascii::CountryType, DataType::Country);
+static_field_constructor!(super::ascii::CurrencyType, DataType::Currency);
+static_field_constructor!(super::ascii::MicType, DataType::Mic);
+static_field_constructor!(super::ascii::CfiType, DataType::Cfi);
+static_field_constructor!(super::nested::VariantType, DataType::Variant);
+static_field_constructor!(super::guid::GuidType, DataType::Guid);
 
 #[cfg(test)]
 mod tests;

@@ -27,11 +27,11 @@ pub(crate) fn assert_typed_marker<K: FieldType>(dtype: DataType) {
 #[test]
 fn typed_fields_are_zero_overhead_checked_and_lossless() {
     assert_eq!(
-        std::mem::size_of::<TypedField<integer_marker::Int32>>(),
+        std::mem::size_of::<TypedField<integer_marker::Int32Type>>(),
         std::mem::size_of::<Field>()
     );
     assert_eq!(
-        std::mem::size_of::<TypedFieldRef<'_, integer_marker::Int32>>(),
+        std::mem::size_of::<TypedFieldRef<'_, integer_marker::Int32Type>>(),
         std::mem::size_of::<&Field>()
     );
 
@@ -46,7 +46,7 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
     assert_eq!(generic.dtype(), &DataType::Int32);
     assert_eq!(generic.get_metadata("version"), Some("1"));
 
-    assert!(generic.try_as_typed::<integer::Int64>().is_err());
+    assert!(generic.try_as_typed::<integer::Int64Type>().is_err());
     assert!(
         Field::new(
             "invalid",
@@ -56,7 +56,7 @@ fn typed_fields_are_zero_overhead_checked_and_lossless() {
             },
             false,
         )
-        .try_as_typed::<decimal::Decimal128>()
+        .try_as_typed::<decimal::Decimal128Type>()
         .is_err()
     );
 }
@@ -66,9 +66,9 @@ fn borrowed_typed_fields_inherit_value_traits_from_the_field() {
     let first = Field::new("a", DataType::Int32, false);
     let equal = first.clone();
     let later = Field::new("b", DataType::Int32, false);
-    let first = first.try_as_typed::<integer_marker::Int32>().unwrap();
-    let equal = equal.try_as_typed::<integer_marker::Int32>().unwrap();
-    let later = later.try_as_typed::<integer_marker::Int32>().unwrap();
+    let first = first.try_as_typed::<integer_marker::Int32Type>().unwrap();
+    let equal = equal.try_as_typed::<integer_marker::Int32Type>().unwrap();
+    let later = later.try_as_typed::<integer_marker::Int32Type>().unwrap();
 
     assert_eq!(first, equal);
     assert!(first < later);
@@ -90,7 +90,7 @@ fn struct_fields_have_the_return_typed_conversion_name() {
 }
 
 mod integer_marker {
-    pub use yggdryl::types::integer::Int32;
+    pub use yggdryl::types::integer::Int32Type;
 }
 
 #[test]
@@ -130,14 +130,16 @@ fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
     assert!(serde_json::from_str::<Int32Field>(&int64_json).is_err());
 
     let invalid_decimal = r#"{"name":"amount","dtype":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;
-    assert!(serde_json::from_str::<TypedField<decimal::Decimal128>>(invalid_decimal).is_err());
+    assert!(serde_json::from_str::<TypedField<decimal::Decimal128Type>>(invalid_decimal).is_err());
 }
 
 #[test]
 fn the_extension_typed_markers_narrow_their_exact_variants() {
-    assert_typed_marker::<yggdryl::types::nested::Variant>(DataType::variant());
-    assert_typed_marker::<yggdryl::types::geospatial::Geometry>(DataType::geometry(None).unwrap());
-    assert_typed_marker::<yggdryl::types::geospatial::Geography>(
+    assert_typed_marker::<yggdryl::types::nested::VariantType>(DataType::variant());
+    assert_typed_marker::<yggdryl::types::geospatial::GeometryType>(
+        DataType::geometry(None).unwrap(),
+    );
+    assert_typed_marker::<yggdryl::types::geospatial::GeographyType>(
         DataType::geography(None, None).unwrap(),
     );
 

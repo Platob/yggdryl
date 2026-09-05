@@ -25,19 +25,19 @@ pub trait FloatingValue: ScalarValue {
 
 define_scalar_type!(
     Float16Scalar,
-    super::Float16,
+    super::Float16Type,
     "float16",
     crate::DataType::Float16
 );
 define_scalar_type!(
     Float32Scalar,
-    super::Float32,
+    super::Float32Type,
     "float32",
     crate::DataType::Float32
 );
 define_scalar_type!(
     Float64Scalar,
-    super::Float64,
+    super::Float64Type,
     "float64",
     crate::DataType::Float64
 );
@@ -623,9 +623,30 @@ macro_rules! floating_value {
     };
 }
 
-floating_value!(Float16, super::fields::Float16, F16, Float16, Float16, 16);
-floating_value!(Float32, super::fields::Float32, F32, Float32, Float32, 32);
-floating_value!(Float64, super::fields::Float64, F64, Float64, Float64, 64);
+floating_value!(
+    Float16,
+    super::fields::Float16Type,
+    F16,
+    Float16,
+    Float16,
+    16
+);
+floating_value!(
+    Float32,
+    super::fields::Float32Type,
+    F32,
+    Float32,
+    Float32,
+    32
+);
+floating_value!(
+    Float64,
+    super::fields::Float64Type,
+    F64,
+    Float64,
+    Float64,
+    64
+);
 
 /// A copyable view over any exact floating-point width.
 #[derive(Clone, Copy, Debug)]

@@ -969,52 +969,56 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
-define_field_types!(List, "list", crate::DataType::List(_));
-define_field_types!(ListView, "list_view", crate::DataType::ListView(_));
+define_field_types!(ListType, "list", crate::DataType::List(_));
+define_field_types!(ListViewType, "list_view", crate::DataType::ListView(_));
 define_field_types!(
-    FixedSizeList,
+    FixedSizeListType,
     "fixed_size_list",
     crate::DataType::FixedSizeList(..)
 );
-define_field_types!(LargeList, "large_list", crate::DataType::LargeList(_));
+define_field_types!(LargeListType, "large_list", crate::DataType::LargeList(_));
 define_field_types!(
-    LargeListView,
+    LargeListViewType,
     "large_list_view",
     crate::DataType::LargeListView(_)
 );
-define_field_types!(Struct, "struct", crate::DataType::Struct(_));
-define_field_types!(Union, "union", crate::DataType::Union(..));
+define_field_types!(StructType, "struct", crate::DataType::Struct(_));
+define_field_types!(UnionType, "union", crate::DataType::Union(..));
 // The variant lives with the nested family: it is the self-describing
 // sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
 // as dense-union sugar), and its Arrow storage is a struct of two binaries.
-define_field_types!(Variant, "variant", crate::DataType::Variant);
-define_field_types!(Dictionary, "dictionary", crate::DataType::Dictionary(_));
-define_field_types!(Map, "map", crate::DataType::Map(_));
+define_field_types!(VariantType, "variant", crate::DataType::Variant);
 define_field_types!(
-    RunEndEncoded,
+    DictionaryTypeMarker,
+    "dictionary",
+    crate::DataType::Dictionary(_)
+);
+define_field_types!(MapTypeMarker, "map", crate::DataType::Map(_));
+define_field_types!(
+    RunEndEncodedTypeMarker,
     "run_end_encoded",
     crate::DataType::RunEndEncoded(_)
 );
 
 /// A list-typed field.
-pub type ListField = TypedField<List>;
+pub type ListField = TypedField<ListType>;
 /// A list-view-typed field.
-pub type ListViewField = TypedField<ListView>;
+pub type ListViewField = TypedField<ListViewType>;
 /// A fixed-size-list-typed field.
-pub type FixedSizeListField = TypedField<FixedSizeList>;
+pub type FixedSizeListField = TypedField<FixedSizeListType>;
 /// A large-list-typed field.
-pub type LargeListField = TypedField<LargeList>;
+pub type LargeListField = TypedField<LargeListType>;
 /// A large-list-view-typed field.
-pub type LargeListViewField = TypedField<LargeListView>;
+pub type LargeListViewField = TypedField<LargeListViewType>;
 /// A struct-typed field.
-pub type StructField = TypedField<Struct>;
+pub type StructField = TypedField<StructType>;
 /// A union-typed field.
-pub type UnionField = TypedField<Union>;
+pub type UnionField = TypedField<UnionType>;
 /// A dictionary-typed field.
-pub type DictionaryField = TypedField<Dictionary>;
+pub type DictionaryField = TypedField<DictionaryTypeMarker>;
 /// A map-typed field.
-pub type MapField = TypedField<Map>;
+pub type MapField = TypedField<MapTypeMarker>;
 /// A run-end-encoded-typed field.
-pub type RunEndEncodedField = TypedField<RunEndEncoded>;
+pub type RunEndEncodedField = TypedField<RunEndEncodedTypeMarker>;
 /// A variant-typed field.
-pub type VariantField = TypedField<Variant>;
+pub type VariantField = TypedField<VariantType>;

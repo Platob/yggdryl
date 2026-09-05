@@ -6,20 +6,22 @@ use super::typed::assert_typed_marker;
 #[test]
 fn nested_markers_cover_every_child_layout() {
     let item = || Field::new("item", DataType::Utf8, true);
-    assert_typed_marker::<nested::List>(DataType::list(item()));
-    assert_typed_marker::<nested::ListView>(DataType::list_view(item()));
-    assert_typed_marker::<nested::FixedSizeList>(DataType::fixed_size_list(item(), 3).unwrap());
-    assert_typed_marker::<nested::LargeList>(DataType::large_list(item()));
-    assert_typed_marker::<nested::LargeListView>(DataType::large_list_view(item()));
-    assert_typed_marker::<nested::Struct>(DataType::from_fields([item()]).unwrap());
-    assert_typed_marker::<nested::Union>(DataType::union([(4, item())], UnionMode::Dense).unwrap());
-    assert_typed_marker::<nested::Dictionary>(
+    assert_typed_marker::<nested::ListType>(DataType::list(item()));
+    assert_typed_marker::<nested::ListViewType>(DataType::list_view(item()));
+    assert_typed_marker::<nested::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
+    assert_typed_marker::<nested::LargeListType>(DataType::large_list(item()));
+    assert_typed_marker::<nested::LargeListViewType>(DataType::large_list_view(item()));
+    assert_typed_marker::<nested::StructType>(DataType::from_fields([item()]).unwrap());
+    assert_typed_marker::<nested::UnionType>(
+        DataType::union([(4, item())], UnionMode::Dense).unwrap(),
+    );
+    assert_typed_marker::<nested::DictionaryTypeMarker>(
         DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
     );
-    assert_typed_marker::<nested::Map>(
+    assert_typed_marker::<nested::MapTypeMarker>(
         DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap(),
     );
-    assert_typed_marker::<nested::RunEndEncoded>(
+    assert_typed_marker::<nested::RunEndEncodedTypeMarker>(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
             Field::new("values", DataType::Utf8, true),

@@ -202,7 +202,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
     assert!(
         dynamic
             .clone()
-            .try_into_typed::<crate::types::text::Utf8>()
+            .try_into_typed::<crate::types::text::Utf8Type>()
             .is_err()
     );
     assert_eq!(narrowed.into_value(), Scalar::I64(7));

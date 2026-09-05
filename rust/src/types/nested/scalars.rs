@@ -1,7 +1,11 @@
-//! Nested typed scalar aliases.
+//! Nested values and typed scalar aliases.
 
+use std::collections::BTreeMap;
+use std::fmt;
 use std::ops::Index;
+use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::Scalar;
@@ -17,6 +21,93 @@ pub trait NestedValue: crate::ScalarValue {
     }
     /// Iterate over direct sequence values, mapping keys, or record values.
     fn children(&self) -> Children<'_>;
+}
+
+/// One ordered sequence of scalar children.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Sequence(Arc<[Scalar]>);
+
+impl Sequence {
+    /// Construct an ordered sequence.
+    pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
+        Self(values.into())
+    }
+
+    /// Borrow the ordered values.
+    pub fn as_slice(&self) -> &[Scalar] {
+        self.0.as_ref()
+    }
+
+    /// Consume this value and return its shared children.
+    pub fn into_inner(self) -> Arc<[Scalar]> {
+        self.0
+    }
+}
+
+impl fmt::Display for Sequence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}", self.as_slice())
+    }
+}
+
+/// One insertion-ordered mapping with arbitrary scalar keys.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Mapping(Arc<[(Scalar, Scalar)]>);
+
+impl Mapping {
+    /// Construct a mapping from already unique entries.
+    pub fn new(entries: impl Into<Arc<[(Scalar, Scalar)]>>) -> Self {
+        Self(entries.into())
+    }
+
+    /// Borrow the ordered entries.
+    pub fn as_slice(&self) -> &[(Scalar, Scalar)] {
+        self.0.as_ref()
+    }
+
+    /// Consume this value and return its shared entries.
+    pub fn into_inner(self) -> Arc<[(Scalar, Scalar)]> {
+        self.0
+    }
+}
+
+impl fmt::Display for Mapping {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}", self.as_slice())
+    }
+}
+
+/// One deterministic record sorted by field name.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Record(Arc<BTreeMap<SmolStr, Scalar>>);
+
+impl Record {
+    /// Construct a sorted record.
+    pub fn new(values: impl Into<Arc<BTreeMap<SmolStr, Scalar>>>) -> Self {
+        Self(values.into())
+    }
+
+    /// Borrow the sorted fields.
+    pub fn as_map(&self) -> &BTreeMap<SmolStr, Scalar> {
+        self.0.as_ref()
+    }
+
+    /// Consume this value and return its shared fields.
+    pub fn into_inner(self) -> Arc<BTreeMap<SmolStr, Scalar>> {
+        self.0
+    }
+}
+
+impl fmt::Display for Record {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}", self.as_map())
+    }
 }
 
 /// A borrowed iterator over sequence values or mapping keys.
@@ -113,19 +204,31 @@ impl Index<&str> for Scalar {
     }
 }
 
-define_scalar_type!(ListScalar, super::List, "list");
-define_scalar_type!(ListViewScalar, super::ListView, "list_view");
-define_scalar_type!(FixedSizeListScalar, super::FixedSizeList, "fixed_size_list");
-define_scalar_type!(LargeListScalar, super::LargeList, "large_list");
-define_scalar_type!(LargeListViewScalar, super::LargeListView, "large_list_view");
-define_scalar_type!(StructScalar, super::Struct, "struct");
-define_scalar_type!(UnionScalar, super::Union, "union");
-define_scalar_type!(DictionaryScalar, super::Dictionary, "dictionary");
-define_scalar_type!(MapScalar, super::Map, "map");
+define_scalar_type!(ListScalar, super::ListType, "list");
+define_scalar_type!(ListViewScalar, super::ListViewType, "list_view");
+define_scalar_type!(
+    FixedSizeListScalar,
+    super::FixedSizeListType,
+    "fixed_size_list"
+);
+define_scalar_type!(LargeListScalar, super::LargeListType, "large_list");
+define_scalar_type!(
+    LargeListViewScalar,
+    super::LargeListViewType,
+    "large_list_view"
+);
+define_scalar_type!(StructScalar, super::StructType, "struct");
+define_scalar_type!(UnionScalar, super::UnionType, "union");
+define_scalar_type!(DictionaryScalar, super::DictionaryTypeMarker, "dictionary");
+define_scalar_type!(MapScalar, super::MapTypeMarker, "map");
 define_scalar_type!(
     VariantScalar,
-    super::Variant,
+    super::VariantType,
     "variant",
     crate::DataType::Variant
 );
-define_scalar_type!(RunEndEncodedScalar, super::RunEndEncoded, "run_end_encoded");
+define_scalar_type!(
+    RunEndEncodedScalar,
+    super::RunEndEncodedTypeMarker,
+    "run_end_encoded"
+);

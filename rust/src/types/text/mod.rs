@@ -5,4 +5,6 @@ mod fields;
 mod scalars;
 
 pub use fields::*;
-pub use scalars::{LargeUtf8Scalar, TextValue, Utf8Scalar, Utf8ViewScalar};
+pub use scalars::{
+    LargeUtf8, LargeUtf8Scalar, TextValue, Utf8, Utf8Scalar, Utf8View, Utf8ViewScalar,
+};

@@ -10,7 +10,10 @@
 //! # Ok::<(), yggdryl::Error>(())
 //! ```
 
-use smol_str::format_smolstr;
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::ascii::iso;
@@ -38,24 +41,191 @@ pub trait TemporalValue: crate::ScalarValue {
     fn with_timezone(self, timezone: Timezone) -> Result<Self>;
 }
 
+fn invalid_temporal_leaf(reason: &'static str) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: SmolStr::new_static(reason),
+    }
+}
+
+macro_rules! temporal_leaf {
+    ($name:ident, $count:ty, $valid:expr, $reason:literal) => {
+        #[doc = concat!("One exact `", stringify!($name), "` count, unit, and timezone.")]
+        #[derive(
+            Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+        )]
+        pub struct $name {
+            count: $count,
+            unit: TimeUnit,
+            timezone: Timezone,
+        }
+
+        impl $name {
+            /// Validate and construct this exact temporal representation.
+            pub fn new(count: $count, unit: TimeUnit, timezone: Timezone) -> Result<Self> {
+                if !$valid(unit, timezone) {
+                    return Err(invalid_temporal_leaf($reason));
+                }
+                Ok(Self {
+                    count,
+                    unit,
+                    timezone,
+                })
+            }
+
+            /// Return the stored count.
+            pub const fn count(self) -> $count {
+                self.count
+            }
+
+            /// Return the count's unit.
+            pub const fn unit(self) -> TimeUnit {
+                self.unit
+            }
+
+            /// Return the explicit timezone marker.
+            pub const fn timezone(self) -> Timezone {
+                self.timezone
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "{}@{}[{}]", self.count, self.unit, self.timezone)
+            }
+        }
+    };
+}
+
+temporal_leaf!(
+    Date32,
+    i32,
+    |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Day && timezone.is_naive(),
+    "Date32 requires day units and the NAIVE timezone"
+);
+temporal_leaf!(
+    Date64,
+    i64,
+    |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Millisecond && timezone.is_naive(),
+    "Date64 requires millisecond units and the NAIVE timezone"
+);
+temporal_leaf!(
+    Time32,
+    i32,
+    |unit: TimeUnit, timezone: Timezone| matches!(unit, TimeUnit::Second | TimeUnit::Millisecond)
+        && timezone.is_naive(),
+    "Time32 requires second or millisecond units and the NAIVE timezone"
+);
+temporal_leaf!(
+    Time64,
+    i64,
+    |unit: TimeUnit, timezone: Timezone| matches!(
+        unit,
+        TimeUnit::Microsecond | TimeUnit::Nanosecond
+    ) && timezone.is_naive(),
+    "Time64 requires microsecond or nanosecond units and the NAIVE timezone"
+);
+temporal_leaf!(
+    DateTime64,
+    i64,
+    |unit: TimeUnit, _timezone: Timezone| unit.is_arrow_time(),
+    "DateTime64 requires an Arrow clock resolution"
+);
+temporal_leaf!(
+    Duration32,
+    i32,
+    |unit: TimeUnit, timezone: Timezone| unit.is_arrow_time() && timezone.is_naive(),
+    "Duration32 requires an Arrow clock resolution and the NAIVE timezone"
+);
+temporal_leaf!(
+    Duration64,
+    i64,
+    |unit: TimeUnit, timezone: Timezone| unit.is_arrow_time() && timezone.is_naive(),
+    "Duration64 requires an Arrow clock resolution and the NAIVE timezone"
+);
+
+const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
+
+/// One Arrow interval represented without losing any of its three layouts.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct Interval {
+    months: i32,
+    days: i32,
+    nanoseconds: i64,
+    unit: TimeUnit,
+}
+
+impl Interval {
+    /// Construct an interval, rejecting fields the selected layout cannot hold.
+    pub fn new(months: i32, days: i32, nanoseconds: i64, unit: TimeUnit) -> Result<Self> {
+        let valid = match unit {
+            TimeUnit::YearMonth => days == 0 && nanoseconds == 0,
+            TimeUnit::DayTime => months == 0 && nanoseconds % 1_000_000 == 0,
+            TimeUnit::MonthDayNano => true,
+            _ => false,
+        };
+        if !valid {
+            return Err(invalid_temporal_leaf(
+                "Interval components do not fit the selected layout",
+            ));
+        }
+        Ok(Self {
+            months,
+            days,
+            nanoseconds,
+            unit,
+        })
+    }
+
+    /// Return the month component.
+    pub const fn months(self) -> i32 {
+        self.months
+    }
+
+    /// Return the day component.
+    pub const fn days(self) -> i32 {
+        self.days
+    }
+
+    /// Return the nanosecond component.
+    pub const fn nanoseconds(self) -> i64 {
+        self.nanoseconds
+    }
+
+    /// Return the physical interval layout.
+    pub const fn unit(self) -> TimeUnit {
+        self.unit
+    }
+}
+
+impl fmt::Display for Interval {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}mo:{}d:{}ns@{}",
+            self.months, self.days, self.nanoseconds, self.unit
+        )
+    }
+}
+
 define_scalar_type!(DateTime64Scalar, super::DateTime64Type, "datetime64");
 define_scalar_type!(
     Date32Scalar,
-    super::Date32,
+    super::Date32Type,
     "date32",
     crate::DataType::Date32
 );
 define_scalar_type!(
     Date64Scalar,
-    super::Date64,
+    super::Date64Type,
     "date64",
     crate::DataType::Date64
 );
-define_scalar_type!(Time32Scalar, super::Time32, "time32");
-define_scalar_type!(Time64Scalar, super::Time64, "time64");
-define_scalar_type!(Duration32Scalar, super::Duration32, "duration32");
-define_scalar_type!(Duration64Scalar, super::Duration64, "duration64");
-define_scalar_type!(IntervalScalar, super::Interval, "interval");
+define_scalar_type!(Time32Scalar, super::Time32Type, "time32");
+define_scalar_type!(Time64Scalar, super::Time64Type, "time64");
+define_scalar_type!(Duration32Scalar, super::Duration32Type, "duration32");
+define_scalar_type!(Duration64Scalar, super::Duration64Type, "duration64");
+define_scalar_type!(IntervalScalar, super::IntervalType, "interval");
 
 /// One logical temporal family, independent of its physical width.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

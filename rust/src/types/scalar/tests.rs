@@ -352,3 +352,65 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
+
+#[test]
+fn concrete_leaves_preserve_their_physical_identity() {
+    use crate::types::{ascii, bytes, decimal, geospatial, guid, integer, nested, temporal, text};
+
+    let integer = integer::Int32::new(-7);
+    assert_eq!(integer.get(), -7);
+    assert_eq!(integer.to_string(), "-7");
+
+    let decimal = decimal::Decimal32::new(1_250, 2);
+    assert_eq!(decimal.coefficient(), 1_250);
+    assert_eq!(decimal.scale(), 2);
+    assert_eq!(decimal.to_string(), "12.50");
+
+    let datetime = temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    assert_eq!(datetime.count(), 7);
+    assert_eq!(datetime.unit(), TimeUnit::Nanosecond);
+    assert_eq!(datetime.timezone(), Timezone::UTC);
+    assert!(temporal::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
+
+    let utf8 = text::Utf8::new("東京");
+    let view = text::Utf8View::new("東京");
+    assert_eq!(utf8.as_str(), view.as_str());
+    assert_eq!(
+        serde_json::from_str::<text::Utf8>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
+        utf8
+    );
+
+    let ascii = ascii::Ascii::new("FIX").unwrap();
+    let currency = ascii::Currency::new("USD").unwrap();
+    assert_eq!(ascii.as_str(), "FIX");
+    assert_eq!(currency.as_str(), "USD");
+    assert!(ascii::Ascii::new("café").is_err());
+    assert!(ascii::FixedAscii::new("", 0).is_err());
+    assert!(ascii::Cfi::new("TOO-LONG").is_err());
+
+    let binary = bytes::Binary::from(vec![0, 1, 0xff]);
+    let binary_view = bytes::BinaryView::from(vec![0, 1, 0xff]);
+    assert_eq!(binary.as_bytes(), binary_view.as_bytes());
+    assert_eq!(binary.to_string(), "0001ff");
+
+    let guid = guid::Guid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
+    assert_eq!(guid.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+    assert_eq!(guid::Guid::from_bytes(&guid.into_bytes()).unwrap(), guid);
+
+    let mut point = vec![1, 1, 0, 0, 0];
+    point.extend_from_slice(&1.5_f64.to_le_bytes());
+    point.extend_from_slice(&2.5_f64.to_le_bytes());
+    let geometry = geospatial::Geometry::new(point.clone()).unwrap();
+    assert_eq!(geometry.as_bytes(), point);
+    assert!(geospatial::Geography::new(vec![0xff]).is_err());
+
+    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
+    assert_eq!(sequence.as_slice().len(), 2);
+    let mapping = nested::Mapping::new(Arc::from([(Scalar::from("one"), Scalar::from(1_i32))]));
+    assert_eq!(mapping.as_slice().len(), 1);
+    let record = nested::Record::new(Arc::new(std::collections::BTreeMap::from([(
+        "one".into(),
+        Scalar::from(1_i32),
+    )])));
+    assert_eq!(record.as_map().get("one"), Some(&Scalar::from(1_i32)));
+}

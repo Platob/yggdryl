@@ -13,7 +13,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let field = Field::new("id", DataType::Int64, false);
         bencher.iter(|| {
             black_box(&field)
-                .try_as_typed::<integer::Int64>()
+                .try_as_typed::<integer::Int64Type>()
                 .expect("the benchmark field has the checked marker")
         });
     });

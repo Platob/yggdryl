@@ -10,5 +10,5 @@ pub(crate) mod scalars;
 
 pub(crate) use dtypes::validate_decimal;
 pub use fields::*;
-pub use scalars::DecimalValue;
+pub use scalars::{Decimal32, Decimal64, Decimal128, Decimal256, DecimalValue};
 pub(crate) use scalars::{validate_decimal_value, validate_decimal256_value};

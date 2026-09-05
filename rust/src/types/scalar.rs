@@ -171,6 +171,8 @@ pub enum Scalar {
     Record(Arc<BTreeMap<SmolStr, Scalar>>),
 }
 
+const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
+
 impl Serialize for Scalar {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where

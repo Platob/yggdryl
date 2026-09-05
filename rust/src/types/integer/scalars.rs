@@ -1,7 +1,9 @@
 //! Integer scalar canonicalization and validation.
 
 use std::cmp::Ordering;
+use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
@@ -22,26 +24,111 @@ pub trait IntegerValue: crate::ScalarValue {
     fn from_i128(value: i128) -> Result<Self>;
 }
 
-define_scalar_type!(Int8Scalar, super::Int8, "int8", crate::DataType::Int8);
-define_scalar_type!(Int16Scalar, super::Int16, "int16", crate::DataType::Int16);
-define_scalar_type!(Int32Scalar, super::Int32, "int32", crate::DataType::Int32);
-define_scalar_type!(Int64Scalar, super::Int64, "int64", crate::DataType::Int64);
-define_scalar_type!(UInt8Scalar, super::UInt8, "uint8", crate::DataType::UInt8);
+macro_rules! integer_leaf {
+    ($name:ident, $native:ty) => {
+        #[doc = concat!("One exact `", stringify!($native), "` value.")]
+        #[repr(transparent)]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Default,
+            Deserialize,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            Serialize,
+        )]
+        #[serde(transparent)]
+        pub struct $name($native);
+
+        impl $name {
+            /// Construct this exact integer width.
+            pub const fn new(value: $native) -> Self {
+                Self(value)
+            }
+
+            /// Return the native integer.
+            pub const fn get(self) -> $native {
+                self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(formatter)
+            }
+        }
+
+        impl From<$native> for $name {
+            fn from(value: $native) -> Self {
+                Self::new(value)
+            }
+        }
+
+        impl From<$name> for $native {
+            fn from(value: $name) -> Self {
+                value.get()
+            }
+        }
+    };
+}
+
+integer_leaf!(Int8, i8);
+integer_leaf!(Int16, i16);
+integer_leaf!(Int32, i32);
+integer_leaf!(Int64, i64);
+integer_leaf!(UInt8, u8);
+integer_leaf!(UInt16, u16);
+integer_leaf!(UInt32, u32);
+integer_leaf!(UInt64, u64);
+integer_leaf!(Int128, i128);
+integer_leaf!(UInt128, u128);
+
+const _: () = assert!(std::mem::size_of::<Int32>() == 4);
+
+define_scalar_type!(Int8Scalar, super::Int8Type, "int8", crate::DataType::Int8);
+define_scalar_type!(
+    Int16Scalar,
+    super::Int16Type,
+    "int16",
+    crate::DataType::Int16
+);
+define_scalar_type!(
+    Int32Scalar,
+    super::Int32Type,
+    "int32",
+    crate::DataType::Int32
+);
+define_scalar_type!(
+    Int64Scalar,
+    super::Int64Type,
+    "int64",
+    crate::DataType::Int64
+);
+define_scalar_type!(
+    UInt8Scalar,
+    super::UInt8Type,
+    "uint8",
+    crate::DataType::UInt8
+);
 define_scalar_type!(
     UInt16Scalar,
-    super::UInt16,
+    super::UInt16Type,
     "uint16",
     crate::DataType::UInt16
 );
 define_scalar_type!(
     UInt32Scalar,
-    super::UInt32,
+    super::UInt32Type,
     "uint32",
     crate::DataType::UInt32
 );
 define_scalar_type!(
     UInt64Scalar,
-    super::UInt64,
+    super::UInt64Type,
     "uint64",
     crate::DataType::UInt64
 );

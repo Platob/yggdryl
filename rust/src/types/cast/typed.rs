@@ -60,105 +60,141 @@ macro_rules! opaque_array {
     };
 }
 
-typed_array!(crate::types::boolean::Null, arrow_array::NullArray);
-typed_array!(crate::types::boolean::Boolean, arrow_array::BooleanArray);
-typed_array!(crate::types::integer::Int8, arrow_array::Int8Array);
-typed_array!(crate::types::integer::Int16, arrow_array::Int16Array);
-typed_array!(crate::types::integer::Int32, arrow_array::Int32Array);
-typed_array!(crate::types::integer::Int64, arrow_array::Int64Array);
-typed_array!(crate::types::integer::UInt8, arrow_array::UInt8Array);
-typed_array!(crate::types::integer::UInt16, arrow_array::UInt16Array);
-typed_array!(crate::types::integer::UInt32, arrow_array::UInt32Array);
-typed_array!(crate::types::integer::UInt64, arrow_array::UInt64Array);
-typed_array!(crate::types::floating::Float16, arrow_array::Float16Array);
-typed_array!(crate::types::floating::Float32, arrow_array::Float32Array);
-typed_array!(crate::types::floating::Float64, arrow_array::Float64Array);
-typed_array!(crate::types::temporal::Date32, arrow_array::Date32Array);
-typed_array!(crate::types::temporal::Date64, arrow_array::Date64Array);
+typed_array!(crate::types::boolean::NullType, arrow_array::NullArray);
 typed_array!(
-    crate::types::decimal::Decimal32,
+    crate::types::boolean::BooleanType,
+    arrow_array::BooleanArray
+);
+typed_array!(crate::types::integer::Int8Type, arrow_array::Int8Array);
+typed_array!(crate::types::integer::Int16Type, arrow_array::Int16Array);
+typed_array!(crate::types::integer::Int32Type, arrow_array::Int32Array);
+typed_array!(crate::types::integer::Int64Type, arrow_array::Int64Array);
+typed_array!(crate::types::integer::UInt8Type, arrow_array::UInt8Array);
+typed_array!(crate::types::integer::UInt16Type, arrow_array::UInt16Array);
+typed_array!(crate::types::integer::UInt32Type, arrow_array::UInt32Array);
+typed_array!(crate::types::integer::UInt64Type, arrow_array::UInt64Array);
+typed_array!(
+    crate::types::floating::Float16Type,
+    arrow_array::Float16Array
+);
+typed_array!(
+    crate::types::floating::Float32Type,
+    arrow_array::Float32Array
+);
+typed_array!(
+    crate::types::floating::Float64Type,
+    arrow_array::Float64Array
+);
+typed_array!(crate::types::temporal::Date32Type, arrow_array::Date32Array);
+typed_array!(crate::types::temporal::Date64Type, arrow_array::Date64Array);
+typed_array!(
+    crate::types::decimal::Decimal32Type,
     arrow_array::Decimal32Array
 );
 typed_array!(
-    crate::types::decimal::Decimal64,
+    crate::types::decimal::Decimal64Type,
     arrow_array::Decimal64Array
 );
 typed_array!(
-    crate::types::decimal::Decimal128,
+    crate::types::decimal::Decimal128Type,
     arrow_array::Decimal128Array
 );
 typed_array!(
-    crate::types::decimal::Decimal256,
+    crate::types::decimal::Decimal256Type,
     arrow_array::Decimal256Array
 );
-typed_array!(crate::types::bytes::Binary, arrow_array::BinaryArray);
+typed_array!(crate::types::bytes::BinaryType, arrow_array::BinaryArray);
 typed_array!(
-    crate::types::bytes::LargeBinary,
+    crate::types::bytes::LargeBinaryType,
     arrow_array::LargeBinaryArray
 );
 typed_array!(
-    crate::types::bytes::BinaryView,
+    crate::types::bytes::BinaryViewType,
     arrow_array::BinaryViewArray
 );
 typed_array!(
-    crate::types::bytes::FixedSizeBinary,
+    crate::types::bytes::FixedSizeBinaryType,
     arrow_array::FixedSizeBinaryArray
 );
-typed_array!(crate::types::text::Utf8, arrow_array::StringArray);
-typed_array!(crate::types::text::LargeUtf8, arrow_array::LargeStringArray);
-typed_array!(crate::types::text::Utf8View, arrow_array::StringViewArray);
-// Variable ASCII stores as binary; a fixed width as fixed binary.
-typed_array!(crate::types::ascii::Ascii, arrow_array::BinaryArray);
+typed_array!(crate::types::text::Utf8Type, arrow_array::StringArray);
 typed_array!(
-    crate::types::ascii::FixedAscii,
+    crate::types::text::LargeUtf8Type,
+    arrow_array::LargeStringArray
+);
+typed_array!(
+    crate::types::text::Utf8ViewType,
+    arrow_array::StringViewArray
+);
+// Variable ASCII stores as binary; a fixed width as fixed binary.
+typed_array!(crate::types::ascii::AsciiType, arrow_array::BinaryArray);
+typed_array!(
+    crate::types::ascii::FixedAsciiType,
     arrow_array::FixedSizeBinaryArray
 );
 // A registered code stores as the fixed binary its standard fixes.
 typed_array!(
-    crate::types::ascii::Country,
+    crate::types::ascii::CountryType,
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(
-    crate::types::ascii::Currency,
+    crate::types::ascii::CurrencyType,
     arrow_array::FixedSizeBinaryArray
 );
-typed_array!(crate::types::ascii::Mic, arrow_array::FixedSizeBinaryArray);
-typed_array!(crate::types::ascii::Cfi, arrow_array::FixedSizeBinaryArray);
+typed_array!(
+    crate::types::ascii::MicType,
+    arrow_array::FixedSizeBinaryArray
+);
+typed_array!(
+    crate::types::ascii::CfiType,
+    arrow_array::FixedSizeBinaryArray
+);
 // A GUID stores as the fixed binary of its sixteen bytes.
-typed_array!(crate::types::guid::Guid, arrow_array::FixedSizeBinaryArray);
-typed_array!(crate::types::nested::List, arrow_array::ListArray);
-typed_array!(crate::types::nested::ListView, arrow_array::ListViewArray);
-typed_array!(crate::types::nested::LargeList, arrow_array::LargeListArray);
 typed_array!(
-    crate::types::nested::LargeListView,
+    crate::types::guid::GuidType,
+    arrow_array::FixedSizeBinaryArray
+);
+typed_array!(crate::types::nested::ListType, arrow_array::ListArray);
+typed_array!(
+    crate::types::nested::ListViewType,
+    arrow_array::ListViewArray
+);
+typed_array!(
+    crate::types::nested::LargeListType,
+    arrow_array::LargeListArray
+);
+typed_array!(
+    crate::types::nested::LargeListViewType,
     arrow_array::LargeListViewArray
 );
 typed_array!(
-    crate::types::nested::FixedSizeList,
+    crate::types::nested::FixedSizeListType,
     arrow_array::FixedSizeListArray
 );
-typed_array!(crate::types::nested::Struct, arrow_array::StructArray);
-typed_array!(crate::types::nested::Union, arrow_array::UnionArray);
-typed_array!(crate::types::nested::Map, arrow_array::MapArray);
+typed_array!(crate::types::nested::StructType, arrow_array::StructArray);
+typed_array!(crate::types::nested::UnionType, arrow_array::UnionArray);
+typed_array!(crate::types::nested::MapTypeMarker, arrow_array::MapArray);
 // A variant's storage is the canonical struct of two required binaries, and a
 // geospatial value is its WKB payload, so their physical arrays are fixed.
-typed_array!(crate::types::nested::Variant, arrow_array::StructArray);
-typed_array!(crate::types::geospatial::Geometry, arrow_array::BinaryArray);
+typed_array!(crate::types::nested::VariantType, arrow_array::StructArray);
 typed_array!(
-    crate::types::geospatial::Geography,
+    crate::types::geospatial::GeometryType,
+    arrow_array::BinaryArray
+);
+typed_array!(
+    crate::types::geospatial::GeographyType,
     arrow_array::BinaryArray
 );
 
 // A unit decides the physical width of a temporal value, and a key type decides
 // the physical width of a dictionary index, so these have no single array type.
 opaque_array!(crate::types::temporal::DateTime64Type);
-opaque_array!(crate::types::temporal::Time32);
-opaque_array!(crate::types::temporal::Time64);
-opaque_array!(crate::types::temporal::Duration32);
-opaque_array!(crate::types::temporal::Duration64);
-opaque_array!(crate::types::temporal::Interval);
-opaque_array!(crate::types::nested::Dictionary);
-opaque_array!(crate::types::nested::RunEndEncoded);
+opaque_array!(crate::types::temporal::Time32Type);
+opaque_array!(crate::types::temporal::Time64Type);
+opaque_array!(crate::types::temporal::Duration32Type);
+opaque_array!(crate::types::temporal::Duration64Type);
+opaque_array!(crate::types::temporal::IntervalType);
+opaque_array!(crate::types::nested::DictionaryTypeMarker);
+opaque_array!(crate::types::nested::RunEndEncodedTypeMarker);
 
 impl<K: ArrowFieldType> TypedField<K> {
     /// Cast an incoming Arrow array to this field, returning its exact array.

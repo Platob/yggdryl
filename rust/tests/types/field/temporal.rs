@@ -9,11 +9,11 @@ fn temporal_markers_cover_clock_calendar_and_interval_types() {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::UTC,
     });
-    assert_typed_marker::<temporal::Date32>(DataType::Date32);
-    assert_typed_marker::<temporal::Date64>(DataType::Date64);
-    assert_typed_marker::<temporal::Time32>(DataType::time32(TimeUnit::Second).unwrap());
-    assert_typed_marker::<temporal::Time64>(DataType::time64(TimeUnit::Microsecond).unwrap());
-    assert_typed_marker::<temporal::Duration32>(DataType::Duration32(TimeUnit::Millisecond));
-    assert_typed_marker::<temporal::Duration64>(DataType::Duration64(TimeUnit::Millisecond));
-    assert_typed_marker::<temporal::Interval>(DataType::Interval(TimeUnit::MonthDayNano));
+    assert_typed_marker::<temporal::Date32Type>(DataType::Date32);
+    assert_typed_marker::<temporal::Date64Type>(DataType::Date64);
+    assert_typed_marker::<temporal::Time32Type>(DataType::time32(TimeUnit::Second).unwrap());
+    assert_typed_marker::<temporal::Time64Type>(DataType::time64(TimeUnit::Microsecond).unwrap());
+    assert_typed_marker::<temporal::Duration32Type>(DataType::Duration32(TimeUnit::Millisecond));
+    assert_typed_marker::<temporal::Duration64Type>(DataType::Duration64(TimeUnit::Millisecond));
+    assert_typed_marker::<temporal::IntervalType>(DataType::Interval(TimeUnit::MonthDayNano));
 }

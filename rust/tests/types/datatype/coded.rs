@@ -159,7 +159,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
     let plain = Field::new("ccy", DataType::FixedAscii(3), false);
     assert!(
         plain
-            .try_into_typed::<yggdryl::types::ascii::Currency>()
+            .try_into_typed::<yggdryl::types::ascii::CurrencyType>()
             .is_err()
     );
     assert!(MicScalar::new(Scalar::from("XPARIS")).is_err());
