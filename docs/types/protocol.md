@@ -82,10 +82,9 @@ The view remembers the scheme; the caller writes the bare name.
     ```
 
     !!! note "Rust-only"
-        The per-protocol view *types* - `HttpField`, `IcebergField`, `FixField`, and the fifteen others, each
-        carrying its protocol's typed vocabulary - are Rust-only for now. `field.iceberg` answers the
-        generic property mapping shown here, and the validated HTTP values stay attributes on the
-        field itself.
+        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, and fifteen others) are
+        Rust-only. Python reads the generic property mapping through `field.iceberg`, and the
+        validated HTTP values stay attributes on the field.
 
 === "JavaScript"
 
@@ -115,10 +114,9 @@ The view remembers the scheme; the caller writes the bare name.
     ```
 
     !!! note "Rust-only"
-        The per-protocol view *types* - `HttpField`, `IcebergField`, `FixField`, and the fifteen others, each
-        carrying its protocol's typed vocabulary - are Rust-only for now. `field.iceberg` answers the
-        generic property `Map` shown here, and the validated HTTP values stay accessors on the field
-        itself.
+        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, and fifteen others) are
+        Rust-only. JavaScript reads the generic property `Map` through `field.iceberg`, and the
+        validated HTTP values stay accessors on the field.
 
 ## Reserved keys
 
@@ -318,6 +316,8 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 - `https` -> no accessor; either scheme's view reports `http`.
 - Rust `field.location()` -> straight `location`; `as_http().location()` -> `http:location` (`http_location` / `httpLocation` in the bindings).
 - `set_init`, `is_init`, `with_init` -> Rust only; the bindings' mapping write validates identically.
+- `display` -> named in all three (`set_display`, `display`, `remove_display`) on the field and every view; `try_with_display` is Rust only.
+- Deleting a protocol's namespace -> leaves `Field`'s own reserved state untouched.
 - Protocol write -> invalidates a populated Arrow projection, like a direct metadata write.
 - Non-partition column -> no `field:partition` key; schemas partitioned alike compare equal.
 - `field:partition` -> travels into Arrow, Parquet footers, and JSON round trips.

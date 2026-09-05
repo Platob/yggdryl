@@ -2,6 +2,15 @@
 
 FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, and a [message](message.md) typed against one.
 
+## Pages
+
+| Page | Purpose |
+| --- | --- |
+| [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
+| [Registry](registry.md) | `FixRegistry`: tiered resolution, index halves, `FixKey`, mutation, the process-wide default |
+| [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
+| [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
+
 ## Contract
 
 | Aspect | Rule |
@@ -132,15 +141,6 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
     field.fix.delete('tag')
     assert.equal(field.fix.tag, null)
     ```
-
-## Pages
-
-| Page | Purpose |
-| --- | --- |
-| [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
-| [Registry](registry.md) | `FixRegistry`: tiered resolution, index halves, `FixKey`, mutation, the process-wide default |
-| [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
-| [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 
 ## The vocabulary is metadata
 

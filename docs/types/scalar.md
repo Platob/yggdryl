@@ -12,7 +12,7 @@
 | `MimeType`, `MediaType` | Representation, ordered codings; suffix, coding, and `MAGIC_PROBE_LEN`-bounded content inference |
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
-| `Enum` | Kind, spelling, ordinal; projections emit the spelling |
+| `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
 | Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal`; total equality, ordering, hash |
 | Bindings | `yggdryl.enums`, `enums`; `TypedScalar` Rust only |
 
@@ -107,7 +107,7 @@ assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
 
 ## TypedScalar
 
-Rust only.
+One value and one datatype, checked against each other, one alias per datatype. Rust only.
 
 ```rust
 use yggdryl::types::{Int64Scalar, TypedScalar};
@@ -177,8 +177,10 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/
 - Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
 - Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial.md).
-- [ASCII](ascii.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md), building the shared `AsciiEnum`.
+- [ASCII](ascii.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md): six widths, four registered codes, building the shared `AsciiEnum`.
 - Field inference -> Rust only; no binding reimplements it.
+- Named record rows -> a non-null Struct root named `row`.
+- Default `arrow` feature -> `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
 
 ## Commands
 
@@ -206,16 +208,15 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/
 
 ## Performance
 
-Release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24); no Node benchmark exists.
+Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
 
+| boundary | construct | kind | spelling | ordinal |
+| --- | ---: | ---: | ---: | ---: |
 | Rust | 28.9 ns | 2.59 ns | 5.01 ns | 3.94 ns |
 | Python | 200 ns | 98.8 ns | 100 ns | 73.7 ns |
 | JavaScript | 3 us | 2 us | 2 us | 1 us |
 
-Regenerate with `cargo bench --bench datatype --all-features -- "value/enum_"`,
-`python benchmarks/scalars.py --iterations 10000`, and
-
-Inference, same host, rustc 1.96.1 (2026-08-23), Criterion point estimates:
+Inference, same host, rustc 1.96.1 (2026-08-23), Criterion point estimates.
 
 | inferred field | estimate |
 | --- | ---: |

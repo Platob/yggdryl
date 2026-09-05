@@ -121,6 +121,7 @@ Every spelling reads to the same bytes and writes back canonical.
 
 - `not-a-uuid`, wrong digit count, misplaced hyphen -> `InvalidRecord` naming the accepted spellings.
 - `uuid_packed` or `uuid_value` on another datatype -> `InvalidDataType`.
+- Packed integer -> the same in every process, and what a stable hash hashes.
 
 ## Commands
 

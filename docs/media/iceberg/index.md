@@ -7,7 +7,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](../../holder/index.m
 | Key | Value |
 | --- | --- |
 | Owns | `yggdryl::media::iceberg`: `Table`, `TableMetadata`, `Snapshot`, `PartitionSpec`, `Transform`, `Catalog`, manifest readers and writers |
-| Feature flag | `iceberg`, off by default; needs Rust 1.94 (default builds keep 1.85); enables Parquet/Arrow 59 and official Iceberg 0.10.1 |
+| Feature flag | `iceberg`, off by default; needs Rust 1.94 (default and schema-only builds keep 1.85); enables Parquet/Arrow 59 and official Iceberg 0.10.1 |
 | Delegated | Metadata and schema mutation, validation, property parsing, manifest and list reads: official Iceberg 0.10.1; no Arrow 58 value crosses any API |
 | Kept local | `IOBase` publication, the [`Field`](../../types/field.md)/Arrow 59 boundary, data-file writes, deterministic manifest and list writers, planning, scans |
 | Layout | One `IOBase` container: `metadata/` holds documents, manifest lists, and manifests; `data/` holds record files |
@@ -589,7 +589,7 @@ assert!(hashed.require_writable().is_err());
 
 ### A field carries its own Iceberg vocabulary
 
-`field.as_iceberg()` and `as_iceberg_mut()` type the `iceberg:` properties (`schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`, `partition_source_id`, `transform`); `is_partition` stays on the [`Field`](../../types/field.md). The view borrows the whole field and dereferences to it, so one value answers both.
+`field.as_iceberg()` and `as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, typing the `iceberg:` properties `schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`, `partition_source_id`, and `transform`. `is_partition` stays on the [`Field`](../../types/field.md), and the view borrows the whole field and dereferences to it.
 
 ```rust
 use yggdryl::media::iceberg::{PartitionSpec, Transform, assign_field_ids};
@@ -621,7 +621,7 @@ assert_eq!(marked.partition_field_names().collect::<Vec<_>>(), ["venue"]);
 assert_eq!(PartitionSpec::from_schema(1, &marked)?, spec);
 ```
 
-A table marks its stored schema on create and on open, so `Table::schema` reports the layout from either end. The mark is core `Field` metadata, so it survives into Arrow and Parquet; the manifest, not the path, is the authority on a partition value.
+A table marks its stored schema on create and on open, so `Table::schema` reports the layout from either end. The mark is core `Field` metadata, not an Iceberg document key, so it survives into Arrow and Parquet.
 
 === "Rust"
 
@@ -735,15 +735,19 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 - `write.metadata.compression-codec` = `gzip` -> later commits write `.gz.metadata.json`; metadata is decoded by magic bytes; other codecs are rejected before publication.
 - `current-snapshot-id` = `-1`, or no snapshot yet -> no current snapshot; the table scans as zero rows.
 - Manifest file and row counts -> all six are optional; `None` means unreported, not zero.
+- v3 row ids -> existing assignments are preserved, new manifest ranges are contiguous, and scans inherit missing data-file ids in manifest order.
 - Manifest declaring a `fixed[16]` UUID partition -> the annotation is stripped, the 16 bytes kept, and the official parser retried; other failures return unchanged.
 - Decimal column -> counts and sizes but no bounds, because Parquet and Iceberg encode it differently.
 - `Transform::Unknown` in a spec -> readable metadata; `require_writable` and every write reject it.
+- `venue=null` in a path -> the manifest is the authority; a path cannot separate the string `"null"` from an absent value.
 - Renamed column -> resolved by field id, so a pre-rename file's column is renamed on read and pushed down under its own name.
 - `days(at)` or `bucket(4, id)` partition -> restores no column; only `identity` values come from the manifest.
+- `uuid`, `fixed`, `time` in Spark -> no DDL spelling, so the exchange covers only the direction that exists.
 - `uuid` -> preserved as `uuid` through a metadata round trip, never demoted to `fixed[16]`.
 - Remote catalog -> none; `Catalog` is an `IOBase` warehouse view, and commits publish through the supplied handle.
+- Writing delete files, and applying deletes on read -> not implemented.
 - Live position or equality delete manifests -> scans return a typed unsupported error, never undeleted rows; proven-inert manifests pass.
-- Branch other than `main` -> no writes; read it with `scan_ref` and move it with `fast_forward`.
+- Branch other than `main` -> no writes, since a commit's parent is always the current snapshot; read it with `scan_ref` and move it with `fast_forward`.
 - Concurrent writers -> the commit gate re-checks the version and retries, but `IOBase` cannot make check-then-write atomic; exact only where storage serializes writers.
 
 ## Commands
@@ -778,7 +782,7 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 
 ## Performance
 
-Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1; the fastavro and PyIceberg baseline over the same manifest reads sits on [Apache Avro](../avro.md).
+Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Apache Avro](../avro.md).
 
 | Metadata operation | Median | Throughput |
 | --- | ---: | ---: |

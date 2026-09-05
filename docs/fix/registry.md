@@ -251,7 +251,7 @@ The same `field.dtype().is_nested()` that picks a field's [store tree](store.md)
 
 ## Accessors
 
-Every lookup has an optional form and a failing twin that raises a typed absence naming the key (`tag 35`, `identifier cme:5001`, `name "MsgType"`, `path "a.b"`).
+Every lookup has an optional form and a failing twin. The twin raises a typed absence naming the key (`tag 35`, `identifier cme:5001`, `name "MsgType"`, `path "a.b"`).
 
 | optional | failing | key |
 | --- | --- | --- |
@@ -377,6 +377,7 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
 
 - `registry.get_field("cme:5055")` -> `None`; a string key is a name, and only `FixId::from_str` parses an identifier.
 - `registry.get_field_by_tag(5055)` for a vendor tag -> `None`; a bare tag never crosses the standard branch.
+- `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.
 - An alternate tag equal to another field's canonical tag, or an alias equal to another's canonical name -> legal, and it never wins.
 - The same key twice in the same tier of one branch -> conflict.
