@@ -1,19 +1,19 @@
 # gzip
 
-RFC 1952 gzip as whole buffers, as Rust streams, and as a transparent `Gzip<H>` handle.
+RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle.
 
 ## Contract
 
 | | |
 | --- | --- |
 | Owns | `load`/`dump`, `dump_with_level`, `reader`/`writer`, `writer_with_level`, `Gzip<H>` |
-| Bindings | `loads`/`dumps` only; streams and `Gzip<H>` are Rust only (`Read`/`Write`) |
+| Bindings | `loads`/`dumps` only; streams and `Gzip<H>` are Rust only |
 | Wire format | RFC 1952, shared with Python `gzip` and `node:zlib` |
 | Engine | `zlib-rs` |
-| Level | 0 to 9, clamped at both ends, default 6 |
+| Level | 0 to 9, clamped, default 6 |
 | Handle | `Gzip<H>` is an [`IOBase`](../holder/index.md) over an `IOBase`: reads decompress, writes compress, nothing seeks |
-| Commit | Encoded form republished on `flush`, `close`, or `into_handle`; never on `pwrite` |
-| Streamed reads | [`pstream_bytes`](../holder/iobase/bytes.md) decodes into bounded arrays without opening the handle |
+| Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
+| Streamed reads | [`pstream_bytes`](../holder/iobase/bytes.md), bounded arrays, handle never opened |
 | Inference | `.gz` as the last suffix selects [`Codec::Gzip`](index.md) |
 
 ## Use
@@ -62,11 +62,11 @@ RFC 1952 gzip as whole buffers, as Rust streams, and as a transparent `Gzip<H>` 
     assert.deepEqual(gzip.loads(standard.gzipSync(payload)), payload)
     ```
 
-[zlib](zlib.md) and [zstd](zstd.md) share the signatures; [`Codec`](index.md) selects one at runtime.
+[zlib](zlib.md) and [zstd](zstd.md) share the signatures; [`Codec`](index.md) selects at runtime.
 
 ## Levels
 
-`Level` clamps rather than validates and maps onto every codec's native range.
+`Level` clamps rather than validates.
 
 === "Rust"
 
@@ -127,7 +127,7 @@ RFC 1952 gzip as whole buffers, as Rust streams, and as a transparent `Gzip<H>` 
 
 ## Streams
 
-Rust only. `writer` wraps any `Write`, `reader` any `Read`; `finish` writes the trailer.
+Rust only. `finish` writes the trailer.
 
 ```rust
 use std::io::{Read, Write};
@@ -162,7 +162,7 @@ assert_eq!(&head, b"symbol");
 
 ## A handle that hides the coding
 
-Rust only. `Gzip<H>` decodes on the way through, so downstream encodings and codecs never see the coding.
+Rust only. Downstream encodings and codecs never see the coding.
 
 ```rust
 use yggdryl::coding::gzip::{self, Gzip};
@@ -182,7 +182,7 @@ let inner = handle.into_handle()?;
 assert_eq!(gzip::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
 ```
 
-A level set on the handle reaches the encoder that publishes it:
+A level set on the handle reaches its encoder:
 
 ```rust
 use yggdryl::coding::gzip::Gzip;
@@ -200,7 +200,7 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 
 ## A `.gz` name is enough
 
-Rust only. A compound [filename](../uri/path.md) is the only place the coding is written down.
+Rust only. A compound [filename](../uri/path.md) names the coding.
 
 ```rust
 use yggdryl::coding::Coded;
@@ -262,13 +262,13 @@ assert!(handle.read_all_bytes()?.is_empty());
 
 ## Edges
 
-- `gzip::load` on bytes that are not a gzip member -> `Err`.
-- `Gzip::new` over a resource that does not exist yet -> size 0, empty read, no error.
+- `gzip::load` on a non-gzip payload -> `Err`.
+- `Gzip::new` over a missing resource -> size 0, empty read, no error.
 - `pwrite` on `Gzip<H>` with no later `flush` -> the write is lost.
 - `gzip::writer` dropped before `finish` -> no trailer.
-- `pstream_bytes` from an offset past zero -> decodes and discards the prefix; a surrounding [`Buffered`](../holder/backends/buffered.md) stays empty.
+- `pstream_bytes` past offset zero -> the prefix is decoded and discarded; a surrounding [`Buffered`](../holder/backends/buffered.md) stays empty.
 - `Level::new(12)` -> `Level::BEST`; `Level::NONE` -> a valid member with stored DEFLATE blocks.
-- Highly repetitive payloads at level 6 -> a little ratio traded for speed; raise the level for size.
+- Repetitive payloads at level 6 -> some ratio traded for speed; raise the level for size.
 
 ## Commands
 

@@ -75,14 +75,14 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types
-    node --test node/tests/holder
-    node --test node/tests/media
-    node --test node/tests/text
-    node --test node/tests/uri
-    node --test node/tests/expression
-    node --test node/tests/xxhash
-    node --test node/tests/fix
+    node --test "node/tests/types/*.test.js"
+    node --test "node/tests/holder/*.test.js"
+    node --test "node/tests/media/*.test.js"
+    node --test "node/tests/text/*.test.js"
+    node --test "node/tests/uri/*.test.js"
+    node --test "node/tests/expression/*.test.js"
+    node --test "node/tests/xxhash/*.test.js"
+    node --test "node/tests/fix/*.test.js"
     ```
 
 ## The documentation is tested too

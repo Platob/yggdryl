@@ -1,24 +1,22 @@
 # Bytes
 
-Every handle answers positional bytes, and this page owns that surface: `pread`/`pwrite`, streams, laziness, kinds, cursors, media type and coding, open/close, clear/remove.
+This page owns positional bytes over any handle: `pread`/`pwrite`, streams, laziness, kinds, cursors, media type, coding, open/close, clear/remove.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
-| Owns | `pread`, `pwrite`, `size`, `capacity`, `reserve`, `pstream_bytes`, `cursor`, `kind`, `is_atomic`, `is_tabular`, `media_type`, `codec`, `compress_into`, `decompress_into`, `open`, `close`, `clear`, `remove` |
-| Required | `pread` and `pwrite` only; every other byte method derives from them |
-| Invariants | `pread` is short only at the end of the value; `pwrite` grows and zero-fills; `size <= capacity`, `reserve` moves only `capacity` |
-| Lazy | Constructing touches nothing; absence resolves at the operation; reads skip, writes and `truncate`/`reserve` create |
+| Required | `pread` and `pwrite`; every other byte method derives from them |
+| Invariants | `pread` short only at end of value; `pwrite` grows, zero-fills gaps; `size <= capacity`; `reserve` moves `capacity` only |
+| Lazy | Constructing touches nothing; reads of an absent resource yield nothing; writes, `truncate`, `reserve` create |
 | Cached | Open caches, closed fetches; no ordinary read fills the cache |
-| Media type | Computed on ask, re-derived after the bytes change; a declared type wins; `codec` is its last coding |
-| Coding | `compress_into` defaults to the target's coding, `decompress_into` to the source's; `level` is the shared 0-9 scale |
-| Errors | Bindings refuse `compress_into` to a target declaring no coding; `remove` refuses a container with children unless `recursive` |
-| Bindings | `IOBase` in Python and JavaScript; the read is `read_range_bytes`/`readRangeBytes`, the write is `pwrite`; `IOCursor`, `ByteStream`, wrappers stay Rust |
+| Media type | Computed on ask, re-derived when bytes change; a declared type wins; `codec` is its last coding |
+| Errors | Bindings refuse `compress_into` to a target with no coding; `remove` refuses a container with children unless `recursive` |
+| Bindings | `IOBase`; read is `read_range_bytes`/`readRangeBytes`, write is `pwrite`; `IOCursor`, `ByteStream`, wrappers are Rust only |
 
 ## Use
 
-`pread` and `pwrite` take an explicit offset, so two readers of one handle never interfere and a footer-first container reads its index without seeking.
+Explicit offsets mean two readers never interfere and a footer-first container reads its index without seeking.
 
 === "Rust"
 
@@ -73,7 +71,7 @@ Every handle answers positional bytes, and this page owns that surface: `pread`/
 
 ## Streamed bytes
 
-`IOBase::pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>` starts at a decoded byte position and yields owned arrays of at most `batch_size` bytes. Construction is lazy and never asks for `size`.
+`pstream_bytes(position, batch_size)` yields owned arrays of at most `batch_size` bytes from a decoded position; construction is lazy and never asks for `size`.
 
 ```rust
 use yggdryl::{IOBase, IOCursor};
@@ -126,13 +124,13 @@ The bindings expose the same lazy iterator with a 65,536-byte default batch.
     assert.equal(cursor.tell(), 3)
     ```
 
-`ByteStream` also implements `std::io::Read`, so codecs and parsers fill their own reusable windows. A coded handle decodes directly from the encoded source and retains no decoded pages.
+`ByteStream` implements `std::io::Read`; a coded handle decodes straight from the encoded source and retains no decoded pages.
 
 ## Built from what you already hold
 
 Python only.
 
-`IOBase(...)` also accepts an open file or stream: a named file captures only its location, a nameless stream only its content.
+`IOBase(...)` accepts an open file or stream: a named file captures its location, a nameless stream its content.
 
 ```python
 import io
@@ -237,7 +235,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-A handle describes where bytes would live; constructing one never fails and never pays for an unused resource. Non-existence is resolved at the operation: reads skip, writes create, and `truncate`/`reserve` create too.
+Non-existence is resolved at the operation, so probing a location needs no separate existence check.
 
 ## Kinds
 
@@ -305,15 +303,15 @@ A handle describes where bytes would live; constructing one never fails and neve
     fs.rmSync(folder.intoPath(), { recursive: true, force: true })
     ```
 
-| `IOKind` | Answers |
+| `IOKind` | Meaning |
 | --- | --- |
-| `Memory` | bytes with no location; a leaf |
-| `File` | a leaf that holds bytes |
-| `Directory` | a container of other resources |
-| `Unknown` | a location that does not exist yet |
-| `Table`, `Namespace`, `Catalog` | containers a table format adds; storage sees three folders |
+| `Memory` | bytes with no location |
+| `File` | leaf holding bytes |
+| `Directory` | container of resources |
+| `Unknown` | location that does not exist yet |
+| `Table`, `Namespace`, `Catalog` | containers a table format adds |
 
-Callers ask `is_container`, `is_leaf`, and `is_known`; the bindings expose `exists`, `is_dir`, and `is_file` instead of the enum.
+Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`, `is_dir`, `is_file` instead.
 
 ## Bytes or rows
 
@@ -389,18 +387,11 @@ Callers ask `is_container`, `is_leaf`, and `is_known`; the bindings expose `exis
     fs.rmSync(root.intoPath(), { recursive: true, force: true })
     ```
 
-*Atomic* is the byte surface (`read_all_bytes`, `write_all_bytes`); *tabular* is the record surface on [Records](records.md). Wherever bytes are held the two are complements; a container holding neither answers `false` to both.
-
-| Handle | Settled by |
-| --- | --- |
-| a leaf, or a location nothing has decided yet | the media type, without a call into the backing store |
-| `Table` | outright |
-| `Namespace`, `Catalog` | outright, as containers of containers |
-| plain `Directory` | a probe that stops at the first settling leaf; a partitioned tree is one table |
+*Atomic* is the byte surface, *tabular* the record surface on [Records](records.md); wherever bytes are held the two are complements. A container holding neither answers `false` to both; only a plain `Directory` is probed, stopping at the first settling leaf.
 
 ## Cursors
 
-A cursor makes a position explicit: `tell` and `seek` move it, reads and writes advance it, and two cursors over one resource advance independently.
+A cursor makes a position explicit; two cursors over one resource advance independently.
 
 === "Rust"
 
@@ -452,9 +443,9 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
 
 | Language | Surface |
 | --- | --- |
-| Rust | `IOCursor` trait: `tell`, `seek_to`, `seek`, `read_next`, `write_next`; `Cursor<H>` from `cursor`/`cursor_at` stays a full handle and implements `Read`, `Write`, `Seek` |
-| Python | shares the handle; `seek(offset, whence)`, `read(size=-1)`, `tell`, `write` |
-| JavaScript | shares the handle; `seek`, `tell`, `read`, `write`, `position` property |
+| Rust | `IOCursor`: `tell`, `seek_to`, `seek`, `read_next`, `write_next`; `Cursor<H>` implements `Read`, `Write`, `Seek` |
+| Python | shares the handle; `seek(offset, whence)`, `read(size=-1)` |
+| JavaScript | shares the handle; `seek`, `tell`, `position` |
 
 ## Media type
 
@@ -503,7 +494,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     assert.ok(handle.mediaType.base.equals(MimeType.PARQUET))
     ```
 
-`media_type` sits next to the optional `url` and answers both what the bytes are and which content codings sit on top.
+`media_type` answers what the bytes are and which content codings sit on top.
 
 ```rust
 use yggdryl::IOBase;
@@ -516,7 +507,7 @@ assert_eq!(named.media_type().base(), &MimeType::JSON);
 assert_eq!(named.codec(), Codec::Gzip);
 ```
 
-`codec` reads the last coding out of the media type, so compression is never a separate argument. `set_media_type` declares a type content cannot identify; the bindings expose `codec` read-only and `media_type` settable.
+`codec` is the last coding in the media type, so compression is never a separate argument; `set_media_type` declares what content cannot identify.
 
 ## Adding and removing a coding
 
@@ -627,20 +618,20 @@ assert_eq!(named.codec(), Codec::Gzip);
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-`compress_into` and `decompress_into` move every byte from one handle into another and add or remove a coding on the way. The transfer records the coding in the target's media type, so a `rows.json.gz` reads back with no argument.
+Both calls move every byte into another handle and add or remove a coding, recorded in the target's media type.
 
 | Call | Coding used |
 | --- | --- |
-| `compress_into(target)` | the target's declared coding; an explicit codec overrides it |
+| `compress_into(target)` | the target's declared coding; an explicit codec overrides |
 | `decompress_into(target)` | the source's declared coding |
-| Rust `compress_into(target, codec)` | the codec argument, always required |
+| Rust `compress_into(target, codec)` | always the argument |
 | `level` | the shared 0-9 scale |
 
-Reading never needs these: record encodings and [Text](../../text/index.md) codecs already read through the codings a name declares. The codings themselves are on [gzip](../../coding/gzip.md), [zlib](../../coding/zlib.md), and [zstd](../../coding/zstd.md).
+Readers already decode through a name's codings; see [gzip](../../coding/gzip.md), [zlib](../../coding/zlib.md), and [zstd](../../coding/zstd.md).
 
 ## Open and close
 
-A handle works without `open`; calling it moves materialization to a known point and keeps cached state alive across many small operations. Python binds the pair to a context manager; JavaScript adds `Symbol.dispose` where the runtime provides it.
+A handle works without `open`; calling it moves materialization to a known point and keeps cached state across many small operations. Python binds the pair to `with`; JavaScript adds `Symbol.dispose`.
 
 === "Rust"
 
@@ -709,21 +700,19 @@ A handle works without `open`; calling it moves materialization to a known point
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-Open caches, closed fetches: a closed handle re-derives metadata on every ask, an open one holds what `open` cached until `close`. What is cached depends on the implementation.
+A closed handle re-derives metadata on every ask; an open one holds what `open` cached until `close`.
 
 | Implementation | `open` caches |
 | --- | --- |
 | [`Buffer`](../backends/buffer.md) | nothing; `opened` stays `false` |
-| [`local::File`](../backends/local.md) | the descriptor and the memory mapping |
-| [`Coded`](../../coding/index.md) | the decoded value, only for an explicitly opened session |
+| [`local::File`](../backends/local.md) | descriptor and memory mapping |
+| [`Coded`](../../coding/index.md) | the decoded value |
 | [IPC](../../media/ipc.md) | schema and dimensions |
 | [Parquet](../../media/parquet.md) | the footer |
 | [Avro](../../media/avro.md) | header and block metadata |
-| [Text](../../media/text.md) | the resolved field, coding plan, and dimensions |
+| [Text](../../media/text.md) | resolved field, coding plan, dimensions |
 
 Python only.
-
-Metadata-heavy work belongs inside the scope; outside it each call fetches fresh.
 
 ```python
 import pathlib
@@ -753,17 +742,14 @@ assert IOBase(target).read_arrow_field() == field
 
 ## Clearing and removing
 
-`clear` empties the contents and keeps the resource; `remove` deletes the resource itself, whatever that is for the handle.
+`clear` empties and keeps the resource; `remove` deletes it, issuing the delete without a probe and treating not-found as success.
 
 | Call | Leaf | Container | [Iceberg](../../media/iceberg/index.md) `Table` |
 | --- | --- | --- | --- |
-| `clear` | keeps existing with size `0` | keeps existing, loses every child recursively | commits one snapshot with no data files; schema, properties, history stay |
-| `remove` | deleted | deleted; children are refused by name unless `recursive` | the whole location, metadata tree and data files together |
+| `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
+| `remove` | deleted | deleted; refused by name while children remain, unless `recursive` | the whole location, metadata and data files |
 
-A wrapping handle removes what it wraps: `Gzip::remove` deletes the `.gz` resource, and a media handle's cached schema or footer goes with it.
-
-- Absence is a no-op success: neither call errors on a missing resource, neither creates one, and `clear` is not a write.
-- Absence is reached without a probe: the delete is issued and the backend's own not-found is success; no `kind`, `size`, exists check, or `ls` first.
+A wrapping handle removes what it wraps, cached schema or footer included.
 
 === "Rust"
 
@@ -877,27 +863,21 @@ A wrapping handle removes what it wraps: `Gzip::remove` deletes the `.gz` resour
     new IOBase(root).remove(true)
     ```
 
-`remove` returns nothing, because absence and removal are indistinguishable and a count would force the probe it refuses.
+`remove` returns nothing: absence and removal are indistinguishable.
 
 ## Edges
 
-- `pread` entirely past `size` -> returns `0`; a short count happens only at the end of the value.
-- `pwrite` at an offset beyond `size` -> the value grows and the gap is zero-filled.
 - `pstream_bytes(position, 0)` -> refused; `batch_size` must be non-zero.
-- A stream error -> yielded once after every successful prefix, then the iterator stays fused.
-- `pstream_bytes` at a non-zero position on a coded handle -> decodes and discards the prefix; compression frames are not seekable.
-- `pstream_bytes` on a coded handle -> never opens it and retains no decoded pages.
-- `pstream_bytes` through [Buffered](../backends/buffered.md) -> bypasses the page cache, `cached_pages() == 0`; use `pread` when retained pages are wanted.
-- Absent resource -> `size` is `0`, `pread` returns `0`, `kind` is `Unknown`, `exists()` is `false`; nothing raises.
-- Python `IOBase(handle)` -> rebuilds the handle; an in-memory handle also passes its content and media type.
-- `is_tabular` on a `.parquet` leaf without the `parquet` feature -> `true`; `record_options` on [Records](records.md) names the encoding this build cannot decode.
-- `codec` with nothing to undo -> Python `None`, JavaScript `null`, Rust `Codec::Identity`; never the string `"identity"`.
-- `compress_into` to a target declaring no coding (bindings) -> refused with `expected a target declaring a content coding`, naming the media type it carries; nothing is written.
-- `compress_into` to an in-memory target -> name the codec; the target has no name to declare one.
-- `open` on an open handle -> no-op; `open` on an absent resource -> succeeds without creating it.
-- `clear`/`remove` on an absent resource -> success without a probe; permission, network, and busy failures stay typed errors.
+- Stream error -> yielded once after every successful prefix, then the iterator stays fused.
+- `pstream_bytes` at a non-zero position on a coded handle -> decodes and discards the prefix; frames are not seekable.
+- `pstream_bytes` through [Buffered](../backends/buffered.md) -> bypasses the page cache, `cached_pages() == 0`.
+- `is_tabular` on a `.parquet` leaf without the `parquet` feature -> `true`; `record_options` on [Records](records.md) names the undecodable encoding.
+- `codec` with nothing to undo -> Python `None`, JavaScript `null`, never `"identity"`.
+- `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`; nothing is written.
+- `compress_into` to an in-memory target -> name the codec; the target has no name.
+- `open` on an absent resource -> succeeds without creating it.
+- `clear`/`remove` on an absent resource -> success, nothing created; permission, network, busy failures stay typed errors.
 - `remove(false)` on a container with children -> refused by name; `recursive` is ignored on a leaf.
-- A Python or JavaScript cursor -> shares the handle; a write through it lands on the handle.
 
 ## Commands
 
@@ -928,7 +908,7 @@ A wrapping handle removes what it wraps: `Gzip::remove` deletes the `.gz` resour
 
 ## Performance
 
-Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 threads), rustc 1.96.1, 2026-08-23. Stream cases retain no decoded pages.
+Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 threads), rustc 1.96.1, 2026-08-23.
 
 | operation | decoded bytes | plain | gzip | zlib | zstd |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -938,7 +918,7 @@ Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD 
 | `read_all_bytes` | 8 MiB | 1.981 ms | 15.265 ms | 14.761 ms | 21.049 ms |
 | sixteen sequential `pread` calls | 1 MiB | 0.037 ms | 10.268 ms | 8.581 ms | 14.412 ms |
 
-The last row rebuilds a decoder at every compressed offset; one `ByteStream` per scan is faster and bounded-memory. Whole-value reads trade those properties for one returned `Vec<u8>`.
+The last row rebuilds a decoder at every compressed offset; one `ByteStream` per scan is faster and bounded-memory.
 
 ```bash
 cargo bench --bench coding -- io_pstream

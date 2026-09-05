@@ -1,25 +1,21 @@
 # Path
 
-This page owns the path as a sequence of names: segments, filenames, media type, the `std::path` bridge, and navigation.
+This page owns the path as a sequence of names: segments, filenames, media type, `std::path`, and navigation.
 
 ## Contract
 
 | Owns | Rule |
 | --- | --- |
 | Segments | non-empty names; a trailing or doubled slash adds none |
-| Rust iteration | borrows from the URI, allocates nothing |
-| Filename | one segment of valid URI bytes; setters never encode |
+| Filename | one segment of valid URI bytes; the caller encodes |
 | `extension`, `extensions` | last suffix; all suffixes, left to right |
-| `stem` | filename minus final extension; a dotfile keeps its dot |
+| `stem` | filename minus last extension; dotfiles keep the dot |
 | Mutators | atomic; a rejected name changes nothing |
-| `mime_type`, `media_type` | final suffix; whole chain as base plus encodings |
-| `from_path`, `into_path` | drive: first segment under an empty authority; UNC server: the authority |
-| Navigation | on `UriPath`, lifted onto `Uri` and `Url`; moves only the path; `Urn` has none |
-| Errors | Rust `Err`, Python `ValueError`, JavaScript throw |
+| `mime_type`, `media_type` | last suffix; whole chain as base plus encodings |
+| `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority |
+| Navigation | `UriPath`, lifted onto `Uri` and `Url`; `Urn` has none |
 
 ## Use
-
-Segments use each language's own sequence protocol.
 
 === "Rust"
 
@@ -74,7 +70,7 @@ Segments use each language's own sequence protocol.
 
 ## Compound filenames
 
-`.env.local` has stem `.env` and extension `local`; `.env` has no extension.
+`.env.local` has stem `.env` and extension `local`; `.env` has none.
 
 === "Rust"
 
@@ -160,7 +156,7 @@ Segments use each language's own sequence protocol.
 
 ## Media type in the name
 
-[`MediaType`](../types/scalar.md) splits the chain into a base and its encodings, the pair `Content-Type` plus `Content-Encoding` carries.
+[`MediaType`](../types/scalar.md) splits the chain into base plus encodings, as `Content-Type` plus `Content-Encoding` do.
 
 === "Rust"
 
@@ -253,7 +249,7 @@ Segments use each language's own sequence protocol.
 
 ## Platform paths
 
-The canonical `file:` URL is what [`local`](../holder/backends/local.md) stores as a handle's whole state.
+[`local`](../holder/backends/local.md) stores this canonical `file:` URL as a handle's whole state.
 
 === "Rust"
 
@@ -336,7 +332,7 @@ The canonical `file:` URL is what [`local`](../holder/backends/local.md) stores 
 
 ## Walking the path
 
-`segments` is the literal text; `parts` is what the path resolves to, with `.` dropped and `..` applied.
+`segments` is the literal text; `parts` resolves it, dropping `.` and applying `..`.
 
 === "Rust"
 
@@ -410,14 +406,12 @@ The canonical `file:` URL is what [`local`](../holder/backends/local.md) stores 
 
 ## Edges
 
-- `bad/name`, `bad?name`, or a bare `%` as a filename -> refused, URI unchanged.
-- No recognised suffix -> `application/octet-stream`, not an error.
-- `application/vnd.example` -> `set_mime_type` refuses, no registered extension; `+json` writes `json`.
-- A query, a fragment, `%2F`, `%5C`, or an escape forming a `C:` drive -> `into_path` refuses.
-- A non-`file:` value -> `into_path` refuses.
-- An absolute `joinpath` argument -> replaces the path, like `cd`.
-- `..` past an absolute root -> clamped; a relative path keeps it.
-- `parents` -> whole values of the source type, never the value itself; invalid steps skipped.
+- `bad/name`, `bad?name`, or a bare `%` -> filename refused, URI unchanged.
+- Unknown suffix -> `application/octet-stream`, not an error.
+- `application/vnd.example` -> `set_mime_type` refuses; a `+json` suffix writes `json`.
+- Query, fragment, `%2F`, `%5C`, an escape forming `C:`, or a non-`file:` value -> `into_path` refuses.
+- Absolute `joinpath` argument -> replaces the path.
+- `parents` -> values of the source type; invalid steps skipped.
 
 ## Commands
 

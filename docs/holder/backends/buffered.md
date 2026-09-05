@@ -131,7 +131,7 @@ assert_eq!(grown.max_bytes(), 16_384);
 
 ## Both ends are pinned
 
-Both ends are where discovery lives: magic bytes at the head, a Parquet footer or Arrow IPC schema at the tail.
+Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IPC schema at the tail.
 
 ```rust
 use yggdryl::holder::buffered::{Buffered, BufferedOptions};
@@ -213,7 +213,7 @@ handle.truncate(15)?;
 assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
 ```
 
-`clear` and `remove` drop the cache before delegating, so no page outlives a removal, failed or not. `close` flushes, drops every page, and leaves a working handle behind.
+`clear` and `remove` drop the cache before delegating, so no page outlives a failed removal. `close` flushes, drops every page, and leaves a working handle.
 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
@@ -318,7 +318,7 @@ assert_eq!(cursor.handle().cached_pages(), 3);
 
 ## A file, and what the cache is for
 
-Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so the wrapper costs a lock and a copy. It pays where a fetch is real: an [`fs`](filesystems.md) handle calls the vtable once per read, and a [coded](../../coding/index.md) handle decodes.
+Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so the wrapper costs a lock and a copy. It pays where a fetch is real: an [`fs`](filesystems.md) handle calls the vtable per read, and a [coded](../../coding/index.md) handle decodes.
 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
@@ -345,7 +345,7 @@ let _ = std::fs::remove_file(&path);
 
 - `with_page_size(1_000)` -> 1024; `with_page_size(0)` -> 64.
 - `with_max_bytes(1)` over 4 KiB pages -> 8192; clamped, never rejected, and re-applied when the page size grows.
-- A hit -> no call on the inner handle; the size is remembered beside the pages and re-asked only when a read runs past it.
+- A hit -> no call on the inner handle; the size is remembered and re-asked only when a read runs past it.
 - Bytes written behind the cache -> invisible; `handle_mut` and `clear_cache` drop every page first.
 - `Coded<Buffered<_>>` -> caches compressed bytes and still decodes on every read.
 
@@ -375,7 +375,7 @@ let _ = std::fs::remove_file(&path);
 
 ## Performance
 
-`io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_64 Linux run, group alone, Criterion, 100 samples, medians. Run-to-run spread on this box reaches 15%, so read the multiples, never the percentages.
+`io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_64 Linux run, group alone, Criterion, 100 samples, medians. Run-to-run spread reaches 15%, so read the multiples, never the percentages.
 
 | workload | shape |
 | --- | --- |
@@ -404,7 +404,7 @@ Over a backend that is already memory the cache costs 2.7x (`random`, against `f
 | `footer` (both ends, big middle) | 2.0924 ms | 532.18 µs | **3.9x faster** |
 | `sequential` (one pass, nothing re-read) | 2.7574 ms | 2.3841 ms | **1.2x faster** |
 
-Pinning is asserted as a count before any timer starts: after a 12 MiB middle scan, re-reading both ends costs zero inner fetches.
+Pinning is asserted as a count: after a 12 MiB middle scan, re-reading both ends costs zero inner fetches.
 
 ### Coded cases
 

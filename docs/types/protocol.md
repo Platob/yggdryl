@@ -1,24 +1,24 @@
 # Protocol
 
-Field metadata the library reads: reserved keys, `scheme:name` protocol properties behind live views, and the `field:partition` marker.
+Field metadata the library reads: reserved keys, `scheme:name` properties behind live views, and the `field:partition` marker.
 
 ## Contract
 
 | Key | Datatype and rule |
 | --- | --- |
-| `PARQUET:field_id` | signed 32-bit integer, canonicalized on write |
-| `field:init` | boolean; absent by default, `false` marks a declared column constructors refuse |
+| `PARQUET:field_id` | i32, canonicalized on write |
+| `field:init` | boolean, absent by default; `false` = declared but refused by constructors |
 | `field:partition` | boolean; `true` on partition columns, absent elsewhere |
-| `location` | [`Url`](../uri/url-urn.md); a straight key, distinct from `http:location` |
-| `alias`, `comment`, `display` | validated text; a view falls back to straight `comment` and `display` |
+| `location` | [`Url`](../uri/url-urn.md), a straight key |
+| `alias`, `comment`, `display` | validated text; views fall back to straight `comment` and `display` |
 | `scheme:name` | protocol property, prefix canonicalized to a known [`Scheme`](scalar.md) |
-| `iceberg:table_name`, `glue:table_name` | catalog coordinates are protocol properties, never straight keys |
-| view | a borrow of the one metadata map; writes go through the cache-aware mutation |
-| Rust `set` | replaces this protocol's properties only; bindings expose `update`, not `set` |
+| `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
+| view | borrow of the one metadata map, cache-aware writes |
+| Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
 ## Use
 
-A view remembers the scheme, so the caller writes the bare name.
+The view remembers the scheme; the caller writes the bare name.
 
 === "Rust"
 
@@ -122,7 +122,7 @@ A view remembers the scheme, so the caller writes the bare name.
 
 ## Reserved keys
 
-Typed accessors parse and canonicalize both ways; `http:` parsing lives on Rust's HTTP view and on the binding field itself.
+Typed accessors parse and canonicalize both ways.
 
 === "Rust"
 
@@ -220,7 +220,7 @@ Typed accessors parse and canonicalize both ways; `http:` parsing lives on Rust'
 
 ## Views
 
-Rust only: a protocol's typed vocabulary lives on its view, so deleting a namespace never touches `Field`.
+Rust only: typed vocabulary lives on the view, never on `Field`.
 
 | View | Vocabulary |
 | --- | --- |
@@ -309,19 +309,18 @@ The reserved `field:partition` key marks partition columns on the fields themsel
     assert.equal(schema.onlyPartitionFields().dtype.length, 2)
     ```
 
-Folder writes, folder reads, and Iceberg identity specs read the mark: see [Partitions](../holder/iobase/partitions.md) and [Iceberg](../media/iceberg/index.md).
+Folder writes and reads and Iceberg identity specs read the mark: [Partitions](../holder/iobase/partitions.md), [Iceberg](../media/iceberg/index.md).
 
 ## Edges
 
 - `"+00017"` to `PARQUET:field_id` -> stored as `"17"`; `"2147483648"` -> refused.
-- `HTTPS:Content-Type`, `HTTP:content-type`, `http:content-type` -> one entry; `get_property` matches HTTP names case-insensitively.
-- `https` -> no accessor; the view for either scheme reports `http`.
-- Rust `field.location()` -> straight `location`; `as_http().location()` -> `http:location`, spelled `http_location` / `httpLocation` in the bindings.
+- `HTTPS:Content-Type`, `HTTP:content-type`, `http:content-type` -> one entry, matched case-insensitively.
+- `https` -> no accessor; either scheme's view reports `http`.
+- Rust `field.location()` -> straight `location`; `as_http().location()` -> `http:location` (`http_location` / `httpLocation` in the bindings).
 - `set_init`, `is_init`, `with_init` -> Rust only; the bindings' mapping write validates identically.
-- `display` -> `set_display`, `display`, `remove_display` on the field and every view; Rust adds `try_with_display`.
 - Protocol write -> invalidates a populated Arrow projection, like a direct metadata write.
-- Non-partition column -> no `field:partition` key, so schemas partitioned alike compare equal.
-- `field:partition` -> travels into Arrow, a Parquet footer, and a JSON round trip.
+- Non-partition column -> no `field:partition` key; schemas partitioned alike compare equal.
+- `field:partition` -> travels into Arrow, Parquet footers, and JSON round trips.
 
 ## Commands
 

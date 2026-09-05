@@ -1,25 +1,25 @@
 # Records
 
-Every handle answers one Arrow batch read and three explicit write intents, and this page owns that record surface.
+One Arrow batch read and three explicit write intents, answered by every handle.
 
 ## Contract
 
 | Item | Value |
 | --- | --- |
-| Owns | `read_arrow_reader`, `read_arrow_field`, `read_records`, `row_size`, `column_size`, and the `overwrite_*` / `append_*` / `merge_*` triplets |
-| Encoding | `record_options()` derives it from the handle's media type; a coding such as `.zst` lives there too, so no call takes a format or coding argument |
-| Write intents | `overwrite`, `append`, `merge`; `write_*` takes an explicit `IOMode`; no default mode and no untyped Rust `write` |
-| Argument order | input, then mode when present, then options; Rust requires `&RecordOptions`, a binding resolves one default with `record_options()` |
-| Merge keys | `merge_by_names` supplies row identity only; merge requires it, overwrite and append refuse it |
-| Shaping order | declared field, then `select_by_names`, then completion cast, then partition filter, then `max_row_size` / `max_byte_size` last |
-| Commits | `commit_row_size` unset publishes once when the source ends; `N` publishes every `N` rows plus the remainder; `0` is rejected before any input is pulled |
-| Lazy | reads stream one batch at a time; append chains stored then incoming batches; merge indexes only the stored side |
-| Feature flag | default `arrow` carries Arrow IPC, Avro, and text; `parquet` adds Parquet; an encoding the build lacks is named in the `record_options` error |
-| Bindings | Python takes keyword-only `options=`; JavaScript takes a trailing `options?`; `scan_polars` / `scan_arrow` are Python only |
+| Owns | `read_arrow_reader`, `read_arrow_field`, `read_records`, `row_size`, `column_size`, `overwrite_*` / `append_*` / `merge_*` |
+| Encoding | the handle's media type, via `record_options()`; a coding such as `.zst` lives there too |
+| Intents | `overwrite`, `append`, `merge`; `write_*` takes an `IOMode`; no default mode, no untyped Rust `write` |
+| Order | input, mode when present, options; Rust requires `&RecordOptions`, a binding defaults one |
+| Merge keys | `merge_by_names` gives identity only; merge requires it, overwrite and append refuse it |
+| Shaping | field, `select_by_names`, completion cast, partition filter, then `max_row_size` / `max_byte_size` |
+| Commits | `commit_row_size` unset: once at end of source; `N`: every `N` rows plus remainder; `0`: rejected |
+| Lazy | reads stream batch by batch; append chains stored then incoming; merge indexes only the stored side |
+| Feature flag | `arrow` (default): Arrow IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
+| Settings | one [RecordOptions](../../media/options.md) object; Python keyword-only `options=`, JavaScript trailing `options?` |
 
 ## Use
 
-The handle's media type picks the encoding, and batches arrive one at a time.
+The media type picks the encoding; batches arrive one at a time.
 
 === "Rust"
 
@@ -133,17 +133,16 @@ The handle's media type picks the encoding, and batches arrive one at a time.
 
 ## Dimensions
 
-`row_size` and `column_size` describe the whole logical media, so projection, filter, and limit settings never change them. Schema-bearing encodings read headers or footers only; text streams its multiline extractor; a folder sums matching leaves; a table answers from metadata.
+Both describe the whole logical media; projection, filter, and limit settings never change them.
 
 | accessor | Rust | Python | JavaScript |
 | --- | --- | --- | --- |
-| row count | `row_size(&self) -> Result<u64>` | `row_size` property | `rowSize` getter |
-| column count | `column_size(&self) -> Result<usize>` | `column_size` property | `columnSize` getter |
-| storage role | `IOKind` | `kind` property: `memory`, `file`, `directory`, `table`, `namespace`, `catalog`, `unknown` | `kind` getter, same names |
+| rows | `row_size(&self) -> Result<u64>` | `row_size` property | `rowSize` getter |
+| columns | `column_size(&self) -> Result<usize>` | `column_size` property | `columnSize` getter |
 
 ## Write intents
 
-Each typed shape has three explicit methods and one `IOMode` dispatcher that validates intent before touching its input. Every adapter converges on the three reader primitives, where [BatchReader](../../arrow/readers.md) is the only place an encoding is decoded and encoded.
+Each shape has three explicit methods and one `IOMode` dispatcher that validates intent before touching its input.
 
 === "Rust"
 
@@ -196,11 +195,13 @@ Each typed shape has three explicit methods and one `IOMode` dispatcher that val
     writeRecords(records, mode, options?) -> void | Promise<void>
     ```
 
-`overwrite_arrow_reader` is the one publication hook an implementor must supply. Default append and merge cast to `options.field` once, apply selection and limits once, then delegate with the field removed so the hook never casts twice.
+Every adapter converges on the three [BatchReader](../../arrow/readers.md) primitives. Default append and merge shape once, then delegate to `overwrite_arrow_reader`, the one required hook, without the field so it never casts twice.
 
 ### Native rows
 
-The Rust `*_records` triplet takes any iterator whose row implements `TryInto<Scalar>`: an ordered `Scalar::Sequence` under `options.field`, or a sorted `Scalar::Record` resolved to that order. Rust only.
+`*_records` takes any iterator whose row implements `TryInto<Scalar>`: an ordered `Scalar::Sequence` under `options.field`, or a sorted `Scalar::Record` resolved to that order.
+
+Rust only.
 
 ```rust
 use yggdryl::media::IORecordOptions;
@@ -241,24 +242,21 @@ assert_eq!(
 
 ### Commit cadence
 
-`options.commit_row_size` is the one streamed-write publication boundary; shaping happens once before splitting, and the splitter slices batches as views.
+`commit_row_size` is the one streamed-write publication boundary; shaping happens once, before splitting.
 
-| setting or intent | publication |
+| `commit_row_size` | publication |
 | --- | --- |
-| unset | once, when the source ends; a leaf or table publishes natively, so nothing is visible until the replacement completes |
-| `N > 0` | every complete group of `N` incoming rows, then the final remainder |
-| `0` | rejected before the input is pulled |
-| overwrite | overwrite on the first commit, append on every later one |
-| append, merge | keep their intent on every commit |
-| empty input | overwrite still publishes its shaped field; append and merge are no-ops |
-| plain folder | no cross-leaf transaction: each routed leaf publishes independently even when the cadence is unset |
-| Iceberg folder | redirected first and published through its [snapshot commit](../../media/iceberg/write.md) |
-
-A successful prefix stays visible when conversion, decoding, encoding, or publication fails later; the cadence only bounds how many rows each visible prefix holds.
+| unset | once, when the source ends |
+| `N > 0` | every complete group of `N` rows, then the remainder |
+| `0` | rejected before any input is pulled |
+| overwrite | first commit overwrites, later ones append; a completed prefix survives a later failure |
+| append, merge | same intent on every commit; empty input is a no-op, while an empty overwrite still publishes its field |
+| plain folder | no cross-leaf transaction: each leaf publishes on its own, cadence or not |
+| Iceberg folder | its [snapshot commit](../../media/iceberg/write.md) instead |
 
 ### Absent resources and unknown encodings
 
-An absent resource reads as empty, and an encoding the build does not implement is named rather than guessed.
+An absent resource reads as empty; an encoding the build lacks is named, never guessed.
 
 === "Rust"
 
@@ -319,11 +317,11 @@ An absent resource reads as empty, and an encoding the build does not implement 
     assert.throws(() => csv.recordOptions(), /text\/csv/)
     ```
 
-The shared settings (field, root name, cast strictness, limits, cadence, compression level, merge keys, selection, partition filters) are defined once on [RecordOptions](../../media/options.md).
-
 ## Rows
 
-`readRecords` yields plain objects or instances of the constructor it is given; the `*Records` writers widen rows into the matching reader intent. Python exposes the same lazy `read_records` mapping or dataclass view and all three write intents; Rust accepts `TryInto<Scalar>` rows on writes only. JavaScript only.
+`readRecords` yields plain objects or instances of the given constructor; `*Records` writers widen rows into the matching intent. Python has the same lazy `read_records` view; Rust takes typed rows on writes only.
+
+JavaScript only.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -360,7 +358,9 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ## Lazy scans
 
-`scan_polars` returns a `polars.LazyFrame` and `scan_arrow` a `pyarrow.dataset.Scanner`; a plain local Parquet leaf is scanned natively, everything else streams through the native reader into the same lazy shape. Python only.
+`scan_polars` returns a `polars.LazyFrame`, `scan_arrow` a `pyarrow.dataset.Scanner`; a local Parquet leaf scans natively, everything else streams through the native reader.
+
+Python only.
 
 ```python
 import pathlib
@@ -394,7 +394,7 @@ assert memory.scan_arrow().to_table().num_rows == 1
 
 ## Column pushdown
 
-The field on the options selects and casts in one pass: stored columns it names become the encoding's own projection, so omitted columns are skipped rather than read and discarded. The cast then reorders, converts, and fills columns the resource lacks, batch by batch as each is pulled.
+The options field selects and casts in one pass: named stored columns become the encoding's own projection, omitted ones are never read. The cast reorders, converts, and fills missing columns per batch.
 
 === "Rust"
 
@@ -534,14 +534,14 @@ The field on the options selects and casts in one pass: stored columns it names 
     assert.equal(widened.field.dtype.length, 2)
     ```
 
-| encoding | what a projection saves |
+| encoding | a projection saves |
 | --- | --- |
-| [Parquet](../../media/parquet.md) | the decode and the bytes, because a column chunk is separately addressable |
-| [Arrow IPC](../../media/ipc.md) | the decode and the allocation; the message body is still read |
+| [Parquet](../../media/parquet.md) | decode and bytes: a column chunk is separately addressable |
+| [Arrow IPC](../../media/ipc.md) | decode and allocation; the message body is still read |
 
 ## Limits
 
-`max_row_size` counts result rows and `max_byte_size` counts their uncompressed Arrow bytes; both apply last, after the shaping order, and a satisfied limit stops pulling.
+`max_row_size` counts result rows, `max_byte_size` their uncompressed Arrow bytes; both apply last, and a satisfied limit stops pulling.
 
 === "Rust"
 
@@ -669,7 +669,7 @@ The field on the options selects and casts in one pass: stored columns it names 
 
 ## Append and merge
 
-Overwrite replaces the resource, append retains stored rows, and merge updates matching keys while adding new ones; the called method is always the authority.
+Overwrite replaces the resource, append retains stored rows, merge updates matching keys and adds new ones; the called method is the authority.
 
 === "Rust"
 
@@ -800,18 +800,18 @@ Overwrite replaces the resource, append retains stored rows, and merge updates m
     assert.equal(handle.readArrowReader(options).intoTable().numRows, 4)
     ```
 
-| key situation | result |
+| key | result |
 | --- | --- |
-| null key | matches another null key exactly, through Arrow's own row format |
-| composite key | compares column by column |
-| key stored more than once | every occurrence is updated |
-| key arriving more than once | the last arrival wins |
+| null | matches null, through Arrow's row format |
+| composite | compared column by column |
+| stored more than once | every occurrence updated |
+| arriving more than once | last arrival wins |
 
-Append streams both sides after casting the incoming batches to the target shape, so data whose schema merely fits is accepted. Merge holds only the stored side, because a reader cannot rewind to a row it has already yielded.
+Append casts the incoming batches to the target shape and streams both sides; merge holds the stored side, since a reader cannot rewind.
 
 ### Selecting columns
 
-`select_by_names` narrows both directions: a read yields exactly the named columns in the given order, and a write keeps exactly those columns of the incoming rows.
+`select_by_names` narrows both directions: a read yields exactly the named columns in that order, a write keeps exactly those incoming columns.
 
 === "Rust"
 
@@ -895,37 +895,30 @@ Append streams both sides after casting the incoming batches to the target shape
 
 ## Text records
 
-`text/plain` uses the same record methods as IPC, Parquet, and Avro; each physical line becomes one row, and [Text records](../../media/text.md) defines the schema, parsing order, errors, and benchmarks.
+`text/plain` uses the same record methods; [Text records](../../media/text.md) defines the schema, parsing, errors, and benchmarks.
 
 | column | datatype | when |
 | --- | --- | --- |
-| `url` | `utf8` | always, first |
-| `rownum` | `int64` | `TextOptions.with_rownum` / `withRownum`, which also supplies its first value |
-| `body` | `binary` | always, last |
+| `url` | `utf8` | always |
+| `rownum` | `int64` | `TextOptions.with_rownum` / `withRownum`, which supplies its first value |
+| `body` | `binary` | always |
 
-`into_text` / `intoText` keeps a flat `TextOptions` (regex `rowheader` captures, edge stripping, a fixed line separator, pre-read autotyping) and adds no line iterator or line-only method.
+`into_text` / `intoText` keeps the flat `TextOptions` and adds no line iterator or line-only method.
 
 ## Edges
 
 - `record_options()` on an encoding this build lacks -> error naming the media type, for example `text/csv`.
-- absent resource -> a reader with no batches; `readRecords` yields nothing; no existence guard is needed.
-- empty `overwrite` -> publishes the shaped field; empty `append` / `merge` -> no-op.
-- non-empty `merge_by_names` on overwrite or append -> refused, directing the caller to merge; empty on merge -> refused, directing to overwrite or append.
-- empty row source without `options.field` -> refused; a non-empty source may infer the field from its decorated row class.
-- `max_row_size = 0` -> the shaped schema and no batches, not an error.
-- row bound -> exact; the batch it lands inside is sliced as a view over the same buffers, never copied.
-- non-zero `max_byte_size` -> stops at the last row keeping the running total under the limit, and always yields at least one row.
-- both bounds set -> whichever binds first wins.
-- limit with non-empty `merge_by_names` -> refused naming both settings, because a truncated merge would silently drop unmatched keys.
-- limited write -> truncates the offered rows exactly as a read; the cut-off rows are never pulled from the reader.
-- declared field on an overwrite of a resource that stores one -> rows are cast to the stored field; clear the handle first to change it.
-- `select_by_names` naming a column the rows lack -> error listing what is there; names match ASCII case-insensitively; an empty list selects everything.
-- no declared field on a read -> the stored shape is preserved exactly and no cast runs.
-- `read_arrow_field` -> the shape this read produces, so schema and batches never disagree.
-- `row_size` / `column_size` on an explicitly opened media -> cached until `close`; a closed handle asks the resource afresh each time.
-- `column_size` with a declared Struct field and no rows -> the declared field stays authoritative.
-- native Rust row conversion -> bounded by the smaller of `batch_row_size` and `commit_row_size`, so a failure at row `N + 1` never erases the committed `N` rows.
-- plain folder write failing on a later leaf -> already-published leaves stay visible; see [Partitions](partitions.md).
+- absent resource -> a reader with no batches and no records; no existence guard needed.
+- empty row source without `options.field` -> refused; a non-empty source may infer it from its decorated row class.
+- `max_row_size = 0` -> the shaped schema, no batches, no error.
+- row bound -> exact, sliced as a view; non-zero `max_byte_size` -> at least one row; both -> the first to bind wins.
+- limit with non-empty `merge_by_names` -> refused naming both; a limited write truncates the offered rows and never pulls the rest.
+- overwrite onto a resource that stores a field -> rows cast to that field; clear the handle first to change it.
+- `select_by_names` naming a missing column -> error listing what is there; ASCII case-insensitive; empty selects everything.
+- no declared field on a read -> stored shape preserved, no cast; `read_arrow_field` always matches the batches.
+- `row_size` / `column_size` -> headers or footers only, cached until `close` while explicitly opened; a declared Struct field decides `column_size` even with no rows.
+- native row conversion -> bounded by the smaller of `batch_row_size` and `commit_row_size`; row `N + 1` failing keeps the committed `N`.
+- plain folder failing on a later leaf -> earlier leaves stay published; see [Partitions](partitions.md).
 
 ## Commands
 
@@ -955,15 +948,13 @@ Append streams both sides after casting the incoming batches to the target shape
 
 ## Performance
 
-Reader, held-batch, and native-row dispatch under all three modes over 4,096 rows: one local Windows x86_64 release run, Criterion point estimates, regenerate on the deployment host.
+Write-mode dispatch over 4,096 rows: one local Windows x86_64 release run, Criterion point estimates; regenerate on the deployment host.
 
 | generic dispatcher | overwrite | append | merge |
 | --- | ---: | ---: | ---: |
 | `write_arrow_reader` | 255 us (16.1M rows/s) | 703 us (5.83M rows/s) | 3.27 ms (1.25M rows/s) |
 | `write_arrow_batch` | 92.0 us (44.5M rows/s) | 637 us (6.43M rows/s) | 4.14 ms (989k rows/s) |
 | `write_records` | 3.00 ms (1.36M rows/s) | 4.44 ms (922k rows/s) | 8.96 ms (457k rows/s) |
-
-The mode branch is shared across a row; append re-encodes the stored side, merge indexes it by key, and native records also validate and materialize ordered `Scalar::Sequence` rows.
 
 ```bash
 cargo bench --bench media --features parquet -- io_write_mode_dispatch

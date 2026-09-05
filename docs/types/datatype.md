@@ -1,24 +1,23 @@
 # DataType
 
-The owned logical type of one value, with Arrow kept out of the value model.
+The owned logical type of one value; cloning never allocates.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type, Variant, geometry, geography, UUID, six ASCII widths, four registered codes |
-| Parses | Arrow, SQL, Hive, Spark, and FIX logical-name spellings; `to_string` is the one canonical, re-parseable form |
-| Identity | `id()` names the variant, `kind()` the family: 56 ids, 17 kinds, both parameter-free |
-| Serializes | one structural model (`into_value`, `into_dict`); JSON, YAML, and TOML are three writers over it |
-| Defaults | one canonical non-null default per variant, freshly allocated on every call |
-| Limits | `PARSE_RECURSION_LIMIT` = 64 bounds parsing, defaults, and compatibility walks; a default above 64 MiB errors |
-| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`: layout-only rewrites, meaning changes refused |
-| Immutable | cloning never allocates; a changed type is a new value |
-| Rust only | the public enum, `validate`, `{:#}`; YAML, TOML, and `pretty` are not yet in JavaScript |
+| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, ASCII, codes |
+| Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
+| Identity | `id()`, `kind()`: 56 ids, 17 kinds, parameter-free |
+| Serializes | one structural model under JSON, YAML, TOML |
+| Defaults | one non-null default per variant, freshly allocated |
+| Limits | recursion 64; a default above 64 MiB errors |
+| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
+| Rust only | the enum, `validate`; YAML, TOML, `pretty` pending in JavaScript |
 
 ## Use
 
-Parse any spelling, display the canonical one, and round-trip both text forms.
+Parse any spelling, display the canonical one, round-trip both text forms.
 
 === "Rust"
 
@@ -63,7 +62,7 @@ Parse any spelling, display the canonical one, and round-trip both text forms.
 
 ## Logical names
 
-A FIX datatype name is one more spelling of an ordinary datatype, resolved by `from_logical_name` and the grammar alike.
+A FIX name resolves to, and displays as, an ordinary datatype.
 
 === "Rust"
 
@@ -158,7 +157,7 @@ A FIX datatype name is one more spelling of an ordinary datatype, resolved by `f
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest datatype table plus `mic` and `cfi`; `currency`, `country`, and `mic` also name a [prebuilt vocabulary](ascii.md).
+The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](ascii.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -199,7 +198,7 @@ The registry is the FIX Latest datatype table plus `mic` and `cfi`; `currency`, 
 
 ## Identity and family
 
-`id` names the variant and `kind` its family; both drop parameters, so branch on them without touching nested state.
+`id` names the variant, `kind` its family; both drop parameters and touch no nested state.
 
 === "Rust"
 
@@ -258,11 +257,11 @@ The registry is the FIX Latest datatype table plus `mic` and `cfi`; `currency`, 
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies and their predicates live with [Scalar](scalar.md); Python and JavaScript receive them as lowercase strings.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings.
 
 ## Arrow projection
 
-Rust and Python exchange a real Arrow type; Node reads an Arrow JS type through its `toString`.
+Rust and Python exchange a real Arrow type; Node reads Arrow JS through `toString`.
 
 === "Rust"
 
@@ -314,11 +313,11 @@ Rust and Python exchange a real Arrow type; Node reads an Arrow JS type through 
     assert.throws(() => DataType.fromArrow({}), /own textual representation/)
     ```
 
-Every conversion re-checks parameters, so a hand-built enum value cannot escape; whole schemas cross through [Schema](../arrow/schema.md).
+Every conversion re-checks parameters; whole schemas cross through [Schema](../arrow/schema.md).
 
 ## Default values
 
-The core computes one default from the schema; Rust yields a `Scalar`, Python a dataclass or `pyarrow.Scalar`, JavaScript a plain value.
+The core computes one default; each binding projects it.
 
 === "Rust"
 
@@ -377,11 +376,11 @@ The core computes one default from the schema; Rust yields a `Scalar`, Python a 
     assert.equal(new DataType('int32').defaultArrowScalar(), 0)
     ```
 
-`is_default_value` checks a candidate without building the default; a nullable slot's default is a [Field](field.md) question.
+`is_default_value` checks a candidate without building the default; nullability is a [Field](field.md) question.
 
 ## Serializing a schema
 
-Three formats write one structural model, so a schema embeds inline in any configuration document.
+One structural model, three writers; a schema embeds inline in configuration.
 
 === "Rust"
 
@@ -424,13 +423,13 @@ Three formats write one structural model, so a schema embeds inline in any confi
 
 | call | form |
 | --- | --- |
-| `into_json`, `into_yaml`, `into_toml` | text, with the shared [Formatting](../text/index.md) option (`indent=` in Python) |
-| `into_json_bytes`, `toJSONBytes` | the same JSON document, encoded |
-| `from_json` | bytes, text, or the object `json.loads` and `JSON.parse` made |
+| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../text/index.md), `indent=` in Python |
+| `into_json_bytes`, `toJSONBytes` | the same JSON, encoded |
+| `from_json` | bytes, text, or a parsed object |
 
 ## A readable rendering
 
-`Display`, `str`, and `repr` stay the compact round-tripping form; the alternate `{:#}` and `pretty()` render one fact per line, one indent per level.
+Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one indent per level.
 
 === "Rust"
 
@@ -473,7 +472,7 @@ Three formats write one structural model, so a schema embeds inline in any confi
 
 ## Compatibility rewriting
 
-`into_scheme_compat` walks the type recursively and applies only the layout rewrites one target needs.
+`into_scheme_compat` applies only the layout rewrites one target needs.
 
 === "Rust"
 
@@ -569,15 +568,14 @@ Three formats write one structural model, so a schema embeds inline in any confi
 | --- | --- |
 | `arrow` | validated clone |
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, fixed-size list -> list |
-| `polars` | keeps unsigned integers and fixed-size lists; no map, names key/value structs instead |
-| `pandas` | no map, names key/value structs instead |
-| `iceberg` | `uint8`, `uint16`, `int8`, `int16` -> `int32`; keeps `fixed[n]` and both timestamp widths; no duration or interval |
+| `polars`, `pandas` | no map; Polars keeps unsigned and fixed-size list |
+| `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
-Applied to a [Field](field.md), the call keeps name, nullability, and metadata. [Iceberg](../media/iceberg/index.md) is a closed primitive vocabulary rather than an engine.
+On a [Field](field.md) the call keeps name, nullability, and metadata; [Iceberg](../media/iceberg/index.md) is a vocabulary, not an engine.
 
 ## Building the enum directly
 
-Rust only. The public enum admits states no constructor would produce; `validate` is the backstop, and every binding entry point validates first.
+Rust only. `validate` catches states the public enum admits but no constructor produces.
 
 ```rust
 use yggdryl::{DataType, Field, TimeUnit};
@@ -600,17 +598,15 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 
 ## Edges
 
-- `DataType::Time32(TimeUnit::Nanosecond)` built directly -> `validate`, `into_arrow`, and `into_arrow_ffi` fail; `DataType::time32(...)` refuses at construction.
-- `FixedSizeBinary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; nesting past 64 levels -> error.
-- `into_scheme_compat("duckdb")` -> refused by name; the message lists the accepted targets.
-- `datetime64(ns)` to `spark` -> refused with `got ns` and the node path (`$["a.b"]`, `$[].item`); a negative scale is never clamped, extension metadata never relabeled.
-- `DataType.fromArrow({})` in JavaScript -> `own textual representation` error, never `[object Object]`.
-- `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `utf8`, `boolean`), not FIX ones.
-- `TZTimestamp` -> the instant under `"UTC"`, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
-- `AsciiEnum::prebuilt_values("tenor")` -> empty; only `currency`, `country`, and `mic` prebuild a vocabulary.
-- Rust `into_arrow` and `into_arrow_ffi` consume the source -> clone first to keep it.
-- `dictionary_id` of 0, unset `dictionary_is_ordered`, empty metadata -> omitted by every format and by `pretty`, never emitted as null.
-- Bare `DataType` -> the non-null default; Python `repr` -> `DataType.from_str(...)`.
+- `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
+- `FixedSizeBinary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; nesting past 64 -> error.
+- `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
+- `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
+- `DataType.fromArrow({})` -> `own textual representation` error, never `[object Object]`.
+- `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
+- `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
+- `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
+- unset optional attributes -> omitted by every format and by `pretty`, never null.
 
 ## Commands
 

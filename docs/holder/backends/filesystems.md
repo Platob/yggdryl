@@ -1,25 +1,24 @@
 # Filesystems
 
-`yggdryl::holder::fs` puts any filesystem, S3, GCS, Azure, a local tree, or one you wrote, behind [`IOBase`](../index.md) without implementing a transport.
+`yggdryl::holder::fs` puts any filesystem, S3, GCS, Azure, a local tree, or your own, behind [`IOBase`](../index.md) without a transport.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `FileSystem`, seven synchronous methods modeled on Arrow's API, plus `File`, `Folder`, `MemoryFileSystem`, `LocalFileSystem`; no transport |
-| Maps from | `pyarrow.fs`, Arrow C++, Arrow Java, or a JavaScript handler object, method for method |
+| Owns | `FileSystem` (seven synchronous methods, Arrow's API), `File`, `Folder`, `MemoryFileSystem`, `LocalFileSystem`; no transport |
 | Identity | the first segment is the authority: `"bucket/key"` on S3 spells `s3://bucket/key` |
 | Lazy | nothing exists until written; a missing file reads as empty bytes |
-| Writes | `pwrite` and `truncate` stage, publishing once on `flush` or `close`; `write_all_bytes` and the record intents publish when they finish |
+| Writes | `pwrite` and `truncate` stage until `flush` or `close`; `write_all_bytes` and record intents publish at once |
 | Reads | `pread` is one ranged fetch; `parquet` still fetches the value whole |
-| Directories | a prefix; it exists when the filesystem reports entries or a marker, never invented |
-| Bindings | Python `IOBase.from_fs(fs, path)` or `IOBase(fs, path)`; JavaScript `IOBase.fromFs(handler, path)` or `new IOBase(handler, path)` |
+| Directories | a prefix; exists when the filesystem reports entries or a marker, never invented |
+| Bindings | Python `IOBase.from_fs(fs, path)` or `IOBase(fs, path)` over `pyarrow.fs`; JavaScript `IOBase.fromFs(handler, path)` or `new IOBase(handler, path)` |
 | Rust only | `MemoryFileSystem`, `LocalFileSystem`, `Coded` composition |
-| Feature flag | none; `holder::fs::tests` gates cases on `arrow` and `iceberg` |
+| Feature flag | none; tests gate on `arrow` and `iceberg` |
 
 ## Use
 
-Wrap a filesystem and a path; the handle is lazy and its URL names the filesystem.
+The smallest handle is a filesystem and a path.
 
 === "Rust"
 
@@ -120,7 +119,7 @@ The real thing needs credentials and a network, so it is shown rather than run.
 
 ## Staged positional writes
 
-An Arrow filesystem replaces whole files and has no random write, while `IOBase::pwrite` is positional, so positional mutations stage until `flush` or `close`.
+An Arrow filesystem replaces whole files and has no random write, so positional mutations stage until `flush` or `close`.
 
 === "Rust"
 
@@ -199,11 +198,11 @@ An Arrow filesystem replaces whole files and has no random write, while `IOBase:
     assert.equal(files.get('bucket/staged.bin').toString(), 'pending')
     ```
 
-A file another reader will open is written inside a scope, `with` in Python or `using` in JavaScript, which binds to exactly `open` and `close`.
+A file another reader will open is written inside a scope, `with` or `using`, which binds to exactly `open` and `close`.
 
 ## Folders, globs, and partitions
 
-A directory on an object store is a prefix, so existence is what the filesystem reports: entries under it, or a marker.
+A directory on an object store is a prefix; existence is what the filesystem reports, entries or a marker.
 
 === "Rust"
 
@@ -316,7 +315,7 @@ A directory on an object store is a prefix, so existence is what the filesystem 
 
 ## Records
 
-Every handle answers the same read plus the three write intents of [Records](../iobase/records.md), so the encoding comes from the media type, never an argument.
+Every handle answers the same read plus the three write intents of [Records](../iobase/records.md); the encoding comes from the media type, never an argument.
 
 === "Rust"
 
@@ -421,7 +420,7 @@ Every handle answers the same read plus the three write intents of [Records](../
 
 ## Composing with the wrappers
 
-The wrappers only ever see an `IOBase`, so a content coding round trips over a bucket exactly as over a file. Rust only: the bindings do not expose the compression wrappers.
+The wrappers only ever see an `IOBase`. Rust only: the bindings do not expose the compression wrappers.
 
 === "Rust"
 
@@ -449,7 +448,7 @@ The wrappers only ever see an `IOBase`, so a content coding round trips over a b
     assert_eq!(&stored.read_all_bytes()?[..2], &[0x1f, 0x8b]);
     ```
 
-An [Iceberg](../../media/iceberg/index.md) table is a folder reached through `IOBase` only, so a warehouse on a foreign filesystem needs nothing from the table format.
+An [Iceberg](../../media/iceberg/index.md) table is a folder reached through `IOBase` only, so a foreign warehouse needs nothing from the table format.
 
 === "Rust"
 
@@ -509,7 +508,7 @@ An [Iceberg](../../media/iceberg/index.md) table is a folder reached through `IO
 
 ## The two filesystems that ship here
 
-`MemoryFileSystem` holds everything in one map and runs the tests and benchmarks; `LocalFileSystem` is a thin `std::fs` mapping publishing through a temporary file and rename. Rust only; neither replaces [Local](local.md), whose memory-mapped `File` remains the local backend, and bindings use `pyarrow.fs` or a handler object.
+`MemoryFileSystem` holds everything in one map and runs the tests and benchmarks; `LocalFileSystem` is a thin `std::fs` mapping. Rust only; neither replaces [Local](local.md), whose memory-mapped `File` remains the local backend.
 
 === "Rust"
 
@@ -603,7 +602,7 @@ Implement `FileSystem`, seven synchronous methods with the semantics Arrow alrea
 
 ### Python
 
-Write a `pyarrow.fs.FileSystemHandler` and wrap it in `pyarrow.fs.PyFileSystem`; an `fsspec` filesystem arrives the same way. The complete handler lives in `python/tests/holder/test_fs.py`, exercised end to end including an Iceberg table whose every byte goes through it.
+Write a `pyarrow.fs.FileSystemHandler` and wrap it in `pyarrow.fs.PyFileSystem`; `fsspec` arrives the same way. The complete handler lives in `python/tests/holder/test_fs.py`.
 
 === "Python"
 
@@ -692,14 +691,13 @@ Arrow JS ships no filesystem, so the handler object is the filesystem and its si
 
 ## Edges
 
-- Missing file -> `exists()` is false and a whole-value read returns empty bytes; nothing exists until something is written.
-- `pwrite` before `close` -> the handle presents the pending value while the store still holds the old one.
-- `pread` of eight bytes -> transfers eight bytes; a [Parquet](../../media/parquet.md) read still costs the whole object today.
+- `pwrite` before `close` -> the handle shows the pending value; the store still holds the old one.
+- `pread` of eight bytes -> eight bytes transferred; a [Parquet](../../media/parquet.md) read still costs the whole object today.
 - Fixed glob prefix `year=2024/**/*.parquet` -> descended, not listed and filtered; see [Partitions](../iobase/partitions.md).
-- Folder handle -> reads as the partitioned table beneath it; a folder holding an Iceberg metadata document reads through its snapshots.
-- Own `FileSystem` -> a missing path is `FileInfo::not_found` (`IOKind::Unknown`), never an error; a missing directory lists empty; a read past the end is short; a write replaces the whole value.
-- JavaScript handle used from a `Worker` -> refuses with a message rather than queueing; the handler is called synchronously and belongs to one thread, so each worker builds its own from the location string.
-- `LocalFileSystem` write -> a temporary file plus a rename, so a reader never observes a half-written value.
+- Own `FileSystem`, missing path -> `FileInfo::not_found` (`IOKind::Unknown`), not an error.
+- Own `FileSystem` -> a missing directory lists empty, a read past the end is short, a write replaces the value.
+- JavaScript handle used from a `Worker` -> refuses with a message; the synchronous handler belongs to one thread, so build one per worker.
+- `LocalFileSystem` write -> a temporary file plus a rename; a reader never sees a half-written value.
 
 ## Commands
 
@@ -728,11 +726,11 @@ Arrow JS ships no filesystem, so the handler object is the filesystem and its si
 
 ## Performance
 
-Every row lands the same payload twice: through an `fs` handle, then through the native handle or the language's own filesystem calls. Each tab names its build; host and toolchain are the published ones in [benchmarks](../../benchmarks.md).
+Every row lands the same payload twice, through an `fs` handle and natively; host and toolchain are the published ones in [benchmarks](../../benchmarks.md).
 
 === "Rust"
 
-    The `fs_bytes`, `fs_record`, and `fs_listing` groups of the `holder` target report Criterion medians over 512 KiB payloads and 65,536 rows.
+    `fs_bytes`, `fs_record`, and `fs_listing` on the `holder` target report Criterion medians over 512 KiB payloads and 65,536 rows.
 
     ```text
                                       fs      native handle
@@ -757,7 +755,7 @@ Every row lands the same payload twice: through an `fs` handle, then through the
 
 === "Python"
 
-    The baseline is PyArrow's own calls against the same `pyarrow.fs.LocalFileSystem` the wrapper delegates to, so the difference is the vtable crossing alone. `holder.py --min-time 0.2 --repeat 7` on the release wheel reports medians.
+    The baseline is PyArrow's own calls against the same `LocalFileSystem`; `holder.py --min-time 0.2 --repeat 7`, release wheel, medians.
 
     ```text
                             wrapper      PyArrow
@@ -769,11 +767,11 @@ Every row lands the same payload twice: through an `fs` handle, then through the
     listing (16 entries)    85.5 us      34.4 us
     ```
 
-    Each vtable call costs roughly 12 us fixed, per call not per byte, so a range read still moves 4 KiB rather than 512 KiB.
+    Each vtable call costs roughly 12 us fixed, per call not per byte.
 
 === "JavaScript"
 
-    JavaScript pays the same shape of cost against `node:fs`, with the handler crossing the boundary on every call rather than only the handle. `bench:holder` on a release build reports throughput.
+    The handler crosses the boundary on every call; `bench:holder`, release build, throughput.
 
     ```text
                                 wrapper       node:fs
@@ -786,8 +784,6 @@ Every row lands the same payload twice: through an `fs` handle, then through the
     read records            15.6M rows/s   11.6M rows/s (local handle)
     write records           10.2M rows/s   22.1M rows/s (local handle)
     ```
-
-    Records read faster than the local handle because the staged value is already in memory, and write slower because it is published once.
 
 ```bash
 cargo bench --bench holder --features parquet -- fs_bytes

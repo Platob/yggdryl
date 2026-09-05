@@ -1,6 +1,6 @@
 # Scalars
 
-One value across the array boundary, in both directions, under the physical budgets that guard materialization.
+One value across the array boundary, both ways, under the materialization budgets.
 
 ## Contract
 
@@ -8,10 +8,10 @@ One value across the array boundary, in both directions, under the physical budg
 | --- | --- |
 | Owns | `scalar_array`, `scalar_value`, `TypedScalar::into_arrow_array`, `from_arrow_array`, `try_from_arrow_array`, `arrow::StructScalar` |
 | Validates | The exact `Field`: name, nullability, dictionary options, metadata, extension identity |
-| Null rule | A non-nullable Field admits a logical null only as its datatype's canonical default |
-| Copies | None: `ArrayRef` export and `StructScalar` column reads are slices |
+| Null rule | A non-nullable Field takes a logical null only as its datatype's canonical default |
+| Copies | None; `StructScalar` column reads are slices |
 | Limits | 1,000,000 expanded slots and 64 MiB fixed bytes, checked before allocation |
-| Errors | `Error::IncompatibleSchema`, `Error::PhysicalLimit`, `Error::Allocation` |
+| Errors | `Error::IncompatibleSchema` (shape), `Error::PhysicalLimit` (budget), `Error::Allocation` (allocator) |
 | Bindings | Rust; Python `DataType.arrow_scalar` and `Field.arrow_scalar`; JavaScript none |
 
 ## Use
@@ -44,7 +44,7 @@ Rust only.
 
 ## TypedScalar without a Field
 
-A [`TypedScalar`](../types/scalar.md) projects through a synthetic non-nullable Field over its datatype, with the same canonical-default exception.
+A [`TypedScalar`](../types/scalar.md) projects through a synthetic non-nullable Field, with the same canonical-default exception.
 
 === "Rust"
 
@@ -73,7 +73,7 @@ A [`TypedScalar`](../types/scalar.md) projects through a synthetic non-nullable 
 
 ## StructScalar
 
-One present struct row paired with its root Field; `into_arrow_scalar` yields the `Datum` marker Arrow kernels take for one value.
+One present struct row with its root Field; `into_arrow_scalar` yields the `Datum` Arrow kernels take for one value.
 
 === "Rust"
 
@@ -122,7 +122,7 @@ One present struct row paired with its root Field; `into_arrow_scalar` yields th
 
 ## Materialization budgets
 
-Two running totals are checked before any allocation, covering validity bitmaps, offsets, union buffers, and values behind dictionary or run-end keys.
+Totals are checked before allocation and cover validity bitmaps, offsets, union buffers, and values behind dictionary or run-end keys.
 
 === "Rust"
 
@@ -153,7 +153,7 @@ Two running totals are checked before any allocation, covering validity bitmaps,
     assert!(message.contains("expected at most 67108864"), "{message}");
     ```
 
-The budget charges what is built: a dense union allocates only the selected member, a sparse union every child. Phase reservations are released when the phase ends.
+Only what is built is charged: a dense union allocates the selected member, a sparse union every child. Phase reservations end with the phase.
 
 === "Rust"
 
@@ -187,12 +187,9 @@ The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
 
 ## Edges
 
-- Array length other than 1 -> `Error::IncompatibleSchema`.
-- Array datatype differs from the Field's exact physical projection -> `Error::IncompatibleSchema`.
+- Array length other than 1, or a foreign datatype -> `Error::IncompatibleSchema`.
 - Field datatype deeper than the bound -> schema error before Arrow's recursive projection, no stack exhaustion.
-- `Scalar::Null` under a non-nullable Field -> error, unless it is the datatype's canonical default.
 - `StructScalar::from_parts`: not one row, null root, or foreign columns -> `Error::IncompatibleSchema` naming both schemas.
-- Over 1,000,000 slots or 64 MiB fixed bytes -> `Error::PhysicalLimit` naming the count, the limit, the total reached.
 - Allocator refusal or overflowing `rows * width` -> `Error::Allocation` with the `TryReserveError`.
 - Dense union inactive branch past the budget -> never visited, no error.
 

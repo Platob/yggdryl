@@ -4,18 +4,18 @@ Variable and fixed-width ASCII text, the four registered codes, packed integers,
 
 ## Contract
 
-| Spelling | Registry | Width | Arrow storage | Extension name |
-| --- | --- | ---: | --- | --- |
-| `ascii` | | none | `binary` | `yggdryl.ascii` |
-| `ascii(n)` | | `n`, at least 1 | `fixed_size_binary(n)` | `yggdryl.ascii` |
-| `country` | ISO 3166-1 alpha-2 | 2 | `fixed_size_binary(2)` | `yggdryl.country` |
-| `currency` | ISO 4217 | 3 | `fixed_size_binary(3)` | `yggdryl.currency` |
-| `mic` | ISO 10383 | 4 | `fixed_size_binary(4)` | `yggdryl.mic` |
-| `cfi` | ISO 10962 | 6 | `fixed_size_binary(6)` | `yggdryl.cfi` |
+| Spelling | Width | Arrow storage, extension |
+| --- | ---: | --- |
+| `ascii` | none | `binary`, `yggdryl.ascii` |
+| `ascii(n)` | `n` | `fixed_size_binary(n)`, `yggdryl.ascii` |
+| `country`, ISO 3166-1 alpha-2 | 2 | `fixed_size_binary(2)`, `yggdryl.country` |
+| `currency`, ISO 4217 | 3 | `fixed_size_binary(3)`, `yggdryl.currency` |
+| `mic`, ISO 10383 | 4 | `fixed_size_binary(4)`, `yggdryl.mic` |
+| `cfi`, ISO 10962 | 6 | `fixed_size_binary(6)`, `yggdryl.cfi` |
 
 ## Use
 
-Storage pads to the width and every rendering trims; the [playground](playground.md) shows every width, code, refusal, and vocabulary.
+The [playground](playground.md) renders every width, code, refusal, and vocabulary; `CODES` lists the codes, `is_code` and `code_name` tell one from a width.
 
 === "Rust"
 
@@ -294,24 +294,9 @@ Storage pads to the width and every rendering trims; the [playground](playground
     assert.throws(() => DataType.ascii(0), /at least 1 byte, got 0/)
     ```
 
-## Widths and the registered codes
+## Declared vocabulary and generated enum
 
-A value is ASCII (each byte at most `0x7F`), holds no NUL, fits the width, and canonicalizes to the trimmed string. `CODES` lists the four codes; `is_code` and `code_name` tell a code from a width.
-
-| Situation | Result |
-| --- | --- |
-| `fixed_size_binary(3)` under `yggdryl.currency` | `currency` |
-| `fixed_size_binary(3)` under `yggdryl.ascii`, empty document | `ascii(3)` |
-| plain binary, or one carrying a document | imports as it is |
-| `ascii(n)` [merged](field.md) with `ascii` | `ascii` |
-| either shape merged with `utf8` | `utf8` |
-| `currency` merged with `country` | `ascii(3)`, never one code holding the other's values |
-| two schemas agreeing on a code | the code |
-| Iceberg, Spark, Polars, pandas, Avro, filter literals | text: [rewritten](datatype.md) to `string`/`utf8` |
-
-## Packed integers and the declared vocabulary
-
-`ascii_packed` is the value's own storage bytes read big-endian: the same integer everywhere, ordered as the text, never negative. Only a fixed width of at most sixteen bytes has one.
+`ascii_packed` is the storage bytes read big-endian: one integer everywhere, ordered as the text, never negative.
 
 === "Rust"
 
@@ -467,25 +452,28 @@ A value is ASCII (each byte at most `0x7F`), holds no NUL, fits the width, and c
     assert.ok(Field.fromJSON(field.toJSON()).asciiEnum.equals(side))
     ```
 
-`AsciiEnum` is an enum name plus one ASCII value per member, stored under the reserved key `field:enum` ([Protocol](protocol.md)). The width is the field's datatype and is never copied into the document.
+`AsciiEnum` is an enum name plus one ASCII value per member, stored under the reserved key `field:enum` ([Protocol](protocol.md)); the width stays the field's datatype.
 
-| Byte of the value | In the member name |
+| Byte | Member name |
 | --- | --- |
-| ASCII letter | uppercased |
+| letter | uppercased |
 | digit | kept |
-| any other byte | `_` |
-| leading digit | prefixed with `_` |
-| opens and closes with `_` | trailing `_` dropped (Python's `_sunder_` shape) |
+| other | `_` |
+| leading digit | `_` prefixed |
+| opens and closes with `_` | trailing `_` dropped |
 
 Python-only enum bases: [Python boundary](../extensions/python.md).
 
 ## Edges
 
 - `ascii(0)` -> refused, `at least 1 byte, got 0`.
-- Not ASCII, a NUL, or longer than the width -> refused naming the width (`at most 4 bytes`); a cast names the row too.
+- Not ASCII, a NUL, or longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
+- `fixed_size_binary(3)` under `yggdryl.currency` -> `currency`; under `yggdryl.ascii` -> `ascii(3)`; plain, or carrying a document -> imports as it is.
+- [Merged](field.md): a width beside `ascii` -> `ascii`; either beside `utf8` -> `utf8`; `currency` beside `country` -> `ascii(3)`, never one code holding the other's values.
+- Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`.
 - `ascii_packed` on `ascii`, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum; `"Exchange"` -> the `MICS` listing.
-- JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; read it under a declared `utf8` field.
+- JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; declare `utf8` to read text.
 
 ## Commands
 
