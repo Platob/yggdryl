@@ -1,8 +1,8 @@
-# Messages — explicit halves, entries, and the readers
+# Messages — explicit halves, entries, the readers, and the batches
 
 **Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
-text, or from a ULBridge body — then answer the handful of facts a reader
-actually asks it for.
+text, or from a ULBridge body; answer the handful of facts a reader actually
+asks it for; and stream both out as Arrow record batches.
 
 **Depends.** Phase 2 (identifier and branch table), Phase 3 (version),
 Phase 6 (a dictionary), Phase 8 (packed side and message type, for Phase 9).
@@ -1082,9 +1082,204 @@ tag, so the table's cost is visible.
 
 ---
 
+## Phase 10 — Arrow batches: a capture in, columns out
+
+**Goal.** Turn a stream of rows into ordinary record batches and back, at a
+bounded, byte-shaped memory cost — so a day of capture becomes a Parquet
+file with nothing in this brief knowing what Parquet is.
+
+**Depends.** Phase 7 (a built message and its readers), Phase 9 (the facets
+a column is made of).
+
+**Surface.** A batch module inside the FIX module: a reader constructed two
+ways, a writer, and a FIX options struct implementing the crate's record
+options trait. One new option on that shared trait (P10-R5). Tests, a
+benchmark group, the counting-allocator target, the FIX page.
+
+**Never.** Add a FIX-specific streaming shape, a second parser, or a second
+byte accounting. This phase is plumbing between two things that already
+exist.
+
+### Contract
+
+```rust
+/// FIX rows as ordinary record batches.
+pub struct FixBatchReader;
+
+impl FixBatchReader {
+    /// Rows of bytes in, batches out.
+    pub fn from_rows<I>(registry: Arc<FixRegistry>, rows: I, options: FixOptions)
+        -> Result<BatchReader>
+    where I: Iterator<Item = Result<Vec<u8>>> + Send + 'static;
+
+    /// A column of frames in, batches out — a capture already in Arrow.
+    pub fn from_column(registry: Arc<FixRegistry>, source: BatchReader,
+                       column: &str, options: FixOptions) -> Result<BatchReader>;
+}
+
+/// Batches back to the wire, streamed.
+pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
+    -> Result<u64>;
+```
+
+### Rules
+
+- **P10-R1. A FIX stream is the crate's one batch reader, not a new
+  streaming shape.** The crate already boxes a single reader type that every
+  format returns and that every consumer is written against — the byte and
+  row bounds, the completion cast, the projection, Parquet, IPC, the table
+  formats. Returning it is what makes a capture writable to Parquet with no
+  code in this phase. Never expose a FIX-specific batch iterator: it would
+  buy nothing and would have to be adapted at every boundary.
+- **P10-R2. The schema is decided before the first row is read.** A batch
+  reader answers `schema()` before it yields anything, so the columns come
+  from the options and the dictionary — never from the data. A declared
+  field wins, exactly as it does for every other reader in the crate; with
+  none declared, the shape is P10-R3. A schema inferred from the first row
+  would change with the capture's first line, which is the one thing a
+  column consumer cannot survive.
+- **P10-R3. The default shape is three groups: what it is, what it means,
+  what was sent.** (a) identity — `msgtype` as the packed datatype (P8),
+  `branch`, `version`; (b) one column per lifted facet (P9-R4), typed as
+  that facet's field is typed at the message's version (P9-R8); (c)
+  `entries`, a list of struct mirroring `FixEntry` — `tag`, `branch`, `key`,
+  `value`. Nothing else is a column by default: a wide column per tag is a
+  projection a caller asks for, not a shape a parser imposes.
+- **P10-R4. `entries` is not optional.** The facet columns are a convenience
+  over a subset; the entries list *is* the row, and it is what makes a batch
+  a lossless capture rather than one reader's summary of it. Dropping it to
+  save bytes would lose data, which this brief has refused at every layer
+  (P4-R7, P7-R44, P9-R9). A caller wanting facets alone projects the batch
+  afterwards — projection already exists and is not this phase's to
+  re-invent.
+- **P10-R5. A batch closes on bytes first, rows second.** Add
+  `batch_byte_size` beside `batch_row_size` on the crate's shared record
+  options, because a byte-shaped batch is a property of batching and not of
+  FIX. Whichever bound binds first closes the batch. A non-zero byte bound
+  always yields at least one row — the same guarantee the total byte bound
+  already gives — so a single enormous `XmlData` row can never yield an
+  empty batch. Rows-only batching is what makes a heartbeat batch and a
+  market-data batch differ by three orders of magnitude in memory for the
+  same row count.
+- **P10-R6. The running estimate is appended bytes; the real accounting is
+  the finished batch's.** In-progress builders cannot be measured the way a
+  finished batch can, so accumulate what was appended plus a fixed per-row
+  width and close on that. Tests assert the *finished* batch against the
+  bound with a stated tolerance, and the doc comment says the bound is a
+  target rather than a ceiling. Cheap and monotone beats exact and per-row:
+  an exact measure per row would cost more than the parse.
+- **P10-R7. One message, reused, never a batch of them.** Parse into a
+  single message, append it into the builders, clear it, parse the next.
+  Memory is the builders plus one row, so a hundred million rows cost one
+  batch. Collecting a `Vec` of messages and converting at the boundary holds
+  the batch twice — once as messages and once as columns — which is the
+  usual way this is written and the reason it is stated as a rule.
+- **P10-R8. Append the row's own bytes.** The readers already borrow key and
+  value out of the input (P7); hand those bytes to the builder directly. An
+  intermediate string per field allocates once per field to produce bytes
+  the builder is about to copy anyway.
+- **P10-R9. A facet the row does not answer appends null.** Lifting borrows
+  and answers `None` on ambiguity (P9-R1), and null is how a column says
+  exactly that. Absent, unanswerable and ambiguous are one thing in a
+  column; a caller needing to tell them apart reads `entries`, which still
+  has every occurrence.
+- **P10-R10. A row in is a row out, always.** Nothing in a row's content can
+  fail a batch: a row that could not be typed is `unknown` (P7-R44), a row
+  with no pairs is a row with no entries (P7-R71), and the reader's `Result`
+  is for I/O only. The output row count equals the input line count — that
+  is what lets a capture be joined back to its source by position, and it is
+  why P10-R12 can zip rather than join.
+- **P10-R11. Dialect and version resolve once per stream.** The options
+  carry them; where they are unset the first row that states a
+  `BeginString` fills them and every later row inherits (P7-R42). Re-sniffing
+  per row would let one malformed line re-dialect the rest of the capture,
+  and would cost a lookup on every row to do it.
+- **P10-R12. A capture already in Arrow feeds the same builders.** Given an
+  upstream reader and the name of a binary or string column of frames, the
+  rows come from that column instead of an iterator — same schema, same
+  bounds, same builders. The source batch's other columns are carried
+  through unchanged, ahead of the FIX columns: a capture's arrival timestamp
+  and file offset are what a monitor orders and joins on (P9-R19), and
+  because row counts match exactly (P10-R10) carrying them is a slice, not a
+  join.
+- **P10-R13. The wire is rebuilt from `entries`, never from the columns.**
+  Writing walks each row's entries in order through the existing byte
+  serializer with the separator from options. A batch without an `entries`
+  column cannot be written and says so plainly. Rebuilding a frame from
+  lifted columns would emit a message that was never sent — the facets are a
+  lossy projection by construction, and P10-R4 exists precisely so the
+  lossless one is always there.
+- **P10-R14. The writer streams under the same bounds it reads under.** It
+  pulls one batch, writes its rows into the sink, drops it; it never
+  concatenates the source and never holds an output buffer bigger than a
+  row. Where the sink publishes in groups, the existing publication cadence
+  is the group — one cadence in the crate, not a FIX one beside it.
+- **P10-R15. Byte-in / byte-out is the test that decides this phase.** Every
+  line of the capture corpus (P7's tests) through rows → batch → rows,
+  compared byte for byte modulo the separator. A round trip that holds over
+  the corpus is worth more than any assertion about an individual column,
+  because the corpus is where the shapes that break parsers actually live.
+
+### Decided
+
+- **The reader returns the crate's boxed batch reader.** *Rejected:* a
+  `FixBatchStream` with its own `next_batch`. It would be one adapter away
+  from every existing consumer, and the adapter is the bug: bounds, casts
+  and projection would each have to be re-implemented or quietly lost.
+- **Facets as columns, entries as a list, and no wide tag columns.**
+  *Rejected:* a column per tag seen. It makes the schema depend on the data
+  (P10-R2), gives a mixed capture a thousand mostly-null columns, and is
+  reconstructible from `entries` by a caller who actually wants it for one
+  message type.
+- **`batch_byte_size` on the shared options, not a FIX knob.** *Rejected:* a
+  FIX-only setting. Every format in the crate has the same problem — wide
+  rows make a row-counted batch unbounded in memory — and a second name for
+  one idea is the compatibility shim N3 forbids.
+- **An estimate, not an exact accounting.** *Rejected:* measuring the true
+  Arrow footprint per appended row. It walks every buffer to decide whether
+  to append the next value, which costs more than the parse it is guarding.
+
+### Tests
+
+1. `schema()` answered before the first batch and identical after it, on a
+   capture whose first line is a heartbeat and whose second is a
+   many-legged order (P10-R2).
+2. The three column groups present with a declared-schema-free reader; a
+   declared field overriding the shape (P10-R3, P10-R2).
+3. A capture of 10 000 tiny rows batching by `batch_row_size`, and one of
+   wide `XmlData` rows batching by `batch_byte_size` — the second yielding
+   more batches of fewer rows at the same total (P10-R5).
+4. The finished batch's real memory within the stated tolerance of the bound
+   (P10-R6), and a single row wider than the whole bound still yielding a
+   one-row batch, never an empty one.
+5. Peak allocation over a million rows bounded by one batch, in the
+   counting-allocator target (P10-R7).
+6. Row count out equals line count in, over a corpus containing an untyped
+   line, an empty line and a line with one pair (P10-R10).
+7. A facet answered, unanswered and ambiguous, appending value, null and
+   null (P10-R9), with `entries` still carrying every occurrence of the
+   ambiguous one (P10-R4).
+8. `from_column` over a two-column source (arrival time, frame) carrying the
+   time through and matching row for row (P10-R12).
+9. Every line of the P7 capture corpus round-tripping byte for byte
+   (P10-R15), including the `XmlData` envelope rows (P7-R72…R75).
+10. A batch with no `entries` column refused by the writer with a message
+    naming the column (P10-R13).
+11. Writing a source of three batches touching the sink three times, with no
+    concatenation (P10-R14).
+12. A stream whose first line states no `BeginString` and whose second does:
+    the version resolved once and inherited, and the first row's own version
+    null rather than back-filled (P10-R11, N4).
+
+**Bench.** Rows to batches at three row widths, against the same rows parsed
+to messages and discarded — so the column cost is separable from the parse
+cost. A second group for the write direction.
+
+---
+
 ## Handoff
 
-Last phase of this brief. Deliberately left to the CBlock brief and stated
+Deliberately left to the CBlock brief and stated
 in the module docs rather than started here: reassembling a repeating group
 from bare tag repetition, which needs the message-type grammar (P7-R38); and
 the *expression-driven* normalization layer with its conditions, lookups and
@@ -1093,5 +1288,11 @@ looked like that layer's are done here instead: the lineage-driven half of
 transcoding, in `convert_into` (P7-R31), and pair-shaped `XmlData(213)`,
 which needs no evaluator because the payload's own shape decides (P7-R75).
 
-**From Phase 9.** Nothing in this brief consumes it: lifting is the outermost
-layer, and a batch writer or a column projection is the next thing that would.
+**From Phase 9.** Phase 10 is what consumes it: every facet is a column
+(P10-R3), lifting's `None` is that column's null (P10-R9), and the
+monitoring facets are what a batch is ordered and joined by (P10-R12).
+
+**From Phase 10.** Nothing in this brief consumes it: batching is the
+outermost layer. Once a capture is the crate's batch reader, writing it to
+Parquet, IPC or a table format is configuration rather than code (P10-R1),
+which is the whole reason the shape is not FIX's own.
