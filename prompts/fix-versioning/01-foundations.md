@@ -58,7 +58,7 @@ impl Version { pub const MIN: Self; pub const MAX: Self; }
   `Hash` agree.
 - **P1-R6. `MIN` and `MAX` are bounds, not meanings.** Both `const`. `MAX`
   is the top of the value space and nothing more: a real latest release is a
-  real version and is named as one (P3-R1b).
+  real version and is named as one (P3-R2).
 - **P1-R7. No allocation** on parse, compare or render for a qualifier
   inside `SmolStr`'s inline buffer — which every FIX and semver qualifier is.
 - **P1-R8. Datatype.** `DataType::Version` beside the other parameter-free
@@ -146,7 +146,7 @@ counting-allocator target, the FIX resolution benchmark group, the FIX page.
 **Never.** Change an *existing* serialized shape. `FixId` is derived and
 never stored, so a shard written before this phase must load and round-trip
 byte-identically after it — that test is what says the phase is safe. The
-branch manifest (P2-R18) is a **new** leaf and touches no shard.
+branch manifest (P2-R16) is a **new** leaf and touches no shard.
 
 ### Contract
 
@@ -158,7 +158,7 @@ pub struct FixBranch { text: SmolStr, digest: u32 }   // text declared first
 pub struct FixBranchInfo {
     branch: FixBranch,
     version: Option<Version>,          // the dialect's default FIX version
-    ep: Option<u32>,                   // and its extension pack (P3-R3)
+    ep: Option<u32>,                   // and its extension pack (P3-R4)
     sender_comp_id: Option<SmolStr>,   // the session it speaks as
     target_comp_id: Option<SmolStr>,   // and the one it speaks to
 }
@@ -198,10 +198,10 @@ impl FixRegistry {
 - **P2-R6. `from_parts` is a shift and an or,** and stays the one place the
   admissibility rule lives, plus one refusal: a non-standard branch whose
   digest equals the standard branch's, so `is_standard()` stays total.
-- **P2-R6b. The user-defined tag range is `[5000, 40000)`.** The landed rule
-  is one limit of 5000 with everything above claimable, and that is wrong at
-  the top: the specification has resumed assigning tags at and above 40000,
-  so a vendor branch claiming one would collide with the standard dictionary.
+- **P2-R7. The user-defined tag range is `[5000, 40000)`.** One limit of
+  5000, with everything above it claimable, is wrong at the top: the
+  specification has resumed assigning tags at and above 40000, so a vendor
+  branch claiming one collides with the standard dictionary.
 
   | tag | whose |
   | --- | --- |
@@ -211,7 +211,7 @@ impl FixRegistry {
 
   Admissibility is `branch.is_standard() || (5000..40_000).contains(&tag)`.
   Two constants replace the one; the refusal names both and the tag.
-- **P2-R6c. That is a surface change.** The single limit is public, asserted
+- **P2-R8. That is a surface change.** The single limit is public, asserted
   in the FIX tests, re-exported by both bindings, and quoted in four places
   on the FIX page including runnable Python and JavaScript examples that
   assert it equals 5000. Replace every one; leaving the old constant beside
@@ -221,49 +221,49 @@ impl FixRegistry {
 
 The digest is one-way, so **a bare `FixId` cannot name its branch**.
 
-- **P2-R7. `FixId::branch()` is deleted.** Its callers all hold the owning
+- **P2-R9. `FixId::branch()` is deleted.** Its callers all hold the owning
   field and read `fix:branch` from it, where the text lives.
   `branch_digest()` replaces it where only identity matters.
-- **P2-R8. `Display`** renders `standard:35` for the standard branch and
+- **P2-R10. `Display`** renders `standard:35` for the standard branch and
   `#7f3a1c02:5001` — digest in lowercase hex — for any other. `from_str`
   still accepts `cme:5001`: it has the text and hashes it. The module
-  doctest asserting the old round trip changes with it.
+  doctest asserting a `branch:tag` round trip moves with it.
 
 ### The branch is a dialect
 
-- **P2-R9. The registry keeps a branch table keyed by digest,** filled on
+- **P2-R11. The registry keeps a branch table keyed by digest,** filled on
   insert, so every refusal it raises still names `cme:5001`. Only an
   identifier held outside a registry renders as hex.
-- **P2-R9b. The table holds what a branch declares.** A non-standard branch
+- **P2-R12. The table holds what a branch declares.** A non-standard branch
   is one counterparty's dictionary, and three facts travel with it: the FIX
   version it speaks by default, and the `SenderCompID` / `TargetCompID` pair
   identifying its session. A `.cfb` states all three on its root element and
   a vendor orchestration states the version; today all three are dropped and
   rediscovered per message. `FixBranchInfo` is the entry; the bare
   `FixBranch` stays the identity inside it.
-- **P2-R9c. Everything beyond the name is optional,** and a branch declaring
+- **P2-R13. Everything beyond the name is optional,** and a branch declaring
   nothing is today's behaviour. The standard branch declares nothing: it is
   the specification, not a counterparty.
-- **P2-R9d. Comp ids are stored as they arrive, compared ASCII-folded.**
+- **P2-R14. Comp ids are stored as they arrive, compared ASCII-folded.**
   `BANKX` and `bankx` are one session.
-- **P2-R10. A branch-digest collision is a typed conflict at insert,**
+- **P2-R15. A branch-digest collision is a typed conflict at insert,**
   naming both spellings and the digest — a stated failure rather than two
   dictionaries silently aliasing.
-- **P2-R18. The branch table persists as one manifest beside the trees.**
+- **P2-R16. The branch table persists as one manifest beside the trees.**
   The store descends only the two trees, so a leaf beside them is never
-  listed (the same property the provenance manifest uses, P6-R5). One
+  listed (the same property the provenance manifest uses, P6-R8). One
   canonically rendered JSON document ordered by branch name; read back on
   open. **Absence is the empty table** — a dictionary written before this
   phase loads with bare names and behaves as today. A manifest naming a
   branch no field belongs to is a typed error naming it.
-- **P2-R19. The process-wide default registry *is* the branch singleton.**
+- **P2-R17. The process-wide default registry *is* the branch singleton.**
   Parsing needs one shared place to resolve a branch from and the repository
   already has one. Hang the table off it; every reader resolves through it
   without threading anything.
 
 ### The indexes
 
-- **P2-R11.**
+- **P2-R18.**
 
   ```rust
   ids, alternate_ids:  HashMap<FixId, usize, BuildHasherDefault<Mix>>
@@ -272,44 +272,44 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
   ```
 
   An identifier lookup hashes nothing: the key *is* the id.
-- **P2-R12. `Mix` finalizes, it does not pass through.** The packed high
+- **P2-R19. `Mix` finalizes, it does not pass through.** The packed high
   bits are the tag, under 65536 for nearly every field, so the top bytes are
   near-constant — and hashbrown takes its control byte from the top bits. A
   raw pass-through puts every standard field in one control-byte class.
   `Mix` is one multiply-xor-shift finalizer.
-- **P2-R13. Name and alias keys stay text,** hashed per probe: ASCII-fold
+- **P2-R20. Name and alias keys stay text,** hashed per probe: ASCII-fold
   into the xxhash streaming state in stack-sized chunks so no length
   allocates, seeded with the branch's `xxh32` so a name cannot be found under
   another branch, with a distinct constant seed per index.
-- **P2-R14. A name-digest collision is a loud refusal, never a wrong
+- **P2-R21. A name-digest collision is a loud refusal, never a wrong
   answer.** Two names mapping to one `u64` would silently overwrite.
   `insert` verifies the field at an occupied key really holds it and returns
   a typed conflict otherwise; reads re-check, so a collision degrades to a
   miss. Identifier keys need no check — a `FixId` *is* the key.
-- **P2-R15. Ordered iteration keeps its own structure.** The cursor, the
+- **P2-R22. Ordered iteration keeps its own structure.** The cursor, the
   iterator, `Debug`, `PartialEq` and `write_into` need an ordered walk a hash
   map cannot give. `positions_by_id` is kept sorted by binary-search insert:
   `O(n)` per insert on a dictionary built once and read forever, against
   `O(log n)` node chasing on every read.
-- **P2-R16. Order becomes tag-major.** Within one branch it is unchanged, so
+- **P2-R23. Order becomes tag-major.** Within one branch it is unchanged, so
   `write_into` still produces **byte-identical shards** — a shard folder is
   one branch, a shard file one `tag / 100` bucket. What moves is the
   cross-branch walk: vendor fields interleave among standard ones by tag.
   Update the "orders branch-major" sentence, the cursor doc and the iterator
   docs, and assert the new order rather than leaving it to whichever map
   iterates first.
-- **P2-R17. Binding impact is small and mechanical.** Both bindings only
+- **P2-R24. Binding impact is small and mechanical.** Both bindings only
   parse an id from text and hold one as a cursor; neither renders one back,
-  so `Copy` makes those by-value. The one real change is P2-R6c: both
+  so `Copy` makes those by-value. The one real change is P2-R8: both
   re-export the tag limit and must re-export the two bounds instead.
 
 ### Decided
 
-- **A bare `FixId` cannot name its branch** (P2-R7/R8/R9). *Rejected:* a
+- **A bare `FixId` cannot name its branch** (P2-R9/R8/R9). *Rejected:* a
   process-wide branch intern table so a bare id could render itself — it
   buys prettier `Debug` for a global lock or a leak on the hot path, and the
   registry already knows every branch it holds.
-- **One singleton, not two** (P2-R19). *Rejected:* a separate global branch
+- **One singleton, not two** (P2-R17). *Rejected:* a separate global branch
   registry with its own lock and install path. Two process-wide tables that
   must agree about which dialects exist is two sources of truth and a
   lock-ordering question; a branch has no meaning apart from the fields that
@@ -318,7 +318,7 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
 ### Tests
 
 1. Packing round trip at `0`, `4999`, `5000`, `39999`, `40000`, `i32::MAX`.
-2. Admissibility across the range (P2-R6b): a vendor branch refused at
+2. Admissibility across the range (P2-R7): a vendor branch refused at
    `4999` and `40000`, admitted at `5000` and `39999`; standard admitted
    everywhere; the refusal names both bounds.
 3. `standard(tag)` in a `const` context; the pinned `xxh32(b"standard")`.
@@ -326,12 +326,12 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
    collision refused.
 5. Ordering across tags and across branches.
 6. `write_into` byte-identical to a shard written before the change — the
-   manifest is a new leaf (P2-R18).
+   manifest is a new leaf (P2-R16).
 7. No manifest loads with bare names and behaves as before; a manifest
    round-trips canonically; one naming a branch no field belongs to is a
    typed error naming it.
 8. `branch_for_session` answers the dialect declaring a `(sender, target)`
-   pair, folded, and `None` when none does (P2-R9d).
+   pair, folded, and `None` when none does (P2-R14).
 9. Every existing registry test passes, except vendor-branch `Display` and
    cross-branch iteration order.
 10. Lookups still allocate nothing; `Mix` control-byte spread over the
@@ -348,12 +348,12 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
 **From Phase 1.** Phases 3, 4 and 6 take `Version`: `MIN`/`MAX` as bounds of
 the value space (P1-R6) — Phase 3 does *not* map "FIX Latest" onto `MAX`, it
 resolves that label to the real version and EP the dictionary carries
-(P3-R1b); `FromStr` accepting all three qualifier forms (P1-R2), since the
+(P3-R2); `FromStr` accepting all three qualifier forms (P1-R2), since the
 FIX layer strips a `FIX.` prefix and hands the rest straight in; `Ord` as
 the only ordering contract (P1-R5), which every version filter leans on.
 
 **From Phase 2.** Phase 7 takes `FixId` as a `Copy` 8-byte key that is its
-own hash key (P2-R1, P2-R11), which makes `FixEntry::id()` a shift-or
-(P7-R3); `branches()` and `branch_for_session` (P2-R9, P2-R9b) for branch
-inference (P7-R16); `FixBranch`'s cached digest (P2-R4), which
+own hash key (P2-R1, P2-R18), which makes `FixEntry::id()` a shift-or
+(P7-R3); `branches()` and `branch_for_session` (P2-R11, P2-R12) for branch
+inference (P7-R21); `FixBranch`'s cached digest (P2-R4), which
 `FixEntry.branch` stores reinterpreted (P7-R4).

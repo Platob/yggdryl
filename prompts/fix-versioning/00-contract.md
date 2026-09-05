@@ -62,7 +62,7 @@ Reuse unchanged, found by symbol.
 | notion | what it is |
 | --- | --- |
 | `FixBranch`, `FixId`, `FixKey` | one field's identity, and the three ways a caller names one |
-| the standard-tag rule | one place decides which branch may claim a tag; P2-R6b replaces its single limit with a range |
+| the standard-tag rule | one place decides which branch may claim a tag; P2-R7 replaces its single limit with a range |
 | `FixField` / `FixFieldMut`, `FixAliases` | the borrowed views over the `fix:` namespace |
 | `FixRegistry` | tiered resolution over a primitive and a nested half, with `insert`, `update`, a private merge helper |
 | its store | `from_handle` / `write_into` over one folder handle: two trees, a folder per branch, one shard per `tag / 100` |
@@ -73,7 +73,7 @@ Reuse unchanged, found by symbol.
 | `Scalar`, the value contract | one generic value; one call that checks it against a datatype and rewrites it into that datatype's exact representation |
 | the xxhash module | `xxh32`, `xxh3_64`, a streaming state |
 | the counting-allocator target | the process's one global allocator test |
-| the committed dictionary | the seed registry read through the store, at `config/fix` in the repository root — the one path this brief names, because a committed data location is a contract, not a code path (P6-R1b) |
+| the committed dictionary | the seed registry read through the store, at `config/fix` in the repository root — the one path this brief names, because a committed data location is a contract, not a code path (P6-R2) |
 | the published numbers | the "Measured resolution cost" table on the FIX documentation page |
 
 **L1.** `FixRegistry::insert` admits only a field carrying `fix:tag`. Nothing

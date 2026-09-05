@@ -25,7 +25,7 @@ Nesting needs no second type: a component is a Struct, a repeating group a
 List of an `item` Struct whose `fix:tag` is the counter's.
 
 The FIX versioning brief (`prompts/fix-versioning/`) defines `FixBranchInfo`,
-which this parser fills — see its rule `P2-R9b`.
+which this parser fills — see its rule `P2-R12`.
 
 ## Scope
 
@@ -97,7 +97,7 @@ sendercompid?]`.
 first thing the parser does.** A `.cfb` is one counterparty's dictionary and
 states at the top exactly what a dialect declares: `fix-version` (e.g. `4.4`)
 is the FIX version it speaks, and `sendercompid` / `targetcompid` name its
-session. That is `FixBranchInfo` (`P2-R9b`).
+session. That is `FixBranchInfo` (`P2-R12`).
 
 - `fix-version` parses through the FIX layer's version mapping into a
   `Version`. It never becomes a *branch*: a branch must start with an ASCII
@@ -292,7 +292,7 @@ non-empty** — `<description />` contributes no key rather than an empty one;
 nullable, because a `vocabulary-tag` says nothing about presence.
 
 Field names are the FIX name lower-cased — `lastqty`, not `LastQty` — which
-is the versioning brief's `P3-R4b`, with `alt` verbatim in `display`.
+is the versioning brief's `P3-R7`, with `alt` verbatim in `display`.
 Nothing is lost: name resolution folds ASCII case, so a caller spelling it
 the file's way still resolves, and the file's own spelling is kept beside
 it.
