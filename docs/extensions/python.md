@@ -124,7 +124,7 @@ Pass a `Field` when strings or numbers need an exact decimal, binary, or tempora
 
 ## Python value protocols
 
-Wrappers fall into three identity classes, and `stable_hash()` is the deterministic native `u64` that `hash()` remaps to `Py_hash_t`.
+Wrappers fall into three identity classes. `stable_hash()` is the deterministic native `u64` that `hash()` remaps to `Py_hash_t` without locking anything.
 
 - immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
@@ -848,35 +848,27 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - a decimal past 256 coefficient bits, or an exponent with no scale in `-128..=127` -> `OverflowError`.
 - a temporal finer than a microsecond -> `ValueError`, not truncation.
 - `Scalar` arithmetic -> `TypeError`, `OverflowError`, `ZeroDivisionError`, `ArithmeticError` on inexact integer division.
-- built-in `hash()` on a mutable wrapper -> locks it against equality-affecting mutation; `stable_hash()` does not.
-- `hash()` on a handle, cursor, view, or iterator -> `TypeError`.
 - an Avro fingerprint -> Parsing Canonical Form, not complete behavioral identity.
 - Rust's per-protocol view types (`HttpField`, `IcebergField`, and sixteen others) -> no Python counterpart yet.
-- `field.https` -> absent, because HTTPS shares the canonical `http:` namespace.
-- `arrow`, `field_properties` -> `as_arrow_properties`, `as_field_properties` on a Rust field.
+- `field.https` -> absent; HTTPS shares the canonical `http:` namespace, and Rust spells `arrow` and `field_properties` `as_arrow_properties` and `as_field_properties`.
 - a decorated class -> gains no codec, dictionary, or Arrow methods; an undecorated subclass reuses the nearest decorated base's root.
-- a value wider than the ASCII width -> `ValueError`, never a silent unknown member.
 - `DataType("ascii")` -> any length and no packed integer, so no vocabulary.
-- a missing location -> empty, not an error, because construction touches nothing.
 - `row_size`, `column_size` -> lazy, retained only between `open()` and `close()`, invalidated by writes through that handle.
 - `relative_to` outside the root -> `ValueError`; `touch` on a directory -> `IsADirectoryError`.
-- a write through `IOBase.from_fs` -> published on close, because an Arrow filesystem replaces whole files.
-- `read_range(cls=...)` outside `bytes`, `str`, `None` -> `TypeError`; a range it cannot decode -> `ValueError`.
+- `read_range(cls=...)` outside `bytes`, `str`, and `None` -> `TypeError`, the way `read_scalar(cls=...)` refuses one.
 - a `pyarrow.Table` handed to `overwrite_arrow_reader` -> refused; a scanner participates as `scanner.to_reader()`.
 - empty records -> require `options.field`, and invalid intent is rejected before the input is iterated.
 - `commit_row_size = 0` -> rejected before any Python input is inspected.
 - a zero `max_row_size` or `max_byte_size` -> append is a no-op; overwrite publishes a typed empty value from `options.field`.
 - a failure after a commit -> completed prefixes stay visible; limits apply once to the whole stream and refuse keyed merge.
 - `overwrite_pandas` handed a polars frame -> refused; a `polars.LazyFrame` is accepted and collected.
-- `update_schema()` -> commits once on a clean exit, not at all on an exception.
+- `update_schema()` on an exception -> no commit at all.
 - `cls=` on a decode -> the cached native Struct field, never a module named by untrusted input.
 - streaming `reader` / `writer` and the `Gzip<H>` and `Hashed<H>` handles -> Rust-only, built on Rust's `Read` / `Write`.
 - `from yggdryl.coding import gzip` -> the standard library's module names with `loads` / `dumps`; `zlib` adds `loads_raw` / `dumps_raw`.
 - a handle applies the coding its own name declares, and `IOBase.codec` asks which one.
-- a `bool` FIX key -> refused by name, never 0 or 1; a tag outside `i32` -> `OverflowError`.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
-- mutating a registry a `FixMsg` links or the installed default -> `ValueError`.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
 ```python
 from yggdryl import DataType
