@@ -378,12 +378,13 @@ committed dictionary.
 
 ## Phase 6 — the source: FIX Latest into the committed dictionary
 
-**Goal.** Generate and commit the dictionary the other six phases describe.
+**Goal.** Scrape the whole FIX registry from Orchestra and commit it as the
+dictionary the other phases describe.
 
 **Surface.** A generator script beside the repository's existing Python
 tooling, and a generated constants module beside the registry. It *writes*
-the committed dictionary, a provenance manifest and a branch manifest beside
-its trees. It *edits* the registry (the two constant accessors), the tests
+`config/fix` (P6-R1b): the two trees, and a provenance, a branch and a
+layouts manifest beside them. It *edits* the registry (the two constant accessors), the tests
 and the FIX page.
 
 **Never.** Add an HTTP client, or any dependency, to the crate manifest
@@ -461,6 +462,13 @@ which is why the script reads all of them.
   at `.../quickfix/3536699e830e65f875df4a50b647a6d3bad3b884/…` — because a
   dictionary regenerated from `master` is not reproducible and its diff is
   unreviewable.
+- **P6-R1b. The default output is `config/fix` at the repository root.** A
+  path is named here, unlike everywhere else in this brief, because a
+  committed data location is a contract rather than a code path: the
+  refactor moves code, not this. It is the seed the process-wide default
+  registry resolves to before an installed registry, the
+  `YGGDRYL_FIX_REGISTRY` folder or `~/.config/fix`, and it is what every
+  test in these phases loads. `--out` overrides it; nothing else does.
 - **P6-R2. `--source`** takes a local directory or a URL base so a run is
   reproducible offline; the default is the pinned set.
 - **P6-R2b. Record the real version label, never "Latest".** The Orchestra
@@ -473,6 +481,27 @@ which is why the script reads all of them.
   `primitive` and a `nested` tree, a folder per branch, one shard per
   `tag / 100` bucket, each a JSON array ordered by canonical identifier,
   byte-identical to what `write_into` produces.
+- **P6-R3b. Scrape the whole registry, and store each kind where it can
+  live.** Orchestra publishes six kinds; take all six in one run, and let
+  L1 — only a tagged field enters a registry — decide the destination.
+
+  | kind | where it lands | why |
+  | --- | --- | --- |
+  | fields | the `primitive` tree | they carry a tag |
+  | groups | the `nested` tree, a List of an `item` Struct (P6-R9) | the counter carries the tag |
+  | code sets | `fix:codes` on the field that declares them (P4) | a code set is a property of its field, not an entity |
+  | datatypes | nothing is stored | they are `LOGICAL_NAMES`, which already *is* the FIX datatype table; the run **checks** every scraped datatype resolves and fails loudly on one that does not (P6-R7) |
+  | components | a layouts manifest beside the trees | a component has no tag, so it cannot be an entry (L1) |
+  | messages | the same manifest | a message root has no tag either |
+
+  A component or message entry is its name, its id, its pedigree and its
+  members in wire order with their requiredness — the same facts the header
+  and trailer constants carry (P6-R11), for everything else. It earns its
+  place twice over: the ULBridge splitter needs a group's declared members
+  to split a run with no separator (P7-R34), and lifting addresses Parties
+  and TrdRegTimestamps by role and type (P9-R5, P9-R6).
+  **Nothing is invented to make a kind fit:** no synthetic tag, no component
+  smuggled into a tree (P6-R12).
 - **P6-R4. Provenance in a manifest beside the trees,** one record per
   source: `source_id`, `format` (`orchestra` | `quickfix`), pinned `url`,
   `sha256` of the bytes, `sha256` of the definitions produced, `branch`,
@@ -565,6 +594,12 @@ a `fix:lineage` of `{"since":"2.7","name":"LastShares","type":"int"}`,
 4b. No name in the generated dictionary holds an uppercase byte, and no two
     collide once lower-cased (P6-R7b); a lookup by the specification's own
     casing still answers (P3-R4b); `display` still carries the human label.
+4c. A run with no `--out` writes `config/fix` (P6-R1b), and the
+    process-wide default registry loads it.
+4d. All six Orchestra kinds are accounted for (P6-R3b): every scraped field
+    and group is in a tree, every code set is on its field, every scraped
+    datatype resolved, and every component and message is in the layouts
+    manifest with its members in wire order.
 5. The two checksums match a regeneration from the same pinned inputs.
 
 **Docs.** Provenance, version coverage, the FIXT omission (P3-R2), the
@@ -684,8 +719,10 @@ Phase 5.
 relies on one pass with P5-R1's per-key rules. Precedence is merge order,
 lowest priority first (P6-R10), so nothing in the core learns about sources.
 
-**From Phase 6.** Phase 7 needs the committed dictionary with lineages and
-code sets populated; `STANDARD_HEADER_TAGS` and `STANDARD_TRAILER_TAGS`
+**From Phase 6.** Phase 7 needs `config/fix` with lineages and code sets
+populated, and the layouts manifest, whose component and group member lists
+are what the ULBridge splitter reads (P7-R34) and what lifting addresses
+(P9-R5, P9-R6); `STANDARD_HEADER_TAGS` and `STANDARD_TRAILER_TAGS`
 (P6-R11) as the message layout order (P7-R21); at least one non-standard
 branch with its manifest entry (P6-R6, P6-R5b), so branch inference (P7-R16)
 is tested against real data; and `data`-typed tags (P6-R8), which P7-R50

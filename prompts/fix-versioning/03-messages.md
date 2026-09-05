@@ -356,6 +356,66 @@ where `<sub>` is `\x04\x03`, EOT then ETX.
   stores `16`, while `PARTYROLE=orderoriginatorsystem` is stored verbatim
   under tag 452.
 
+#### Reading a stream of rows
+
+A capture is millions of lines, and calling a singular reader per line
+re-does per-message what is constant for the whole run. One type carries
+that state.
+
+```rust
+pub struct FixReader { /* registry, pinned branch and versions, one split buffer */ }
+
+impl FixReader {
+    pub fn new(registry: Arc<FixRegistry>) -> Self;
+    pub fn branch(self, branch: &FixBranch) -> Self;          // pin, no inference
+    pub fn source_version(self, version: Version) -> Self;    // pin
+    pub fn target_version(self, version: Version) -> Self;    // pin
+
+    pub fn texts<'a, I>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
+    where I: IntoIterator<Item = &'a str> + 'a;
+    pub fn fixtexts<'a, I>(&'a mut self, rows: I, sep: char) -> impl Iterator<Item = Result<FixMsg>> + 'a
+    where I: IntoIterator<Item = &'a str> + 'a;
+    pub fn ultexts<'a, I>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
+    where I: IntoIterator<Item = &'a [u8]> + 'a;
+    pub fn rows<'a, I, R>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
+    where I: IntoIterator<Item = R> + 'a, R: IntoIterator<Item = (&'a str, &'a str)>;
+}
+```
+
+- **P7-R65. Lazy, one row at a time, with backpressure** — the repository's
+  standing rule for streaming iterators. Nothing is collected up front, the
+  source is pulled only as the consumer pulls, and a `FixReader` over an
+  unbounded source runs in bounded memory.
+- **P7-R66. A malformed row is an `Err` item; the stream continues.** One
+  corrupt line must not end a run over ten million, so the item type is
+  `Result<FixMsg>` and the error carries the row so a caller can log what it
+  could not read. A caller who wants to stop at the first failure already
+  has the vocabulary — `collect::<Result<Vec<_>, _>>()`, or `take_while` —
+  and the reader does not grow a mode for it. This is the same posture as
+  P7-R24 one level up: a bad value never costs a message, a bad message
+  never costs the stream.
+- **P7-R67. Pinning is what the type buys.** `branch` and the two versions
+  pinned once skip P7-R15 and P7-R16 for every row — and a capture is one
+  session, so pinning is the normal case, not an optimization. Unpinned, the
+  reader infers per row exactly as the singular readers do, and answers the
+  same messages.
+- **P7-R68. Only the split buffer is reused.** The three vectors of P7-R54
+  are the message's own and move into it, so they cannot be pooled without
+  giving `FixMsg` a borrow. What the reader holds across rows is the
+  registry handle, the pinned resolutions, and one buffer the splitters
+  write pairs into and the builder reads back. Say so, so nobody tries to
+  pool the rest and ends up with a `FixMsg<'a>` — which P7-R5 already
+  refused for the same reason.
+- **P7-R69. The singular readers are the stream of one.** `from_text` and
+  its two siblings are a `FixReader` over one row, so there is one parsing
+  path and no chance of the two disagreeing. Assert it: a row read singly
+  and the same row read through the reader answer equal messages.
+- **P7-R70. There is no `convert_all` and no `lift_all`.** Converting a
+  stream is `.map(|m| m?.convert_into(&target))` and lifting one is
+  `.map(|m| m?.lift())`; neither holds state across items, so neither earns
+  a symbol (N1, N5). Only the readers do, because only they have something
+  to keep.
+
 #### Token rules both readers obey
 
 Each row is a case in yggfin's `test_message.py` or `test_transcribe.py` — a
@@ -505,6 +565,18 @@ line some venue really sent.
     `35=D|…` against `MSGTYPE=D|…`.
 28. `from_text(built.into_text('|')) == built` (P7-R28).
 
+**Streaming.**
+28b. A row read singly and through a `FixReader` answer equal messages
+     (P7-R69).
+28c. A malformed row in the middle of a good capture yields one `Err` item
+     carrying that row, and the rows after it still read (P7-R66).
+28d. An unbounded source is consumed lazily: a reader over an infinite
+     iterator, pulled ten times, touches ten rows (P7-R65).
+28e. Pinned and unpinned readers answer the same messages over one capture
+     (P7-R67).
+28f. `collect::<Result<Vec<_>, _>>()` over a capture with one bad row
+     answers `Err`, which is how a caller opts into stopping (P7-R66).
+
 **Halves.**
 29. Each half accessor answering only from its half, over a registry holding
     a scalar and a group that would both match a key.
@@ -514,8 +586,10 @@ line some venue really sent.
 **Bench.** A NewOrderSingle of ~15 pairs, an ExecutionReport of ~30, and a
 300-pair message; tag-keyed against name-keyed; branch and version given
 against inferred; the readers benched beside `from_pairs` so the split cost
-is visible separately. Table on the FIX page, which also gains the two
-half-probe rows.
+is visible separately. Then the stream: rows per second over a 100k-row
+capture, pinned against inferred, and against calling the singular reader in
+a loop — the number that says whether `FixReader` earns its existence
+(P7-R67). Table on the FIX page, which also gains the two half-probe rows.
 
 **Allocations.** A 30-pair tag-keyed build of short values allocates the
 three reserved vectors and nothing per entry (P7-R54, P7-R55).

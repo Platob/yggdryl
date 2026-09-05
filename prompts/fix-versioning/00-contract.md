@@ -73,7 +73,7 @@ Reuse unchanged, found by symbol.
 | `Scalar`, the value contract | one generic value; one call that checks it against a datatype and rewrites it into that datatype's exact representation |
 | the xxhash module | `xxh32`, `xxh3_64`, a streaming state |
 | the counting-allocator target | the process's one global allocator test |
-| the committed dictionary | the seed registry read through the store |
+| the committed dictionary | the seed registry read through the store, at `config/fix` in the repository root — the one path this brief names, because a committed data location is a contract, not a code path (P6-R1b) |
 | the published numbers | the "Measured resolution cost" table on the FIX documentation page |
 
 **L1.** `FixRegistry::insert` admits only a field carrying `fix:tag`. Nothing
