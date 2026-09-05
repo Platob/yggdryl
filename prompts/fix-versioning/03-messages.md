@@ -822,6 +822,8 @@ impl FixMsg {
     pub fn party(&self, role: &str) -> Option<FixParty<'_>>;
     /// One regulatory timestamp by its type.
     pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>;
+    /// Which source answered a facet, so a fallback is visible (P9-R18).
+    pub fn lift_source(&self, facet: &str) -> Option<FixId>;
     /// Which lane a side belongs to, or neither (P9-R13).
     pub fn side_direction(&self) -> Option<FixDirection>;
 }
@@ -863,8 +865,15 @@ impl FixMsg {
   | `quantity` | `OrderQty(38)`, `LastQty(32)`, `Quantity(53)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
   | `quantitytype` | `QtyType(854)`, then the deprecated `QuantityType(465)` (P9-R10) |
   | `currency` | `Currency(15)`, then `SettlCurrency(120)` |
-  | `transacttime` | `TransactTime(60)`, then `SendingTime(52)` |
+  | `transacttime` | `TransactTime(60)`, then `SendingTime(52)` (P9-R17) |
   | `status` | `OrdStatus(39)`, `ExecType(150)`, `QuoteStatus(297)` |
+  | `sendingtime` | `SendingTime(52)`, then `OrigSendingTime(122)` (P9-R17) |
+  | `seqnum` | `MsgSeqNum(34)` |
+  | `sender` | `SenderCompID(49)`, then `OnBehalfOfCompID(115)` |
+  | `target` | `TargetCompID(56)`, then `DeliverToCompID(128)` |
+  | `resent` | `PossDupFlag(43)`, then `PossResend(97)` |
+  | `text` | `Text(58)`, then `EncodedText(355)` |
+  | `reason` | `SessionRejectReason(373)`, `BusinessRejectReason(380)`, `OrdRejReason(103)`, `CxlRejReason(102)` — by `MsgType` (P9-R3) |
 
   Facet names obey the field-name rule (P3-R7): lowercase letters and
   digits, no separators, so a lifted column sits beside a field name with no
@@ -968,8 +977,44 @@ but only where the answer is forced, never where it is likely.
   resolved. Nothing derived is stored (P9-R9), so a derived `bidpx` and a
   stated one are indistinguishable to a reader and neither can go stale.
 
+#### Monitoring reads what nothing else could type
+
+- **P9-R17. A monitoring facet falls back down a ladder of decreasing
+  exactness, which is the one place a facet may change kind.** `TransactTime`
+  is when the venue acted, `SendingTime` is when the frame left, and
+  `OrigSendingTime` is when the original left on a resend — three different
+  facts, and every ordinary facet's sources are the *same* fact spelled
+  differently. Monitoring is the exception because a capture with no time is
+  not orderable at all, and an approximate time beats none. The ladder is
+  therefore ordered exact-first and stops at the first source the message
+  answers; it never averages, never interpolates, and never invents a time
+  from the reader's own clock.
+- **P9-R18. A fallback that is invisible is a wrong measurement.** A latency
+  computed from `SendingTime` when `TransactTime` was meant is not a latency,
+  and a monitor cannot tell the two apart from the value. So `lift_source`
+  answers the `FixId` that actually resolved a facet — reusing the identifier
+  the whole brief already addresses fields by, not a new provenance type —
+  and a monitor that cares reads it beside the value. It is available for
+  every facet, not just these: the ladder rules make it *necessary* here, and
+  free everywhere else.
+- **P9-R19. Monitoring facets answer on a row nothing else could type.** The
+  reader refuses to drop a row it cannot type and names it `unknown`
+  (P7-R44), and that row is exactly what a monitor exists to see: a sequence
+  number, a session pair and a time are what a capture is ordered and
+  gap-checked by, whatever the frame turned out to be. So these facets are
+  conditioned on no `MsgType`, resolve from the flat level like every other
+  facet (P9-R7), and a message typed `unknown` that carries tag 34 answers
+  `seqnum`. `resent` exists for the same reason: a resend must not be counted
+  as a gap, and `PossDupFlag` is what says it is one.
+
 ### Decided
 
+- **The monitoring ladder is allowed to cross kinds; nothing else is.**
+  *Rejected:* letting every facet fall back to a near-enough field. A
+  `price` that quietly became a `LastPx` is a wrong number with no way to
+  know, and P9-R1 refuses exactly that. Monitoring earns the exception
+  because its consumer is a clock and a counter rather than a book, and
+  because `lift_source` makes the degradation readable (P9-R18).
 - **Ambiguity answers nothing.** *Rejected:* taking the first occurrence,
   which is what makes a lifted column quietly wrong on exactly the messages
   that matter — a multi-leg order, a two-sided quote, a trade with several
@@ -1021,6 +1066,16 @@ but only where the answer is forced, never where it is likely.
     `OfferPx` alone; a two-sided quote answers no side (P9-R15).
 18. A message stating both `BidPx` and a contradicting `Side` answers both
     as stated and reports the disagreement (P9-R16).
+19. `transacttime` from `TransactTime`, and from `SendingTime` on a message
+    carrying no 60 — with `lift_source` naming tag 60 in the first case and
+    tag 52 in the second, which is the whole point of P9-R18.
+20. A resend carrying `PossDupFlag` and `OrigSendingTime` answering `resent`
+    and lifting `sendingtime` from 52, then from 122 when 52 is absent
+    (P9-R17).
+21. A row typed `unknown` (P7-R44) still answering `seqnum`, `sender`,
+    `target` and `sendingtime` (P9-R19).
+22. `lift_source` answering `None` for a facet the message does not answer,
+    and for a facet answered ambiguously (P9-R1).
 
 **Bench.** `lift()` over an ExecutionReport against reading each facet by
 tag, so the table's cost is visible.
