@@ -124,7 +124,8 @@ A decoding view answers with the text the escapes stand for, and encodes what it
 - `?flag` -> one pair with an empty value; `parameters["flag"] == ""`. Written back it spells `flag=`, because a pair is written as one.
 - `?a=1&&b=2` -> two pairs; an empty pair is not one.
 - `%2F` in a key or value -> a literal `/`; the query has no structure a separator could change.
-- `%FF` -> a raw view reads it; a decoding view refuses it, because it stands for no UTF-8 text.
+- `%FF` -> a raw view reads it; a decoding view refuses it, because it stands for no UTF-8 text. An overlong encoding (`%C0%AF`) and a lone surrogate (`%ED%A0%80`) are refused for the same reason.
+- `?a%62=1&ab=2` -> a decoding view sees one key twice, because `a%62` and `ab` are the same text. `get` answers with the first and `insert` keeps one, so a view that decodes can lose a pair a raw view keeps.
 - Python: a hashed `Url` is frozen, so a write through its view raises `TypeError`.
 - Python: `pop(key)` raises without a default, as `dict.pop` does; `pop(key, None)` answers `None`.
 - Rust: a view borrows its URI, so `url.set_parameters(&url.parameters(true)?)` cannot compile; `into_owned` is the answer.

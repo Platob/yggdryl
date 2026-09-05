@@ -264,10 +264,109 @@ mod parameters {
     }
 
     #[test]
+    fn a_looked_up_value_outlives_the_key_it_was_named_by() {
+        let url = url("https://example.com/t?a=1&a=2");
+        let parameters = url.parameters(false).unwrap();
+
+        // The values borrow the view, so the name used to find them is free to
+        // go out of scope first.
+        let collected: Vec<&str> = {
+            let key = String::from("a");
+            parameters.get_all(&key).collect()
+        };
+        assert_eq!(collected, ["1", "2"]);
+    }
+
+    #[test]
+    fn decoding_can_name_one_key_twice_where_the_raw_query_named_two() {
+        let url = url("https://example.com/t?a%62=1&ab=2");
+
+        // The raw view reads the query's own bytes, so the keys differ.
+        assert_eq!(
+            url.parameters(false).unwrap().iter().collect::<Vec<_>>(),
+            [("a%62", "1"), ("ab", "2")]
+        );
+
+        // Decoded they are the same text, which is a repeated key: the first
+        // answers, and an edit keeps one pair where the query held two.
+        let decoded = url.parameters(true).unwrap();
+        assert_eq!(
+            decoded.iter().collect::<Vec<_>>(),
+            [("ab", "1"), ("ab", "2")]
+        );
+        assert_eq!(decoded.get("ab"), Some("1"));
+
+        let mut edited = decoded.into_owned();
+        edited.insert("ab", "3").unwrap();
+        assert_eq!(edited.to_query().as_deref(), Some("ab=3"));
+    }
+
+    #[test]
+    fn an_encoded_value_survives_one_write_and_read_unchanged() {
+        // Round trip through the query syntax: what a decoding view is given
+        // is what the next decoding view answers with.
+        for value in [
+            "a&b",
+            "a=b",
+            "a+b",
+            "100%",
+            "%41",
+            "a b",
+            "é",
+            "a/b?c:d@e;f,g",
+        ] {
+            let mut url = url("https://example.com/t");
+            let mut parameters = url.parameters(true).unwrap().into_owned();
+            parameters.append("k", value).unwrap();
+            url.set_parameters(&parameters).unwrap();
+
+            assert_eq!(
+                url.parameters(true).unwrap().get("k"),
+                Some(value),
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_written_query_is_canonical_the_way_a_parsed_one_is() {
+        let mut written = url("https://example.com/t");
+        written.set_query(Some("note=a%c3%a9&as%20of=1")).unwrap();
+        let parsed = url("https://example.com/t?note=a%c3%a9&as%20of=1");
+
+        // Both spellings normalize their escapes, so the two values are one.
+        assert_eq!(written.to_string(), parsed.to_string());
+        assert_eq!(
+            written.query(false).unwrap().as_deref(),
+            Some("note=a%C3%A9&as%20of=1")
+        );
+        assert_eq!(written, parsed);
+        assert_eq!(written.stable_hash(), parsed.stable_hash());
+
+        // The same holds for a query written through the pair view.
+        let mut edited = url("https://example.com/t");
+        let mut parameters = edited.parameters(false).unwrap().into_owned();
+        parameters.append("note", "a%c3%a9").unwrap();
+        edited.set_parameters(&parameters).unwrap();
+        assert_eq!(
+            edited.query(false).unwrap().as_deref(),
+            Some("note=a%C3%A9")
+        );
+        assert_eq!(edited.parameters(true).unwrap().get("note"), Some("aé"));
+    }
+
+    #[test]
     fn an_escape_that_is_not_utf8_refuses_the_decoding_view() {
         let uri = Uri::from_str("https://example.com/t?q=%FF").unwrap();
 
         assert!(uri.parameters(false).is_ok());
         assert!(uri.parameters(true).is_err());
+
+        // An overlong encoding and a lone surrogate stand for no text either,
+        // so neither can slip through as one.
+        for query in ["q=%C0%AF", "q=%ED%A0%80"] {
+            let uri = Uri::from_str(&format!("https://example.com/t?{query}")).unwrap();
+            assert!(uri.parameters(true).is_err(), "{query}");
+        }
     }
 }

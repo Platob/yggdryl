@@ -144,7 +144,13 @@ impl<'uri> Parameters<'uri> {
     }
 
     /// Borrow every value named `key`, in the order the query spells them.
-    pub fn get_all<'view>(&'view self, key: &'view str) -> impl Iterator<Item = &'view str> {
+    ///
+    /// The values borrow this view, not the key, so a collected result outlives
+    /// the name it was looked up by.
+    pub fn get_all<'view, 'key>(
+        &'view self,
+        key: &'key str,
+    ) -> impl Iterator<Item = &'view str> + use<'view, 'key, 'uri> {
         self.pairs
             .iter()
             .filter(move |(name, _)| name == key)

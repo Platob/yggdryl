@@ -381,8 +381,16 @@ impl Uri {
     ///
     /// Returns a parse error when the text is not a valid query component.
     pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
+        // Validation and canonical form are one step here, as they are at every
+        // other ingest: a component that skipped `%2f` -> `%2F` would compare,
+        // order, and hash as a different URI from the same text parsed.
+        let query = validate_optional_component(
+            query.map(SmolStr::from),
+            "uri query",
+            is_query_fragment_byte,
+        )?;
         let mut candidate = self.clone();
-        candidate.query = query.map(SmolStr::from);
+        candidate.query = query;
         candidate.validate()?;
         *self = candidate;
         Ok(())
