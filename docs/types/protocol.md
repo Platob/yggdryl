@@ -13,6 +13,7 @@ Field metadata the library reads: reserved keys, `scheme:name` properties behind
 | `alias`, `comment`, `display` | validated text; views fall back to straight `comment` and `display` |
 | `scheme:name` | protocol property, prefix canonicalized to a known [`Scheme`](scalar.md) |
 | `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
+| `digest:role` | `holder` or `component`; anything else refused |
 | view | borrow of the one metadata map, cache-aware writes |
 | Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
@@ -30,15 +31,22 @@ The view remembers the scheme; the caller writes the bare name.
     field.as_iceberg_mut().insert("doc", "closing price")?;
     field.as_iceberg_mut().update([("schema-id", "3"), ("field-id", "7")])?;
     field.as_postgres_mut().insert("type", "numeric")?;
+    field.as_digest_mut().set_component()?;
+    field.as_identity_mut().update([("role", "primary"), ("nulls", "distinct")])?;
+    field.as_partition_mut().update([("transform", "bucket[16]"), ("order", "0")])?;
 
     assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
     assert_eq!(field.as_iceberg().key("doc"), "iceberg:doc");
     assert_eq!(field.as_iceberg().len(), 3);
     assert!(field.as_mysql().is_empty());
+    assert!(field.as_digest().is_component());
+    assert_eq!(field.as_identity().get("role"), Some("primary"));
+    assert_eq!(field.as_partition().get("transform"), Some("bucket[16]"));
 
     // It is a view of the one metadata map, not a copy of part of it.
     assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
-    assert_eq!(field.metadata_len(), 4);
+    assert_eq!(field.get_metadata("digest:role"), Some("component"));
+    assert_eq!(field.metadata_len(), 9);
 
     // A protocol-scoped replacement leaves every other protocol alone.
     field.as_iceberg_mut().set([("doc", "close")])?;
@@ -65,15 +73,22 @@ The view remembers the scheme; the caller writes the bare name.
     field.iceberg["doc"] = "closing price"
     field.iceberg.update({"schema-id": "3", "field-id": "7"})
     field.postgres["type"] = "numeric"
+    field.digest["role"] = "component"
+    field.identity.update({"role": "primary", "nulls": "distinct"})
+    field.partition.update({"transform": "bucket[16]", "order": "0"})
 
     assert field.iceberg["doc"] == "closing price"
     assert field.iceberg.key("doc") == "iceberg:doc"
     assert len(field.iceberg) == 3
     assert not field.mysql
+    assert field.digest["role"] == "component"
+    assert field.identity["role"] == "primary"
+    assert field.partition["transform"] == "bucket[16]"
 
     # It is a view of the one metadata mapping, not a copy of part of it.
     assert field.metadata["iceberg:doc"] == "closing price"
-    assert len(field.metadata) == 4
+    assert field.metadata["digest:role"] == "component"
+    assert len(field.metadata) == 9
     assert dict(field.iceberg.items())["field-id"] == "7"
 
     del field.iceberg["field-id"]
@@ -82,9 +97,10 @@ The view remembers the scheme; the caller writes the bare name.
     ```
 
     !!! note "Rust-only"
-        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, and fifteen others) are
-        Rust-only. Python reads the generic property mapping through `field.iceberg`, and the
-        validated HTTP values stay attributes on the field.
+        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
+        `IdentityField`, `PartitionField`, and fifteen others) are Rust-only. Python reads the
+        generic property mapping through `field.iceberg`, and the validated HTTP values stay
+        attributes on the field.
 
 === "JavaScript"
 
@@ -97,15 +113,22 @@ The view remembers the scheme; the caller writes the bare name.
     field.iceberg.set('doc', 'closing price')
     field.iceberg.update({ 'schema-id': '3', 'field-id': '7' })
     field.postgres.set('type', 'numeric')
+    field.digest.set('role', 'component')
+    field.identity.update({ role: 'primary', nulls: 'distinct' })
+    field.partition.update({ transform: 'bucket[16]', order: '0' })
 
     assert.equal(field.iceberg.get('doc'), 'closing price')
     assert.equal(field.iceberg.key('doc'), 'iceberg:doc')
     assert.equal(field.iceberg.size, 3)
     assert.equal(field.mysql.size, 0)
+    assert.equal(field.digest.get('role'), 'component')
+    assert.equal(field.identity.get('role'), 'primary')
+    assert.equal(field.partition.get('transform'), 'bucket[16]')
 
     // It is a view of the one metadata map, not a copy of part of it.
     assert.equal(field.get('iceberg:doc'), 'closing price')
-    assert.equal(field.size, 4)
+    assert.equal(field.get('digest:role'), 'component')
+    assert.equal(field.size, 9)
     assert.deepEqual([...field.iceberg].sort(), [['doc', 'closing price'], ['field-id', '7'], ['schema-id', '3']])
 
     assert.equal(field.iceberg.delete('field-id'), true)
@@ -114,9 +137,10 @@ The view remembers the scheme; the caller writes the bare name.
     ```
 
     !!! note "Rust-only"
-        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, and fifteen others) are
-        Rust-only. JavaScript reads the generic property `Map` through `field.iceberg`, and the
-        validated HTTP values stay accessors on the field.
+        The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
+        `IdentityField`, `PartitionField`, and fifteen others) are Rust-only. JavaScript reads the
+        generic property `Map` through `field.iceberg`, and the validated HTTP values stay
+        accessors on the field.
 
 ## Reserved keys
 
@@ -225,6 +249,100 @@ Rust only: typed vocabulary lives on the view, never on `Field`.
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `branch`, `id`, `tag`, `tags`, `aliases`, `description` |
+| `DigestField`, `DigestFieldMut` | `is_holder`, `is_component`, `algorithm`, `paths`, and their setters |
+| `IdentityField`, `PartitionField` | no typed vocabulary: arbitrary inert text under `identity:` and `partition:` |
+
+## Digest components and holders
+
+`digest:role` has two values: a `component` contributes to a row digest, a `holder` stores the
+result. Explicit components are the exact input set, and with none every non-holder field contributes.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field};
+
+    let id = Field::new("id", DataType::Int64, false);
+    let price = Field::new("price", DataType::Float64, false);
+    let mut stored = Field::new("row_digest", DataType::UInt64, false);
+    stored.as_digest_mut().set_holder()?;
+
+    let fallback = DataType::from_fields([id.clone(), price.clone(), stored.clone()])?
+        .required_field("row");
+    assert_eq!(fallback.digest_field_names().collect::<Vec<_>>(), ["id", "price"]);
+
+    let mut id = id;
+    id.as_digest_mut().set_component()?;
+    let explicit = DataType::from_fields([id, price, stored])?.required_field("row");
+    assert!(explicit.has_digest_components());
+    assert_eq!(explicit.digest_field_names().collect::<Vec<_>>(), ["id"]);
+    assert_eq!(explicit.only_digest_fields()?.field_len(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field
+
+    identifier = Field("id", "int64", nullable=False)
+    price = Field("price", "float64", nullable=False)
+    stored = Field("row_digest", "uint64", nullable=False)
+    stored.digest["role"] = "holder"
+
+    fallback = Field(
+        "row", DataType.from_fields([identifier, price, stored]), nullable=False
+    )
+    assert fallback.digest_field_names == ["id", "price"]
+
+    identifier.digest["role"] = "component"
+    explicit = Field(
+        "row", DataType.from_fields([identifier, price, stored]), nullable=False
+    )
+    assert explicit.has_digest_components
+    assert explicit.digest_field_names == ["id"]
+    assert len(explicit.only_digest_fields().dtype) == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field } = require('yggdryl')
+
+    const identifier = new Field('id', 'int64', false)
+    const price = new Field('price', 'float64', false)
+    const stored = new Field('row_digest', 'uint64', false)
+    stored.digest.set('role', 'holder')
+
+    const fallback = new Field(
+      'row', DataType.fromFields([identifier, price, stored]), false,
+    )
+    assert.deepEqual(fallback.digestFieldNames(), ['id', 'price'])
+
+    identifier.digest.set('role', 'component')
+    const explicit = new Field(
+      'row', DataType.fromFields([identifier, price, stored]), false,
+    )
+    assert.equal(explicit.hasDigestComponents, true)
+    assert.deepEqual(explicit.digestFieldNames(), ['id'])
+    assert.equal(explicit.onlyDigestFields().dtype.length, 1)
+    ```
+
+| key | rule |
+| --- | --- |
+| Namespace | `Scheme::DIGEST`; `digest_fields`, `digest_field_names`, `digest_field_len`, `only_digest_fields` |
+| Selection | direct Struct children, in declaration order |
+| `DigestField` | `is_holder`, `is_component`, `algorithm`, `paths` |
+| `DigestFieldMut` | `set_holder`, `set_component`, `set_algorithm`, `remove_algorithm`, `set_paths`, `remove_paths`, `remove_role` |
+| `digest:paths` | holder-local ordered JSON array; absent keeps the component fallback, `[]` selects nothing |
+| `digest:algorithm` | optional canonical [`DigestAlgorithm`](../xxhash/index.md); its width must match the storage |
+| Widths | XXH32: `int32`, `uint32`; XXH64 and XXH3-64: `int64`, `uint64`; XXH3-128: `fixed_size_binary(16)` |
+| Signed storage | the same digest bits, never a checked numeric conversion |
+
+Typed setters require `holder`, validate the width, and fail atomically; generic metadata writes
+canonicalize the algorithm token and the path JSON. Arrow row hashing reads the same contract in
+[`row_digests`](../xxhash/values.md), and path resolution, nested-holder reuse, algorithm fallback,
+and batch filling live with [xxHash](../xxhash/index.md).
 
 ## Partition columns
 
@@ -321,6 +439,10 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 - Protocol write -> invalidates a populated Arrow projection, like a direct metadata write.
 - Non-partition column -> no `field:partition` key; schemas partitioned alike compare equal.
 - `field:partition` -> travels into Arrow, Parquet footers, and JSON round trips.
+- `digest:role` other than `holder` or `component` -> refused, and the failed write leaves the field unchanged.
+- A root whose children are all holders -> no digest values, the empty ordered sequence.
+- Changing or removing a holder role -> refused until `digest:algorithm` and `digest:paths` are gone.
+- `identity:` and `partition:` properties -> inert text; `field:partition` stays the marker `partition_fields` reads.
 
 ## Commands
 

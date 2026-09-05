@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, ASCII, codes |
+| Owns | 57 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, ASCII, codes |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 56 ids, 17 kinds, parameter-free |
+| Identity | `id()`, `kind()`: 57 ids, 17 kinds, parameter-free |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |

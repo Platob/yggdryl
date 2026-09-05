@@ -10,7 +10,7 @@
 | Schema root | a struct `Field` with `nullable` false; `validate_struct_root` checks it |
 | Validates | `Field::new` nothing; `Field::from_parts` and the bindings' constructor everything |
 | Datatype argument | bindings take text, a native `DataType`, or a PyArrow type (Python) |
-| `nullable` default | Python `True`, JavaScript `false` |
+| `nullable` default | Python `True`, JavaScript `true` |
 | Metadata | string keys and values, lexical order; clones share one map until a write |
 | Identity | equality, ordering, hashing include metadata and dictionary state |
 | Serialization | one `Field` ⇄ `Scalar` mapping under JSON, YAML, TOML |
@@ -458,16 +458,16 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its fifty-five siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
+`Int64Field` and its fifty-six siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `Utf8Field`, `VariantField`, `UuidField`, `Ascii16Field` to `Ascii128Field`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
+| static datatype (`Int64Field`, `Utf8Field`, `VariantField`, `UuidField`, `VersionField`, `Ascii16Field` to `Ascii128Field`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
 | parameterized (`DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)` |
 | from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
-| bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `fields.ascii(name, width)` |
+| bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `fields.ascii(name, width)`, `types.version` / `fields.version` |
 
-[Geospatial](geospatial.md), [ASCII](ascii.md), and [UUID](uuid.md) aliases follow this pattern; a registered code builds its own datatype, not an ASCII width.
+[Geospatial](geospatial.md), [ASCII](ascii.md), [UUID](uuid.md), and [Version](text.md) aliases follow this pattern; a registered code builds its own datatype, not an ASCII width.
 
 ## Converting to one native field
 

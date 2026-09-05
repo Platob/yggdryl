@@ -6,7 +6,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
 | Key | Value |
 | --- | --- |
-| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
+| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `cast_arrow_scalar/array/batch`, `cast_arrow_array_bits`, `cast_arrow`, `cast` |
 | Target | The field, never the source; an exact input returns unchanged, the same arrays |
 | Returns | `Field`, `DataType`: `ArrayRef`; `TypedField`: its own array (datetime, dictionary: `ArrayRef`) |
 | `safe` | `true`: failure nulls, non-null fields default (`Field::default_value`); `false`: error |
@@ -71,6 +71,70 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
     else:
         raise AssertionError("an unsafe cast must fail")
     ```
+
+## Bit-preserving casts
+
+`cast_arrow_array_bits` is the explicit representation cast for `int32` <-> `uint32` and
+`int64` <-> `uint64`. It accepts every source bit pattern and has no `safe` flag, because no value
+can overflow.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int32Array, UInt32Array};
+    use yggdryl::types::{Int32Field, UInt32Field};
+
+    let source: ArrayRef = Arc::new(UInt32Array::from(vec![
+        0,
+        0x8000_0000,
+        u32::MAX,
+    ]));
+    let signed: Int32Array = Int32Field::new("bits", true)
+        .cast_arrow_array_bits(source)?;
+    assert_eq!(signed.values(), &[0, i32::MIN, -1]);
+
+    let restored = UInt32Field::new("bits", true)
+        .cast_arrow_array_bits(Arc::new(signed))?;
+    assert_eq!(restored.values(), &[0, 0x8000_0000, u32::MAX]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import Field
+
+    signed = Field("bits", "int32").cast_arrow_array_bits(
+        pa.array([0, 2**31, 2**32 - 1], type=pa.uint32())
+    )
+    assert signed.to_pylist() == [0, -(2**31), -1]
+
+    restored = Field("bits", "uint32").cast_arrow_array_bits(signed)
+    assert restored.to_pylist() == [0, 2**31, 2**32 - 1]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field } = require('yggdryl')
+
+    const source = arrow.vectorFromArray(
+      [0, 0x80000000, 0xffffffff],
+      new arrow.Uint32(),
+    )
+    const signed = new Field('bits', 'int32').castArrowArrayBits(source)
+    assert.deepEqual([...signed], [0, -0x80000000, -1])
+
+    const restored = new Field('bits', 'uint32').castArrowArrayBits(signed)
+    assert.deepEqual([...restored], [0, 0x80000000, 0xffffffff])
+    ```
+
+The Rust cast shares the source value buffer unless a required target must fill source nulls with
+the canonical zero default. Nullable targets keep their nulls.
 
 ## Row values
 
@@ -229,6 +293,8 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 - A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
 - Bare date into a datetime, twelve-hour clock, compact `YYYYMMDD` -> Arrow's kernel.
 - Temporal to text -> the classic form, zoned instants included.
+- Any other width, sign pairing, or target datatype in `cast_arrow_array_bits` -> error; `cast_arrow_array` stays range-checked.
+- A required bit-cast target over source nulls -> the canonical zero default, so the value buffer is rebuilt rather than shared.
 
 ## Commands
 

@@ -122,7 +122,7 @@ Every listing yields one entry at a time, so a folder with a million leaves list
 | Deterministic | Directory entries are sorted; a walk yields a container immediately before its subtree |
 | Frontier | A recursive walk holds one cursor per open depth, never its results |
 | Owned | Bounded by the act is owned: `partitions` (one URL's path depth), an operation's report (expiry snapshot ids, compaction counts); unbounded by the resource is a `Listing` |
-| Backend | [Local](../backends/local.md) reads one directory at a time; an Arrow [filesystem](../backends/filesystems.md) answers a prefix in one call |
+| Backend | [Local](../backends/local.md) reads one directory at a time; a native Arrow [filesystem](../backends/filesystems.md) walk loads one directory before yielding, and a foreign eager result is sorted once |
 
 ## Partition pruning and filtering
 
