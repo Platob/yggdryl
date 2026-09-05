@@ -29,6 +29,15 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::Decimal64 { scale, .. }
         | DataType::Decimal128 { scale, .. } => decimal(value, *scale, false, field),
         DataType::Decimal256 { scale, .. } => decimal(value, *scale, true, field),
+        DataType::Float16 | DataType::Float32 | DataType::Float64 => floating(value, field),
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64 => integer(value, field),
         DataType::Binary
         | DataType::FixedSizeBinary(_)
         | DataType::LargeBinary
@@ -191,6 +200,50 @@ fn decimal(value: Scalar, scale: i8, wide: bool, field: &Field) -> Result<Scalar
             .map(|coefficient| Scalar::d128(coefficient, scale))
             .ok_or_else(|| invalid(field, "decimal coefficient exceeds 128 bits"))
     }
+}
+
+/// Read a natural text number as a float.
+///
+/// A document routinely spells a number as text - a quoted price in JSON, a
+/// wire value in a protocol whose values are all text - and a field that
+/// declares a float is what says to read it as one. Decimals and temporals
+/// already do this; numbers are the same rule, so one text value under one
+/// field means the same thing whichever numeric type the field declares.
+fn floating(value: Scalar, field: &Field) -> Result<Scalar> {
+    let Scalar::Text(text) = &value else {
+        return Ok(value);
+    };
+    text.as_str()
+        .trim()
+        .parse::<f64>()
+        .map(Scalar::from)
+        .map_err(|_| {
+            invalid(
+                field,
+                format_smolstr!("expected {} text or a number", field.dtype()),
+            )
+        })
+}
+
+/// Read a natural text number as an integer.
+///
+/// Only a whole decimal spelling answers: a field declaring an integer and a
+/// value spelling a fraction disagree, and rounding one into the other would
+/// invent a value the document did not carry.
+fn integer(value: Scalar, field: &Field) -> Result<Scalar> {
+    let Scalar::Text(text) = &value else {
+        return Ok(value);
+    };
+    let text = text.as_str().trim();
+    if let Ok(signed) = text.parse::<i128>() {
+        return Ok(Scalar::from(signed));
+    }
+    text.parse::<u128>().map(Scalar::from).map_err(|_| {
+        invalid(
+            field,
+            format_smolstr!("expected {} text or a number", field.dtype()),
+        )
+    })
 }
 
 fn scalar_number_text(value: &Scalar) -> Option<String> {

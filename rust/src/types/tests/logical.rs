@@ -5,7 +5,6 @@ use crate::Timezone;
 /// The whole registry, as the module documents it. A change to a mapping
 /// changes what a stored schema string means, so it changes here first.
 fn registered() -> Vec<(&'static str, DataType)> {
-    let decimal64 = DataType::decimal64(18, 8).unwrap();
     vec![
         ("currency", DataType::Currency),
         ("country", DataType::Country),
@@ -24,11 +23,11 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("reserved100plus", DataType::Int32),
         ("reserved1000plus", DataType::Int32),
         ("reserved4000plus", DataType::Int32),
-        ("qty", decimal64.clone()),
-        ("price", decimal64.clone()),
-        ("priceoffset", decimal64.clone()),
-        ("percentage", decimal64),
-        ("amt", DataType::decimal128(38, 8).unwrap()),
+        ("qty", DataType::Float64),
+        ("price", DataType::Float64),
+        ("priceoffset", DataType::Float64),
+        ("percentage", DataType::Float64),
+        ("amt", DataType::Float64),
         (
             "utctimestamp",
             DataType::DateTime64 {
@@ -102,8 +101,8 @@ fn a_name_folds_case_separators_and_surrounding_space() {
 #[test]
 fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
     for (spelling, dtype) in [
-        ("Price", DataType::decimal64(18, 8).unwrap()),
-        ("Amt", DataType::decimal128(38, 8).unwrap()),
+        ("Price", DataType::Float64),
+        ("Amt", DataType::Float64),
         ("SeqNum", DataType::Int64),
         ("DayOfMonth", DataType::Int8),
         ("LocalMktDate", DataType::Date32),
@@ -128,12 +127,12 @@ fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
     assert_eq!(
         row.get_field_by_path("px")
             .map(|field| field.dtype().clone()),
-        Some(DataType::decimal64(18, 8).unwrap())
+        Some(DataType::Float64)
     );
     assert_eq!(
         row.get_field_by_path("legs.item")
             .map(|field| field.dtype().clone()),
-        Some(DataType::decimal64(18, 8).unwrap())
+        Some(DataType::Float64)
     );
 }
 
@@ -173,8 +172,8 @@ fn an_unregistered_name_is_refused_by_both_entry_points() {
 #[test]
 fn a_name_adds_no_datatype_of_its_own() {
     let price = DataType::from_logical_name("price").unwrap();
-    assert_eq!(price.id(), DataType::decimal64(18, 8).unwrap().id());
-    assert_eq!(price.kind(), DataType::decimal64(18, 8).unwrap().kind());
+    assert_eq!(price.id(), DataType::Float64.id());
+    assert_eq!(price.kind(), DataType::Float64.kind());
     let union: DataType = "union(dense,0=px: Price,1=ccy: Currency)".parse().unwrap();
     let DataType::Union(_, mode) = &union else {
         panic!("a union, got {union}");
