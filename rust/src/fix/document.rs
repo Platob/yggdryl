@@ -124,6 +124,11 @@ impl<'doc> Cursor<'doc> {
         self.position
     }
 
+    /// Moves the cursor to where a search found a record.
+    pub(super) const fn seek(&mut self, position: usize) {
+        self.position = position;
+    }
+
     /// Whether every byte has been read.
     pub(super) const fn is_done(&self) -> bool {
         self.position >= self.document.len()
@@ -240,14 +245,23 @@ impl<'doc> Cursor<'doc> {
     pub(super) fn read_key(&mut self, keys: &[&'static str], next: &mut usize) -> Scan<usize> {
         let at = self.position;
         let key = self.read_string()?;
-        let Some(index) = keys.iter().position(|declared| *declared == key) else {
+        // Only the keys still admissible are candidates, so a record of four
+        // keys costs four short comparisons rather than four passes over the
+        // whole listing - which is the difference between a walk that reads a
+        // record and one that searches it.
+        let found = keys
+            .iter()
+            .enumerate()
+            .skip(*next)
+            .find(|(_, declared)| declared.len() == key.len() && **declared == key);
+        let Some((index, _)) = found else {
             self.position = at;
-            return Err(Refusal::UnknownKey);
+            return Err(if keys.contains(&key) {
+                Refusal::KeyOrder
+            } else {
+                Refusal::UnknownKey
+            });
         };
-        if index < *next {
-            self.position = at;
-            return Err(Refusal::KeyOrder);
-        }
         *next = index + 1;
         self.expect(b':')?;
         Ok(index)
@@ -271,6 +285,27 @@ impl<'doc> Cursor<'doc> {
             return Ok(false);
         }
         Ok(true)
+    }
+
+    /// Reads the body of an array of words, as one slice.
+    ///
+    /// The elements stay unread: a caller that wants them walks them with
+    /// [`Words`], and one that does not pays only the skip. Words are read
+    /// rather than skipped so a hand-edited array is refused here too.
+    pub(super) fn read_words(&mut self, key: &'static str) -> Scan<&'doc str> {
+        self.expect(b'[')?;
+        let start = self.position;
+        loop {
+            if self.peek() == Some(b']') {
+                let body = &self.document[start..self.position];
+                self.position += 1;
+                return Ok(body);
+            }
+            self.read_word(key)?;
+            if self.peek() == Some(b',') {
+                self.position += 1;
+            }
+        }
     }
 
     /// Steps to the next array element, answering whether one follows.
@@ -333,6 +368,34 @@ pub(super) fn decode_text(
         })
 }
 
+/// The words one array-valued key holds, borrowed.
+///
+/// The reader that produced the body already held every word to the grammar,
+/// so nothing here re-validates and nothing allocates.
+#[derive(Clone, Debug)]
+pub struct Words<'doc>(&'doc str);
+
+impl<'doc> Words<'doc> {
+    /// Walks one array body a reader answered.
+    pub(super) const fn over(body: &'doc str) -> Self {
+        Self(body)
+    }
+}
+
+impl<'doc> Iterator for Words<'doc> {
+    type Item = &'doc str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let rest = self.0.strip_prefix(',').unwrap_or(self.0);
+        let rest = rest.strip_prefix('"')?;
+        let (word, tail) = rest.split_once('"')?;
+        self.0 = tail;
+        Some(word)
+    }
+}
+
+impl std::iter::FusedIterator for Words<'_> {}
+
 /// Renders one canonical document, keys in their declared order.
 ///
 /// Values are escaped through the crate's own JSON codec rather than by a
@@ -380,6 +443,26 @@ impl Writer {
     /// Propagates the JSON codec's refusal, which text cannot provoke.
     pub(super) fn text(&mut self, first: bool, key: &str, value: &str) -> Result<()> {
         self.key(first, key);
+        self.string(value)
+    }
+
+    /// Writes one string, escaping it only when it needs escaping.
+    ///
+    /// Almost every value these documents hold is a FIX name, a code value or
+    /// a version, and none of those can carry a quote, a backslash or a
+    /// control character. Those are quoted directly; anything else goes
+    /// through the crate's own JSON codec, so there is still exactly one
+    /// escaper and it is the one that reads these documents back.
+    fn string(&mut self, value: &str) -> Result<()> {
+        if value
+            .bytes()
+            .all(|byte| byte >= 0x20 && !matches!(byte, b'"' | b'\\'))
+        {
+            self.text.push('"');
+            self.text.push_str(value);
+            self.text.push('"');
+            return Ok(());
+        }
         self.text
             .push_str(&crate::text::json::into_utf8(&Scalar::from(value))?);
         Ok(())
@@ -397,6 +480,29 @@ impl Writer {
     pub(super) fn flag(&mut self, first: bool, key: &str) {
         self.key(first, key);
         self.text.push_str("true");
+    }
+
+    /// Writes one array-of-words key.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the JSON codec's refusal, which text cannot provoke.
+    pub(super) fn words<'a>(
+        &mut self,
+        first: bool,
+        key: &str,
+        values: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        self.key(first, key);
+        self.text.push('[');
+        for (index, value) in values.into_iter().enumerate() {
+            if index > 0 {
+                self.text.push(',');
+            }
+            self.string(value)?;
+        }
+        self.text.push(']');
+        Ok(())
     }
 
     /// Finishes the document.

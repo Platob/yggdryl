@@ -17,6 +17,7 @@
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
 //! | description | `fix:description` | text | the specification's own wording |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
+//! | codes | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from |
 //!
 //! Nesting needs no second type: a component is a Struct field whose
 //! children are its members, a repeating group is a List field whose item is
@@ -148,6 +149,7 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 
 use crate::{Error, Result, Version};
 
+mod codes;
 mod document;
 mod field;
 mod global;
@@ -158,6 +160,8 @@ mod store;
 #[cfg(test)]
 mod tests;
 
+pub use codes::{FixCode, FixCodes, FixEnumValue};
+pub use document::Words;
 pub use field::FixAliases;
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;

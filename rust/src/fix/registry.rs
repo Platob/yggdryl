@@ -579,7 +579,17 @@ impl FixRegistry {
                 ),
             });
         }
-        let merged = merge(stored, &field)?;
+        // The incoming definition is what the merge folds the stored one
+        // into, so the caller's ordering is the precedence: a generator
+        // merging its lowest-priority source first leaves the highest as the
+        // last `update`, which wins.
+        //
+        // Two halves, because the `fix:` view reaches only its own namespace
+        // by design. The generic keys fold through the metadata merge every
+        // protocol shares, and the `fix:` keys through the rule each one has.
+        let mut merged = field.clone();
+        merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
+        merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = alternate_ids(&merged, &branch)?;
         self.check_free(&merged, &branch, id, &alternate, Some(position))?;
         self.unindex(position, position);
@@ -1220,31 +1230,6 @@ fn is_field_end(line: &[u8], position: usize) -> bool {
         || line[position..].starts_with(b"\\x01")
         || line[position..].starts_with(b"<SOH>")
         || line[position..].starts_with(b"{SOH}")
-}
-
-fn merge(stored: &Field, incoming: &Field) -> Result<Field> {
-    let mut merged = incoming.clone();
-    merged.set_metadata(
-        incoming
-            .as_metadata()
-            .merge_with(stored.as_metadata())?
-            .iter(),
-    )?;
-    let mut tags = incoming.as_fix().tags()?;
-    for tag in stored.as_fix().tags()? {
-        if !tags.contains(&tag) {
-            tags.push(tag);
-        }
-    }
-    merged.as_fix_mut().set_tags(&tags)?;
-    let mut aliases: Vec<&str> = incoming.as_fix().aliases().collect();
-    for alias in stored.as_fix().aliases() {
-        if !aliases.iter().any(|held| held.eq_ignore_ascii_case(alias)) {
-            aliases.push(alias);
-        }
-    }
-    merged.as_fix_mut().set_aliases(&aliases)?;
-    Ok(merged)
 }
 
 impl fmt::Debug for FixRegistry {

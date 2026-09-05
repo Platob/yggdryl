@@ -59,8 +59,8 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
-    FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixLineage, FixLineageEntry, FixMsg,
-    FixPedigree, FixRegistry,
+    FixAliases, FixBranch, FixCode, FixCodes, FixEnumValue, FixFieldIter, FixId, FixKey,
+    FixLineage, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, Words,
 };
 pub use i256::I256;
 #[cfg(feature = "arrow")]

@@ -80,6 +80,18 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("baseline_version_parse", |bencher| {
         bencher.iter(|| black_box("5.0SP2").parse::<Version>());
     });
+    // The crate's own JSON codec over the same document, which is what a
+    // borrowed scan exists instead of: every entry point it offers answers an
+    // owned `Scalar` tree, so one read of a lineage would allocate a node per
+    // entry and a string per spelling.
+    let document = field
+        .as_metadata()
+        .get("fix:lineage")
+        .expect("the lineage is stored")
+        .to_owned();
+    group.bench_function("baseline_json_parse", |bencher| {
+        bencher.iter(|| yggdryl::text::json::from_utf8(black_box(&document)));
+    });
     // Resolving a datatype is what a lineage read costs when it must build
     // one, so the two are reported apart.
     group.bench_function("dtype_at", |bencher| {

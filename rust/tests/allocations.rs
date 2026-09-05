@@ -27,8 +27,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl::{
-    DataType, Field, FixBranch, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
-    MediaType, MimeType, Scalar, Timezone, Version,
+    DataType, Field, FixBranch, FixEnumValue, FixId, FixLineageEntry, FixMsg, FixPedigree,
+    FixRegistry, MediaType, MimeType, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -425,6 +425,57 @@ fn a_fix_lineage_read_allocates_nothing() {
     let refused = edited.as_fix();
     free("name_at refused", || {
         let _ = black_box(refused.name_at(old));
+    });
+}
+
+#[test]
+fn a_fix_code_lookup_allocates_nothing() {
+    // A 300-code set: a lookup must cost the codes it walks past and no
+    // allocation, whichever tier answers it.
+    let codes: Vec<FixEnumValue> = (0..300)
+        .map(|index| {
+            FixEnumValue::new(format!("Member{index:04}"), format!("{index:04}"))
+                .with_description(format!("Member number {index} (M{index:04})"))
+        })
+        .collect();
+    let mut field = DataType::Utf8.nullable_field("Vocabulary");
+    field.as_fix_mut().set_tag(9995).expect("a static tag");
+    field
+        .as_fix_mut()
+        .set_codes(&codes)
+        .expect("a valid code set");
+    let view = field.as_fix();
+
+    free("codes walk", || {
+        let _ = black_box(view.codes().count());
+    });
+    // Tier 1 stops at the match; the last code is the worst case.
+    free("code first", || {
+        let _ = black_box(view.code(black_box("0000")));
+    });
+    free("code last", || {
+        let _ = black_box(view.code(black_box("0299")));
+    });
+    free("code miss", || {
+        let _ = black_box(view.code(black_box("absent")));
+    });
+    // Tier 2 runs the whole set, because ambiguity must answer nothing.
+    free("code_by_name folded", || {
+        let _ = black_box(view.code_by_name(black_box("member_0299")));
+    });
+    free("code_value tier one", || {
+        let _ = black_box(view.code_value(black_box("0150")));
+    });
+    free("code_value tier two", || {
+        let _ = black_box(view.code_value(black_box("MEMBER 0150")));
+    });
+    // Tier 3 reads a description it never decodes, so it allocates nothing
+    // either.
+    free("code_value tier three", || {
+        let _ = black_box(view.code_value(black_box("m0150")));
+    });
+    free("code_value_at", || {
+        let _ = black_box(view.code_value_at(black_box(Version::MAX), black_box("0150")));
     });
 }
 

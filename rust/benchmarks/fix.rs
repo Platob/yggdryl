@@ -10,6 +10,7 @@ criterion_group!(
     fix,
     fix_benches::resolve::benchmarks,
     fix_benches::lineage::benchmarks,
+    fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,
     fix_benches::store::benchmarks,
 );
