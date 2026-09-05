@@ -284,11 +284,16 @@ type.
 
 ### Vocabulary pass
 
-A `vocabulary-tag` becomes a `Field`: named by `alt`, else the decimal tag as
-text; carrying the `DataType` its `type` resolves to; `fix:tag` from `name`;
+A `vocabulary-tag` becomes a `Field`: named by `alt` **lower-cased**, else
+the decimal tag as text; carrying the `DataType` its `type` resolves to;
+`fix:tag` from `name`;
 `fix:description` from the `description` child **only when present and
 non-empty** — `<description />` contributes no key rather than an empty one;
 nullable, because a `vocabulary-tag` says nothing about presence.
+
+Field names are the FIX name lower-cased — `lastqty`, not `LastQty` — which
+is the versioning brief's `P3-R4b`. Nothing is lost: name resolution folds
+ASCII case, so a caller spelling it the specification's way still resolves.
 
 Dictionary entries are immutable. A grammar never edits one: it clones and
 overrides the clone's nullability, so a tag bound `required="true"` in one
@@ -298,8 +303,11 @@ one entry.
 ### Grammar pass
 
 A `grammar-binding` becomes exactly one root `Field`: a non-null Struct named
-by its `type` verbatim, spaces included, so `7` and `P Report Ack` are both
-legal field names. The MsgType is carried by the name alone — no reserved
+by its `type` **verbatim** — spaces included, **case included** — so `7` and
+`P Report Ack` are both legal field names. This is the one place the
+lower-case law does not reach: a MsgType is case-bearing, `A` is Logon and
+`a` is QuoteStatusRequest, so lower-casing a root name would merge two
+messages. The MsgType is carried by the name alone — no reserved
 metadata key holds it, and the composite qualifier is never split.
 
 The root's children are the `grammar`'s children in document order,
@@ -386,7 +394,9 @@ typed conflict; a group's counter consumed rather than emitted; a missing
 `alt`; an expression-valued `required`; a constraint with no validity; a
 `<description />` contributing no key; an empty `grammar`; a nested `grammar`
 with no counter; a duplicate tag at one level; depth 5; the `utc-date` alias;
-and a malformed file whose error names the tag and the byte position.
+a malformed file whose error names the tag and the byte position; every
+vocabulary field named lower-case while a root keeps its MsgType's case; and
+a lookup by the specification's own casing still answering.
 
 Then the branch record, which is what the root element is for: the root's
 `fix-version`, `sendercompid` and `targetcompid` landing on the named

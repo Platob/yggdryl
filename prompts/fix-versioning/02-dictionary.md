@@ -79,6 +79,28 @@ impl FixRegistry {
 - **P3-R3b. Ordering within one version is by EP.** `5.0SP2` at EP204 is
   older than at EP309; ignoring the EP puts eleven years in one bucket.
 - **P3-R4. `name`** is the spelling from that version on.
+- **P3-R4b. Field names are the FIX name, lower-cased.** `lastqty`, not
+  `LastQty`; `nopartyids`, not `NoPartyIDs`; `clordid`, not `ClOrdID`. The
+  FIX name is *respected* — it is not snake-cased, abbreviated, expanded or
+  re-spelled, only lower-cased — so `lastqty` is still exactly the name the
+  specification gives, in one case.
+  - **Nothing is lost.** Name resolution already folds ASCII case (P7-R10),
+    so `field("LastQty")`, `field("lastqty")` and `field("LASTQTY")` all
+    answer, and the specification's own casing needs no alias to keep
+    working.
+  - **The human label is a different fact and stays where it is.** The
+    generic `display` key already carries `Client order ID` beside `clordid`
+    and `Average price` beside `avgpx`. Do not put `ClOrdID` there: a label
+    is prose for a reader, a name is an identifier, and the seed dictionary
+    already keeps them apart.
+  - **Three things are never lower-cased:** a `MsgType`, which is
+    case-bearing (`A` is Logon and `a` is QuoteStatusRequest — P8-R3); a
+    code's wire value, for the same reason; and a comp id, which is stored
+    as it arrives and compared folded (P2-R9d).
+  - The law binds what a generator writes (P6-R7b) and what a parser builds
+    (P7-R12b). Until Phase 6 regenerates it, the committed dictionary is
+    still mixed-case and resolves identically — do not hand-edit it into
+    line.
 - **P3-R5. `type`** is the FIX datatype name from that version on, in the
   spelling the grammar already resolves (`Qty`, `int`, `UTCTimestamp`), so
   the decoder needs no second table and the document stays readable.
@@ -473,6 +495,12 @@ which is why the script reads all of them.
   Latest datatype table: `Qty` is `decimal64(18,8)`, `SeqNum` is `int64`, no
   second mapping. A FIX datatype the table does not hold is a hard failure,
   never a silent `utf8`.
+- **P6-R7b. Every field name is written lower-cased** (P3-R4b), in the
+  shards and in the lineage entries alike, so the field's own name and its
+  newest lineage entry still agree (P3-R8a). Assert over the whole generated
+  dictionary that no name holds an uppercase byte, and that no two fields
+  collide once lower-cased — as no two FIX fields differ only by case, that
+  assertion is what proves it.
 - **P6-R8. The generator narrows nothing the standard did not.**
   `CheckSum(10)` is three digits with leading zeros and stays `String`;
   `BodyLength(9)` is `Length`, so a malformed one nulls a field rather than
@@ -534,6 +562,9 @@ a `fix:lineage` of `{"since":"2.7","name":"LastShares","type":"int"}`,
    standard branch's carries nothing (P6-R5b, P2-R9c).
 4. The generated header matches yggfin's `versions.json` ordering and
    required flags for 4.2 and 4.4 (P6-R13, P6-R14).
+4b. No name in the generated dictionary holds an uppercase byte, and no two
+    collide once lower-cased (P6-R7b); a lookup by the specification's own
+    casing still answers (P3-R4b); `display` still carries the human label.
 5. The two checksums match a regeneration from the same pinned inputs.
 
 **Docs.** Provenance, version coverage, the FIXT omission (P3-R2), the

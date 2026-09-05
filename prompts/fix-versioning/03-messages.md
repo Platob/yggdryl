@@ -136,14 +136,22 @@ impl FixMsg {
   so a renderer emitting `msg_type` or `Msg Type` misses a field that
   exists. Extend the FIX name fold to drop `_`, `-` and space — the fold
   `LOGICAL_NAMES` already uses, so one rule serves both. No two FIX fields
-  differ only by a separator; assert that over the committed dictionary as
-  the test that lets the change in.
+  differ only by a separator or by case; assert that over the committed
+  dictionary as the test that lets the change in. This fold is what makes
+  P3-R4b free: with it, lower-casing the stored name costs no caller the
+  spelling it was written with.
 - **P7-R11. An unknown *tag* is kept** as a nullable `utf8` field under its
   decimal spelling — the existing rule.
 - **P7-R12. An unknown *name* is kept too,** under its own spelling. Every
   venue sends fields no dictionary has, and dropping them loses data.
   Resolved fields come first in the root, unknown ones after, so the schema
   stays stable when a dictionary later learns the name.
+- **P7-R12b. Built field names are lower-cased** (P3-R4b), including the
+  name an unknown key is kept under — `venueownthing`, not `VenueOwnThing`.
+  The **entry keeps the spelling that arrived** (P7-R5), because `entries`
+  is the wire record and the row is the interpretation (P7-R8); that is
+  where the venue's own casing survives, and it is the only place it needs
+  to.
 - **P7-R13. An empty value drops its pair.** `54=` is a malformed message,
   not an absent side.
 - **P7-R14. Order and repetition are the message.** A tag appearing twice
@@ -420,6 +428,9 @@ line some venue really sent.
 5. `NoPartyIDs[0].PartyID` building a List of one `item` Struct (P7-R25).
 6. An unknown name surviving beside a known one, known first (P7-R12); an
    unknown tag kept as `utf8` under its decimal name (P7-R11).
+6b. Every built child's name is lower-case, an unknown key included, while
+    its entry keeps the arrival casing (P7-R12b) — and a `MsgType` value
+    keeps its case through all of it (P8-R3).
 7. Empty and blank keys dropped; an empty value dropped (P7-R13).
 8. The same pairs built against an empty registry (P7-R23).
 
