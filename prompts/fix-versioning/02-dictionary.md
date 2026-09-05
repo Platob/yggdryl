@@ -84,7 +84,7 @@ impl FixRegistry {
   FIX name is *respected* — it is not snake-cased, abbreviated, expanded or
   re-spelled, only lower-cased — so `lastqty` is still exactly the name the
   specification gives, in one case.
-  - **Nothing is lost.** Name resolution already folds ASCII case (P7-R13),
+  - **Nothing is lost.** Name resolution already folds ASCII case (P7-R14),
     so `field("LastQty")`, `field("lastqty")` and `field("LASTQTY")` all
     answer, and the specification's own casing needs no alias to keep
     working.
@@ -103,7 +103,7 @@ impl FixRegistry {
     code's wire value, for the same reason; and a comp id, which is stored
     as it arrives and compared folded (P2-R14).
   - The law binds what a generator writes (P6-R12) and what a parser builds
-    (P7-R16). Until Phase 6 regenerates it, the committed dictionary is
+    (P7-R17). Until Phase 6 regenerates it, the committed dictionary is
     still mixed-case and resolves identically — do not hand-edit it into
     line.
 - **P3-R8. `type`** is the FIX datatype name from that version on, in the
@@ -136,7 +136,7 @@ impl FixRegistry {
 - **P3-R16. The transcoding boundary, precisely.** The lineage carries
   enough to rename and retype a field between versions, and Phase 7 spends
   it: `convert_into` walks a message by `defined_at` / `name_at` /
-  `dtype_at` alone (P7-R30). What stays out of this brief is the
+  `dtype_at` alone (P7-R31). What stays out of this brief is the
   *expression-driven* layer — the CBlock `normalization-binding` with its
   conditions, lookups and value mappings, which needs an evaluator. Do not
   start that; state the line in the module docs, because "transcoding" names
@@ -504,7 +504,7 @@ which is why the script reads all of them.
   members in wire order with their requiredness — the same facts the header
   and trailer constants carry (P6-R16), for everything else. It earns its
   place twice over: the ULBridge splitter needs a group's declared members
-  to split a run with no separator (P7-R45), and lifting addresses Parties
+  to split a run with no separator (P7-R46), and lifting addresses Parties
   and TrdRegTimestamps by role and type (P9-R5, P9-R6).
   **Nothing is invented to make a kind fit:** no synthetic tag, no component
   smuggled into a tree (P6-R17).
@@ -540,7 +540,7 @@ which is why the script reads all of them.
 - **P6-R13. The generator narrows nothing the standard did not.**
   `CheckSum(10)` is three digits with leading zeros and stays `String`;
   `BodyLength(9)` is `Length`, so a malformed one nulls a field rather than
-  costing a batch (P7-R29); `MonthYear` stays `ascii(8)` because `202608` is
+  costing a batch (P7-R30); `MonthYear` stays `ascii(8)` because `202608` is
   a month and `202608w2` a week; `SecureData(91)`, `XmlData(213)` and
   `Signature(89)` are `binary` though the wire carries them as text. Each is
   a case in yggfin's `test_fields.py` because each was got wrong once.
@@ -665,7 +665,7 @@ datatype benchmark, the datatype and FIX pages.
   a side no version defines is held, not refused. The listing is what
   `code_name` answers from, not a gate on the value. Refusing here would
   drop data, which this brief has refused to do three times already
-  (P7-R14, P7-R15, P4-R7).
+  (P7-R15, P7-R16, P4-R7).
 - **P8-R6. The generator types tag 35 as `MsgType` and tag 54 as `Side`.**
   That is not the narrowing P6-R13 forbids — the standard itself declares
   both as code sets, so this is honouring the declaration rather than
@@ -709,17 +709,17 @@ replaces, in the datatype benchmark target.
 ## Handoff
 
 **From Phase 3.** Phases 4–7 read the lineage: `name_at` / `dtype_at` /
-`defined_at`, which Phase 7 builds every field through (P7-R22) and converts
-messages by (P7-R30); `versions()`
+`defined_at`, which Phase 7 builds every field through (P7-R23) and converts
+messages by (P7-R31); `versions()`
 and `newest()` (P3-R15), which Phase 7 checks coverage against and falls back
-to (P7-R19.4); the pedigree pair (P3-R4); the `set_lineage` derivation of
+to (P7-R20.4); the pedigree pair (P3-R4); the `set_lineage` derivation of
 `fix:aliases` (P3-R12), which Phase 5 must preserve and Phase 6 writes
 through.
 
 **From Phase 4.** `code_value_at` (P4-R5, P4-R9), which Phase 7 translates
-every value through before typing (P7-R24); `code_by_name`, which resolves
-`ApplVerID`'s symbolic spellings (P7-R19.1); the crate's one fold (P4-R5.2),
-which Phase 7 folds keys with (P7-R13); the fall-through rule (P4-R7), which
+every value through before typing (P7-R25); `code_by_name`, which resolves
+`ApplVerID`'s symbolic spellings (P7-R20.1); the crate's one fold (P4-R5.2),
+which Phase 7 folds keys with (P7-R14); the fall-through rule (P4-R7), which
 Phase 7 depends on not being an error path; `fix:codes` merge semantics for
 Phase 5.
 
@@ -729,11 +729,11 @@ lowest priority first (P6-R15), so nothing in the core learns about sources.
 
 **From Phase 6.** Phase 7 needs `config/fix` with lineages and code sets
 populated, and the layouts manifest, whose component and group member lists
-are what the ULBridge splitter reads (P7-R45) and what lifting addresses
+are what the ULBridge splitter reads (P7-R46) and what lifting addresses
 (P9-R5, P9-R6); `STANDARD_HEADER_TAGS` and `STANDARD_TRAILER_TAGS`
-(P6-R16) as the message layout order (P7-R26); at least one non-standard
-branch with its manifest entry (P6-R10, P6-R9), so branch inference (P7-R21)
-is tested against real data; and `data`-typed tags (P6-R13), which P7-R67
+(P6-R16) as the message layout order (P7-R27); at least one non-standard
+branch with its manifest entry (P6-R10, P6-R9), so branch inference (P7-R22)
+is tested against real data; and `data`-typed tags (P6-R13), which P7-R68
 reads to find length-prefixed fields.
 
 **From Phase 8.** Phase 9 lifts a side and a message type as packed keys
