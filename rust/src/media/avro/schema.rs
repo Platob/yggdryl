@@ -23,7 +23,7 @@ use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Limits, Result, Scalar};
+use crate::{DataType, Limits, Result, Scalar, TimeUnit, Timezone};
 
 use super::datum::invalid;
 
@@ -376,6 +376,80 @@ impl std::str::FromStr for Schema {
 }
 
 impl Node {
+    /// Return the exact core datatype of a scalar node.
+    ///
+    /// Containers and references answer `None`; callers resolve those in the
+    /// context that owns their children or name registry. Every scalar codec
+    /// uses this mapping so a logical UUID, narrow decimal, duration, or fixed
+    /// value cannot acquire a different identity on another Avro path.
+    pub(crate) fn scalar_dtype(&self) -> Result<Option<DataType>> {
+        let dtype = match self {
+            Self::Null => DataType::Null,
+            Self::Boolean => DataType::Boolean,
+            Self::Int => DataType::Int32,
+            Self::Long => DataType::Int64,
+            Self::Float => DataType::Float32,
+            Self::Double => DataType::Float64,
+            Self::Bytes => DataType::Binary,
+            Self::String | Self::Enum(_) => DataType::Utf8,
+            Self::Date => DataType::Date32,
+            Self::TimeMillis => DataType::Time32(TimeUnit::Millisecond),
+            Self::TimeMicros => DataType::Time64(TimeUnit::Microsecond),
+            Self::TimestampMillis => DataType::DateTime64 {
+                unit: TimeUnit::Millisecond,
+                timezone: Timezone::UTC,
+            },
+            Self::TimestampMicros => DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            },
+            Self::TimestampNanos => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+            Self::LocalTimestampMillis => DataType::DateTime64 {
+                unit: TimeUnit::Millisecond,
+                timezone: Timezone::NAIVE,
+            },
+            Self::LocalTimestampMicros => DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::NAIVE,
+            },
+            Self::LocalTimestampNanos => DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+            Self::Uuid | Self::UuidFixed(_) => DataType::Guid,
+            Self::Decimal(decimal) => DataType::decimal(
+                u8::try_from(decimal.precision).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal precision fitting u8, got {}",
+                        decimal.precision
+                    ))
+                })?,
+                i8::try_from(decimal.scale).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal scale fitting i8, got {}",
+                        decimal.scale
+                    ))
+                })?,
+            )?,
+            Self::Duration(_) => DataType::Interval(TimeUnit::MonthDayNano),
+            Self::Fixed(fixed) => {
+                DataType::fixed_size_binary(i32::try_from(fixed.size).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro fixed size fitting i32, got {}",
+                        fixed.size
+                    ))
+                })?)?
+            }
+            Self::Record(_) | Self::Array(_) | Self::Map(_) | Self::Union(_) | Self::Ref(_) => {
+                return Ok(None);
+            }
+        };
+        Ok(Some(dtype))
+    }
+
     /// Return the name a caller would use to refer to this schema node.
     pub(crate) fn kind(&self) -> &'static str {
         match self {

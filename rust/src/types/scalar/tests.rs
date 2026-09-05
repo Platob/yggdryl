@@ -242,6 +242,23 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
 }
 
 #[test]
+fn the_structural_wire_validates_interval_layouts() {
+    let value = Scalar::Temporal(super::Temporal::Interval(
+        crate::types::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
+    ));
+    let encoded = serde_json::to_string(&value).unwrap();
+    let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded, value);
+
+    let malformed =
+        r#"{"type":"interval","value":{"months":0,"days":0,"nanoseconds":1,"unit":"day_time"}}"#;
+    let message = serde_json::from_str::<Scalar>(malformed)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("selected layout"), "{message}");
+}
+
+#[test]
 fn structural_record_deserialization_canonicalizes_and_rejects_duplicates() {
     let unordered = r#"{"type":"record","value":{
             "z":{"type":"i8","value":2},

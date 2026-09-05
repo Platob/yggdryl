@@ -6,6 +6,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::DigestAlgorithm;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
+use yggdryl::holder::local::Folder;
 use yggdryl::xxhash::{self, Hashed};
 
 use super::payload;
@@ -15,7 +16,11 @@ const FILE_BYTES: usize = crate::bench_profile::corpus(64 * 1024 * 1024, 1024 * 
 
 /// A temporary root for the local file the handle cases read.
 fn root() -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(format!("yggdryl-xxhash-bench-{}", std::process::id()));
+    let path = Folder::temporary()
+        .expect("the platform temporary folder")
+        .path()
+        .expect("a local temporary path")
+        .join(format!("yggdryl-xxhash-bench-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).expect("a writable temporary directory");
     path

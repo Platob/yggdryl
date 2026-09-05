@@ -528,7 +528,7 @@ mod schemas {
 mod logical {
     use crate::TimeUnit;
     use crate::media::avro;
-    use crate::{Scalar, Timezone};
+    use crate::{DataType, DataTypeId, Scalar, Timezone};
 
     /// Round-trip one value through a single-field record container.
     fn round_trip(field_type: &str, value: Scalar) -> Scalar {
@@ -679,29 +679,54 @@ mod logical {
 
     #[test]
     fn uuids_round_trip_in_both_encodings() {
+        let expected = DataType::Guid
+            .scalar("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+            .unwrap();
         assert_eq!(
             round_trip(
                 r#"{"type":"string","logicalType":"uuid"}"#,
                 Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             ),
-            Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+            expected
         );
         // The fixed form accepts the canonical text and stores the bytes.
         let decoded = round_trip(
             r#"{"type":"fixed","name":"id","size":16,"logicalType":"uuid"}"#,
             Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
         );
-        assert_eq!(decoded.as_bytes().map(<[u8]>::len), Some(16), "{decoded:?}");
-        assert_eq!(decoded.as_bytes().map(|bytes| bytes[0]), Some(0xF8));
+        assert_eq!(decoded.id(), DataTypeId::Guid);
+        assert_eq!(decoded, expected);
     }
 
     #[test]
-    fn durations_keep_their_twelve_bytes() {
-        let mut duration = Vec::new();
-        for part in [1_u32, 2, 3] {
-            duration.extend_from_slice(&part.to_le_bytes());
+    fn fixed_and_decimal_schemas_restore_the_exact_leaf() {
+        let fixed = round_trip(
+            r#"{"type":"fixed","name":"raw","size":3}"#,
+            Scalar::from([1_u8, 2, 3].as_slice()),
+        );
+        assert_eq!(fixed.id(), DataTypeId::FixedSizeBinary);
+        assert_eq!(fixed.dtype().unwrap(), DataType::FixedSizeBinary(3));
+
+        for (precision, expected) in [
+            (9, DataTypeId::Decimal32),
+            (18, DataTypeId::Decimal64),
+            (38, DataTypeId::Decimal128),
+        ] {
+            let decoded = round_trip(
+                &format!(
+                    r#"{{"type":"bytes","logicalType":"decimal","precision":{precision},"scale":2}}"#
+                ),
+                Scalar::d128(12_345, 2),
+            );
+            assert_eq!(decoded.id(), expected, "precision {precision}");
         }
-        let value = Scalar::from(duration.as_slice());
+    }
+
+    #[test]
+    fn durations_round_trip_as_exact_intervals() {
+        let value = Scalar::Temporal(crate::types::Temporal::Interval(
+            crate::types::Interval::new(1, 2, 3_000_000, crate::TimeUnit::MonthDayNano).unwrap(),
+        ));
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"span","size":12,"logicalType":"duration"}"#,
@@ -1401,7 +1426,7 @@ mod records {
     use crate::media::avro;
     use crate::media::avro::{Avro, AvroOptions};
     use crate::media::{IORecordOptions, RecordOptions};
-    use crate::{DataType, Field, MediaType, Url};
+    use crate::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
     use crate::{IOBase, IOMedia};
 
     /// One canonical batch with a nullable column and a list column.
@@ -1621,6 +1646,63 @@ mod records {
         assert_eq!(legs.value(0).len(), 2);
         assert_eq!(legs.value(1).len(), 0);
         let _ = schema;
+    }
+
+    #[test]
+    fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
+        let field = DataType::from_fields([
+            DataType::Guid.required_field("id"),
+            DataType::decimal32(9, 2).unwrap().required_field("small"),
+            DataType::decimal64(18, 2).unwrap().required_field("large"),
+            DataType::FixedSizeBinary(3).required_field("raw"),
+            DataType::Interval(TimeUnit::MonthDayNano).required_field("span"),
+        ])
+        .unwrap()
+        .required_field("row");
+        let rows = Scalar::from_sequence([Scalar::from_record([
+            ("id", Scalar::from("00112233-4455-6677-8899-aabbccddeeff")),
+            ("small", Scalar::d128(123, 2)),
+            ("large", Scalar::d128(456, 2)),
+            ("raw", Scalar::from([1_u8, 2, 3].as_slice())),
+            (
+                "span",
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2), Scalar::from(3_000_000)]),
+            ),
+        ])
+        .unwrap()]);
+        let batch = crate::arrow::batch_from_value(&field, &rows).unwrap();
+        let mut handle = handle();
+        avro::overwrite_arrow_reader(
+            &mut handle,
+            crate::arrow::batch_reader(batch.schema(), [batch]),
+            &AvroOptions::new(),
+        )
+        .unwrap();
+
+        let read_field = avro::read_field(&handle, &AvroOptions::new()).unwrap();
+        let ids = read_field
+            .fields()
+            .iter()
+            .map(|field| field.dtype().id())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [
+                DataTypeId::Guid,
+                DataTypeId::Decimal32,
+                DataTypeId::Decimal64,
+                DataTypeId::FixedSizeBinary,
+                DataTypeId::Interval,
+            ]
+        );
+
+        let batches = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let values = crate::arrow::batch_to_value(&batches[0]).unwrap();
+        let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
+        assert_eq!(row.iter().map(Scalar::id).collect::<Vec<_>>(), ids);
     }
 
     #[test]
@@ -2246,7 +2328,7 @@ mod records {
                     timezone: crate::Timezone::UTC,
                 }
                 .nullable_field("at"),
-                DataType::decimal128(10, 2).unwrap().required_field("cost"),
+                DataType::decimal(10, 2).unwrap().required_field("cost"),
             ])
             .unwrap(),
             false,
@@ -2264,7 +2346,7 @@ mod records {
                     .with_timezone("UTC"),
                 ),
                 Arc::new(
-                    arrow_array::Decimal128Array::from(vec![18_750_i128, -99])
+                    arrow_array::Decimal64Array::from(vec![18_750_i64, -99])
                         .with_precision_and_scale(10, 2)
                         .unwrap(),
                 ),
@@ -2289,7 +2371,12 @@ mod records {
         );
         assert_eq!(
             container.rows[1].get_key_str("cost"),
-            Some(&crate::Scalar::d128(-99, 2))
+            Some(
+                &DataType::decimal(10, 2)
+                    .unwrap()
+                    .scalar(crate::Scalar::d128(-99, 2))
+                    .unwrap()
+            )
         );
 
         // And columnar reads reproduce the arrays exactly.

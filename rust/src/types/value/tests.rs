@@ -67,15 +67,18 @@ fn integer_canonicalization_preserves_every_declared_width() {
 }
 
 #[test]
-fn year_month_interval_keeps_its_signed_64_bit_component_spelling() {
+fn year_month_interval_canonicalizes_to_the_exact_interval_leaf() {
     let schema = root([DataType::Interval(TimeUnit::YearMonth).required_field("months")]);
 
-    assert_eq!(
-        schema
-            .canonicalize_value(Scalar::from_sequence([Scalar::from(18)]))
-            .unwrap(),
-        Scalar::from_sequence([Scalar::from(18)])
-    );
+    let canonical = schema
+        .canonicalize_value(Scalar::from_sequence([Scalar::from(18)]))
+        .unwrap();
+    let value = &canonical.as_sequence().unwrap()[0];
+    assert!(matches!(
+        value,
+        Scalar::Temporal(Temporal::Interval(interval))
+            if interval.months() == 18 && interval.unit() == TimeUnit::YearMonth
+    ));
 }
 
 #[test]

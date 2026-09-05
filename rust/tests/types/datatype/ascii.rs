@@ -188,9 +188,11 @@ fn an_ascii_literal_has_a_text_form() {
     };
     assert_eq!(
         **literal,
-        Expression::Literal(
-            TypedScalar::from_parts(DataType::FixedAscii(4), Scalar::from("USD")).unwrap()
-        )
+        Expression::Literal({
+            let dtype = DataType::FixedAscii(4);
+            let value = dtype.scalar(Scalar::from("USD")).unwrap();
+            TypedScalar::from_parts(dtype, value).unwrap()
+        })
     );
     // The literal prints in its own datatype and re-parses; a registered code
     // spells a literal of its own, which is not the literal of the width that

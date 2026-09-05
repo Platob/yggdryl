@@ -9,8 +9,8 @@ use std::cell::Cell;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Selector, Statement};
-use crate::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
+use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Safety, Selector, Statement};
+use crate::{DataType, DataTypeId, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -324,6 +324,62 @@ fn scalar_and_vectorized_agree() {
                 "{text} disagreed on row {position}: scalar {scalar:?}, vectorized {held:?}"
             );
         }
+    }
+}
+
+#[test]
+fn scalar_casts_return_the_exact_target_leaf() {
+    let cases = [
+        (
+            DataType::decimal32(9, 2).unwrap(),
+            Scalar::from(125),
+            DataTypeId::Decimal32,
+        ),
+        (
+            DataType::decimal64(18, 2).unwrap(),
+            Scalar::from(125),
+            DataTypeId::Decimal64,
+        ),
+        (
+            DataType::Float32,
+            Scalar::from(1.5_f64),
+            DataTypeId::Float32,
+        ),
+        (
+            DataType::LargeUtf8,
+            Scalar::from("value"),
+            DataTypeId::LargeUtf8,
+        ),
+        (
+            DataType::Utf8View,
+            Scalar::from("value"),
+            DataTypeId::Utf8View,
+        ),
+        (
+            DataType::LargeBinary,
+            Scalar::from("value"),
+            DataTypeId::LargeBinary,
+        ),
+        (
+            DataType::BinaryView,
+            Scalar::from("value"),
+            DataTypeId::BinaryView,
+        ),
+        (
+            DataType::FixedAscii(4),
+            Scalar::from("FIX"),
+            DataTypeId::FixedAscii,
+        ),
+        (
+            DataType::Currency,
+            Scalar::from("USD"),
+            DataTypeId::Currency,
+        ),
+    ];
+
+    for (target, input, id) in cases {
+        let converted = super::eval::convert(&target, &input, Safety::Strict).unwrap();
+        assert_eq!(converted.id(), id, "cast to {target}");
     }
 }
 

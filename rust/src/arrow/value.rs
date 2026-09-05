@@ -8,8 +8,9 @@ use crate::types::budget::{
     physical_limit_error, physical_union_branch, unsupported,
 };
 use crate::types::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_free_text,
-    ascii_padded, ascii_text, code_cell_text, guid_bytes, guid_parse,
+    AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Decimal, MIC_WIDTH, Temporal,
+    Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, guid_bytes,
+    guid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -147,7 +148,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
-            primitive!(IntervalYearMonthArray, signed_i32)
+            primitive!(IntervalYearMonthArray, interval_year_month)
         }
         DataType::Interval(TimeUnit::DayTime) => {
             primitive!(IntervalDayTimeArray, interval_day_time)
@@ -365,27 +366,39 @@ pub(crate) fn value_from_array(
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
-            primitive!(IntervalYearMonthArray, Scalar::from)
+            let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
+            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+                months,
+                0,
+                0,
+                TimeUnit::YearMonth,
+            )?))
         }
         DataType::Interval(TimeUnit::DayTime) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
-            Scalar::from_sequence([Scalar::from(value.days), Scalar::from(value.milliseconds)])
+            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+                0,
+                value.days,
+                i64::from(value.milliseconds) * 1_000_000,
+                TimeUnit::DayTime,
+            )?))
         }
         DataType::Interval(TimeUnit::MonthDayNano) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
-            Scalar::from_sequence([
-                Scalar::from(value.months),
-                Scalar::from(value.days),
-                Scalar::from(value.nanoseconds),
-            ])
+            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+                value.months,
+                value.days,
+                value.nanoseconds,
+                TimeUnit::MonthDayNano,
+            )?))
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         DataType::Binary => Scalar::from(downcast::<BinaryArray>(array)?.value(index).to_vec()),
-        DataType::FixedSizeBinary(_) => Scalar::from(
-            downcast::<FixedSizeBinaryArray>(array)?
-                .value(index)
-                .to_vec(),
-        ),
+        DataType::FixedSizeBinary(_) => {
+            Scalar::Bytes(Bytes::FixedSizeBinary(crate::types::FixedSizeBinary::new(
+                Arc::<[u8]>::from(downcast::<FixedSizeBinaryArray>(array)?.value(index)),
+            )))
+        }
         // An identifier reads back as its exact packed scalar leaf.
         DataType::Guid => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
@@ -395,28 +408,63 @@ pub(crate) fn value_from_array(
         }
         // Fixed storage reads back trimmed: the padding is the layout, not
         // the text. Variable storage holds the bytes it was given.
-        DataType::FixedAscii(_) => {
+        DataType::FixedAscii(width) => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::from(ascii_text(fixed.value_length(), fixed.value(index))?)
+            Scalar::Ascii(AsciiFamily::FixedAscii(crate::types::FixedAscii::new(
+                ascii_text(fixed.value_length(), fixed.value(index))?,
+                *width,
+            )?))
         }
         DataType::Ascii => {
             let bytes = downcast::<BinaryArray>(array)?;
-            Scalar::from(ascii_free_text(bytes.value(index))?)
+            Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(
+                ascii_free_text(bytes.value(index))?,
+            )?))
         }
         // A code reads back the same way, at the width its own type fixes.
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
+        DataType::Country => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::from(code_cell_text(dtype, fixed.value(index))?)
+            Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(
+                code_cell_text(dtype, fixed.value(index))?,
+            )?))
+        }
+        DataType::Currency => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(
+                code_cell_text(dtype, fixed.value(index))?,
+            )?))
+        }
+        DataType::Mic => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(code_cell_text(
+                dtype,
+                fixed.value(index),
+            )?)?))
+        }
+        DataType::Cfi => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(code_cell_text(
+                dtype,
+                fixed.value(index),
+            )?)?))
         }
         DataType::LargeBinary => {
-            Scalar::from(downcast::<LargeBinaryArray>(array)?.value(index).to_vec())
+            Scalar::Bytes(Bytes::LargeBinary(crate::types::LargeBinary::new(Arc::<
+                [u8],
+            >::from(
+                downcast::<LargeBinaryArray>(array)?.value(index),
+            ))))
         }
-        DataType::BinaryView => {
-            Scalar::from(downcast::<BinaryViewArray>(array)?.value(index).to_vec())
-        }
+        DataType::BinaryView => Scalar::Bytes(Bytes::BinaryView(crate::types::BinaryView::new(
+            Arc::<[u8]>::from(downcast::<BinaryViewArray>(array)?.value(index)),
+        ))),
         DataType::Utf8 => Scalar::from(downcast::<StringArray>(array)?.value(index)),
-        DataType::LargeUtf8 => Scalar::from(downcast::<LargeStringArray>(array)?.value(index)),
-        DataType::Utf8View => Scalar::from(downcast::<StringViewArray>(array)?.value(index)),
+        DataType::LargeUtf8 => Scalar::Text(Text::LargeUtf8(crate::types::LargeUtf8::new(
+            downcast::<LargeStringArray>(array)?.value(index),
+        ))),
+        DataType::Utf8View => Scalar::Text(Text::Utf8View(crate::types::Utf8View::new(
+            downcast::<StringViewArray>(array)?.value(index),
+        ))),
         DataType::List(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
@@ -464,11 +512,11 @@ pub(crate) fn value_from_array(
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Scalar::d128(i128::from(value), *scale)
+            Scalar::Decimal(Decimal::D32(crate::types::Decimal32::new(value, *scale)))
         }
         DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Scalar::d128(i128::from(value), *scale)
+            Scalar::Decimal(Decimal::D64(crate::types::Decimal64::new(value, *scale)))
         }
         DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
@@ -1386,36 +1434,37 @@ fn narrow_f32(value: &Scalar) -> Result<f32> {
 }
 
 fn interval_day_time(value: &Scalar) -> Result<IntervalDayTime> {
-    let items = value
-        .as_sequence()
-        .ok_or_else(|| invalid_value_kind("a [days, milliseconds] sequence", value))?;
-    let [days, milliseconds] = items else {
-        return Err(invalid_value(
-            "a [days, milliseconds] sequence of exactly 2 items",
-            items.len(),
-        ));
-    };
-    Ok(IntervalDayTime::new(
-        signed_i32(days)?,
-        signed_i32(milliseconds)?,
-    ))
+    let value = interval_value(value, TimeUnit::DayTime)?;
+    let milliseconds = i32::try_from(value.nanoseconds() / 1_000_000).map_err(|_| {
+        invalid_value(
+            "a day_time interval with a signed 32-bit millisecond count",
+            value.nanoseconds(),
+        )
+    })?;
+    Ok(IntervalDayTime::new(value.days(), milliseconds))
 }
 
 fn interval_month_day_nano(value: &Scalar) -> Result<IntervalMonthDayNano> {
-    let items = value
-        .as_sequence()
-        .ok_or_else(|| invalid_value_kind("a [months, days, nanoseconds] sequence", value))?;
-    let [months, days, nanoseconds] = items else {
-        return Err(invalid_value(
-            "a [months, days, nanoseconds] sequence of exactly 3 items",
-            items.len(),
-        ));
-    };
+    let value = interval_value(value, TimeUnit::MonthDayNano)?;
     Ok(IntervalMonthDayNano::new(
-        signed_i32(months)?,
-        signed_i32(days)?,
-        signed_i64(nanoseconds)?,
+        value.months(),
+        value.days(),
+        value.nanoseconds(),
     ))
+}
+
+fn interval_year_month(value: &Scalar) -> Result<i32> {
+    Ok(interval_value(value, TimeUnit::YearMonth)?.months())
+}
+
+fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::types::Interval> {
+    match value {
+        Scalar::Temporal(Temporal::Interval(interval)) if interval.unit() == unit => Ok(interval),
+        _ => Err(invalid_value_kind(
+            "an interval in the declared layout",
+            value,
+        )),
+    }
 }
 
 fn decimal256(value: &Scalar, scale: i8) -> Result<i256> {

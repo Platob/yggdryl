@@ -94,18 +94,19 @@ impl DataType {
         Ok(Self::Decimal64 { precision, scale })
     }
 
-    /// Creates the most compact Arrow-compatible wide decimal for the
-    /// requested precision and scale.
+    /// Creates the most compact Arrow-compatible decimal for the requested
+    /// precision and scale.
     ///
-    /// Precisions through 38 use [`Self::Decimal128`]; precisions from 39
-    /// through 76 use [`Self::Decimal256`]. Validation is delegated to
-    /// [`Self::decimal128`] or [`Self::decimal256`], including the requirement
-    /// that a positive scale cannot exceed the precision.
+    /// Precisions through 9, 18, 38, and 76 use Decimal32, Decimal64,
+    /// Decimal128, and Decimal256 respectively. Validation is delegated to the
+    /// selected explicit constructor, including the requirement that a
+    /// positive scale cannot exceed the precision.
     pub fn decimal(precision: u8, scale: i8) -> Result<Self> {
-        if precision <= 38 {
-            Self::decimal128(precision, scale)
-        } else {
-            Self::decimal256(precision, scale)
+        match precision {
+            0..=9 => Self::decimal32(precision, scale),
+            10..=18 => Self::decimal64(precision, scale),
+            19..=38 => Self::decimal128(precision, scale),
+            _ => Self::decimal256(precision, scale),
         }
     }
 

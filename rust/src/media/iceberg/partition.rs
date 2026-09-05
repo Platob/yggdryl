@@ -901,7 +901,7 @@ fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scala
     | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
-            OfficialLiteral::Int128(unscaled) => Ok(Scalar::d128(*unscaled, *scale)),
+            OfficialLiteral::Int128(unscaled) => dtype.scalar(Scalar::d128(*unscaled, *scale)),
             literal => Err(invalid(format_smolstr!(
                 "expected an Iceberg decimal partition value, got {literal:?}"
             ))),

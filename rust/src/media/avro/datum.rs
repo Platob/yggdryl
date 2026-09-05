@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use std::collections::HashMap;
 
 use crate::TimeUnit;
-use crate::types::{Nested, Temporal};
+use crate::types::{Interval, Nested, Temporal};
 use crate::{Error, Limits, Result, Scalar, Timezone};
 
 use super::schema::{Node, RecordType};
@@ -233,7 +233,8 @@ impl DatumCodec<'_> {
                 Node::Float => Scalar::from(cursor.float()?),
                 Node::Double => Scalar::from(cursor.double()?),
                 Node::Bytes => Scalar::from(cursor.bytes()?),
-                Node::String | Node::Uuid => Scalar::from(SmolStr::new(cursor.string()?)),
+                Node::String => Scalar::from(SmolStr::new(cursor.string()?)),
+                Node::Uuid => node_scalar(node, Scalar::from(SmolStr::new(cursor.string()?)))?,
                 Node::Date => Scalar::date32(cursor.int()?),
                 Node::TimeMillis => {
                     Scalar::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?
@@ -273,13 +274,20 @@ impl DatumCodec<'_> {
                             ),
                         )
                     })?;
-                    Scalar::d128(unscaled, decimal.scale as i8)
+                    node_scalar(node, Scalar::d128(unscaled, decimal.scale as i8))?
                 }
-                // DESIGN: the value model has no three-part month/day/millisecond
-                // interval, so a duration keeps its twelve raw bytes; the Arrow
-                // bridge is where they become a typed interval.
-                Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
-                    Scalar::from(cursor.take(fixed.size)?)
+                Node::Duration(fixed) => {
+                    let (months, days, nanoseconds) =
+                        duration_from_bytes(cursor.take(fixed.size)?, cursor.position)?;
+                    Scalar::Temporal(Temporal::Interval(Interval::new(
+                        months,
+                        days,
+                        nanoseconds,
+                        TimeUnit::MonthDayNano,
+                    )?))
+                }
+                Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
+                    node_scalar(node, Scalar::from(cursor.take(fixed.size)?))?
                 }
                 Node::Enum(symbols) => {
                     let index = cursor.long()?;
@@ -535,13 +543,17 @@ impl DatumCodec<'_> {
                     target,
                     value.as_bytes().ok_or_else(|| mismatch("bytes", value))?,
                 ),
-                Node::String | Node::Uuid => put_bytes(
+                Node::String => put_bytes(
                     target,
                     value
                         .as_str()
                         .ok_or_else(|| mismatch(node.kind(), value))?
                         .as_bytes(),
                 ),
+                Node::Uuid => {
+                    let spelling = guid_value(value)?.to_string();
+                    put_bytes(target, spelling.as_bytes());
+                }
                 Node::Date => {
                     let days = match value {
                         Scalar::Temporal(Temporal::Date32(date)) => date.count(),
@@ -644,9 +656,20 @@ impl DatumCodec<'_> {
                     }
                 }
                 Node::Duration(fixed) => {
-                    let bytes = value
-                        .as_bytes()
-                        .ok_or_else(|| mismatch("duration", value))?;
+                    let Scalar::Temporal(Temporal::Interval(interval)) = value else {
+                        return Err(mismatch("duration", value));
+                    };
+                    if interval.unit() != TimeUnit::MonthDayNano {
+                        return Err(invalid(format_smolstr!(
+                            "expected an Avro duration as interval(month_day_nano), got interval({})",
+                            interval.unit()
+                        )));
+                    }
+                    let bytes = duration_to_bytes(
+                        interval.months(),
+                        interval.days(),
+                        interval.nanoseconds(),
+                    )?;
                     if bytes.len() != fixed.size {
                         return Err(invalid(format_smolstr!(
                             "expected {} bytes for an Avro duration, got {}",
@@ -654,39 +677,35 @@ impl DatumCodec<'_> {
                             bytes.len()
                         )));
                     }
-                    target.extend_from_slice(bytes);
+                    target.extend_from_slice(&bytes);
                 }
                 Node::UuidFixed(fixed) => {
-                    if let Some(text) = value.as_str() {
-                        let bytes = uuid_bytes(text).ok_or_else(|| {
-                            invalid(format_smolstr!(
-                                "expected an RFC 4122 uuid string, got {text:?}"
-                            ))
-                        })?;
-                        target.extend_from_slice(&bytes);
-                    } else {
-                        let bytes = value.as_bytes().ok_or_else(|| mismatch("uuid", value))?;
+                    let bytes = guid_value(value)?.into_bytes();
+                    if bytes.len() != fixed.size {
+                        return Err(invalid(format_smolstr!(
+                            "expected {} bytes for an Avro uuid, got {}",
+                            fixed.size,
+                            bytes.len()
+                        )));
+                    }
+                    target.extend_from_slice(&bytes);
+                }
+                Node::Fixed(fixed) => match value {
+                    Scalar::Guid(guid) if fixed.size == 16 => {
+                        target.extend_from_slice(&guid.into_bytes());
+                    }
+                    _ => {
+                        let bytes = value.as_bytes().ok_or_else(|| mismatch("fixed", value))?;
                         if bytes.len() != fixed.size {
                             return Err(invalid(format_smolstr!(
-                                "expected {} bytes for an Avro uuid, got {}",
+                                "expected {} bytes for an Avro fixed value, got {}",
                                 fixed.size,
                                 bytes.len()
                             )));
                         }
                         target.extend_from_slice(bytes);
                     }
-                }
-                Node::Fixed(fixed) => {
-                    let bytes = value.as_bytes().ok_or_else(|| mismatch("fixed", value))?;
-                    if bytes.len() != fixed.size {
-                        return Err(invalid(format_smolstr!(
-                            "expected {} bytes for an Avro fixed value, got {}",
-                            fixed.size,
-                            bytes.len()
-                        )));
-                    }
-                    target.extend_from_slice(bytes);
-                }
+                },
                 Node::Enum(symbols) => {
                     let symbol = value.as_str().ok_or_else(|| mismatch("enum", value))?;
                     let index = symbols
@@ -817,7 +836,8 @@ impl DatumCodec<'_> {
             Node::Long => value.as_i64().is_some(),
             Node::Float | Node::Double => value.as_f64().is_some(),
             Node::Bytes => value.as_bytes().is_some(),
-            Node::String | Node::Uuid | Node::Enum(_) => value.as_str().is_some(),
+            Node::String | Node::Enum(_) => value.as_str().is_some(),
+            Node::Uuid => guid_value(value).is_ok(),
             Node::Date => {
                 matches!(value, Scalar::Temporal(Temporal::Date32(_))) || value.as_i64().is_some()
             }
@@ -833,17 +853,18 @@ impl DatumCodec<'_> {
             Node::Decimal(_) => {
                 value.is_decimal() || value.as_i64().is_some() || value.as_bytes().is_some()
             }
-            Node::Duration(fixed) | Node::Fixed(fixed) => value
-                .as_bytes()
-                .is_some_and(|bytes| bytes.len() == fixed.size),
-            Node::UuidFixed(fixed) => {
+            Node::Duration(_) => matches!(
+                value,
+                Scalar::Temporal(Temporal::Interval(interval))
+                    if interval.unit() == TimeUnit::MonthDayNano
+            ),
+            Node::Fixed(fixed) => {
                 value
                     .as_bytes()
                     .is_some_and(|bytes| bytes.len() == fixed.size)
-                    || value
-                        .as_str()
-                        .is_some_and(|text| uuid_bytes(text).is_some())
+                    || (fixed.size == 16 && matches!(value, Scalar::Guid(_)))
             }
+            Node::UuidFixed(fixed) => fixed.size == 16 && guid_value(value).is_ok(),
             Node::Record(_) => value.as_record().is_some() || value.as_mapping().is_some(),
             Node::Map(_) => value.as_record().is_some() || value.as_mapping().is_some(),
             Node::Array(_) => value.as_sequence().is_some(),
@@ -1015,24 +1036,78 @@ pub(crate) fn decimal_to_fixed(unscaled: i128, size: usize) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Parse the canonical 8-4-4-4-12 uuid text into its sixteen bytes.
-fn uuid_bytes(text: &str) -> Option<[u8; 16]> {
-    let mut bytes = [0_u8; 16];
-    let mut characters = text.chars();
-    let mut index = 0;
-    let groups = [8, 4, 4, 4, 12];
-    for (position, group) in groups.iter().enumerate() {
-        if position > 0 && characters.next() != Some('-') {
-            return None;
-        }
-        for _ in 0..group / 2 {
-            let high = characters.next()?.to_digit(16)?;
-            let low = characters.next()?.to_digit(16)?;
-            bytes[index] = ((high << 4) | low) as u8;
-            index += 1;
-        }
+/// Decode Avro's three unsigned little-endian duration components.
+pub(crate) fn duration_from_bytes(bytes: &[u8], position: usize) -> Result<(i32, i32, i64)> {
+    if bytes.len() != 12 {
+        return Err(codec(
+            position,
+            format_smolstr!(
+                "expected 12 bytes for an Avro duration, got {}",
+                bytes.len()
+            ),
+        ));
     }
-    characters.next().is_none().then_some(bytes)
+    let part =
+        |index: usize| u32::from_le_bytes(bytes[index..index + 4].try_into().unwrap_or_default());
+    let bounded = |name: &'static str, value: u32| {
+        i32::try_from(value).map_err(|_| {
+            codec(
+                position,
+                format_smolstr!("expected a duration {name} within 31 bits, got {value}"),
+            )
+        })
+    };
+    Ok((
+        bounded("months", part(0))?,
+        bounded("days", part(4))?,
+        i64::from(part(8)) * 1_000_000,
+    ))
+}
+
+/// Encode one exact month/day/nanosecond interval as an Avro duration.
+pub(crate) fn duration_to_bytes(months: i32, days: i32, nanoseconds: i64) -> Result<[u8; 12]> {
+    if nanoseconds % 1_000_000 != 0 {
+        return Err(invalid(format_smolstr!(
+            "expected whole milliseconds for an Avro duration, got {nanoseconds} nanoseconds"
+        )));
+    }
+    let months = u32::try_from(months).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected a non-negative duration months, got {months}"
+        ))
+    })?;
+    let days = u32::try_from(days).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected a non-negative duration days, got {days}"
+        ))
+    })?;
+    let milliseconds = u32::try_from(nanoseconds / 1_000_000).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected a duration within u32 milliseconds, got {nanoseconds} nanoseconds"
+        ))
+    })?;
+    let mut bytes = [0_u8; 12];
+    bytes[..4].copy_from_slice(&months.to_le_bytes());
+    bytes[4..8].copy_from_slice(&days.to_le_bytes());
+    bytes[8..].copy_from_slice(&milliseconds.to_le_bytes());
+    Ok(bytes)
+}
+
+/// Canonicalize one scalar under a scalar Avro node's exact core datatype.
+pub(super) fn node_scalar(node: &Node, value: Scalar) -> Result<Scalar> {
+    node.scalar_dtype()?
+        .ok_or_else(|| mismatch("scalar", &value))?
+        .scalar(value)
+}
+
+/// Read any accepted GUID spelling into the exact GUID leaf.
+fn guid_value(value: &Scalar) -> Result<crate::types::Guid> {
+    match value {
+        Scalar::Guid(value) => Ok(*value),
+        _ => crate::types::guid_bytes(value)
+            .ok_or_else(|| mismatch("uuid", value))
+            .and_then(crate::types::Guid::from_bytes),
+    }
 }
 
 /// Report a value that does not fit the schema it is being written against.

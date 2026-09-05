@@ -13,11 +13,12 @@
 //! a scale nobody asked for, and refusing lets the caller say which it wanted.
 //! A null child agrees with anything and makes the child field nullable.
 //!
-//! Several Arrow layouts hold the same logical thing, so inference names the
-//! narrow one every time: `Utf8` not `LargeUtf8`, `Binary` not `LargeBinary`,
-//! `List` not `LargeList`, `Date32` not `Date64`. A caller who wants the wide
-//! layout is asking for a physical decision, which is a schema's job and not a
-//! value's.
+//! Physical identity is part of an exact scalar: `LargeUtf8`, `BinaryView`,
+//! `Date64`, and every other leaf name themselves rather than collapsing to a
+//! related layout. Only a newly inferred nested collection needs a layout
+//! choice: a [`crate::types::Nested::Sequence`] names the ordinary `List`
+//! layout because the values carry no offset width, and an enum names `Utf8`
+//! because its generic identity is not an Arrow datatype.
 //!
 //! ```
 //! use yggdryl::{DataType, TimeUnit, Timezone, Scalar};
@@ -51,7 +52,7 @@ const MAX_DECIMAL_PRECISION: usize = 76;
 impl Scalar {
     /// Return the datatype this value materializes into.
     ///
-    /// The name is read off the variant, so a timestamp keeps its unit and
+    /// The name is read off the variant, so a datetime keeps its unit and
     /// zone, a decimal keeps its scale, and an unsigned integer stays unsigned
     /// instead of being narrowed into a signed column it may not fit.
     ///

@@ -135,9 +135,13 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         | DataType::Cfi => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
-        DataType::Guid => OfficialDatum::uuid(uuid::Uuid::from_bytes(
-            crate::types::guid_parse(crate::types::guid_bytes(value)?).ok()?,
-        )),
+        DataType::Guid => {
+            let bytes = match value {
+                Scalar::Guid(value) => value.into_bytes(),
+                _ => crate::types::guid_parse(crate::types::guid_bytes(value)?).ok()?,
+            };
+            OfficialDatum::uuid(uuid::Uuid::from_bytes(bytes))
+        }
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialDatum::binary(value.as_bytes()?.iter().copied())
         }
@@ -169,23 +173,23 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
 /// one, and the pruner then simply declines.
 pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> {
     let datum = official_datum(bytes, dtype)?;
-    match (dtype, datum.literal()) {
-        (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Some(Scalar::from(*value)),
-        (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::from(*value)),
-        (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::date32(*value)),
-        (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Some(Scalar::from(*value)),
+    let value = match (dtype, datum.literal()) {
+        (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Scalar::from(*value),
+        (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Scalar::from(*value),
+        (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Scalar::date32(*value),
+        (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Scalar::from(*value),
         (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
-            Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()
+            Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()?
         }
         (DataType::DateTime64 { unit, timezone }, OfficialPrimitiveLiteral::Long(value)) => {
-            Scalar::datetime64(*value, *unit, *timezone).ok()
+            Scalar::datetime64(*value, *unit, *timezone).ok()?
         }
-        (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => Some(Scalar::from(
-            crate::Float32::from_f32((*value).into_inner()),
-        )),
-        (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => Some(Scalar::from(
-            crate::Float64::from_f64((*value).into_inner()),
-        )),
+        (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => {
+            Scalar::from(crate::Float32::from_f32((*value).into_inner()))
+        }
+        (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => {
+            Scalar::from(crate::Float64::from_f64((*value).into_inner()))
+        }
         (
             DataType::Utf8
             | DataType::LargeUtf8
@@ -197,9 +201,9 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             | DataType::Mic
             | DataType::Cfi,
             OfficialPrimitiveLiteral::String(value),
-        ) => Some(Scalar::from(value.as_str())),
+        ) => Scalar::from(value.as_str()),
         (DataType::Guid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            Some(Scalar::from(crate::types::guid_text(&value.to_be_bytes())))
+            Scalar::from(crate::types::guid_text(&value.to_be_bytes()))
         }
         (
             DataType::Binary
@@ -207,9 +211,10 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             | DataType::BinaryView
             | DataType::FixedSizeBinary(_),
             OfficialPrimitiveLiteral::Binary(value),
-        ) => Some(Scalar::from(value.as_slice())),
-        _ => None,
-    }
+        ) => Scalar::from(value.as_slice()),
+        _ => return None,
+    };
+    dtype.scalar(value).ok()
 }
 
 /// Decode only a well-formed single-value representation.
@@ -372,6 +377,35 @@ mod tests {
         for (value, dtype) in cases {
             let bytes = single_value(&value, &dtype).expect("a supported value");
             assert_eq!(single_to_value(&bytes, &dtype), Some(value));
+        }
+    }
+
+    #[test]
+    fn decoded_bounds_keep_the_declared_scalar_identity() {
+        let cases = [
+            (Scalar::from("value"), DataType::LargeUtf8),
+            (Scalar::from("value"), DataType::Utf8View),
+            (Scalar::from("USD"), DataType::FixedAscii(4)),
+            (Scalar::from("USD"), DataType::Currency),
+            (
+                Scalar::from("00112233-4455-6677-8899-aabbccddeeff"),
+                DataType::Guid,
+            ),
+            (Scalar::from([1_u8, 2, 3].as_slice()), DataType::LargeBinary),
+            (Scalar::from([1_u8, 2, 3].as_slice()), DataType::BinaryView),
+            (
+                Scalar::from([1_u8, 2, 3].as_slice()),
+                DataType::FixedSizeBinary(3),
+            ),
+        ];
+        for (natural, dtype) in cases {
+            let canonical = dtype.scalar(natural).unwrap();
+            let bytes = single_value(&canonical, &dtype).unwrap_or_else(|| {
+                panic!("{dtype} should have a portable bound for {canonical:?}")
+            });
+            let decoded = single_to_value(&bytes, &dtype).expect("a decoded bound");
+            assert_eq!(decoded.dtype().unwrap(), dtype);
+            assert_eq!(decoded, canonical);
         }
     }
 }

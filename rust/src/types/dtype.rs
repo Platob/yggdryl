@@ -162,16 +162,17 @@ impl DataType {
     /// [`crate::Field::scalar`] is where a column refuses one.
     ///
     /// ```
-    /// use yggdryl::{DataType, Scalar};
+    /// use yggdryl::{DataType, DataTypeId, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// // The padded spelling storage holds is the same value, trimmed.
-    /// assert_eq!(DataType::Currency.scalar("USD\0")?, Scalar::from("USD"));
+    /// // The padded spelling storage holds becomes the exact code leaf, trimmed.
+    /// let currency = DataType::Currency.scalar("USD\0")?;
+    /// assert_eq!(currency.id(), DataTypeId::Currency);
+    /// assert_eq!(currency.as_str(), Some("USD"));
     /// // A decimal is restated at the scale the column declares.
-    /// assert_eq!(
-    ///     DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?,
-    ///     Scalar::d128(10_125_000_000, 8)
-    /// );
+    /// let decimal = DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?;
+    /// assert_eq!(decimal.id(), DataTypeId::Decimal64);
+    /// assert_eq!(decimal, Scalar::d128(10_125_000_000, 8));
     /// // An integer narrows to the width it is declared at.
     /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
     /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);

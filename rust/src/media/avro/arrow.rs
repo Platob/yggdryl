@@ -10,7 +10,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::TimeUnit;
-use crate::{DataType, Field, Result, Scalar, Timezone};
+use crate::{DataType, Field, Result, Scalar};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
@@ -80,78 +80,10 @@ fn dtype_from(
     schema: &Schema,
     visiting: &mut Vec<SmolStr>,
 ) -> Result<(DataType, bool)> {
+    if let Some(dtype) = node.scalar_dtype()? {
+        return Ok((dtype, matches!(node, Node::Null)));
+    }
     Ok(match node {
-        Node::Null => (DataType::Null, true),
-        Node::Boolean => (DataType::Boolean, false),
-        Node::Int => (DataType::Int32, false),
-        Node::Long => (DataType::Int64, false),
-        Node::Float => (DataType::Float32, false),
-        Node::Double => (DataType::Float64, false),
-        Node::Bytes => (DataType::Binary, false),
-        Node::String | Node::Uuid => (DataType::Utf8, false),
-        Node::Date => (DataType::Date32, false),
-        Node::TimeMillis => (DataType::Time32(TimeUnit::Millisecond), false),
-        Node::TimeMicros => (DataType::Time64(TimeUnit::Microsecond), false),
-        Node::TimestampMillis => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Millisecond,
-                timezone: Timezone::UTC,
-            },
-            false,
-        ),
-        Node::TimestampMicros => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Microsecond,
-                timezone: Timezone::UTC,
-            },
-            false,
-        ),
-        Node::TimestampNanos => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::UTC,
-            },
-            false,
-        ),
-        Node::LocalTimestampMillis => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Millisecond,
-                timezone: Timezone::NAIVE,
-            },
-            false,
-        ),
-        Node::LocalTimestampMicros => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Microsecond,
-                timezone: Timezone::NAIVE,
-            },
-            false,
-        ),
-        Node::LocalTimestampNanos => (
-            DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::NAIVE,
-            },
-            false,
-        ),
-        Node::Decimal(decimal) => (
-            DataType::decimal128(
-                u8::try_from(decimal.precision).unwrap_or(38),
-                i8::try_from(decimal.scale).unwrap_or(0),
-            )?,
-            false,
-        ),
-        Node::Duration(_) => (DataType::Interval(TimeUnit::MonthDayNano), false),
-        Node::UuidFixed(fixed) | Node::Fixed(fixed) => (
-            DataType::FixedSizeBinary(i32::try_from(fixed.size).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a fixed size within 32 bits, got {}",
-                    fixed.size
-                ))
-            })?),
-            false,
-        ),
-        Node::Enum(_) => (DataType::Utf8, false),
         Node::Record(record) => struct_of(record, schema, visiting)?,
         Node::Array(items) => {
             let (item_type, nullable) = dtype_from(items, schema, visiting)?;
@@ -176,6 +108,7 @@ fn dtype_from(
             })?;
             dtype_from(&target, schema, visiting)?
         }
+        _ => unreachable!("scalar Avro nodes returned above"),
     })
 }
 
@@ -316,7 +249,9 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("size", Scalar::from(i64::from(*size))),
             ])
         }
-        DataType::Decimal128 { precision, scale } => {
+        DataType::Decimal32 { precision, scale }
+        | DataType::Decimal64 { precision, scale }
+        | DataType::Decimal128 { precision, scale } => {
             if *scale < 0 {
                 return Err(unspellable(dtype));
             }

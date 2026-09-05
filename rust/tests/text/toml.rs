@@ -3,9 +3,42 @@ use std::str::FromStr;
 
 use yggdryl::text::toml as ytoml;
 use yggdryl::{
-    DataType, Error, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
+    DataType, DataTypeId, Error, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
     from_toml_scalar_with_field, into_toml_scalar,
 };
+
+#[test]
+fn field_directed_toml_restores_exact_leaves_inside_a_record() {
+    let decimal = DataType::decimal32(9, 2).unwrap();
+    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let field = DataType::from_fields([
+        decimal.clone().required_field("price"),
+        interval.clone().required_field("span"),
+    ])
+    .unwrap()
+    .required_field("row");
+    let value = Scalar::from_record([
+        ("price", decimal.scalar(Scalar::from(125)).unwrap()),
+        (
+            "span",
+            interval
+                .scalar(Scalar::from_sequence([
+                    Scalar::from(1),
+                    Scalar::from(2),
+                    Scalar::from(3),
+                ]))
+                .unwrap(),
+        ),
+    ])
+    .unwrap();
+
+    let encoded = into_toml_scalar(&value).unwrap();
+    let decoded = from_toml_scalar_with_field(&encoded, &field).unwrap();
+    let values = decoded.as_sequence().unwrap();
+    assert_eq!(values[0].id(), DataTypeId::Decimal32);
+    assert_eq!(values[1].id(), DataTypeId::Interval);
+    assert_eq!(values[1].dtype().unwrap(), interval);
+}
 
 struct OneByte<R>(R);
 

@@ -564,7 +564,10 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
             Scalar::from(value)
         }
         Node::Bytes => Scalar::from(cursor.bytes()?),
-        Node::String | Node::Uuid => Scalar::from(SmolStr::new(cursor.string()?)),
+        Node::String => Scalar::from(SmolStr::new(cursor.string()?)),
+        Node::Uuid => {
+            super::datum::node_scalar(reader, Scalar::from(SmolStr::new(cursor.string()?)))?
+        }
         Node::Date => Scalar::date32(cursor.int()?),
         Node::TimeMillis => Scalar::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?,
         Node::TimeMicros => Scalar::time64(
@@ -616,14 +619,28 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
                     ),
                 )
             })?;
-            Scalar::d128(unscaled, decimal.scale as i8)
+            super::datum::node_scalar(reader, Scalar::d128(unscaled, decimal.scale as i8))?
         }
-        Node::Duration(_) | Node::UuidFixed(_) | Node::Fixed(_) => {
+        Node::Duration(_) => {
             let size = match from {
                 Wire::Fixed(size) => size,
                 _ => 0,
             };
-            Scalar::from(cursor.take(size)?)
+            let (months, days, nanoseconds) =
+                super::datum::duration_from_bytes(cursor.take(size)?, cursor.position)?;
+            super::datum::node_scalar(
+                reader,
+                Scalar::Temporal(crate::types::Temporal::Interval(
+                    crate::types::Interval::new(months, days, nanoseconds, TimeUnit::MonthDayNano)?,
+                )),
+            )?
+        }
+        Node::UuidFixed(_) | Node::Fixed(_) => {
+            let size = match from {
+                Wire::Fixed(size) => size,
+                _ => 0,
+            };
+            super::datum::node_scalar(reader, Scalar::from(cursor.take(size)?))?
         }
         // Containers never reach a leaf op; the builder proved as much.
         other => {
@@ -765,7 +782,7 @@ fn default_value_at(
         ),
         // A bytes default is a JSON string whose code points are the bytes.
         Node::Bytes => Scalar::from(default_bytes(default)?),
-        Node::Fixed(fixed) | Node::Duration(fixed) | Node::UuidFixed(fixed) => {
+        Node::Fixed(fixed) | Node::UuidFixed(fixed) => {
             let bytes = default_bytes(default)?;
             if bytes.len() != fixed.size {
                 return Err(invalid(format_smolstr!(
@@ -774,19 +791,44 @@ fn default_value_at(
                     bytes.len()
                 )));
             }
-            Scalar::from(bytes)
+            super::datum::node_scalar(node, Scalar::from(bytes))?
+        }
+        Node::Duration(fixed) => {
+            let bytes = default_bytes(default)?;
+            if bytes.len() != fixed.size {
+                return Err(invalid(format_smolstr!(
+                    "expected a fixed default of {} bytes, got {}",
+                    fixed.size,
+                    bytes.len()
+                )));
+            }
+            let (months, days, nanoseconds) = super::datum::duration_from_bytes(&bytes, 0)?;
+            super::datum::node_scalar(
+                node,
+                Scalar::Temporal(crate::types::Temporal::Interval(
+                    crate::types::Interval::new(months, days, nanoseconds, TimeUnit::MonthDayNano)?,
+                )),
+            )?
         }
         Node::Decimal(decimal) => {
             let bytes = default_bytes(default)?;
             let unscaled = super::datum::decimal_from_bytes(&bytes)
                 .ok_or_else(|| bad_default("decimal", default))?;
-            Scalar::d128(unscaled, decimal.scale as i8)
+            super::datum::node_scalar(node, Scalar::d128(unscaled, decimal.scale as i8))?
         }
-        Node::String | Node::Uuid | Node::Enum(_) => Scalar::from(SmolStr::new(
+        Node::String | Node::Enum(_) => Scalar::from(SmolStr::new(
             default
                 .as_str()
                 .ok_or_else(|| bad_default(node.kind(), default))?,
         )),
+        Node::Uuid => super::datum::node_scalar(
+            node,
+            Scalar::from(SmolStr::new(
+                default
+                    .as_str()
+                    .ok_or_else(|| bad_default(node.kind(), default))?,
+            )),
+        )?,
         Node::Date => Scalar::date32(default_int(default, "date")?),
         Node::TimeMillis => Scalar::time32(
             default_int(default, "time-millis")?,

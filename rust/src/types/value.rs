@@ -18,8 +18,9 @@ use crate::types::integer::{
 };
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    AsciiFamily, Bytes, Geospatial, Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
-    default_value_for_field, guid_bytes, guid_parse, value_is_logically_null,
+    AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Temporal,
+    Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field,
+    guid_bytes, guid_parse, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -70,11 +71,13 @@ impl Field {
     /// this one, so a value built here is a value every reader accepts.
     ///
     /// ```
-    /// use yggdryl::{DataType, Field, Scalar};
+    /// use yggdryl::{DataType, DataTypeId, Field, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let ccy = Field::new("ccy", DataType::Currency, false);
-    /// assert_eq!(ccy.scalar("USD\0")?, Scalar::from("USD"));
+    /// let currency = ccy.scalar("USD\0")?;
+    /// assert_eq!(currency.id(), DataTypeId::Currency);
+    /// assert_eq!(currency.as_str(), Some("USD"));
     /// assert!(ccy.scalar(Scalar::Null).is_err());
     /// assert_eq!(
     ///     Field::new("ccy", DataType::Currency, true).scalar(Scalar::Null)?,
@@ -371,7 +374,45 @@ fn temporal_matches(
 fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     use DataType as D;
     match dtype {
-        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
+        D::Decimal32 { scale, .. } => {
+            let coefficient = if value.is_decimal() {
+                value.decimal_unscaled_at(*scale)
+            } else {
+                value.as_i128()
+            }
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!("expected a d32 representable at scale {scale}"),
+            })?;
+            let coefficient = i32::try_from(coefficient).map_err(|_| {
+                canonical_error("decimal32 coefficient does not fit signed 32 bits")
+            })?;
+            let canonical = Scalar::Decimal(Decimal::D32(Decimal32::new(coefficient, *scale)));
+            return Ok((
+                canonical.clone(),
+                !same_decimal_representation(value, &canonical),
+            ));
+        }
+        D::Decimal64 { scale, .. } => {
+            let coefficient = if value.is_decimal() {
+                value.decimal_unscaled_at(*scale)
+            } else {
+                value.as_i128()
+            }
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!("expected a d64 representable at scale {scale}"),
+            })?;
+            let coefficient = i64::try_from(coefficient).map_err(|_| {
+                canonical_error("decimal64 coefficient does not fit signed 64 bits")
+            })?;
+            let canonical = Scalar::Decimal(Decimal::D64(Decimal64::new(coefficient, *scale)));
+            return Ok((
+                canonical.clone(),
+                !same_decimal_representation(value, &canonical),
+            ));
+        }
+        D::Decimal128 { scale, .. } => {
             let coefficient = if value.is_decimal() {
                 value.decimal_unscaled_at(*scale)
             } else {
@@ -381,8 +422,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 path: SmolStr::new_static("$"),
                 reason: format_smolstr!("expected a d128 representable at scale {scale}"),
             })?;
-            let canonical = Scalar::d128(coefficient, *scale);
-            return Ok((canonical.clone(), value != &canonical));
+            let canonical = Scalar::Decimal(Decimal::D128(Decimal128::new(coefficient, *scale)));
+            return Ok((
+                canonical.clone(),
+                !same_decimal_representation(value, &canonical),
+            ));
         }
         D::Decimal256 { scale, .. } => {
             let coefficient = if value.is_decimal() {
@@ -395,7 +439,10 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 reason: format_smolstr!("expected a d256 representable at scale {scale}"),
             })?;
             let canonical = Scalar::d256(coefficient, *scale);
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_decimal_representation(value, &canonical),
+            ));
         }
         D::Date32 => {
             let count = temporal_or_integer(value, TimeUnit::Day, TemporalFamily::Date, None)?;
@@ -403,13 +450,19 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 i32::try_from(count)
                     .map_err(|_| canonical_error("date32 count does not fit signed 32 bits"))?,
             );
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::Date64 => {
             let count =
                 temporal_or_integer(value, TimeUnit::Millisecond, TemporalFamily::Date, None)?;
             let canonical = Scalar::date64(count);
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::Time32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
@@ -419,18 +472,27 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 *unit,
                 Timezone::NAIVE,
             )?;
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::Time64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
             let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::DateTime64 { unit, timezone } => {
             let count =
                 temporal_or_integer(value, *unit, TemporalFamily::DateTime, Some(timezone))?;
             let canonical = Scalar::datetime64(count, *unit, *timezone)?;
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::Duration32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
@@ -439,12 +501,18 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     .map_err(|_| canonical_error("duration32 count does not fit signed 32 bits"))?,
                 *unit,
             )?;
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         D::Duration64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
             let canonical = Scalar::duration64(count, *unit)?;
-            return Ok((canonical.clone(), value != &canonical));
+            return Ok((
+                canonical.clone(),
+                !same_temporal_representation(value, &canonical),
+            ));
         }
         _ => {}
     }
@@ -456,16 +524,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     match dtype {
         D::Null | D::Boolean => Ok((value.clone(), false)),
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(dtype, value),
-        // Interval tuples use the core's signed 64-bit component spelling;
-        // they are not one of the physical integer widths selected above.
-        D::Interval(TimeUnit::YearMonth) => canonical_signed(&D::Int64, value),
+        D::Interval(unit) => canonical_interval(*unit, value),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(dtype, value),
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
         D::Float64 => canonical_float(value, FloatWidth::Float64),
-        D::Interval(TimeUnit::DayTime) => canonical_integer_sequence(value, 2),
-        D::Interval(TimeUnit::MonthDayNano) => canonical_integer_sequence(value, 3),
-        D::Interval(_) => Ok((value.clone(), false)),
         D::Binary | D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => {
             let Some(bytes) = value.as_bytes() else {
                 return canonicalization_failure(dtype);
@@ -677,20 +740,122 @@ pub(crate) fn canonical_error(reason: &'static str) -> Error {
     }
 }
 
-fn canonical_integer_sequence(value: &Scalar, length: usize) -> Result<(Scalar, bool)> {
-    let Some(values) = value.as_sequence() else {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static("validated integer tuple could not be canonicalized"),
-        });
-    };
-    if values.len() != length {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static("validated integer tuple changed length"),
-        });
+fn same_decimal_representation(left: &Scalar, right: &Scalar) -> bool {
+    match (left, right) {
+        (Scalar::Decimal(Decimal::D32(left)), Scalar::Decimal(Decimal::D32(right))) => {
+            left == right
+        }
+        (Scalar::Decimal(Decimal::D64(left)), Scalar::Decimal(Decimal::D64(right))) => {
+            left == right
+        }
+        (Scalar::Decimal(Decimal::D128(left)), Scalar::Decimal(Decimal::D128(right))) => {
+            left == right
+        }
+        (Scalar::Decimal(Decimal::D256(left)), Scalar::Decimal(Decimal::D256(right))) => {
+            left == right
+        }
+        _ => false,
     }
-    canonical_sequence(value, |value| canonical_signed(&DataType::Int64, value))
+}
+
+fn same_temporal_representation(left: &Scalar, right: &Scalar) -> bool {
+    match (left, right) {
+        (Scalar::Temporal(Temporal::Date32(left)), Scalar::Temporal(Temporal::Date32(right))) => {
+            left == right
+        }
+        (Scalar::Temporal(Temporal::Date64(left)), Scalar::Temporal(Temporal::Date64(right))) => {
+            left == right
+        }
+        (Scalar::Temporal(Temporal::Time32(left)), Scalar::Temporal(Temporal::Time32(right))) => {
+            left == right
+        }
+        (Scalar::Temporal(Temporal::Time64(left)), Scalar::Temporal(Temporal::Time64(right))) => {
+            left == right
+        }
+        (
+            Scalar::Temporal(Temporal::DateTime64(left)),
+            Scalar::Temporal(Temporal::DateTime64(right)),
+        ) => left == right,
+        (
+            Scalar::Temporal(Temporal::Duration32(left)),
+            Scalar::Temporal(Temporal::Duration32(right)),
+        ) => left == right,
+        (
+            Scalar::Temporal(Temporal::Duration64(left)),
+            Scalar::Temporal(Temporal::Duration64(right)),
+        ) => left == right,
+        (
+            Scalar::Temporal(Temporal::Interval(left)),
+            Scalar::Temporal(Temporal::Interval(right)),
+        ) => left == right,
+        _ => false,
+    }
+}
+
+fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> {
+    if let Scalar::Temporal(Temporal::Interval(interval)) = value {
+        if interval.unit() != unit {
+            return Err(canonical_error(
+                "interval layout does not match the declared datatype",
+            ));
+        }
+        return Ok((value.clone(), false));
+    }
+
+    let component = |value: &Scalar, name: &'static str| {
+        value
+            .as_i128()
+            .and_then(|value| i32::try_from(value).ok())
+            .ok_or_else(|| canonical_error(name))
+    };
+    let interval = match unit {
+        TimeUnit::YearMonth => Interval::new(
+            component(value, "interval month count does not fit signed 32 bits")?,
+            0,
+            0,
+            unit,
+        )?,
+        TimeUnit::DayTime => {
+            let [days, milliseconds] = value
+                .as_sequence()
+                .ok_or_else(|| canonical_error("expected a [days, milliseconds] interval"))?
+            else {
+                return Err(canonical_error(
+                    "day_time interval requires exactly two components",
+                ));
+            };
+            let days = component(days, "interval day count does not fit signed 32 bits")?;
+            let milliseconds = component(
+                milliseconds,
+                "interval millisecond count does not fit signed 32 bits",
+            )?;
+            Interval::new(0, days, i64::from(milliseconds) * 1_000_000, unit)?
+        }
+        TimeUnit::MonthDayNano => {
+            let [months, days, nanoseconds] = value.as_sequence().ok_or_else(|| {
+                canonical_error("expected a [months, days, nanoseconds] interval")
+            })?
+            else {
+                return Err(canonical_error(
+                    "month_day_nano interval requires exactly three components",
+                ));
+            };
+            let nanoseconds = nanoseconds
+                .as_i128()
+                .and_then(|value| i64::try_from(value).ok())
+                .ok_or_else(|| {
+                    canonical_error("interval nanosecond count does not fit signed 64 bits")
+                })?;
+            Interval::new(
+                component(months, "interval month count does not fit signed 32 bits")?,
+                component(days, "interval day count does not fit signed 32 bits")?,
+                nanoseconds,
+                unit,
+            )?
+        }
+        _ => return Err(canonical_error("invalid interval layout")),
+    };
+    Ok((Scalar::Temporal(Temporal::Interval(interval)), true))
 }
 
 fn canonical_sequence(
@@ -952,6 +1117,37 @@ fn validate_field_payload_at_depth(
     validate_dtype_value(field.dtype(), value, depth)
 }
 
+fn validate_interval_value(
+    value: &Scalar,
+    unit: TimeUnit,
+) -> std::result::Result<(), ValidationFailure> {
+    if let Scalar::Temporal(Temporal::Interval(interval)) = value {
+        return require(
+            interval.unit() == unit,
+            match unit {
+                TimeUnit::YearMonth => "interval year_month",
+                TimeUnit::DayTime => "interval day_time",
+                TimeUnit::MonthDayNano => "interval month_day_nano",
+                _ => "valid interval layout",
+            },
+            value,
+        );
+    }
+    match unit {
+        TimeUnit::YearMonth => validate_signed(
+            value,
+            i128::from(i32::MIN),
+            i128::from(i32::MAX),
+            "interval year_month",
+        ),
+        TimeUnit::DayTime => validate_integer_tuple(value, &[32, 32], "interval day_time"),
+        TimeUnit::MonthDayNano => {
+            validate_integer_tuple(value, &[32, 32, 64], "interval month_day_nano")
+        }
+        _ => Err(ValidationFailure::new("invalid interval layout")),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 fn validate_dtype_value(
     dtype: &DataType,
@@ -996,19 +1192,7 @@ fn validate_dtype_value(
         ),
         D::Date64 => validate_date64(value),
         D::Time32(unit) | D::Time64(unit) => validate_time(value, *unit),
-        D::Interval(TimeUnit::YearMonth) => validate_signed(
-            value,
-            i128::from(i32::MIN),
-            i128::from(i32::MAX),
-            "interval year_month",
-        ),
-        D::Interval(TimeUnit::DayTime) => {
-            validate_integer_tuple(value, &[32, 32], "interval day_time")
-        }
-        D::Interval(TimeUnit::MonthDayNano) => {
-            validate_integer_tuple(value, &[32, 32, 64], "interval month_day_nano")
-        }
-        D::Interval(_) => Err(ValidationFailure::new("invalid interval layout")),
+        D::Interval(unit) => validate_interval_value(value, *unit),
         D::Binary | D::LargeBinary | D::BinaryView => {
             require(matches!(value, Scalar::Bytes(_)), dtype.name(), value)
         }

@@ -818,9 +818,23 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Temporal(crate::types::Temporal::Duration64(value)) => {
             write_duration(writer, value.count(), value.unit(), &value.timezone())?;
         }
-        Scalar::Temporal(crate::types::Temporal::Interval(value)) => {
-            write_scalar_string(writer, &value.to_string())?;
-        }
+        Scalar::Temporal(crate::types::Temporal::Interval(value)) => match value.unit() {
+            crate::TimeUnit::YearMonth => write!(writer, "{}", value.months())?,
+            crate::TimeUnit::DayTime => write!(
+                writer,
+                "[{}, {}]",
+                value.days(),
+                value.nanoseconds() / 1_000_000
+            )?,
+            crate::TimeUnit::MonthDayNano => write!(
+                writer,
+                "[{}, {}, {}]",
+                value.months(),
+                value.days(),
+                value.nanoseconds()
+            )?,
+            _ => return Err(codec_error(0, "invalid interval layout")),
+        },
         Scalar::Nested(crate::types::Nested::Sequence(values)) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.as_slice().is_empty());

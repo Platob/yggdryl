@@ -841,6 +841,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             reason: format_smolstr!("expected {reason}, got {}", value.kind()),
         })
     };
+    let canonical = |candidate: Scalar| match target.scalar(candidate) {
+        Ok(value) => Ok(value),
+        Err(_) if safety.is_safe() => Ok(Scalar::Null),
+        Err(error) => Err(error),
+    };
     if let Some((precision, scale)) = decimal_parts(target) {
         let Some(unscaled) = unscaled_at(value, scale).or_else(|| {
             value
@@ -852,10 +857,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         if digits(unscaled) > u32::from(precision) {
             return refuse("a number within the declared precision");
         }
-        return Ok(match target {
+        let candidate = match target {
             DataType::Decimal256 { .. } => Scalar::d256(I256::from_i128(unscaled), scale),
             _ => Scalar::d128(unscaled, scale),
-        });
+        };
+        return canonical(candidate);
     }
     if let Some((family, unit)) = temporal_parts(target) {
         if let Some(text) = value.as_str() {
@@ -930,46 +936,27 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(error) => Err(error),
             }
         }
-        DataType::Ascii | DataType::FixedAscii(_) => {
-            // The row tier enforces the width rule the cast plan enforces on
-            // columns, so the two tiers refuse the same values.
-            let Some(bytes) = crate::types::ascii_bytes(value) else {
-                return refuse("ASCII text");
-            };
-            let width = target.ascii_width().unwrap_or(0);
-            match crate::types::ascii_text(width, bytes) {
-                Ok(text) => Ok(Scalar::from(text)),
-                Err(_) if safety.is_safe() => Ok(Scalar::Null),
-                Err(error) => Err(error),
-            }
-        }
+        DataType::Ascii | DataType::FixedAscii(_) => canonical(value.clone()),
         // A code takes the same tier at the width its own type fixes.
         DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
-            let Some(bytes) = crate::types::ascii_bytes(value) else {
-                return refuse("ASCII text");
-            };
-            match crate::types::code_cell_text(target, bytes) {
-                Ok(text) => Ok(Scalar::from(text)),
-                Err(_) if safety.is_safe() => Ok(Scalar::Null),
-                Err(error) => Err(error),
-            }
+            canonical(value.clone())
         }
         other if is_text(other) => {
             if let Some(text) = value.as_str() {
-                return Ok(Scalar::from(SmolStr::new(text)));
+                return canonical(Scalar::from(SmolStr::new(text)));
             }
             let inferred = crate::TypedScalar::from_value(value.clone())
                 .map(|held| held.dtype().clone())
                 .unwrap_or(DataType::Null);
             match super::display::literal_text(&inferred, value) {
-                Some(text) => Ok(Scalar::from(text)),
+                Some(text) => canonical(Scalar::from(text)),
                 None => refuse("a value with a text form"),
             }
         }
         other if is_binary(other) => match value {
-            Scalar::Bytes(_) => Ok(value.clone()),
+            Scalar::Bytes(_) => canonical(value.clone()),
             other => match other.as_str() {
-                Some(text) => Ok(Scalar::from(text.as_bytes())),
+                Some(text) => canonical(Scalar::from(text.as_bytes())),
                 None => refuse("bytes"),
             },
         },

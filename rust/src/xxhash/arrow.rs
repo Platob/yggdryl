@@ -24,8 +24,8 @@ use arrow_array::types::{
     UInt32Type, UInt64Type,
 };
 use arrow_array::{
-    Array, ArrayRef, Decimal128Array, Decimal256Array, FixedSizeBinaryArray, RecordBatch,
-    UInt32Array, UInt64Array,
+    Array, ArrayRef, Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array,
+    FixedSizeBinaryArray, RecordBatch, UInt32Array, UInt64Array,
 };
 
 use crate::TemporalFamily;
@@ -253,6 +253,16 @@ fn feed_cell(
         DataType::FixedSizeBinary(_) => write_binary(
             digester,
             downcast::<FixedSizeBinaryArray>(array)?.value(index),
+        ),
+        DataType::Decimal32 { scale, .. } => write_decimal(
+            digester,
+            I256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
+            *scale,
+        ),
+        DataType::Decimal64 { scale, .. } => write_decimal(
+            digester,
+            I256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
+            *scale,
         ),
         DataType::Decimal128 { scale, .. } => write_decimal(
             digester,

@@ -4,9 +4,33 @@ use std::str::FromStr;
 use yggdryl::text::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
-    DataType, Error, Field, I256, Scalar, TimeUnit, Timezone, from_json_scalar,
+    DataType, DataTypeId, Error, Field, I256, Scalar, TimeUnit, Timezone, from_json_scalar,
     from_json_scalar_with_field, into_json_scalar,
 };
+
+#[test]
+fn field_directed_json_restores_exact_decimal_and_interval_leaves() {
+    let decimal = DataType::decimal32(9, 2).unwrap();
+    let value = decimal.scalar(Scalar::from(125)).unwrap();
+    let encoded = into_json_scalar(&value).unwrap();
+    let decoded = from_json_scalar_with_field(&encoded, &decimal.required_field("value")).unwrap();
+    assert_eq!(decoded.id(), DataTypeId::Decimal32);
+
+    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let value = interval
+        .scalar(Scalar::from_sequence([
+            Scalar::from(1),
+            Scalar::from(2),
+            Scalar::from(3),
+        ]))
+        .unwrap();
+    let encoded = into_json_scalar(&value).unwrap();
+    assert_eq!(encoded, "[1,2,3]");
+    let decoded =
+        from_json_scalar_with_field(&encoded, &interval.clone().required_field("value")).unwrap();
+    assert_eq!(decoded.id(), DataTypeId::Interval);
+    assert_eq!(decoded.dtype().unwrap(), interval);
+}
 
 struct OneByte<R>(R);
 

@@ -896,9 +896,10 @@ mod types {
             let bytes = crate::media::iceberg::value::single_value(&scalar, &dtype)
                 .unwrap_or_else(|| panic!("{dtype} must encode a bound"));
             assert_eq!(bytes, value.as_bytes(), "{dtype}");
+            let exact = dtype.scalar(scalar).unwrap();
             assert_eq!(
                 crate::media::iceberg::value::single_to_value(&bytes, &dtype),
-                Some(scalar),
+                Some(exact),
                 "{dtype}"
             );
         }

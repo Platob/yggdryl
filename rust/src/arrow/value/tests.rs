@@ -10,8 +10,8 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 }
 
 mod widths {
-    use super::{DataType, Field, Scalar, round_trip, scalar_array};
-    use crate::I256;
+    use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
+    use crate::{DataTypeId, I256};
 
     #[test]
     fn an_unsigned_integer_survives_its_whole_range() {
@@ -76,6 +76,95 @@ mod widths {
             DataType::FixedSizeBinary(6),
         ] {
             assert_eq!(round_trip(column.clone(), payload.clone()), payload);
+        }
+    }
+
+    #[test]
+    fn every_schema_directed_leaf_returns_with_its_exact_identity() {
+        let cases = [
+            (
+                DataType::decimal32(9, 2).unwrap(),
+                Scalar::d128(125, 2),
+                DataTypeId::Decimal32,
+            ),
+            (
+                DataType::decimal64(18, 2).unwrap(),
+                Scalar::d128(125, 2),
+                DataTypeId::Decimal64,
+            ),
+            (
+                DataType::decimal128(38, 2).unwrap(),
+                Scalar::from(125),
+                DataTypeId::Decimal128,
+            ),
+            (DataType::Utf8, Scalar::from("value"), DataTypeId::Utf8),
+            (
+                DataType::LargeUtf8,
+                Scalar::from("value"),
+                DataTypeId::LargeUtf8,
+            ),
+            (
+                DataType::Utf8View,
+                Scalar::from("value"),
+                DataTypeId::Utf8View,
+            ),
+            (
+                DataType::Binary,
+                Scalar::from(b"value".as_slice()),
+                DataTypeId::Binary,
+            ),
+            (
+                DataType::FixedSizeBinary(5),
+                Scalar::from(b"value".as_slice()),
+                DataTypeId::FixedSizeBinary,
+            ),
+            (
+                DataType::LargeBinary,
+                Scalar::from(b"value".as_slice()),
+                DataTypeId::LargeBinary,
+            ),
+            (
+                DataType::BinaryView,
+                Scalar::from(b"value".as_slice()),
+                DataTypeId::BinaryView,
+            ),
+            (DataType::Ascii, Scalar::from("FIX"), DataTypeId::Ascii),
+            (
+                DataType::FixedAscii(4),
+                Scalar::from("FIX"),
+                DataTypeId::FixedAscii,
+            ),
+            (DataType::Country, Scalar::from("US"), DataTypeId::Country),
+            (
+                DataType::Currency,
+                Scalar::from("USD"),
+                DataTypeId::Currency,
+            ),
+            (DataType::Mic, Scalar::from("XNAS"), DataTypeId::Mic),
+            (DataType::Cfi, Scalar::from("ESXXXX"), DataTypeId::Cfi),
+            (
+                DataType::Interval(TimeUnit::YearMonth),
+                Scalar::from(15),
+                DataTypeId::Interval,
+            ),
+            (
+                DataType::Interval(TimeUnit::DayTime),
+                Scalar::from_sequence([Scalar::from(2), Scalar::from(3)]),
+                DataTypeId::Interval,
+            ),
+            (
+                DataType::Interval(TimeUnit::MonthDayNano),
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2), Scalar::from(3)]),
+                DataTypeId::Interval,
+            ),
+        ];
+
+        for (dtype, input, expected) in cases {
+            let canonical = dtype.scalar(input.clone()).unwrap();
+            assert_eq!(canonical.id(), expected, "DataType::scalar for {dtype}");
+            let decoded = round_trip(dtype.clone(), input);
+            assert_eq!(decoded.id(), expected, "Arrow round trip for {dtype}");
+            assert_eq!(decoded.dtype().unwrap().id(), expected, "dtype for {dtype}");
         }
     }
 

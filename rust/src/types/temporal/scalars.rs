@@ -150,7 +150,7 @@ temporal_leaf!(
 const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
 
 /// One Arrow interval represented without losing any of its three layouts.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct Interval {
     months: i32,
     days: i32,
@@ -158,12 +158,35 @@ pub struct Interval {
     unit: TimeUnit,
 }
 
+impl<'de> Deserialize<'de> for Interval {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            months: i32,
+            days: i32,
+            nanoseconds: i64,
+            unit: TimeUnit,
+        }
+
+        let value = Wire::deserialize(deserializer)?;
+        Self::new(value.months, value.days, value.nanoseconds, value.unit)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 impl Interval {
     /// Construct an interval, rejecting fields the selected layout cannot hold.
     pub fn new(months: i32, days: i32, nanoseconds: i64, unit: TimeUnit) -> Result<Self> {
         let valid = match unit {
             TimeUnit::YearMonth => days == 0 && nanoseconds == 0,
-            TimeUnit::DayTime => months == 0 && nanoseconds % 1_000_000 == 0,
+            TimeUnit::DayTime => {
+                months == 0
+                    && nanoseconds % 1_000_000 == 0
+                    && i32::try_from(nanoseconds / 1_000_000).is_ok()
+            }
             TimeUnit::MonthDayNano => true,
             _ => false,
         };
@@ -232,6 +255,8 @@ pub enum Temporal {
     /// Calendar interval.
     Interval(Interval),
 }
+
+const _: () = assert!(std::mem::size_of::<Temporal>() == 24);
 
 impl Temporal {
     /// Return the logical family within the temporal group.

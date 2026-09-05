@@ -132,7 +132,7 @@ fn a_cfi_stores_six_bytes_rather_than_padding_into_eight() {
     assert_eq!(bytes.value(0), b"ESVUFR");
     assert_eq!(
         scalar_value(&cfi, stored.as_ref()).unwrap(),
-        Scalar::from("ESVUFR")
+        DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
     );
     // A width of six bytes is spellable and is still not a CFI code.
     assert_eq!(DataType::ascii(6).unwrap(), DataType::FixedAscii(6));

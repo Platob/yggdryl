@@ -60,7 +60,18 @@ pub(crate) fn canonical_float(value: &Scalar, width: FloatWidth) -> Result<(Scal
         FloatWidth::Float32 => Scalar::from(number as f32),
         FloatWidth::Float64 => Scalar::from(number),
     };
-    let changed = value != &canonical;
+    let changed = match (value, &canonical) {
+        (Scalar::Floating(Floating::F16(left)), Scalar::Floating(Floating::F16(right))) => {
+            left != right
+        }
+        (Scalar::Floating(Floating::F32(left)), Scalar::Floating(Floating::F32(right))) => {
+            left != right
+        }
+        (Scalar::Floating(Floating::F64(left)), Scalar::Floating(Floating::F64(right))) => {
+            left != right
+        }
+        _ => true,
+    };
     Ok((canonical, changed))
 }
 

@@ -4,9 +4,29 @@ use std::str::FromStr;
 use saphyr_parser::{Event, EventReceiver, Parser};
 use yggdryl::text::yaml;
 use yggdryl::{
-    DataType, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
+    DataType, DataTypeId, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
     from_yaml_scalar_with_field, into_yaml_scalar,
 };
+
+#[test]
+fn field_directed_yaml_restores_exact_decimal_and_interval_leaves() {
+    let decimal = DataType::decimal64(18, 2).unwrap();
+    let value = decimal.scalar(Scalar::from(125)).unwrap();
+    let encoded = into_yaml_scalar(&value).unwrap();
+    let decoded = from_yaml_scalar_with_field(&encoded, &decimal.required_field("value")).unwrap();
+    assert_eq!(decoded.id(), DataTypeId::Decimal64);
+
+    let interval = DataType::Interval(TimeUnit::DayTime);
+    let value = interval
+        .scalar(Scalar::from_sequence([Scalar::from(2), Scalar::from(3)]))
+        .unwrap();
+    let encoded = into_yaml_scalar(&value).unwrap();
+    assert!(encoded.contains("[2, 3]"), "{encoded}");
+    let decoded =
+        from_yaml_scalar_with_field(&encoded, &interval.clone().required_field("value")).unwrap();
+    assert_eq!(decoded.id(), DataTypeId::Interval);
+    assert_eq!(decoded.dtype().unwrap(), interval);
+}
 
 struct OneByte<R>(R);
 

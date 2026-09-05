@@ -99,9 +99,19 @@ impl Serialize for JsonRef<'_> {
             Scalar::Temporal(Temporal::Duration64(value)) => {
                 serialize_duration(serializer, value.count(), value.unit(), &value.timezone())
             }
-            Scalar::Temporal(Temporal::Interval(value)) => {
-                serializer.serialize_str(&value.to_string())
-            }
+            Scalar::Temporal(Temporal::Interval(value)) => match value.unit() {
+                TimeUnit::YearMonth => serializer.serialize_i32(value.months()),
+                TimeUnit::DayTime => {
+                    [i64::from(value.days()), value.nanoseconds() / 1_000_000].serialize(serializer)
+                }
+                TimeUnit::MonthDayNano => [
+                    i64::from(value.months()),
+                    i64::from(value.days()),
+                    value.nanoseconds(),
+                ]
+                .serialize(serializer),
+                _ => Err(S::Error::custom("invalid interval layout")),
+            },
             Scalar::Nested(Nested::Sequence(values)) => {
                 let mut sequence = serializer.serialize_seq(Some(values.as_slice().len()))?;
                 for value in values.as_slice() {

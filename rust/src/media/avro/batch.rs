@@ -23,13 +23,13 @@
 use std::sync::{Arc, OnceLock};
 
 use arrow_array::builder::{
-    BinaryBuilder, BooleanBuilder, Decimal128Builder, FixedSizeBinaryBuilder, PrimitiveBuilder,
-    StringBuilder,
+    BinaryBuilder, BooleanBuilder, Decimal32Builder, Decimal64Builder, Decimal128Builder,
+    FixedSizeBinaryBuilder, PrimitiveBuilder, StringBuilder,
 };
 use arrow_array::types::{
-    Date32Type, Float32Type, Float64Type, Int32Type, Int64Type, IntervalMonthDayNanoType,
-    Time32MillisecondType, Time64MicrosecondType, TimestampMicrosecondType,
-    TimestampMillisecondType, TimestampNanosecondType,
+    Date32Type, Decimal32Type, Decimal64Type, Decimal128Type, Float32Type, Float64Type, Int32Type,
+    Int64Type, IntervalMonthDayNanoType, Time32MillisecondType, Time64MicrosecondType,
+    TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
 };
 use arrow_array::{
     Array, ArrayRef, ListArray, MapArray, RecordBatch, RecordBatchIterator, RecordBatchOptions,
@@ -580,6 +580,13 @@ enum ColumnReader {
     Binary(BinaryBuilder),
     /// A length-prefixed UTF-8 run.
     Utf8(StringBuilder),
+    /// A UUID from either of Avro's string or fixed encodings.
+    Uuid {
+        /// Sixteen canonical bytes per value.
+        builder: FixedSizeBinaryBuilder,
+        /// Whether the Avro wire is fixed rather than string.
+        fixed: bool,
+    },
     /// A `date` int.
     Date32(PrimitiveBuilder<Date32Type>),
     /// A `time-millis` int.
@@ -597,7 +604,7 @@ enum ColumnReader {
     /// A `decimal` over bytes or fixed.
     Decimal {
         /// The unscaled integers.
-        builder: Decimal128Builder,
+        builder: DecimalColumn,
         /// Declared precision.
         precision: u8,
         /// Declared scale.
@@ -671,6 +678,64 @@ enum ColumnReader {
     },
 }
 
+/// The Arrow decimal builder selected by the Avro precision.
+enum DecimalColumn {
+    D32(Decimal32Builder),
+    D64(Decimal64Builder),
+    D128(Decimal128Builder),
+}
+
+impl DecimalColumn {
+    fn append_value(&mut self, value: i128) -> crate::Result<()> {
+        match self {
+            Self::D32(builder) => builder.append_value(i32::try_from(value).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected an Avro decimal fitting signed 32 bits, got {value}"
+                ))
+            })?),
+            Self::D64(builder) => builder.append_value(i64::try_from(value).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected an Avro decimal fitting signed 64 bits, got {value}"
+                ))
+            })?),
+            Self::D128(builder) => builder.append_value(value),
+        }
+        Ok(())
+    }
+
+    fn append_null(&mut self) {
+        match self {
+            Self::D32(builder) => builder.append_null(),
+            Self::D64(builder) => builder.append_null(),
+            Self::D128(builder) => builder.append_null(),
+        }
+    }
+
+    fn finish(&mut self, precision: u8, scale: i8) -> crate::Result<ArrayRef> {
+        let array: ArrayRef = match self {
+            Self::D32(builder) => Arc::new(
+                builder
+                    .finish()
+                    .with_precision_and_scale(precision, scale)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?,
+            ),
+            Self::D64(builder) => Arc::new(
+                builder
+                    .finish()
+                    .with_precision_and_scale(precision, scale)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?,
+            ),
+            Self::D128(builder) => Arc::new(
+                builder
+                    .finish()
+                    .with_precision_and_scale(precision, scale)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?,
+            ),
+        };
+        Ok(array)
+    }
+}
+
 impl ColumnReader {
     /// Build the decoder for one node against its mapped arrow type.
     fn new(node: &Node, schema: &Schema, arrow: &ArrowDataType) -> crate::Result<Self> {
@@ -682,7 +747,11 @@ impl ColumnReader {
             Node::Float => Self::Float32(PrimitiveBuilder::new()),
             Node::Double => Self::Float64(PrimitiveBuilder::new()),
             Node::Bytes => Self::Binary(BinaryBuilder::new()),
-            Node::String | Node::Uuid => Self::Utf8(StringBuilder::new()),
+            Node::String => Self::Utf8(StringBuilder::new()),
+            Node::Uuid => Self::Uuid {
+                builder: FixedSizeBinaryBuilder::new(16),
+                fixed: false,
+            },
             Node::Date => Self::Date32(PrimitiveBuilder::new()),
             Node::TimeMillis => Self::Time32(PrimitiveBuilder::new()),
             Node::TimeMicros => Self::Time64(PrimitiveBuilder::new()),
@@ -694,12 +763,31 @@ impl ColumnReader {
             Node::LocalTimestampNanos => Self::TimestampNanos(PrimitiveBuilder::new(), false),
             Node::Duration(_) => Self::Interval(PrimitiveBuilder::new()),
             Node::Decimal(decimal) => Self::Decimal {
-                builder: Decimal128Builder::new(),
-                precision: u8::try_from(decimal.precision).unwrap_or(38),
-                scale: i8::try_from(decimal.scale).unwrap_or(0),
+                builder: match arrow {
+                    ArrowDataType::Decimal32(..) => DecimalColumn::D32(Decimal32Builder::new()),
+                    ArrowDataType::Decimal64(..) => DecimalColumn::D64(Decimal64Builder::new()),
+                    ArrowDataType::Decimal128(..) => DecimalColumn::D128(Decimal128Builder::new()),
+                    _ => return Err(shape_error(node, arrow)),
+                },
+                precision: u8::try_from(decimal.precision).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal precision fitting u8, got {}",
+                        decimal.precision
+                    ))
+                })?,
+                scale: i8::try_from(decimal.scale).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal scale fitting i8, got {}",
+                        decimal.scale
+                    ))
+                })?,
                 size: decimal.fixed.as_ref().map(|fixed| fixed.size),
             },
-            Node::UuidFixed(fixed) | Node::Fixed(fixed) => Self::Fixed {
+            Node::UuidFixed(_) => Self::Uuid {
+                builder: FixedSizeBinaryBuilder::new(16),
+                fixed: true,
+            },
+            Node::Fixed(fixed) => Self::Fixed {
                 builder: FixedSizeBinaryBuilder::new(i32::try_from(fixed.size).unwrap_or(0)),
                 size: fixed.size,
             },
@@ -805,6 +893,16 @@ impl ColumnReader {
             Self::Float64(builder) => builder.append_value(cursor.double()?),
             Self::Binary(builder) => builder.append_value(cursor.bytes()?),
             Self::Utf8(builder) => builder.append_value(cursor.string()?),
+            Self::Uuid { builder, fixed } => {
+                let stored = if *fixed {
+                    crate::types::guid_parse(cursor.take(16)?)?
+                } else {
+                    crate::types::guid_parse(cursor.string()?.as_bytes())?
+                };
+                builder
+                    .append_value(stored)
+                    .map_err(|error| invalid(format_smolstr!("{error}")))?;
+            }
             Self::Date32(builder) => builder.append_value(cursor.int()?),
             Self::Time32(builder) => builder.append_value(cursor.int()?),
             Self::Time64(builder) => builder.append_value(cursor.long()?),
@@ -813,25 +911,8 @@ impl ColumnReader {
             Self::TimestampNanos(builder, _) => builder.append_value(cursor.long()?),
             Self::Interval(builder) => {
                 let bytes = cursor.take(12)?;
-                let part = |index: usize| {
-                    u32::from_le_bytes(bytes[index..index + 4].try_into().unwrap_or_default())
-                };
-                // The wire counts are unsigned 32-bit; the arrow interval is
-                // signed. A count outside 31 bits is refused, never clamped.
-                let position = cursor.position;
-                let bounded = |name: &'static str, value: u32| {
-                    i32::try_from(value).map_err(|_| {
-                        codec(
-                            position,
-                            format_smolstr!(
-                                "expected a duration {name} within 31 bits, got {value}"
-                            ),
-                        )
-                    })
-                };
-                let months = bounded("months", part(0))?;
-                let days = bounded("days", part(4))?;
-                let nanos = i64::from(part(8)) * 1_000_000;
+                let (months, days, nanos) =
+                    super::datum::duration_from_bytes(bytes, cursor.position)?;
                 builder.append_value(IntervalMonthDayNano::new(months, days, nanos));
             }
             Self::Decimal { builder, size, .. } => {
@@ -848,7 +929,7 @@ impl ColumnReader {
                         ),
                     )
                 })?;
-                builder.append_value(unscaled);
+                builder.append_value(unscaled)?;
             }
             Self::Fixed { builder, size } => {
                 builder
@@ -962,6 +1043,7 @@ impl ColumnReader {
             Self::Float64(builder) => builder.append_null(),
             Self::Binary(builder) => builder.append_null(),
             Self::Utf8(builder) => builder.append_null(),
+            Self::Uuid { builder, .. } => builder.append_null(),
             Self::Date32(builder) => builder.append_null(),
             Self::Time32(builder) => builder.append_null(),
             Self::Time64(builder) => builder.append_null(),
@@ -1023,6 +1105,7 @@ impl ColumnReader {
             Self::Float64(builder) => Arc::new(builder.finish()),
             Self::Binary(builder) => Arc::new(builder.finish()),
             Self::Utf8(builder) => Arc::new(builder.finish()),
+            Self::Uuid { builder, .. } => Arc::new(builder.finish()),
             Self::Date32(builder) => Arc::new(builder.finish()),
             Self::Time32(builder) => Arc::new(builder.finish()),
             Self::Time64(builder) => Arc::new(builder.finish()),
@@ -1056,12 +1139,7 @@ impl ColumnReader {
                 precision,
                 scale,
                 ..
-            } => Arc::new(
-                builder
-                    .finish()
-                    .with_precision_and_scale(*precision, *scale)
-                    .map_err(|error| invalid(format_smolstr!("{error}")))?,
-            ),
+            } => builder.finish(*precision, *scale)?,
             Self::Fixed { builder, .. } => Arc::new(builder.finish()),
             Self::Enum { builder, .. } => Arc::new(builder.finish()),
             Self::Struct {
@@ -1225,8 +1303,14 @@ fn encode_cell(
                 .to_le_bytes(),
         ),
         Node::Bytes => put_bytes(payload, column.as_binary::<i32>().value(row)),
-        Node::String | Node::Uuid => {
+        Node::String => {
             put_bytes(payload, column.as_string::<i32>().value(row).as_bytes());
+        }
+        Node::Uuid => {
+            let stored = <&[u8; 16]>::try_from(column.as_fixed_size_binary().value(row))
+                .map_err(|_| invalid(SmolStr::new_static("expected a 16-byte GUID column")))?;
+            let spelling = crate::types::guid_text(stored);
+            put_bytes(payload, spelling.as_bytes());
         }
         Node::Date => put_long(
             payload,
@@ -1254,40 +1338,27 @@ fn encode_cell(
         ),
         Node::Duration(_) => {
             let value = column.as_primitive::<IntervalMonthDayNanoType>().value(row);
-            if value.nanoseconds % 1_000_000 != 0 {
-                return Err(invalid(format_smolstr!(
-                    "expected whole milliseconds for an Avro duration, got {} nanoseconds",
-                    value.nanoseconds
-                )));
-            }
-            // An Avro duration is three unsigned 32-bit counts; a component
-            // outside that range is refused, never silently rewritten.
-            let months = u32::try_from(value.months).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a non-negative duration months, got {}",
-                    value.months
-                ))
-            })?;
-            let days = u32::try_from(value.days).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a non-negative duration days, got {}",
-                    value.days
-                ))
-            })?;
-            let millis = u32::try_from(value.nanoseconds / 1_000_000).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a duration within u32 milliseconds, got {} nanoseconds",
-                    value.nanoseconds
-                ))
-            })?;
-            payload.extend_from_slice(&months.to_le_bytes());
-            payload.extend_from_slice(&days.to_le_bytes());
-            payload.extend_from_slice(&millis.to_le_bytes());
+            payload.extend_from_slice(&super::datum::duration_to_bytes(
+                value.months,
+                value.days,
+                value.nanoseconds,
+            )?);
         }
         Node::Decimal(decimal) => {
-            let unscaled = column
-                .as_primitive::<arrow_array::types::Decimal128Type>()
-                .value(row);
+            let unscaled = match column.data_type() {
+                ArrowDataType::Decimal32(..) => {
+                    i128::from(column.as_primitive::<Decimal32Type>().value(row))
+                }
+                ArrowDataType::Decimal64(..) => {
+                    i128::from(column.as_primitive::<Decimal64Type>().value(row))
+                }
+                ArrowDataType::Decimal128(..) => column.as_primitive::<Decimal128Type>().value(row),
+                other => {
+                    return Err(invalid(format_smolstr!(
+                        "expected an Arrow decimal column for Avro decimal, got {other}"
+                    )));
+                }
+            };
             match &decimal.fixed {
                 Some(fixed) => {
                     let bytes =

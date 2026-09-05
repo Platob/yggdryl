@@ -300,9 +300,23 @@ fn write_scalar<W: Write>(
         Scalar::Temporal(Temporal::Duration64(value)) => {
             write_duration(writer, value.count(), value.unit(), &value.timezone())?
         }
-        Scalar::Temporal(Temporal::Interval(_)) => {
-            return Err(codec_error("TOML cannot represent an interval"));
-        }
+        Scalar::Temporal(Temporal::Interval(value)) => match value.unit() {
+            TimeUnit::YearMonth => write!(writer, "{}", value.months())?,
+            TimeUnit::DayTime => write!(
+                writer,
+                "[{}, {}]",
+                value.days(),
+                value.nanoseconds() / 1_000_000
+            )?,
+            TimeUnit::MonthDayNano => write!(
+                writer,
+                "[{}, {}, {}]",
+                value.months(),
+                value.days(),
+                value.nanoseconds()
+            )?,
+            _ => return Err(codec_error("invalid interval layout")),
+        },
         Scalar::Nested(Nested::Sequence(values)) => {
             write_sequence(writer, values.as_slice(), layout, depth)?
         }

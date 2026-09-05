@@ -274,13 +274,14 @@ fn the_default_is_the_empty_string_stored_as_all_nul() {
         DataType::FixedAscii(12),
         DataType::FixedAscii(16),
     ] {
-        assert_eq!(dtype.default_value().unwrap(), Scalar::from(""));
+        let exact_empty = dtype.scalar(Scalar::from("")).unwrap();
+        assert_eq!(dtype.default_value().unwrap(), exact_empty);
         assert!(dtype.is_default_value(&Scalar::from("")).unwrap());
         assert!(!dtype.is_default_value(&Scalar::from("USD")).unwrap());
 
         let width = dtype.ascii_width().unwrap();
         let field = dtype.required_field("ccy");
-        assert_eq!(field.default_value().unwrap(), Scalar::from(""));
+        assert_eq!(field.default_value().unwrap(), exact_empty);
         let array = field.default_arrow_array().unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(width));
         let stored = stored(array.as_ref());
@@ -351,7 +352,7 @@ fn arrow_storage_is_padded_and_reads_back_trimmed() {
     assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
     assert_eq!(
         crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
-        Scalar::from("ABC")
+        field.dtype().scalar(Scalar::from("ABC")).unwrap()
     );
 
     // Padded bytes, a null, and the empty string, through the array boundary.
@@ -369,8 +370,8 @@ fn arrow_storage_is_padded_and_reads_back_trimmed() {
     let read = |index: usize| {
         crate::arrow::value::value_from_array(field.dtype(), array.as_ref(), index).unwrap()
     };
-    assert_eq!(read(0), Scalar::from("XY"));
-    assert_eq!(read(2), Scalar::from(""));
+    assert_eq!(read(0), field.dtype().scalar(Scalar::from("XY")).unwrap());
+    assert_eq!(read(2), field.dtype().scalar(Scalar::from("")).unwrap());
 
     // What does not fit is refused at this boundary too.
     assert!(crate::arrow::scalar_array(&field, &Scalar::from("ABCDEFGHI")).is_err());

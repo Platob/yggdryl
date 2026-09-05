@@ -456,11 +456,15 @@ mod handles {
 
     /// A temporary root, named so parallel tests never share one.
     fn root(label: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "yggdryl-xxhash-{label}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let path = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!(
+                "yggdryl-xxhash-{label}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         path
@@ -980,11 +984,15 @@ mod hashed {
 
     #[test]
     fn a_container_is_still_refused_by_kind() {
-        let root = std::env::temp_dir().join(format!(
-            "yggdryl-xxhash-hashed-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let root = crate::holder::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!(
+                "yggdryl-xxhash-hashed-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let handle = Hashed::new(
@@ -1010,6 +1018,11 @@ mod values {
     use std::sync::Arc;
 
     use super::super::{Xxh3_64, xxh3_64};
+    use crate::types::{
+        Ascii, AsciiFamily, BinaryView, Bytes, Decimal, Decimal32, Decimal64, FixedAscii,
+        FixedSizeBinary, Geography, Geospatial, Interval, LargeBinary, LargeUtf8, Temporal, Text,
+        Utf8View,
+    };
     use crate::{
         Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, I256, Scalar,
         TimeUnit, Timezone,
@@ -1020,9 +1033,13 @@ mod values {
     ];
 
     fn geometry() -> Scalar {
-        Scalar::Geospatial(crate::types::Geospatial::Geometry(
+        Scalar::Geospatial(Geospatial::Geometry(
             crate::types::Geometry::new(POINT_WKB).unwrap(),
         ))
+    }
+
+    fn geography() -> Scalar {
+        Scalar::Geospatial(Geospatial::Geography(Geography::new(POINT_WKB).unwrap()))
     }
 
     /// A sink that keeps the feed so two values can be compared byte for byte.
@@ -1071,18 +1088,34 @@ mod values {
             Scalar::from(Float64::from_f64(0.0)),
             Scalar::from(Float64::from_f64(f64::NAN)),
             Scalar::d128(100, 2),
+            Scalar::Decimal(Decimal::D32(Decimal32::new(100, 2))),
+            Scalar::Decimal(Decimal::D64(Decimal64::new(100, 2))),
             Scalar::d128(-1, 0),
             Scalar::d256(I256::from_i128(1), 0),
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
+            Scalar::Text(Text::LargeUtf8(LargeUtf8::new("AAPL"))),
+            Scalar::Text(Text::Utf8View(Utf8View::new("AAPL"))),
+            Scalar::Ascii(AsciiFamily::Ascii(Ascii::new("USD").unwrap())),
+            Scalar::Ascii(AsciiFamily::FixedAscii(FixedAscii::new("USD", 4).unwrap())),
             Scalar::Enum(Enum::Codec(Codec::Gzip)),
             Scalar::Enum(Enum::Codec(Codec::Zstd)),
             Scalar::Enum(Enum::DataTypeId(DataTypeId::Int128)),
             Scalar::from(Arc::from(b"".as_slice())),
             Scalar::from(Arc::from(b"1".as_slice())),
             Scalar::from(Arc::from(b"AAPL".as_slice())),
+            Scalar::Bytes(Bytes::FixedSizeBinary(FixedSizeBinary::new(
+                Arc::<[u8]>::from(b"AAPL".as_slice()),
+            ))),
+            Scalar::Bytes(Bytes::LargeBinary(LargeBinary::new(Arc::<[u8]>::from(
+                b"AAPL".as_slice(),
+            )))),
+            Scalar::Bytes(Bytes::BinaryView(BinaryView::new(Arc::<[u8]>::from(
+                b"AAPL".as_slice(),
+            )))),
             geometry(),
+            geography(),
             Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
             Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
             Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
@@ -1091,6 +1124,15 @@ mod values {
             Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
             Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
             Scalar::duration64_in(1_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            Scalar::Temporal(Temporal::Interval(
+                Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap(),
+            )),
+            Scalar::Temporal(Temporal::Interval(
+                Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
+            )),
+            Scalar::Temporal(Temporal::Interval(
+                Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
+            )),
             Scalar::from_sequence([]),
             Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")]),
             Scalar::from_sequence([Scalar::from("ab")]),
@@ -1104,7 +1146,7 @@ mod values {
     fn equal_values_feed_identical_bytes() {
         // The pairs that make this non-trivial: `Scalar` compares across
         // widths, so a feed keyed on the storage width would break here.
-        let equal: [(Scalar, Scalar); 8] = [
+        let equal = [
             (Scalar::from(1), Scalar::from(1)),
             (Scalar::from(1), Scalar::from(1)),
             (Scalar::from(-1), Scalar::from(-1)),
@@ -1117,6 +1159,45 @@ mod values {
                 Scalar::from(Float64::from_f64(1.5)),
             ),
             (Scalar::d128(100, 2), Scalar::d256(I256::from_i128(1), 0)),
+            (
+                Scalar::Decimal(Decimal::D32(Decimal32::new(100, 2))),
+                Scalar::d128(1, 0),
+            ),
+            (
+                Scalar::Decimal(Decimal::D64(Decimal64::new(100, 2))),
+                Scalar::d256(I256::from_i128(1), 0),
+            ),
+            (
+                Scalar::Text(Text::LargeUtf8(LargeUtf8::new("AAPL"))),
+                Scalar::from("AAPL"),
+            ),
+            (
+                Scalar::Text(Text::Utf8View(Utf8View::new("AAPL"))),
+                Scalar::from("AAPL"),
+            ),
+            (
+                Scalar::Bytes(Bytes::FixedSizeBinary(FixedSizeBinary::new(
+                    Arc::<[u8]>::from(b"AAPL".as_slice()),
+                ))),
+                Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
+            ),
+            (
+                Scalar::Bytes(Bytes::LargeBinary(LargeBinary::new(Arc::<[u8]>::from(
+                    b"AAPL".as_slice(),
+                )))),
+                Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
+            ),
+            (
+                Scalar::Bytes(Bytes::BinaryView(BinaryView::new(Arc::<[u8]>::from(
+                    b"AAPL".as_slice(),
+                )))),
+                Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
+            ),
+            (
+                Scalar::Ascii(AsciiFamily::FixedAscii(FixedAscii::new("USD", 4).unwrap())),
+                Scalar::Ascii(AsciiFamily::Ascii(Ascii::new("USD").unwrap())),
+            ),
+            (geometry(), geography()),
             (
                 Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
                 Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),

@@ -20,6 +20,7 @@ enum DefaultPlan {
     Float,
     Decimal,
     Decimal256,
+    Interval(TimeUnit),
     String,
     Bytes(usize),
     EmptySequence,
@@ -68,7 +69,7 @@ impl DataType {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
         let planned = plan_dtype(self, &mut path).map_err(public_planning_error)?;
-        materialize(planned.plan)
+        super::value::dtype_scalar(self, materialize(planned.plan)?)
     }
 
     /// Tests whether a value is this datatype's canonical default.
@@ -119,7 +120,7 @@ pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
     let mut path = Vec::new();
     path.push(PathSegment::Field(field.name()));
     let planned = plan_field(field, &mut path).map_err(public_planning_error)?;
-    materialize(planned.plan)
+    super::value::dtype_scalar(field.dtype(), materialize(planned.plan)?)
 }
 
 pub(crate) fn preflight_schema(dtype: &DataType, kind: &'static str) -> Result<()> {
@@ -296,12 +297,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Time32(_)
         | D::Time64(_)
         | D::Duration32(_)
-        | D::Duration64(_)
-        | D::Interval(TimeUnit::YearMonth) => scalar(DefaultPlan::Signed, false),
+        | D::Duration64(_) => scalar(DefaultPlan::Signed, false),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => scalar(DefaultPlan::Unsigned, false),
         D::Float16 | D::Float32 | D::Float64 => scalar(DefaultPlan::Float, false),
-        D::Interval(TimeUnit::DayTime) => fixed_scalar_sequence(2, path),
-        D::Interval(TimeUnit::MonthDayNano) => fixed_scalar_sequence(3, path),
+        D::Interval(unit) if unit.is_interval() => scalar(DefaultPlan::Interval(*unit), false),
         D::Interval(_) => fatal(path, "invalid interval layout"),
         D::Binary | D::LargeBinary | D::BinaryView => plan_bytes(0, path),
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
@@ -515,17 +514,6 @@ fn wrap_union(type_id: i8, value: Planned, path: &[PathSegment<'_>]) -> Planning
     })
 }
 
-fn fixed_scalar_sequence(length: usize, path: &[PathSegment<'_>]) -> PlanningResult<Planned> {
-    let nodes = checked_add(1, length, path, "interval node count")?;
-    ensure_budget(nodes, 0, path)?;
-    Ok(Planned {
-        plan: DefaultPlan::Repeated(Box::new(DefaultPlan::Signed), length),
-        nodes,
-        bytes: 0,
-        logically_null: false,
-    })
-}
-
 fn plan_bytes(width: usize, path: &[PathSegment<'_>]) -> PlanningResult<Planned> {
     ensure_budget(1, width, path)?;
     Ok(Planned {
@@ -590,6 +578,8 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
         DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::I256::ZERO, 0)),
+        DefaultPlan::Interval(unit) => crate::types::Interval::new(0, 0, 0, unit)
+            .map(|value| Scalar::Temporal(Temporal::Interval(value))),
         DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
@@ -667,12 +657,13 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
         // A zero coefficient is zero at every scale.
-        DefaultPlan::Decimal => {
-            value.as_i128() == Some(0) || value.as_d128().is_some_and(|(value, _)| value == 0)
+        DefaultPlan::Decimal | DefaultPlan::Decimal256 => {
+            value.as_i128() == Some(0)
+                || value
+                    .as_decimal()
+                    .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO)
         }
-        DefaultPlan::Decimal256 => value
-            .as_d256()
-            .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO),
+        DefaultPlan::Interval(unit) => interval_is_zero(value, *unit),
         DefaultPlan::String => value.as_str() == Some(""),
         DefaultPlan::Bytes(width) => value
             .as_bytes()
@@ -699,9 +690,35 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_mapping()
             .is_some_and(<[(Scalar, Scalar)]>::is_empty),
         DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
-        DefaultPlan::Guid => crate::types::guid_bytes(value)
-            .and_then(|bytes| crate::types::guid_parse(bytes).ok())
-            .is_some_and(|stored| stored == [0_u8; 16]),
+        DefaultPlan::Guid => match value {
+            Scalar::Guid(value) => value.get() == 0,
+            _ => crate::types::guid_bytes(value)
+                .and_then(|bytes| crate::types::guid_parse(bytes).ok())
+                .is_some_and(|stored| stored == [0_u8; 16]),
+        },
+    }
+}
+
+fn interval_is_zero(value: &Scalar, unit: TimeUnit) -> bool {
+    if let Scalar::Temporal(Temporal::Interval(value)) = value {
+        return value.unit() == unit
+            && value.months() == 0
+            && value.days() == 0
+            && value.nanoseconds() == 0;
+    }
+    match unit {
+        TimeUnit::YearMonth => value.as_i128() == Some(0),
+        TimeUnit::DayTime => value.as_sequence().is_some_and(|values| {
+            matches!(values, [days, milliseconds]
+                if days.as_i128() == Some(0) && milliseconds.as_i128() == Some(0))
+        }),
+        TimeUnit::MonthDayNano => value.as_sequence().is_some_and(|values| {
+            matches!(values, [months, days, nanoseconds]
+                if months.as_i128() == Some(0)
+                    && days.as_i128() == Some(0)
+                    && nanoseconds.as_i128() == Some(0))
+        }),
+        _ => false,
     }
 }
 

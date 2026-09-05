@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::FormatVersion;
 use super::partition::{PartitionField, PartitionSpec, Transform};
 use crate::IOBase;
-use crate::{Error, Field, MimeType, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, MimeType, Result, Scalar, TimeUnit, Timezone};
 
 /// What a manifest's entries describe.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -486,12 +486,17 @@ fn required_non_negative_count(count: Option<i64>, name: &str, path: &str) -> Re
 /// missing a field the specification requires.
 pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry>> {
     let bytes = manifest_bytes(handle)?;
-    let manifest = parse_manifest(&bytes)?;
-    let (entries, metadata) = manifest.into_parts();
+    // A fixed-UUID repair may alter only the official parser's temporary
+    // view. Resolve partition values against the manifest's original schema
+    // so the returned scalar keeps its logical identity.
+    let bounded = crate::holder::Buffer::from(bytes.as_slice());
+    let metadata = manifest_metadata(&bounded)?;
     let partition_type = metadata
         .partition_spec()
         .partition_type(metadata.schema())
         .map_err(Error::from_iceberg)?;
+    let manifest = parse_manifest(&bytes)?;
+    let (entries, _) = manifest.into_parts();
     entries
         .into_iter()
         .map(|entry| match std::sync::Arc::try_unwrap(entry) {
@@ -510,14 +515,19 @@ pub fn read_manifest<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestEntry
 ///
 /// Returns an error when the header's `partition-spec` is not a spec document.
 pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpec> {
+    let metadata = manifest_metadata(handle)?;
+    partition_spec_from_official(metadata.partition_spec())
+}
+
+/// Read the original manifest metadata without applying a data-parser repair.
+fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestMetadata> {
     let blocks = crate::media::avro::read_blocks(handle)?;
     let metadata = blocks
         .metadata_bytes()
         .iter()
         .map(|(key, value)| (key.to_string(), value.clone()))
         .collect();
-    let metadata = OfficialManifestMetadata::parse(&metadata).map_err(Error::from_iceberg)?;
-    partition_spec_from_official(metadata.partition_spec())
+    OfficialManifestMetadata::parse(&metadata).map_err(Error::from_iceberg)
 }
 
 /// Recover the manifest-list row absent from a v1 direct-manifest snapshot.
@@ -1269,15 +1279,21 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
         (OfficialPrimitiveType::Double, OfficialPrimitiveLiteral::Double(value)) => {
             Ok(Scalar::from(value.0))
         }
-        (OfficialPrimitiveType::Decimal { scale, .. }, OfficialPrimitiveLiteral::Int128(value)) => {
-            Ok(Scalar::d128(
-                *value,
-                i8::try_from(*scale).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected a decimal scale fitting i8, got {scale}"
-                    ))
-                })?,
-            ))
+        (
+            OfficialPrimitiveType::Decimal { precision, scale },
+            OfficialPrimitiveLiteral::Int128(value),
+        ) => {
+            let precision = u8::try_from(*precision).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a decimal precision fitting u8, got {precision}"
+                ))
+            })?;
+            let scale = i8::try_from(*scale).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected a decimal scale fitting i8, got {scale}"
+                ))
+            })?;
+            DataType::decimal(precision, scale)?.scalar(Scalar::d128(*value, scale))
         }
         (OfficialPrimitiveType::Date, OfficialPrimitiveLiteral::Int(value)) => {
             Ok(Scalar::date32(*value))
@@ -1301,12 +1317,22 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             Ok(Scalar::from(value.as_str()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            Ok(Scalar::from(crate::types::guid_text(&value.to_be_bytes())))
+            DataType::Guid.scalar(crate::types::guid_text(&value.to_be_bytes()))
         }
-        (
-            OfficialPrimitiveType::Fixed(_) | OfficialPrimitiveType::Binary,
-            OfficialPrimitiveLiteral::Binary(value),
-        ) => Ok(Scalar::from(value.clone())),
+        (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::Binary(value)) => {
+            DataType::Guid.scalar(Scalar::from(value.clone()))
+        }
+        (OfficialPrimitiveType::Fixed(width), OfficialPrimitiveLiteral::Binary(value)) => {
+            let width = i32::try_from(*width).map_err(|_| {
+                invalid(format_smolstr!(
+                    "expected an Iceberg fixed width fitting i32, got {width}"
+                ))
+            })?;
+            DataType::fixed_size_binary(width)?.scalar(Scalar::from(value.clone()))
+        }
+        (OfficialPrimitiveType::Binary, OfficialPrimitiveLiteral::Binary(value)) => {
+            Ok(Scalar::from(value.clone()))
+        }
         _ => Err(invalid(format_smolstr!(
             "expected a partition value matching {dtype}, got {value:?}"
         ))),
@@ -3191,7 +3217,7 @@ mod official_read_tests {
     }
 
     #[test]
-    fn official_uuid_partition_literals_use_the_core_fixed_binary_shape() {
+    fn official_uuid_partition_literals_use_the_exact_guid_shape() {
         let document = crate::text::json::from_utf8(
             r#"{"type":"struct","schema-id":0,"fields":[
                 {"id":1,"name":"id","required":true,"type":"long"},
@@ -3204,6 +3230,7 @@ mod official_read_tests {
         let token = 0x0db3_e2a8_9d1d_42b9_aa7b_74eb_e558_dcebu128
             .to_be_bytes()
             .to_vec();
+        let expected = DataType::Guid.scalar(Scalar::from(token.clone())).unwrap();
         let input = ManifestEntry::added(
             41,
             DataFile {
@@ -3219,13 +3246,11 @@ mod official_read_tests {
         let container = crate::media::avro::read_container(&handle).unwrap();
         assert!(contains_fixed_uuid(&container.schema.into_json()));
         assert_eq!(
-            container.rows[0]
-                .path("data_file.partition.token")
-                .and_then(Scalar::as_bytes),
-            Some(token.as_slice())
+            container.rows[0].path("data_file.partition.token"),
+            Some(&expected)
         );
         let read = read_manifest(&handle).unwrap();
-        assert_eq!(read[0].data_file.partition, vec![Scalar::from(token)]);
+        assert_eq!(read[0].data_file.partition, vec![expected]);
 
         let mut rewritten = Buffer::new();
         write_manifest(&mut rewritten, FormatVersion::V2, &field, &spec, &read).unwrap();

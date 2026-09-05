@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, TypedScalar, UnionMode};
+use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone, TypedScalar, UnionMode};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -103,6 +103,48 @@ fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
             .into_arrow_array()
             .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", dtype.kind()));
         assert_eq!(reprojected.as_ref(), array.as_ref());
+    }
+}
+
+#[test]
+fn leaf_defaults_keep_their_declared_physical_identity() {
+    let cases = [
+        (DataType::decimal32(7, 2).unwrap(), DataTypeId::Decimal32),
+        (DataType::decimal64(12, 2).unwrap(), DataTypeId::Decimal64),
+        (DataType::LargeUtf8, DataTypeId::LargeUtf8),
+        (DataType::Utf8View, DataTypeId::Utf8View),
+        (DataType::FixedSizeBinary(3), DataTypeId::FixedSizeBinary),
+        (DataType::LargeBinary, DataTypeId::LargeBinary),
+        (DataType::BinaryView, DataTypeId::BinaryView),
+        (DataType::Ascii, DataTypeId::Ascii),
+        (DataType::FixedAscii(4), DataTypeId::FixedAscii),
+        (DataType::Country, DataTypeId::Country),
+        (DataType::Currency, DataTypeId::Currency),
+        (DataType::Mic, DataTypeId::Mic),
+        (DataType::Cfi, DataTypeId::Cfi),
+        (DataType::Guid, DataTypeId::Guid),
+        (
+            DataType::Interval(TimeUnit::YearMonth),
+            DataTypeId::Interval,
+        ),
+        (DataType::Interval(TimeUnit::DayTime), DataTypeId::Interval),
+        (
+            DataType::Interval(TimeUnit::MonthDayNano),
+            DataTypeId::Interval,
+        ),
+        (DataType::geometry(None).unwrap(), DataTypeId::Geometry),
+        (
+            DataType::geography(None, None).unwrap(),
+            DataTypeId::Geography,
+        ),
+    ];
+
+    for (dtype, id) in cases {
+        let value = dtype
+            .default_value()
+            .unwrap_or_else(|error| panic!("{dtype} default failed: {error}"));
+        assert_eq!(value.id(), id, "default for {dtype}");
+        assert_eq!(value.dtype().unwrap().id(), id, "inference for {dtype}");
     }
 }
 
