@@ -486,14 +486,16 @@ impl FixReader {
   standing rule for streaming iterators. Nothing is collected up front, the
   source is pulled only as the consumer pulls, and a `FixReader` over an
   unbounded source runs in bounded memory.
-- **P7-R56. A malformed row is an `Err` item; the stream continues.** One
-  corrupt line must not end a run over ten million, so the item type is
-  `Result<FixMsg>` and the error carries the row so a caller can log what it
-  could not read. A caller who wants to stop at the first failure already
-  has the vocabulary — `collect::<Result<Vec<_>, _>>()`, or `take_while` —
-  and the reader does not grow a mode for it. This is the same posture as
-  P7-R30 one level up: a bad value never costs a message, a bad message
-  never costs the stream.
+- **P7-R56. A row almost never fails, and a failure never ends the run.**
+  Nearly everything a capture holds becomes a message: a row with no type is
+  `unknown` (P7-R44), a value that will not type is null (P7-R30), a group
+  that will not split stays whole (P7-R47). What is left — input that is not
+  a row at all — is an `Err` item carrying it, and the stream continues,
+  because one corrupt line must not end a run over ten million. A caller who
+  wants to stop at the first failure already has the vocabulary —
+  `collect::<Result<Vec<_>, _>>()`, or `take_while` — and the reader grows
+  no mode for it. The posture runs the whole way down: a bad value never
+  costs a message, a bad message never costs the stream.
 - **P7-R57. Pinning is what the type buys.** `branch` and the two versions
   pinned once skip P7-R20 and P7-R22 for every row — and a capture is one
   session, so pinning is the normal case, not an optimization. Unpinned, the
@@ -759,8 +761,9 @@ column are a *consumer's* taxonomy, not a third reader (P7-R43).
 **Streaming.**
 28b. A row read singly and through a `FixReader` answer equal messages
      (P7-R59).
-28c. A malformed row in the middle of a good capture yields one `Err` item
-     carrying that row, and the rows after it still read (P7-R56).
+28c. Input that is not a row at all yields one `Err` item carrying it, and
+     the rows after it still read (P7-R56) — while every row of the capture
+     table above yields `Ok`, none of them being a failure.
 28d. An unbounded source is consumed lazily: a reader over an infinite
      iterator, pulled ten times, touches ten rows (P7-R55).
 28e. Pinned and unpinned readers answer the same messages over one capture
