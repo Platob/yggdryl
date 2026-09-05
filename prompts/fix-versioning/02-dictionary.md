@@ -644,11 +644,16 @@ datatype benchmark, the datatype and FIX pages.
   over a fixed ASCII width whose members are a `const` listing prebuilt in
   the enum registry, reachable by logical name. `Side` and `MsgType` are two
   more of exactly that. `DataTypeId` gains two variants **appended** (L2).
-- **P8-R2. Width 4, for both.** FIX's longest `MsgType` wire value is two
-  characters (`AA`, `AB`, `BZ`), `Side`'s is one. Four bytes packs into a
-  `u32` through the existing ASCII packing, which makes a side or a message
-  type a `Copy`, orderable, allocation-free key — and leaves headroom for a
-  vendor code of three or four. A value longer than the width is the same
+- **P8-R2. `MsgType` is eight bytes, `Side` is four,** and both are the
+  crate's existing fixed-width ASCII storage — the value's bytes NUL-padded
+  up to the width, the padding trimmed on read, the whole width packed as
+  one integer with no allocation. Neither variant invents an encoding: they
+  fix a width for a storage the crate already has, and they stay well inside
+  its packing limit, so a side or a message type is a `Copy`, orderable key
+  that compares as an integer. Eight for `MsgType` because the standard's
+  own values are one and two characters (`D`, `AB`) but a venue's are the
+  ones that run long, and widening later is a discriminant change, which is
+  a wire contract change (L2). A value longer than the width is the same
   refusal any fixed-ASCII field gives.
 - **P8-R3. `MsgType` is case-sensitive.** `A` is Logon and `a` is QuoteStatusRequest; `Q` is
   DontKnowTrade and `q` is OrderMassCancelRequest; `S` is Quote and `s` is
@@ -687,14 +692,21 @@ datatype benchmark, the datatype and FIX pages.
   need the registry to know what a value means — the opposite of a
   parameter-free discriminant that compares and hashes without touching
   nested state.
-- **Width 4 rather than 2.** *Rejected:* the tight fit. Two bytes packs into
-  a `u16` and holds every standard `MsgType`, and the first venue with a
-  three-character code would need a datatype change, which is a wire
-  contract change (L2). Four is one `u32` either way.
+- **Eight for `MsgType`, four for `Side`, rather than one width for both.**
+  *Rejected:* the tight symmetric fit. Two bytes holds every standard
+  `MsgType` and four holds any plausible one, but the first venue with a
+  longer code would need a discriminant change, which is a wire contract
+  change (L2). `Side` has no such pressure — the standard's values are one
+  character and a venue's are not going to be five — so it takes the
+  narrower width. The asymmetry is deliberate: these are two datatypes, and
+  a width is per-datatype exactly so each can take the one it needs.
 
 ### Tests
 
-1. `ascii_packed` round trip for `D`, `AB`, `1`, `A`, at width 4.
+1. `ascii_packed` round trip through both widths: `D`, `AB` and an
+   eight-character venue type as `MsgType`; `1`, `2` as `Side`. Assert the
+   stored bytes are NUL-padded to the width and that the read back value
+   carries no padding (P8-R2).
 2. The six case-colliding `MsgType` pairs resolving to six distinct values,
    and the crate fold never applied to a wire value (P8-R3).
 3. A `Side` and a `MsgType` outside the listing stored and read back

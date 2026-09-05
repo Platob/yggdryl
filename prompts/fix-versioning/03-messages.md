@@ -402,8 +402,8 @@ one fold, one code translation under all three.
   a field, the entries record the whole row, and the root is named
   `unknown`. Nothing is dropped and no row is refused — fill what can be
   filled, and let the type say what could not. `unknown` is a safe name for
-  the same reason `0` is a safe tag (P7-R8): every real `MsgType` is one or
-  two characters from the code set, so none can collide with it, and a
+  the same reason `0` is a safe tag (P7-R8): every `MsgType` the code set
+  declares is one or two characters, so none can collide with it, and a
   caller separating real messages from log noise filters on the type rather
   than on a rule buried in the reader.
 - **P7-R45. A truncated `BeginString` resolves to no version.** `8=FIX4` is
@@ -675,11 +675,12 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
      `from_text` of that answers the converted message (P7-R35, P7-R40).
 
 **Token rules.**
-15. Every row of P7-R61…R48, one case each.
+15. Every row of P7-R61…R71, one case each.
 16. `#54=x` reaching the field whose *rendered key* is `54`, never tag 54;
     `G[0]=M=v` and `G[0].M=v` answering equal messages.
-17. A lone `a=b` refused as not-a-message, while an empty-but-valid message
-    answers `Ok` with no entries.
+17. A lone `a=b` answering an `unknown` message of one field (P7-R69), and a
+    line holding no pairs answering `Ok` with no entries (P7-R71) — while
+    empty *input* is still the typed error.
 18. A `data` field whose value contains the separator, read by its length
     field; a miscounted length taking the separator and appearing in
     `anomalies()` (P7-R72, P7-R74).
