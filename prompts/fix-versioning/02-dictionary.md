@@ -393,8 +393,9 @@ dictionary the other phases describe.
 **Surface.** A generator script beside the repository's existing Python
 tooling, and a generated constants module beside the registry. It *writes*
 `config/fix` (P6-R2): the two trees, and a provenance, a branch and a
-layouts manifest beside them. It *edits* the registry (the two constant accessors), the tests
-and the FIX page.
+layouts manifest beside them. It *edits* the registry (the two constant
+accessors), one row of the landed datatype table (P6-R20), the tests and the
+FIX page.
 
 **Never.** Add an HTTP client, or any dependency, to the crate manifest
 (N2). The generator is a script; the crate only ever reads the committed
@@ -530,9 +531,9 @@ which is why the script reads all of them.
   run,** so P2's digest table and P7's branch inference have real data under
   them rather than a fixture.
 - **P6-R11. Datatypes resolve through `LOGICAL_NAMES`,** already the FIX
-  Latest datatype table: `Qty` is `decimal64(18,8)`, `SeqNum` is `int64`, no
-  second mapping. A FIX datatype the table does not hold is a hard failure,
-  never a silent `utf8`.
+  Latest datatype table: `SeqNum` is `int64`, `Qty` is `float64` (P6-R20),
+  no second mapping. A FIX datatype the table does not hold is a hard
+  failure, never a silent `utf8`.
 - **P6-R12. Every field name is written case-folded** (P3-R7) — no
   separator inserted — with the Orchestra `name` attribute verbatim in
   `display`, in the shards and in the lineage entries alike, so the field's own name and its
@@ -571,6 +572,35 @@ which is why the script reads all of them.
   `SignatureLength(93)`, `Signature(89)`, `CheckSum(10)` in 4.2 and 4.4.
 - **P6-R19. Requiredness rides the lineage, not a parallel table** —
   presence is already `nullable` on the field a version resolves to.
+- **P6-R20. The float family is typed `Float64`, and this is a change to the
+  landed table.** `Qty`, `Price`, `PriceOffset`, `Percentage` and `Amt` are
+  a fixed-scale decimal there — `decimal64(18,8)`, and `decimal128(38,8)` for
+  `Amt`. Retype all five as `Float64`. Four reasons, in order:
+
+  1. **The specification says `float`.** All five are FIX `float` subtypes
+     with no scale stated anywhere in it. A table whose job is to say what a
+     FIX datatype *is* must not improve on the specification; a scale of 8 is
+     an opinion the standard does not hold.
+  2. **A pinned scale is wrong in both directions.** It truncates a venue
+     quoting finer than eight places and pads every value that does not, and
+     which venues quote how is a fact about a counterparty, not about a
+     datatype.
+  3. **Two widths in one family cannot be arithmetic.** `Amt` at 128 bits
+     beside `Qty` at 64 means every consumer multiplying a quantity by a
+     price casts first, per row, forever.
+  4. **Nothing is lost by it, because the entry holds the text.** The
+     authority for a value is the entry as it arrived (P7-R11), the emit
+     reads the entry and not the typed value (P7-R40), and the round trip is
+     therefore untouched. The typed column is a *view* for arithmetic; a
+     consumer needing exact decimal reads the entry or casts the column, and
+     both are still exactly there.
+
+  Say the cost plainly in the doc comment rather than leaving it to be
+  discovered: binary floating point does not hold `0.1`, and a column of
+  `float64` is not where a book's notional should be accumulated over a day.
+  It is 53 bits of mantissa — exact for every integer quantity below `2^53`
+  and for the price grids venues actually quote — and the exact characters
+  never left the row.
 
 FIX Latest's `StandardHeader`, in order: 8 BeginString, 9 BodyLength,
 35 MsgType, 1128 ApplVerID, 1156 ApplExtID, 1129 CstmApplVerID,
@@ -608,6 +638,12 @@ a `fix:lineage` of `{"since":"2.7","name":"LastShares","type":"int"}`,
     carries a hand-written prose label.
 4c. A run with no `--out` writes `config/fix` (P6-R2), and the
     process-wide default registry loads it.
+4c2. `Qty`, `Price`, `PriceOffset`, `Percentage` and `Amt` all resolve to
+     `Float64`, and every generated field of those types carries it —
+     asserted over the whole dictionary, not on one tag (P6-R20). Tag 38 on
+     a `100.00` wire value reads `100.0` typed and re-emits `100.00` from its
+     entry, which is the test that proves the emit does not go through the
+     float (P7-R40).
 4d. All six Orchestra kinds are accounted for (P6-R6): every scraped field
     and group is in a tree, every code set is on its field, every scraped
     datatype resolved, and every component and message is in the layouts

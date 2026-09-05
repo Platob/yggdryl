@@ -68,7 +68,7 @@ Reuse unchanged, found by symbol.
 | its store | `from_handle` / `write_into` over one folder handle: two trees, a folder per branch, one shard per `tag / 100` |
 | `FixMsg` | a value plus the registry that types it |
 | `AsciiEnum`, the `field:enum` document | name to ASCII value, packed through the field's own width |
-| `DataType`, `LOGICAL_NAMES`, the name fold | the schema grammar, the FIX Latest datatype table it falls back to, and the fold making `UTC_Timestamp` and `utctimestamp` one name |
+| `DataType`, `LOGICAL_NAMES`, the name fold | the schema grammar, the FIX Latest datatype table it falls back to, and the fold making `UTC_Timestamp` and `utctimestamp` one name. One entry changes: the float family is retyped `Float64` (P6-R20) |
 | `DataTypeId` | the parameter-free discriminant, and a wire contract |
 | `Scalar`, the value contract | one generic value; one call that checks it against a datatype and rewrites it into that datatype's exact representation |
 | the xxhash module | `xxh32`, `xxh3_64`, a streaming state |
