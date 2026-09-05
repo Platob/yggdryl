@@ -1,9 +1,10 @@
 'use strict'
 
 const { spawnSync } = require('node:child_process')
-const { existsSync } = require('node:fs')
+const { existsSync, readdirSync } = require('node:fs')
 const { dirname, join } = require('node:path')
 
+const root = join(__dirname, '..')
 const npmCli = process.env.npm_execpath ?? join(
   dirname(process.execPath),
   'node_modules',
@@ -15,7 +16,7 @@ if (!existsSync(npmCli)) {
   throw new Error('cannot locate npm-cli.js for the package dry-run')
 }
 const result = spawnSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json'], {
-  cwd: join(__dirname, '..'),
+  cwd: root,
   encoding: 'utf8',
 })
 
@@ -37,6 +38,7 @@ for (const required of [
   'binding.d.ts',
   'defaults.js',
   'index.d.ts',
+  'index.js',
   'records.js',
   'values.js',
 ]) {
@@ -45,6 +47,16 @@ for (const required of [
   }
 }
 
+const nativeFiles = readdirSync(root).filter((path) => path.endsWith('.node'))
+if (nativeFiles.length === 0) {
+  throw new Error('npm package audit found no native module in the package root')
+}
+for (const nativeFile of nativeFiles) {
+  if (!files.has(nativeFile)) {
+    throw new Error(`npm package excludes native module ${nativeFile}`)
+  }
+}
+
 console.log(
-  `package dry-run: ${report.files.length} files, facades present, shasum ${report.shasum}`,
+  `package dry-run: ${report.files.length} files, ${nativeFiles.length} native module(s), shasum ${report.shasum}`,
 )

@@ -220,13 +220,16 @@ and resource-path views in both languages.
 
 Default and schema-only core builds support Rust 1.85. The optional `iceberg`
 feature and both bindings require Rust 1.94 because they include official
-Iceberg 0.10.1. Parquet and Iceberg are non-default core features, so test and
-Clippy passes cover both the default core and the feature-enabled workspace.
+Iceberg 0.10.1. Root Cargo commands select only the core; CI checks its default
+surface and the all-feature workspace separately.
 
 ```console
-cargo fmt --manifest-path rust/Cargo.toml
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --features "parquet iceberg" -- -D warnings
-cargo test --manifest-path rust/Cargo.toml --features "parquet iceberg"
+cargo fmt --all -- --check
+cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets --all-features
+cargo check -p yggdryl --profile bench --benches --all-features
 python scripts/check_docs_examples.py
 python -m mkdocs build --strict
 ```
