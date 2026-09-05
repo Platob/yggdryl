@@ -15,7 +15,7 @@
 //! use yggdryl::text::{Formatting, Indent};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let value = Scalar::from_record([("id", Scalar::U64(1))])?;
+//! let value = Scalar::from_record([("id", Scalar::from(1))])?;
 //!
 //! // The zero-configuration path is unchanged output.
 //! assert_eq!(yggdryl::text::json::into_bytes(&value)?, br#"{"id":1}"#);

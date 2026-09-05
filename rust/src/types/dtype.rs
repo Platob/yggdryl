@@ -8,7 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, TimeUnit, UnionMode};
 
 use super::decimal::validate_decimal;
-use super::geospatial::GeospatialType;
+use super::geospatial::GeospatialParameters;
 use super::nested::{
     DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields, cmp_fields,
     validate_dictionary_key, validate_fields, validate_map_entries, validate_run_ends,
@@ -141,9 +141,9 @@ pub enum DataType {
     /// and the parenthesis is what disambiguates.
     Variant,
     /// Planar geospatial features, carried as Well-Known Binary.
-    Geometry(Arc<GeospatialType>),
+    Geometry(Arc<GeospatialParameters>),
     /// Geospatial features on a sphere or spheroid, carried as WKB.
-    Geography(Arc<GeospatialType>),
+    Geography(Arc<GeospatialParameters>),
 }
 
 impl DataType {

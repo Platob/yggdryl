@@ -75,7 +75,7 @@ fn a_nested_value_is_validated_against_the_datatype_it_claims() {
 fn a_value_can_name_its_own_datatype() {
     let typed = TypedScalar::from_value(Scalar::from(1.5_f64)).unwrap();
     assert_eq!(typed.dtype(), &DataType::Float64);
-    assert_eq!(typed.value(), &Scalar::F64(1.5.into()));
+    assert_eq!(typed.value(), &Scalar::from(1.5_f64));
 
     let column = TypedScalar::from_value(Scalar::from_sequence([Scalar::from(1_i64)])).unwrap();
     assert_eq!(
@@ -100,10 +100,10 @@ fn both_halves_come_back_out() {
 
 #[test]
 fn pairings_order_and_stably_hash_both_halves() {
-    let first = TypedScalar::from_parts(DataType::Int32, Scalar::I32(7)).unwrap();
+    let first = TypedScalar::from_parts(DataType::Int32, Scalar::from(7)).unwrap();
     let equal = first.clone();
-    let later_value = TypedScalar::from_parts(DataType::Int32, Scalar::I32(8)).unwrap();
-    let later_type = TypedScalar::from_parts(DataType::Int64, Scalar::I64(7)).unwrap();
+    let later_value = TypedScalar::from_parts(DataType::Int32, Scalar::from(8)).unwrap();
+    let later_type = TypedScalar::from_parts(DataType::Int64, Scalar::from(7)).unwrap();
 
     assert_eq!(first.stable_hash(), equal.stable_hash());
     assert!(first < later_value);
@@ -130,7 +130,7 @@ fn a_marker_narrows_a_pairing_to_one_datatype_at_compile_time() {
 
     let price = Int64Scalar::new(Scalar::from(7_i64)).unwrap();
     assert_eq!(price.dtype(), &DataType::Int64);
-    assert_eq!(price.value(), &Scalar::I64(7));
+    assert_eq!(price.value(), &Scalar::from(7));
 
     // The marker is checked, and the value is still checked against it.
     assert!(Int64Scalar::try_from_parts(DataType::Int64, Scalar::from(7_i64)).is_ok());
@@ -205,7 +205,7 @@ fn a_marker_is_a_view_of_the_same_pairing_and_costs_nothing() {
             .try_into_typed::<crate::types::text::Utf8Type>()
             .is_err()
     );
-    assert_eq!(narrowed.into_value(), Scalar::I64(7));
+    assert_eq!(narrowed.into_value(), Scalar::from(7));
 
     // A parameterized datatype keeps its parameters in the pairing, not the marker.
     let stamp = DateTime64Scalar::try_from_parts(
@@ -274,7 +274,7 @@ mod arrow {
             .into_arrow_array()
             .unwrap();
         let typed = Int64Scalar::try_from_arrow_array(DataType::Int64, array.as_ref()).unwrap();
-        assert_eq!(typed.value(), &Scalar::I64(7));
+        assert_eq!(typed.value(), &Scalar::from(7));
 
         let refused = Utf8Scalar::try_from_arrow_array(DataType::Int64, array.as_ref())
             .expect_err("an int64 is not a utf8");

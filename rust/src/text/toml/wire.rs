@@ -5,6 +5,7 @@ use std::io::Write;
 use base64::Engine as _;
 
 use crate::timezone::{civil_from_days, days_from_civil};
+use crate::types::{Nested, Temporal};
 use crate::{Error, Result, Scalar, TimeUnit, Timezone};
 
 const SECONDS_PER_DAY: i64 = 86_400;
@@ -123,14 +124,19 @@ const fn offset_seconds(offset: toml::value::Offset) -> i32 {
 pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
     observe_depth(1, maximum)?;
     match value {
-        Scalar::Record(entries) => {
-            for value in entries.values() {
+        Scalar::Nested(Nested::Record(entries)) => {
+            for value in entries.as_map().values() {
                 check_value(value, 1, maximum)?;
             }
             Ok(())
         }
-        Scalar::Mapping(entries) if entries.iter().all(|(key, _)| key.as_str().is_some()) => {
-            for (_, value) in entries.iter() {
+        Scalar::Nested(Nested::Mapping(entries))
+            if entries
+                .as_slice()
+                .iter()
+                .all(|(key, _)| key.as_str().is_some()) =>
+        {
+            for (_, value) in entries.as_slice() {
                 check_value(value, 1, maximum)?;
             }
             Ok(())
@@ -142,38 +148,41 @@ pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
 fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
     match value {
         Scalar::Null => Err(codec_error("TOML cannot represent null")),
-        Scalar::U64(value) if i64::try_from(*value).is_err() => {
+        Scalar::Integer(value)
+            if value
+                .as_i128()
+                .and_then(|value| i64::try_from(value).ok())
+                .is_none() =>
+        {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Scalar::I128(value) if i64::try_from(*value).is_err() => {
-            Err(codec_error("TOML integer exceeds i64"))
-        }
-        Scalar::U128(value) if i64::try_from(*value).is_err() => {
-            Err(codec_error("TOML integer exceeds i64"))
-        }
-        Scalar::Sequence(values) => {
+        Scalar::Nested(Nested::Sequence(values)) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
-            for value in values.iter() {
+            for value in values.as_slice() {
                 check_value(value, depth, maximum)?;
             }
             Ok(())
         }
-        Scalar::Record(entries) => {
+        Scalar::Nested(Nested::Record(entries)) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
-            for value in entries.values() {
+            for value in entries.as_map().values() {
                 check_value(value, depth, maximum)?;
             }
             Ok(())
         }
-        Scalar::Mapping(entries) => {
-            if !entries.iter().all(|(key, _)| key.as_str().is_some()) {
+        Scalar::Nested(Nested::Mapping(entries)) => {
+            if !entries
+                .as_slice()
+                .iter()
+                .all(|(key, _)| key.as_str().is_some())
+            {
                 return Err(codec_error("TOML table keys must be strings"));
             }
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
-            for (_, value) in entries.iter() {
+            for (_, value) in entries.as_slice() {
                 check_value(value, depth, maximum)?;
             }
             Ok(())
@@ -199,8 +208,8 @@ pub(super) fn write_document<W: Write>(
     layout: Layout,
 ) -> Result<()> {
     match value {
-        Scalar::Record(entries) => {
-            for (name, value) in entries.iter() {
+        Scalar::Nested(Nested::Record(entries)) => {
+            for (name, value) in entries.as_map() {
                 write_quoted(writer, name)?;
                 writer.write_all(b" = ")?;
                 write_scalar(writer, value, layout, 0)?;
@@ -208,8 +217,8 @@ pub(super) fn write_document<W: Write>(
             }
             Ok(())
         }
-        Scalar::Mapping(entries) => {
-            for (key, value) in entries.iter() {
+        Scalar::Nested(Nested::Mapping(entries)) => {
+            for (key, value) in entries.as_slice() {
                 let key = key
                     .as_str()
                     .ok_or_else(|| codec_error("TOML table keys must be strings"))?;
@@ -245,66 +254,61 @@ fn write_scalar<W: Write>(
 ) -> Result<()> {
     match value {
         Scalar::Null => return Err(codec_error("TOML cannot represent null")),
-        Scalar::Bool(value) => writer.write_all(if *value { b"true" } else { b"false" })?,
-        Scalar::I8(value) => write!(writer, "{value}")?,
-        Scalar::I16(value) => write!(writer, "{value}")?,
-        Scalar::I32(value) => write!(writer, "{value}")?,
-        Scalar::I64(value) => write!(writer, "{value}")?,
-        Scalar::U8(value) => write!(writer, "{value}")?,
-        Scalar::U16(value) => write!(writer, "{value}")?,
-        Scalar::U32(value) => write!(writer, "{value}")?,
-        Scalar::U64(value) => write!(
+        Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
+        Scalar::Integer(value) => write!(
             writer,
             "{}",
-            i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
+            value
+                .as_i128()
+                .and_then(|value| i64::try_from(value).ok())
+                .ok_or_else(|| codec_error("TOML integer exceeds i64"))?
         )?,
-        Scalar::I128(value) => write!(
-            writer,
-            "{}",
-            i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
-        )?,
-        Scalar::U128(value) => write!(
-            writer,
-            "{}",
-            i64::try_from(*value).map_err(|_| codec_error("TOML integer exceeds i64"))?
-        )?,
-        Scalar::F16(value) => write_float(writer, value.as_f64())?,
-        Scalar::F32(value) => write_float(writer, value.as_f64())?,
-        Scalar::F64(value) => write_float(writer, value.as_f64())?,
-        Scalar::D128(coefficient, scale) => {
+        Scalar::Floating(value) => write_float(writer, value.as_f64())?,
+        Scalar::Decimal(value) => {
             write_quoted(
                 writer,
-                &crate::types::decimal::scalars::decimal_text(
-                    crate::I256::from_i128(*coefficient),
-                    *scale,
-                ),
+                &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
             )?;
         }
-        Scalar::D256(coefficient, scale) => {
-            write_quoted(
-                writer,
-                &crate::types::decimal::scalars::decimal_text(*coefficient, *scale),
-            )?;
-        }
-        Scalar::String(value) => write_quoted(writer, value)?,
+        Scalar::Text(value) => write_quoted(writer, value.as_str())?,
+        Scalar::Ascii(value) => write_quoted(writer, value.as_str())?,
+        Scalar::Guid(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Enum(value) => write_quoted(writer, value.as_str())?,
-        Scalar::Bytes(value) | Scalar::Geospatial(value) => write_quoted(
+        Scalar::Bytes(value) => write_quoted(
             writer,
-            &base64::engine::general_purpose::STANDARD.encode(value),
+            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         )?,
-        Scalar::Date32(..)
-        | Scalar::Date64(..)
-        | Scalar::Time32(..)
-        | Scalar::Time64(..)
-        | Scalar::DateTime64(..) => write_temporal(writer, value)?,
-        Scalar::Duration32(count, unit, zone) => {
-            write_duration(writer, i64::from(*count), *unit, zone)?;
+        Scalar::Geospatial(value) => write_quoted(
+            writer,
+            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
+        )?,
+        Scalar::Temporal(
+            Temporal::Date32(_)
+            | Temporal::Date64(_)
+            | Temporal::Time32(_)
+            | Temporal::Time64(_)
+            | Temporal::DateTime64(_),
+        ) => write_temporal(writer, value)?,
+        Scalar::Temporal(Temporal::Duration32(value)) => {
+            write_duration(
+                writer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            )?;
         }
-        Scalar::Duration64(count, unit, zone) => write_duration(writer, *count, *unit, zone)?,
-        Scalar::Sequence(values) => write_sequence(writer, values, layout, depth)?,
-        Scalar::Record(entries) => {
+        Scalar::Temporal(Temporal::Duration64(value)) => {
+            write_duration(writer, value.count(), value.unit(), &value.timezone())?
+        }
+        Scalar::Temporal(Temporal::Interval(_)) => {
+            return Err(codec_error("TOML cannot represent an interval"));
+        }
+        Scalar::Nested(Nested::Sequence(values)) => {
+            write_sequence(writer, values.as_slice(), layout, depth)?
+        }
+        Scalar::Nested(Nested::Record(entries)) => {
             writer.write_all(b"{")?;
-            for (index, (name, value)) in entries.iter().enumerate() {
+            for (index, (name, value)) in entries.as_map().iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
@@ -314,9 +318,9 @@ fn write_scalar<W: Write>(
             }
             writer.write_all(b"}")?;
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Nested(Nested::Mapping(entries)) => {
             writer.write_all(b"{")?;
-            for (index, (key, value)) in entries.iter().enumerate() {
+            for (index, (key, value)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
@@ -370,31 +374,36 @@ fn write_temporal<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         return Ok(());
     }
     match value {
-        Scalar::Date32(count, _, zone) => {
-            if !zone.is_naive() {
-                return Err(codec_error("Date32 cannot carry a timezone"));
-            }
-            write!(writer, "{count}")?;
+        Scalar::Temporal(Temporal::Date32(value)) => {
+            write!(writer, "{}", value.count())?;
         }
-        Scalar::Date64(count, _, zone) => {
-            if !zone.is_naive() {
-                return Err(codec_error("Date64 cannot carry a timezone"));
-            }
-            write!(writer, "{count}")?;
+        Scalar::Temporal(Temporal::Date64(value)) => {
+            write!(writer, "{}", value.count())?;
         }
-        Scalar::Time32(count, unit, zone) => {
-            write_time(writer, i64::from(*count), *unit, zone)?;
+        Scalar::Temporal(Temporal::Time32(value)) => {
+            write_time(
+                writer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            )?;
         }
-        Scalar::Time64(count, unit, zone) => write_time(writer, *count, *unit, zone)?,
-        Scalar::DateTime64(count, unit, zone) => {
-            let text = if zone.is_naive() {
-                crate::types::ascii::iso::format_datetime(*count, *unit)
+        Scalar::Temporal(Temporal::Time64(value)) => {
+            write_time(writer, value.count(), value.unit(), &value.timezone())?
+        }
+        Scalar::Temporal(Temporal::DateTime64(value)) => {
+            let text = if value.timezone().is_naive() {
+                crate::types::ascii::iso::format_datetime(value.count(), value.unit())
             } else {
-                crate::types::ascii::iso::format_timestamp(*count, *unit, zone)
+                crate::types::ascii::iso::format_timestamp(
+                    value.count(),
+                    value.unit(),
+                    &value.timezone(),
+                )
             };
             match text {
                 Some(text) => write_quoted(writer, &text)?,
-                None => write!(writer, "{count}")?,
+                None => write!(writer, "{}", value.count())?,
             }
         }
         _ => unreachable!("only datetime-like values reach this helper"),
@@ -434,27 +443,25 @@ fn write_time<W: Write>(writer: &mut W, count: i64, unit: TimeUnit, zone: &Timez
 
 fn native_datetime(value: &Scalar) -> Option<toml::value::Datetime> {
     match value {
-        Scalar::Date32(count, TimeUnit::Day, zone) if zone.is_naive() => {
+        Scalar::Temporal(Temporal::Date32(value)) => Some(toml::value::Datetime {
+            date: Some(toml_date(i64::from(value.count()))?),
+            time: None,
+            offset: None,
+        }),
+        Scalar::Temporal(Temporal::Date64(value)) if value.count().rem_euclid(86_400_000) == 0 => {
             Some(toml::value::Datetime {
-                date: Some(toml_date(i64::from(*count))?),
+                date: Some(toml_date(value.count().div_euclid(86_400_000))?),
                 time: None,
                 offset: None,
             })
         }
-        Scalar::Date64(count, TimeUnit::Millisecond, zone)
-            if zone.is_naive() && count.rem_euclid(86_400_000) == 0 =>
-        {
-            Some(toml::value::Datetime {
-                date: Some(toml_date(count.div_euclid(86_400_000))?),
-                time: None,
-                offset: None,
-            })
+        Scalar::Temporal(Temporal::Time32(value)) => {
+            time_datetime(i64::from(value.count()), value.unit())
         }
-        Scalar::Time32(count, unit, zone) if zone.is_naive() => {
-            time_datetime(i64::from(*count), *unit)
+        Scalar::Temporal(Temporal::Time64(value)) => time_datetime(value.count(), value.unit()),
+        Scalar::Temporal(Temporal::DateTime64(value)) => {
+            datetime_datetime(value.count(), value.unit(), &value.timezone())
         }
-        Scalar::Time64(count, unit, zone) if zone.is_naive() => time_datetime(*count, *unit),
-        Scalar::DateTime64(count, unit, zone) => datetime_datetime(*count, *unit, zone),
         _ => None,
     }
 }

@@ -9,7 +9,7 @@ use crate::types::budget::{
 };
 use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes, ascii_free_text,
-    ascii_padded, ascii_text, code_cell_text, guid_bytes, guid_parse, guid_text,
+    ascii_padded, ascii_text, code_cell_text, guid_bytes, guid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -307,71 +307,61 @@ pub(crate) fn value_from_array(
         // serializes losslessly and compares across resolutions.
         DataType::DateTime64 { unit, timezone } => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
-                Scalar::DateTime64(value, *unit, *timezone)
-            }),
+                Scalar::datetime64(value, *unit, *timezone)
+            })?,
             TimeUnit::Millisecond => primitive!(TimestampMillisecondArray, |value| {
-                Scalar::DateTime64(value, *unit, *timezone)
-            }),
+                Scalar::datetime64(value, *unit, *timezone)
+            })?,
             TimeUnit::Microsecond => primitive!(TimestampMicrosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, *timezone)
-            }),
+                Scalar::datetime64(value, *unit, *timezone)
+            })?,
             TimeUnit::Nanosecond => primitive!(TimestampNanosecondArray, |value| {
-                Scalar::DateTime64(value, *unit, *timezone)
-            }),
+                Scalar::datetime64(value, *unit, *timezone)
+            })?,
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date32 => primitive!(Date32Array, |value| {
-            Scalar::Date32(value, TimeUnit::Day, Timezone::NAIVE)
-        }),
-        DataType::Date64 => primitive!(Date64Array, |value| {
-            Scalar::Date64(value, TimeUnit::Millisecond, Timezone::NAIVE)
-        }),
+        DataType::Date32 => primitive!(Date32Array, |value| { Scalar::date32(value) }),
+        DataType::Date64 => primitive!(Date64Array, |value| { Scalar::date64(value) }),
         DataType::Time32(unit) => match unit {
-            TimeUnit::Second => {
-                primitive!(Time32SecondArray, |value| Scalar::Time32(
-                    value,
-                    *unit,
-                    Timezone::NAIVE
-                ))
-            }
-            TimeUnit::Millisecond => primitive!(Time32MillisecondArray, |value| Scalar::Time32(
+            TimeUnit::Second => primitive!(Time32SecondArray, |value| Scalar::time32(
                 value,
                 *unit,
                 Timezone::NAIVE
-            )),
+            ))?,
+            TimeUnit::Millisecond => primitive!(Time32MillisecondArray, |value| Scalar::time32(
+                value,
+                *unit,
+                Timezone::NAIVE
+            ))?,
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
         DataType::Time64(unit) => match unit {
-            TimeUnit::Microsecond => {
-                primitive!(Time64MicrosecondArray, |value| Scalar::Time64(
-                    value,
-                    *unit,
-                    Timezone::NAIVE
-                ))
-            }
-            TimeUnit::Nanosecond => {
-                primitive!(Time64NanosecondArray, |value| Scalar::Time64(
-                    value,
-                    *unit,
-                    Timezone::NAIVE
-                ))
-            }
+            TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, |value| Scalar::time64(
+                value,
+                *unit,
+                Timezone::NAIVE
+            ))?,
+            TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, |value| Scalar::time64(
+                value,
+                *unit,
+                Timezone::NAIVE
+            ))?,
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
         DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
         DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value| {
-                Scalar::Duration64(value, *unit, Timezone::NAIVE)
-            }),
+                Scalar::duration64(value, *unit)
+            })?,
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, |value| {
-                Scalar::Duration64(value, *unit, Timezone::NAIVE)
-            }),
+                Scalar::duration64(value, *unit)
+            })?,
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, |value| {
-                Scalar::Duration64(value, *unit, Timezone::NAIVE)
-            }),
+                Scalar::duration64(value, *unit)
+            })?,
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value| {
-                Scalar::Duration64(value, *unit, Timezone::NAIVE)
-            }),
+                Scalar::duration64(value, *unit)
+            })?,
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
@@ -396,10 +386,12 @@ pub(crate) fn value_from_array(
                 .value(index)
                 .to_vec(),
         ),
-        // An identifier reads back as its canonical hyphenated spelling.
+        // An identifier reads back as its exact packed scalar leaf.
         DataType::Guid => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::from(guid_text(&guid_parse(fixed.value(index))?))
+            Scalar::Guid(crate::types::Guid::new(u128::from_be_bytes(guid_parse(
+                fixed.value(index),
+            )?)))
         }
         // Fixed storage reads back trimmed: the padding is the layout, not
         // the text. Variable storage holds the bytes it was given.
@@ -504,9 +496,16 @@ pub(crate) fn value_from_array(
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
         // A geospatial column reads back in its canonical value spelling.
-        DataType::Geometry(_) | DataType::Geography(_) => {
-            Scalar::Geospatial(Arc::from(downcast::<BinaryArray>(array)?.value(index)))
-        }
+        DataType::Geometry(_) => Scalar::Geospatial(crate::types::Geospatial::Geometry(
+            crate::types::Geometry::new(Arc::<[u8]>::from(
+                downcast::<BinaryArray>(array)?.value(index),
+            ))?,
+        )),
+        DataType::Geography(_) => Scalar::Geospatial(crate::types::Geospatial::Geography(
+            crate::types::Geography::new(Arc::<[u8]>::from(
+                downcast::<BinaryArray>(array)?.value(index),
+            ))?,
+        )),
         DataType::Variant => {
             return Err(unsupported(
                 dtype,
@@ -1051,7 +1050,7 @@ fn physical_placeholder(dtype: &DataType) -> Result<Scalar> {
         DataType::Union(fields, _) => {
             let (type_id, field) = physical_union_branch(dtype, fields)?;
             Ok(Scalar::from_sequence([
-                Scalar::I64(i64::from(type_id)),
+                Scalar::from(i64::from(type_id)),
                 physical_placeholder(field.dtype())?,
             ]))
         }
@@ -1239,7 +1238,7 @@ fn date_i64(value: &Scalar) -> Result<i64> {
 fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Bytes(bytes) => Ok(Some(bytes)),
+        Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("bytes", value)),
     }
 }
@@ -1247,18 +1246,24 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
 /// Build the sixteen-byte storage of a GUID column.
 ///
 /// Every present value passes the one GUID rule and stores as its sixteen
-/// bytes, so the array is exactly what the field reads back as text.
+/// bytes, so the array is exactly what the field reads back as a GUID.
 fn guid_array(values: &[&Scalar]) -> Result<ArrayRef> {
     let mut bytes = vec![0_u8; values.len() * 16];
     let mut validity = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
-        match guid_bytes(value) {
-            Some(raw) => {
-                bytes[index * 16..][..16].copy_from_slice(&guid_parse(raw)?);
+        match value {
+            Scalar::Guid(guid) => {
+                bytes[index * 16..][..16].copy_from_slice(&guid.into_bytes());
                 validity.push(true);
             }
-            None if matches!(value, Scalar::Null) => validity.push(false),
-            None => return Err(invalid_value_kind("a GUID", value)),
+            _ if matches!(value, Scalar::Null) => validity.push(false),
+            _ => match guid_bytes(value) {
+                Some(raw) => {
+                    bytes[index * 16..][..16].copy_from_slice(&guid_parse(raw)?);
+                    validity.push(true);
+                }
+                None => return Err(invalid_value_kind("a GUID", value)),
+            },
         }
     }
     Ok(Arc::new(FixedSizeBinaryArray::try_new(
@@ -1345,7 +1350,8 @@ fn ascii_array(width: i32, values: &[&Scalar]) -> Result<ArrayRef> {
 fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Geospatial(bytes) | Scalar::Bytes(bytes) => Ok(Some(bytes)),
+        Scalar::Geospatial(bytes) => Ok(Some(bytes.as_bytes())),
+        Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("well-known binary", value)),
     }
 }
@@ -1354,7 +1360,7 @@ fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
 fn optional_str(value: &Scalar) -> Result<Option<&str>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::String(text) => Ok(Some(text)),
+        Scalar::Text(text) => Ok(Some(text.as_str())),
         _ => Err(invalid_value_kind("string", value)),
     }
 }
@@ -1363,7 +1369,7 @@ fn optional_str(value: &Scalar) -> Result<Option<&str>> {
 fn optional_bool(value: &Scalar) -> Result<Option<bool>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Bool(value) => Ok(Some(*value)),
+        Scalar::Boolean(value) => Ok(Some(value.get())),
         _ => Err(invalid_value_kind("boolean", value)),
     }
 }

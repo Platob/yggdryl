@@ -63,10 +63,10 @@ mod representation {
             -3,
         );
 
-        assert!(matches!(narrow, Scalar::D128(..)));
-        assert!(matches!(wide, Scalar::D256(..)));
-        assert!(matches!(narrow_minimum, Scalar::D128(..)));
-        assert!(matches!(wide_negative, Scalar::D256(..)));
+        assert!(narrow.as_d128().is_some());
+        assert!(wide.as_d256().is_some());
+        assert!(narrow_minimum.as_d128().is_some());
+        assert!(wide_negative.as_d256().is_some());
         assert_eq!(narrow.as_decimal(), Some((I256::from_i128(i128::MAX), 2)));
         assert_eq!(wide.as_decimal().map(|parts| parts.1), Some(3));
         assert_eq!(wide_negative.as_decimal().map(|parts| parts.1), Some(-3));

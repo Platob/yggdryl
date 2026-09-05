@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
 use super::{Comparison, Expression, Function, Operator, RECURSION_LIMIT, Safety, Segment};
-use crate::{DataType, Error, Float16, Float32, Float64, I256, Result, Scalar, TypedScalar};
+use crate::{DataType, Error, I256, Result, Scalar, TypedScalar};
 
 /// Which way one ordering key sorts.
 #[derive(
@@ -1074,7 +1074,7 @@ impl<'input> Parser<'input> {
             }
             Some(Token::Text(text)) => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::String(text)));
+                return Ok(Expression::literal(Scalar::from(text)));
             }
             Some(Token::Quoted(name)) => {
                 self.cursor += 1;
@@ -1096,11 +1096,11 @@ impl<'input> Parser<'input> {
             }
             "true" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::Bool(true)));
+                return Ok(Expression::literal(Scalar::from(true)));
             }
             "false" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::Bool(false)));
+                return Ok(Expression::literal(Scalar::from(false)));
             }
             "cast" | "try_cast" => {
                 self.cursor += 1;
@@ -1400,14 +1400,14 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
     };
     let integer = |text: &str| -> Result<Scalar> {
         text.parse::<i128>()
-            .map(Scalar::I128)
+            .map(Scalar::from)
             .map_err(|_| fail("a whole number"))
     };
     let value = match dtype {
         D::Null => Scalar::Null,
         D::Boolean => match text {
-            "true" => Scalar::Bool(true),
-            "false" => Scalar::Bool(false),
+            "true" => Scalar::from(true),
+            "false" => Scalar::from(false),
             _ => return Err(fail("`true` or `false`")),
         },
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => integer(text)?,
@@ -1424,17 +1424,17 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
             .parse::<u128>()
-            .map(Scalar::U128)
+            .map(Scalar::from)
             .map_err(|_| fail("a whole number that is not negative"))?,
-        D::Float16 => Scalar::F16(Float16::from_f16(half::f16::from_f64(
+        D::Float16 => Scalar::from(half::f16::from_f64(
             float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
-        ))),
-        D::Float32 => Scalar::F32(Float32::from_f32(
+        )),
+        D::Float32 => Scalar::from(
             float_from_text(text).ok_or_else(|| fail("a floating-point number"))? as f32,
-        )),
-        D::Float64 => Scalar::F64(Float64::from_f64(
-            float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
-        )),
+        ),
+        D::Float64 => {
+            Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
+        }
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
             Scalar::d128(
                 decimal_from_text(text, *scale).ok_or_else(|| {
@@ -1458,12 +1458,10 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::Currency
         | D::Mic
         | D::Cfi
-        | D::Guid => Scalar::String(SmolStr::new(text)),
-        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => {
-            Scalar::Bytes(Arc::from(
-                bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
-            ))
-        }
+        | D::Guid => Scalar::from(SmolStr::new(text)),
+        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Scalar::from(
+            bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
+        ),
         other => {
             return Err(parse_error(
                 position,

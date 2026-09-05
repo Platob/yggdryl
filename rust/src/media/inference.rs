@@ -42,6 +42,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::{AsciiFamily, Bytes, Decimal, Geospatial, Integer, Nested, Temporal, Text};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
@@ -117,7 +118,10 @@ impl Scalar {
                 "cannot infer a Struct Field from empty rows; pass a Struct Field",
             )));
         }
-        if rows.iter().any(|row| !matches!(row, Self::Record(_))) {
+        if rows
+            .iter()
+            .any(|row| !matches!(row, Self::Nested(Nested::Record(_))))
+        {
             return Err(unnameable(SmolStr::new_static(
                 "positional Sequence rows cannot infer field names; pass a Struct Field",
             )));
@@ -146,92 +150,97 @@ impl Scalar {
         }
         match self {
             Self::Null => Ok(DataType::Null),
-            Self::Bool(_) => Ok(DataType::Boolean),
-            Self::I8(_) => Ok(DataType::Int8),
-            Self::I16(_) => Ok(DataType::Int16),
-            Self::I32(_) => Ok(DataType::Int32),
-            Self::I64(_) => Ok(DataType::Int64),
-            Self::U8(_) => Ok(DataType::UInt8),
-            Self::U16(_) => Ok(DataType::UInt16),
-            Self::U32(_) => Ok(DataType::UInt32),
-            Self::U64(_) => Ok(DataType::UInt64),
+            Self::Boolean(_) => Ok(DataType::Boolean),
+            Self::Integer(Integer::I8(_)) => Ok(DataType::Int8),
+            Self::Integer(Integer::I16(_)) => Ok(DataType::Int16),
+            Self::Integer(Integer::I32(_)) => Ok(DataType::Int32),
+            Self::Integer(Integer::I64(_)) => Ok(DataType::Int64),
+            Self::Integer(Integer::U8(_)) => Ok(DataType::UInt8),
+            Self::Integer(Integer::U16(_)) => Ok(DataType::UInt16),
+            Self::Integer(Integer::U32(_)) => Ok(DataType::UInt32),
+            Self::Integer(Integer::U64(_)) => Ok(DataType::UInt64),
             // Arrow has no 128-bit integer, and an exact decimal with scale
             // zero is an integer, so that is what a wide integer becomes.
-            Self::I128(value) => integer_decimal(digits(value.unsigned_abs())),
-            Self::U128(value) => integer_decimal(digits(*value)),
-            Self::F16(_) => Ok(DataType::Float16),
-            Self::F32(_) => Ok(DataType::Float32),
-            Self::F64(_) => Ok(DataType::Float64),
-            Self::D128(unscaled, scale) => {
-                decimal_dtype(I256::from_i128(*unscaled), *scale, DecimalWidth::D128)
+            Self::Integer(Integer::I128(value)) => {
+                integer_decimal(digits(value.get().unsigned_abs()))
             }
-            Self::D256(unscaled, scale) => decimal_dtype(*unscaled, *scale, DecimalWidth::D256),
-            Self::String(_) => Ok(DataType::Utf8),
+            Self::Integer(Integer::U128(value)) => integer_decimal(digits(value.get())),
+            Self::Floating(value) => Ok(match value {
+                crate::types::Floating::F16(_) => DataType::Float16,
+                crate::types::Floating::F32(_) => DataType::Float32,
+                crate::types::Floating::F64(_) => DataType::Float64,
+            }),
+            Self::Decimal(Decimal::D32(value)) => decimal_dtype(
+                I256::from_i128(i128::from(value.coefficient())),
+                value.scale(),
+                DecimalWidth::D32,
+            ),
+            Self::Decimal(Decimal::D64(value)) => decimal_dtype(
+                I256::from_i128(i128::from(value.coefficient())),
+                value.scale(),
+                DecimalWidth::D64,
+            ),
+            Self::Decimal(Decimal::D128(value)) => decimal_dtype(
+                I256::from_i128(value.coefficient()),
+                value.scale(),
+                DecimalWidth::D128,
+            ),
+            Self::Decimal(Decimal::D256(value)) => {
+                decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::D256)
+            }
+            Self::Text(Text::Utf8(_)) => Ok(DataType::Utf8),
+            Self::Text(Text::LargeUtf8(_)) => Ok(DataType::LargeUtf8),
+            Self::Text(Text::Utf8View(_)) => Ok(DataType::Utf8View),
+            Self::Ascii(AsciiFamily::Ascii(_)) => Ok(DataType::Ascii),
+            Self::Ascii(AsciiFamily::FixedAscii(value)) => DataType::ascii(value.width()),
+            Self::Ascii(AsciiFamily::Country(_)) => Ok(DataType::Country),
+            Self::Ascii(AsciiFamily::Currency(_)) => Ok(DataType::Currency),
+            Self::Ascii(AsciiFamily::Mic(_)) => Ok(DataType::Mic),
+            Self::Ascii(AsciiFamily::Cfi(_)) => Ok(DataType::Cfi),
+            Self::Guid(_) => Ok(DataType::Guid),
             Self::Enum(_) => Ok(DataType::Utf8),
-            // The datatype model has no geospatial family yet, so a geometry
-            // names what it stores: the WKB bytes.
-            Self::Bytes(_) | Self::Geospatial(_) => Ok(DataType::Binary),
-            Self::Date32(_, unit, zone) => {
-                require(
-                    *unit == TimeUnit::Day && zone.is_naive(),
-                    "invalid Date32 parts",
-                )?;
-                Ok(DataType::Date32)
-            }
-            Self::Date64(_, unit, zone) => {
-                require(
-                    *unit == TimeUnit::Millisecond && zone.is_naive(),
-                    "invalid Date64 parts",
-                )?;
-                Ok(DataType::Date64)
-            }
-            Self::Time32(_, unit, zone) => {
-                require(zone.is_naive(), "Time32 cannot carry a timezone")?;
-                DataType::time32(*unit)
-            }
-            Self::Time64(_, unit, zone) => {
-                require(zone.is_naive(), "Time64 cannot carry a timezone")?;
-                DataType::time64(*unit)
-            }
-            Self::DateTime64(_, unit, zone) => {
-                resolution(*unit, "datetime64")?;
+            Self::Bytes(Bytes::Binary(_)) => Ok(DataType::Binary),
+            Self::Bytes(Bytes::FixedSizeBinary(value)) => DataType::fixed_size_binary(
+                i32::try_from(value.as_bytes().len())
+                    .map_err(|_| unnameable("binary width exceeds i32".into()))?,
+            ),
+            Self::Bytes(Bytes::LargeBinary(_)) => Ok(DataType::LargeBinary),
+            Self::Bytes(Bytes::BinaryView(_)) => Ok(DataType::BinaryView),
+            Self::Geospatial(Geospatial::Geometry(_)) => DataType::geometry(None),
+            Self::Geospatial(Geospatial::Geography(_)) => DataType::geography(None, None),
+            Self::Temporal(Temporal::Date32(_)) => Ok(DataType::Date32),
+            Self::Temporal(Temporal::Date64(_)) => Ok(DataType::Date64),
+            Self::Temporal(Temporal::Time32(value)) => DataType::time32(value.unit()),
+            Self::Temporal(Temporal::Time64(value)) => DataType::time64(value.unit()),
+            Self::Temporal(Temporal::DateTime64(value)) => {
+                resolution(value.unit(), "datetime64")?;
                 Ok(DataType::DateTime64 {
-                    unit: *unit,
-                    timezone: *zone,
+                    unit: value.unit(),
+                    timezone: value.timezone(),
                 })
             }
-            Self::Duration32(_, unit, zone) => {
-                require(
-                    unit.is_arrow_time() && zone.is_naive(),
-                    "invalid Duration32 parts",
-                )?;
-                Ok(DataType::Duration32(*unit))
-            }
-            Self::Duration64(_, unit, zone) => {
-                require(
-                    unit.is_arrow_time() && zone.is_naive(),
-                    "invalid Duration64 parts",
-                )?;
-                Ok(DataType::Duration64(*unit))
-            }
-            Self::Sequence(values) => {
-                let (dtype, nullable) = agreed(values.iter(), "sequence item", depth)?;
+            Self::Temporal(Temporal::Duration32(value)) => Ok(DataType::Duration32(value.unit())),
+            Self::Temporal(Temporal::Duration64(value)) => Ok(DataType::Duration64(value.unit())),
+            Self::Temporal(Temporal::Interval(value)) => Ok(DataType::Interval(value.unit())),
+            Self::Nested(Nested::Sequence(values)) => {
+                let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // A mapping's keys are values, not names, so its datatype is a map
             // and not a struct; a struct in this project is described by a
             // sequence, one value per declared field.
-            Self::Mapping(entries) => {
-                let keys = entries.iter().map(|(key, _)| key);
+            Self::Nested(Nested::Mapping(entries)) => {
+                let keys = entries.as_slice().iter().map(|(key, _)| key);
                 let (key, _) = agreed(keys, "mapping key", depth)?;
                 // Arrow fixes the entry nullability itself - a key is required
                 // and a value is not - so only the two datatypes are inferred.
-                let values = entries.iter().map(|(_, value)| value);
+                let values = entries.as_slice().iter().map(|(_, value)| value);
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
-            Self::Record(entries) => DataType::from_fields(
+            Self::Nested(Nested::Record(entries)) => DataType::from_fields(
                 entries
+                    .as_map()
                     .iter()
                     .map(|(name, value)| {
                         let nullable = value.is_null();
@@ -287,11 +296,23 @@ fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
 
 /// Return the exact decimal a coefficient and scale name.
 enum DecimalWidth {
+    D32,
+    D64,
     D128,
     D256,
 }
 
 fn decimal_dtype(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataType> {
+    let precision = decimal_precision(unscaled, scale)?;
+    match width {
+        DecimalWidth::D32 => DataType::decimal32(precision, scale),
+        DecimalWidth::D64 => DataType::decimal64(precision, scale),
+        DecimalWidth::D128 => DataType::decimal128(precision, scale),
+        DecimalWidth::D256 => DataType::decimal256(precision, scale),
+    }
+}
+
+fn decimal_precision(unscaled: I256, scale: i8) -> Result<u8> {
     // Arrow requires a positive scale to fit inside the precision, so a
     // coefficient of 5 at scale 3 is `0.005` and needs three digits, not one.
     let precision = unscaled
@@ -304,11 +325,7 @@ fn decimal_dtype(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataT
             "a decimal of {precision} digits exceeds Arrow's maximum precision of {MAX_DECIMAL_PRECISION}"
         )));
     }
-    let precision = u8::try_from(precision.max(1)).unwrap_or(76);
-    match width {
-        DecimalWidth::D128 => DataType::decimal128(precision, scale),
-        DecimalWidth::D256 => DataType::decimal256(precision, scale),
-    }
+    Ok(u8::try_from(precision.max(1)).unwrap_or(76))
 }
 
 /// Return the exact decimal a 128-bit integer of `digits` digits needs.
@@ -325,10 +342,6 @@ fn resolution(unit: TimeUnit, kind: &'static str) -> Result<()> {
             "a {kind} unit must be a temporal resolution, got {unit}"
         )))
     }
-}
-
-fn require(valid: bool, reason: &'static str) -> Result<()> {
-    valid.then_some(()).ok_or_else(|| unnameable(reason.into()))
 }
 
 /// Return how many decimal digits a magnitude is written with.

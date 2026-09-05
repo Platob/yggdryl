@@ -62,7 +62,7 @@ fn fallback_batch() -> RecordBatch {
     let columns: Vec<(Field, Scalar)> = vec![
         (
             Field::new("id", DataType::Int64, false),
-            rows((0..ROWS as i64).map(Scalar::I64).collect()),
+            rows((0..ROWS as i64).map(Scalar::from).collect()),
         ),
         (
             Field::new("symbol", dictionary.clone(), false),

@@ -85,7 +85,7 @@ const OPEN: &[u8; 2] = b"{{";
 /// # fn main() -> yggdryl::Result<()> {
 /// let placeholders = Placeholders::new()
 ///     .with_variable("ROOT", Scalar::from("/var/log"))
-///     .with_variable("PORT", Scalar::I64(8080));
+///     .with_variable("PORT", Scalar::from(8080));
 /// let loading = Loading::new().with_placeholders(placeholders);
 ///
 /// let document = "path: \"{{ ROOT }}/app\"\nport: \"{{ PORT }}\"\n";
@@ -94,7 +94,7 @@ const OPEN: &[u8; 2] = b"{{";
 /// // Embedded: textual, and the result is a string.
 /// assert_eq!(value.get_key_str("path").and_then(Scalar::as_utf8), Some("/var/log/app"));
 /// // Whole-scalar: the resolved value's own type.
-/// assert_eq!(value.get_key_str("port"), Some(&Scalar::I64(8080)));
+/// assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080)));
 /// # Ok(())
 /// # }
 /// ```
@@ -208,9 +208,7 @@ impl Placeholders {
         if !self.environment {
             return None;
         }
-        std::env::var(name)
-            .ok()
-            .map(|value| Scalar::String(SmolStr::new(value)))
+        std::env::var(name).ok().map(Scalar::from)
     }
 }
 
@@ -279,10 +277,10 @@ pub(crate) fn substitute(value: Scalar, placeholders: &Placeholders) -> Result<S
 /// Substitute through one node, tracking where it sits for diagnostics.
 fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result<Scalar> {
     match value {
-        Scalar::String(text) => scalar(&text, placeholders, path),
-        Scalar::Sequence(values) => {
-            let mut replaced = Vec::with_capacity(values.len());
-            for (index, held) in values.iter().enumerate() {
+        Scalar::Text(text) => scalar(text.as_str(), placeholders, path),
+        Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+            let mut replaced = Vec::with_capacity(values.as_slice().len());
+            for (index, held) in values.as_slice().iter().enumerate() {
                 let mark = path.len();
                 path.push_str(&format!("[{index}]"));
                 replaced.push(walk(held.clone(), placeholders, path)?);
@@ -290,9 +288,9 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Ok(Scalar::from_sequence(replaced))
         }
-        Scalar::Mapping(entries) => {
-            let mut replaced = Vec::with_capacity(entries.len());
-            for (key, held) in entries.iter() {
+        Scalar::Nested(crate::types::Nested::Mapping(entries)) => {
+            let mut replaced = Vec::with_capacity(entries.as_slice().len());
+            for (key, held) in entries.as_slice() {
                 let mark = path.len();
                 if let Some(name) = key.as_str() {
                     path.push('.');
@@ -307,9 +305,9 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Scalar::from_mapping(replaced)
         }
-        Scalar::Record(entries) => {
-            let mut replaced = Vec::with_capacity(entries.len());
-            for (name, held) in entries.iter() {
+        Scalar::Nested(crate::types::Nested::Record(entries)) => {
+            let mut replaced = Vec::with_capacity(entries.as_map().len());
+            for (name, held) in entries.as_map() {
                 let mark = path.len();
                 path.push('.');
                 path.push_str(name);
@@ -334,7 +332,7 @@ fn scalar(text: &str, placeholders: &Placeholders, path: &str) -> Result<Scalar>
     let bytes = text.as_bytes();
     if !present(bytes) {
         // The common case: nothing to do, and nothing allocated to prove it.
-        return Ok(Scalar::String(SmolStr::new(text)));
+        return Ok(Scalar::from(text));
     }
     // A scalar that is exactly one placeholder adopts the resolved value's own
     // type, so this is decided before any rendering happens.
@@ -379,7 +377,7 @@ fn scalar(text: &str, placeholders: &Placeholders, path: &str) -> Result<Scalar>
         cursor = start + end + 2;
     }
     rendered.push_str(&text[cursor..]);
-    Ok(Scalar::String(SmolStr::new(rendered)))
+    Ok(Scalar::from(rendered))
 }
 
 /// The inner text when `text` is exactly one placeholder, and nothing else.
@@ -454,10 +452,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Scalar> {
             format_smolstr!("a JSON scalar literal in `default(...)`: {error}"),
         )
     })?;
-    if matches!(
-        value,
-        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_)
-    ) {
+    if matches!(value, Scalar::Nested(_)) {
         return Err(refusal(
             path,
             at,
@@ -487,55 +482,53 @@ fn named(name: &str) -> bool {
 /// sensible text form inside a path, so it has none here.
 fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
-        Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
-        Scalar::Bool(held) => held.to_string(),
-        Scalar::I8(held) => held.to_string(),
-        Scalar::I16(held) => held.to_string(),
-        Scalar::I32(held) => held.to_string(),
-        Scalar::I64(held) => held.to_string(),
-        Scalar::U8(held) => held.to_string(),
-        Scalar::U16(held) => held.to_string(),
-        Scalar::U32(held) => held.to_string(),
-        Scalar::U64(held) => held.to_string(),
-        Scalar::I128(held) => held.to_string(),
-        Scalar::U128(held) => held.to_string(),
-        Scalar::F16(held) => held.as_f32().to_string(),
-        Scalar::F32(held) => held.as_f32().to_string(),
-        Scalar::F64(held) => held.as_f64().to_string(),
-        Scalar::D128(unscaled, scale) => {
-            crate::types::decimal::scalars::decimal_text(crate::I256::from_i128(*unscaled), *scale)
+        Scalar::Text(text) => return Some(Cow::Borrowed(text.as_str())),
+        Scalar::Ascii(text) => return Some(Cow::Borrowed(text.as_str())),
+        Scalar::Guid(value) => value.to_string(),
+        Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
+        Scalar::Boolean(held) => held.to_string(),
+        Scalar::Integer(held) => held.to_string(),
+        Scalar::Floating(held) => held.to_string(),
+        Scalar::Decimal(held) => held.to_string(),
+        Scalar::Temporal(crate::types::Temporal::Date32(value)) => {
+            iso::format_date(value.count())?.to_string()
         }
-        Scalar::D256(unscaled, scale) => {
-            crate::types::decimal::scalars::decimal_text(*unscaled, *scale)
-        }
-        Scalar::Date32(days, _, _) => iso::format_date(*days)?.to_string(),
-        Scalar::Date64(milliseconds, _, _) => {
-            let days = milliseconds.checked_div(86_400_000)?;
-            if days.checked_mul(86_400_000)? != *milliseconds {
+        Scalar::Temporal(crate::types::Temporal::Date64(value)) => {
+            let days = value.count().checked_div(86_400_000)?;
+            if days.checked_mul(86_400_000)? != value.count() {
                 return None;
             }
             iso::format_date(i32::try_from(days).ok()?)?.to_string()
         }
-        Scalar::Time32(count, unit, zone) => time_text(i64::from(*count), *unit, zone)?,
-        Scalar::Time64(count, unit, zone) => time_text(*count, *unit, zone)?,
-        Scalar::DateTime64(count, unit, zone) if zone.is_naive() => {
-            iso::format_datetime(*count, *unit)?.to_string()
+        Scalar::Temporal(crate::types::Temporal::Time32(value)) => {
+            time_text(i64::from(value.count()), value.unit(), &value.timezone())?
         }
-        Scalar::DateTime64(count, unit, zone) => {
-            iso::format_timestamp(*count, *unit, zone)?.to_string()
+        Scalar::Temporal(crate::types::Temporal::Time64(value)) => {
+            time_text(value.count(), value.unit(), &value.timezone())?
         }
-        Scalar::Duration32(count, unit, _) => {
-            iso::format_duration(i64::from(*count), *unit)?.to_string()
+        Scalar::Temporal(crate::types::Temporal::DateTime64(value))
+            if value.timezone().is_naive() =>
+        {
+            iso::format_datetime(value.count(), value.unit())?.to_string()
         }
-        Scalar::Duration64(count, unit, _) => iso::format_duration(*count, *unit)?.to_string(),
+        Scalar::Temporal(crate::types::Temporal::DateTime64(value)) => {
+            iso::format_timestamp(value.count(), value.unit(), &value.timezone())?.to_string()
+        }
+        Scalar::Temporal(crate::types::Temporal::Duration32(value)) => {
+            iso::format_duration(i64::from(value.count()), value.unit())?.to_string()
+        }
+        Scalar::Temporal(crate::types::Temporal::Duration64(value)) => {
+            iso::format_duration(value.count(), value.unit())?.to_string()
+        }
+        Scalar::Temporal(crate::types::Temporal::Interval(value)) => value.to_string(),
         // A geometry's canonical text is WKT, the spelling every geospatial
         // reader already reads. Malformed WKB still embeds losslessly - as the
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
-        Scalar::Geospatial(bytes) => {
-            crate::types::geospatial::wkb::into_wkt(bytes).unwrap_or_else(|_| hex_text(bytes))
-        }
+        Scalar::Geospatial(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
+            .unwrap_or_else(|_| hex_text(value.as_bytes())),
+        Scalar::Bytes(value) => hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.
         _ => return None,

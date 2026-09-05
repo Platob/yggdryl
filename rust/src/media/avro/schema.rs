@@ -9,7 +9,7 @@
 //! schema be finite.
 //!
 //! Logical types are modeled because the value model above this codec is
-//! typed: a `date` int decodes as a calendar [`Scalar::Date32`](crate::Scalar)
+//! typed: a `date` int decodes as a calendar [`Date32`](crate::types::temporal::Date32)
 //! rather than a bare count, and a `decimal` keeps its unscaled integer and
 //! scale exactly. An annotation this implementation does not know - or one
 //! whose attributes are invalid for its underlying type - degrades to the
@@ -329,23 +329,28 @@ impl Hash for Schema {
 /// Normalize JSON objects independently of how a language boundary represented
 /// them (`Mapping` or `Record`) while preserving every key and nested value.
 fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
+    use crate::types::Nested;
+
     match value {
-        Scalar::Sequence(values) => Ok(Scalar::from_sequence(
+        Scalar::Nested(Nested::Sequence(values)) => Ok(Scalar::from_sequence(
             values
+                .as_slice()
                 .iter()
                 .map(normalized_schema_json)
                 .collect::<Result<Vec<_>>>()?,
         )),
-        Scalar::Record(entries) => Scalar::from_record(
+        Scalar::Nested(Nested::Record(entries)) => Scalar::from_record(
             entries
+                .as_map()
                 .iter()
                 .map(|(name, value)| {
                     normalized_schema_json(value).map(|value| (name.clone(), value))
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        Scalar::Mapping(entries) => Scalar::from_record(
+        Scalar::Nested(Nested::Mapping(entries)) => Scalar::from_record(
             entries
+                .as_slice()
                 .iter()
                 .map(|(name, value)| {
                     let name = name.as_str().ok_or_else(|| {

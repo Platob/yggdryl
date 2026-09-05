@@ -1011,9 +1011,19 @@ mod values {
 
     use super::super::{Xxh3_64, xxh3_64};
     use crate::{
-        Codec, DataTypeId, DigestAlgorithm, EnumScalar, Float16, Float32, Float64, I256, Scalar,
+        Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, I256, Scalar,
         TimeUnit, Timezone,
     };
+
+    const POINT_WKB: [u8; 21] = [
+        1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    fn geometry() -> Scalar {
+        Scalar::Geospatial(crate::types::Geospatial::Geometry(
+            crate::types::Geometry::new(POINT_WKB).unwrap(),
+        ))
+    }
 
     /// A sink that keeps the feed so two values can be compared byte for byte.
     #[derive(Default)]
@@ -1040,39 +1050,39 @@ mod values {
     fn corpus() -> Vec<Scalar> {
         vec![
             Scalar::Null,
-            Scalar::Bool(false),
-            Scalar::Bool(true),
-            Scalar::I8(-1),
-            Scalar::I8(0),
-            Scalar::I8(1),
-            Scalar::I16(-300),
-            Scalar::I32(0x31),
-            Scalar::I64(i64::MIN),
-            Scalar::I128(i128::MIN),
-            Scalar::U8(0x31),
-            Scalar::U16(u16::MAX),
-            Scalar::U32(u32::MAX),
-            Scalar::U64(u64::MAX),
-            Scalar::U128(u128::MAX),
-            Scalar::F16(Float16::from_f16(half::f16::from_f32(1.5))),
-            Scalar::F32(Float32::from_f32(1.5)),
-            Scalar::F64(Float64::from_f64(1.5)),
-            Scalar::F64(Float64::from_f64(-0.0)),
-            Scalar::F64(Float64::from_f64(0.0)),
-            Scalar::F64(Float64::from_f64(f64::NAN)),
-            Scalar::D128(100, 2),
-            Scalar::D128(-1, 0),
-            Scalar::D256(I256::from_i128(1), 0),
+            Scalar::from(false),
+            Scalar::from(true),
+            Scalar::from(-1_i8),
+            Scalar::from(0_i8),
+            Scalar::from(1_i8),
+            Scalar::from(-300_i16),
+            Scalar::from(0x31_i32),
+            Scalar::from(i64::MIN),
+            Scalar::from(i128::MIN),
+            Scalar::from(0x31_u8),
+            Scalar::from(u16::MAX),
+            Scalar::from(u32::MAX),
+            Scalar::from(u64::MAX),
+            Scalar::from(u128::MAX),
+            Scalar::from(Float16::from_f16(half::f16::from_f32(1.5))),
+            Scalar::from(Float32::from_f32(1.5)),
+            Scalar::from(Float64::from_f64(1.5)),
+            Scalar::from(Float64::from_f64(-0.0)),
+            Scalar::from(Float64::from_f64(0.0)),
+            Scalar::from(Float64::from_f64(f64::NAN)),
+            Scalar::d128(100, 2),
+            Scalar::d128(-1, 0),
+            Scalar::d256(I256::from_i128(1), 0),
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
-            Scalar::Enum(EnumScalar::Codec(Codec::Gzip)),
-            Scalar::Enum(EnumScalar::Codec(Codec::Zstd)),
-            Scalar::Enum(EnumScalar::DataTypeId(DataTypeId::Int128)),
-            Scalar::Bytes(Arc::from(b"".as_slice())),
-            Scalar::Bytes(Arc::from(b"1".as_slice())),
-            Scalar::Bytes(Arc::from(b"AAPL".as_slice())),
-            Scalar::Geospatial(Arc::from(b"AAPL".as_slice())),
+            Scalar::Enum(Enum::Codec(Codec::Gzip)),
+            Scalar::Enum(Enum::Codec(Codec::Zstd)),
+            Scalar::Enum(Enum::DataTypeId(DataTypeId::Int128)),
+            Scalar::from(Arc::from(b"".as_slice())),
+            Scalar::from(Arc::from(b"1".as_slice())),
+            Scalar::from(Arc::from(b"AAPL".as_slice())),
+            geometry(),
             Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
             Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
             Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
@@ -1084,9 +1094,9 @@ mod values {
             Scalar::from_sequence([]),
             Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")]),
             Scalar::from_sequence([Scalar::from("ab")]),
-            Scalar::from_mapping([(Scalar::from("a"), Scalar::I64(1))]).unwrap(),
-            Scalar::from_record([("a", Scalar::I64(1))]).unwrap(),
-            Scalar::from_record([("a", Scalar::I64(1)), ("b", Scalar::Null)]).unwrap(),
+            Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).unwrap(),
+            Scalar::from_record([("a", Scalar::from(1_i64))]).unwrap(),
+            Scalar::from_record([("a", Scalar::from(1_i64)), ("b", Scalar::Null)]).unwrap(),
         ]
     }
 
@@ -1095,18 +1105,18 @@ mod values {
         // The pairs that make this non-trivial: `Scalar` compares across
         // widths, so a feed keyed on the storage width would break here.
         let equal: [(Scalar, Scalar); 8] = [
-            (Scalar::I8(1), Scalar::I64(1)),
-            (Scalar::U8(1), Scalar::I128(1)),
-            (Scalar::I64(-1), Scalar::I128(-1)),
+            (Scalar::from(1), Scalar::from(1)),
+            (Scalar::from(1), Scalar::from(1)),
+            (Scalar::from(-1), Scalar::from(-1)),
             (
-                Scalar::F32(Float32::from_f32(1.5)),
-                Scalar::F64(Float64::from_f64(1.5)),
+                Scalar::from(Float32::from_f32(1.5)),
+                Scalar::from(Float64::from_f64(1.5)),
             ),
             (
-                Scalar::F16(Float16::from_f16(half::f16::from_f32(1.5))),
-                Scalar::F64(Float64::from_f64(1.5)),
+                Scalar::from(Float16::from_f16(half::f16::from_f32(1.5))),
+                Scalar::from(Float64::from_f64(1.5)),
             ),
-            (Scalar::D128(100, 2), Scalar::D256(I256::from_i128(1), 0)),
+            (Scalar::d128(100, 2), Scalar::d256(I256::from_i128(1), 0)),
             (
                 Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
                 Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
@@ -1152,14 +1162,14 @@ mod values {
         }
 
         // The specific boundaries a tagless feed would collapse.
-        assert_ne!(feed(&Scalar::from("1")), feed(&Scalar::U8(0x31)));
+        assert_ne!(feed(&Scalar::from("1")), feed(&Scalar::from(0x31)));
         assert_ne!(
             feed(&Scalar::from("1")),
-            feed(&Scalar::Bytes(Arc::from(b"1".as_slice())))
+            feed(&Scalar::from(Arc::from(b"1".as_slice())))
         );
         assert_ne!(
-            feed(&Scalar::Bytes(Arc::from(b"AAPL".as_slice()))),
-            feed(&Scalar::Geospatial(Arc::from(b"AAPL".as_slice())))
+            feed(&Scalar::from(Arc::from(b"AAPL".as_slice()))),
+            feed(&geometry())
         );
         assert_ne!(
             feed(&Scalar::from_sequence([
@@ -1172,7 +1182,7 @@ mod values {
         assert_ne!(feed(&Scalar::Null), feed(&Scalar::from("")));
         assert_ne!(
             feed(&Scalar::Null),
-            feed(&Scalar::Bytes(Arc::from(b"".as_slice())))
+            feed(&Scalar::from(Arc::from(b"".as_slice())))
         );
     }
 
@@ -1182,24 +1192,21 @@ mod values {
         // the end moves these numbers and changes every stored digest.
         let cases: [(Scalar, DataTypeId); 16] = [
             (Scalar::Null, DataTypeId::Null),
-            (Scalar::Bool(true), DataTypeId::Boolean),
-            (Scalar::U8(1), DataTypeId::UInt128),
-            (Scalar::I8(-1), DataTypeId::Int128),
-            (Scalar::F32(Float32::from_f32(1.5)), DataTypeId::Float64),
-            (Scalar::D128(1, 0), DataTypeId::Decimal256),
+            (Scalar::from(true), DataTypeId::Boolean),
+            (Scalar::from(1), DataTypeId::UInt128),
+            (Scalar::from(-1), DataTypeId::Int128),
+            (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
+            (Scalar::d128(1, 0), DataTypeId::Decimal256),
             (Scalar::from("AAPL"), DataTypeId::Utf8),
             (
-                Scalar::Enum(EnumScalar::Codec(Codec::Gzip)),
+                Scalar::Enum(Enum::Codec(Codec::Gzip)),
                 DataTypeId::Dictionary,
             ),
             (
-                Scalar::Bytes(Arc::from(b"AAPL".as_slice())),
+                Scalar::from(Arc::from(b"AAPL".as_slice())),
                 DataTypeId::Binary,
             ),
-            (
-                Scalar::Geospatial(Arc::from(b"AAPL".as_slice())),
-                DataTypeId::Geometry,
-            ),
+            (geometry(), DataTypeId::Geometry),
             (
                 Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
                 DataTypeId::Date64,
@@ -1234,7 +1241,7 @@ mod values {
         // not only its first byte.
         assert_eq!(feed(&Scalar::Null), vec![DataTypeId::Null.as_u8()]);
         assert_eq!(
-            feed(&Scalar::Bool(true)),
+            feed(&Scalar::from(true)),
             vec![DataTypeId::Boolean.as_u8(), 1]
         );
         let mut expected = vec![DataTypeId::Utf8.as_u8()];
@@ -1315,36 +1322,34 @@ mod values {
     fn value_bytes_are_the_payload_alone() {
         assert_eq!(&*Scalar::from("AAPL").as_value_bytes().unwrap(), b"AAPL");
         assert_eq!(
-            &*Scalar::Bytes(Arc::from(b"\x00\xff".as_slice()))
+            &*Scalar::from(Arc::from(b"\x00\xff".as_slice()))
                 .as_value_bytes()
                 .unwrap(),
             &[0x00, 0xff]
         );
+        assert_eq!(&*geometry().as_value_bytes().unwrap(), &POINT_WKB);
+        assert_eq!(&*Scalar::from(true).as_value_bytes().unwrap(), &[1]);
+        assert_eq!(&*Scalar::from(false).as_value_bytes().unwrap(), &[0]);
         assert_eq!(
-            &*Scalar::Geospatial(Arc::from(b"wkb".as_slice()))
-                .as_value_bytes()
-                .unwrap(),
-            b"wkb"
+            &*Scalar::from(1_i32).as_value_bytes().unwrap(),
+            &[1, 0, 0, 0]
         );
-        assert_eq!(&*Scalar::Bool(true).as_value_bytes().unwrap(), &[1]);
-        assert_eq!(&*Scalar::Bool(false).as_value_bytes().unwrap(), &[0]);
-        assert_eq!(&*Scalar::I32(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
-        assert_eq!(&*Scalar::U8(0x31).as_value_bytes().unwrap(), b"1");
+        assert_eq!(&*Scalar::from(0x31_u8).as_value_bytes().unwrap(), b"1");
         assert_eq!(
-            &*Scalar::F64(Float64::from_f64(1.5))
+            &*Scalar::from(Float64::from_f64(1.5))
                 .as_value_bytes()
                 .unwrap(),
             &1.5_f64.to_bits().to_le_bytes()
         );
         assert_eq!(
-            Scalar::D256(I256::from_i128(1), 3)
+            Scalar::d256(I256::from_i128(1), 3)
                 .as_value_bytes()
                 .unwrap()
                 .len(),
             32
         );
         assert_eq!(
-            &*Scalar::Enum(EnumScalar::Codec(Codec::Gzip))
+            &*Scalar::Enum(Enum::Codec(Codec::Gzip))
                 .as_value_bytes()
                 .unwrap(),
             b"gzip"
@@ -1369,19 +1374,19 @@ mod values {
         );
 
         // The widths a payload view keeps, which the canonical feed collapses.
-        assert_eq!(Scalar::I8(1).as_value_bytes().unwrap().len(), 1);
-        assert_eq!(Scalar::I64(1).as_value_bytes().unwrap().len(), 8);
+        assert_eq!(Scalar::from(1_i8).as_value_bytes().unwrap().len(), 1);
+        assert_eq!(Scalar::from(1_i64).as_value_bytes().unwrap().len(), 8);
         assert_ne!(
-            Scalar::I8(1).as_value_bytes().unwrap(),
-            Scalar::I64(1).as_value_bytes().unwrap()
+            Scalar::from(1_i8).as_value_bytes().unwrap(),
+            Scalar::from(1_i64).as_value_bytes().unwrap()
         );
-        assert_eq!(feed(&Scalar::I8(1)), feed(&Scalar::I64(1)));
+        assert_eq!(feed(&Scalar::from(1_i8)), feed(&Scalar::from(1_i64)));
     }
 
     #[test]
     fn a_value_byte_view_compares_and_hashes_as_its_bytes() {
         let text = Scalar::from("1");
-        let number = Scalar::U8(0x31);
+        let number = Scalar::from(0x31_u8);
         let borrowed = text.as_value_bytes().unwrap();
         let inline = number.as_value_bytes().unwrap();
         assert_eq!(borrowed, inline);
@@ -1399,19 +1404,21 @@ mod values {
     fn a_record_feeds_its_fields_in_sorted_name_order() {
         // The stored map is sorted, so two records built in different orders
         // are one value and feed one way.
-        let left = Scalar::from_record([("b", Scalar::I64(2)), ("a", Scalar::I64(1))]).unwrap();
-        let right = Scalar::from_record([("a", Scalar::I64(1)), ("b", Scalar::I64(2))]).unwrap();
+        let left =
+            Scalar::from_record([("b", Scalar::from(2_i64)), ("a", Scalar::from(1_i64))]).unwrap();
+        let right =
+            Scalar::from_record([("a", Scalar::from(1_i64)), ("b", Scalar::from(2_i64))]).unwrap();
         assert_eq!(feed(&left), feed(&right));
 
         // A mapping is insertion-ordered, so its order is part of the value.
         let left = Scalar::from_mapping([
-            (Scalar::from("b"), Scalar::I64(2)),
-            (Scalar::from("a"), Scalar::I64(1)),
+            (Scalar::from("b"), Scalar::from(2)),
+            (Scalar::from("a"), Scalar::from(1)),
         ])
         .unwrap();
         let right = Scalar::from_mapping([
-            (Scalar::from("a"), Scalar::I64(1)),
-            (Scalar::from("b"), Scalar::I64(2)),
+            (Scalar::from("a"), Scalar::from(1)),
+            (Scalar::from("b"), Scalar::from(2)),
         ])
         .unwrap();
         assert_ne!(left, right);

@@ -1255,13 +1255,13 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
     };
     match (dtype, value) {
         (OfficialPrimitiveType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => {
-            Ok(Scalar::Bool(*value))
+            Ok(Scalar::from(*value))
         }
         (OfficialPrimitiveType::Int, OfficialPrimitiveLiteral::Int(value)) => {
-            Ok(Scalar::I32(*value))
+            Ok(Scalar::from(*value))
         }
         (OfficialPrimitiveType::Long, OfficialPrimitiveLiteral::Long(value)) => {
-            Ok(Scalar::I64(*value))
+            Ok(Scalar::from(*value))
         }
         (OfficialPrimitiveType::Float, OfficialPrimitiveLiteral::Float(value)) => {
             Ok(Scalar::from(value.0))
@@ -1270,7 +1270,7 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             Ok(Scalar::from(value.0))
         }
         (OfficialPrimitiveType::Decimal { scale, .. }, OfficialPrimitiveLiteral::Int128(value)) => {
-            Ok(Scalar::D128(
+            Ok(Scalar::d128(
                 *value,
                 i8::try_from(*scale).map_err(|_| {
                     invalid(format_smolstr!(
@@ -1300,9 +1300,9 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
         (OfficialPrimitiveType::String, OfficialPrimitiveLiteral::String(value)) => {
             Ok(Scalar::from(value.as_str()))
         }
-        (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => Ok(
-            Scalar::String(crate::types::guid_text(&value.to_be_bytes())),
-        ),
+        (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
+            Ok(Scalar::from(crate::types::guid_text(&value.to_be_bytes())))
+        }
         (
             OfficialPrimitiveType::Fixed(_) | OfficialPrimitiveType::Binary,
             OfficialPrimitiveLiteral::Binary(value),
@@ -2340,11 +2340,11 @@ fn summaries_to_value(summaries: &[FieldSummary]) -> Result<Scalar> {
         rows.push(Scalar::from_mapping([
             (
                 Scalar::from("contains_null"),
-                Scalar::Bool(summary.contains_null),
+                Scalar::from(summary.contains_null),
             ),
             (
                 Scalar::from("contains_nan"),
-                summary.contains_nan.map_or(Scalar::Null, Scalar::Bool),
+                summary.contains_nan.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 Scalar::from("lower_bound"),

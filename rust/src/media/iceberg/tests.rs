@@ -71,7 +71,7 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
 
     let data = DataFile {
         file_path: "data/part.parquet".into(),
-        partition: vec![Scalar::I32(2024)],
+        partition: vec![Scalar::from(2024)],
         record_count: 4,
         file_size_in_bytes: 128,
         value_counts: vec![(2, 4), (1, 4)],
@@ -1113,10 +1113,13 @@ mod partition_specs {
         let partition = spec.partition_field(&schema).unwrap();
         let plan = spec.write_transforms(&schema, &partition).unwrap();
 
-        assert!(matches!(
-            plan[0].partition_value(Scalar::date32(i32::MAX)).unwrap(),
-            Scalar::I32(_)
-        ));
+        assert!(
+            plan[0]
+                .partition_value(Scalar::date32(i32::MAX))
+                .unwrap()
+                .as_i64()
+                .is_some()
+        );
         assert_eq!(
             plan[1].partition_value(Scalar::from(&b"abcd"[..])).unwrap(),
             Scalar::from(&b"ab"[..])
@@ -2094,12 +2097,12 @@ mod tables {
         assert_eq!(
             files[0].0.partition,
             vec![
-                Scalar::I32(3),
+                Scalar::from(3),
                 Scalar::from("ice"),
-                Scalar::I32(47),
-                Scalar::I32(574),
+                Scalar::from(47),
+                Scalar::from(574),
                 Scalar::date32(17_486),
-                Scalar::I32(419_686),
+                Scalar::from(419_686),
                 Scalar::Null,
             ]
         );
@@ -5062,9 +5065,9 @@ mod datatype_coverage {
         ];
         let rows = vec![
             vec![
-                Scalar::Bool(true),
-                Scalar::I64(41),
-                Scalar::I64(1),
+                Scalar::from(true),
+                Scalar::from(41),
+                Scalar::from(1),
                 Scalar::from(0.5_f32),
                 Scalar::from(2.25_f64),
                 Scalar::d128(1_500_000, 4),
@@ -5081,7 +5084,7 @@ mod datatype_coverage {
                     crate::Timezone::NAIVE,
                 )
                 .unwrap(),
-                Scalar::String("alpha".into()),
+                Scalar::from("alpha"),
                 Scalar::from(vec![1_u8, 2]),
                 Scalar::from(vec![9_u8, 9, 9, 9]),
             ],
@@ -5089,7 +5092,7 @@ mod datatype_coverage {
             vec![
                 Scalar::Null,
                 Scalar::Null,
-                Scalar::I64(2),
+                Scalar::from(2),
                 Scalar::Null,
                 Scalar::Null,
                 Scalar::Null,
@@ -5105,8 +5108,8 @@ mod datatype_coverage {
         let records = round_trip("types-primitive", children, &rows);
         assert_eq!(records.len(), 2);
         let first = records[0].as_sequence().unwrap();
-        assert_eq!(first[0], Scalar::Bool(true));
-        assert_eq!(first[2], Scalar::I64(1));
+        assert_eq!(first[0], Scalar::from(true));
+        assert_eq!(first[2], Scalar::from(1));
         assert_eq!(first[5], Scalar::d128(1_500_000, 4));
         assert_eq!(
             first[8],
@@ -5143,15 +5146,14 @@ mod datatype_coverage {
             DataType::List(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
         ];
 
-        let point_value = |x: i64, label: &str| {
-            Scalar::from_sequence([Scalar::I64(x), Scalar::String(label.into())])
-        };
+        let point_value =
+            |x: i64, label: &str| Scalar::from_sequence([Scalar::from(x), Scalar::from(label)]);
         let deep_value = Scalar::from_sequence([
-            Scalar::from_sequence([Scalar::I64(1), Scalar::Null, Scalar::I64(3)]),
+            Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)]),
             Scalar::from_mapping([(Scalar::from("origin"), point_value(0, "o"))]).unwrap(),
         ]);
         let rows = vec![vec![
-            Scalar::I64(1),
+            Scalar::from(1),
             point_value(7, "seven"),
             Scalar::from_sequence([deep_value]),
         ]];
@@ -5160,13 +5162,9 @@ mod datatype_coverage {
         assert_eq!(records.len(), 1);
         let values = records[0].as_sequence().unwrap();
         // The struct survives with both children.
-        match &values[1] {
-            Scalar::Sequence(fields) => {
-                assert_eq!(fields[0], Scalar::I64(7));
-                assert_eq!(fields[1], Scalar::String("seven".into()));
-            }
-            other => panic!("expected a struct row back, got {}", other.kind()),
-        }
+        let fields = values[1].as_sequence().expect("a struct row");
+        assert_eq!(fields[0], Scalar::from(7));
+        assert_eq!(fields[1], Scalar::from("seven"));
         // The deep list<struct<list, map<utf8, struct>>> survives one level in.
         let outer = values[2].as_sequence().expect("a list of deep rows");
         assert_eq!(outer.len(), 1);
@@ -5200,8 +5198,8 @@ mod datatype_coverage {
                 .map(|index| {
                     rows.iter()
                         .map(|(id, venue, price)| match index {
-                            0 => Scalar::I64(*id),
-                            1 => Scalar::String((*venue).into()),
+                            0 => Scalar::from(*id),
+                            1 => Scalar::from(*venue),
                             _ => Scalar::d128(*price, 4),
                         })
                         .collect()
@@ -5238,7 +5236,9 @@ mod datatype_coverage {
             let value = crate::arrow::batch_to_value(&batch.unwrap()).unwrap();
             for row in value.as_sequence().unwrap() {
                 let fields = row.as_sequence().unwrap();
-                let Scalar::I64(id) = fields[0] else { panic!() };
+                let Some(id) = fields[0].as_i64() else {
+                    panic!()
+                };
                 prices.insert(id, fields[2].clone());
             }
         }

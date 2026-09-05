@@ -60,11 +60,11 @@ fn decode(raw: RawValue, depth: usize, state: &mut DecodeState) -> Result<Scalar
     state.visit(depth)?;
     match raw {
         RawValue::Null => Ok(Scalar::Null),
-        RawValue::Bool(value) => Ok(Scalar::Bool(value)),
-        RawValue::I64(value) => Ok(Scalar::I64(value)),
-        RawValue::U64(value) => Ok(Scalar::U64(value)),
-        RawValue::I128(value) => Ok(Scalar::I128(value)),
-        RawValue::U128(value) => Ok(Scalar::U128(value)),
+        RawValue::Bool(value) => Ok(Scalar::from(value)),
+        RawValue::I64(value) => Ok(Scalar::from(value)),
+        RawValue::U64(value) => Ok(Scalar::from(value)),
+        RawValue::I128(value) => Ok(Scalar::from(value)),
+        RawValue::U128(value) => Ok(Scalar::from(value)),
         RawValue::Float(value) => Ok(Scalar::from(value)),
         RawValue::String(value) => Ok(Scalar::from(value)),
         RawValue::Bytes(value) => Ok(Scalar::from(value)),
@@ -102,10 +102,10 @@ fn decode_mapping(
 
     if entries.iter().all(|(key, _)| key.as_str().is_some()) {
         let record = entries.into_iter().map(|(key, value)| {
-            let Scalar::String(name) = key else {
+            let Scalar::Text(crate::types::Text::Utf8(name)) = key else {
                 unreachable!("the record predicate accepted only strings")
             };
-            (name, value)
+            (name.into_inner(), value)
         });
         return Scalar::from_record(record).map_err(|error| positioned(error, positions, state));
     }

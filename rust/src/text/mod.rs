@@ -392,7 +392,9 @@ pub fn into_bytes_with_formatting(
     match format {
         Format::Json => json::into_bytes_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => json::into_bytes_all_with_formatting(values, formatting),
+            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+                json::into_bytes_all_with_formatting(values.as_slice(), formatting)
+            }
             value => json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting),
         },
         Format::Yaml => yaml::into_bytes_with_formatting(value, formatting),
@@ -414,7 +416,9 @@ pub fn into_utf8_with_formatting(
     match format {
         Format::Json => json::into_utf8_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => json::into_utf8_all_with_formatting(values, formatting),
+            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+                json::into_utf8_all_with_formatting(values.as_slice(), formatting)
+            }
             value => json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting),
         },
         Format::Yaml => yaml::into_utf8_with_formatting(value, formatting),
@@ -437,8 +441,8 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
-                json::into_writer_all_with_formatting(values.iter(), writer, formatting)
+            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+                json::into_writer_all_with_formatting(values.as_slice().iter(), writer, formatting)
             }
             value => json::into_writer_all_with_formatting(
                 std::slice::from_ref(value),
@@ -643,50 +647,34 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::Sequence(values) => {
-                for value in values.iter() {
+            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+                for value in values.as_slice() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Mapping(entries) => {
-                for (key, value) in entries.iter() {
+            Scalar::Nested(crate::types::Nested::Mapping(entries)) => {
+                for (key, value) in entries.as_slice() {
                     visit(key, child_depth, maximum, format)?;
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Record(entries) => {
-                for value in entries.values() {
+            Scalar::Nested(crate::types::Nested::Record(entries)) => {
+                for value in entries.as_map().values() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }
             Scalar::Null
-            | Scalar::Bool(_)
-            | Scalar::I8(_)
-            | Scalar::I16(_)
-            | Scalar::I32(_)
-            | Scalar::I64(_)
-            | Scalar::U8(_)
-            | Scalar::U16(_)
-            | Scalar::U32(_)
-            | Scalar::U64(_)
-            | Scalar::I128(_)
-            | Scalar::U128(_)
-            | Scalar::F16(_)
-            | Scalar::F32(_)
-            | Scalar::F64(_)
-            | Scalar::D128(..)
-            | Scalar::D256(..)
-            | Scalar::String(_)
+            | Scalar::Boolean(_)
+            | Scalar::Integer(_)
+            | Scalar::Floating(_)
+            | Scalar::Decimal(_)
+            | Scalar::Temporal(_)
+            | Scalar::Text(_)
+            | Scalar::Ascii(_)
+            | Scalar::Guid(_)
             | Scalar::Enum(_)
             | Scalar::Bytes(_)
-            | Scalar::Geospatial(_)
-            | Scalar::Date32(..)
-            | Scalar::Date64(..)
-            | Scalar::Time32(..)
-            | Scalar::Time64(..)
-            | Scalar::DateTime64(..)
-            | Scalar::Duration32(..)
-            | Scalar::Duration64(..) => {}
+            | Scalar::Geospatial(_) => {}
         }
         Ok(())
     }

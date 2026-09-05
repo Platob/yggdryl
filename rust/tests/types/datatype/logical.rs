@@ -1,7 +1,7 @@
 //! A row declared in FIX's datatype names is an ordinary row everywhere else.
 
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::{AsciiEnum, DataType, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{AsciiEnum, DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
 const FIX_ROW: &str = "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, \
@@ -62,12 +62,12 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     let message = r#"{"ccy":"USD","venue":"XCME","px":"101.25","qty":"7",
         "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04","seq":9}"#;
     let value = yggdryl::text::json::from_utf8_with_field(message, &row).unwrap();
-    let Scalar::Sequence(columns) = &value else {
-        panic!("a canonical row, got {value:?}");
-    };
+    let columns = value.as_sequence().expect("a canonical row");
 
-    assert_eq!(columns[0], Scalar::from("USD"));
-    assert_eq!(columns[1], Scalar::from("XCME"));
+    assert_eq!(columns[0].id(), DataTypeId::Currency);
+    assert_eq!(columns[0].as_str(), Some("USD"));
+    assert_eq!(columns[1].id(), DataTypeId::Mic);
+    assert_eq!(columns[1].as_str(), Some("XCME"));
     // The price keeps eight fractional digits exactly, which is the whole
     // reason the float family resolves to a decimal.
     assert_eq!(columns[2], Scalar::d128(10_125_000_000, 8));

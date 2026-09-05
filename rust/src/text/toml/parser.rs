@@ -54,14 +54,14 @@ impl State {
         match value {
             toml::de::DeValue::String(value) => Ok(Scalar::from(value.into_owned())),
             toml::de::DeValue::Integer(value) => i64::from_str_radix(value.as_str(), value.radix())
-                .map(Scalar::I64)
+                .map(Scalar::from)
                 .map_err(|_| {
                     codec_error(position, "TOML integer is outside the signed 64-bit range")
                 }),
             toml::de::DeValue::Float(value) => parse_float(value.as_str())
                 .map(Scalar::from)
                 .ok_or_else(|| codec_error(position, "TOML float is outside the f64 range")),
-            toml::de::DeValue::Boolean(value) => Ok(Scalar::Bool(value)),
+            toml::de::DeValue::Boolean(value) => Ok(Scalar::from(value)),
             toml::de::DeValue::Datetime(value) => {
                 wire::datetime_value(value).map_err(|error| at_position(error, position))
             }

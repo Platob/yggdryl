@@ -1617,7 +1617,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
     .unwrap()
     .required_field("NewOrderSingle");
     let value = Scalar::from_record([
-        ("OrderQty", Scalar::I64(100)),
+        ("OrderQty", Scalar::from(100)),
         (
             "Instrument",
             Scalar::from_record([("Symbol", Scalar::from("AAPL"))]).unwrap(),
@@ -1627,12 +1627,12 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
             Scalar::from_sequence([
                 Scalar::from_record([
                     ("PartyID", Scalar::from("BROKER")),
-                    ("PartyRole", Scalar::I64(1)),
+                    ("PartyRole", Scalar::from(1)),
                 ])
                 .unwrap(),
                 Scalar::from_record([
                     ("PartyID", Scalar::from("CLIENT")),
-                    ("PartyRole", Scalar::I64(3)),
+                    ("PartyRole", Scalar::from(3)),
                 ])
                 .unwrap(),
             ]),
@@ -1653,14 +1653,14 @@ fn a_message_resolves_values_through_its_registry() {
     // A record input canonicalizes to the ordered sequence the root declares.
     let row = msg.as_value().as_sequence().unwrap();
     assert_eq!(row.len(), 4);
-    assert_eq!(row[0], Scalar::I64(100));
+    assert_eq!(row[0], Scalar::from(100));
     assert_eq!(row[3], Scalar::from("custom"));
 
     // By tag, through the registry's canonical name.
-    assert_eq!(msg.by_tag(38).unwrap(), &Scalar::I64(100));
+    assert_eq!(msg.by_tag(38).unwrap(), &Scalar::from(100));
     // By name, folded through the registry, and by alias.
-    assert_eq!(msg.by_name("orderqty").unwrap(), &Scalar::I64(100));
-    assert_eq!(msg.by_name("QTY").unwrap(), &Scalar::I64(100));
+    assert_eq!(msg.by_name("orderqty").unwrap(), &Scalar::from(100));
+    assert_eq!(msg.by_name("QTY").unwrap(), &Scalar::from(100));
     // An unknown tag is kept under its rendered name.
     assert_eq!(msg.by_tag(9999).unwrap(), &Scalar::from("custom"));
     assert_eq!(msg.by_name("9999").unwrap(), &Scalar::from("custom"));
@@ -1675,7 +1675,7 @@ fn a_message_resolves_values_through_its_registry() {
     );
     assert_eq!(
         msg.by_path("nopartyids.0.PartyRole").unwrap(),
-        &Scalar::I32(1)
+        &Scalar::from(1)
     );
     assert_eq!(msg.by_path("NoPartyIDs").unwrap().len(), 2);
     assert!(
@@ -1737,7 +1737,7 @@ fn a_message_rejects_a_value_its_field_refuses() {
     let error = FixMsg::with_registry(
         registry,
         DataType::Int64.required_field("scalar"),
-        Scalar::I64(1),
+        Scalar::from(1),
     )
     .unwrap_err();
     assert!(error.to_string().contains("struct root"), "{error}");

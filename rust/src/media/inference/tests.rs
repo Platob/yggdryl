@@ -13,7 +13,7 @@ mod scalars {
         // The whole point of keeping unsigned unsigned: the top of the range
         // has no signed column to fall into.
         assert_eq!(
-            Scalar::U64(u64::MAX).dtype().unwrap(),
+            Scalar::from(u64::MAX).dtype().unwrap(),
             DataType::UInt64,
             "a full-range u64 must not be described as an int64"
         );
@@ -23,15 +23,15 @@ mod scalars {
     fn a_wide_integer_becomes_the_exact_decimal_that_holds_it() {
         // Arrow has no 128-bit integer; an exact decimal at scale zero is one.
         assert_eq!(
-            Scalar::I128(i128::MAX).dtype().unwrap(),
+            Scalar::from(i128::MAX).dtype().unwrap(),
             DataType::decimal(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::U128(u128::MAX).dtype().unwrap(),
+            Scalar::from(u128::MAX).dtype().unwrap(),
             DataType::decimal(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::I128(-1_000).dtype().unwrap(),
+            Scalar::from(-1_000_i128).dtype().unwrap(),
             DataType::decimal(4, 0).unwrap()
         );
     }
@@ -284,11 +284,14 @@ mod refusals {
 
     #[test]
     fn a_time_of_day_timezone_is_never_silently_discarded() {
-        for value in [
-            Scalar::Time32(1, TimeUnit::Second, Timezone::UTC),
-            Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC),
+        for message in [
+            Scalar::time32(1, TimeUnit::Second, Timezone::UTC)
+                .unwrap_err()
+                .to_string(),
+            Scalar::time64(1, TimeUnit::Microsecond, Timezone::UTC)
+                .unwrap_err()
+                .to_string(),
         ] {
-            let message = value.dtype().unwrap_err().to_string();
             assert!(message.contains("timezone"), "{message}");
         }
     }

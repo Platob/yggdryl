@@ -8,6 +8,7 @@ mod fields;
 mod parser;
 pub(crate) mod scalars;
 
+pub use dtypes::TemporalType;
 pub(crate) use dtypes::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 pub use fields::*;
 pub use scalars::{

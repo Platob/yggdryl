@@ -20,8 +20,8 @@ impl<R: Read> Read for OneByte<R> {
 #[test]
 fn natural_output_is_an_ordinary_json_document() {
     let value = Scalar::from_record([
-        ("active", Scalar::Bool(true)),
-        ("id", Scalar::I64(7)),
+        ("active", Scalar::from(true)),
+        ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
     .unwrap();
@@ -39,9 +39,9 @@ fn untyped_reads_return_only_what_json_proves() {
         json::from_utf8(r#"{"amount":"123.4500","at":"1970-01-01T00:00:00Z","payload":"AP8="}"#)
             .unwrap();
     let record = value.as_record().unwrap();
-    assert!(matches!(record["amount"], Scalar::String(_)));
-    assert!(matches!(record["at"], Scalar::String(_)));
-    assert!(matches!(record["payload"], Scalar::String(_)));
+    assert!(record["amount"].as_str().is_some());
+    assert!(record["at"].as_str().is_some());
+    assert!(record["payload"].as_str().is_some());
 }
 
 fn typed_row_field() -> Field {
@@ -124,13 +124,6 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
             .contains("DateTime64")
     );
     assert!(Scalar::time32(0, TimeUnit::Second, Timezone::UTC).is_err());
-    let invalid = Scalar::Time32(0, TimeUnit::Second, Timezone::UTC);
-    assert!(
-        json::into_bytes(&invalid)
-            .unwrap_err()
-            .to_string()
-            .contains("DateTime64")
-    );
 }
 
 #[test]
@@ -192,7 +185,7 @@ fn bytes_readers_writers_and_streams_are_equivalent() {
         json::from_reader_iter(&mut reader)
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap(),
-        [Scalar::U64(1), Scalar::U64(2), Scalar::U64(3)]
+        [Scalar::from(1), Scalar::from(2), Scalar::from(3)]
     );
 }
 
@@ -203,7 +196,7 @@ fn json_lines_are_strict_and_dispatch_as_one_sequence() {
     assert!(json::from_lines_utf8("1 2\n").is_err());
     assert_eq!(
         text::from_utf8("1\n2\n", Format::JsonLines).unwrap(),
-        Scalar::from_sequence([Scalar::U64(1), Scalar::U64(2)])
+        Scalar::from_sequence([Scalar::from(1), Scalar::from(2)])
     );
 }
 
@@ -218,7 +211,7 @@ fn limits_and_invalid_inputs_fail_at_the_boundary() {
 
 #[test]
 fn formatting_changes_layout_not_meaning() {
-    let value = Scalar::from_record([("id", Scalar::I64(1))]).unwrap();
+    let value = Scalar::from_record([("id", Scalar::from(1))]).unwrap();
     let pretty = json::into_utf8_with_formatting(&value, Formatting::indented(2)).unwrap();
     assert!(pretty.contains("\n  \"id\": 1\n"));
     assert_eq!(json::from_utf8(&pretty).unwrap(), value);
@@ -242,7 +235,7 @@ fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
     let row = DataType::from_fields([DataType::FixedAscii(4).required_field("ccy")])
         .unwrap()
         .required_field("row");
-    let expected = Scalar::from_sequence([Scalar::from("USD")]);
+    let expected = Scalar::from_sequence([DataType::FixedAscii(4).scalar("USD").unwrap()]);
     assert_eq!(
         json::from_utf8_with_field(r#"{"ccy":"USD"}"#, &row).unwrap(),
         expected
@@ -264,7 +257,7 @@ fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
 #[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
     let value = Scalar::from_record([
-        ("id", Scalar::I64(7)),
+        ("id", Scalar::from(7)),
         ("name", Scalar::from("ada")),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
@@ -311,10 +304,7 @@ fn from_json_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     let untyped = from_json_scalar(input).unwrap();
-    assert!(matches!(
-        untyped.as_record().unwrap()["amount"],
-        Scalar::String(_)
-    ));
+    assert!(untyped.as_record().unwrap()["amount"].as_str().is_some());
 }
 
 #[test]

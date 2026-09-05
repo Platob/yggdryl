@@ -28,28 +28,14 @@ pub enum DataTypeKind {
     Decimal,
     /// Dates, times, timestamps, durations, and calendar intervals.
     Temporal,
+    /// UTF-8 text in variable, large, and view layouts.
+    Text,
+    /// Validated ASCII text and registered fixed-width codes.
+    Ascii,
     /// Byte strings in variable, fixed, large, and view layouts.
-    Binary,
-    /// UTF-8 text in variable, large, and view layouts, and fixed-width ASCII.
-    String,
-    /// Ordered sequences of one element field.
-    List,
-    /// Ordered named child fields.
-    Struct,
-    /// Tagged alternatives over child fields.
-    Union,
-    /// Key/value entries backed by a struct element.
-    Map,
-    /// Dictionary-encoded values over a key index.
-    Dictionary,
-    /// Run-end encoded values over run boundaries.
-    RunEndEncoded,
-    /// Self-describing semi-structured values.
-    ///
-    /// A variant holds a tree that declares its own types per value, which is
-    /// why it is its own family: it is not `Binary` wearing metadata, and no
-    /// binary-family behavior is correct for it.
-    Variant,
+    Bytes,
+    /// Lists, structs, unions, maps, wrappers, and self-describing values.
+    Nested,
     /// Geometries and geographies carried as Well-Known Binary.
     ///
     /// One family for both: a geometry lives on a planar coordinate system
@@ -69,22 +55,17 @@ pub enum DataTypeKind {
 
 impl DataTypeKind {
     /// Every category in canonical order.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 12] = [
         Self::Null,
         Self::Boolean,
         Self::Integer,
         Self::Floating,
         Self::Decimal,
         Self::Temporal,
-        Self::Binary,
-        Self::String,
-        Self::List,
-        Self::Struct,
-        Self::Union,
-        Self::Map,
-        Self::Dictionary,
-        Self::RunEndEncoded,
-        Self::Variant,
+        Self::Text,
+        Self::Ascii,
+        Self::Bytes,
+        Self::Nested,
         Self::Geospatial,
         Self::Guid,
     ];
@@ -109,15 +90,10 @@ impl DataTypeKind {
             Self::Floating => "floating",
             Self::Decimal => "decimal",
             Self::Temporal => "temporal",
-            Self::Binary => "binary",
-            Self::String => "string",
-            Self::List => "list",
-            Self::Struct => "struct",
-            Self::Union => "union",
-            Self::Map => "map",
-            Self::Dictionary => "dictionary",
-            Self::RunEndEncoded => "run_end_encoded",
-            Self::Variant => "variant",
+            Self::Text => "text",
+            Self::Ascii => "ascii",
+            Self::Bytes => "bytes",
+            Self::Nested => "nested",
             Self::Geospatial => "geospatial",
             Self::Guid => "guid",
         }
@@ -125,21 +101,10 @@ impl DataTypeKind {
 
     /// Return whether the category holds child fields or a nested value.
     ///
-    /// [`Self::Dictionary`] and [`Self::RunEndEncoded`] are wrappers: they are
-    /// nested only when their value type is, so this predicate reports `false`
-    /// for them and [`Self::is_wrapper`] identifies them instead.
+    /// Exact nested shape and wrapper behavior belong to
+    /// [`crate::types::NestedType`].
     pub const fn is_nested(self) -> bool {
-        // A variant is nested - it holds a tree - where the geospatial pair
-        // is not: a geometry is one value however many vertices it carries.
-        matches!(
-            self,
-            Self::List | Self::Struct | Self::Union | Self::Map | Self::Variant
-        )
-    }
-
-    /// Return whether the category transparently encodes another value type.
-    pub const fn is_wrapper(self) -> bool {
-        matches!(self, Self::Dictionary | Self::RunEndEncoded)
+        matches!(self, Self::Nested)
     }
 
     /// Return whether the category is a fixed-width or exact number.
@@ -149,15 +114,12 @@ impl DataTypeKind {
 
     /// Return whether the category stores an opaque or textual byte payload.
     pub const fn is_bytes(self) -> bool {
-        matches!(self, Self::Binary | Self::String)
+        matches!(self, Self::Bytes | Self::Text | Self::Ascii)
     }
 
     /// Return whether values of the category have a total order.
     pub const fn is_ordered(self) -> bool {
-        !matches!(
-            self,
-            Self::Union | Self::Map | Self::Struct | Self::List | Self::Variant | Self::Geospatial
-        )
+        !matches!(self, Self::Nested | Self::Geospatial)
     }
 }
 
@@ -236,11 +198,9 @@ mod tests {
     }
 
     #[test]
-    fn wrappers_are_not_reported_as_nested() {
-        assert!(DataTypeKind::Dictionary.is_wrapper());
-        assert!(!DataTypeKind::Dictionary.is_nested());
-        assert!(DataTypeKind::Struct.is_nested());
-        assert!(!DataTypeKind::Struct.is_wrapper());
+    fn nested_is_the_one_coarse_family_for_every_nested_shape() {
+        assert!(DataTypeKind::Nested.is_nested());
+        assert!(!DataTypeKind::Bytes.is_nested());
     }
 
     #[test]

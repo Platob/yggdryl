@@ -5,7 +5,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::EdgeAlgorithm;
-use crate::{DataType, Error, Result};
+use crate::{DataType, DataTypeId, Error, Result};
 
 /// The coordinate reference system both formats fill when none is given.
 ///
@@ -13,6 +13,50 @@ use crate::{DataType, Error, Result};
 /// `GEOMETRY`/`GEOGRAPHY` logical types and Iceberg v3's geospatial types
 /// share, so it is the one this workspace fills too.
 pub const DEFAULT_CRS: &str = "OGC:CRS84";
+
+/// One geospatial datatype and its validated parameters.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum GeospatialType {
+    /// Planar geometry.
+    Geometry(Arc<GeospatialParameters>),
+    /// Spherical or spheroidal geography.
+    Geography(Arc<GeospatialParameters>),
+}
+
+impl GeospatialType {
+    /// Return the exact datatype identifier.
+    pub const fn id(&self) -> DataTypeId {
+        match self {
+            Self::Geometry(_) => DataTypeId::Geometry,
+            Self::Geography(_) => DataTypeId::Geography,
+        }
+    }
+}
+
+impl From<GeospatialType> for DataType {
+    fn from(value: GeospatialType) -> Self {
+        match value {
+            GeospatialType::Geometry(parameters) => Self::Geometry(parameters),
+            GeospatialType::Geography(parameters) => Self::Geography(parameters),
+        }
+    }
+}
+
+impl TryFrom<&DataType> for GeospatialType {
+    type Error = Error;
+
+    fn try_from(value: &DataType) -> Result<Self> {
+        match value {
+            DataType::Geometry(parameters) => Ok(Self::Geometry(Arc::clone(parameters))),
+            DataType::Geography(parameters) => Ok(Self::Geography(Arc::clone(parameters))),
+            other => Err(Error::InvalidDataType {
+                kind: "geospatial",
+                reason: SmolStr::new(format!("expected a geospatial datatype, got {other}")),
+            }),
+        }
+    }
+}
 
 /// The parameters a geometry or geography column carries.
 ///
@@ -23,14 +67,14 @@ pub const DEFAULT_CRS: &str = "OGC:CRS84";
 /// name, and a geography given none fills [`EdgeAlgorithm::Spherical`], the
 /// default Parquet and Iceberg share.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct GeospatialType {
+pub struct GeospatialParameters {
     /// The coordinate reference system, `OGC:CRS84` filled when none is given.
     crs: SmolStr,
     /// The edge interpolation, present exactly on a geography.
     algorithm: Option<EdgeAlgorithm>,
 }
 
-impl GeospatialType {
+impl GeospatialParameters {
     /// The parameters of a geometry: a CRS and no edge algorithm.
     ///
     /// # Errors
@@ -93,7 +137,7 @@ pub(crate) const VARIANT_EXTENSION_NAME: &str = "arrow.parquet.variant";
 /// this spelling is revisitable if the published one moves.
 pub(crate) const GEOARROW_WKB_EXTENSION_NAME: &str = "geoarrow.wkb";
 
-impl GeospatialType {
+impl GeospatialParameters {
     /// Renders the GeoArrow extension metadata document this type projects.
     ///
     /// A geometry writes `{"crs": <crs>}`; a geography adds its edge
@@ -200,7 +244,9 @@ impl DataType {
     ///
     /// Returns an error when `crs` is empty.
     pub fn geometry(crs: Option<&str>) -> Result<Self> {
-        Ok(Self::Geometry(Arc::new(GeospatialType::geometry(crs)?)))
+        Ok(Self::Geometry(Arc::new(GeospatialParameters::geometry(
+            crs,
+        )?)))
     }
 
     /// Creates a geography: geospatial features on a sphere or spheroid.
@@ -213,7 +259,7 @@ impl DataType {
     ///
     /// Returns an error when `crs` is empty.
     pub fn geography(crs: Option<&str>, algorithm: Option<EdgeAlgorithm>) -> Result<Self> {
-        Ok(Self::Geography(Arc::new(GeospatialType::geography(
+        Ok(Self::Geography(Arc::new(GeospatialParameters::geography(
             crs, algorithm,
         )?)))
     }

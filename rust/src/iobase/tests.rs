@@ -119,7 +119,7 @@ fn an_undeclared_media_type_is_inferred_from_content() {
 #[test]
 fn structured_values_follow_the_declared_format_and_content_coding() {
     let expected = Scalar::from_record([
-        ("quantity", Scalar::I64(2)),
+        ("quantity", Scalar::from(2)),
         ("symbol", Scalar::from("AAPL")),
     ])
     .unwrap();
@@ -151,7 +151,7 @@ fn structured_value_fields_direct_parsing_and_casting() {
     let media = Url::from_str("file:///trade.json").unwrap().media_type();
     let source = Buffer::from_bytes(br#"{"quantity":2}"#.to_vec()).with_media_type(media);
     let field = Field::from_str("trade: struct<quantity: int32 not null> not null").unwrap();
-    let expected = Scalar::from_sequence([Scalar::I64(2)]);
+    let expected = Scalar::from_sequence([Scalar::from(2)]);
 
     assert_eq!(source.read_scalar(Some(&field)).unwrap(), expected);
 

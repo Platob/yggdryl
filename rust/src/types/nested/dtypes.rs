@@ -10,9 +10,108 @@ use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{invalid, validate_non_negative};
-use crate::{DataType, Error, Field, Result, UnionMode};
+use crate::{DataType, DataTypeId, Error, Field, Result, UnionMode};
 
 use super::fields::{FieldKey, Fields};
+
+/// One nested or wrapper datatype.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[non_exhaustive]
+pub enum NestedType {
+    /// Variable list with 32-bit offsets.
+    List(Arc<Field>),
+    /// Variable list view with 32-bit offsets.
+    ListView(Arc<Field>),
+    /// Fixed-length list.
+    FixedSizeList(Arc<Field>, i32),
+    /// Variable list with 64-bit offsets.
+    LargeList(Arc<Field>),
+    /// Variable list view with 64-bit offsets.
+    LargeListView(Arc<Field>),
+    /// Ordered struct fields.
+    Struct(Fields),
+    /// Tagged union fields and layout.
+    Union(UnionFields, UnionMode),
+    /// Dictionary key and value types.
+    Dictionary(Arc<DictionaryType>),
+    /// Map entries and key-order flag.
+    Map(Arc<MapType>),
+    /// Run-end encoded child fields.
+    RunEndEncoded(Arc<RunEndEncodedType>),
+    /// Self-describing semi-structured values.
+    Variant,
+}
+
+impl NestedType {
+    /// Return the exact datatype identifier.
+    pub const fn id(&self) -> DataTypeId {
+        match self {
+            Self::List(_) => DataTypeId::List,
+            Self::ListView(_) => DataTypeId::ListView,
+            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
+            Self::LargeList(_) => DataTypeId::LargeList,
+            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Struct(_) => DataTypeId::Struct,
+            Self::Union(..) => DataTypeId::Union,
+            Self::Dictionary(_) => DataTypeId::Dictionary,
+            Self::Map(_) => DataTypeId::Map,
+            Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
+            Self::Variant => DataTypeId::Variant,
+        }
+    }
+
+    /// Return whether this family member wraps another datatype transparently.
+    pub const fn is_wrapper(&self) -> bool {
+        matches!(
+            Self::id(self),
+            DataTypeId::Dictionary | DataTypeId::RunEndEncoded
+        )
+    }
+}
+
+impl From<NestedType> for DataType {
+    fn from(value: NestedType) -> Self {
+        match value {
+            NestedType::List(item) => Self::List(item),
+            NestedType::ListView(item) => Self::ListView(item),
+            NestedType::FixedSizeList(item, length) => Self::FixedSizeList(item, length),
+            NestedType::LargeList(item) => Self::LargeList(item),
+            NestedType::LargeListView(item) => Self::LargeListView(item),
+            NestedType::Struct(fields) => Self::Struct(fields),
+            NestedType::Union(fields, mode) => Self::Union(fields, mode),
+            NestedType::Dictionary(dtype) => Self::Dictionary(dtype),
+            NestedType::Map(dtype) => Self::Map(dtype),
+            NestedType::RunEndEncoded(dtype) => Self::RunEndEncoded(dtype),
+            NestedType::Variant => Self::Variant,
+        }
+    }
+}
+
+impl TryFrom<&DataType> for NestedType {
+    type Error = Error;
+
+    fn try_from(value: &DataType) -> Result<Self> {
+        match value {
+            DataType::List(item) => Ok(Self::List(Arc::clone(item))),
+            DataType::ListView(item) => Ok(Self::ListView(Arc::clone(item))),
+            DataType::FixedSizeList(item, length) => {
+                Ok(Self::FixedSizeList(Arc::clone(item), *length))
+            }
+            DataType::LargeList(item) => Ok(Self::LargeList(Arc::clone(item))),
+            DataType::LargeListView(item) => Ok(Self::LargeListView(Arc::clone(item))),
+            DataType::Struct(fields) => Ok(Self::Struct(fields.clone())),
+            DataType::Union(fields, mode) => Ok(Self::Union(fields.clone(), *mode)),
+            DataType::Dictionary(dtype) => Ok(Self::Dictionary(Arc::clone(dtype))),
+            DataType::Map(dtype) => Ok(Self::Map(Arc::clone(dtype))),
+            DataType::RunEndEncoded(dtype) => Ok(Self::RunEndEncoded(Arc::clone(dtype))),
+            DataType::Variant => Ok(Self::Variant),
+            other => Err(Error::InvalidDataType {
+                kind: "nested",
+                reason: format_smolstr!("expected a nested datatype, got {other}"),
+            }),
+        }
+    }
+}
 
 /// Union members paired with their non-negative Arrow type IDs.
 #[derive(Clone, Default, Eq, PartialEq, Hash)]

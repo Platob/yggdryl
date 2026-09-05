@@ -26,8 +26,8 @@ impl<'input> EventReceiver<'input> for Sink {
 #[test]
 fn natural_output_is_accepted_by_an_independent_yaml_parser() {
     let value = Scalar::from_record([
-        ("active", Scalar::Bool(true)),
-        ("id", Scalar::I64(7)),
+        ("active", Scalar::from(true)),
+        ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
     .unwrap();
@@ -53,9 +53,9 @@ fn untyped_yaml_preserves_only_syntax_proven_types() {
         yaml::from_utf8("amount: '123.4500'\nat: '1970-01-01T00:00:00Z'\npayload: 'AP8='\n")
             .unwrap();
     let record = value.as_record().unwrap();
-    assert!(matches!(record["amount"], Scalar::String(_)));
-    assert!(matches!(record["at"], Scalar::String(_)));
-    assert!(matches!(record["payload"], Scalar::String(_)));
+    assert!(record["amount"].as_str().is_some());
+    assert!(record["at"].as_str().is_some());
+    assert!(record["payload"].as_str().is_some());
 }
 
 fn typed_row_field() -> Field {
@@ -120,20 +120,13 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
             .contains("DateTime64")
     );
     assert!(Scalar::time64(0, TimeUnit::Nanosecond, Timezone::UTC).is_err());
-    let invalid = Scalar::Time64(0, TimeUnit::Nanosecond, Timezone::UTC);
-    assert!(
-        yaml::into_bytes(&invalid)
-            .unwrap_err()
-            .to_string()
-            .contains("DateTime64")
-    );
 }
 
 #[test]
 fn arbitrary_keys_and_standard_custom_tags_have_natural_semantics() {
     let mapping = Scalar::from_mapping([
-        (Scalar::from_sequence([Scalar::I64(1)]), Scalar::Bool(true)),
-        (Scalar::I64(2), Scalar::from("two")),
+        (Scalar::from_sequence([Scalar::from(1)]), Scalar::from(true)),
+        (Scalar::from(2), Scalar::from("two")),
     ])
     .unwrap();
     assert_eq!(
@@ -147,7 +140,7 @@ fn arbitrary_keys_and_standard_custom_tags_have_natural_semantics() {
     );
     assert_eq!(
         yaml::from_utf8("!vendor/value {id: 1}\n").unwrap(),
-        Scalar::from_record([("id", Scalar::U64(1))]).unwrap()
+        Scalar::from_record([("id", Scalar::from(1))]).unwrap()
     );
 }
 
@@ -178,7 +171,7 @@ fn nonfinite_yaml_floats_use_the_core_schema_spelling() {
 #[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
     let value = Scalar::from_record([
-        ("id", Scalar::I64(7)),
+        ("id", Scalar::from(7)),
         ("name", Scalar::from("ada")),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
     ])
@@ -221,10 +214,7 @@ fn from_yaml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     let untyped = from_yaml_scalar(input).unwrap();
-    assert!(matches!(
-        untyped.as_record().unwrap()["amount"],
-        Scalar::String(_)
-    ));
+    assert!(untyped.as_record().unwrap()["amount"].as_str().is_some());
 }
 
 #[test]

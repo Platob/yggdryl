@@ -72,7 +72,7 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
     });
 
     let wide = Scalar::from_record(
-        (0_i64..1_024).map(|index| (format!("key_{index}"), Scalar::I64(index))),
+        (0_i64..1_024).map(|index| (format!("key_{index}"), Scalar::from(index))),
     )
     .unwrap();
     let wide_encoded = toml::into_bytes(&wide).unwrap();

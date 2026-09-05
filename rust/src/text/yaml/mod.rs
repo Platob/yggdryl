@@ -51,7 +51,7 @@ pub const MAX_PARSER_DEPTH: usize = 384;
 /// use yggdryl::{Scalar, from_yaml_scalar, into_yaml_scalar};
 ///
 /// let value = from_yaml_scalar("id: 1\n")?;
-/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::from(1))])?);
 /// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -88,7 +88,7 @@ pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// ```
 /// use yggdryl::{Scalar, into_yaml_scalar};
 ///
-/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
 /// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -357,7 +357,7 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
 /// assert_eq!(yggdryl::text::yaml::into_bytes(&value)?, b"id: 1\n");
 ///
 /// let flow = yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::compact())?;
@@ -562,23 +562,31 @@ fn write_node<W: Write>(
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
     match value {
-        Scalar::Sequence(values) if !values.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Sequence(values)) if !values.as_slice().is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, values, columns, skip_first_indent, width)
+            write_sequence(writer, values.as_slice(), columns, skip_first_indent, width)
         }
-        Scalar::Mapping(entries) if !entries.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Mapping(entries))
+            if !entries.as_slice().is_empty() =>
+        {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_mapping(writer, entries, columns, skip_first_indent, width)
+            write_mapping(
+                writer,
+                entries.as_slice(),
+                columns,
+                skip_first_indent,
+                width,
+            )
         }
-        Scalar::Record(entries) if !entries.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Record(entries)) if !entries.as_map().is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_record(writer, entries, columns, skip_first_indent, width)
+            write_record(writer, entries.as_map(), columns, skip_first_indent, width)
         }
         // Everything else is one scalar-shaped token and stays on this line.
         other => write_inline(writer, other),
@@ -689,9 +697,7 @@ fn write_record<W: Write>(
 /// Return whether a value is written as an indented block rather than inline.
 fn is_block(value: &Scalar) -> bool {
     match value {
-        Scalar::Sequence(values) => !values.is_empty(),
-        Scalar::Mapping(entries) => !entries.is_empty(),
-        Scalar::Record(entries) => !entries.is_empty(),
+        Scalar::Nested(value) => !value.is_empty(),
         _ => false,
     }
 }
@@ -701,15 +707,12 @@ fn is_plain_key(key: &Scalar) -> bool {
     matches!(
         key,
         Scalar::Null
-            | Scalar::Bool(_)
-            | Scalar::I64(_)
-            | Scalar::U64(_)
-            | Scalar::I128(_)
-            | Scalar::U128(_)
-            | Scalar::F16(_)
-            | Scalar::F32(_)
-            | Scalar::F64(_)
-            | Scalar::String(_)
+            | Scalar::Boolean(_)
+            | Scalar::Integer(_)
+            | Scalar::Floating(_)
+            | Scalar::Text(_)
+            | Scalar::Ascii(_)
+            | Scalar::Guid(_)
             | Scalar::Enum(_)
     )
 }
@@ -730,62 +733,45 @@ fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
 fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
         Scalar::Null => writer.write_all(b"null")?,
-        Scalar::Bool(true) => writer.write_all(b"true")?,
-        Scalar::Bool(false) => writer.write_all(b"false")?,
-        Scalar::I8(value) => write!(writer, "{value}")?,
-        Scalar::I16(value) => write!(writer, "{value}")?,
-        Scalar::I32(value) => write!(writer, "{value}")?,
-        Scalar::I64(value) => write!(writer, "{value}")?,
-        Scalar::U8(value) => write!(writer, "{value}")?,
-        Scalar::U16(value) => write!(writer, "{value}")?,
-        Scalar::U32(value) => write!(writer, "{value}")?,
-        Scalar::U64(value) => write!(writer, "{value}")?,
-        Scalar::I128(value) => write!(writer, "{value}")?,
-        Scalar::U128(value) => write!(writer, "{value}")?,
-        Scalar::F16(value) => write_float(writer, value.as_f64())?,
-        Scalar::F32(value) => write_float(writer, value.as_f64())?,
-        Scalar::F64(value) => write_float(writer, value.as_f64())?,
-        Scalar::D128(unscaled, scale) => write_quoted(
+        Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
+        Scalar::Integer(value) => write!(writer, "{value}")?,
+        Scalar::Floating(value) => write_float(writer, value.as_f64())?,
+        Scalar::Decimal(value) => write_quoted(
             writer,
-            &crate::types::decimal::scalars::decimal_text(
-                crate::I256::from_i128(*unscaled),
-                *scale,
-            ),
+            &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
         )?,
-        Scalar::D256(unscaled, scale) => write_quoted(
-            writer,
-            &crate::types::decimal::scalars::decimal_text(*unscaled, *scale),
-        )?,
-        Scalar::String(value) => write_scalar_string(writer, value)?,
+        Scalar::Text(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::Ascii(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::Guid(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
-        Scalar::Bytes(value) | Scalar::Geospatial(value) => {
+        Scalar::Bytes(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
             writer.write_all(b"!!binary ")?;
             write_quoted(
                 writer,
-                &base64::engine::general_purpose::STANDARD.encode(value),
+                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
             )?;
         }
-        Scalar::Date32(count, unit, zone) => {
-            if !zone.is_naive() {
-                return Err(codec_error(0, "Date32 cannot carry a timezone"));
-            }
-            if *unit == crate::TimeUnit::Day && zone.is_naive() {
-                if let Some(text) = crate::types::ascii::iso::format_date(*count) {
+        Scalar::Geospatial(value) => {
+            writer.write_all(b"!!binary ")?;
+            write_quoted(
+                writer,
+                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
+            )?;
+        }
+        Scalar::Temporal(crate::types::Temporal::Date32(value)) => {
+            if value.unit() == crate::TimeUnit::Day {
+                if let Some(text) = crate::types::ascii::iso::format_date(value.count()) {
                     return write_scalar_string(writer, &text);
                 }
             }
-            write!(writer, "{count}")?;
+            write!(writer, "{}", value.count())?;
         }
-        Scalar::Date64(count, unit, zone) => {
-            if !zone.is_naive() {
-                return Err(codec_error(0, "Date64 cannot carry a timezone"));
-            }
+        Scalar::Temporal(crate::types::Temporal::Date64(value)) => {
             const DAY_MILLISECONDS: i64 = 86_400_000;
-            let days = count.div_euclid(DAY_MILLISECONDS);
-            if *unit == crate::TimeUnit::Millisecond
-                && zone.is_naive()
-                && count.rem_euclid(DAY_MILLISECONDS) == 0
+            let days = value.count().div_euclid(DAY_MILLISECONDS);
+            if value.unit() == crate::TimeUnit::Millisecond
+                && value.count().rem_euclid(DAY_MILLISECONDS) == 0
             {
                 if let Ok(days) = i32::try_from(days) {
                     if let Some(text) = crate::types::ascii::iso::format_date(days) {
@@ -793,42 +779,59 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
                     }
                 }
             }
-            write!(writer, "{count}")?;
+            write!(writer, "{}", value.count())?;
         }
-        Scalar::Time32(count, unit, zone) => {
-            write_time(writer, i64::from(*count), *unit, zone)?;
+        Scalar::Temporal(crate::types::Temporal::Time32(value)) => {
+            write_time(
+                writer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            )?;
         }
-        Scalar::Time64(count, unit, zone) => {
-            write_time(writer, *count, *unit, zone)?;
+        Scalar::Temporal(crate::types::Temporal::Time64(value)) => {
+            write_time(writer, value.count(), value.unit(), &value.timezone())?;
         }
-        Scalar::DateTime64(count, unit, zone) => {
-            let text = if zone.is_naive() {
-                crate::types::ascii::iso::format_datetime(*count, *unit)
+        Scalar::Temporal(crate::types::Temporal::DateTime64(value)) => {
+            let text = if value.timezone().is_naive() {
+                crate::types::ascii::iso::format_datetime(value.count(), value.unit())
             } else {
-                crate::types::ascii::iso::format_timestamp(*count, *unit, zone)
+                crate::types::ascii::iso::format_timestamp(
+                    value.count(),
+                    value.unit(),
+                    &value.timezone(),
+                )
             };
             match text {
                 Some(text) => write_scalar_string(writer, &text)?,
-                None => write!(writer, "{count}")?,
+                None => write!(writer, "{}", value.count())?,
             }
         }
-        Scalar::Duration32(count, unit, zone) => {
-            write_duration(writer, i64::from(*count), *unit, zone)?;
+        Scalar::Temporal(crate::types::Temporal::Duration32(value)) => {
+            write_duration(
+                writer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            )?;
         }
-        Scalar::Duration64(count, unit, zone) => {
-            write_duration(writer, *count, *unit, zone)?;
+        Scalar::Temporal(crate::types::Temporal::Duration64(value)) => {
+            write_duration(writer, value.count(), value.unit(), &value.timezone())?;
         }
-        Scalar::Sequence(values) => {
+        Scalar::Temporal(crate::types::Temporal::Interval(value)) => {
+            write_scalar_string(writer, &value.to_string())?;
+        }
+        Scalar::Nested(crate::types::Nested::Sequence(values)) => {
             // Only an empty sequence reaches here.
-            debug_assert!(values.is_empty());
+            debug_assert!(values.as_slice().is_empty());
             writer.write_all(b"[]")?;
         }
-        Scalar::Mapping(entries) => {
-            debug_assert!(entries.is_empty());
+        Scalar::Nested(crate::types::Nested::Mapping(entries)) => {
+            debug_assert!(entries.as_slice().is_empty());
             writer.write_all(b"{}")?;
         }
-        Scalar::Record(entries) => {
-            debug_assert!(entries.is_empty());
+        Scalar::Nested(crate::types::Nested::Record(entries)) => {
+            debug_assert!(entries.as_map().is_empty());
             writer.write_all(b"{}")?;
         }
     }
@@ -899,9 +902,9 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Sequence(values) if !values.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Sequence(values)) if !values.as_slice().is_empty() => {
             writer.write_all(b"[")?;
-            for (index, value) in values.iter().enumerate() {
+            for (index, value) in values.as_slice().iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
@@ -910,9 +913,11 @@ fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer.write_all(b"]")?;
             Ok(())
         }
-        Scalar::Mapping(entries) if !entries.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Mapping(entries))
+            if !entries.as_slice().is_empty() =>
+        {
             writer.write_all(b"{")?;
-            for (index, (key, value)) in entries.iter().enumerate() {
+            for (index, (key, value)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
@@ -929,9 +934,9 @@ fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer.write_all(b"}")?;
             Ok(())
         }
-        Scalar::Record(entries) if !entries.is_empty() => {
+        Scalar::Nested(crate::types::Nested::Record(entries)) if !entries.as_map().is_empty() => {
             writer.write_all(b"{")?;
-            for (index, (name, value)) in entries.iter().enumerate() {
+            for (index, (name, value)) in entries.as_map().iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }

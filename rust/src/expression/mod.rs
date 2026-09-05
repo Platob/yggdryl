@@ -627,13 +627,13 @@ impl Expression {
     /// The expression that is true for every row.
     #[must_use]
     pub fn always_true() -> Self {
-        Self::literal(crate::Scalar::Bool(true))
+        Self::literal(true)
     }
 
     /// The expression that is true for no row.
     #[must_use]
     pub fn always_false() -> Self {
-        Self::literal(crate::Scalar::Bool(false))
+        Self::literal(false)
     }
 
     /// Hold a constant, inferring the datatype it belongs to.
@@ -967,7 +967,7 @@ impl Expression {
     #[must_use]
     pub fn is_always_true(&self) -> bool {
         match self {
-            Self::Literal(held) => matches!(held.value(), crate::Scalar::Bool(true)),
+            Self::Literal(held) => held.value().as_bool() == Some(true),
             Self::And(operands) => operands.is_empty(),
             _ => false,
         }
@@ -977,7 +977,7 @@ impl Expression {
     #[must_use]
     pub fn is_always_false(&self) -> bool {
         match self {
-            Self::Literal(held) => matches!(held.value(), crate::Scalar::Bool(false)),
+            Self::Literal(held) => held.value().as_bool() == Some(false),
             Self::Or(operands) => operands.is_empty(),
             _ => false,
         }
@@ -1368,20 +1368,16 @@ impl PartialOrd for Segment {
 /// a `uint8` and silently widening it would change the type a comparison runs
 /// in. A value that cannot be negated keeps its [`Expression::Negate`] node.
 fn negate_value(value: &crate::Scalar) -> Option<crate::Scalar> {
+    use crate::Integer;
+    use crate::types::Temporal;
+
     matches!(
         value,
-        crate::Scalar::I8(_)
-            | crate::Scalar::I16(_)
-            | crate::Scalar::I32(_)
-            | crate::Scalar::I64(_)
-            | crate::Scalar::I128(_)
-            | crate::Scalar::F16(_)
-            | crate::Scalar::F32(_)
-            | crate::Scalar::F64(_)
-            | crate::Scalar::D128(..)
-            | crate::Scalar::D256(..)
-            | crate::Scalar::Duration32(..)
-            | crate::Scalar::Duration64(..)
+        crate::Scalar::Integer(
+            Integer::I8(_) | Integer::I16(_) | Integer::I32(_) | Integer::I64(_) | Integer::I128(_)
+        ) | crate::Scalar::Floating(_)
+            | crate::Scalar::Decimal(_)
+            | crate::Scalar::Temporal(Temporal::Duration32(_) | Temporal::Duration64(_))
     )
     .then(|| value.checked_neg().ok())
     .flatten()

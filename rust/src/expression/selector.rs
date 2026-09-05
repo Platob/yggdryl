@@ -221,7 +221,9 @@ impl Selector {
             Self::Parent => url
                 .parent()
                 .map_or(Scalar::Null, |parent| Scalar::from(parent.to_string())),
-            Self::Depth => Scalar::I64(i64::try_from(url.path().segment_len()).unwrap_or(i64::MAX)),
+            Self::Depth => {
+                Scalar::from(i64::try_from(url.path().segment_len()).unwrap_or(i64::MAX))
+            }
             Self::MimeType => Scalar::from(url.mime_type().to_string()),
             Self::Partition(column) => url
                 .hive_partition(column)
@@ -311,10 +313,10 @@ pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Resul
             .url()
             .map_or(Scalar::Null, |url| selector.read_url(url))),
         Cost::Stat => Ok(match selector {
-            Selector::Size => i64::try_from(handle.size()).map_or(Scalar::Null, Scalar::I64),
+            Selector::Size => i64::try_from(handle.size()).map_or(Scalar::Null, Scalar::from),
             Selector::Kind => Scalar::from(handle.kind().to_string()),
-            Selector::IsContainer => Scalar::Bool(handle.is_container()),
-            Selector::IsEmpty => Scalar::Bool(handle.is_empty()),
+            Selector::IsContainer => Scalar::from(handle.is_container()),
+            Selector::IsEmpty => Scalar::from(handle.is_empty()),
             // Unreachable by the cost table above, and stated rather than
             // panicked so a selector added later degrades to "not known".
             _ => Scalar::Null,

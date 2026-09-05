@@ -5,7 +5,7 @@
 //! `arrow.uuid` extension). Every string rendering is the 36-character
 //! lowercase hyphenated form RFC 9562 spells, so storage reads back as the
 //! identifier that went in. The canonical value spelling is
-//! `Scalar::String(hyphenated)`; `Scalar::Bytes` of sixteen bytes and the
+//! `Scalar::from(hyphenated)`; `Scalar::Bytes` of sixteen bytes and the
 //! 32-digit bare-hex text are accepted on the way in under the same rule and
 //! canonicalize to that one spelling.
 //!
@@ -111,8 +111,8 @@ impl DataType {
 /// The bytes a GUID value carries, in either accepted spelling.
 pub(crate) fn guid_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
-        Scalar::String(text) => Some(text.as_bytes()),
-        Scalar::Bytes(bytes) => Some(bytes),
+        Scalar::Text(text) => Some(text.as_str().as_bytes()),
+        Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }
 }

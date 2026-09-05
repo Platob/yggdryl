@@ -118,12 +118,12 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
     assert!(union.default_union_type_id().unwrap() == Some(7));
     assert!(
         !union
-            .is_default_value(&Scalar::from_sequence([Scalar::I64(2), Scalar::I64(0)]))
+            .is_default_value(&Scalar::from_sequence([Scalar::from(2), Scalar::from(0)]))
             .unwrap()
     );
     assert!(
         !union
-            .is_default_value(&Scalar::from_sequence([Scalar::I64(7), Scalar::I64(1)]))
+            .is_default_value(&Scalar::from_sequence([Scalar::from(7), Scalar::from(1)]))
             .unwrap()
     );
 
@@ -140,7 +140,7 @@ fn nested_defaults_respect_child_field_nullability() {
     .unwrap();
     assert_eq!(
         structure.default_value().unwrap().as_sequence().unwrap(),
-        &[Scalar::I64(0), Scalar::Null]
+        &[Scalar::from(0), Scalar::Null]
     );
 
     let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 3).unwrap();
@@ -163,7 +163,7 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
     let nullable = Field::new("choice", union.clone(), true);
     assert_eq!(
         nullable.default_value().unwrap().as_sequence().unwrap(),
-        &[Scalar::I64(9), Scalar::Null]
+        &[Scalar::from(9), Scalar::Null]
     );
     assert_eq!(
         Field::new("choice", union, false)
@@ -171,7 +171,7 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
             .unwrap()
             .as_sequence()
             .unwrap(),
-        &[Scalar::I64(3), Scalar::I64(0)]
+        &[Scalar::from(3), Scalar::from(0)]
     );
 
     let nullable_run = Field::new(
@@ -282,7 +282,7 @@ fn fatal_default_limits_never_fall_back_to_nullable_nulls() {
     .unwrap();
     assert_eq!(
         fallback.default_value().unwrap(),
-        Scalar::from_sequence([Scalar::I64(2), Scalar::I64(0)])
+        Scalar::from_sequence([Scalar::from(2), Scalar::from(0)])
     );
 }
 

@@ -3,7 +3,7 @@ use std::str::FromStr;
 use yggdryl::{DataType, Field, I256, Scalar, TimeUnit, Timezone};
 
 pub(crate) fn nested(depth: usize) -> Scalar {
-    (0..depth).fold(Scalar::I64(0), |value, _| Scalar::from_sequence([value]))
+    (0..depth).fold(Scalar::from(0), |value, _| Scalar::from_sequence([value]))
 }
 
 pub(crate) fn representative() -> Scalar {

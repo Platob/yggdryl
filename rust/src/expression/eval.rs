@@ -22,10 +22,8 @@
 //! it. Two tiers that disagree about `nan` disagree about a filter, so this is
 //! stated rather than inherited.
 
-use std::cmp::Ordering;
-use std::sync::Arc;
-
 use smol_str::{SmolStr, format_smolstr};
+use std::cmp::Ordering;
 
 use super::bind::{Kind, Node};
 use super::selector::Attributes;
@@ -33,9 +31,7 @@ use super::typing::{
     decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
 };
 use super::{Comparison, Function, Operator, Safety, Segment};
-use crate::{
-    DataType, Error, Field, Float16, Float32, Float64, I256, Result, Scalar, TimeUnit, Timezone,
-};
+use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -105,7 +101,7 @@ impl Node {
                 let mut unknown = false;
                 for operand in operands {
                     match operand.eval(row)?.as_bool() {
-                        Some(false) => return Ok(Scalar::Bool(false)),
+                        Some(false) => return Ok(Scalar::from(false)),
                         Some(true) => {}
                         None => unknown = true,
                     }
@@ -113,14 +109,14 @@ impl Node {
                 Ok(if unknown {
                     Scalar::Null
                 } else {
-                    Scalar::Bool(true)
+                    Scalar::from(true)
                 })
             }
             Kind::Or(operands) => {
                 let mut unknown = false;
                 for operand in operands {
                     match operand.eval(row)?.as_bool() {
-                        Some(true) => return Ok(Scalar::Bool(true)),
+                        Some(true) => return Ok(Scalar::from(true)),
                         Some(false) => {}
                         None => unknown = true,
                     }
@@ -128,11 +124,11 @@ impl Node {
                 Ok(if unknown {
                     Scalar::Null
                 } else {
-                    Scalar::Bool(false)
+                    Scalar::from(false)
                 })
             }
             Kind::Not(inner) => Ok(match inner.eval(row)?.as_bool() {
-                Some(held) => Scalar::Bool(!held),
+                Some(held) => Scalar::from(!held),
                 None => Scalar::Null,
             }),
             Kind::Compare(left, comparison, right) => {
@@ -155,7 +151,7 @@ impl Node {
                     let item_value = item.eval(row)?;
                     match compare(value.field.dtype(), &held, Comparison::Eq, &item_value).as_bool()
                     {
-                        Some(true) => return Ok(Scalar::Bool(true)),
+                        Some(true) => return Ok(Scalar::from(true)),
                         Some(false) => {}
                         None => unknown = true,
                     }
@@ -163,7 +159,7 @@ impl Node {
                 Ok(if unknown {
                     Scalar::Null
                 } else {
-                    Scalar::Bool(false)
+                    Scalar::from(false)
                 })
             }
             Kind::Between(value, low, high) => {
@@ -173,8 +169,8 @@ impl Node {
                 let below = compare(dtype, &held, Comparison::LtEq, &high.eval(row)?);
                 Ok(kleene_and(&above, &below))
             }
-            Kind::IsNull(inner) => Ok(Scalar::Bool(inner.eval(row)?.is_null())),
-            Kind::IsNotNull(inner) => Ok(Scalar::Bool(!inner.eval(row)?.is_null())),
+            Kind::IsNull(inner) => Ok(Scalar::from(inner.eval(row)?.is_null())),
+            Kind::IsNotNull(inner) => Ok(Scalar::from(!inner.eval(row)?.is_null())),
             Kind::Like {
                 value,
                 pattern,
@@ -185,7 +181,7 @@ impl Node {
                 let Some(text) = held.as_str() else {
                     return Ok(Scalar::Null);
                 };
-                Ok(Scalar::Bool(like_matches(
+                Ok(Scalar::from(like_matches(
                     text,
                     pattern,
                     *case_insensitive,
@@ -197,7 +193,7 @@ impl Node {
                 let Some(text) = held.as_str() else {
                     return Ok(Scalar::Null);
                 };
-                Ok(Scalar::Bool(crate::uri::pattern::matches_glob_text(
+                Ok(Scalar::from(crate::uri::pattern::matches_glob_text(
                     text, pattern,
                 )))
             }
@@ -340,8 +336,8 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
 /// Kleene conjunction of two already-evaluated booleans.
 fn kleene_and(left: &Scalar, right: &Scalar) -> Scalar {
     match (left.as_bool(), right.as_bool()) {
-        (Some(false), _) | (_, Some(false)) => Scalar::Bool(false),
-        (Some(true), Some(true)) => Scalar::Bool(true),
+        (Some(false), _) | (_, Some(false)) => Scalar::from(false),
+        (Some(true), Some(true)) => Scalar::from(true),
         _ => Scalar::Null,
     }
 }
@@ -359,7 +355,7 @@ pub(crate) fn compare(
             (true, false) | (false, true) => false,
             (false, false) => order(dtype, left, right) == Some(Ordering::Equal),
         };
-        return Scalar::Bool(match comparison {
+        return Scalar::from(match comparison {
             Comparison::IsDistinctFrom => !same,
             _ => same,
         });
@@ -368,7 +364,7 @@ pub(crate) fn compare(
         return Scalar::Null;
     }
     match order(dtype, left, right) {
-        Some(ordering) => Scalar::Bool(comparison.answers(ordering)),
+        Some(ordering) => Scalar::from(comparison.answers(ordering)),
         // Two values that share a declared type but no ordering - a struct
         // against a struct - answer unknown rather than an arbitrary yes.
         None => Scalar::Null,
@@ -515,14 +511,14 @@ fn pow10(scale: i8) -> Option<i128> {
 /// Put a whole number back into the width its datatype declares.
 fn narrow(dtype: &DataType, held: i128) -> Scalar {
     match dtype {
-        DataType::Int8 => i8::try_from(held).map_or(Scalar::Null, Scalar::I8),
-        DataType::Int16 => i16::try_from(held).map_or(Scalar::Null, Scalar::I16),
-        DataType::Int32 => i32::try_from(held).map_or(Scalar::Null, Scalar::I32),
-        DataType::UInt8 => u8::try_from(held).map_or(Scalar::Null, Scalar::U8),
-        DataType::UInt16 => u16::try_from(held).map_or(Scalar::Null, Scalar::U16),
-        DataType::UInt32 => u32::try_from(held).map_or(Scalar::Null, Scalar::U32),
-        DataType::UInt64 => u64::try_from(held).map_or(Scalar::Null, Scalar::U64),
-        _ => i64::try_from(held).map_or(Scalar::Null, Scalar::I64),
+        DataType::Int8 => i8::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::Int16 => i16::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::Int32 => i32::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::UInt8 => u8::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::UInt16 => u16::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::UInt32 => u32::try_from(held).map_or(Scalar::Null, Scalar::from),
+        DataType::UInt64 => u64::try_from(held).map_or(Scalar::Null, Scalar::from),
+        _ => i64::try_from(held).map_or(Scalar::Null, Scalar::from),
     }
 }
 
@@ -617,9 +613,11 @@ fn call(
         Function::Upper => text_value(first, str::to_uppercase),
         Function::Trim => text_value(first, |text| text.trim().to_owned()),
         Function::Length => match first {
-            Scalar::Bytes(bytes) => Scalar::I64(i64::try_from(bytes.len()).unwrap_or(i64::MAX)),
+            Scalar::Bytes(bytes) => {
+                Scalar::from(i64::try_from(bytes.as_bytes().len()).unwrap_or(i64::MAX))
+            }
             other => other.as_str().map_or(Scalar::Null, |text| {
-                Scalar::I64(i64::try_from(text.chars().count()).unwrap_or(i64::MAX))
+                Scalar::from(i64::try_from(text.chars().count()).unwrap_or(i64::MAX))
             }),
         },
         Function::Substring => {
@@ -654,7 +652,7 @@ fn call(
             let until = usize::try_from(end.max(1) - 1)
                 .unwrap_or(0)
                 .min(characters.len());
-            Scalar::String(SmolStr::new(
+            Scalar::from(SmolStr::new(
                 characters
                     .get(from..until.max(from))
                     .unwrap_or_default()
@@ -673,7 +671,7 @@ fn call(
                 };
                 joined.push_str(text);
             }
-            Scalar::String(SmolStr::new(joined))
+            Scalar::from(SmolStr::new(joined))
         }
         Function::Year | Function::Month | Function::Day | Function::Hour => {
             calendar_part(first, function)
@@ -686,7 +684,7 @@ fn call(
             .unwrap_or(Scalar::Null),
         Function::Size => match first {
             other if other.is_container() => {
-                Scalar::I64(i64::try_from(other.len()).unwrap_or(i64::MAX))
+                Scalar::from(i64::try_from(other.len()).unwrap_or(i64::MAX))
             }
             _ => Scalar::Null,
         },
@@ -696,7 +694,7 @@ fn call(
                 .ok_or_else(|| missing("a container for get"))?;
             let key = values.get(1).cloned().unwrap_or(Scalar::Null);
             let segment = match key.as_i64() {
-                Some(index) if !matches!(key, Scalar::String(_)) => Segment::Index(index),
+                Some(index) if key.as_str().is_none() => Segment::Index(index),
                 _ => Segment::Key(crate::TypedScalar::from_value(key)?),
             };
             apply_step(&container.field, first, &segment)
@@ -706,7 +704,7 @@ fn call(
 
 fn text_value(value: &Scalar, rewrite: impl Fn(&str) -> String) -> Scalar {
     value.as_str().map_or(Scalar::Null, |text| {
-        Scalar::String(SmolStr::new(rewrite(text)))
+        Scalar::from(SmolStr::new(rewrite(text)))
     })
 }
 
@@ -715,7 +713,7 @@ fn text_pair(values: &[Scalar], answer: impl Fn(&str, &str) -> bool) -> Scalar {
         values.first().and_then(Scalar::as_str),
         values.get(1).and_then(Scalar::as_str),
     ) {
-        (Some(text), Some(other)) => Scalar::Bool(answer(text, other)),
+        (Some(text), Some(other)) => Scalar::from(answer(text, other)),
         _ => Scalar::Null,
     }
 }
@@ -726,19 +724,22 @@ fn text_pair(values: &[Scalar], answer: impl Fn(&str, &str) -> bool) -> Scalar {
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: Function) -> Scalar {
+    use crate::types::Temporal;
     use crate::types::ascii::iso;
 
     let text = match value {
-        Scalar::Date32(days, _, _) => iso::format_date(*days),
-        Scalar::Date64(count, unit, _) => value
+        Scalar::Temporal(Temporal::Date32(date)) => iso::format_date(date.count()),
+        Scalar::Temporal(Temporal::Date64(date)) => value
             .temporal_count_at(TimeUnit::Day)
             .and_then(|days| i32::try_from(days).ok())
             .and_then(iso::format_date)
-            .or_else(|| iso::format_datetime(*count, *unit)),
-        Scalar::DateTime64(count, unit, zone) if zone.is_naive() => {
-            iso::format_datetime(*count, *unit)
+            .or_else(|| iso::format_datetime(date.count(), date.unit())),
+        Scalar::Temporal(Temporal::DateTime64(datetime)) if datetime.timezone().is_naive() => {
+            iso::format_datetime(datetime.count(), datetime.unit())
         }
-        Scalar::DateTime64(count, unit, zone) => iso::format_timestamp(*count, *unit, zone),
+        Scalar::Temporal(Temporal::DateTime64(datetime)) => {
+            iso::format_timestamp(datetime.count(), datetime.unit(), &datetime.timezone())
+        }
         _ => None,
     };
     let Some(text) = text else {
@@ -763,7 +764,7 @@ fn calendar_part(value: &Scalar, function: Function) -> Scalar {
         }
         _ => None,
     };
-    parsed.map_or(Scalar::Null, Scalar::I32)
+    parsed.map_or(Scalar::Null, Scalar::from)
 }
 
 /// Floor a value to a unit or to a multiple.
@@ -874,22 +875,22 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
     }
     match target {
         DataType::Boolean => match value {
-            Scalar::Bool(_) => Ok(value.clone()),
+            Scalar::Boolean(_) => Ok(value.clone()),
             other => match other.as_i128() {
-                Some(held) => Ok(Scalar::Bool(held != 0)),
+                Some(held) => Ok(Scalar::from(held != 0)),
                 None => refuse("a boolean"),
             },
         },
         DataType::Float16 => match value.as_f64() {
-            Some(held) => Ok(Scalar::F16(Float16::from_f16(half::f16::from_f64(held)))),
+            Some(held) => Ok(Scalar::from(half::f16::from_f64(held))),
             None => refuse("a number"),
         },
         DataType::Float32 => match value.as_f64() {
-            Some(held) => Ok(Scalar::F32(Float32::from_f32(held as f32))),
+            Some(held) => Ok(Scalar::from(held as f32)),
             None => refuse("a number"),
         },
         DataType::Float64 => match value.as_f64() {
-            Some(held) => Ok(Scalar::F64(Float64::from_f64(held))),
+            Some(held) => Ok(Scalar::from(held)),
             None => refuse("a number"),
         },
         DataType::Int8
@@ -913,13 +914,18 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             }
         }
         DataType::Guid => {
+            if matches!(value, Scalar::Guid(_)) {
+                return Ok(value.clone());
+            }
             // The row tier enforces the one GUID rule the cast plan enforces
             // on columns, so the two tiers refuse the same values.
             let Some(bytes) = crate::types::guid_bytes(value) else {
                 return refuse("a GUID");
             };
             match crate::types::guid_parse(bytes) {
-                Ok(stored) => Ok(Scalar::String(crate::types::guid_text(&stored))),
+                Ok(stored) => Ok(Scalar::Guid(crate::types::Guid::new(u128::from_be_bytes(
+                    stored,
+                )))),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),
                 Err(error) => Err(error),
             }
@@ -950,20 +956,22 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         }
         other if is_text(other) => {
             if let Some(text) = value.as_str() {
-                return Ok(Scalar::String(SmolStr::new(text)));
+                return Ok(Scalar::from(SmolStr::new(text)));
             }
             let inferred = crate::TypedScalar::from_value(value.clone())
                 .map(|held| held.dtype().clone())
                 .unwrap_or(DataType::Null);
             match super::display::literal_text(&inferred, value) {
-                Some(text) => Ok(Scalar::String(text)),
+                Some(text) => Ok(Scalar::from(text)),
                 None => refuse("a value with a text form"),
             }
         }
         other if is_binary(other) => match value {
             Scalar::Bytes(_) => Ok(value.clone()),
-            Scalar::String(text) => Ok(Scalar::Bytes(Arc::from(text.as_bytes()))),
-            _ => refuse("bytes"),
+            other => match other.as_str() {
+                Some(text) => Ok(Scalar::from(text.as_bytes())),
+                None => refuse("bytes"),
+            },
         },
         _ => {
             // A nested target keeps the value it was given: the schema-directed

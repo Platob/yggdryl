@@ -23,7 +23,9 @@ use smol_str::format_smolstr;
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
-use crate::{DataType, Error, I256, Result, Scalar};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, I256, Result, Scalar, ScalarFamily, ScalarValue,
+};
 
 /// Operations shared by every exact-decimal representation.
 pub trait DecimalValue: crate::ScalarValue {
@@ -85,12 +87,12 @@ macro_rules! decimal_leaf {
             }
 
             /// Return the stored coefficient.
-            pub const fn coefficient(self) -> $coefficient {
+            pub const fn coefficient(&self) -> $coefficient {
                 self.coefficient
             }
 
             /// Return the base-10 scale.
-            pub const fn scale(self) -> i8 {
+            pub const fn scale(&self) -> i8 {
                 self.scale
             }
         }
@@ -183,6 +185,151 @@ impl Hash for Decimal {
 
 const _: () = assert!(std::mem::size_of::<Decimal>() == 48);
 
+macro_rules! decimal_value {
+    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $native:ty) => {
+        impl ScalarValue for $leaf {
+            type Family = Decimal;
+            type Type = $marker;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Decimal;
+
+            fn dtype(&self) -> Result<DataType> {
+                Scalar::Decimal(Decimal::$variant(*self)).dtype()
+            }
+
+            fn into_family(self) -> Self::Family {
+                Decimal::$variant(self)
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                match family {
+                    Decimal::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::Decimal(Decimal::$variant(self))
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::Decimal(Decimal::$variant(value)) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl DecimalValue for $leaf {
+            fn coefficient(&self) -> I256 {
+                self.coefficient().into_i256()
+            }
+
+            fn scale(&self) -> i8 {
+                self.scale()
+            }
+
+            fn rescale(self, scale: i8) -> Result<Self> {
+                let coefficient =
+                    rescale_decimal(self.coefficient().into_i256(), self.scale(), scale)
+                        .and_then(I256::as_i128)
+                        .and_then(|value| <$native>::try_from(value).ok())
+                        .ok_or(Error::InexactArithmetic {
+                            operation: "rescale",
+                            kind: stringify!($id),
+                        })?;
+                Ok(Self::new(coefficient, scale))
+            }
+        }
+    };
+}
+
+decimal_value!(Decimal32, super::Decimal32Type, D32, Decimal32, i32);
+decimal_value!(Decimal64, super::Decimal64Type, D64, Decimal64, i64);
+decimal_value!(Decimal128, super::Decimal128Type, D128, Decimal128, i128);
+
+impl ScalarValue for Decimal256 {
+    type Family = Decimal;
+    type Type = super::Decimal256Type;
+
+    const ID: DataTypeId = DataTypeId::Decimal256;
+    const KIND: DataTypeKind = DataTypeKind::Decimal;
+
+    fn dtype(&self) -> Result<DataType> {
+        Scalar::Decimal(Decimal::D256(*self)).dtype()
+    }
+
+    fn into_family(self) -> Self::Family {
+        Decimal::D256(self)
+    }
+
+    fn from_family(family: &Self::Family) -> Option<&Self> {
+        match family {
+            Decimal::D256(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Decimal(Decimal::D256(self))
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Decimal(Decimal::D256(value)) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl DecimalValue for Decimal256 {
+    fn coefficient(&self) -> I256 {
+        self.coefficient()
+    }
+
+    fn scale(&self) -> i8 {
+        self.scale()
+    }
+
+    fn rescale(self, scale: i8) -> Result<Self> {
+        rescale_decimal(self.coefficient(), self.scale(), scale)
+            .map(|coefficient| Self::new(coefficient, scale))
+            .ok_or(Error::InexactArithmetic {
+                operation: "rescale",
+                kind: "Decimal256",
+            })
+    }
+}
+
+impl ScalarFamily for Decimal {
+    const KIND: DataTypeKind = DataTypeKind::Decimal;
+
+    fn id(&self) -> DataTypeId {
+        match self {
+            Self::D32(_) => DataTypeId::Decimal32,
+            Self::D64(_) => DataTypeId::Decimal64,
+            Self::D128(_) => DataTypeId::Decimal128,
+            Self::D256(_) => DataTypeId::Decimal256,
+        }
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        self.into_scalar().dtype()
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Decimal(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Decimal(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
 define_scalar_type!(Decimal32Scalar, super::Decimal32Type, "decimal32");
 define_scalar_type!(Decimal64Scalar, super::Decimal64Type, "decimal64");
 define_scalar_type!(Decimal128Scalar, super::Decimal128Type, "decimal128");
@@ -202,18 +349,18 @@ impl Scalar {
     /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
     pub const fn d128(unscaled: i128, scale: i8) -> Self {
-        Self::D128(unscaled, scale)
+        Self::Decimal(Decimal::D128(Decimal128::new(unscaled, scale)))
     }
 
     /// Build an exact decimal with a 256-bit coefficient.
     pub const fn d256(unscaled: I256, scale: i8) -> Self {
-        Self::D256(unscaled, scale)
+        Self::Decimal(Decimal::D256(Decimal256::new(unscaled, scale)))
     }
 
     /// Return the coefficient and scale when this is a 128-bit decimal.
     pub const fn as_d128(&self) -> Option<(i128, i8)> {
         match self {
-            Self::D128(unscaled, scale) => Some((*unscaled, *scale)),
+            Self::Decimal(Decimal::D128(value)) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
@@ -221,23 +368,22 @@ impl Scalar {
     /// Return the coefficient and scale when this is a 256-bit decimal.
     pub const fn as_d256(&self) -> Option<(I256, i8)> {
         match self {
-            Self::D256(unscaled, scale) => Some((*unscaled, *scale)),
+            Self::Decimal(Decimal::D256(value)) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
 
     /// Return this decimal's coefficient widened to 256 bits and its scale.
-    pub const fn as_decimal(&self) -> Option<(I256, i8)> {
+    pub fn as_decimal(&self) -> Option<(I256, i8)> {
         match self {
-            Self::D128(unscaled, scale) => Some((I256::from_i128(*unscaled), *scale)),
-            Self::D256(unscaled, scale) => Some((*unscaled, *scale)),
+            Self::Decimal(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
 
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
-        matches!(self, Self::D128(..) | Self::D256(..))
+        matches!(self, Self::Decimal(_))
     }
 
     /// Return this decimal's unscaled integer at `scale`, when it is exact.

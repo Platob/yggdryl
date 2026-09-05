@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::types::typed::define_scalar_type;
-use crate::{Result, types};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
 /// One RFC 9562 identifier stored as its big-endian 128-bit value.
 #[repr(transparent)]
@@ -42,6 +42,57 @@ impl Guid {
 impl fmt::Display for Guid {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&types::guid_text(&self.0.to_be_bytes()))
+    }
+}
+
+impl ScalarFamily for Guid {
+    const KIND: DataTypeKind = DataTypeKind::Guid;
+
+    fn id(&self) -> DataTypeId {
+        DataTypeId::Guid
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        Ok(DataType::Guid)
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Guid(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Guid(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl ScalarValue for Guid {
+    type Family = Self;
+    type Type = super::GuidType;
+
+    const ID: DataTypeId = DataTypeId::Guid;
+    const KIND: DataTypeKind = DataTypeKind::Guid;
+
+    fn dtype(&self) -> Result<DataType> {
+        Ok(DataType::Guid)
+    }
+
+    fn into_family(self) -> Self::Family {
+        self
+    }
+
+    fn from_family(family: &Self::Family) -> Option<&Self> {
+        Some(family)
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Guid(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        <Self as ScalarFamily>::from_scalar(value)
     }
 }
 

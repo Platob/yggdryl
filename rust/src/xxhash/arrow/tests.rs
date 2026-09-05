@@ -50,39 +50,39 @@ fn columns() -> Vec<(Field, Scalar)> {
         ),
         (
             Field::new("boolean", DataType::Boolean, true),
-            Scalar::from_sequence([Scalar::Bool(true), Scalar::Bool(false), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(true), Scalar::from(false), Scalar::Null]),
         ),
         (
             Field::new("int8", DataType::Int8, true),
-            Scalar::from_sequence([Scalar::I8(-1), Scalar::I8(0), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(-1), Scalar::from(0), Scalar::Null]),
         ),
         (
             Field::new("int16", DataType::Int16, false),
-            Scalar::from_sequence([Scalar::I16(i16::MIN), Scalar::I16(7), Scalar::I16(0)]),
+            Scalar::from_sequence([Scalar::from(i16::MIN), Scalar::from(7), Scalar::from(0)]),
         ),
         (
             Field::new("int32", DataType::Int32, false),
-            Scalar::from_sequence([Scalar::I32(i32::MIN), Scalar::I32(0x31), Scalar::I32(0)]),
+            Scalar::from_sequence([Scalar::from(i32::MIN), Scalar::from(0x31), Scalar::from(0)]),
         ),
         (
             Field::new("int64", DataType::Int64, true),
-            Scalar::from_sequence([Scalar::I64(i64::MIN), Scalar::I64(187), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(i64::MIN), Scalar::from(187), Scalar::Null]),
         ),
         (
             Field::new("uint8", DataType::UInt8, false),
-            Scalar::from_sequence([Scalar::U8(0), Scalar::U8(0x31), Scalar::U8(u8::MAX)]),
+            Scalar::from_sequence([Scalar::from(0), Scalar::from(0x31), Scalar::from(u8::MAX)]),
         ),
         (
             Field::new("uint16", DataType::UInt16, false),
-            Scalar::from_sequence([Scalar::U16(0), Scalar::U16(7), Scalar::U16(u16::MAX)]),
+            Scalar::from_sequence([Scalar::from(0), Scalar::from(7), Scalar::from(u16::MAX)]),
         ),
         (
             Field::new("uint32", DataType::UInt32, false),
-            Scalar::from_sequence([Scalar::U32(0), Scalar::U32(7), Scalar::U32(u32::MAX)]),
+            Scalar::from_sequence([Scalar::from(0), Scalar::from(7), Scalar::from(u32::MAX)]),
         ),
         (
             Field::new("uint64", DataType::UInt64, true),
-            Scalar::from_sequence([Scalar::U64(u64::MAX), Scalar::U64(7), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(u64::MAX), Scalar::from(7), Scalar::Null]),
         ),
         (
             Field::new("float16", DataType::Float16, true),
@@ -152,22 +152,22 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new("binary", DataType::Binary, true),
             Scalar::from_sequence([
-                Scalar::Bytes(Arc::from(b"".as_slice())),
-                Scalar::Bytes(Arc::from(b"\x00\xff".as_slice())),
+                Scalar::from(Arc::from(b"".as_slice())),
+                Scalar::from(Arc::from(b"\x00\xff".as_slice())),
                 Scalar::Null,
             ]),
         ),
         (
             Field::new("large_binary", DataType::LargeBinary, true),
-            Scalar::from_sequence([Scalar::Bytes(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
             Field::new("binary_view", DataType::BinaryView, true),
-            Scalar::from_sequence([Scalar::Bytes(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
             Field::new("fixed_size_binary", DataType::FixedSizeBinary(4), true),
-            Scalar::from_sequence([Scalar::Bytes(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
             Field::new("date32", DataType::Date32, true),
@@ -243,7 +243,7 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::from_sequence([Scalar::I64(1), Scalar::I64(2)]),
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
                 Scalar::from_sequence([]),
                 Scalar::Null,
             ]),
@@ -259,7 +259,7 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::I64(100)]),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100)]),
                 Scalar::from_sequence([Scalar::from("MSFT"), Scalar::Null]),
                 Scalar::Null,
             ]),
@@ -271,7 +271,7 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::I64(100))]).unwrap(),
+                Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(100))]).unwrap(),
                 Scalar::from_mapping([]).unwrap(),
                 Scalar::Null,
             ]),
@@ -299,19 +299,19 @@ fn columns() -> Vec<(Field, Scalar)> {
             // stores, and its validity lives in the child rather than the
             // parent - which is exactly the case the null shortcut skips.
             Scalar::from_sequence([
-                Scalar::from_sequence([Scalar::I64(0), Scalar::I64(1)]),
-                Scalar::from_sequence([Scalar::I64(1), Scalar::from("AAPL")]),
+                Scalar::from_sequence([Scalar::from(0), Scalar::from(1)]),
+                Scalar::from_sequence([Scalar::from(1), Scalar::from("AAPL")]),
             ]),
         ),
         (
             Field::new("geometry", DataType::from_str("geometry").unwrap(), true),
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
-                Scalar::Geospatial(Arc::from(
-                    [
+                Scalar::Geospatial(crate::types::Geospatial::Geometry(
+                    crate::types::Geometry::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    ]
-                    .as_slice(),
+                    ])
+                    .unwrap(),
                 )),
                 Scalar::Null,
             ]),
@@ -446,7 +446,7 @@ fn a_null_never_collides_with_an_empty_value() {
 #[test]
 fn the_column_width_follows_the_algorithm() {
     let field = Field::new("quantity", DataType::Int64, false);
-    let values = Scalar::from_sequence([Scalar::I64(1), Scalar::I64(2)]);
+    let values = Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
 
     let widths = [
@@ -496,7 +496,10 @@ fn a_row_is_the_sequence_of_its_columns() {
     );
     assert_eq!(
         column[0],
-        Scalar::from_sequence([Scalar::I64(100)]).digest(DigestAlgorithm::Xxh3_64)
+        Scalar::from_sequence([Scalar::from(100)]).digest(DigestAlgorithm::Xxh3_64)
     );
-    assert_ne!(column[0], Scalar::I64(100).digest(DigestAlgorithm::Xxh3_64));
+    assert_ne!(
+        column[0],
+        Scalar::from(100).digest(DigestAlgorithm::Xxh3_64)
+    );
 }

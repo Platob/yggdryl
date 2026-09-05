@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    EnumScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, Timezone, TypedScalar,
+    Enum, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, Timezone, TypedScalar,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -23,8 +23,8 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     .unwrap();
     let array = Scalar::from_sequence([Scalar::from(42_i64), Scalar::Null]);
     let rows = Scalar::from_sequence([record.clone()]);
-    let integer_left = Scalar::I64(9_876_543);
-    let integer_right = Scalar::I64(97);
+    let integer_left = Scalar::from(9_876_543);
+    let integer_right = Scalar::from(97);
     let decimal_left = Scalar::d128(1_050, 2);
     let decimal_right = Scalar::d128(2, 0);
     let instant = Scalar::datetime64(
@@ -34,14 +34,14 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     )
     .unwrap();
     let duration = Scalar::duration64(250, TimeUnit::Millisecond).unwrap();
-    let duration_scalar = Scalar::I64(5);
-    let typed: TypedScalar = TypedScalar::try_from_value(Scalar::I64(42)).unwrap();
+    let duration_scalar = Scalar::from(5);
+    let typed: TypedScalar = TypedScalar::try_from_value(Scalar::from(42)).unwrap();
     let integer256: I256 = "1234567890123456789012345678901234567890".parse().unwrap();
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
-    let enum_member = EnumScalar::IOMode(IOMode::Append);
-    let family_integer = Scalar::U64(42);
+    let enum_member = Enum::IOMode(IOMode::Append);
+    let family_integer = Scalar::from(42);
     let family_decimal = Scalar::d256(integer256, 2);
     let family_float = Scalar::from_float(1.25, 32).unwrap();
 
@@ -104,7 +104,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         });
     });
     group.bench_function("enum_from_parts", |bencher| {
-        bencher.iter(|| EnumScalar::from_parts(black_box("io_mode"), black_box("append")).unwrap());
+        bencher.iter(|| Enum::from_parts(black_box("io_mode"), black_box("append")).unwrap());
     });
     group.bench_function("enum_kind", |bencher| {
         bencher.iter(|| black_box(enum_member).kind());

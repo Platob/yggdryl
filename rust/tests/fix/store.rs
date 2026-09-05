@@ -686,13 +686,13 @@ fn serialization_is_inherited_by_fields_and_messages() {
         .required_field("NewOrderSingle");
     let value = Scalar::from_record([
         ("Symbol", Scalar::from("AAPL")),
-        ("OrderQty", Scalar::I64(100)),
+        ("OrderQty", Scalar::from(100)),
         (
             "NoPartyIDs",
             Scalar::from_sequence([Scalar::from_record([
                 ("PartyID", Scalar::from("BROKER")),
                 ("PartyIDSource", Scalar::from("D")),
-                ("PartyRole", Scalar::I64(1)),
+                ("PartyRole", Scalar::from(1)),
             ])
             .unwrap()]),
         ),
@@ -710,11 +710,11 @@ fn serialization_is_inherited_by_fields_and_messages() {
 
     // The row follows the root's order, not the record's sorted one.
     let row = msg.as_value().as_sequence().unwrap();
-    assert_eq!(row[0], Scalar::I64(100), "OrderQty comes first");
+    assert_eq!(row[0], Scalar::from(100), "OrderQty comes first");
     assert_eq!(row[1], Scalar::from("AAPL"));
     assert_eq!(
         msg.by_path("NoPartyIDs.0.PartyRole").unwrap(),
-        &Scalar::I32(1),
+        &Scalar::from(1),
         "narrowed to Int32"
     );
 
@@ -723,7 +723,7 @@ fn serialization_is_inherited_by_fields_and_messages() {
     assert_eq!(&read, msg.as_value());
     let again = FixMsg::with_registry(registry, root, read).unwrap();
     assert_eq!(again, msg);
-    assert_eq!(again.by_tag(38).unwrap(), &Scalar::I64(100));
+    assert_eq!(again.by_tag(38).unwrap(), &Scalar::from(100));
     assert_eq!(
         again.by_path("Instrument.Symbol").unwrap(),
         &Scalar::from("AAPL")

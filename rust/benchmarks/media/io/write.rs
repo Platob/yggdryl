@@ -515,7 +515,7 @@ fn native_record_benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || (handle("native-overwrite.arrows"), rows.clone()),
             |(mut target, rows)| {
-                // Fixture cloning is setup; NativeRow -> Scalar::Sequence and
+                // Fixture cloning is setup; NativeRow -> Nested::Sequence and
                 // row validation stay inside the public operation being timed.
                 target
                     .overwrite_records(black_box(rows), &options)

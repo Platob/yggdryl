@@ -26,7 +26,8 @@ use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
 use super::{Comparison, Expression, Function, Operator, Safety, Segment};
-use crate::{DataType, Scalar, TypedScalar};
+use crate::types::Nested;
+use crate::{DataType, Floating, Integer, Scalar, TypedScalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -369,8 +370,10 @@ fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedScalar) -> fmt:
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
     // quoted literal the grammar reads back as `utf8`.
-    if let (DataType::Utf8, Scalar::String(text)) = (dtype, value) {
-        return write_text_literal(formatter, text);
+    if matches!(dtype, DataType::Utf8) {
+        if let Some(text) = value.as_str() {
+            return write_text_literal(formatter, text);
+        }
     }
     if let Some(bare) = bare_literal(dtype, value) {
         return formatter.write_str(&bare);
@@ -394,16 +397,18 @@ fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedScalar) -> fmt:
 fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
     match (dtype, value) {
         (DataType::Null, Scalar::Null) => Some(SmolStr::new_static("null")),
-        (DataType::Boolean, Scalar::Bool(held)) => Some(if *held {
+        (DataType::Boolean, Scalar::Boolean(held)) => Some(if held.get() {
             SmolStr::new_static("true")
         } else {
             SmolStr::new_static("false")
         }),
-        (DataType::Int64, Scalar::I64(held)) => Some(SmolStr::new(held.to_string())),
+        (DataType::Int64, Scalar::Integer(Integer::I64(held))) => {
+            Some(SmolStr::new(held.to_string()))
+        }
         // A non-finite float has no bare spelling, because `nan` and `inf`
         // are column names as often as they are numbers. It falls through to
         // the typed form, where the text is unambiguous.
-        (DataType::Float64, Scalar::F64(held)) if held.as_f64().is_finite() => {
+        (DataType::Float64, Scalar::Floating(Floating::F64(held))) if held.as_f64().is_finite() => {
             Some(SmolStr::new(float_text(held.as_f64())))
         }
         _ => None,
@@ -413,37 +418,23 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
 /// The inner text of a typed literal, or `None` for a value with no text form.
 pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
     match value {
-        Scalar::Bool(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::I8(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::I16(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::I32(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::I64(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::I128(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::U8(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::U16(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::U32(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::U64(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::U128(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::F32(held) => Some(SmolStr::new(float_text(f64::from(held.as_f32())))),
-        Scalar::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::D128(..) | Scalar::D256(..) => value.into_decimal_utf8().map(SmolStr::new),
-        Scalar::String(held) => Some(held.clone()),
+        Scalar::Boolean(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Integer(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Floating(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::Decimal(_) => value.into_decimal_utf8().map(SmolStr::new),
+        Scalar::Text(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::Ascii(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::Guid(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
-        Scalar::Bytes(held) | Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held))),
+        Scalar::Bytes(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
+        Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         // Every temporal spells itself the one classic way, which the Arrow
         // cast leaf renders a whole column with.
-        Scalar::Date32(..)
-        | Scalar::Date64(..)
-        | Scalar::Time32(..)
-        | Scalar::Time64(..)
-        | Scalar::DateTime64(..)
-        | Scalar::Duration32(..)
-        | Scalar::Duration64(..) => value.into_temporal_text(),
+        Scalar::Temporal(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
-        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
+        Scalar::Nested(_) => None,
     }
 }
 
@@ -483,9 +474,9 @@ fn write_struct_constructor(
 
 fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     match value {
-        Scalar::Sequence(items) => {
+        Scalar::Nested(Nested::Sequence(items)) => {
             formatter.write_char('[')?;
-            for (index, item) in items.iter().enumerate() {
+            for (index, item) in items.as_slice().iter().enumerate() {
                 if index != 0 {
                     formatter.write_str(", ")?;
                 }
@@ -493,9 +484,9 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) ->
             }
             formatter.write_char(']')
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Nested(Nested::Mapping(entries)) => {
             formatter.write_char('{')?;
-            for (index, (key, held)) in entries.iter().enumerate() {
+            for (index, (key, held)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {
                     formatter.write_str(", ")?;
                 }

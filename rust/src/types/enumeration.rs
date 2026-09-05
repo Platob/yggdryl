@@ -1,5 +1,7 @@
 //! Compact identity-preserving values for the core's static enums.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 
@@ -15,7 +17,7 @@ use crate::{
 /// vocabulary the member belongs to even when two enums share a spelling.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub enum EnumScalar {
+pub enum Enum {
     /// A content codec.
     Codec(Codec),
     /// An exact datatype identifier.
@@ -34,7 +36,7 @@ pub enum EnumScalar {
     UnionMode(UnionMode),
 }
 
-impl EnumScalar {
+impl Enum {
     /// Parse a member while retaining its enum identity.
     pub fn from_parts(kind: &str, value: &str) -> Result<Self> {
         macro_rules! parse {
@@ -115,15 +117,21 @@ impl EnumScalar {
     }
 }
 
-impl From<EnumScalar> for Scalar {
-    fn from(value: EnumScalar) -> Self {
+impl fmt::Display for Enum {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl From<Enum> for Scalar {
+    fn from(value: Enum) -> Self {
         Self::Enum(value)
     }
 }
 
-macro_rules! enum_scalar_from {
+macro_rules! enumeration_from {
     ($($type:ty => $variant:ident),+ $(,)?) => {$(
-        impl From<$type> for EnumScalar {
+        impl From<$type> for Enum {
             fn from(value: $type) -> Self {
                 Self::$variant(value)
             }
@@ -131,13 +139,13 @@ macro_rules! enum_scalar_from {
 
         impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
-                Self::Enum(EnumScalar::$variant(value))
+                Self::Enum(Enum::$variant(value))
             }
         }
     )+};
 }
 
-enum_scalar_from!(
+enumeration_from!(
     Codec => Codec,
     DataTypeId => DataTypeId,
     DataTypeKind => DataTypeKind,
@@ -153,44 +161,44 @@ mod tests {
     use std::mem::size_of;
 
     use super::{
-        Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, EnumScalar, IOKind, IOMode, Scalar,
-        TimeUnit, UnionMode,
+        Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Enum, IOKind, IOMode, Scalar, TimeUnit,
+        UnionMode,
     };
 
     #[test]
     fn identity_and_compact_ordinal_survive_scalar_conversion() {
-        let member = EnumScalar::from_parts("io_mode", "append").unwrap();
-        assert_eq!(member, EnumScalar::IOMode(IOMode::Append));
+        let member = Enum::from_parts("io_mode", "append").unwrap();
+        assert_eq!(member, Enum::IOMode(IOMode::Append));
         assert_eq!(member.kind(), "io_mode");
         assert_eq!(member.as_str(), "append");
         assert_eq!(member.ordinal(), 1);
-        assert!(size_of::<EnumScalar>() <= 2);
+        assert!(size_of::<Enum>() <= 2);
         assert_eq!(Scalar::from(IOMode::Append), Scalar::Enum(member));
     }
 
     #[test]
     fn every_static_vocabulary_round_trips_and_invalid_parts_fail() {
         let members = [
-            EnumScalar::from(Codec::Zstd),
-            EnumScalar::from(DataTypeId::Int64),
-            EnumScalar::from(DataTypeKind::Integer),
-            EnumScalar::from(EdgeAlgorithm::Spherical),
-            EnumScalar::from(IOKind::File),
-            EnumScalar::from(IOMode::Random),
-            EnumScalar::from(TimeUnit::Nanosecond),
-            EnumScalar::from(UnionMode::Dense),
+            Enum::from(Codec::Zstd),
+            Enum::from(DataTypeId::Int64),
+            Enum::from(DataTypeKind::Integer),
+            Enum::from(EdgeAlgorithm::Spherical),
+            Enum::from(IOKind::File),
+            Enum::from(IOMode::Random),
+            Enum::from(TimeUnit::Nanosecond),
+            Enum::from(UnionMode::Dense),
         ];
 
         for member in members {
             assert_eq!(
-                EnumScalar::from_parts(member.kind(), member.as_str()).unwrap(),
+                Enum::from_parts(member.kind(), member.as_str()).unwrap(),
                 member
             );
             assert_ne!(member.ordinal(), u8::MAX);
             assert_eq!(Scalar::from(member).as_enum(), Some(&member));
         }
 
-        assert!(EnumScalar::from_parts("missing", "append").is_err());
-        assert!(EnumScalar::from_parts("io_mode", "missing").is_err());
+        assert!(Enum::from_parts("missing", "append").is_err());
+        assert!(Enum::from_parts("io_mode", "missing").is_err());
     }
 }

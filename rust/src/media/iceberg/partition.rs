@@ -764,18 +764,19 @@ impl PartitionTransform {
         // The official literal implementation unwraps Date32 calendar
         // conversion. Core calendar arithmetic is total over i32 day counts,
         // so keep caller-controlled extremes out of that panic path.
-        if let Scalar::Date32(days, ..) = &value {
-            let (year, month, _) = crate::timezone::civil_from_days(i64::from(*days));
+        if let Scalar::Temporal(crate::types::Temporal::Date32(date)) = &value {
+            let days = date.count();
+            let (year, month, _) = crate::timezone::civil_from_days(i64::from(days));
             let month = i32::try_from(month).map_err(|_| {
                 invalid(format_smolstr!(
                     "expected a calendar month fitting i32, got {month}"
                 ))
             })?;
             return match self.transform {
-                Transform::Year => Ok(Scalar::I32(year - 1970)),
-                Transform::Month => Ok(Scalar::I32((year - 1970) * 12 + month - 1)),
-                Transform::Day => Ok(Scalar::date32(*days)),
-                _ => self.official_value(Scalar::date32(*days)),
+                Transform::Year => Ok(Scalar::from(year - 1970)),
+                Transform::Month => Ok(Scalar::from((year - 1970) * 12 + month - 1)),
+                Transform::Day => Ok(Scalar::date32(days)),
+                _ => self.official_value(Scalar::date32(days)),
             };
         }
 
@@ -863,29 +864,33 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
 
 fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
     let primitive = official_primitive_type(dtype)?;
-    let bytes = match (value, dtype) {
-        (
-            Scalar::D128(unscaled, actual_scale),
-            DataType::Decimal32 { scale, .. }
-            | DataType::Decimal64 { scale, .. }
-            | DataType::Decimal128 { scale, .. },
-        ) if actual_scale == scale => unscaled.to_be_bytes().to_vec(),
-        (
-            Scalar::D128(_, actual_scale),
-            DataType::Decimal32 { scale, .. }
-            | DataType::Decimal64 { scale, .. }
-            | DataType::Decimal128 { scale, .. },
-        ) => {
+    let bytes = if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
+    {
+        let (unscaled, actual_scale) = value.as_decimal().ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a decimal scalar at scale {scale}, got {}",
+                value.kind()
+            ))
+        })?;
+        if actual_scale != *scale {
             return Err(invalid(format_smolstr!(
                 "expected a decimal scalar at scale {scale}, got scale {actual_scale}"
             )));
         }
-        _ => super::value::single_value(value, dtype).ok_or_else(|| {
+        unscaled
+            .as_i128()
+            .ok_or_else(|| invalid(SmolStr::new_static("decimal coefficient exceeds i128")))?
+            .to_be_bytes()
+            .to_vec()
+    } else {
+        super::value::single_value(value, dtype).ok_or_else(|| {
             invalid(format_smolstr!(
                 "expected a scalar compatible with Iceberg type {dtype}, got {}",
                 value.kind()
             ))
-        })?,
+        })?
     };
     OfficialDatum::try_from_bytes(&bytes, primitive).map_err(Error::from_iceberg)
 }
@@ -896,7 +901,7 @@ fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scala
     | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
-            OfficialLiteral::Int128(unscaled) => Ok(Scalar::D128(*unscaled, *scale)),
+            OfficialLiteral::Int128(unscaled) => Ok(Scalar::d128(*unscaled, *scale)),
             literal => Err(invalid(format_smolstr!(
                 "expected an Iceberg decimal partition value, got {literal:?}"
             ))),

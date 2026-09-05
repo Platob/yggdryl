@@ -4,6 +4,7 @@ mod dtypes;
 mod fields;
 pub(crate) mod scalars;
 
+pub use dtypes::IntegerType;
 pub use fields::*;
 pub use scalars::{
     Int8, Int16, Int32, Int64, Int128, Integer, IntegerValue, UInt8, UInt16, UInt32, UInt64,

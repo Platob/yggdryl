@@ -37,7 +37,7 @@ fn families() -> Vec<(&'static str, Scalar, RowMaker)> {
                 Scalar::from_mapping([
                     (Scalar::from("a"), Scalar::from(index as i64 - 5_000)),
                     (Scalar::from("b"), Scalar::from(index as f64 * 0.5)),
-                    (Scalar::from("c"), Scalar::Bool(index % 2 == 0)),
+                    (Scalar::from("c"), Scalar::from(index % 2 == 0)),
                 ])
                 .expect("unique keys")
             }),
@@ -141,7 +141,7 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // The varint floor: one single-object long per iteration isolates the
     // zig-zag encode and decode from every container concern above it.
     let long = avro::Schema::from_str("\"long\"").expect("a long schema");
-    let value = Scalar::I64(-123_456_789);
+    let value = Scalar::from(-123_456_789);
     let framed = avro::into_single_object_vec(&long, &value).expect("the frame encodes");
     assert_eq!(
         avro::from_single_object_slice(&framed, &long).expect("the frame decodes"),
@@ -159,7 +159,7 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     // byte copy a language-runtime iterator needs in order to outlive its
     // factory call; neither path reads or decompresses the payload.
     let rows = (0..ROWS)
-        .map(|value| Scalar::I64(i64::try_from(value).expect("the row index fits i64")))
+        .map(|value| Scalar::from(i64::try_from(value).expect("the row index fits i64")))
         .collect::<Vec<_>>();
     let mut stored = Buffer::new();
     avro::write_container(&mut stored, &Scalar::from("long"), &[], &rows)

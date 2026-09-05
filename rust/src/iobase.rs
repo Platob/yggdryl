@@ -644,14 +644,14 @@ pub trait IOBase: Send + IOMedia {
     /// # fn main() -> yggdryl::Result<()> {
     /// let media = Url::from_str("file:///trade.json.gz")?.media_type();
     /// let mut handle = Buffer::new().with_media_type(media);
-    /// let value = Scalar::from_record([("quantity", Scalar::I64(2))])?;
+    /// let value = Scalar::from_record([("quantity", Scalar::from(2))])?;
     /// handle.write_scalar(&value)?;
     ///
     /// let field = Field::from_str("trade: struct<quantity: int64 not null> not null")?;
     /// assert_eq!(handle.read_scalar(None)?, value);
     /// assert_eq!(
     ///     handle.read_scalar(Some(&field))?,
-    ///     Scalar::from_sequence([Scalar::I64(2)])
+    ///     Scalar::from_sequence([Scalar::from(2)])
     /// );
     /// # Ok(())
     /// # }

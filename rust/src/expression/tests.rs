@@ -203,29 +203,30 @@ fn rows_schema() -> Field {
 
 /// Rows chosen so every operator meets a null, a `nan`, and a boundary.
 fn rows() -> Vec<Scalar> {
-    let stamp = |micros: i64| Scalar::DateTime64(micros, TimeUnit::Microsecond, Timezone::UTC);
+    let stamp =
+        |micros: i64| Scalar::datetime64(micros, TimeUnit::Microsecond, Timezone::UTC).unwrap();
     let nested =
         |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
     vec![
         Scalar::from_sequence([
-            Scalar::I64(1),
+            Scalar::from(1),
             Scalar::from(1.5_f64),
             Scalar::d128(150, 2),
             Scalar::from("alpha"),
-            Scalar::Bool(true),
+            Scalar::from(true),
             stamp(1_700_000_000_000_000),
-            Scalar::I32(2024),
+            Scalar::from(2024),
             nested(Some("EUR")),
             Scalar::from("10:23:45"),
         ]),
         Scalar::from_sequence([
-            Scalar::I64(-3),
+            Scalar::from(-3),
             Scalar::from(f64::NAN),
             Scalar::d128(-25, 2),
             Scalar::from("beta"),
-            Scalar::Bool(false),
+            Scalar::from(false),
             stamp(0),
-            Scalar::I32(2024),
+            Scalar::from(2024),
             nested(None),
             Scalar::from("25:30:00"),
         ]),
@@ -236,29 +237,29 @@ fn rows() -> Vec<Scalar> {
             Scalar::Null,
             Scalar::Null,
             Scalar::Null,
-            Scalar::I32(2024),
+            Scalar::from(2024),
             Scalar::Null,
             Scalar::Null,
         ]),
         Scalar::from_sequence([
-            Scalar::I64(100),
+            Scalar::from(100),
             Scalar::from(f64::INFINITY),
             Scalar::d128(10_000, 2),
             Scalar::from("Alpha"),
             Scalar::Null,
             stamp(-1_000_000),
-            Scalar::I32(2023),
+            Scalar::from(2023),
             nested(Some("USD")),
             Scalar::from("99:59:59"),
         ]),
         Scalar::from_sequence([
-            Scalar::I64(0),
+            Scalar::from(0),
             Scalar::from(0.0_f64),
             Scalar::d128(0, 2),
             Scalar::from(""),
-            Scalar::Bool(true),
+            Scalar::from(true),
             stamp(1_700_000_000_000_001),
-            Scalar::I32(2025),
+            Scalar::from(2025),
             nested(Some("eur")),
             Scalar::from("00:00:00.500"),
         ]),
@@ -350,7 +351,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
         .bind(&schema)
         .unwrap();
     assert!(matches!(
-        negated.eval(&Scalar::from_sequence([Scalar::I8(i8::MIN)])),
+        negated.eval(&Scalar::from_sequence([Scalar::from(i8::MIN)])),
         Err(crate::Error::ArithmeticOverflow {
             operation: "negation",
             ..
@@ -803,7 +804,7 @@ fn binds_and_evaluates_rows() {
         Scalar::from_sequence([
             Scalar::from(ccy),
             Scalar::d128(price, 2),
-            size.map_or(Scalar::Null, Scalar::I32),
+            size.map_or(Scalar::Null, Scalar::from),
         ])
     };
     assert!(bound.matches(&row("EUR", 15_000, Some(5))).unwrap());
@@ -820,7 +821,7 @@ fn a_struct_expression_produces_and_reprints_a_row_sequence() {
         .unwrap()
         .bind(&schema)
         .unwrap();
-    let expected = Scalar::from_sequence([Scalar::I64(1), Scalar::from("XNAS")]);
+    let expected = Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]);
     assert_eq!(bound.eval(&rows()[0]).unwrap(), expected);
 
     // Constant folding retains the datatype on TypedScalar rather than on the
@@ -882,7 +883,7 @@ fn parameters_are_supplied_at_bind_and_never_again() {
     assert_eq!(expression.parameters(), vec!["floor".to_owned()]);
     assert!(expression.bind(&schema).is_err());
     let bound = expression
-        .bind_with(&schema, &[("floor", Scalar::I64(100))])
+        .bind_with(&schema, &[("floor", Scalar::from(100))])
         .unwrap();
     assert_eq!(bound.expression().to_string(), "i >= 100");
     assert!(bound.matches(&rows()[3]).unwrap());

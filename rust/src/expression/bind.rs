@@ -288,7 +288,7 @@ impl Bound {
 
     /// Evaluate this expression for one row.
     ///
-    /// The row is a [`Scalar::Sequence`] of column values in schema order. This
+    /// The row is a [`crate::types::nested::Sequence`] of column values in schema order. This
     /// is the row target's [`ApplyExpression`](super::ApplyExpression), spelled
     /// from the expression's side.
     ///
@@ -831,7 +831,7 @@ impl Binder<'_> {
                 if !*case_insensitive && !has_wildcard(&pattern, *escape) {
                     let literal = Node {
                         field: Field::new("pattern", DataType::Utf8, false),
-                        kind: Kind::Literal(Scalar::String(unescape(&pattern, *escape))),
+                        kind: Kind::Literal(Scalar::from(unescape(&pattern, *escape))),
                         cost: 0,
                     };
                     let (nullable, cost) = (value.field.is_nullable(), value.cost);
@@ -1290,13 +1290,13 @@ pub(crate) fn rebuild(node: &Node) -> Expression {
             escape,
         } => Expression::Like {
             value: Box::new(rebuild(value)),
-            pattern: Box::new(Expression::literal(Scalar::String(pattern.clone()))),
+            pattern: Box::new(Expression::literal(Scalar::from(pattern.clone()))),
             case_insensitive: *case_insensitive,
             escape: *escape,
         },
         Kind::Glob(value, pattern) => Expression::Glob(
             Box::new(rebuild(value)),
-            Box::new(Expression::literal(Scalar::String(pattern.clone()))),
+            Box::new(Expression::literal(Scalar::from(pattern.clone()))),
         ),
         Kind::Arithmetic(left, operator, right) => {
             Expression::Arithmetic(Box::new(rebuild(left)), *operator, Box::new(rebuild(right)))

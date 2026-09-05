@@ -66,7 +66,7 @@ fn expected_rows() -> Vec<Scalar> {
             ),
             (
                 Scalar::from("extra"),
-                Scalar::from_mapping([(Scalar::from("flag"), Scalar::Bool(flag))])
+                Scalar::from_mapping([(Scalar::from("flag"), Scalar::from(flag))])
                     .expect("unique keys"),
             ),
         ])

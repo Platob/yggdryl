@@ -223,8 +223,8 @@ resolutions - are rejected here rather than silently accepted. JavaScript has no
         Field::new("values", DataType::Utf8, true),
     )?;
 
-    assert_eq!(codes.kind(), DataTypeKind::Dictionary);
-    assert_eq!(runs.kind(), DataTypeKind::RunEndEncoded);
+    assert_eq!(codes.kind(), DataTypeKind::Nested);
+    assert_eq!(runs.kind(), DataTypeKind::Nested);
     // A wrapper reports the shape of what it encodes, not of its own storage.
     assert!(!codes.is_nested() && !runs.is_nested());
 
@@ -411,7 +411,7 @@ accepts `variant(...)`, `dense_union(...)`, and `sparse_union(...)` and canonica
     // parenthesis selects the dense-union sugar instead.
     let variant = DataType::variant();
     assert_eq!(variant.to_string(), "variant");
-    assert_eq!(variant.kind(), DataTypeKind::Variant);
+    assert_eq!(variant.kind(), DataTypeKind::Nested);
     assert_eq!(DataType::from_str("variant")?, variant);
     assert_eq!(DataType::from_str("variant(n:int64)")?.name(), "union");
 
@@ -566,7 +566,7 @@ and bounds by the one WKB reader documented there.
     assert_eq!(DataType::ascii(3)?, DataType::FixedAscii(3));
     assert_eq!(DataType::from_str("ascii(12)")?, DataType::FixedAscii(12));
     assert_eq!(DataType::FixedAscii(4).to_string(), "ascii(4)");
-    assert_eq!(DataType::Ascii.kind(), DataTypeKind::String);
+    assert_eq!(DataType::Ascii.kind(), DataTypeKind::Ascii);
     assert_eq!(DataType::FixedAscii(8).ascii_width(), Some(8));
     // Variable ASCII has no width to report, and neither has anything else.
     assert_eq!(DataType::Ascii.ascii_width(), None);
@@ -580,7 +580,7 @@ and bounds by the one WKB reader documented there.
     assert_eq!(currency.to_string(), "currency");
     assert_eq!(currency.ascii_width(), Some(3));
     assert_ne!(currency, DataType::FixedAscii(3));
-    assert_eq!(currency.kind(), DataTypeKind::String);
+    assert_eq!(currency.kind(), DataTypeKind::Ascii);
     assert_eq!(
         DataType::CODES,
         &[
@@ -3247,17 +3247,17 @@ Write entry points reject the two non-write modes.
     assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
     ```
 
-`EnumScalar` retains the vocabulary, spelling, and compact member index. Natural
+`Enum` retains the vocabulary, spelling, and compact member index. Natural
 JSON/YAML/TOML and host projections emit the spelling.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{EnumScalar, IOMode, Scalar};
+    use yggdryl::{Enum, IOMode, Scalar};
 
     let value = Scalar::from(IOMode::Append);
     let member = value.as_enum().expect("an enum scalar");
-    assert_eq!(member, &EnumScalar::IOMode(IOMode::Append));
+    assert_eq!(member, &Enum::IOMode(IOMode::Append));
     assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("io_mode", "append", 1));
     ```
 

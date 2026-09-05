@@ -17,6 +17,7 @@ use std::hash::Hasher;
 
 use crate::types::decimal::scalars as decimal;
 use crate::types::temporal::scalars::temporal_key;
+use crate::types::{Decimal, Floating, Integer, Nested, Temporal};
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, I256, Scalar};
 
 /// The tag byte a value nested past the shared recursion limit feeds instead
@@ -36,7 +37,8 @@ impl Scalar {
     /// it never allocates and never copies a string or a byte payload.
     ///
     /// `None` is the answer for [`Self::Null`], which has no payload, and for
-    /// [`Self::Sequence`], [`Self::Mapping`], and [`Self::Record`], whose
+    /// [`crate::types::nested::Sequence`], [`crate::types::nested::Mapping`], and
+    /// [`crate::types::nested::Record`], whose
     /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
     ///
     /// A decimal answers its coefficient, and a temporal its stored count: the
@@ -54,41 +56,73 @@ impl Scalar {
     ///     xxhash::xxh3_64(b"AAPL"),
     /// );
     ///
-    /// assert_eq!(&*Scalar::I32(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
+    /// assert_eq!(&*Scalar::from(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
     /// assert!(Scalar::Null.as_value_bytes().is_none());
     /// assert!(Scalar::from_sequence([]).as_value_bytes().is_none());
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            Self::Null | Self::Sequence(_) | Self::Mapping(_) | Self::Record(_) => return None,
-            Self::String(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
+            Self::Null | Self::Nested(_) => return None,
+            Self::Text(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::Ascii(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Bytes(value) | Self::Geospatial(value) => {
-                return Some(ValueBytes::borrowed(value));
+            Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
+            Self::Geospatial(value) => {
+                return Some(ValueBytes::borrowed(value.as_bytes()));
             }
-            Self::Bool(value) => ValueBytes::inline(&[u8::from(*value)]),
-            Self::I8(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::I16(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::I32(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::I64(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::I128(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::U8(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::U16(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::U32(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::U64(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::U128(value) => ValueBytes::inline(&value.to_le_bytes()),
-            Self::F16(value) => ValueBytes::inline(&value.as_f16().to_bits().to_le_bytes()),
-            Self::F32(value) => ValueBytes::inline(&value.as_f32().to_bits().to_le_bytes()),
-            Self::F64(value) => ValueBytes::inline(&value.as_f64().to_bits().to_le_bytes()),
-            Self::D128(unscaled, _) => ValueBytes::inline(&unscaled.to_le_bytes()),
-            Self::D256(unscaled, _) => ValueBytes::inline(&unscaled.into_le_bytes()),
-            Self::Date32(count, ..) | Self::Time32(count, ..) | Self::Duration32(count, ..) => {
-                ValueBytes::inline(&count.to_le_bytes())
+            Self::Guid(value) => ValueBytes::inline(&value.into_bytes()),
+            Self::Boolean(value) => ValueBytes::inline(&[u8::from(value.get())]),
+            Self::Integer(value) => match value {
+                Integer::I8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::I16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::I32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::I64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::I128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::U8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::U16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::U32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::U64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+                Integer::U128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            },
+            Self::Floating(value) => match value {
+                Floating::F16(value) => ValueBytes::inline(&value.as_f16().to_bits().to_le_bytes()),
+                Floating::F32(value) => ValueBytes::inline(&value.as_f32().to_bits().to_le_bytes()),
+                Floating::F64(value) => ValueBytes::inline(&value.as_f64().to_bits().to_le_bytes()),
+            },
+            Self::Decimal(value) => match value {
+                Decimal::D32(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+                Decimal::D64(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+                Decimal::D128(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+                Decimal::D256(value) => ValueBytes::inline(&value.coefficient().into_le_bytes()),
+            },
+            Self::Temporal(Temporal::Date32(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
             }
-            Self::Date64(count, ..)
-            | Self::Time64(count, ..)
-            | Self::DateTime64(count, ..)
-            | Self::Duration64(count, ..) => ValueBytes::inline(&count.to_le_bytes()),
+            Self::Temporal(Temporal::Time32(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::Duration32(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::Date64(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::Time64(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::DateTime64(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::Duration64(value)) => {
+                ValueBytes::inline(&value.count().to_le_bytes())
+            }
+            Self::Temporal(Temporal::Interval(value)) => {
+                let mut bytes = [0_u8; 16];
+                bytes[..4].copy_from_slice(&value.months().to_le_bytes());
+                bytes[4..8].copy_from_slice(&value.days().to_le_bytes());
+                bytes[8..].copy_from_slice(&value.nanoseconds().to_le_bytes());
+                ValueBytes::inline(&bytes)
+            }
         };
         Some(inline)
     }
@@ -112,15 +146,15 @@ impl Scalar {
     /// use yggdryl::{DigestAlgorithm, Scalar};
     ///
     /// // Equal values, different widths, one digest.
-    /// assert_eq!(Scalar::I8(1), Scalar::I64(1));
+    /// assert_eq!(Scalar::from(1), Scalar::from(1));
     /// assert_eq!(
-    ///     Scalar::I8(1).digest(DigestAlgorithm::Xxh3_64),
-    ///     Scalar::I64(1).digest(DigestAlgorithm::Xxh3_64),
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3_64),
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3_64),
     /// );
     /// // Values that differ, across variant boundaries as much as within one.
     /// assert_ne!(
     ///     Scalar::from("1").digest(DigestAlgorithm::Xxh3_64),
-    ///     Scalar::U8(0x31).digest(DigestAlgorithm::Xxh3_64),
+    ///     Scalar::from(0x31).digest(DigestAlgorithm::Xxh3_64),
     /// );
     /// ```
     ///
@@ -200,71 +234,70 @@ impl Scalar {
         }
         // Temporals compare by family, normalized count, and zone; the stored
         // width and unit are how the count is spelled, not what it is.
+        if let Self::Temporal(Temporal::Interval(value)) = self {
+            write_tag(sink, DataTypeId::Interval);
+            sink.write(&value.months().to_le_bytes());
+            sink.write(&value.days().to_le_bytes());
+            sink.write(&value.nanoseconds().to_le_bytes());
+            sink.write(&[value.unit() as u8]);
+            return;
+        }
         if let Some(temporal) = self.as_temporal() {
             write_temporal(
                 sink,
-                temporal.family(),
-                temporal.count(),
-                temporal.unit(),
-                temporal.timezone(),
+                (*temporal).family(),
+                (*temporal).count(),
+                (*temporal).unit(),
+                &temporal.timezone(),
             );
             return;
         }
         match self {
             Self::Null => write_null(sink),
-            Self::Bool(value) => write_bool(sink, *value),
-            Self::String(value) => write_string(sink, value),
+            Self::Boolean(value) => write_bool(sink, value.get()),
+            Self::Text(value) => write_string(sink, value.as_str()),
+            Self::Ascii(value) => {
+                write_tag(sink, DataTypeId::Ascii);
+                write_text(sink, value.as_str());
+            }
+            Self::Guid(value) => {
+                write_tag(sink, DataTypeId::Guid);
+                sink.write(&value.into_bytes());
+            }
             Self::Enum(value) => {
                 write_tag(sink, DataTypeId::Dictionary);
                 write_text(sink, value.kind());
                 sink.write(&[value.ordinal()]);
             }
-            Self::Bytes(value) => write_binary(sink, value),
-            Self::Geospatial(value) => write_geospatial(sink, value),
-            Self::Sequence(values) => {
-                write_sequence_header(sink, values.len());
-                for value in values.iter() {
+            Self::Bytes(value) => write_binary(sink, value.as_bytes()),
+            Self::Geospatial(value) => write_geospatial(sink, value.as_bytes()),
+            Self::Nested(Nested::Sequence(values)) => {
+                write_sequence_header(sink, values.as_slice().len());
+                for value in values.as_slice() {
                     value.feed(sink, depth + 1);
                 }
             }
-            Self::Mapping(entries) => {
+            Self::Nested(Nested::Mapping(entries)) => {
                 write_tag(sink, DataTypeId::Map);
-                write_len(sink, entries.len());
-                for (key, value) in entries.iter() {
+                write_len(sink, entries.as_slice().len());
+                for (key, value) in entries.as_slice() {
                     key.feed(sink, depth + 1);
                     value.feed(sink, depth + 1);
                 }
             }
-            Self::Record(entries) => {
+            Self::Nested(Nested::Record(entries)) => {
                 write_tag(sink, DataTypeId::Struct);
-                write_len(sink, entries.len());
-                for (name, value) in entries.iter() {
+                write_len(sink, entries.as_map().len());
+                for (name, value) in entries.as_map() {
                     write_text(sink, name);
                     value.feed(sink, depth + 1);
                 }
             }
             // Every remaining variant answered one of the family views above.
-            Self::I8(_)
-            | Self::I16(_)
-            | Self::I32(_)
-            | Self::I64(_)
-            | Self::I128(_)
-            | Self::U8(_)
-            | Self::U16(_)
-            | Self::U32(_)
-            | Self::U64(_)
-            | Self::U128(_) => unreachable!("every integer width fed above"),
-            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
-                unreachable!("every float width fed above")
-            }
-            Self::D128(..) | Self::D256(..) => unreachable!("both decimal widths fed above"),
-            Self::Date32(..)
-            | Self::Date64(..)
-            | Self::Time32(..)
-            | Self::Time64(..)
-            | Self::DateTime64(..)
-            | Self::Duration32(..)
-            | Self::Duration64(..) => unreachable!("every temporal family fed above"),
+            Self::Integer(_) => unreachable!("every integer width fed above"),
+            Self::Floating(_) => unreachable!("every float width fed above"),
+            Self::Decimal(_) => unreachable!("all decimal widths fed above"),
+            Self::Temporal(_) => unreachable!("every temporal family fed above"),
         }
     }
 }

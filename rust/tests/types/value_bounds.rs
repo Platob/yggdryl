@@ -214,7 +214,7 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
         UnionMode::Sparse,
     )
     .unwrap();
-    let expected = union_value(1, Scalar::I64(7));
+    let expected = union_value(1, Scalar::from(7));
     let field = Field::new("choice", sparse, false);
     assert_eq!(round_trip(&field, &expected), expected);
 

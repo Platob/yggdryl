@@ -439,7 +439,8 @@ pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
 /// everywhere else: its row values are the trimmed string.
 pub(crate) fn is_text(dtype: &DataType) -> bool {
     let dtype = unwrap_dictionary(dtype);
-    matches!(dtype, DataType::Null) || dtype.kind() == DataTypeKind::String
+    matches!(dtype, DataType::Null)
+        || matches!(dtype.kind(), DataTypeKind::Text | DataTypeKind::Ascii)
 }
 
 /// Return whether a datatype holds bytes.

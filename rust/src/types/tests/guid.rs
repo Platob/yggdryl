@@ -38,8 +38,7 @@ fn the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering() {
     assert_eq!(guid.guid_packed(&PACKED.to_be_bytes()).unwrap(), PACKED);
     assert_eq!(guid.guid_value(PACKED).unwrap(), TEXT);
 
-    // Every rendering is the lowercase hyphenated spelling; the bytes and
-    // the bare-hex text canonicalize to it.
+    // Every accepted rendering canonicalizes to the exact packed GUID leaf.
     let field = guid.clone().required_field("id");
     let row = DataType::from_fields([field.clone()])
         .unwrap()
@@ -48,7 +47,8 @@ fn the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering() {
         row.canonicalize_value(Scalar::from_sequence([value]))
             .unwrap()
     };
-    let expected = Scalar::from_sequence([Scalar::from(TEXT)]);
+    let exact = Scalar::Guid(crate::types::Guid::new(PACKED));
+    let expected = Scalar::from_sequence([exact]);
     assert_eq!(canonical(Scalar::from(TEXT)), expected);
     assert_eq!(canonical(Scalar::from(TEXT.to_uppercase())), expected);
     assert_eq!(
@@ -57,7 +57,7 @@ fn the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering() {
     );
     assert_eq!(
         guid.default_value().unwrap(),
-        Scalar::from("00000000-0000-0000-0000-000000000000")
+        Scalar::Guid(crate::types::Guid::new(0))
     );
     assert!(
         guid.is_default_value(&Scalar::from([0_u8; 16].to_vec()))
@@ -75,7 +75,7 @@ fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
     assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
 
-    // The stored bytes are the identifier; the value reads back spelled.
+    // The stored bytes are the identifier; the value reads back exact.
     let array = crate::arrow::scalar_array(&field, &Scalar::from(TEXT)).unwrap();
     let stored = array
         .as_any()
@@ -84,7 +84,7 @@ fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
     assert_eq!(stored.value(0), PACKED.to_be_bytes());
     assert_eq!(
         crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
-        Scalar::from(TEXT)
+        Scalar::Guid(crate::types::Guid::new(PACKED))
     );
 }
 

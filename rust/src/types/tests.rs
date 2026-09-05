@@ -6,9 +6,53 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use super::{
-    DataType, DictionaryType, Fields, MapType, RunEndEncodedType, TimeUnit, UnionFields, UnionMode,
+    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
+    IntegerType, MapType, NestedType, RunEndEncodedType, TemporalType, TextType, TimeUnit,
+    UnionFields, UnionMode,
 };
-use crate::{Error, Field};
+use crate::{Error, Field, Timezone};
+
+#[test]
+fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
+    use super::ascii::dtypes::AsciiType as AsciiFamilyType;
+
+    let integer = IntegerType::try_from(&DataType::UInt32).unwrap();
+    assert_eq!(integer.id(), crate::DataTypeId::UInt32);
+    assert_eq!(DataType::from(integer), DataType::UInt32);
+
+    let floating = FloatingType::try_from(&DataType::Float16).unwrap();
+    assert_eq!(DataType::from(floating), DataType::Float16);
+
+    let decimal = DataType::decimal128(20, 4).unwrap();
+    let decimal_family = DecimalType::try_from(&decimal).unwrap();
+    assert_eq!(decimal_family.into_dtype().unwrap(), decimal);
+
+    let temporal = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
+    let temporal_family = TemporalType::try_from(&temporal).unwrap();
+    assert_eq!(temporal_family.into_dtype().unwrap(), temporal);
+
+    let text = TextType::try_from(&DataType::LargeUtf8).unwrap();
+    assert_eq!(DataType::from(text), DataType::LargeUtf8);
+
+    let ascii = DataType::FixedAscii(7);
+    let ascii_family = AsciiFamilyType::try_from(&ascii).unwrap();
+    assert_eq!(ascii_family.into_dtype().unwrap(), ascii);
+
+    let bytes = DataType::FixedSizeBinary(16);
+    let bytes_family = BytesType::try_from(&bytes).unwrap();
+    assert_eq!(bytes_family.into_dtype().unwrap(), bytes);
+
+    let nested = DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap();
+    let nested_family = NestedType::try_from(&nested).unwrap();
+    assert!(nested_family.is_wrapper());
+    assert_eq!(DataType::from(nested_family), nested);
+
+    let geospatial = DataType::geography(None, None).unwrap();
+    let geospatial_family = GeospatialType::try_from(&geospatial).unwrap();
+    assert_eq!(DataType::from(geospatial_family), geospatial);
+
+    assert!(IntegerType::try_from(&DataType::Utf8).is_err());
+}
 
 #[test]
 fn nested_helper_values_have_total_order_and_hash() {

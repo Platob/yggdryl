@@ -3,6 +3,7 @@ use std::str::FromStr;
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::Nested;
 use crate::{DataType, Error, Field, I256, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
@@ -66,7 +67,7 @@ fn sequence(
     mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
     field: &Field,
 ) -> Result<Scalar> {
-    let Scalar::Sequence(values) = value else {
+    let Some(values) = value.as_sequence() else {
         return Err(invalid(field, "expected an array"));
     };
     values
@@ -79,8 +80,9 @@ fn sequence(
 
 fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::Record(entries) => {
+        Scalar::Nested(Nested::Record(entries)) => {
             let prepared = entries
+                .as_map()
                 .iter()
                 .map(|(name, value)| {
                     let child = fields
@@ -91,11 +93,12 @@ fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Sca
                 .collect::<Result<Vec<_>>>()?;
             Scalar::from_record(prepared)
         }
-        Scalar::Sequence(values) => {
-            if values.len() != fields.len() {
+        Scalar::Nested(Nested::Sequence(values)) => {
+            if values.as_slice().len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values
+                .as_slice()
                 .iter()
                 .cloned()
                 .zip(fields.iter())
@@ -108,10 +111,10 @@ fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Sca
 }
 
 fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Scalar> {
-    let Scalar::Sequence(values) = value else {
+    let Some(values) = value.as_sequence() else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
     };
-    let [type_id, payload] = values.as_ref() else {
+    let [type_id, payload] = values else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
     };
     let id = type_id
@@ -137,8 +140,9 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
         ));
     };
     let entries = match value {
-        Scalar::Mapping(entries) => entries.iter().cloned().collect::<Vec<_>>(),
-        Scalar::Record(entries) => entries
+        Scalar::Nested(Nested::Mapping(entries)) => entries.as_slice().to_vec(),
+        Scalar::Nested(Nested::Record(entries)) => entries
+            .as_map()
             .iter()
             .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
             .collect(),
@@ -154,8 +158,8 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
 
 fn binary(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
-            .decode(encoded.as_bytes())
+        Scalar::Text(encoded) => base64::engine::general_purpose::STANDARD
+            .decode(encoded.as_str().as_bytes())
             .map(Scalar::from)
             .map_err(|_| invalid(field, "expected base64 text")),
         value => Ok(value),
@@ -164,9 +168,9 @@ fn binary(value: Scalar, field: &Field) -> Result<Scalar> {
 
 fn geospatial(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
-            .decode(encoded.as_bytes())
-            .map(|bytes| Scalar::Geospatial(bytes.into()))
+        Scalar::Text(encoded) => base64::engine::general_purpose::STANDARD
+            .decode(encoded.as_str().as_bytes())
+            .map(Scalar::from)
             .map_err(|_| invalid(field, "expected base64 WKB text")),
         value => Ok(value),
     }
@@ -191,20 +195,9 @@ fn decimal(value: Scalar, scale: i8, wide: bool, field: &Field) -> Result<Scalar
 
 fn scalar_number_text(value: &Scalar) -> Option<String> {
     match value {
-        Scalar::String(value) => Some(value.to_string()),
-        Scalar::I8(value) => Some(value.to_string()),
-        Scalar::I16(value) => Some(value.to_string()),
-        Scalar::I32(value) => Some(value.to_string()),
-        Scalar::I64(value) => Some(value.to_string()),
-        Scalar::I128(value) => Some(value.to_string()),
-        Scalar::U8(value) => Some(value.to_string()),
-        Scalar::U16(value) => Some(value.to_string()),
-        Scalar::U32(value) => Some(value.to_string()),
-        Scalar::U64(value) => Some(value.to_string()),
-        Scalar::U128(value) => Some(value.to_string()),
-        Scalar::F16(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
-        Scalar::F32(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
-        Scalar::F64(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
+        Scalar::Text(value) => Some(value.to_string()),
+        Scalar::Integer(value) => Some(value.to_string()),
+        Scalar::Floating(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
         _ => None,
     }
 }
@@ -272,10 +265,10 @@ fn decimal_coefficient(text: &str, target_scale: i8) -> std::result::Result<I256
 /// are [`Scalar::from_temporal_text`]; the field only names where the value
 /// sat, so the reason the reading gives survives into the record error.
 fn temporal(value: Scalar, field: &Field) -> Result<Scalar> {
-    let Scalar::String(text) = value else {
+    let Scalar::Text(text) = value else {
         return Ok(value);
     };
-    Scalar::from_temporal_text(field.dtype(), &text)
+    Scalar::from_temporal_text(field.dtype(), text.as_str())
         .map_err(|error| invalid(field, reason_of(&error)))
 }
 

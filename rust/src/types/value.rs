@@ -1,14 +1,12 @@
 //! Schema-directed validation and canonicalization of row values.
 //!
 //! A struct [`Field`] is the schema of the rows it describes, so validating a
-//! row is validating one [`Scalar::Sequence`] against that field's children.
+//! row is validating one [`super::nested::Sequence`] against that field's children.
 //! Canonicalization is the same walk with rewriting: it narrows integers,
 //! floats, and nested containers into the exact representation the schema
 //! declares, and returns the input untouched when nothing needed changing.
 
 use std::collections::HashSet;
-
-use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -20,8 +18,8 @@ use crate::types::integer::{
 };
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field, guid_bytes,
-    guid_parse, guid_text, value_is_logically_null,
+    AsciiFamily, Bytes, Geospatial, Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
+    default_value_for_field, guid_bytes, guid_parse, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -363,7 +361,7 @@ fn temporal_matches(
     }
     let zone = temporal.timezone();
     match (family, expected_zone) {
-        (TemporalFamily::DateTime, Some(expected)) => zone == expected,
+        (TemporalFamily::DateTime, Some(expected)) => zone == *expected,
         (TemporalFamily::DateTime, None) => zone.is_naive(),
         _ => zone.is_naive(),
     }
@@ -452,7 +450,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     }
     if let Some(physical) = restated(dtype, value) {
         // A restatement always rewrote something, so it is always a change.
-        let (canonical, _) = canonicalize_dtype_value(dtype, &Scalar::I128(physical))?;
+        let (canonical, _) = canonicalize_dtype_value(dtype, &Scalar::from(physical))?;
         return Ok((canonical, true));
     }
     match dtype {
@@ -468,13 +466,61 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::Interval(TimeUnit::DayTime) => canonical_integer_sequence(value, 2),
         D::Interval(TimeUnit::MonthDayNano) => canonical_integer_sequence(value, 3),
         D::Interval(_) => Ok((value.clone(), false)),
-        D::Binary
-        | D::FixedSizeBinary(_)
-        | D::LargeBinary
-        | D::BinaryView
-        | D::Utf8
-        | D::LargeUtf8
-        | D::Utf8View => Ok((value.clone(), false)),
+        D::Binary | D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => {
+            let Some(bytes) = value.as_bytes() else {
+                return canonicalization_failure(dtype);
+            };
+            let canonical = match dtype {
+                D::Binary => Scalar::Bytes(Bytes::Binary(crate::types::Binary::new(bytes))),
+                D::FixedSizeBinary(_) => Scalar::Bytes(Bytes::FixedSizeBinary(
+                    crate::types::FixedSizeBinary::new(bytes),
+                )),
+                D::LargeBinary => {
+                    Scalar::Bytes(Bytes::LargeBinary(crate::types::LargeBinary::new(bytes)))
+                }
+                D::BinaryView => {
+                    Scalar::Bytes(Bytes::BinaryView(crate::types::BinaryView::new(bytes)))
+                }
+                _ => unreachable!("binary datatype matched above"),
+            };
+            let unchanged = matches!(
+                (dtype, value),
+                (D::Binary, Scalar::Bytes(Bytes::Binary(_)))
+                    | (
+                        D::FixedSizeBinary(_),
+                        Scalar::Bytes(Bytes::FixedSizeBinary(_))
+                    )
+                    | (D::LargeBinary, Scalar::Bytes(Bytes::LargeBinary(_)))
+                    | (D::BinaryView, Scalar::Bytes(Bytes::BinaryView(_)))
+            );
+            Ok(if unchanged {
+                (value.clone(), false)
+            } else {
+                (canonical, true)
+            })
+        }
+        D::Utf8 | D::LargeUtf8 | D::Utf8View => {
+            let Some(text) = value.as_str() else {
+                return canonicalization_failure(dtype);
+            };
+            let canonical = match dtype {
+                D::Utf8 => Scalar::Text(Text::Utf8(crate::types::Utf8::new(text))),
+                D::LargeUtf8 => Scalar::Text(Text::LargeUtf8(crate::types::LargeUtf8::new(text))),
+                D::Utf8View => Scalar::Text(Text::Utf8View(crate::types::Utf8View::new(text))),
+                _ => unreachable!("text datatype matched above"),
+            };
+            let unchanged = matches!(
+                (dtype, value),
+                (D::Utf8, Scalar::Text(Text::Utf8(_)))
+                    | (D::LargeUtf8, Scalar::Text(Text::LargeUtf8(_)))
+                    | (D::Utf8View, Scalar::Text(Text::Utf8View(_)))
+            );
+            Ok(if unchanged {
+                (value.clone(), false)
+            } else {
+                (canonical, true)
+            })
+        }
         // The canonical ASCII spelling is the trimmed string; bytes and a
         // string carrying trailing NULs are rewritten here.
         D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
@@ -483,11 +529,23 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     Some(width) => ascii_text(width, bytes)?,
                     None => ascii_free_text(bytes)?,
                 };
-                if matches!(value, Scalar::String(current) if current == text) {
-                    Ok((value.clone(), false))
+                let canonical = match dtype {
+                    D::Ascii => Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(text)?)),
+                    D::FixedAscii(width) => Scalar::Ascii(AsciiFamily::FixedAscii(
+                        crate::types::FixedAscii::new(text, *width)?,
+                    )),
+                    _ => unreachable!("ASCII datatype matched above"),
+                };
+                let unchanged = matches!(
+                    (dtype, value),
+                    (D::Ascii, Scalar::Ascii(AsciiFamily::Ascii(_)))
+                        | (D::FixedAscii(_), Scalar::Ascii(AsciiFamily::FixedAscii(_)))
+                );
+                Ok(if unchanged {
+                    (value.clone(), false)
                 } else {
-                    Ok((Scalar::from(text), true))
-                }
+                    (canonical, true)
+                })
             }
             None => canonicalization_failure(dtype),
         },
@@ -495,27 +553,44 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
             Some(bytes) => {
                 let text = code_cell_text(dtype, bytes)?;
-                if matches!(value, Scalar::String(current) if current == text) {
-                    Ok((value.clone(), false))
+                let canonical = match dtype {
+                    D::Country => {
+                        Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(text)?))
+                    }
+                    D::Currency => {
+                        Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(text)?))
+                    }
+                    D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
+                    D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
+                    _ => unreachable!("registered ASCII datatype matched above"),
+                };
+                let unchanged = matches!(
+                    (dtype, value),
+                    (D::Country, Scalar::Ascii(AsciiFamily::Country(_)))
+                        | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
+                        | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
+                        | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
+                );
+                Ok(if unchanged {
+                    (value.clone(), false)
                 } else {
-                    Ok((Scalar::from(text), true))
-                }
+                    (canonical, true)
+                })
             }
             None => canonicalization_failure(dtype),
         },
         // The canonical GUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
-        D::Guid => match guid_bytes(value) {
-            Some(bytes) => {
-                let text = guid_text(&guid_parse(bytes)?);
-                if matches!(value, Scalar::String(current) if *current == text) {
-                    Ok((value.clone(), false))
-                } else {
-                    Ok((Scalar::String(text), true))
-                }
+        D::Guid => {
+            if matches!(value, Scalar::Guid(_)) {
+                Ok((value.clone(), false))
+            } else {
+                let bytes = guid_bytes(value)
+                    .ok_or_else(|| canonical_error("expected GUID text or bytes"))?;
+                let guid = crate::types::Guid::new(u128::from_be_bytes(guid_parse(bytes)?));
+                Ok((Scalar::Guid(guid), true))
             }
-            None => canonicalization_failure(dtype),
-        },
+        }
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -543,11 +618,33 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::Variant => Ok((value.clone(), false)),
         // The canonical geospatial spelling is `Scalar::Geospatial`; plain
         // bytes are accepted on the way in and rewritten here.
-        D::Geometry(_) | D::Geography(_) => match value {
-            Scalar::Geospatial(_) => Ok((value.clone(), false)),
-            Scalar::Bytes(bytes) => Ok((Scalar::Geospatial(Arc::from(bytes.as_ref())), true)),
-            other => Ok((other.clone(), false)),
-        },
+        D::Geometry(_) | D::Geography(_) => {
+            let Some(bytes) = value.as_bytes() else {
+                return canonicalization_failure(dtype);
+            };
+            let canonical = match dtype {
+                D::Geometry(_) => {
+                    Scalar::Geospatial(Geospatial::Geometry(crate::types::Geometry::new(bytes)?))
+                }
+                D::Geography(_) => {
+                    Scalar::Geospatial(Geospatial::Geography(crate::types::Geography::new(bytes)?))
+                }
+                _ => unreachable!("geospatial datatype matched above"),
+            };
+            let unchanged = matches!(
+                (dtype, value),
+                (D::Geometry(_), Scalar::Geospatial(Geospatial::Geometry(_)))
+                    | (
+                        D::Geography(_),
+                        Scalar::Geospatial(Geospatial::Geography(_))
+                    )
+            );
+            Ok(if unchanged {
+                (value.clone(), false)
+            } else {
+                (canonical, true)
+            })
+        }
     }
 }
 
@@ -658,11 +755,10 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     };
     let (payload, payload_changed) = canonicalize_field_value(field, payload)
         .map_err(|error| prepend_canonical_error(error, PathSegment::Union(type_id_number)))?;
-    let id_changed =
-        !matches!(type_id, Scalar::I64(current) if *current == i64::from(type_id_number));
+    let id_changed = type_id.as_i64() != Some(i64::from(type_id_number));
     if id_changed || payload_changed {
         Ok((
-            Scalar::from_sequence([Scalar::I64(i64::from(type_id_number)), payload]),
+            Scalar::from_sequence([Scalar::from(i64::from(type_id_number)), payload]),
             true,
         ))
     } else {
@@ -864,11 +960,11 @@ fn validate_dtype_value(
 ) -> std::result::Result<(), ValidationFailure> {
     use DataType as D;
     if let Some(physical) = restated(dtype, value) {
-        return validate_dtype_value(dtype, &Scalar::I128(physical), depth);
+        return validate_dtype_value(dtype, &Scalar::from(physical), depth);
     }
     match dtype {
         D::Null => Err(expected("null", value)),
-        D::Boolean => require(matches!(value, Scalar::Bool(_)), "boolean", value),
+        D::Boolean => require(value.as_bool().is_some(), "boolean", value),
         D::Int8 => validate_signed(value, i128::from(i8::MIN), i128::from(i8::MAX), "int8"),
         D::Int16 => validate_signed(value, i128::from(i16::MIN), i128::from(i16::MAX), "int16"),
         D::Int32 => validate_signed(value, i128::from(i32::MIN), i128::from(i32::MAX), "int32"),
@@ -925,7 +1021,7 @@ fn validate_dtype_value(
             None => Err(expected("fixed-size binary bytes", value)),
         },
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
-            require(matches!(value, Scalar::String(_)), dtype.name(), value)
+            require(matches!(value, Scalar::Text(_)), dtype.name(), value)
         }
         // Text or bytes, both under the one ASCII rule naming the width.
         D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
@@ -941,9 +1037,12 @@ fn validate_dtype_value(
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
-        D::Guid => match guid_bytes(value).map(guid_parse) {
-            Some(Ok(_)) => Ok(()),
-            _ => Err(expected("guid", value)),
+        D::Guid => match value {
+            Scalar::Guid(_) => Ok(()),
+            _ => match guid_bytes(value).map(guid_parse) {
+                Some(Ok(_)) => Ok(()),
+                _ => Err(expected("guid", value)),
+            },
         },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)

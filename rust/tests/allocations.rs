@@ -576,16 +576,16 @@ fn timezone_handle_hits_and_copies_allocate_nothing() {
 /// and the three where a stray allocation would hide.
 fn feed_corpus() -> Vec<(&'static str, Scalar)> {
     let wide = Scalar::from_record(
-        (0..64).map(|index| (format!("column_{index:03}"), Scalar::I64(index))),
+        (0..64).map(|index| (format!("column_{index:03}"), Scalar::from(index))),
     )
     .expect("the generated record names are unique");
     let mut deep = Scalar::from("leaf");
     for _ in 0..32 {
-        deep = Scalar::from_sequence([deep, Scalar::I64(1)]);
+        deep = Scalar::from_sequence([deep, Scalar::from(1)]);
     }
     vec![
         ("a leaf", Scalar::from("AAPL")),
-        ("an integer", Scalar::I64(18_723)),
+        ("an integer", Scalar::from(18_723)),
         ("a decimal", Scalar::d128(18_723, 2)),
         ("a wide record", wide),
         ("a deep nest", deep),
@@ -621,7 +621,7 @@ fn borrowed_value_bytes_allocate_nothing() {
     }
     for value in [
         Scalar::from("a symbol long enough to outgrow any inline string buffer"),
-        Scalar::D256(yggdryl::I256::from_i128(i128::MIN), -3),
+        Scalar::d256(yggdryl::I256::from_i128(i128::MIN), -3),
     ] {
         free("reading a wide payload", || {
             black_box(value.as_value_bytes().expect("the payload is there").len());

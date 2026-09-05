@@ -31,7 +31,79 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Result, Scalar};
+use crate::{DataType, DataTypeId, Error, Result, Scalar};
+
+/// One ASCII or registered-code datatype.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum AsciiType {
+    /// Variable-width ASCII.
+    Ascii,
+    /// Fixed-width ASCII.
+    FixedAscii(i32),
+    /// ISO 3166-1 alpha-2 country code.
+    Country,
+    /// ISO 4217 currency code.
+    Currency,
+    /// ISO 10383 market identifier code.
+    Mic,
+    /// ISO 10962 classification code.
+    Cfi,
+}
+
+impl AsciiType {
+    /// Return the exact datatype identifier.
+    pub const fn id(self) -> DataTypeId {
+        match self {
+            Self::Ascii => DataTypeId::Ascii,
+            Self::FixedAscii(_) => DataTypeId::FixedAscii,
+            Self::Country => DataTypeId::Country,
+            Self::Currency => DataTypeId::Currency,
+            Self::Mic => DataTypeId::Mic,
+            Self::Cfi => DataTypeId::Cfi,
+        }
+    }
+
+    /// Validate and convert this family member into the root datatype.
+    pub fn into_dtype(self) -> Result<DataType> {
+        match self {
+            Self::FixedAscii(width) => DataType::ascii(width),
+            other => Ok(other.into()),
+        }
+    }
+}
+
+impl From<AsciiType> for DataType {
+    fn from(value: AsciiType) -> Self {
+        match value {
+            AsciiType::Ascii => Self::Ascii,
+            AsciiType::FixedAscii(width) => Self::FixedAscii(width),
+            AsciiType::Country => Self::Country,
+            AsciiType::Currency => Self::Currency,
+            AsciiType::Mic => Self::Mic,
+            AsciiType::Cfi => Self::Cfi,
+        }
+    }
+}
+
+impl TryFrom<&DataType> for AsciiType {
+    type Error = Error;
+
+    fn try_from(value: &DataType) -> Result<Self> {
+        match value {
+            DataType::Ascii => Ok(Self::Ascii),
+            DataType::FixedAscii(width) => Ok(Self::FixedAscii(*width)),
+            DataType::Country => Ok(Self::Country),
+            DataType::Currency => Ok(Self::Currency),
+            DataType::Mic => Ok(Self::Mic),
+            DataType::Cfi => Ok(Self::Cfi),
+            other => Err(Error::InvalidDataType {
+                kind: "ascii",
+                reason: format_smolstr!("expected an ASCII datatype, got {other}"),
+            }),
+        }
+    }
+}
 
 /// The Arrow extension name of the country code.
 pub(crate) const COUNTRY_EXTENSION_NAME: &str = "yggdryl.country";
@@ -477,8 +549,9 @@ pub(crate) fn ascii_padded(slot: &mut [u8], text: &str) {
 /// The bytes an ASCII value carries, in either accepted spelling.
 pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
-        Scalar::String(text) => Some(text.as_bytes()),
-        Scalar::Bytes(bytes) => Some(bytes),
+        Scalar::Text(text) => Some(text.as_str().as_bytes()),
+        Scalar::Ascii(text) => Some(text.as_str().as_bytes()),
+        Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }
 }

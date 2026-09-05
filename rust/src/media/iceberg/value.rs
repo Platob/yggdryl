@@ -92,7 +92,7 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
 ///
 /// The datatype decides the encoding rather than the value's own variant,
 /// because a column declared `Int32` still arrives as a 64-bit
-/// [`Scalar::I64`]. A value that does not fit the column, and every type whose
+/// [`crate::types::integer::Int64`]. A value that does not fit the column, and every type whose
 /// encoding is not [`is_portable`], has no bytes rather than the wrong ones.
 pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> {
     let datum = match dtype {
@@ -170,22 +170,22 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
 pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> {
     let datum = official_datum(bytes, dtype)?;
     match (dtype, datum.literal()) {
-        (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Some(Scalar::Bool(*value)),
-        (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::I32(*value)),
+        (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Some(Scalar::from(*value)),
+        (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::from(*value)),
         (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Some(Scalar::date32(*value)),
-        (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Some(Scalar::I64(*value)),
+        (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Some(Scalar::from(*value)),
         (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
             Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()
         }
         (DataType::DateTime64 { unit, timezone }, OfficialPrimitiveLiteral::Long(value)) => {
             Scalar::datetime64(*value, *unit, *timezone).ok()
         }
-        (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => {
-            Some(Scalar::F32(crate::Float32::from_f32((*value).into_inner())))
-        }
-        (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => {
-            Some(Scalar::F64(crate::Float64::from_f64((*value).into_inner())))
-        }
+        (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => Some(Scalar::from(
+            crate::Float32::from_f32((*value).into_inner()),
+        )),
+        (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => Some(Scalar::from(
+            crate::Float64::from_f64((*value).into_inner()),
+        )),
         (
             DataType::Utf8
             | DataType::LargeUtf8
@@ -198,9 +198,9 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             | DataType::Cfi,
             OfficialPrimitiveLiteral::String(value),
         ) => Some(Scalar::from(value.as_str())),
-        (DataType::Guid, OfficialPrimitiveLiteral::UInt128(value)) => Some(Scalar::String(
-            crate::types::guid_text(&value.to_be_bytes()),
-        )),
+        (DataType::Guid, OfficialPrimitiveLiteral::UInt128(value)) => {
+            Some(Scalar::from(crate::types::guid_text(&value.to_be_bytes())))
+        }
         (
             DataType::Binary
             | DataType::LargeBinary
@@ -277,16 +277,10 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
 /// A date counts days, a time counts its unit since midnight, and a timestamp
 /// counts its unit since the epoch, so all three are one integer to an encoder.
 fn count(value: &Scalar) -> Option<i64> {
-    match value {
-        Scalar::Date32(count, _, _)
-        | Scalar::Time32(count, _, _)
-        | Scalar::Duration32(count, _, _) => Some(i64::from(*count)),
-        Scalar::Date64(count, _, _)
-        | Scalar::Time64(count, _, _)
-        | Scalar::DateTime64(count, _, _)
-        | Scalar::Duration64(count, _, _) => Some(*count),
-        other => other.as_i64(),
-    }
+    value
+        .as_temporal()
+        .map(|temporal| temporal.count())
+        .or_else(|| value.as_i64())
 }
 
 /// Compare two single values the way their datatype orders them.
@@ -312,7 +306,7 @@ mod tests {
         let int = 37_i32.to_le_bytes();
         assert_eq!(
             single_to_value(&int, &DataType::Int64),
-            Some(Scalar::I64(37))
+            Some(Scalar::from(37))
         );
         assert_eq!(
             compare_single(&int, &38_i64.to_le_bytes(), &DataType::Int64),
@@ -369,9 +363,9 @@ mod tests {
     #[test]
     fn official_single_value_bytes_round_trip_supported_values() {
         let cases = [
-            (Scalar::Bool(true), DataType::Boolean),
-            (Scalar::I32(-7), DataType::Int32),
-            (Scalar::I64(9), DataType::Int64),
+            (Scalar::from(true), DataType::Boolean),
+            (Scalar::from(-7), DataType::Int32),
+            (Scalar::from(9), DataType::Int64),
             (Scalar::from("é"), DataType::Utf8),
             (Scalar::from([0_u8, 1, 2].as_slice()), DataType::Binary),
         ];

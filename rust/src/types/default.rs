@@ -4,7 +4,7 @@ use std::collections::TryReserveError;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::push_field_name_path;
+use crate::types::{Integer, Temporal, push_field_name_path};
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
@@ -584,11 +584,11 @@ fn ensure_budget(nodes: usize, bytes: usize, path: &[PathSegment<'_>]) -> Planni
 fn materialize(plan: DefaultPlan) -> Result<Scalar> {
     match plan {
         DefaultPlan::Null => Ok(Scalar::Null),
-        DefaultPlan::Bool => Ok(Scalar::Bool(false)),
-        DefaultPlan::Signed => Ok(Scalar::I64(0)),
-        DefaultPlan::Unsigned => Ok(Scalar::U64(0)),
+        DefaultPlan::Bool => Ok(Scalar::from(false)),
+        DefaultPlan::Signed => Ok(Scalar::from(0_i64)),
+        DefaultPlan::Unsigned => Ok(Scalar::from(0_u64)),
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
-        DefaultPlan::Decimal => Ok(Scalar::I128(0)),
+        DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
         DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::I256::ZERO, 0)),
         DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::Bytes(width) => {
@@ -620,15 +620,16 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
             Ok(Scalar::from_sequence(values))
         }
         DefaultPlan::Union(type_id, value) => Ok(Scalar::from_sequence([
-            Scalar::I64(i64::from(type_id)),
+            Scalar::from(i64::from(type_id)),
             materialize(*value)?,
         ])),
         DefaultPlan::EmptyMapping => Scalar::from_mapping([]),
         // Little-endian `POINT EMPTY`: the conventional empty geometry, spelled
         // as a point whose coordinates are NaN, in the canonical geospatial
         // value spelling.
-        DefaultPlan::PointEmpty => Ok(Scalar::Geospatial(POINT_EMPTY_WKB.as_slice().into())),
-        DefaultPlan::Guid => Ok(Scalar::String(crate::types::guid_text(&[0_u8; 16]))),
+        DefaultPlan::PointEmpty => crate::types::Geometry::new(POINT_EMPTY_WKB.as_slice())
+            .map(|value| Scalar::Geospatial(crate::types::Geospatial::Geometry(value))),
+        DefaultPlan::Guid => Ok(Scalar::Guid(crate::types::Guid::new(0))),
     }
 }
 
@@ -641,35 +642,34 @@ pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
 fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
     match plan {
         DefaultPlan::Null => matches!(value, Scalar::Null),
-        DefaultPlan::Bool => matches!(value, Scalar::Bool(false)),
+        DefaultPlan::Bool => value.as_bool() == Some(false),
         // A temporal zero read back off an Arrow column carries its unit and
         // zone; it is the same datum the plan's bare zero spells, so both
         // spellings are the default.
-        DefaultPlan::Signed => matches!(
-            value,
-            Scalar::I8(0)
-                | Scalar::I16(0)
-                | Scalar::I32(0)
-                | Scalar::I64(0)
-                | Scalar::Date32(0, _, _)
-                | Scalar::Date64(0, _, _)
-                | Scalar::Time32(0, _, _)
-                | Scalar::Time64(0, _, _)
-                | Scalar::DateTime64(0, _, _)
-                | Scalar::Duration32(0, _, _)
-                | Scalar::Duration64(0, _, _)
-        ),
+        DefaultPlan::Signed => match value {
+            Scalar::Integer(Integer::I8(value)) => value.get() == 0,
+            Scalar::Integer(Integer::I16(value)) => value.get() == 0,
+            Scalar::Integer(Integer::I32(value)) => value.get() == 0,
+            Scalar::Integer(Integer::I64(value)) => value.get() == 0,
+            Scalar::Temporal(Temporal::Date32(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::Date64(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::Time32(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::Time64(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::DateTime64(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::Duration32(value)) => value.count() == 0,
+            Scalar::Temporal(Temporal::Duration64(value)) => value.count() == 0,
+            _ => false,
+        },
         DefaultPlan::Unsigned => {
-            matches!(
-                value,
-                Scalar::U8(0) | Scalar::U16(0) | Scalar::U32(0) | Scalar::U64(0)
-            )
+            matches!(value.as_integer(), Some(integer) if !integer.is_negative() && integer.magnitude() == 0)
         }
         DefaultPlan::Float => value
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
         // A zero coefficient is zero at every scale.
-        DefaultPlan::Decimal => matches!(value, Scalar::I128(0) | Scalar::D128(0, _)),
+        DefaultPlan::Decimal => {
+            value.as_i128() == Some(0) || value.as_d128().is_some_and(|(value, _)| value == 0)
+        }
         DefaultPlan::Decimal256 => value
             .as_d256()
             .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO),

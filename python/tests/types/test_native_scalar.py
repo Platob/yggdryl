@@ -132,7 +132,7 @@ def test_exact_width_factories_are_private_reconstruction_details() -> None:
         assert not hasattr(Scalar, name)
 
 
-def test_enum_scalar_preserves_identity_and_compact_ordinal() -> None:
+def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
     value = Scalar.from_enum("io_mode", "append")
 
     assert value.kind == "enum"

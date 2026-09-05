@@ -2,7 +2,8 @@ use base64::Engine as _;
 use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::{I256, Scalar, TimeUnit, Timezone};
+use crate::types::{Integer, Nested, Temporal};
+use crate::{Scalar, TimeUnit, Timezone};
 
 /// A natural JSON view of [`Scalar`].
 ///
@@ -18,50 +19,44 @@ impl Serialize for JsonRef<'_> {
     {
         match self.0 {
             Scalar::Null => serializer.serialize_none(),
-            Scalar::Bool(value) => serializer.serialize_bool(*value),
-            Scalar::I8(value) => serializer.serialize_i8(*value),
-            Scalar::I16(value) => serializer.serialize_i16(*value),
-            Scalar::I32(value) => serializer.serialize_i32(*value),
-            Scalar::I64(value) => serializer.serialize_i64(*value),
-            Scalar::U8(value) => serializer.serialize_u8(*value),
-            Scalar::U16(value) => serializer.serialize_u16(*value),
-            Scalar::U32(value) => serializer.serialize_u32(*value),
-            Scalar::U64(value) => serializer.serialize_u64(*value),
-            Scalar::I128(value) => serializer.serialize_i128(*value),
-            Scalar::U128(value) => serializer.serialize_u128(*value),
-            Scalar::F16(value) => serialize_float(serializer, value.as_f64()),
-            Scalar::F32(value) => serialize_float(serializer, value.as_f64()),
-            Scalar::F64(value) => serialize_float(serializer, value.as_f64()),
-            Scalar::D128(unscaled, scale) => serializer.serialize_str(
-                &crate::types::decimal::scalars::decimal_text(I256::from_i128(*unscaled), *scale),
+            Scalar::Boolean(value) => serializer.serialize_bool(value.get()),
+            Scalar::Integer(value) => match value {
+                Integer::I8(value) => serializer.serialize_i8(value.get()),
+                Integer::I16(value) => serializer.serialize_i16(value.get()),
+                Integer::I32(value) => serializer.serialize_i32(value.get()),
+                Integer::I64(value) => serializer.serialize_i64(value.get()),
+                Integer::U8(value) => serializer.serialize_u8(value.get()),
+                Integer::U16(value) => serializer.serialize_u16(value.get()),
+                Integer::U32(value) => serializer.serialize_u32(value.get()),
+                Integer::U64(value) => serializer.serialize_u64(value.get()),
+                Integer::I128(value) => serializer.serialize_i128(value.get()),
+                Integer::U128(value) => serializer.serialize_u128(value.get()),
+            },
+            Scalar::Floating(value) => serialize_float(serializer, value.as_f64()),
+            Scalar::Decimal(value) => serializer.serialize_str(
+                &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
             ),
-            Scalar::D256(unscaled, scale) => serializer.serialize_str(
-                &crate::types::decimal::scalars::decimal_text(*unscaled, *scale),
-            ),
-            Scalar::String(value) => serializer.serialize_str(value),
+            Scalar::Text(value) => serializer.serialize_str(value.as_str()),
+            Scalar::Ascii(value) => serializer.serialize_str(value.as_str()),
+            Scalar::Guid(value) => serializer.serialize_str(&value.to_string()),
             Scalar::Enum(value) => serializer.serialize_str(value.as_str()),
-            Scalar::Bytes(value) | Scalar::Geospatial(value) => {
-                serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(value))
-            }
-            Scalar::Date32(count, unit, zone) => {
-                if !zone.is_naive() {
-                    return Err(S::Error::custom("Date32 cannot carry a timezone"));
-                }
-                if *unit == TimeUnit::Day && zone.is_naive() {
-                    if let Some(text) = crate::types::ascii::iso::format_date(*count) {
+            Scalar::Bytes(value) => serializer
+                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
+            Scalar::Geospatial(value) => serializer
+                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
+            Scalar::Temporal(Temporal::Date32(value)) => {
+                if value.unit() == TimeUnit::Day {
+                    if let Some(text) = crate::types::ascii::iso::format_date(value.count()) {
                         return serializer.serialize_str(&text);
                     }
                 }
-                serializer.serialize_i32(*count)
+                serializer.serialize_i32(value.count())
             }
-            Scalar::Date64(count, unit, zone) => {
-                if !zone.is_naive() {
-                    return Err(S::Error::custom("Date64 cannot carry a timezone"));
-                }
+            Scalar::Temporal(Temporal::Date64(value)) => {
                 const DAY_MILLISECONDS: i64 = 86_400_000;
-                if *unit == TimeUnit::Millisecond && zone.is_naive() {
-                    let days = count.div_euclid(DAY_MILLISECONDS);
-                    if count.rem_euclid(DAY_MILLISECONDS) == 0 {
+                if value.unit() == TimeUnit::Millisecond {
+                    let days = value.count().div_euclid(DAY_MILLISECONDS);
+                    if value.count().rem_euclid(DAY_MILLISECONDS) == 0 {
                         if let Ok(days) = i32::try_from(days) {
                             if let Some(text) = crate::types::ascii::iso::format_date(days) {
                                 return serializer.serialize_str(&text);
@@ -69,46 +64,61 @@ impl Serialize for JsonRef<'_> {
                         }
                     }
                 }
-                serializer.serialize_i64(*count)
+                serializer.serialize_i64(value.count())
             }
-            Scalar::Time32(count, unit, zone) => {
-                serialize_time(serializer, i64::from(*count), *unit, zone)
+            Scalar::Temporal(Temporal::Time32(value)) => serialize_time(
+                serializer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            ),
+            Scalar::Temporal(Temporal::Time64(value)) => {
+                serialize_time(serializer, value.count(), value.unit(), &value.timezone())
             }
-            Scalar::Time64(count, unit, zone) => serialize_time(serializer, *count, *unit, zone),
-            Scalar::DateTime64(count, unit, zone) => {
-                let text = if zone.is_naive() {
-                    crate::types::ascii::iso::format_datetime(*count, *unit)
+            Scalar::Temporal(Temporal::DateTime64(value)) => {
+                let text = if value.timezone().is_naive() {
+                    crate::types::ascii::iso::format_datetime(value.count(), value.unit())
                 } else {
-                    crate::types::ascii::iso::format_timestamp(*count, *unit, zone)
+                    crate::types::ascii::iso::format_timestamp(
+                        value.count(),
+                        value.unit(),
+                        &value.timezone(),
+                    )
                 };
                 match text {
                     Some(text) => serializer.serialize_str(&text),
-                    None => serializer.serialize_i64(*count),
+                    None => serializer.serialize_i64(value.count()),
                 }
             }
-            Scalar::Duration32(count, unit, zone) => {
-                serialize_duration(serializer, i64::from(*count), *unit, zone)
+            Scalar::Temporal(Temporal::Duration32(value)) => serialize_duration(
+                serializer,
+                i64::from(value.count()),
+                value.unit(),
+                &value.timezone(),
+            ),
+            Scalar::Temporal(Temporal::Duration64(value)) => {
+                serialize_duration(serializer, value.count(), value.unit(), &value.timezone())
             }
-            Scalar::Duration64(count, unit, zone) => {
-                serialize_duration(serializer, *count, *unit, zone)
+            Scalar::Temporal(Temporal::Interval(value)) => {
+                serializer.serialize_str(&value.to_string())
             }
-            Scalar::Sequence(values) => {
-                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
-                for value in values.iter() {
+            Scalar::Nested(Nested::Sequence(values)) => {
+                let mut sequence = serializer.serialize_seq(Some(values.as_slice().len()))?;
+                for value in values.as_slice() {
                     sequence.serialize_element(&JsonRef(value))?;
                 }
                 sequence.end()
             }
-            Scalar::Record(entries) => {
-                let mut mapping = serializer.serialize_map(Some(entries.len()))?;
-                for (name, value) in entries.iter() {
+            Scalar::Nested(Nested::Record(entries)) => {
+                let mut mapping = serializer.serialize_map(Some(entries.as_map().len()))?;
+                for (name, value) in entries.as_map() {
                     mapping.serialize_entry(name, &JsonRef(value))?;
                 }
                 mapping.end()
             }
-            Scalar::Mapping(entries) => {
-                let mut mapping = serializer.serialize_map(Some(entries.len()))?;
-                for (key, value) in entries.iter() {
+            Scalar::Nested(Nested::Mapping(entries)) => {
+                let mut mapping = serializer.serialize_map(Some(entries.as_slice().len()))?;
+                for (key, value) in entries.as_slice() {
                     let Some(key) = key.as_str() else {
                         return Err(S::Error::custom(
                             "JSON object keys must be strings; use a record or string-key mapping",

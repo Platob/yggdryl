@@ -556,7 +556,7 @@ impl JsStatement {
     /// Resolve every statement expression against one struct root schema.
     ///
     /// The loader converts an ordinary JavaScript parameter object into the
-    /// shared native `Scalar::Record` before this redirect.
+    /// shared native nested `Record` before this redirect.
     #[napi(js_name = "_bindNative", skip_typescript)]
     pub fn bind_native(
         &self,

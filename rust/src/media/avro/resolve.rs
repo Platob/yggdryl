@@ -484,7 +484,7 @@ impl Runner<'_> {
                         ),
                     )
                 })?;
-                Ok(Scalar::String(symbol.clone()))
+                Ok(Scalar::from(symbol.clone()))
             }
             Op::FromUnion(branches) => {
                 self.reader.spend(budget)?;
@@ -545,9 +545,9 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
     // proven when the plan was built.
     Ok(match reader {
         Node::Null => Scalar::Null,
-        Node::Boolean => Scalar::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0)),
-        Node::Int => Scalar::I32(cursor.int()?),
-        Node::Long => Scalar::I64(read_integer(from, cursor)?),
+        Node::Boolean => Scalar::from(cursor.take(1)?.first().is_some_and(|byte| *byte != 0)),
+        Node::Int => Scalar::from(cursor.int()?),
+        Node::Long => Scalar::from(read_integer(from, cursor)?),
         Node::Float => {
             let value = match from {
                 Wire::Float => cursor.float()?,
@@ -563,8 +563,8 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
             };
             Scalar::from(value)
         }
-        Node::Bytes => Scalar::Bytes(Arc::from(cursor.bytes()?)),
-        Node::String | Node::Uuid => Scalar::String(SmolStr::new(cursor.string()?)),
+        Node::Bytes => Scalar::from(cursor.bytes()?),
+        Node::String | Node::Uuid => Scalar::from(SmolStr::new(cursor.string()?)),
         Node::Date => Scalar::date32(cursor.int()?),
         Node::TimeMillis => Scalar::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?,
         Node::TimeMicros => Scalar::time64(
@@ -623,7 +623,7 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
                 Wire::Fixed(size) => size,
                 _ => 0,
             };
-            Scalar::Bytes(Arc::from(cursor.take(size)?))
+            Scalar::from(cursor.take(size)?)
         }
         // Containers never reach a leaf op; the builder proved as much.
         other => {
@@ -740,13 +740,13 @@ fn default_value_at(
             }
             Scalar::Null
         }
-        Node::Boolean => Scalar::Bool(
+        Node::Boolean => Scalar::from(
             default
                 .as_bool()
                 .ok_or_else(|| bad_default("boolean", default))?,
         ),
-        Node::Int => Scalar::I32(default_int(default, "int")?),
-        Node::Long => Scalar::I64(
+        Node::Int => Scalar::from(default_int(default, "int")?),
+        Node::Long => Scalar::from(
             default
                 .as_i64()
                 .ok_or_else(|| bad_default("long", default))?,
@@ -764,7 +764,7 @@ fn default_value_at(
                 .ok_or_else(|| bad_default("double", default))?,
         ),
         // A bytes default is a JSON string whose code points are the bytes.
-        Node::Bytes => Scalar::Bytes(default_bytes(default)?.into()),
+        Node::Bytes => Scalar::from(default_bytes(default)?),
         Node::Fixed(fixed) | Node::Duration(fixed) | Node::UuidFixed(fixed) => {
             let bytes = default_bytes(default)?;
             if bytes.len() != fixed.size {
@@ -774,7 +774,7 @@ fn default_value_at(
                     bytes.len()
                 )));
             }
-            Scalar::Bytes(bytes.into())
+            Scalar::from(bytes)
         }
         Node::Decimal(decimal) => {
             let bytes = default_bytes(default)?;
@@ -782,7 +782,7 @@ fn default_value_at(
                 .ok_or_else(|| bad_default("decimal", default))?;
             Scalar::d128(unscaled, decimal.scale as i8)
         }
-        Node::String | Node::Uuid | Node::Enum(_) => Scalar::String(SmolStr::new(
+        Node::String | Node::Uuid | Node::Enum(_) => Scalar::from(SmolStr::new(
             default
                 .as_str()
                 .ok_or_else(|| bad_default(node.kind(), default))?,

@@ -103,7 +103,7 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         assert_eq!(dtype.to_string(), *name);
         assert_eq!(dtype.name(), *name);
         assert_eq!(dtype.ascii_width(), Some(*width));
-        assert_eq!(dtype.kind(), DataTypeKind::String);
+        assert_eq!(dtype.kind(), DataTypeKind::Ascii);
         assert!(dtype.is_code());
     }
     assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
@@ -209,7 +209,7 @@ fn identity_kind_and_widths_answer_for_every_width() {
     for width in [1, 2, 3, 4, 6, 8, 12, 16, 64] {
         let dtype = DataType::ascii(width).unwrap();
         assert_eq!(dtype.id(), DataTypeId::FixedAscii);
-        assert_eq!(dtype.kind(), DataTypeKind::String);
+        assert_eq!(dtype.kind(), DataTypeKind::Ascii);
         assert_eq!(dtype.name(), "fixed_ascii");
         assert_eq!(dtype.to_string(), format!("ascii({width})"));
         assert_eq!(dtype.ascii_width(), Some(width));
@@ -219,7 +219,7 @@ fn identity_kind_and_widths_answer_for_every_width() {
     }
     // The variable shape is the same family with no width at all.
     assert_eq!(DataType::Ascii.id(), DataTypeId::Ascii);
-    assert_eq!(DataType::Ascii.kind(), DataTypeKind::String);
+    assert_eq!(DataType::Ascii.kind(), DataTypeKind::Ascii);
     assert_eq!(DataType::Ascii.ascii_width(), None);
     assert!(DataType::Ascii.is_ascii());
     assert_eq!(DataType::Utf8.ascii_width(), None);
@@ -296,21 +296,25 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
         .required_field("row");
     let row = |value: Scalar| Scalar::from_sequence([value]);
     let canonical = |value: Scalar| root.canonicalize_value(row(value)).unwrap();
+    let fixed = |value: &str| {
+        Scalar::Ascii(crate::types::AsciiFamily::FixedAscii(
+            crate::types::FixedAscii::new(value, 4).unwrap(),
+        ))
+    };
 
-    // The trimmed string is the canonical spelling and passes untouched.
-    assert_eq!(canonical(Scalar::from("USD")), row(Scalar::from("USD")));
-    assert_eq!(canonical(Scalar::from("ABCD")), row(Scalar::from("ABCD")));
-    assert_eq!(canonical(Scalar::from("")), row(Scalar::from("")));
-    // Trailing NULs are trimmed, and bytes are rewritten to the string.
-    assert_eq!(canonical(Scalar::from("USD\0")), row(Scalar::from("USD")));
+    // Text inputs canonicalize to the exact fixed-width ASCII leaf.
+    assert_eq!(canonical(Scalar::from("USD")), row(fixed("USD")));
+    assert_eq!(canonical(Scalar::from("ABCD")), row(fixed("ABCD")));
+    assert_eq!(canonical(Scalar::from("")), row(fixed("")));
+    let exact = fixed("USD");
+    assert_eq!(canonical(exact.clone()), row(exact));
+    // Trailing NULs are trimmed, and bytes are rewritten to that leaf.
+    assert_eq!(canonical(Scalar::from("USD\0")), row(fixed("USD")));
     assert_eq!(
         canonical(Scalar::from(b"USD\0".to_vec())),
-        row(Scalar::from("USD"))
+        row(fixed("USD"))
     );
-    assert_eq!(
-        canonical(Scalar::from(b"EUR".to_vec())),
-        row(Scalar::from("EUR"))
-    );
+    assert_eq!(canonical(Scalar::from(b"EUR".to_vec())), row(fixed("EUR")));
 
     // Every refusal names the width and the offending fact.
     for (value, fact) in [
@@ -333,7 +337,7 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
     }
     // Anything that is neither text nor bytes is refused by kind.
     let refused = root
-        .validate_value(&row(Scalar::I64(7)))
+        .validate_value(&row(Scalar::from(7)))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("expected fixed_ascii"), "{refused}");

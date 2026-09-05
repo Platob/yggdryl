@@ -10,22 +10,22 @@ use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, Uri};
 /// differently, and the three where a stray allocation would show.
 fn corpus() -> Vec<(&'static str, Scalar)> {
     let wide = Scalar::from_record(
-        (0..64).map(|index| (format!("column_{index:03}"), Scalar::I64(index))),
+        (0..64).map(|index| (format!("column_{index:03}"), Scalar::from(index))),
     )
     .expect("the generated record names are unique");
     let mut deep = Scalar::from("leaf");
     for _ in 0..32 {
-        deep = Scalar::from_sequence([deep, Scalar::I64(1)]);
+        deep = Scalar::from_sequence([deep, Scalar::from(1)]);
     }
     let row = Scalar::from_sequence([
         Scalar::from("AAPL"),
-        Scalar::I64(100),
+        Scalar::from(100),
         Scalar::d128(18_723, 2),
         Scalar::from("XNAS"),
     ]);
     vec![
         ("leaf", Scalar::from("AAPL")),
-        ("integer", Scalar::I64(18_723)),
+        ("integer", Scalar::from(18_723)),
         ("decimal", Scalar::d128(18_723, 2)),
         ("row", row),
         ("wide_record", wide),

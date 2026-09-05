@@ -42,7 +42,7 @@ pub enum DataTypeId {
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
-    /// this identifier. It names the width [`crate::Scalar::I128`] stores and
+    /// this identifier. It names the width [`crate::types::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
     Int128,
@@ -316,12 +316,10 @@ impl DataTypeId {
             | Self::Duration64
             | Self::Interval => DataTypeKind::Temporal,
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
-                DataTypeKind::Binary
+                DataTypeKind::Bytes
             }
-            Self::Utf8
-            | Self::LargeUtf8
-            | Self::Utf8View
-            | Self::Ascii
+            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View => DataTypeKind::Text,
+            Self::Ascii
             | Self::FixedAscii
             // A registered code is fixed-width ASCII text with an identity,
             // so it belongs to the family every text behaviour is uniform
@@ -329,19 +327,19 @@ impl DataTypeId {
             | Self::Country
             | Self::Currency
             | Self::Mic
-            | Self::Cfi => DataTypeKind::String,
+            | Self::Cfi => DataTypeKind::Ascii,
             Self::Guid => DataTypeKind::Guid,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
             | Self::LargeList
-            | Self::LargeListView => DataTypeKind::List,
-            Self::Struct => DataTypeKind::Struct,
-            Self::Union => DataTypeKind::Union,
-            Self::Map => DataTypeKind::Map,
-            Self::Dictionary => DataTypeKind::Dictionary,
-            Self::RunEndEncoded => DataTypeKind::RunEndEncoded,
-            Self::Variant => DataTypeKind::Variant,
+            | Self::LargeListView
+            | Self::Struct
+            | Self::Union
+            | Self::Map
+            | Self::Dictionary
+            | Self::RunEndEncoded
+            | Self::Variant => DataTypeKind::Nested,
             Self::Geometry | Self::Geography => DataTypeKind::Geospatial,
         }
     }
@@ -418,12 +416,12 @@ impl DataTypeId {
 
     /// Return whether the variant stores opaque bytes.
     pub const fn is_binary(self) -> bool {
-        matches!(self.kind(), DataTypeKind::Binary)
+        matches!(self.kind(), DataTypeKind::Bytes)
     }
 
     /// Return whether the variant stores UTF-8 text.
     pub const fn is_string(self) -> bool {
-        matches!(self.kind(), DataTypeKind::String)
+        matches!(self.kind(), DataTypeKind::Text | DataTypeKind::Ascii)
     }
 
     /// Return whether the variant always holds child fields.
@@ -431,12 +429,23 @@ impl DataTypeId {
     /// Wrapper variants report `false`; their nesting depends on the value
     /// type they encode, which only [`crate::DataType`] knows.
     pub const fn is_nested(self) -> bool {
-        self.kind().is_nested()
+        matches!(
+            self,
+            Self::List
+                | Self::ListView
+                | Self::FixedSizeList
+                | Self::LargeList
+                | Self::LargeListView
+                | Self::Struct
+                | Self::Union
+                | Self::Map
+                | Self::Variant
+        )
     }
 
     /// Return whether the variant transparently encodes another value type.
     pub const fn is_wrapper(self) -> bool {
-        self.kind().is_wrapper()
+        matches!(self, Self::Dictionary | Self::RunEndEncoded)
     }
 
     /// Return the fixed byte width of one value, when the variant has one.
@@ -553,7 +562,7 @@ mod tests {
             DataTypeId::Mic,
             DataTypeId::Cfi,
         ] {
-            assert_eq!(id.kind(), DataTypeKind::String);
+            assert_eq!(id.kind(), DataTypeKind::Ascii);
             assert!(id.is_string());
         }
         // A fixed width is a parameter; every other ASCII identifier is not.

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Scalar;
 use crate::types::typed::define_scalar_type;
+use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by every opaque-byte representation.
 pub trait BytesValue: crate::ScalarValue {
@@ -133,13 +134,148 @@ impl Hash for Bytes {
 
 const _: () = assert!(std::mem::size_of::<Bytes>() == 24);
 
+macro_rules! bytes_value {
+    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident) => {
+        impl ScalarValue for $leaf {
+            type Family = Bytes;
+            type Type = $marker;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Bytes;
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok(DataType::$dtype)
+            }
+
+            fn into_family(self) -> Self::Family {
+                Bytes::$variant(self)
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                match family {
+                    Bytes::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::Bytes(Bytes::$variant(self))
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::Bytes(Bytes::$variant(value)) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl BytesValue for $leaf {
+            fn as_bytes(&self) -> &[u8] {
+                <$leaf>::as_bytes(self)
+            }
+        }
+    };
+}
+
+bytes_value!(Binary, super::BinaryType, Binary, Binary, Binary);
+bytes_value!(
+    LargeBinary,
+    super::LargeBinaryType,
+    LargeBinary,
+    LargeBinary,
+    LargeBinary
+);
+bytes_value!(
+    BinaryView,
+    super::BinaryViewType,
+    BinaryView,
+    BinaryView,
+    BinaryView
+);
+
+impl ScalarValue for FixedSizeBinary {
+    type Family = Bytes;
+    type Type = super::FixedSizeBinaryType;
+
+    const ID: DataTypeId = DataTypeId::FixedSizeBinary;
+    const KIND: DataTypeKind = DataTypeKind::Bytes;
+
+    fn dtype(&self) -> Result<DataType> {
+        self.clone().into_scalar().dtype()
+    }
+
+    fn into_family(self) -> Self::Family {
+        Bytes::FixedSizeBinary(self)
+    }
+
+    fn from_family(family: &Self::Family) -> Option<&Self> {
+        match family {
+            Bytes::FixedSizeBinary(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Bytes(Bytes::FixedSizeBinary(self))
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Bytes(Bytes::FixedSizeBinary(value)) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl BytesValue for FixedSizeBinary {
+    fn as_bytes(&self) -> &[u8] {
+        Self::as_bytes(self)
+    }
+}
+
+impl ScalarFamily for Bytes {
+    const KIND: DataTypeKind = DataTypeKind::Bytes;
+
+    fn id(&self) -> DataTypeId {
+        match self {
+            Self::Binary(_) => DataTypeId::Binary,
+            Self::FixedSizeBinary(_) => DataTypeId::FixedSizeBinary,
+            Self::LargeBinary(_) => DataTypeId::LargeBinary,
+            Self::BinaryView(_) => DataTypeId::BinaryView,
+        }
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        match self {
+            Self::Binary(_) => Ok(DataType::Binary),
+            Self::FixedSizeBinary(value) => ScalarValue::dtype(value),
+            Self::LargeBinary(_) => Ok(DataType::LargeBinary),
+            Self::BinaryView(_) => Ok(DataType::BinaryView),
+        }
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Bytes(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Bytes(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
 impl From<Vec<u8>> for Scalar {
     fn from(value: Vec<u8>) -> Self {
         if value.is_empty() {
             static EMPTY: OnceLock<Arc<[u8]>> = OnceLock::new();
-            return Self::Bytes(Arc::clone(EMPTY.get_or_init(|| Arc::from([]))));
+            return Self::Bytes(Bytes::Binary(Binary::new(Arc::clone(
+                EMPTY.get_or_init(|| Arc::from([])),
+            ))));
         }
-        Self::Bytes(value.into())
+        Self::Bytes(Bytes::Binary(Binary::from(value)))
     }
 }
 
@@ -150,7 +286,7 @@ impl From<&[u8]> for Scalar {
         if value.is_empty() {
             return Self::from(Vec::<u8>::new());
         }
-        Self::Bytes(Arc::from(value))
+        Self::Bytes(Bytes::Binary(Binary::new(Arc::<[u8]>::from(value))))
     }
 }
 
@@ -165,7 +301,7 @@ impl From<Arc<[u8]>> for Scalar {
         if value.is_empty() {
             return Self::from(Vec::<u8>::new());
         }
-        Self::Bytes(value)
+        Self::Bytes(Bytes::Binary(Binary::new(value)))
     }
 }
 

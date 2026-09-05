@@ -670,7 +670,7 @@ impl TypedScalar {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let array = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?.into_arrow_array()?;
     /// let typed = TypedScalar::from_arrow_array(DataType::Int64, array.as_ref())?;
-    /// assert_eq!(typed.value(), &Scalar::I64(7));
+    /// assert_eq!(typed.value(), &Scalar::from(7));
     /// # Ok(())
     /// # }
     /// ```

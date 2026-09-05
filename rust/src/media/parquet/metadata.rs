@@ -166,7 +166,7 @@ impl FileStatistics {
 impl From<FileStatistics> for Scalar {
     fn from(statistics: FileStatistics) -> Self {
         statistics_record([
-            ("num_rows", Scalar::I64(statistics.num_rows)),
+            ("num_rows", Scalar::from(statistics.num_rows)),
             (
                 "created_by",
                 statistics.created_by.map_or(Scalar::Null, Scalar::from),
@@ -193,11 +193,11 @@ impl From<FileStatistics> for Scalar {
 impl From<RowGroupStatistics> for Scalar {
     fn from(statistics: RowGroupStatistics) -> Self {
         statistics_record([
-            ("num_rows", Scalar::I64(statistics.num_rows)),
-            ("compressed_size", Scalar::I64(statistics.compressed_size)),
+            ("num_rows", Scalar::from(statistics.num_rows)),
+            ("compressed_size", Scalar::from(statistics.compressed_size)),
             (
                 "file_offset",
-                statistics.file_offset.map_or(Scalar::Null, Scalar::I64),
+                statistics.file_offset.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 "columns",
@@ -211,14 +211,14 @@ impl From<ColumnStatistics> for Scalar {
     fn from(statistics: ColumnStatistics) -> Self {
         statistics_record([
             ("path", Scalar::from(statistics.path)),
-            ("compressed_size", Scalar::I64(statistics.compressed_size)),
+            ("compressed_size", Scalar::from(statistics.compressed_size)),
             (
                 "uncompressed_size",
-                Scalar::I64(statistics.uncompressed_size),
+                Scalar::from(statistics.uncompressed_size),
             ),
             (
                 "null_count",
-                statistics.null_count.map_or(Scalar::Null, Scalar::U64),
+                statistics.null_count.map_or(Scalar::Null, Scalar::from),
             ),
             (
                 "min_bytes",
@@ -256,7 +256,7 @@ impl From<GeospatialStatistics> for Scalar {
             ),
             (
                 "geometry_types",
-                Scalar::from_sequence(statistics.geometry_types.into_iter().map(Scalar::I32)),
+                Scalar::from_sequence(statistics.geometry_types.into_iter().map(Scalar::from)),
             ),
         ])
     }

@@ -10,6 +10,7 @@ use smol_str::SmolStr;
 
 use crate::types::Scalar;
 use crate::types::typed::define_scalar_type;
+use crate::{AnyType, DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by every nested value shape.
 pub trait NestedValue: crate::ScalarValue {
@@ -198,6 +199,105 @@ impl ExactSizeIterator for Children<'_> {
 }
 
 impl std::iter::FusedIterator for Children<'_> {}
+
+macro_rules! nested_value {
+    ($leaf:ident, $variant:ident, $id:ident) => {
+        impl ScalarValue for $leaf {
+            type Family = Nested;
+            type Type = AnyType;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Nested;
+
+            fn dtype(&self) -> Result<DataType> {
+                Scalar::Nested(Nested::$variant(self.clone())).dtype()
+            }
+
+            fn into_family(self) -> Self::Family {
+                Nested::$variant(self)
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                match family {
+                    Nested::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::Nested(Nested::$variant(self))
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::Nested(Nested::$variant(value)) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+nested_value!(Sequence, Sequence, List);
+nested_value!(Mapping, Mapping, Map);
+nested_value!(Record, Record, Struct);
+
+impl NestedValue for Sequence {
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    fn children(&self) -> Children<'_> {
+        Children::Sequence(self.as_slice().iter())
+    }
+}
+
+impl NestedValue for Mapping {
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    fn children(&self) -> Children<'_> {
+        Children::Mapping(self.as_slice().iter())
+    }
+}
+
+impl NestedValue for Record {
+    fn len(&self) -> usize {
+        self.as_map().len()
+    }
+
+    fn children(&self) -> Children<'_> {
+        Children::Record(self.as_map().values())
+    }
+}
+
+impl ScalarFamily for Nested {
+    const KIND: DataTypeKind = DataTypeKind::Nested;
+
+    fn id(&self) -> DataTypeId {
+        match self {
+            Self::Sequence(_) => DataTypeId::List,
+            Self::Mapping(_) => DataTypeId::Map,
+            Self::Record(_) => DataTypeId::Struct,
+        }
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        self.clone().into_scalar().dtype()
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Nested(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Nested(value) => Some(value),
+            _ => None,
+        }
+    }
+}
 
 impl<'a> IntoIterator for &'a Scalar {
     type Item = &'a Scalar;

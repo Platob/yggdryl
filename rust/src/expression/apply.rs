@@ -83,7 +83,7 @@ pub trait ApplyExpressionStream {
 
 /// One row applies to the value the expression computes.
 ///
-/// The row is a [`Scalar::Sequence`] of column values in schema order.
+/// The row is a [`crate::types::nested::Sequence`] of column values in schema order.
 impl ApplyExpression for Scalar {
     type Output = Scalar;
 
@@ -115,7 +115,7 @@ impl<'holder> ApplyExpression for dyn Attributes + 'holder {
                 continue;
             }
             match conjunct.eval(&row)?.as_bool() {
-                Some(false) => return Ok(Scalar::Bool(false)),
+                Some(false) => return Ok(Scalar::from(false)),
                 Some(true) => {}
                 None => unknown = true,
             }
@@ -123,7 +123,7 @@ impl<'holder> ApplyExpression for dyn Attributes + 'holder {
         Ok(if unknown {
             Scalar::Null
         } else {
-            Scalar::Bool(true)
+            Scalar::from(true)
         })
     }
 }

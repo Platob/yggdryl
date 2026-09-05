@@ -1327,7 +1327,7 @@ mod bound_tests {
     fn promoted_bounds_prune_under_the_current_schema_type() {
         let int = 37_i32.to_le_bytes().to_vec();
         assert_eq!(
-            residual(DataType::Int64, int.clone(), int, Scalar::I64(37)),
+            residual(DataType::Int64, int.clone(), int, Scalar::from(37)),
             Some(Vec::new()),
             "an Int bound evolved to Long proves the matching value"
         );
@@ -1348,7 +1348,7 @@ mod bound_tests {
     #[test]
     fn malformed_bounds_leave_the_filter_for_rows() {
         assert_eq!(
-            residual(DataType::Int64, vec![0; 3], vec![0; 9], Scalar::I64(37)),
+            residual(DataType::Int64, vec![0; 3], vec![0; 9], Scalar::from(37)),
             Some(vec![0]),
             "malformed statistics cannot exclude or settle a file"
         );

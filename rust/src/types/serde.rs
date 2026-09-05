@@ -564,8 +564,7 @@ impl DataType {
     pub fn into_value(self) -> Scalar {
         use DataType as D;
         let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(4);
-        let mut tag =
-            |name: &str| entries.push((key(TYPE_KEY), Scalar::String(SmolStr::new(name))));
+        let mut tag = |name: &str| entries.push((key(TYPE_KEY), Scalar::from(SmolStr::new(name))));
         match &self {
             D::Null => tag("null"),
             D::Boolean => tag("boolean"),
@@ -602,7 +601,7 @@ impl DataType {
                 if !timezone.is_naive() {
                     entries.push((
                         key("timezone"),
-                        Scalar::String(SmolStr::new(timezone.as_str())),
+                        Scalar::from(SmolStr::new(timezone.as_str())),
                     ));
                 }
             }
@@ -628,11 +627,11 @@ impl DataType {
             }
             D::FixedSizeBinary(width) => {
                 tag("fixed_size_binary");
-                entries.push((key("width"), Scalar::I32(*width)));
+                entries.push((key("width"), Scalar::from(*width)));
             }
             D::FixedAscii(width) => {
                 tag("fixed_ascii");
-                entries.push((key("width"), Scalar::I32(*width)));
+                entries.push((key("width"), Scalar::from(*width)));
             }
             D::List(field) => {
                 tag("list");
@@ -645,7 +644,7 @@ impl DataType {
             D::FixedSizeList(field, length) => {
                 tag("fixed_size_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
-                entries.push((key("length"), Scalar::I32(*length)));
+                entries.push((key("length"), Scalar::from(*length)));
             }
             D::LargeList(field) => {
                 tag("large_list");
@@ -671,7 +670,7 @@ impl DataType {
                 tag("union");
                 entries.push((
                     key("mode"),
-                    Scalar::String(SmolStr::new(match mode {
+                    Scalar::from(SmolStr::new(match mode {
                         UnionMode::Sparse => "sparse",
                         UnionMode::Dense => "dense",
                     })),
@@ -705,7 +704,7 @@ impl DataType {
             D::Map(map) => {
                 tag("map");
                 entries.push((key("entries"), map.entries.clone().into_value()));
-                entries.push((key("keys_sorted"), Scalar::Bool(map.keys_sorted)));
+                entries.push((key("keys_sorted"), Scalar::from(map.keys_sorted)));
             }
             D::RunEndEncoded(encoded) => {
                 tag("run_end_encoded");
@@ -715,14 +714,14 @@ impl DataType {
             D::Variant => tag("variant"),
             D::Geometry(geospatial) => {
                 tag("geometry");
-                entries.push((key("crs"), Scalar::String(SmolStr::new(geospatial.crs()))));
+                entries.push((key("crs"), Scalar::from(SmolStr::new(geospatial.crs()))));
             }
             D::Geography(geospatial) => {
                 tag("geography");
-                entries.push((key("crs"), Scalar::String(SmolStr::new(geospatial.crs()))));
+                entries.push((key("crs"), Scalar::from(SmolStr::new(geospatial.crs()))));
                 entries.push((
                     key("algorithm"),
-                    Scalar::String(SmolStr::new(
+                    Scalar::from(SmolStr::new(
                         geospatial.algorithm().unwrap_or_default().as_str(),
                     )),
                 ));
@@ -913,7 +912,7 @@ impl DataType {
             }
             "map" => {
                 let keys_sorted = match at("keys_sorted") {
-                    Some(Scalar::Bool(held)) => *held,
+                    Some(held) if held.as_bool().is_some() => held.as_bool().unwrap_or(false),
                     other => {
                         return Err(invalid(
                             "$.keys_sorted",
@@ -977,7 +976,7 @@ impl TryFrom<Scalar> for DataType {
 /// One union member as the `{type_id, field}` pair the JSON shape uses.
 fn union_member(type_id: i8, field: &Field) -> Scalar {
     Scalar::from_mapping([
-        (key("type_id"), Scalar::I8(type_id)),
+        (key("type_id"), Scalar::from(type_id)),
         (key("field"), field.clone().into_value()),
     ])
     .unwrap_or(Scalar::Null)
@@ -985,14 +984,14 @@ fn union_member(type_id: i8, field: &Field) -> Scalar {
 
 /// Append the decimal tag and its two parameters, in emission order.
 fn decimal(entries: &mut Vec<(Scalar, Scalar)>, name: &str, precision: u8, scale: i8) {
-    entries.push((key(TYPE_KEY), Scalar::String(SmolStr::new(name))));
-    entries.push((key("precision"), Scalar::U8(precision)));
-    entries.push((key("scale"), Scalar::I8(scale)));
+    entries.push((key(TYPE_KEY), Scalar::from(SmolStr::new(name))));
+    entries.push((key("precision"), Scalar::from(precision)));
+    entries.push((key("scale"), Scalar::from(scale)));
 }
 
 /// A mapping key, which is always a plain string in a schema document.
 pub(crate) fn key(name: &str) -> Scalar {
-    Scalar::String(SmolStr::new(name))
+    Scalar::from(SmolStr::new(name))
 }
 
 /// A time unit as its snake_case full name, exactly as the JSON path emits it.
@@ -1001,7 +1000,7 @@ pub(crate) fn key(name: &str) -> Scalar {
 /// (`us`): the serialized vocabulary is the full name, and `from_str` accepts
 /// both, so the two stay interchangeable on the read side.
 fn unit_value(unit: TimeUnit) -> Scalar {
-    Scalar::String(SmolStr::new(match unit {
+    Scalar::from(SmolStr::new(match unit {
         TimeUnit::Day => "day",
         TimeUnit::Second => "second",
         TimeUnit::Millisecond => "millisecond",
@@ -1016,33 +1015,36 @@ fn unit_value(unit: TimeUnit) -> Scalar {
 /// Read an integer parameter, accepting every width the model may carry it in.
 pub(crate) fn integer(held: Option<&Scalar>, name: &str) -> Result<i32> {
     let held = held.ok_or_else(|| invalid(&format!("$.{name}"), "an integer", "nothing"))?;
-    let value = match held {
-        Scalar::I8(value) => i64::from(*value),
-        Scalar::I16(value) => i64::from(*value),
-        Scalar::I32(value) => i64::from(*value),
-        Scalar::I64(value) => *value,
-        Scalar::U8(value) => i64::from(*value),
-        Scalar::U16(value) => i64::from(*value),
-        Scalar::U32(value) => i64::from(*value),
-        Scalar::U64(value) => i64::try_from(*value)
-            .map_err(|_| invalid(&format!("$.{name}"), "an integer", "an out-of-range value"))?,
+    let value = if let Some(value) = held.as_i128() {
+        i64::try_from(value)
+            .map_err(|_| invalid(&format!("$.{name}"), "an integer", "an out-of-range value"))?
+    } else {
         // A structured-text document may carry a wide integer as text; the
         // JSON path already accepts the decimal-string spelling for the same
         // reason, so the two stay interchangeable.
-        Scalar::String(text) => text.parse::<i64>().map_err(|_| {
-            invalid(
-                &format!("$.{name}"),
-                "an integer",
-                format_smolstr!("{text:?}"),
-            )
-        })?,
-        other => {
+        let crate::types::Text::Utf8(text) = (match held {
+            Scalar::Text(text) => text,
+            other => {
+                return Err(invalid(
+                    &format!("$.{name}"),
+                    "an integer",
+                    format_smolstr!("{}", other.kind()),
+                ));
+            }
+        }) else {
             return Err(invalid(
                 &format!("$.{name}"),
                 "an integer",
-                format_smolstr!("{}", other.kind()),
+                format_smolstr!("{}", held.kind()),
             ));
-        }
+        };
+        text.as_str().parse::<i64>().map_err(|_| {
+            invalid(
+                &format!("$.{name}"),
+                "an integer",
+                format_smolstr!("{:?}", text.as_str()),
+            )
+        })?
     };
     i32::try_from(value).map_err(|_| {
         invalid(

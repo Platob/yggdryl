@@ -1,4 +1,4 @@
-use super::super::{DataType, GeospatialType};
+use super::super::{DataType, GeospatialParameters};
 use crate::{DataTypeId, DataTypeKind, EdgeAlgorithm};
 use crate::{Field, Scalar};
 
@@ -99,9 +99,11 @@ fn the_constructors_fill_and_refuse_what_the_grammar_does() {
     assert!(geospatial.has_default_crs());
 
     // The shared value refuses what the grammar refuses.
-    assert!(GeospatialType::geometry(Some("")).is_err());
+    assert!(GeospatialParameters::geometry(Some("")).is_err());
     assert_eq!(
-        GeospatialType::geometry(Some("EPSG:3857")).unwrap().crs(),
+        GeospatialParameters::geometry(Some("EPSG:3857"))
+            .unwrap()
+            .crs(),
         "EPSG:3857"
     );
 }
@@ -109,7 +111,7 @@ fn the_constructors_fill_and_refuse_what_the_grammar_does() {
 #[test]
 fn identity_kind_and_nesting_answer_for_the_new_variants() {
     assert_eq!(DataType::Variant.id(), DataTypeId::Variant);
-    assert_eq!(DataType::Variant.kind(), DataTypeKind::Variant);
+    assert_eq!(DataType::Variant.kind(), DataTypeKind::Nested);
     // A variant holds a tree, so it is nested; a geometry is one value.
     assert!(DataType::Variant.is_nested());
 

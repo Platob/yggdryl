@@ -254,7 +254,7 @@ mod tests {
 
     fn sample() -> Scalar {
         Scalar::from_record([
-            ("quantity", Scalar::I64(100)),
+            ("quantity", Scalar::from(100)),
             ("symbol", Scalar::from("AAPL")),
         ])
         .unwrap()
@@ -314,7 +314,7 @@ mod tests {
             })
             .collect::<String>();
         let value = Scalar::from_record([
-            ("quantity", Scalar::I64(100)),
+            ("quantity", Scalar::from(100)),
             ("message", Scalar::from(message)),
         ])
         .unwrap();

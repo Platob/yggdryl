@@ -21,8 +21,12 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::text::{self, json, toml, yaml};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
+use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
+use yggdryl::types::integer::Integer;
+use yggdryl::types::nested::Nested;
+use yggdryl::types::temporal::Temporal;
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, DataTypeId, EnumScalar, Field as CoreField,
+    ArrowCast, DataType as CoreDataType, DataTypeId, Enum, Field as CoreField,
     Fields as CoreFields, I256, MapType as CoreMapType, TemporalFamily, TimeUnit, Timezone,
 };
 
@@ -150,7 +154,7 @@ impl JsScalar {
     /// Build an identity-preserving member of a core enum.
     #[napi(factory)]
     pub fn from_enum(kind: String, value: String) -> Result<Self> {
-        EnumScalar::from_parts(&kind, &value)
+        Enum::from_parts(&kind, &value)
             .map(Scalar::from)
             .map(Self::from_core)
             .map_err(napi_error)
@@ -243,6 +247,20 @@ impl JsScalar {
         let unscaled = exact_i256(&unscaled, "unscaled")?;
         let scale = crate::exact_i8(scale, "scale")?;
         let inner = match DataTypeId::from_str(&id).map_err(napi_error)? {
+            DataTypeId::Decimal32 => Scalar::Decimal(Decimal::D32(Decimal32::new(
+                unscaled
+                    .as_i128()
+                    .and_then(|value| i32::try_from(value).ok())
+                    .ok_or_else(|| napi_error("decimal32 coefficient must fit signed 32 bits"))?,
+                scale,
+            ))),
+            DataTypeId::Decimal64 => Scalar::Decimal(Decimal::D64(Decimal64::new(
+                unscaled
+                    .as_i128()
+                    .and_then(|value| i64::try_from(value).ok())
+                    .ok_or_else(|| napi_error("decimal64 coefficient must fit signed 64 bits"))?,
+                scale,
+            ))),
             DataTypeId::Decimal128 => Scalar::d128(
                 unscaled
                     .as_i128()
@@ -354,11 +372,11 @@ impl JsScalar {
     #[napi(js_name = "_getNative", skip_typescript)]
     pub fn get_native(&self, key: &JsScalar) -> Option<JsScalar> {
         let value = match &self.inner {
-            Scalar::Record(_) => key
+            Scalar::Nested(Nested::Record(_)) => key
                 .inner
                 .as_str()
                 .and_then(|name| self.inner.get_key_str(name)),
-            Scalar::Mapping(_) => self.inner.get_key(&key.inner),
+            Scalar::Nested(Nested::Mapping(_)) => self.inner.get_key(&key.inner),
             _ => None,
         };
         value.cloned().map(Self::from_core)
@@ -368,8 +386,10 @@ impl JsScalar {
     #[napi(js_name = "_setNative", skip_typescript)]
     pub fn set_native(&self, key: &JsScalar, value: &JsScalar) -> Result<Self> {
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
-            Scalar::Record(_) => {
+            Scalar::Nested(Nested::Mapping(_)) => {
+                self.inner.with_key(key.inner.clone(), value.inner.clone())
+            }
+            Scalar::Nested(Nested::Record(_)) => {
                 let name = key
                     .inner
                     .as_str()
@@ -394,8 +414,8 @@ impl JsScalar {
             .as_str()
             .ok_or_else(|| napi_error("remove requires a string key"))?;
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.without_key(name),
-            Scalar::Record(_) => self.inner.without_field(name),
+            Scalar::Nested(Nested::Mapping(_)) => self.inner.without_key(name),
+            Scalar::Nested(Nested::Record(_)) => self.inner.without_field(name),
             _ => {
                 return Err(napi_error(format!(
                     "expected a mapping or record to remove a value from, got {}",
@@ -425,7 +445,7 @@ impl JsScalar {
     /// The non-null timezone marker carried by a temporal, or `null`.
     #[napi(getter)]
     pub fn zone(&self) -> Option<String> {
-        self.inner.temporal_timezone().map(ToString::to_string)
+        self.inner.temporal_timezone().map(|zone| zone.to_string())
     }
 
     /// The unscaled coefficient of an exact decimal, or `null`.
@@ -1831,7 +1851,7 @@ impl<'env> JsEncoder<'env> {
             // reads back as `null`. Keeping them apart needed a tag, and a tag
             // that only says "this was undefined" is not worth a vocabulary.
             ValueType::Undefined | ValueType::Null => Ok(Scalar::Null),
-            ValueType::Boolean => value.coerce_to_bool().map(Scalar::Bool),
+            ValueType::Boolean => value.coerce_to_bool().map(Scalar::from),
             ValueType::Number => Self::encode_number(value),
             ValueType::String => value
                 .coerce_to_string()?
@@ -1862,7 +1882,7 @@ impl<'env> JsEncoder<'env> {
             && value.fract() == 0.0
             && (-JS_SAFE_INTEGER_F64..=JS_SAFE_INTEGER_F64).contains(&value)
         {
-            return Ok(Scalar::I64(value as i64));
+            return Ok(Scalar::from(value as i64));
         }
         Ok(Scalar::from(value))
     }
@@ -1876,16 +1896,16 @@ impl<'env> JsEncoder<'env> {
     fn encode_bigint(value: Unknown<'env>) -> Result<Scalar> {
         let digits = value.coerce_to_string()?.into_utf8()?.into_owned()?;
         if let Ok(value) = digits.parse::<i64>() {
-            return Ok(Scalar::I64(value));
+            return Ok(Scalar::from(value));
         }
         if let Ok(value) = digits.parse::<u64>() {
-            return Ok(Scalar::U64(value));
+            return Ok(Scalar::from(value));
         }
         if let Ok(value) = digits.parse::<i128>() {
-            return Ok(Scalar::I128(value));
+            return Ok(Scalar::from(value));
         }
         if let Ok(value) = digits.parse::<u128>() {
-            return Ok(Scalar::U128(value));
+            return Ok(Scalar::from(value));
         }
         Err(napi_error(format!(
             "bigint {} exceeds the exact 128-bit integer range this codec stores",
@@ -2298,6 +2318,7 @@ fn truncated(digits: &str) -> String {
     format!("{}…", &digits[..MAX_REPORTED_DIGITS])
 }
 
+#[allow(clippy::too_many_lines)] // One exhaustive family match keeps the boundary auditable.
 fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<JsonValue> {
     if depth > max_depth {
         return Err(napi_error(format!(
@@ -2306,32 +2327,42 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
     }
     match value {
         Scalar::Null => Ok(JsonValue::Null),
-        Scalar::Bool(value) => Ok(JsonValue::Bool(*value)),
-        Scalar::I8(value) => integer_transport(i128::from(*value)),
-        Scalar::I16(value) => integer_transport(i128::from(*value)),
-        Scalar::I32(value) => integer_transport(i128::from(*value)),
-        Scalar::I64(value) => integer_transport(i128::from(*value)),
-        Scalar::U8(value) => unsigned_transport(u128::from(*value)),
-        Scalar::U16(value) => unsigned_transport(u128::from(*value)),
-        Scalar::U32(value) => unsigned_transport(u128::from(*value)),
-        Scalar::U64(value) => unsigned_transport(u128::from(*value)),
-        Scalar::I128(value) => integer_transport(*value),
-        Scalar::U128(value) => unsigned_transport(*value),
-        Scalar::F16(_) | Scalar::F32(_) | Scalar::F64(_) => float_transport(
+        Scalar::Boolean(value) => Ok(JsonValue::Bool(value.get())),
+        Scalar::Integer(value) => match value {
+            Integer::I8(value) => integer_transport(i128::from(value.get())),
+            Integer::I16(value) => integer_transport(i128::from(value.get())),
+            Integer::I32(value) => integer_transport(i128::from(value.get())),
+            Integer::I64(value) => integer_transport(i128::from(value.get())),
+            Integer::U8(value) => unsigned_transport(u128::from(value.get())),
+            Integer::U16(value) => unsigned_transport(u128::from(value.get())),
+            Integer::U32(value) => unsigned_transport(u128::from(value.get())),
+            Integer::U64(value) => unsigned_transport(u128::from(value.get())),
+            Integer::I128(value) => integer_transport(value.get()),
+            Integer::U128(value) => unsigned_transport(value.get()),
+            _ => Err(napi_error("unsupported native integer representation")),
+        },
+        Scalar::Floating(_) => float_transport(
             value
                 .as_float()
                 .ok_or_else(|| napi_error("invalid native float"))?
                 .as_f64(),
         ),
-        Scalar::String(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Text(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        Scalar::Ascii(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        Scalar::Guid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
-        Scalar::Bytes(value) | Scalar::Geospatial(value) => Ok(marker(
+        Scalar::Bytes(value) => Ok(marker(
             "bytes",
-            [("value", JsonValue::String(BASE64.encode(value)))],
+            [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
-        Scalar::Sequence(values) => values
+        Scalar::Geospatial(value) => Ok(marker(
+            "bytes",
+            [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
+        )),
+        Scalar::Nested(Nested::Sequence(values)) => values
+            .as_slice()
             .iter()
             .map(|value| value_to_transport(value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
@@ -2339,14 +2370,16 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         // A count is carried as text because a nanosecond instant needs more
         // than the 53 bits a JSON number keeps exactly; the JavaScript side
         // reads it as a bigint.
-        Scalar::D128(..) | Scalar::D256(..) => {
+        Scalar::Decimal(decimal) => {
             let (unscaled, scale) = value
                 .as_decimal()
                 .ok_or_else(|| napi_error("invalid native decimal"))?;
-            let id = if matches!(value, Scalar::D128(..)) {
-                "decimal128"
-            } else {
-                "decimal256"
+            let id = match decimal {
+                Decimal::D32(_) => "decimal32",
+                Decimal::D64(_) => "decimal64",
+                Decimal::D128(_) => "decimal128",
+                Decimal::D256(_) => "decimal256",
+                _ => return Err(napi_error("unsupported native decimal representation")),
             };
             Ok(marker(
                 id,
@@ -2356,13 +2389,12 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 ],
             ))
         }
-        Scalar::Date32(..)
-        | Scalar::Date64(..)
-        | Scalar::Time32(..)
-        | Scalar::Time64(..)
-        | Scalar::DateTime64(..)
-        | Scalar::Duration32(..)
-        | Scalar::Duration64(..) => {
+        Scalar::Temporal(Temporal::Interval(interval)) => Ok(JsonValue::Array(vec![
+            integer_transport(i128::from(interval.months()))?,
+            integer_transport(i128::from(interval.days()))?,
+            integer_transport(i128::from(interval.nanoseconds()))?,
+        ])),
+        Scalar::Temporal(_) => {
             let temporal = value
                 .as_temporal()
                 .ok_or_else(|| napi_error("invalid native temporal"))?;
@@ -2385,18 +2417,23 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 id,
                 temporal.count(),
                 temporal.unit(),
-                *temporal.timezone(),
+                temporal.timezone(),
                 date,
             ))
         }
-        Scalar::Mapping(entries) => mapping_transport(entries, depth, max_depth),
-        Scalar::Record(entries) => record_transport(entries, depth, max_depth),
+        Scalar::Nested(Nested::Mapping(entries)) => {
+            mapping_transport(entries.as_slice(), depth, max_depth)
+        }
+        Scalar::Nested(Nested::Record(entries)) => {
+            record_transport(entries.as_map(), depth, max_depth)
+        }
+        _ => Err(napi_error("unsupported native Scalar representation")),
     }
 }
 
 /// Project a typed core value into JavaScript while restoring struct names.
 ///
-/// Core rows stay ordered `Scalar::Sequence` values. At the language boundary
+/// Core rows stay ordered nested `Sequence` values. At the language boundary
 /// a declared Struct becomes the object JavaScript uses for named records;
 /// nested structs, lists, maps, unions, and dictionary values follow the same
 /// field recursively.
@@ -2407,13 +2444,14 @@ fn struct_transport_with_field(
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Scalar::Sequence(values) if values.len() == fields.len() => {
-            fields.iter().zip(values.iter()).collect::<Vec<_>>()
+        Scalar::Nested(Nested::Sequence(values)) if values.as_slice().len() == fields.len() => {
+            fields.iter().zip(values.as_slice()).collect::<Vec<_>>()
         }
-        Scalar::Record(values) => fields
+        Scalar::Nested(Nested::Record(values)) => fields
             .iter()
             .map(|field| {
                 values
+                    .as_map()
                     .get(field.name())
                     .map(|value| (field, value))
                     .ok_or_else(|| {

@@ -37,7 +37,7 @@ pub const MAX_PARSER_DEPTH: usize = 64;
 /// use yggdryl::{Scalar, from_toml_scalar, into_toml_scalar};
 ///
 /// let value = from_toml_scalar("id = 1\n")?;
-/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::from(1))])?);
 /// assert_eq!(from_toml_scalar(into_toml_scalar(&value)?)?, value);
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -76,7 +76,7 @@ pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// ```
 /// use yggdryl::{Scalar, into_toml_scalar};
 ///
-/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
 /// assert_eq!(into_toml_scalar(&value)?, "\"id\" = 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```

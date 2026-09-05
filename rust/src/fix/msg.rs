@@ -10,8 +10,8 @@ use crate::{DataType, Error, Field, Result, Scalar};
 /// A FIX message value, resolved against one registry.
 ///
 /// The schema is a core Struct [`Field`] - a non-null Struct field is the
-/// only row schema - and the value is that row: a [`Scalar::Record`] input
-/// canonicalizes to the ordered [`Scalar::Sequence`] the root declares,
+/// only row schema - and the value is that row: a [`crate::types::nested::Record`] input
+/// canonicalizes to the ordered [`crate::types::nested::Sequence`] the root declares,
 /// exactly as every other row does. The registry link is an [`Arc`], cloned
 /// from [`FixRegistry::global`] when the caller names none, so a message
 /// carries the dictionary it was resolved against and a later lookup cannot
@@ -55,7 +55,7 @@ use crate::{DataType, Error, Field, Result, Scalar};
 ///     .required_field("NewOrderSingle");
 /// let value = Scalar::from_record([
 ///     ("Symbol", Scalar::from("AAPL")),
-///     ("OrderQty", Scalar::I64(100)),
+///     ("OrderQty", Scalar::from(100)),
 ///     ("9999", Scalar::from("custom")),
 /// ])?;
 /// let msg = FixMsg::with_registry(registry, root.clone(), value)?;

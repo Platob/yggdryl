@@ -463,9 +463,9 @@ impl PyFixFieldIterator {
 
 /// Read a Python `dict` as the row a Struct field declares.
 ///
-/// The scalar boundary reads a `dict` as a `Scalar::Mapping`, because a
+/// The scalar boundary reads a `dict` as a nested `Mapping`, because a
 /// mapping's keys are values, while a row's keys are names - which is why the
-/// core canonicalizes a `Scalar::Record` and not a mapping. The declared field
+/// core canonicalizes a nested `Record` and not a mapping. The declared field
 /// is what says which of the two a `dict` meant, exactly as it does in the
 /// other direction, so the rewrite happens only where the field is a Struct
 /// and only through a List's item; a `Map` field keeps its mapping and every

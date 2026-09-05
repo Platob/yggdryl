@@ -11,7 +11,9 @@ pub mod wkb;
 
 #[cfg(feature = "parquet")]
 pub(crate) use dtypes::DEFAULT_CRS;
-pub use dtypes::GeospatialType;
 pub(crate) use dtypes::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+pub use dtypes::{GeospatialParameters, GeospatialType};
 pub use fields::*;
-pub use scalars::{Geography, GeographyScalar, Geometry, GeometryScalar, Geospatial};
+pub use scalars::{
+    Geography, GeographyScalar, Geometry, GeometryScalar, Geospatial, GeospatialValue,
+};

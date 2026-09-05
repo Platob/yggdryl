@@ -19,8 +19,8 @@ mod widths {
         // case a signed round trip silently corrupts.
         for value in [0, 1, i64::MAX as u64, u64::MAX] {
             assert_eq!(
-                round_trip(DataType::UInt64, Scalar::U64(value)),
-                Scalar::U64(value),
+                round_trip(DataType::UInt64, Scalar::from(value)),
+                Scalar::from(value),
                 "u64 {value}"
             );
         }
@@ -97,11 +97,11 @@ mod bulk {
     #[test]
     fn one_native_sequence_builds_one_arrow_array() {
         let field = DataType::Int64.nullable_field("id");
-        let values = Scalar::from_sequence([Scalar::I8(1), Scalar::Null, Scalar::U16(3)]);
+        let values = Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)]);
         let array = crate::arrow::array_from_value(&field, &values).unwrap();
         assert_eq!(
             crate::arrow::array_to_value(&field, array.as_ref()).unwrap(),
-            Scalar::from_sequence([Scalar::I64(1), Scalar::Null, Scalar::I64(3)])
+            Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)])
         );
     }
 
@@ -114,16 +114,17 @@ mod bulk {
         .unwrap()
         .required_field("row");
         let rows = Scalar::from_sequence([
-            Scalar::from_record([("venue", Scalar::from("XNAS")), ("id", Scalar::I8(1))]).unwrap(),
-            Scalar::from_record([("id", Scalar::U16(2))]).unwrap(),
+            Scalar::from_record([("venue", Scalar::from("XNAS")), ("id", Scalar::from(1))])
+                .unwrap(),
+            Scalar::from_record([("id", Scalar::from(2))]).unwrap(),
         ]);
 
         let batch = crate::arrow::batch_from_value(&root, &rows).unwrap();
         assert_eq!(
             crate::arrow::batch_to_value(&batch).unwrap(),
             Scalar::from_sequence([
-                Scalar::from_sequence([Scalar::I64(1), Scalar::from("XNAS")]),
-                Scalar::from_sequence([Scalar::I64(2), Scalar::Null]),
+                Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]),
+                Scalar::from_sequence([Scalar::from(2), Scalar::Null]),
             ])
         );
     }
@@ -131,12 +132,12 @@ mod bulk {
     #[test]
     fn bulk_builders_refuse_non_sequence_inputs() {
         let field = Field::new("id", DataType::Int64, false);
-        assert!(crate::arrow::array_from_value(&field, &Scalar::I64(1)).is_err());
+        assert!(crate::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
 
         let root = DataType::from_fields([field])
             .unwrap()
             .required_field("row");
-        assert!(crate::arrow::batch_from_value(&root, &Scalar::I64(1)).is_err());
+        assert!(crate::arrow::batch_from_value(&root, &Scalar::from(1)).is_err());
     }
 }
 
@@ -237,7 +238,7 @@ mod restating {
         assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 
         let too_wide = i64::from(i32::MAX) + 1;
-        assert!(scalar_array(&field, &Scalar::I64(too_wide)).is_err());
+        assert!(scalar_array(&field, &Scalar::from(too_wide)).is_err());
         let foreign = arrow_array::DurationSecondArray::from(vec![too_wide]);
         assert!(crate::arrow::scalar_value(&field, &foreign).is_err());
     }

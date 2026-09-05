@@ -149,11 +149,11 @@ mod tests {
         assert_traits::<Loading>();
 
         let first = Placeholders::new()
-            .with_variable("A", Scalar::I8(1))
-            .with_variable("B", Scalar::I8(2));
+            .with_variable("A", Scalar::from(1))
+            .with_variable("B", Scalar::from(2));
         let equal = Placeholders::new()
-            .with_variable("B", Scalar::I8(2))
-            .with_variable("A", Scalar::I8(1));
+            .with_variable("B", Scalar::from(2))
+            .with_variable("A", Scalar::from(1));
         assert_eq!(first, equal);
         assert_eq!(crate::stable_hash_of(&first), crate::stable_hash_of(&equal));
 

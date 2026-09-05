@@ -5,12 +5,11 @@
 //! block-count loop over zero-byte items, a recursive schema driven arbitrarily
 //! deep by data - is a typed error, never an allocation the process dies of.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use smol_str::{SmolStr, format_smolstr};
+use std::collections::HashMap;
 
 use crate::TimeUnit;
+use crate::types::{Nested, Temporal};
 use crate::{Error, Limits, Result, Scalar, Timezone};
 
 use super::schema::{Node, RecordType};
@@ -227,14 +226,14 @@ impl DatumCodec<'_> {
             let value = match node {
                 Node::Null => Scalar::Null,
                 Node::Boolean => {
-                    Scalar::Bool(cursor.take(1)?.first().is_some_and(|byte| *byte != 0))
+                    Scalar::from(cursor.take(1)?.first().is_some_and(|byte| *byte != 0))
                 }
-                Node::Int => Scalar::I32(cursor.int()?),
-                Node::Long => Scalar::I64(cursor.long()?),
+                Node::Int => Scalar::from(cursor.int()?),
+                Node::Long => Scalar::from(cursor.long()?),
                 Node::Float => Scalar::from(cursor.float()?),
                 Node::Double => Scalar::from(cursor.double()?),
-                Node::Bytes => Scalar::Bytes(Arc::from(cursor.bytes()?)),
-                Node::String | Node::Uuid => Scalar::String(SmolStr::new(cursor.string()?)),
+                Node::Bytes => Scalar::from(cursor.bytes()?),
+                Node::String | Node::Uuid => Scalar::from(SmolStr::new(cursor.string()?)),
                 Node::Date => Scalar::date32(cursor.int()?),
                 Node::TimeMillis => {
                     Scalar::time32(cursor.int()?, TimeUnit::Millisecond, Timezone::NAIVE)?
@@ -274,13 +273,13 @@ impl DatumCodec<'_> {
                             ),
                         )
                     })?;
-                    Scalar::D128(unscaled, decimal.scale as i8)
+                    Scalar::d128(unscaled, decimal.scale as i8)
                 }
                 // DESIGN: the value model has no three-part month/day/millisecond
                 // interval, so a duration keeps its twelve raw bytes; the Arrow
                 // bridge is where they become a typed interval.
                 Node::Duration(fixed) | Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
-                    Scalar::Bytes(Arc::from(cursor.take(fixed.size)?))
+                    Scalar::from(cursor.take(fixed.size)?)
                 }
                 Node::Enum(symbols) => {
                     let index = cursor.long()?;
@@ -296,7 +295,7 @@ impl DatumCodec<'_> {
                                 ),
                             )
                         })?;
-                    Scalar::String(symbol.clone())
+                    Scalar::from(symbol.clone())
                 }
                 Node::Record(record) => {
                     let depth = self.descend(depth)?;
@@ -545,7 +544,7 @@ impl DatumCodec<'_> {
                 ),
                 Node::Date => {
                     let days = match value {
-                        Scalar::Date32(days, _, _) => *days,
+                        Scalar::Temporal(Temporal::Date32(date)) => date.count(),
                         other => int_value(other, "date")?,
                     };
                     put_long(target, i64::from(days));
@@ -723,19 +722,19 @@ impl DatumCodec<'_> {
                 Node::Map(values) => {
                     let depth = self.descend(depth)?;
                     match value {
-                        Scalar::Record(entries) => {
-                            if !entries.is_empty() {
-                                put_long(target, entries.len() as i64);
-                                for (key, item) in entries.iter() {
+                        Scalar::Nested(Nested::Record(entries)) => {
+                            if !entries.as_map().is_empty() {
+                                put_long(target, entries.as_map().len() as i64);
+                                for (key, item) in entries.as_map() {
                                     put_bytes(target, key.as_bytes());
                                     self.encode(values, item, target, depth)?;
                                 }
                             }
                         }
-                        Scalar::Mapping(entries) => {
-                            if !entries.is_empty() {
-                                put_long(target, entries.len() as i64);
-                                for (key, item) in entries.iter() {
+                        Scalar::Nested(Nested::Mapping(entries)) => {
+                            if !entries.as_slice().is_empty() {
+                                put_long(target, entries.as_slice().len() as i64);
+                                for (key, item) in entries.as_slice() {
                                     let key = key
                                         .as_str()
                                         .ok_or_else(|| mismatch("map key string", key))?;
@@ -819,22 +818,20 @@ impl DatumCodec<'_> {
             Node::Float | Node::Double => value.as_f64().is_some(),
             Node::Bytes => value.as_bytes().is_some(),
             Node::String | Node::Uuid | Node::Enum(_) => value.as_str().is_some(),
-            Node::Date => matches!(value, Scalar::Date32(..)) || value.as_i64().is_some(),
+            Node::Date => {
+                matches!(value, Scalar::Temporal(Temporal::Date32(_))) || value.as_i64().is_some()
+            }
             Node::TimeMillis | Node::TimeMicros => {
-                matches!(value, Scalar::Time32(..) | Scalar::Time64(..)) || value.as_i64().is_some()
+                time_parts(value).is_some() || value.as_i64().is_some()
             }
             Node::TimestampMillis | Node::TimestampMicros | Node::TimestampNanos => {
-                matches!(value, Scalar::DateTime64(_, _, zone) if !zone.is_naive())
-                    || value.as_i64().is_some()
+                instant_parts(value).is_some() || value.as_i64().is_some()
             }
             Node::LocalTimestampMillis | Node::LocalTimestampMicros | Node::LocalTimestampNanos => {
-                matches!(value, Scalar::DateTime64(_, _, zone) if zone.is_naive())
-                    || value.as_i64().is_some()
+                datetime_parts(value).is_some() || value.as_i64().is_some()
             }
             Node::Decimal(_) => {
-                matches!(value, Scalar::D128(..) | Scalar::D256(..))
-                    || value.as_i64().is_some()
-                    || value.as_bytes().is_some()
+                value.is_decimal() || value.as_i64().is_some() || value.as_bytes().is_some()
             }
             Node::Duration(fixed) | Node::Fixed(fixed) => value
                 .as_bytes()
@@ -877,8 +874,8 @@ fn int_value(value: &Scalar, expected: &str) -> Result<i32> {
 /// Split a time-of-day value into its count and unit.
 fn time_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::Time32(count, unit, _) => Some((i64::from(*count), *unit)),
-        Scalar::Time64(count, unit, _) => Some((*count, *unit)),
+        Scalar::Temporal(Temporal::Time32(time)) => Some((i64::from(time.count()), time.unit())),
+        Scalar::Temporal(Temporal::Time64(time)) => Some((time.count(), time.unit())),
         _ => None,
     }
 }
@@ -886,7 +883,9 @@ fn time_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
 /// Split an instant value into its count and unit.
 fn instant_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::DateTime64(count, unit, zone) if !zone.is_naive() => Some((*count, *unit)),
+        Scalar::Temporal(Temporal::DateTime64(datetime)) if !datetime.timezone().is_naive() => {
+            Some((datetime.count(), datetime.unit()))
+        }
         _ => None,
     }
 }
@@ -894,7 +893,9 @@ fn instant_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
 /// Split a naive wall-clock value into its count and unit.
 fn datetime_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::DateTime64(count, unit, zone) if zone.is_naive() => Some((*count, *unit)),
+        Scalar::Temporal(Temporal::DateTime64(datetime)) if datetime.timezone().is_naive() => {
+            Some((datetime.count(), datetime.unit()))
+        }
         _ => None,
     }
 }
@@ -940,16 +941,11 @@ fn convert_count(count: i64, from: TimeUnit, to: TimeUnit) -> Option<i64> {
 /// Read a decimal's unscaled integer at the schema's scale.
 fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
     match value {
-        Scalar::D128(unscaled, declared) => {
-            let declared = i64::from(*declared);
-            if declared == i64::from(scale) {
-                Ok(*unscaled)
-            } else {
-                Err(invalid(format_smolstr!(
-                    "expected a decimal of scale {scale}, got scale {declared}"
-                )))
-            }
-        }
+        Scalar::Decimal(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a decimal exactly representable at scale {scale}"
+            ))
+        }),
         other => {
             if let Some(bytes) = other.as_bytes() {
                 return decimal_from_bytes(bytes).ok_or_else(|| {

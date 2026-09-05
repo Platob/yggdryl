@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use yggdryl::types::{Bytes, Geometry, Geospatial, Nested};
 use yggdryl::{I256, IOMode, Scalar, TimeUnit, Timezone};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
@@ -10,16 +11,16 @@ fn one_of_every_kind() -> Vec<Scalar> {
     vec![
         Scalar::Null,
         Scalar::from(true),
-        Scalar::I128(i128::MIN),
+        Scalar::from(i128::MIN),
         Scalar::from(-8_i8),
         Scalar::from(-4_i16),
         Scalar::from(-2_i32),
-        Scalar::I64(-1),
+        Scalar::from(-1_i64),
         Scalar::from(1_u8),
         Scalar::from(2_u16),
         Scalar::from(3_u32),
-        Scalar::U64(u64::MAX),
-        Scalar::U128(u128::MAX),
+        Scalar::from(u64::MAX),
+        Scalar::from(u128::MAX),
         Scalar::from(half::f16::from_f32(1.0)),
         Scalar::from(1.25_f32),
         Scalar::from(1.5),
@@ -37,7 +38,12 @@ fn one_of_every_kind() -> Vec<Scalar> {
         Scalar::from_sequence([Scalar::Null]),
         Scalar::from_mapping([(Scalar::from("k"), Scalar::Null)]).unwrap(),
         Scalar::from_record([("k", Scalar::Null)]).unwrap(),
-        Scalar::Geospatial([1_u8, 1, 0, 0, 0].as_slice().into()),
+        Scalar::Geospatial(Geospatial::Geometry(
+            Geometry::new([
+                1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ])
+            .unwrap(),
+        )),
         Scalar::from(IOMode::Append),
     ]
 }
@@ -178,10 +184,10 @@ fn every_accessor_tolerates_every_kind() {
 
 #[test]
 fn integer_widths_have_native_numeric_equality() {
-    assert_eq!(Scalar::I64(1), Scalar::U64(1));
-    assert_eq!(Scalar::I128(1), Scalar::U128(1));
+    assert_eq!(Scalar::from(1), Scalar::from(1));
+    assert_eq!(Scalar::from(1), Scalar::from(1));
     assert_eq!(Scalar::from(1_i8), Scalar::from(1_u32));
-    assert_ne!(Scalar::I64(-1), Scalar::U64(1));
+    assert_ne!(Scalar::from(-1), Scalar::from(1));
 }
 
 #[test]
@@ -203,10 +209,10 @@ fn equal_integer_representations_hash_and_order_equally() {
     }
 
     let values = [
-        Scalar::I64(1),
-        Scalar::U64(1),
-        Scalar::I128(1),
-        Scalar::U128(1),
+        Scalar::from(1),
+        Scalar::from(1),
+        Scalar::from(1),
+        Scalar::from(1),
     ];
     for left in &values {
         for right in &values {
@@ -215,8 +221,8 @@ fn equal_integer_representations_hash_and_order_equally() {
             assert_eq!(hash(left), hash(right));
         }
     }
-    assert!(Scalar::I128(i128::MIN) < Scalar::I64(-1));
-    assert!(Scalar::I64(-1) < Scalar::U128(u128::MAX));
+    assert!(Scalar::from(i128::MIN) < Scalar::from(-1));
+    assert!(Scalar::from(-1) < Scalar::from(u128::MAX));
 }
 
 #[test]
@@ -245,7 +251,7 @@ fn wide_mapping_constructor_rejects_duplicates() {
     let mut entries = (0_u64..128)
         .map(|index| (Scalar::from(index), Scalar::from(index)))
         .collect::<Vec<_>>();
-    entries.push((Scalar::I128(64), Scalar::Null));
+    entries.push((Scalar::from(64), Scalar::Null));
     assert!(Scalar::from_mapping(entries).is_err());
 }
 
@@ -262,7 +268,7 @@ fn collection_iteration_matches_python_sequence_and_mapping_semantics() {
         (Scalar::from("b"), Scalar::from(2_i64)),
     ])
     .unwrap();
-    assert_eq!(mapping["a"], Scalar::I64(1));
+    assert_eq!(mapping["a"], Scalar::from(1));
     assert_eq!(
         mapping
             .iter()
@@ -277,30 +283,37 @@ fn empty_collections_share_process_wide_backing() {
     let left = Scalar::from(Vec::<u8>::new());
     let encoded = serde_json::to_vec(&left).unwrap();
     let right: Scalar = serde_json::from_slice(&encoded).unwrap();
-    let (Scalar::Bytes(left), Scalar::Bytes(right)) = (&left, &right) else {
+    let (Scalar::Bytes(Bytes::Binary(left)), Scalar::Bytes(Bytes::Binary(right))) = (&left, &right)
+    else {
         unreachable!();
     };
-    assert!(std::sync::Arc::ptr_eq(left, right));
+    assert!(std::ptr::eq(left.as_bytes(), right.as_bytes()));
 
     let left = Scalar::from_sequence([]);
     let right = Scalar::from_sequence([]);
-    let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
+    let (Scalar::Nested(Nested::Sequence(left)), Scalar::Nested(Nested::Sequence(right))) =
+        (&left, &right)
+    else {
         unreachable!();
     };
-    assert!(std::sync::Arc::ptr_eq(left, right));
+    assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
 
     let left = Scalar::from_mapping([]).unwrap();
     let right = Scalar::from_mapping([]).unwrap();
-    let (Scalar::Mapping(left), Scalar::Mapping(right)) = (&left, &right) else {
+    let (Scalar::Nested(Nested::Mapping(left)), Scalar::Nested(Nested::Mapping(right))) =
+        (&left, &right)
+    else {
         unreachable!();
     };
-    assert!(std::sync::Arc::ptr_eq(left, right));
+    assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
 
     let left = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
     let right = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
-    let (Scalar::Record(left), Scalar::Record(right)) = (&left, &right) else {
+    let (Scalar::Nested(Nested::Record(left)), Scalar::Nested(Nested::Record(right))) =
+        (&left, &right)
+    else {
         unreachable!();
     };
-    assert!(std::sync::Arc::ptr_eq(left, right));
+    assert!(std::ptr::eq(left.as_map(), right.as_map()));
     assert!(!Scalar::Null.is_empty());
 }

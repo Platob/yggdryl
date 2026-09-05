@@ -130,21 +130,16 @@ fn the_value_shape_matches_the_json_structure_exactly() {
 
 #[test]
 fn a_malformed_mapping_is_refused_by_path() {
-    let missing =
-        Scalar::from_mapping([(Scalar::String("name".into()), Scalar::String("id".into()))])
-            .unwrap();
+    let missing = Scalar::from_mapping([(Scalar::from("name"), Scalar::from("id"))]).unwrap();
     let refused = Field::from_value(missing).expect_err("no datatype");
     assert!(refused.to_string().contains("dtype"), "{refused}");
 
-    let unknown = Scalar::from_mapping([(
-        Scalar::String("type".into()),
-        Scalar::String("quaternion".into()),
-    )])
-    .unwrap();
+    let unknown =
+        Scalar::from_mapping([(Scalar::from("type"), Scalar::from("quaternion"))]).unwrap();
     let refused = DataType::from_value(unknown).expect_err("no such datatype");
     assert!(refused.to_string().contains("quaternion"), "{refused}");
 
-    let not_a_mapping = Scalar::String("int64".into());
+    let not_a_mapping = Scalar::from("int64");
     let refused = DataType::from_value(not_a_mapping).expect_err("not a mapping");
     assert!(
         refused.to_string().contains("datatype mapping"),
@@ -158,8 +153,8 @@ fn metadata_entries_must_be_strings() {
     let mut value = field.into_value().as_mapping().unwrap().to_vec();
     value.pop();
     value.push((
-        Scalar::String("metadata".into()),
-        Scalar::from_mapping([(Scalar::String("count".into()), Scalar::I64(7))]).unwrap(),
+        Scalar::from("metadata"),
+        Scalar::from_mapping([(Scalar::from("count"), Scalar::from(7))]).unwrap(),
     ));
     let refused = Field::from_value(Scalar::from_mapping(value).unwrap())
         .expect_err("a non-string metadata value");
@@ -333,13 +328,10 @@ fn indentation_reads_literally_in_every_format() {
     use yggdryl::text::Formatting;
 
     let value = yggdryl::Scalar::from_mapping([
+        (yggdryl::Scalar::from("id"), yggdryl::Scalar::from(1)),
         (
-            yggdryl::Scalar::String("id".into()),
-            yggdryl::Scalar::I64(1),
-        ),
-        (
-            yggdryl::Scalar::String("tags".into()),
-            yggdryl::Scalar::from_sequence([yggdryl::Scalar::String("a".into())]),
+            yggdryl::Scalar::from("tags"),
+            yggdryl::Scalar::from_sequence([yggdryl::Scalar::from("a")]),
         ),
     ])
     .unwrap();

@@ -124,23 +124,23 @@ fn generic_float_selector_keeps_width_and_common_value_semantics() {
 
 #[test]
 fn integer_family_preserves_width_with_logical_comparison() {
-    let signed = Scalar::I8(7).as_integer().unwrap();
-    let unsigned = Scalar::U64(7).as_integer().unwrap();
-    let minimum = Scalar::I128(i128::MIN).as_integer().unwrap();
-    let maximum = Scalar::U128(u128::MAX).as_integer().unwrap();
-    let first_unsigned_only = Scalar::U128(i128::MAX as u128 + 1).as_integer().unwrap();
+    let signed = Scalar::from(7).as_integer().unwrap();
+    let unsigned = Scalar::from(7).as_integer().unwrap();
+    let minimum = Scalar::from(i128::MIN).as_integer().unwrap();
+    let maximum = Scalar::from(u128::MAX).as_integer().unwrap();
+    let first_unsigned_only = Scalar::from(i128::MAX as u128 + 1).as_integer().unwrap();
 
     assert_eq!(signed, unsigned);
     assert_eq!(signed.as_i128(), Some(7));
     assert_eq!(signed.as_u128(), Some(7));
-    assert_eq!(signed.into_scalar(), Scalar::I8(7));
-    assert_eq!(minimum.into_scalar(), Scalar::I128(i128::MIN));
+    assert_eq!(signed.into_scalar(), Scalar::from(7));
+    assert_eq!(minimum.into_scalar(), Scalar::from(i128::MIN));
     assert_eq!(maximum.as_i128(), None);
-    assert_eq!(maximum.into_scalar(), Scalar::U128(u128::MAX));
+    assert_eq!(maximum.into_scalar(), Scalar::from(u128::MAX));
     assert_eq!(first_unsigned_only.as_i128(), None);
     assert_eq!(
         first_unsigned_only.into_scalar(),
-        Scalar::U128(i128::MAX as u128 + 1)
+        Scalar::from(i128::MAX as u128 + 1)
     );
     assert!(Scalar::from(1.5).as_integer().is_none());
 }
@@ -194,25 +194,47 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
         hasher.finish()
     }
 
-    let wkb: &[u8] = &[1, 1, 0, 0, 0];
-    let point = Scalar::Geospatial(wkb.into());
+    let point_wkb = |x: f64, y: f64| {
+        let mut bytes = vec![1, 1, 0, 0, 0];
+        bytes.extend_from_slice(&x.to_le_bytes());
+        bytes.extend_from_slice(&y.to_le_bytes());
+        bytes
+    };
+    let wkb = point_wkb(1.0, 2.0);
+    let point = Scalar::Geospatial(super::Geospatial::Geometry(
+        crate::types::Geometry::new(wkb.clone()).unwrap(),
+    ));
     assert_eq!(point.kind(), "geospatial");
 
     // The same bytes under the bytes kind are a different value: the kind
     // is part of the identity, exactly as it is for string versus bytes.
-    let bytes = Scalar::from(wkb);
+    let bytes = Scalar::from(wkb.clone());
     assert_ne!(point, bytes);
     assert_ne!(hash_of(&point), hash_of(&bytes));
 
     // Within the kind, the bytes compare, and equal values hash equal.
-    assert_eq!(point, Scalar::Geospatial(wkb.into()));
-    assert_eq!(hash_of(&point), hash_of(&Scalar::Geospatial(wkb.into())));
-    assert!(point < Scalar::Geospatial([1u8, 2].as_slice().into()));
+    let equal = Scalar::Geospatial(super::Geospatial::Geometry(
+        crate::types::Geometry::new(wkb).unwrap(),
+    ));
+    assert_eq!(point, equal);
+    assert_eq!(hash_of(&point), hash_of(&equal));
+    let later = Scalar::Geospatial(super::Geospatial::Geometry(
+        crate::types::Geometry::new(point_wkb(3.0, 4.0)).unwrap(),
+    ));
+    assert_eq!(
+        point.cmp(&later),
+        point.as_bytes().unwrap().cmp(later.as_bytes().unwrap())
+    );
 }
 
 #[test]
 fn the_structural_wire_round_trips_a_geospatial_value() {
-    let point = Scalar::Geospatial([1u8, 1, 0, 0, 0].as_slice().into());
+    let mut wkb = vec![1_u8, 1, 0, 0, 0];
+    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
+    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
+    let point = Scalar::Geospatial(super::Geospatial::Geometry(
+        crate::types::Geometry::new(wkb).unwrap(),
+    ));
     let encoded = serde_json::to_string(&point).unwrap();
     assert!(encoded.contains("\"type\":\"geospatial\""), "{encoded}");
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
@@ -251,11 +273,11 @@ fn rebuilding_a_value_that_is_not_a_mapping_says_what_it_is() {
 #[test]
 fn equal_cross_width_values_have_one_stable_hash() {
     let groups = [
-        vec![Scalar::I8(1), Scalar::U64(1), Scalar::I128(1)],
+        vec![Scalar::from(1), Scalar::from(1), Scalar::from(1)],
         vec![
-            Scalar::F16(Float16::from_f16(half::f16::from_f32(1.0))),
-            Scalar::F32(Float32::from_f32(1.0)),
-            Scalar::F64(Float64::from_f64(1.0)),
+            Scalar::from(Float16::from_f16(half::f16::from_f32(1.0))),
+            Scalar::from(Float32::from_f32(1.0)),
+            Scalar::from(Float64::from_f64(1.0)),
         ],
         vec![Scalar::d128(100, 2), Scalar::d256(I256::from_i128(10), 1)],
         vec![Scalar::date32(1), Scalar::date64(86_400_000)],
@@ -313,12 +335,17 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
 fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let text = Scalar::from("AAPL");
     let bytes = Scalar::from(b"AAPL".as_slice());
-    let geometry = Scalar::Geospatial(Arc::from(b"WKB".as_slice()));
+    let geometry = Scalar::Geospatial(super::Geospatial::Geometry(
+        crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap(),
+    ));
     assert_eq!(text.as_utf8(), Some("AAPL"));
     assert_eq!(text.as_bytes(), None);
     assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
     assert_eq!(bytes.as_utf8(), None);
-    assert_eq!(geometry.as_bytes(), Some(b"WKB".as_slice()));
+    assert_eq!(
+        geometry.as_bytes(),
+        Some(crate::types::default::POINT_EMPTY_WKB.as_slice())
+    );
 
     let record = Scalar::from_record([
         ("symbol", Scalar::from("AAPL")),
@@ -332,9 +359,8 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
 }
 
 #[test]
-fn time_datatype_inference_refuses_zones_it_cannot_preserve() {
-    let zoned = Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
-    assert!(zoned.dtype().is_err());
+fn time_construction_refuses_zones_its_datatype_cannot_preserve() {
+    assert!(Scalar::time64(1, TimeUnit::Microsecond, Timezone::UTC).is_err());
 }
 
 #[test]
@@ -344,13 +370,85 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
     assert_eq!(<Float32 as ScalarValue>::ID, DataTypeId::Float32);
     assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
-    assert_eq!(ScalarValue::dtype(&leaf), DataType::Float32);
+    assert_eq!(ScalarValue::dtype(&leaf).unwrap(), DataType::Float32);
     assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
-    assert_eq!(ScalarFamily::id(&leaf), DataTypeId::Float32);
-    assert_eq!(ScalarFamily::dtype(&leaf), DataType::Float32);
-    assert_eq!(<Float32 as ScalarFamily>::from_scalar(&scalar), Some(&leaf));
+    let family = ScalarValue::into_family(leaf);
+    assert_eq!(ScalarFamily::id(&family), DataTypeId::Float32);
+    assert_eq!(ScalarFamily::dtype(&family).unwrap(), DataType::Float32);
+    assert_eq!(
+        <super::Floating as ScalarFamily>::from_scalar(&scalar),
+        Some(&family)
+    );
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
+}
+
+#[test]
+fn every_scalar_family_exposes_its_leaf_contract() {
+    use crate::types::{ascii, bytes, decimal, geospatial, guid, integer, nested, temporal, text};
+    use crate::{
+        AsciiValue, BytesValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue,
+        TemporalValue, TextValue,
+    };
+
+    let integer = integer::UInt128::new(u128::MAX);
+    assert_eq!(IntegerValue::as_i128(&integer), None);
+    assert_eq!(IntegerValue::as_u128(&integer), Some(u128::MAX));
+    assert_eq!(
+        ScalarValue::dtype(&integer).unwrap().id(),
+        DataTypeId::Decimal256
+    );
+
+    let decimal = decimal::Decimal32::new(1_251, 2);
+    assert_eq!(DecimalValue::coefficient(&decimal), I256::from_i128(1_251));
+    assert_eq!(
+        DecimalValue::rescale(decimal, 3).unwrap().coefficient(),
+        12_510
+    );
+    assert!(DecimalValue::rescale(decimal, 1).is_err());
+
+    let time = temporal::Time32::new(2, TimeUnit::Second, Timezone::NAIVE).unwrap();
+    let milliseconds = TemporalValue::with_unit(time, TimeUnit::Millisecond).unwrap();
+    assert_eq!(milliseconds.count(), 2_000);
+    assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
+
+    let text = text::LargeUtf8::new("AAPL");
+    assert_eq!(TextValue::as_str(&text), "AAPL");
+    assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::LargeUtf8);
+
+    let bytes = bytes::BinaryView::from(vec![1, 2, 3]);
+    assert_eq!(BytesValue::as_bytes(&bytes), [1, 2, 3]);
+    assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::BinaryView);
+
+    let currency = ascii::Currency::new("USD").unwrap();
+    assert_eq!(<ascii::Currency as AsciiValue>::WIDTH, Some(3));
+    assert_eq!(AsciiValue::as_str(&currency), "USD");
+
+    let geometry =
+        geospatial::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap();
+    assert_eq!(
+        GeospatialValue::as_bytes(&geometry),
+        crate::types::default::POINT_EMPTY_WKB.as_slice()
+    );
+    assert_eq!(
+        ScalarValue::dtype(&geometry).unwrap().id(),
+        DataTypeId::Geometry
+    );
+
+    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
+    assert_eq!(NestedValue::len(&sequence), 2);
+    assert_eq!(NestedValue::children(&sequence).count(), 2);
+    assert_eq!(
+        ScalarValue::dtype(&sequence).unwrap().id(),
+        DataTypeId::List
+    );
+
+    let guid = guid::Guid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
+    assert_eq!(ScalarValue::dtype(&guid).unwrap(), DataType::Guid);
+
+    let scalar = ScalarValue::into_scalar(text);
+    assert_eq!(scalar.id(), DataTypeId::LargeUtf8);
+    assert_eq!(scalar.family(), DataTypeKind::Text);
 }
 
 #[test]
@@ -423,7 +521,7 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
     let signed = integer::Integer::I32(integer::Int32::new(7));
     let unsigned = integer::Integer::U8(integer::UInt8::new(7));
     assert_eq!(signed, unsigned);
-    assert!(matches!(signed.into_scalar(), Scalar::I32(7)));
+    assert_eq!(signed.into_scalar(), Scalar::from(7_i32));
 
     let narrow = Floating::F32(Float32::from_f32(1.25));
     let wide = Floating::F64(Float64::from_f64(1.25));

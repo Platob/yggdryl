@@ -755,7 +755,7 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
 /// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`Scalar::Record`]. The root Field validates and canonicalizes every
+/// a named [`crate::types::nested::Record`]. The root Field validates and canonicalizes every
 /// row before one columnar build.
 ///
 /// # Errors
@@ -936,7 +936,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`Scalar::Sequence`] with one value per column, in schema
+/// Each row becomes a [`crate::types::nested::Sequence`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///

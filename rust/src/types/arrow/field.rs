@@ -17,7 +17,7 @@ use crate::types::{
     arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
-use crate::{DataType, Error, GeospatialType, Metadata, Result};
+use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
 
 impl Field {
     /// Imports one complete Arrow schema as a non-null Struct root Field.
@@ -218,7 +218,7 @@ pub(crate) enum RecognizedExtension {
     Variant,
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
-    Geospatial(GeospatialType),
+    Geospatial(GeospatialParameters),
     /// The `yggdryl.ascii` extension: `Binary` for the variable form, and
     /// `FixedSizeBinary(n)` for the width the storage names.
     Ascii(DataType),
@@ -281,12 +281,13 @@ pub(crate) fn recognized_arrow_extension(
         .map(String::as_str);
     match name.as_str() {
         GEOARROW_WKB_EXTENSION_NAME if storage == &ArrowDataType::Binary => {
-            let geospatial = GeospatialType::from_geoarrow_json(document).map_err(|error| {
-                Error::InvalidMetadataValue {
-                    key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
-                    reason: format_smolstr!("{error}"),
-                }
-            })?;
+            let geospatial =
+                GeospatialParameters::from_geoarrow_json(document).map_err(|error| {
+                    Error::InvalidMetadataValue {
+                        key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
+                        reason: format_smolstr!("{error}"),
+                    }
+                })?;
             Ok(Some(RecognizedExtension::Geospatial(geospatial)))
         }
         VARIANT_EXTENSION_NAME

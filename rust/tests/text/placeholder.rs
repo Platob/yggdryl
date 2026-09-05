@@ -32,16 +32,16 @@ fn resolved(scalar: &str, placeholders: Placeholders) -> Vec<yggdryl::Result<Sca
 #[test]
 fn a_whole_scalar_placeholder_adopts_the_resolved_value_s_own_type() {
     let placeholders = Placeholders::new()
-        .with_variable("PORT", Scalar::I64(8080))
-        .with_variable("DEBUG", Scalar::Bool(true))
+        .with_variable("PORT", Scalar::from(8080))
+        .with_variable("DEBUG", Scalar::from(true))
         .with_variable("RATIO", Scalar::from(1.5))
         .with_variable("NOTHING", Scalar::Null);
 
     for value in resolved("{{ PORT }}", placeholders.clone()) {
-        assert_eq!(value.unwrap(), Scalar::I64(8080));
+        assert_eq!(value.unwrap(), Scalar::from(8080));
     }
     for value in resolved("{{ DEBUG }}", placeholders.clone()) {
-        assert_eq!(value.unwrap(), Scalar::Bool(true));
+        assert_eq!(value.unwrap(), Scalar::from(true));
     }
     for value in resolved("{{ NOTHING }}", placeholders.clone()) {
         assert_eq!(value.unwrap(), Scalar::Null);
@@ -59,7 +59,7 @@ fn a_whole_scalar_placeholder_adopts_the_resolved_value_s_own_type() {
     }
     // Whitespace inside the braces is not part of the name.
     for value in resolved("{{PORT}}", placeholders) {
-        assert_eq!(value.unwrap(), Scalar::I64(8080));
+        assert_eq!(value.unwrap(), Scalar::from(8080));
     }
 }
 
@@ -67,7 +67,7 @@ fn a_whole_scalar_placeholder_adopts_the_resolved_value_s_own_type() {
 fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
     let placeholders = Placeholders::new()
         .with_variable("ROOT", Scalar::from("/var/log"))
-        .with_variable("PORT", Scalar::I64(8080))
+        .with_variable("PORT", Scalar::from(8080))
         .with_variable("PRICE", Scalar::d128(150, 2));
 
     for value in resolved("{{ ROOT }}/app", placeholders.clone()) {
@@ -101,23 +101,25 @@ fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
 }
 
 #[test]
-fn an_embedded_geometry_renders_as_wkt_and_malformed_wkb_as_lossless_hex() {
+fn an_embedded_geometry_renders_as_wkt_and_binary_as_lossless_hex() {
     // One valid little-endian WKB `POINT (1 2)`.
     let mut wkb = vec![0x01_u8, 0x01, 0x00, 0x00, 0x00];
     wkb.extend_from_slice(&1.0_f64.to_le_bytes());
     wkb.extend_from_slice(&2.0_f64.to_le_bytes());
     let placeholders = Placeholders::new()
-        .with_variable("SHAPE", Scalar::Geospatial(wkb.into()))
         .with_variable(
-            "BROKEN",
-            Scalar::Geospatial([0xff_u8, 0x00].as_slice().into()),
-        );
+            "SHAPE",
+            Scalar::Geospatial(yggdryl::types::Geospatial::Geometry(
+                yggdryl::types::Geometry::new(wkb).unwrap(),
+            )),
+        )
+        .with_variable("BROKEN", Scalar::from([0xff_u8, 0x00].as_slice()));
 
     // A geometry's canonical text is WKT, the spelling geospatial readers read.
     for value in resolved("shape={{ SHAPE }}", placeholders.clone()) {
         assert_eq!(value.unwrap(), Scalar::from("shape=POINT (1 2)"));
     }
-    // Malformed WKB still embeds losslessly, as the hex of its bytes.
+    // Opaque bytes embed losslessly as hex.
     for value in resolved("shape={{ BROKEN }}", placeholders) {
         assert_eq!(value.unwrap(), Scalar::from("shape=ff00"));
     }
@@ -155,13 +157,13 @@ fn a_missing_variable_is_a_typed_error_naming_it_and_its_position() {
 fn a_default_makes_a_variable_optional_and_carries_its_own_type() {
     let empty = Placeholders::new();
     for value in resolved(r#"{{ PORT | default(8080) }}"#, empty.clone()) {
-        assert_eq!(value.unwrap(), Scalar::I64(8080));
+        assert_eq!(value.unwrap(), Scalar::from(8080));
     }
     for value in resolved(r#"{{ ROOT | default("/tmp") }}"#, empty.clone()) {
         assert_eq!(value.unwrap(), Scalar::from("/tmp"));
     }
     for value in resolved(r#"{{ ON | default(true) }}"#, empty.clone()) {
-        assert_eq!(value.unwrap(), Scalar::Bool(true));
+        assert_eq!(value.unwrap(), Scalar::from(true));
     }
     for value in resolved(r#"{{ NOTHING | default(null) }}"#, empty.clone()) {
         assert_eq!(value.unwrap(), Scalar::Null);
@@ -171,9 +173,9 @@ fn a_default_makes_a_variable_optional_and_carries_its_own_type() {
         assert_eq!(value.unwrap(), Scalar::from("/tmp/logs"));
     }
     // A supplied value wins over the default.
-    let supplied = Placeholders::new().with_variable("PORT", Scalar::I64(9090));
+    let supplied = Placeholders::new().with_variable("PORT", Scalar::from(9090));
     for value in resolved(r#"{{ PORT | default(8080) }}"#, supplied) {
-        assert_eq!(value.unwrap(), Scalar::I64(9090));
+        assert_eq!(value.unwrap(), Scalar::from(9090));
     }
 
     // There is exactly one filter, and anything else says so.
@@ -213,7 +215,7 @@ fn placeholders_reach_keys_nested_structures_and_toml_tables() {
     let placeholders = Placeholders::new()
         .with_variable("SECTION", Scalar::from("server"))
         .with_variable("HOST", Scalar::from("db.internal"))
-        .with_variable("PORT", Scalar::I64(5432));
+        .with_variable("PORT", Scalar::from(5432));
     let loading = Loading::new().with_placeholders(placeholders);
 
     // A key is substituted exactly as a value is.
@@ -230,7 +232,7 @@ fn placeholders_reach_keys_nested_structures_and_toml_tables() {
     );
     assert_eq!(
         server.get_key_str("ports").unwrap(),
-        &Scalar::from_sequence([Scalar::I64(5432), Scalar::U64(1)])
+        &Scalar::from_sequence([Scalar::from(5432), Scalar::from(1)])
     );
 
     // A TOML table, with the placeholder inside its own values.
@@ -241,7 +243,7 @@ fn placeholders_reach_keys_nested_structures_and_toml_tables() {
     )
     .unwrap();
     let database = table.get_key_str("database").unwrap();
-    assert_eq!(database.get_key_str("port").unwrap(), &Scalar::I64(5432));
+    assert_eq!(database.get_key_str("port").unwrap(), &Scalar::from(5432));
 }
 
 #[test]
@@ -340,11 +342,11 @@ fn every_entry_point_carries_the_same_loading() {
 #[test]
 fn an_unquoted_yaml_placeholder_is_what_yaml_says_it_is() {
     let loading = Loading::new()
-        .with_placeholders(Placeholders::new().with_variable("PORT", Scalar::I64(8080)));
+        .with_placeholders(Placeholders::new().with_variable("PORT", Scalar::from(8080)));
 
     // Quoted - the form the docs show - is a string scalar and resolves.
     let quoted = text::from_utf8_with("port: \"{{ PORT }}\"\n", Format::Yaml, &loading).unwrap();
-    assert_eq!(quoted.get_key_str("port"), Some(&Scalar::I64(8080)));
+    assert_eq!(quoted.get_key_str("port"), Some(&Scalar::from(8080)));
 
     // Unquoted, YAML has already read `{{ PORT }}` as a flow mapping whose one
     // key is itself a flow mapping - there is no string scalar to substitute
@@ -376,5 +378,5 @@ fn json_refuses_placeholders_by_name() {
 
     // Without placeholders, the same Loading reads JSON exactly as before.
     let plain = text::from_utf8_with(r#"{"a": 1}"#, Format::Json, &Loading::new()).unwrap();
-    assert_eq!(plain.get_key_str("a"), Some(&Scalar::U64(1)));
+    assert_eq!(plain.get_key_str("a"), Some(&Scalar::from(1)));
 }

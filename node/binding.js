@@ -967,7 +967,7 @@ function markerShape(value, kind, keys) {
 // exactly, and a decimal fraction has no finite binary expansion at all.
 function fromTypedMarker(value) {
   const decimalKeys = [TRANSPORT_KEY, 'scale', 'value'].sort()
-  for (const id of ['decimal128', 'decimal256']) {
+  for (const id of ['decimal32', 'decimal64', 'decimal128', 'decimal256']) {
     if (markerShape(value, id, decimalKeys)) {
       return nativeScalarFromDecimalParts(id, BigInt(value.value), value.scale)
     }
@@ -2676,7 +2676,7 @@ binding.intoField = intoField
 
 // A Statement binds once in the native core. JavaScript widens only the two
 // inputs it can spell more conveniently: any FieldLike becomes one native
-// Field, and an ordinary parameter object becomes the shared Scalar::Record.
+// Field, and an ordinary parameter object becomes the shared nested Record.
 // Batch execution then keeps the caller's Arrow holder: readers stay lazy,
 // tables remain tables, and a one-batch sort remains a RecordBatch operation.
 const NativeStatement = binding.Statement

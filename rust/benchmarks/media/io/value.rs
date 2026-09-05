@@ -14,7 +14,7 @@ fn value() -> Scalar {
         Scalar::from_record([
             (
                 "id",
-                Scalar::I64(i64::try_from(id).expect("the fixture id fits i64")),
+                Scalar::from(i64::try_from(id).expect("the fixture id fits i64")),
             ),
             ("symbol", Scalar::from(format!("SYMBOL-{id:08}"))),
             ("venue", Scalar::from("XNAS")),

@@ -310,7 +310,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
                 if row % 16 == 0 {
                     Scalar::Null
                 } else {
-                    Scalar::I64(i64::try_from(row % 1_000).unwrap_or_default())
+                    Scalar::from(i64::try_from(row % 1_000).unwrap_or_default())
                 },
                 Scalar::from(if row % 2 == 0 { "XNAS" } else { "XLON" }),
             ])
@@ -355,8 +355,8 @@ fn prune_benchmarks(criterion: &mut Criterion) {
         )
         .with_column(
             "size",
-            Some(Scalar::I64(0)),
-            Some(Scalar::I64(999)),
+            Some(Scalar::from(0)),
+            Some(Scalar::from(999)),
             Some(4_096),
         )
         .with_column(

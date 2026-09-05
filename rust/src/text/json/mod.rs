@@ -57,7 +57,7 @@ pub const MAX_PARSER_DEPTH: usize = 384;
 /// use yggdryl::{Scalar, from_json_scalar, into_json_scalar};
 ///
 /// let value = from_json_scalar(r#"{"id":1}"#)?;
-/// assert_eq!(value, Scalar::from_record([("id", Scalar::I64(1))])?);
+/// assert_eq!(value, Scalar::from_record([("id", Scalar::from(1))])?);
 /// assert_eq!(into_json_scalar(&value)?, r#"{"id":1}"#);
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -96,7 +96,7 @@ pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// ```
 /// use yggdryl::{Scalar, into_json_scalar};
 ///
-/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
 /// assert_eq!(into_json_scalar(&value)?, r#"{"id":1}"#);
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -551,7 +551,7 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let value = Scalar::from_record([("id", Scalar::I64(1))])?;
+/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
 /// assert_eq!(yggdryl::text::json::into_bytes(&value)?, br#"{"id":1}"#);
 /// assert_eq!(
 ///     yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(2))?,

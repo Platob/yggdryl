@@ -34,7 +34,7 @@ use parquet::schema::types::{ColumnDescPtr, SchemaDescriptor, Type, TypePtr};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::EdgeAlgorithm;
-use crate::GeospatialType;
+use crate::GeospatialParameters;
 use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::types::geospatial::wkb;
@@ -454,12 +454,12 @@ fn rebuilt_group(ty: &Type, fields: Vec<TypePtr>, logical: Option<LogicalType>) 
 
 /// Parse one GeoArrow metadata document into the logical type it declares.
 ///
-/// The parse is [`GeospatialType::from_geoarrow_json`] - the same one the
+/// The parse is [`GeospatialParameters::from_geoarrow_json`] - the same one the
 /// field layer's import runs - so the two readers cannot drift. The
 /// `OGC:CRS84` default and the `spherical` default fold to Parquet's absent
 /// spellings, so a bare column writes the format's bare logical type.
 fn geoarrow_logical_type(document: Option<&str>, path: &str) -> Result<LogicalType> {
-    let geospatial = GeospatialType::from_geoarrow_json(document).map_err(|error| {
+    let geospatial = GeospatialParameters::from_geoarrow_json(document).map_err(|error| {
         invalid(
             path,
             "a GeoArrow JSON metadata document",

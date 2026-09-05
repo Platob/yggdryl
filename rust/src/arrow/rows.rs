@@ -1,8 +1,8 @@
 //! Lazy row-value widening for the record I/O adapters.
 //!
 //! A row canonicalizes to one ordered
-//! [`Scalar::Sequence`](crate::Scalar::Sequence) under a non-null Struct
-//! [`Field`]. A sorted [`Scalar::Record`](crate::Scalar::Record) is the named
+//! [`Sequence`](crate::types::nested::Sequence) under a non-null Struct
+//! [`Field`]. A sorted [`Record`](crate::types::nested::Record) is the named
 //! input shape, not a second schema model. Rust structs opt in with
 //! `TryInto<Scalar>`, and the I/O methods widen that iterator into the one Arrow
 //! reader primitive.

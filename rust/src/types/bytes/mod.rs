@@ -7,6 +7,7 @@ mod dtypes;
 mod fields;
 mod scalars;
 
+pub use dtypes::BytesType;
 pub use fields::*;
 pub use scalars::{
     Binary, BinaryScalar, BinaryView, BinaryViewScalar, Bytes, BytesValue, FixedSizeBinary,

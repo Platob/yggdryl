@@ -12,7 +12,7 @@ pub mod decimal;
 mod default;
 mod diff;
 mod dtype;
-mod enum_scalar;
+mod enumeration;
 mod field;
 pub mod floating;
 pub mod geospatial;
@@ -43,11 +43,15 @@ pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_sto
 pub(crate) use ascii::ascii_padded;
 pub use ascii::*;
 pub(crate) use ascii::{
-    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, ascii_bytes,
-    ascii_free_text, ascii_text, code_cell_text, code_for_extension, code_refusal, code_text,
+    ASCII_EXTENSION_NAME, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
+    code_for_extension,
 };
 pub use ascii::{
     AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, MicScalar,
+};
+#[cfg(feature = "arrow")]
+pub(crate) use ascii::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_refusal, code_text,
 };
 pub use boolean::*;
 pub use boolean::{BooleanScalar, NullScalar};
@@ -62,7 +66,7 @@ pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
 pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
-pub use enum_scalar::EnumScalar;
+pub use enumeration::Enum;
 pub use field::*;
 pub use floating::scalars::{Float16Scalar, Float32Scalar, Float64Scalar, Floating};
 pub use floating::*;
@@ -90,7 +94,7 @@ pub use pretty::Pretty;
 pub use scalar::{Scalar, ScalarFamily, ScalarValue};
 pub use temporal::scalars::{
     Date32Scalar, Date64Scalar, DateTime64Scalar, Duration32Scalar, Duration64Scalar,
-    IntervalScalar, TemporalFamily, TemporalRef, Time32Scalar, Time64Scalar,
+    IntervalScalar, TemporalFamily, Time32Scalar, Time64Scalar,
 };
 pub use temporal::*;
 pub use text::*;

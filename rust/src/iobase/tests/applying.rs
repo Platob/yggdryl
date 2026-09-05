@@ -76,6 +76,6 @@ fn the_row_target_answers_through_the_same_trait() {
         .unwrap()
         .bind(&schema)
         .unwrap();
-    let row = Scalar::from_sequence([Scalar::I64(41)]);
-    assert_eq!(row.apply_expression(&bound).unwrap(), Scalar::I64(42));
+    let row = Scalar::from_sequence([Scalar::from(41)]);
+    assert_eq!(row.apply_expression(&bound).unwrap(), Scalar::from(42));
 }

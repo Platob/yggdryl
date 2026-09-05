@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::Integer;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -10,12 +11,12 @@ fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("venue"),
     ]);
-    let record = Scalar::from_record([("id", Scalar::I8(7))]).unwrap();
+    let record = Scalar::from_record([("id", Scalar::from(7))]).unwrap();
 
     schema.validate_value(&record).unwrap();
     assert_eq!(
         schema.canonicalize_value(record).unwrap(),
-        Scalar::from_sequence([Scalar::I64(7), Scalar::Null])
+        Scalar::from_sequence([Scalar::from(7), Scalar::Null])
     );
 }
 
@@ -23,7 +24,7 @@ fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
 fn a_record_refuses_unknown_names() {
     let schema = root([DataType::Int64.required_field("id")]);
     let record =
-        Scalar::from_record([("id", Scalar::I64(7)), ("unknown", Scalar::I64(1))]).unwrap();
+        Scalar::from_record([("id", Scalar::from(7)), ("unknown", Scalar::from(1))]).unwrap();
 
     let validation = schema.validate_value(&record).unwrap_err().to_string();
     let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
@@ -44,25 +45,25 @@ fn integer_canonicalization_preserves_every_declared_width() {
         DataType::UInt64.required_field("u64"),
     ]);
     let natural = Scalar::from_sequence([
-        Scalar::I64(-1),
-        Scalar::U64(2),
-        Scalar::I64(-3),
-        Scalar::I8(-4),
-        Scalar::U64(1),
-        Scalar::U64(2),
-        Scalar::U64(3),
-        Scalar::U8(4),
+        Scalar::from(-1),
+        Scalar::from(2),
+        Scalar::from(-3),
+        Scalar::from(-4),
+        Scalar::from(1),
+        Scalar::from(2),
+        Scalar::from(3),
+        Scalar::from(4),
     ]);
     let canonical = schema.canonicalize_value(natural).unwrap();
     let values = canonical.as_sequence().unwrap();
-    assert!(matches!(values[0], Scalar::I8(-1)));
-    assert!(matches!(values[1], Scalar::I16(2)));
-    assert!(matches!(values[2], Scalar::I32(-3)));
-    assert!(matches!(values[3], Scalar::I64(-4)));
-    assert!(matches!(values[4], Scalar::U8(1)));
-    assert!(matches!(values[5], Scalar::U16(2)));
-    assert!(matches!(values[6], Scalar::U32(3)));
-    assert!(matches!(values[7], Scalar::U64(4)));
+    assert!(matches!(values[0], Scalar::Integer(Integer::I8(_))));
+    assert!(matches!(values[1], Scalar::Integer(Integer::I16(_))));
+    assert!(matches!(values[2], Scalar::Integer(Integer::I32(_))));
+    assert!(matches!(values[3], Scalar::Integer(Integer::I64(_))));
+    assert!(matches!(values[4], Scalar::Integer(Integer::U8(_))));
+    assert!(matches!(values[5], Scalar::Integer(Integer::U16(_))));
+    assert!(matches!(values[6], Scalar::Integer(Integer::U32(_))));
+    assert!(matches!(values[7], Scalar::Integer(Integer::U64(_))));
 }
 
 #[test]
@@ -71,9 +72,9 @@ fn year_month_interval_keeps_its_signed_64_bit_component_spelling() {
 
     assert_eq!(
         schema
-            .canonicalize_value(Scalar::from_sequence([Scalar::I8(18)]))
+            .canonicalize_value(Scalar::from_sequence([Scalar::from(18)]))
             .unwrap(),
-        Scalar::from_sequence([Scalar::I64(18)])
+        Scalar::from_sequence([Scalar::from(18)])
     );
 }
 
@@ -115,7 +116,7 @@ fn temporal_casts_preserve_family_and_timezone() {
         ]),
         Scalar::from_sequence([
             Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
-            Scalar::Time32(2, TimeUnit::Second, Timezone::UTC),
+            Scalar::from("not a time"),
             Scalar::duration32(3, TimeUnit::Millisecond).unwrap(),
         ]),
     ] {

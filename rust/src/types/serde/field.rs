@@ -196,25 +196,25 @@ impl Field {
     #[must_use]
     pub fn into_value(self) -> Scalar {
         let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(6);
-        entries.push((key("name"), Scalar::String(self.name.clone())));
+        entries.push((key("name"), Scalar::from(self.name.clone())));
         entries.push((key("dtype"), self.dtype.clone().into_value()));
-        entries.push((key("nullable"), Scalar::Bool(self.nullable)));
+        entries.push((key("nullable"), Scalar::from(self.nullable)));
         if self.dictionary_id != 0 {
             // Decimal text, as the JSON path emits it: a 64-bit identifier
             // does not survive every reader as a number.
             entries.push((
                 key("dictionary_id"),
-                Scalar::String(format_smolstr!("{}", self.dictionary_id)),
+                Scalar::from(format_smolstr!("{}", self.dictionary_id)),
             ));
         }
         if self.dictionary_is_ordered {
-            entries.push((key("dictionary_is_ordered"), Scalar::Bool(true)));
+            entries.push((key("dictionary_is_ordered"), Scalar::from(true)));
         }
         entries.push((
             key("metadata"),
             Scalar::from_mapping(
                 self.metadata_iter()
-                    .map(|(name, value)| (key(name), Scalar::String(SmolStr::new(value)))),
+                    .map(|(name, value)| (key(name), Scalar::from(SmolStr::new(value)))),
             )
             .unwrap_or(Scalar::Null),
         ));
@@ -262,7 +262,7 @@ impl Field {
                 .clone(),
         )?;
         let nullable = match at("nullable") {
-            Some(Scalar::Bool(held)) => *held,
+            Some(held) if held.as_bool().is_some() => held.as_bool().unwrap_or(false),
             other => {
                 return Err(invalid(
                     "$.nullable",
@@ -279,7 +279,8 @@ impl Field {
             Some(held) => i64::from(integer(Some(held), "dictionary_id")?),
             None => 0,
         };
-        let dictionary_is_ordered = matches!(at("dictionary_is_ordered"), Some(Scalar::Bool(true)));
+        let dictionary_is_ordered =
+            at("dictionary_is_ordered").and_then(Scalar::as_bool) == Some(true);
         if dictionary_id != 0 || dictionary_is_ordered {
             field.set_dictionary_options(dictionary_id, dictionary_is_ordered)?;
         }

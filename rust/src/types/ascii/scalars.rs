@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::typed::define_scalar_type;
-use crate::{Result, types};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
 /// Borrowing access shared by every ASCII representation.
 pub trait AsciiValue: crate::ScalarValue {
@@ -178,6 +178,151 @@ impl Ord for AsciiFamily {
 impl Hash for AsciiFamily {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
+    }
+}
+
+macro_rules! ascii_value {
+    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident, $width:expr) => {
+        impl ScalarValue for $leaf {
+            type Family = AsciiFamily;
+            type Type = $marker;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Ascii;
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok(DataType::$dtype)
+            }
+
+            fn into_family(self) -> Self::Family {
+                AsciiFamily::$variant(self)
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                match family {
+                    AsciiFamily::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::Ascii(AsciiFamily::$variant(self))
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::Ascii(AsciiFamily::$variant(value)) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl AsciiValue for $leaf {
+            const WIDTH: Option<i32> = $width;
+
+            fn as_str(&self) -> &str {
+                <$leaf>::as_str(self)
+            }
+        }
+    };
+}
+
+ascii_value!(Ascii, super::AsciiType, Ascii, Ascii, Ascii, None);
+ascii_value!(
+    Country,
+    super::CountryType,
+    Country,
+    Country,
+    Country,
+    Some(2)
+);
+ascii_value!(
+    Currency,
+    super::CurrencyType,
+    Currency,
+    Currency,
+    Currency,
+    Some(3)
+);
+ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
+ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
+
+impl ScalarValue for FixedAscii {
+    type Family = AsciiFamily;
+    type Type = super::FixedAsciiType;
+
+    const ID: DataTypeId = DataTypeId::FixedAscii;
+    const KIND: DataTypeKind = DataTypeKind::Ascii;
+
+    fn dtype(&self) -> Result<DataType> {
+        Ok(DataType::FixedAscii(self.width()))
+    }
+
+    fn into_family(self) -> Self::Family {
+        AsciiFamily::FixedAscii(self)
+    }
+
+    fn from_family(family: &Self::Family) -> Option<&Self> {
+        match family {
+            AsciiFamily::FixedAscii(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Ascii(AsciiFamily::FixedAscii(self))
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Ascii(AsciiFamily::FixedAscii(value)) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl AsciiValue for FixedAscii {
+    const WIDTH: Option<i32> = None;
+
+    fn as_str(&self) -> &str {
+        Self::as_str(self)
+    }
+}
+
+impl ScalarFamily for AsciiFamily {
+    const KIND: DataTypeKind = DataTypeKind::Ascii;
+
+    fn id(&self) -> DataTypeId {
+        match self {
+            Self::Ascii(_) => DataTypeId::Ascii,
+            Self::FixedAscii(_) => DataTypeId::FixedAscii,
+            Self::Country(_) => DataTypeId::Country,
+            Self::Currency(_) => DataTypeId::Currency,
+            Self::Mic(_) => DataTypeId::Mic,
+            Self::Cfi(_) => DataTypeId::Cfi,
+        }
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        match self {
+            Self::Ascii(_) => Ok(DataType::Ascii),
+            Self::FixedAscii(value) => ScalarValue::dtype(value),
+            Self::Country(_) => Ok(DataType::Country),
+            Self::Currency(_) => Ok(DataType::Currency),
+            Self::Mic(_) => Ok(DataType::Mic),
+            Self::Cfi(_) => Ok(DataType::Cfi),
+        }
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Ascii(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Ascii(value) => Some(value),
+            _ => None,
+        }
     }
 }
 
