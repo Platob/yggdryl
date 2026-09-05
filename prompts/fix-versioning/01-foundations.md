@@ -263,7 +263,7 @@ The digest is one-way, so **a bare `FixId` cannot name its branch**.
 
 ### The indexes
 
-- **P2-R18.**
+- **P2-R18. The four indexes, keyed by the identifier itself.**
 
   ```rust
   ids, alternate_ids:  HashMap<FixId, usize, BuildHasherDefault<Mix>>
