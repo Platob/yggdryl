@@ -8,10 +8,9 @@
 | --- | --- |
 | Owns | `FixRegistry`, `FixKey`, one field vector and four hash indexes of positions over it, `global()` / `install_global` |
 | Index keys | Canonical and alternate identities use `FixId` directly; canonical names and aliases use independent seeded XXH64 digests over the branch digest and the folded name |
-| Collision | A read rechecks the field behind every name digest, so a collision is a miss; a mutation refuses it loudly |
+| Collision | A read rechecks the field behind every name digest, so a digest collision is a miss; a mutation refuses it loudly |
 | Tiers | canonical identifier, alternate identifier, canonical name folded, alias folded; a later tier only when every earlier one missed |
-| Branch | An explicit branch never crosses into another dictionary; with no branch, one deterministic best-match order decides |
-| Tag range | Outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` no named branch may hold a tag |
+| Branch | An explicit branch never crosses into another dictionary; with no branch, one deterministic best-match order decides; outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` no named branch may hold a tag |
 | String key | A colon-bearing string is a name, never an identifier; `From<&str>` cannot fail, so an identifier is parsed with `FixId::from_str` |
 | Folding | ASCII case, once at insert; a probe hashes the query folded beside an inline branch and allocates nothing on a hit |
 | Identity | The `FixId`, and separately the branch plus folded canonical name; two fields share neither, nor an alternate identifier, nor an alias |
