@@ -34,7 +34,7 @@ impl FixRegistry {
 
 pub struct FixEntry {
     pub tag: i32,              // 0 when the key named no field
-    pub branch: Option<i32>,   // xxh32 of the branch; None is standard/unresolved
+    pub branch: Option<SmolStr>,  // the branch as named; None is standard/unresolved
     pub key: SmolStr,          // the key as it arrived; always present
     pub value: SmolStr,        // the value as it arrived; always present
 }
@@ -87,11 +87,22 @@ impl FixMsg {
 
 ### `FixEntry`
 
-- **P7-R3.** `id()` folds tag and branch into a `FixId` with one shift-or
-  (P2-R1), so a resolved entry addresses the registry without hashing.
-- **P7-R4.** `branch: None` means the standard branch *and* "not resolved
-  yet" — why this is not simply a `FixId`. `Option<i32>` costs 8 bytes, not
-  4: `0` is a legal digest, so there is no niche.
+- **P7-R3. `id()` digests the branch text and folds it with the tag** into a
+  `FixId` (P2-R1). The digest is `FixId`'s packing detail and lives there;
+  an entry carries the name. `xxh32` over a short name is a few nanoseconds
+  and `id()` is not on the parse path, so nothing is paid for the
+  readability.
+- **P7-R4. The branch is its name, not its digest, because an entry is the
+  arrival record.** `key` and `value` are held as they arrived (P7-R8); a
+  branch held as an `i32` would be the one field of the record a reader
+  cannot read — unprintable in a debug line, unjoinable in a column, and
+  resolvable only by someone holding the registry that produced it. `SmolStr`
+  inlines a name of 23 bytes, which every dialect name is, so the common
+  entry still allocates nothing (P7-R7).
+- **P7-R4.1.** `None` means the standard branch *and* "not resolved yet" —
+  which is why an entry is not simply a `FixId`. The two are one state on
+  purpose: both say "no dialect claimed this", and separating them would put
+  a resolution state into a record of what arrived.
 - **P7-R5. A pair is bytes, not text.** FIX is a byte protocol: a
   `data`-typed value may hold anything, including the separator (P7-R72) and
   bytes that are not UTF-8 at all — a signature, an encrypted block, a
@@ -675,6 +686,11 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
     pair, `Side` and `54` for a named one, `VenueOwnThing` and `0` for an
     unknown one — and `id()` answers `None` for the last (P7-R8, P7-R9).
     A line carrying a literal `0=x` also answers tag `0`.
+6e2. A vendor-branch entry carrying the branch's **name**, printable in a
+     debug line, and `id()` answering the same `FixId` as the registry holds
+     for that tag in that branch — the digest computed, never stored on the
+     entry (P7-R3, P7-R4); a standard-branch entry carrying `None`
+     (P7-R4.1).
 6f. A valid-UTF-8 value is converted without a validity pass of its own and
     without copying, and a `data` field is typed from the raw bytes rather
     than from its lossy text (P7-R6, P7-R9).
@@ -1199,8 +1215,8 @@ impl FixMsg {
   `branch`, `version`, `msghash` (P11-R8) and `direction` (P11-R18); (b) one
   column per lifted facet (P9-R4), typed as
   that facet's field is typed at the message's version (P9-R8); (c)
-  `entries`, a list of struct mirroring `FixEntry` — `tag`, `branch`, `key`,
-  `value`. Nothing else is a column by default: a wide column per tag is a
+  `entries`, a list of struct mirroring `FixEntry` — `tag`, `branch` (its
+  name, P7-R4), `key`, `value`. Nothing else is a column by default: a wide column per tag is a
   projection a caller asks for, not a shape a parser imposes.
 - **P10-R4. `entries` is not optional.** The facet columns are a convenience
   over a subset; the entries list *is* the row, and it is what makes a batch

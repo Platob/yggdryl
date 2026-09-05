@@ -353,7 +353,7 @@ FIX layer strips a `FIX.` prefix and hands the rest straight in; `Ord` as
 the only ordering contract (P1-R5), which every version filter leans on.
 
 **From Phase 2.** Phase 7 takes `FixId` as a `Copy` 8-byte key that is its
-own hash key (P2-R1, P2-R18), which makes `FixEntry::id()` a shift-or
-(P7-R3); `branches()` and `branch_for_session` (P2-R11, P2-R12) for branch
-inference (P7-R22); `FixBranch`'s cached digest (P2-R4), which
-`FixEntry.branch` stores reinterpreted (P7-R4).
+own hash key (P2-R1, P2-R18), which `FixEntry::id()` packs into (P7-R3);
+`branches()` and `branch_for_session` (P2-R11, P2-R12) for branch inference
+(P7-R22); `FixBranch`'s cached digest (P2-R4), which is where a digest
+belongs — an entry carries the branch's name instead (P7-R4).
