@@ -24,6 +24,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 ## Use
 
 A constructor accepts the obvious spelling of its argument and converts once, in Rust.
+
 ```python
 from yggdryl import DataType, Field, MediaType, MimeType, Url
 
@@ -38,11 +39,13 @@ assert str(MediaType("application/json")) == "application/json"
 # A path is a location.
 assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 ```
+
 `from_value` is the generic entry point on every wrapper. `DataType.from_regex(pattern, autotype=True)` reaches the core's named-capture inference.
 
 ## Native `Scalar`
 
 `Scalar` is a Python view of the Rust tree, and `from_py` chooses the natural Python shape.
+
 ```python
 from decimal import Decimal
 
@@ -66,6 +69,7 @@ tree = Scalar.from_py({"legs": [{"id": 1}]})
 assert tree["legs"][0]["id"].as_py() == 1
 assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 ```
+
 | Call | Behavior |
 | --- | --- |
 | `float(value, width=64)`, `decimal(coefficient, scale=0)` | the exact variant stays visible in `kind` |
@@ -77,6 +81,7 @@ assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 | `set`, `remove` | persistent: a rebuilt `Scalar`, source intact |
 
 All values are hashable, and `kind` survives Arrow, pickle, and repr round trips.
+
 ```python
 import datetime as dt
 import zoneinfo
@@ -120,6 +125,7 @@ assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 | `list`, `tuple` | `Sequence` | |
 | `dict` | `Mapping` | keys are values too, not only strings |
 | dataclass, named tuple, attribute object | `Record` | sorted string names; no second schema model |
+
 Pass a `Field` when strings or numbers need an exact decimal, binary, or temporal reading. [`yggdryl.text.codec`](../text/index.md) adds `from_io` / `from_stream` and `into_io` / `into_stream` for a dynamic format.
 
 ## Python value protocols
@@ -129,6 +135,7 @@ Wrappers fall into three identity classes. `stable_hash()` is the deterministic 
 - immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
 - unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound expressions and statements, Avro blocks, metadata views.
+
 ```python
 import copy
 import pickle
@@ -159,11 +166,13 @@ except TypeError:
 else:
     raise AssertionError("a live handle has no value hash")
 ```
+
 `Expression` keeps expression parsing for strings, while other Python operands become native literal `Scalar` nodes, including in reflected operators.
 
 ## What a Python value loses
 
 Everything else is written as the closest natural shape, and its class does not survive the round trip.
+
 ```python
 import pathlib
 import uuid
@@ -205,11 +214,13 @@ assert restored == {
 | any other object | record of its `__dict__` | the class |
 | an `int` wider than 128 bits | its decimal text | that it was a number |
 | `datetime.fold` | nothing | which reading of a repeated hour a *naive* value was |
+
 A `fold` on an *aware* datetime survives, because the offset it selects is baked into the UTC-relative count.
 
 ## Field metadata is a mapping
 
 `field.metadata` is a live mapping view of the field in the native ordering. Item access on the `Field` itself reaches a nested child, never a metadata key.
+
 ```python
 from yggdryl import Field
 
@@ -225,7 +236,9 @@ assert dict(field.metadata.items())["venue"] == "XPAR"
 del field.metadata["venue"]
 assert "venue" not in field.metadata
 ```
+
 Typed identifiers and typed HTTP values (`parquet_field_id`, `alias`, `comment`, `content_type`, `etag`) are validated attributes, not map keys. One protocol's properties are a live mapping of their own.
+
 ```python
 from yggdryl import Field
 
@@ -246,7 +259,9 @@ assert len(field.metadata) == 2
 del field.iceberg["doc"]
 assert not field.iceberg
 ```
+
 Every well-known [protocol](../types/protocol.md) is an attribute, and `field.protocol(name)` takes one known only at runtime. A schema also names the columns a path spells out, which a partitioned write and an Iceberg spec both read.
+
 ```python
 from yggdryl import DataType, Field
 
@@ -263,9 +278,11 @@ assert schema.partition_field_names == ["year"]
 assert schema.dtype["year"].is_partition
 assert len(schema.without_partition_fields().dtype) == 1
 ```
+
 ## Field classes
 
 The `@scalar` decorator compiles class annotations into one native Struct `Field` while leaving a standard dataclass.
+
 ```python
 import dataclasses
 
@@ -286,7 +303,9 @@ assert field(trade) is trade_field
 assert trade_field.name == "Trade"
 assert [child.name for child in trade_field] == ["trade_id", "symbol"]
 ```
+
 `@scalar(...)` forwards every dataclass option, and `Class.field()` caches one frozen Struct field per decorated class. Global conversion also accepts a native [`Field`](../types/field.md), a PyArrow Schema, Field, or DataType.
+
 ```python
 import pyarrow as pa
 
@@ -301,11 +320,13 @@ Trade = row.into_dataclass()
 assert Trade.field() is row
 assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
 ```
+
 The import preserves exact physical layout and metadata.
 
 ## ASCII vocabularies as enums
 
 `yggdryl.enums` carries the core's static spellings and the enum bases. `fixed_ascii(width)` builds one cached class per [ASCII width](../types/ascii.md), and a member *is* the integer its value packs into.
+
 ```python
 from yggdryl import DataType
 from yggdryl.enums import fixed_ascii
@@ -338,7 +359,9 @@ except ValueError as error:
 else:
     raise AssertionError("a value wider than the width must be reported")
 ```
+
 Sixteen bytes need the whole 128-bit integer, which Python holds natively.
+
 ```python
 from yggdryl.enums import fixed_ascii
 
@@ -348,7 +371,9 @@ class Isin(fixed_ascii(16)):
 assert int(Isin.APPLE) == 0x55533033373833333130303500000000
 assert Isin.APPLE.into_str() == "US0378331005"
 ```
+
 A class declares itself onto a field under the reserved `field:enum` key, so the declaration crosses Arrow, a file, and the other binding.
+
 ```python
 from yggdryl import AsciiEnum, Field
 from yggdryl.enums import AsciiCode, fixed_ascii
@@ -370,7 +395,9 @@ assert [(member.name, int(member)) for member in recovered] == [
     (member.name, int(member)) for member in Side
 ]
 ```
+
 A value read back that the class did not declare registers once, announced on the `yggdryl.enums.ascii` logger at `INFO`.
+
 ```python
 import logging
 
@@ -394,11 +421,13 @@ finally:
 
 assert [record.getMessage() for record in records] == [f"Side registered 'X' as {0x58000000}"]
 ```
+
 The declared members are the declaration, so `as_enum()` and `field()` carry only what the class body names.
 
 ### The registered vocabularies
 
 `Country`, `Currency`, `MIC`, and `CFI` arrive declared over `CountryCode`, `CurrencyCode`, `MicCode`, and `CfiCode`. Subclass the base rather than the shipped class to declare your own over the same datatype.
+
 ```python
 from yggdryl import DataType
 from yggdryl.enums import CFI, Country, Currency, MIC
@@ -413,7 +442,9 @@ assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"
 # is read under its own packed value rather than refused.
 assert MIC.from_str("XLON").into_str() == "XLON"
 ```
+
 A `@scalar` attribute typed with one of these carries that class's members as the field's declaration.
+
 ```python
 from yggdryl import scalar
 from yggdryl.enums import Currency, MIC
@@ -428,16 +459,20 @@ assert (venue.dtype.id, settlement.dtype.id) == ("mic", "currency")
 assert settlement.ascii_enum.name == "Currency"
 assert settlement.ascii_enum.get("USD") == "USD"
 ```
+
 `yggdryl.types` names the same four codes as factories, for a field built without a class.
+
 ```python
 from yggdryl import DataType, types
 
 assert types.mic("venue").dtype == DataType("mic")
 assert types.currency("ccy", nullable=False).dtype == DataType("currency")
 ```
+
 ## `pathlib`-shaped storage
 
 `IOBase` is the core storage handle under the method names `pathlib.Path` already uses. The core trait is positional and fully random-access, so there are no modes and no cursor.
+
 ```python
 import pathlib
 import tempfile
@@ -467,9 +502,11 @@ lake.mkdir()
 assert [entry.name for entry in lake.iterdir()] == ["part-0.arrows"]
 assert len(list(IOBase(root / "lake").rglob("*.arrows"))) == 1
 ```
+
 `is_io()` is the general capability check: a byte value or a tabular media is `True`, a container holding neither is `False`. `row_size` and `column_size` describe the whole record media, independent of any projection, filter, or limit.
 
 `Url` answers the `PurePath` half under the same names, plus `exists`, `is_dir`, and `is_file` for a local URL.
+
 ```python
 from yggdryl import Url
 
@@ -484,7 +521,9 @@ assert str(url.with_suffix(".parquet")) == "file:///lake/trades/part-0.tar.parqu
 assert url.match("*.gz")
 assert url.relative_to(Url("file:///lake")) == "trades/part-0.tar.gz"
 ```
+
 `IOBase.from_fs` takes any `pyarrow.fs.FileSystem` and returns this same class, so everything above works over S3, GCS, Azure, or your own handler. The filesystem is recognized without importing `pyarrow`.
+
 ```python
 import pathlib
 import tempfile
@@ -506,11 +545,13 @@ assert (root / "trades.arrows").read_bytes() == b"AAPL"
 # IOBase(fs, path) infers the same thing the classmethod spells out.
 assert str(IOBase(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix()).url) == str(handle.url)
 ```
+
 `handle.partitions` and `url.partitions` return the `column=value` pairs a Hive path spells out, and `handle.children_where({"year": "2024"})` yields the leaves carrying them.
 
 ### Bytes and ranges
 
 `read_range_bytes` and `append_bytes` are the core's methods under their own names, stated in [bytes](../holder/iobase/bytes.md). `read_range` chooses the answer's type from `cls`, and `append` chooses how to read the buffer.
+
 ```python
 import pytest
 
@@ -532,18 +573,22 @@ assert handle.read_range(13, 7, cls=str) == "AAPL,1\n"
 with pytest.raises(ValueError):
     IOBase.from_bytes(b"\xff").read_range(0, 1, cls=str)
 ```
+
 `append` encodes text as UTF-8 exactly as `write_text` does, and returns the byte offset it landed at.
 
 ## Records use typed adapters
 
 The handle exposes one read vocabulary and explicit write intent, configured only through `options=`. The write name says what Python holds and what the operation means.
+
 | Python value | Replace | Add rows | Keyed update/insert |
 | --- | --- | --- | --- |
 | `RecordBatchReader` or foreign Arrow C stream reader | `overwrite_arrow_reader` | `append_arrow_reader` | `merge_arrow_reader` |
 | one `pyarrow.Table` | `overwrite_arrow_table` | `append_arrow_table` | `merge_arrow_table` |
 | one `pyarrow.RecordBatch` | `overwrite_arrow_batch` | `append_arrow_batch` | `merge_arrow_batch` |
 | iterable of mappings, sequences, or dataclass instances | `overwrite_records` | `append_records` | `merge_records` |
+
 `record_options()` derives the encoding, `read_arrow_field()` returns the native root `Field`, and `read_arrow_reader()` streams `pyarrow.RecordBatch` values. One configurable entry point takes the mode instead.
+
 ```text
 write_arrow_reader(reader, mode, *, options=None)
 write_arrow_table(table, mode, *, options=None)
@@ -554,7 +599,9 @@ write_pandas_frame(frame, mode, *, options=None)
 write_polars(frames, mode, *, options=None)
 write_polars_frame(frame, mode, *, options=None)
 ```
+
 `mode` is `"overwrite"`, `"append"`, or `"merge"`, required and never inferred from `merge_by_names`. Row iterables stay streaming, grouped into at most `options.batch_row_size` rows.
+
 ```python
 import pathlib
 import tempfile
@@ -593,7 +640,9 @@ selected = handle.record_options()
 selected.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 assert handle.read_arrow_reader(options=selected).schema.names == ["id"]
 ```
+
 The selected method is authoritative, and `merge_by_names` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence, defaulting to one publication after successful end of input.
+
 ```python
 import pathlib
 import tempfile
@@ -611,7 +660,9 @@ handle.append_records(
     options=incremental,
 )
 ```
+
 A positive `N` publishes every complete `N`-row group and the final remainder. Overwrite uses overwrite for the first group and append thereafter, while append and merge keep their intent.
+
 ```python
 import pathlib
 import tempfile
@@ -637,6 +688,7 @@ empty = handle.record_options()
 empty.field = Trade.field()
 handle.overwrite_records([], options=empty)
 ```
+
 `read_records()` lowers only the current Arrow batch: no class yields plain mappings, a dataclass type builds one instance per row.
 
 ### Record options
@@ -646,6 +698,7 @@ Configure field, selection, batch sizing, and merge keys on one [`RecordOptions`
 ## pandas and polars
 
 Neither library is a dependency, and neither is imported when `yggdryl` loads. A value is recognized by its *type's* module and qualified name.
+
 ```python
 import pathlib
 import tempfile
@@ -663,16 +716,20 @@ assert sum(len(frame) for frame in handle.read_pandas()) == 2
 # The `_frame` name is the whole thing in one frame.
 assert list(handle.read_pandas_frame()["venue"]) == ["XNAS", "XNYS"]
 ```
+
 The suffix says whether the call takes exactly one frame.
+
 | Streaming frames | Exactly one frame |
 | --- | --- |
 | `read_pandas()` / `read_polars()` | `read_pandas_frame()` / `read_polars_frame()` |
 | `overwrite_pandas(frames)` / `overwrite_polars(frames)` | `overwrite_pandas_frame(frame)` / `overwrite_polars_frame(frame)` |
 | `append_pandas(frames)` / `append_polars(frames)` | `append_pandas_frame(frame)` / `append_polars_frame(frame)` |
 | `merge_pandas(frames)` / `merge_polars(frames)` | `merge_pandas_frame(frame)` / `merge_polars_frame(frame)` |
+
 ## An Iceberg table end to end
 
 `yggdryl.media.iceberg` carries the catalog, the table, the schema-evolution builder, and compaction. PyArrow is the rows boundary both ways, and every read returns a `pyarrow.RecordBatchReader`.
+
 ```python
 import pathlib
 import shutil
@@ -713,11 +770,13 @@ assert table.scan_at(past).read_all().column("id").to_pylist() == [1, 2]
 
 shutil.rmtree(warehouse.parent)
 ```
+
 [Iceberg](../media/iceberg/index.md) shows each of these steps beside its Rust and JavaScript form.
 
 ## Reading a class back
 
 Nothing in a document names a Python class, so the class comes from the call. `cls=` converts the decoded mapping through the native Struct `Field` cached behind the class's `field()` staticmethod.
+
 ```python
 from yggdryl import scalar
 from yggdryl.text import json
@@ -734,11 +793,13 @@ assert json.loads(encoded) == {"trade_id": 1, "symbol": "AAPL"}
 assert json.loads(encoded, cls=Trade) == Trade(1, "AAPL")
 assert Trade.field()["trade_id"].dtype.id == "int64"
 ```
+
 A dataclass used as a dictionary *key* reads back as the tuple of its entries, because JSON and YAML have no non-string keys.
 
 ## Digests
 
 `yggdryl.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, at the algorithm's native width.
+
 ```python
 from yggdryl import Scalar, xxhash
 
@@ -750,6 +811,7 @@ assert str(digest) == "xxh3-64:78af5f94892f3950"
 assert xxhash.Digest(str(digest)) == digest
 assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_hash()
 ```
+
 A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window ([xxHash](../xxhash/index.md)).
 
 ## FIX registry at the boundary
@@ -767,6 +829,7 @@ A `bytes` or `str` is hashed in place, and any other buffer is read through one 
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
+
 ```python
 import copy
 import pathlib
@@ -838,6 +901,7 @@ assert message.branch == STANDARD_BRANCH
 assert message.by_id("standard:55").as_py() == "AAPL"
 assert message.get_by_id("cme:5001") is None
 ```
+
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.
 
 ## Edges
@@ -870,6 +934,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
+
 ```python
 from yggdryl import DataType
 
@@ -880,6 +945,7 @@ except ValueError as error:
 else:
     raise AssertionError("an invalid precision must be reported")
 ```
+
 ## Commands
 
 === "Python"
