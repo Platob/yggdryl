@@ -551,7 +551,7 @@ impl DatumCodec<'_> {
                         .as_bytes(),
                 ),
                 Node::Uuid => {
-                    let spelling = guid_value(value)?.to_string();
+                    let spelling = uuid_value(value)?.to_string();
                     put_bytes(target, spelling.as_bytes());
                 }
                 Node::Date => {
@@ -680,7 +680,7 @@ impl DatumCodec<'_> {
                     target.extend_from_slice(&bytes);
                 }
                 Node::UuidFixed(fixed) => {
-                    let bytes = guid_value(value)?.into_bytes();
+                    let bytes = uuid_value(value)?.into_bytes();
                     if bytes.len() != fixed.size {
                         return Err(invalid(format_smolstr!(
                             "expected {} bytes for an Avro uuid, got {}",
@@ -691,8 +691,8 @@ impl DatumCodec<'_> {
                     target.extend_from_slice(&bytes);
                 }
                 Node::Fixed(fixed) => match value {
-                    Scalar::Guid(guid) if fixed.size == 16 => {
-                        target.extend_from_slice(&guid.into_bytes());
+                    Scalar::Uuid(uuid) if fixed.size == 16 => {
+                        target.extend_from_slice(&uuid.into_bytes());
                     }
                     _ => {
                         let bytes = value.as_bytes().ok_or_else(|| mismatch("fixed", value))?;
@@ -837,7 +837,7 @@ impl DatumCodec<'_> {
             Node::Float | Node::Double => value.as_f64().is_some(),
             Node::Bytes => value.as_bytes().is_some(),
             Node::String | Node::Enum(_) => value.as_str().is_some(),
-            Node::Uuid => guid_value(value).is_ok(),
+            Node::Uuid => uuid_value(value).is_ok(),
             Node::Date => {
                 matches!(value, Scalar::Temporal(Temporal::Date32(_))) || value.as_i64().is_some()
             }
@@ -862,9 +862,9 @@ impl DatumCodec<'_> {
                 value
                     .as_bytes()
                     .is_some_and(|bytes| bytes.len() == fixed.size)
-                    || (fixed.size == 16 && matches!(value, Scalar::Guid(_)))
+                    || (fixed.size == 16 && matches!(value, Scalar::Uuid(_)))
             }
-            Node::UuidFixed(fixed) => fixed.size == 16 && guid_value(value).is_ok(),
+            Node::UuidFixed(fixed) => fixed.size == 16 && uuid_value(value).is_ok(),
             Node::Record(_) => value.as_record().is_some() || value.as_mapping().is_some(),
             Node::Map(_) => value.as_record().is_some() || value.as_mapping().is_some(),
             Node::Array(_) => value.as_sequence().is_some(),
@@ -1100,13 +1100,13 @@ pub(super) fn node_scalar(node: &Node, value: Scalar) -> Result<Scalar> {
         .scalar(value)
 }
 
-/// Read any accepted GUID spelling into the exact GUID leaf.
-fn guid_value(value: &Scalar) -> Result<crate::types::Guid> {
+/// Read any accepted UUID spelling into the exact UUID leaf.
+fn uuid_value(value: &Scalar) -> Result<crate::types::Uuid> {
     match value {
-        Scalar::Guid(value) => Ok(*value),
-        _ => crate::types::guid_bytes(value)
+        Scalar::Uuid(value) => Ok(*value),
+        _ => crate::types::uuid_bytes(value)
             .ok_or_else(|| mismatch("uuid", value))
-            .and_then(crate::types::Guid::from_bytes),
+            .and_then(crate::types::Uuid::from_bytes),
     }
 }
 

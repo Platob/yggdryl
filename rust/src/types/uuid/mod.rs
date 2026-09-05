@@ -7,6 +7,6 @@ mod dtypes;
 mod fields;
 mod scalars;
 
-pub(crate) use dtypes::{GUID_EXTENSION_NAME, guid_bytes, guid_parse, guid_text};
+pub(crate) use dtypes::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
 pub use fields::*;
-pub use scalars::{Guid, GuidScalar};
+pub use scalars::{Uuid, UuidScalar};

@@ -375,9 +375,9 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "cfi",
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
-        Scalar::Guid(value) => tagged_pickle_state(
+        Scalar::Uuid(value) => tagged_pickle_state(
             py,
-            "guid",
+            "uuid",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
         Scalar::Enum(value) => tagged_pickle_state(
@@ -644,10 +644,10 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Cfi(value)))
             .map_err(value_error),
-        "guid" => {
+        "uuid" => {
             let value = payload()?.extract::<String>()?;
-            yggdryl::types::guid::Guid::from_bytes(value.as_bytes())
-                .map(Scalar::Guid)
+            yggdryl::types::uuid::Uuid::from_bytes(value.as_bytes())
+                .map(Scalar::Uuid)
                 .map_err(value_error)
         }
         "enum" => {
@@ -1506,7 +1506,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Decimal(_) => decimal_as_py(py, value),
         Scalar::Text(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Ascii(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        Scalar::Guid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.

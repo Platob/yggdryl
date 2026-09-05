@@ -149,7 +149,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
-    ['guid', fields.guid('value')],
+    ['uuid', fields.uuid('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -205,7 +205,7 @@ test('typed field factories cover every native datatype variant', () => {
       'ascii',
       'nested',
       'geospatial',
-      'guid',
+      'uuid',
     ]),
   )
 })
@@ -222,8 +222,8 @@ test('the ascii factories build the variable form and one fixed width', () => {
   assert.equal(currency.nullable, false)
   assert.ok(currency.dtype.equals(DataType.ascii(3)))
   assert.equal(fields.fixedAscii('iso', 2).dtype.asciiWidth, 2)
-  assert.equal(fields.guid('id').dtype.id, 'guid')
-  assert.equal(fields.guid('id', { nullable: false }).nullable, false)
+  assert.equal(fields.uuid('id').dtype.id, 'uuid')
+  assert.equal(fields.uuid('id', { nullable: false }).nullable, false)
   // A fixed width past the packed integer is still storage, so it builds.
   assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
   assert.equal(fields.fixedAscii('code', 12).nullable, true)

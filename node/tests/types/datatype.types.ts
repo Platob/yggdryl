@@ -72,8 +72,8 @@ const currencyDeclarationEquals: boolean =
   currencyDeclaration.equals(currencyDeclarationParsed)
 const currencyDeclarationClone: AsciiEnum = currencyDeclaration.clone()
 const currencyDeclarationText: string = currencyDeclaration.toString()
-const guidType: DataType = new DataType('guid')
-const guidId: string = guidType.id
+const uuidType: DataType = new DataType('uuid')
+const uuidId: string = uuidType.id
 const declaredField: Field = new Field('side', DataType.ascii(3), false)
 declaredField.setAsciiEnum(currencyDeclaration)
 const declaredFieldEnum: AsciiEnum | null = declaredField.asciiEnum
@@ -99,8 +99,8 @@ void currencyDeclarationLength
 void currencyDeclarationEquals
 void currencyDeclarationClone
 void currencyDeclarationText
-void guidType
-void guidId
+void uuidType
+void uuidId
 void declaredField
 void declaredFieldEnum
 void declaredFieldRemoved

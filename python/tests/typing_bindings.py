@@ -47,7 +47,7 @@ from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
     AsciiField,
     FixedAsciiField,
-    GuidField,
+    UuidField,
     CfiField,
     CountryField,
     CurrencyField,
@@ -300,9 +300,9 @@ typed_mic: MicField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
-typed_guid: GuidField = types.guid("id", nullable=False)
-typed_guid_kind: Literal["guid"] = typed_guid.dtype.id
-typed_guid_value: str = typed_guid.dtype.default_pyvalue()
+typed_uuid: UuidField = types.uuid("id", nullable=False)
+typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
+typed_uuid_value: str = typed_uuid.dtype.default_pyvalue()
 typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
 typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
 typed_ascii_isin_value: str | None = typed_ascii_isin.default_pyvalue()

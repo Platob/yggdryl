@@ -62,11 +62,11 @@ from .floating import (
 from .geospatial import (
     GeographyField,
     GeometryField,
-    GuidField,
+    UuidField,
     VariantField,
     geography,
     geometry,
-    guid,
+    uuid,
     variant,
 )
 from .integer import (
@@ -169,7 +169,7 @@ __all__ = [
     "Float64Field",
     "GeographyField",
     "GeometryField",
-    "GuidField",
+    "UuidField",
     "Int8Field",
     "Int16Field",
     "Int32Field",
@@ -255,6 +255,6 @@ __all__ = [
     "union",
     "utf8",
     "utf8_view",
-    "guid",
+    "uuid",
     "variant",
 ]

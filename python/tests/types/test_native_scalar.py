@@ -135,11 +135,11 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
         (
             json.loads(
                 '"00112233-4455-6677-8899-aabbccddeeff"',
-                field=Field("value", "guid", False),
+                field=Field("value", "uuid", False),
                 cls=Scalar,
             ),
-            "guid",
-            "guid",
+            "uuid",
+            "uuid",
         ),
         (Scalar.from_py(b"bytes"), "binary", "bytes"),
         (Scalar.from_py({"id": 1}), "map", "nested"),

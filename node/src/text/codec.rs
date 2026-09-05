@@ -2361,7 +2361,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         ),
         Scalar::Text(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Ascii(value) => Ok(JsonValue::String(value.as_str().to_owned())),
-        Scalar::Guid(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.

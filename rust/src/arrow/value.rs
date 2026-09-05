@@ -9,8 +9,8 @@ use crate::types::budget::{
 };
 use crate::types::{
     AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Decimal, MIC_WIDTH, Temporal,
-    Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, guid_bytes,
-    guid_parse,
+    Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes,
+    uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -179,7 +179,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
-        DataType::Guid => guid_array(values)?,
+        DataType::Uuid => uuid_array(values)?,
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
                 .iter()
@@ -400,9 +400,9 @@ pub(crate) fn value_from_array(
             )))
         }
         // An identifier reads back as its exact packed scalar leaf.
-        DataType::Guid => {
+        DataType::Uuid => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Guid(crate::types::Guid::new(u128::from_be_bytes(guid_parse(
+            Scalar::Uuid(crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(
                 fixed.value(index),
             )?)))
         }
@@ -1291,26 +1291,26 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
     }
 }
 
-/// Build the sixteen-byte storage of a GUID column.
+/// Build the sixteen-byte storage of a UUID column.
 ///
-/// Every present value passes the one GUID rule and stores as its sixteen
-/// bytes, so the array is exactly what the field reads back as a GUID.
-fn guid_array(values: &[&Scalar]) -> Result<ArrayRef> {
+/// Every present value passes the one UUID rule and stores as its sixteen
+/// bytes, so the array is exactly what the field reads back as a UUID.
+fn uuid_array(values: &[&Scalar]) -> Result<ArrayRef> {
     let mut bytes = vec![0_u8; values.len() * 16];
     let mut validity = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         match value {
-            Scalar::Guid(guid) => {
-                bytes[index * 16..][..16].copy_from_slice(&guid.into_bytes());
+            Scalar::Uuid(uuid) => {
+                bytes[index * 16..][..16].copy_from_slice(&uuid.into_bytes());
                 validity.push(true);
             }
             _ if matches!(value, Scalar::Null) => validity.push(false),
-            _ => match guid_bytes(value) {
+            _ => match uuid_bytes(value) {
                 Some(raw) => {
-                    bytes[index * 16..][..16].copy_from_slice(&guid_parse(raw)?);
+                    bytes[index * 16..][..16].copy_from_slice(&uuid_parse(raw)?);
                     validity.push(true);
                 }
-                None => return Err(invalid_value_kind("a GUID", value)),
+                None => return Err(invalid_value_kind("a UUID", value)),
             },
         }
     }

@@ -90,7 +90,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::FixedSizeBinary(_)
         | D::Geometry(_)
         | D::Geography(_) => JsValueHint::Buffer,
-        // An ASCII width reads back as its trimmed text and a GUID as its
+        // An ASCII width reads back as its trimmed text and a UUID as its
         // hyphenated spelling, so both project as the string family does.
         D::Utf8
         | D::LargeUtf8
@@ -101,7 +101,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Currency
         | D::Mic
         | D::Cfi
-        | D::Guid => JsValueHint::String,
+        | D::Uuid => JsValueHint::String,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
@@ -317,9 +317,9 @@ fn text_or_binary_to_js<'env>(
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()
             .into_unknown(env)?,
-        D::Guid => match value {
-            Scalar::Guid(value) => value.to_string().into_unknown(env)?,
-            _ => return Err(napi_error("invalid native guid record value")),
+        D::Uuid => match value {
+            Scalar::Uuid(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native uuid record value")),
         },
         // A geospatial value is its Well-Known Binary payload, so it crosses
         // exactly as the binary family does.

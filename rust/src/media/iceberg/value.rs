@@ -80,7 +80,7 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
-            | DataType::Guid
+            | DataType::Uuid
             | DataType::Binary
             | DataType::LargeBinary
             | DataType::BinaryView
@@ -135,10 +135,10 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         | DataType::Cfi => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
-        DataType::Guid => {
+        DataType::Uuid => {
             let bytes = match value {
-                Scalar::Guid(value) => value.into_bytes(),
-                _ => crate::types::guid_parse(crate::types::guid_bytes(value)?).ok()?,
+                Scalar::Uuid(value) => value.into_bytes(),
+                _ => crate::types::uuid_parse(crate::types::uuid_bytes(value)?).ok()?,
             };
             OfficialDatum::uuid(uuid::Uuid::from_bytes(bytes))
         }
@@ -202,8 +202,8 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             | DataType::Cfi,
             OfficialPrimitiveLiteral::String(value),
         ) => Scalar::from(value.as_str()),
-        (DataType::Guid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            Scalar::from(crate::types::guid_text(&value.to_be_bytes()))
+        (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
+            Scalar::from(crate::types::uuid_text(&value.to_be_bytes()))
         }
         (
             DataType::Binary
@@ -257,7 +257,7 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi => OfficialPrimitiveType::String,
-        DataType::Guid => OfficialPrimitiveType::Uuid,
+        DataType::Uuid => OfficialPrimitiveType::Uuid,
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialPrimitiveType::Binary
         }
@@ -389,7 +389,7 @@ mod tests {
             (Scalar::from("USD"), DataType::Currency),
             (
                 Scalar::from("00112233-4455-6677-8899-aabbccddeeff"),
-                DataType::Guid,
+                DataType::Uuid,
             ),
             (Scalar::from([1_u8, 2, 3].as_slice()), DataType::LargeBinary),
             (Scalar::from([1_u8, 2, 3].as_slice()), DataType::BinaryView),

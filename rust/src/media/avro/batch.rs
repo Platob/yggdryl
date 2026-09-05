@@ -895,9 +895,9 @@ impl ColumnReader {
             Self::Utf8(builder) => builder.append_value(cursor.string()?),
             Self::Uuid { builder, fixed } => {
                 let stored = if *fixed {
-                    crate::types::guid_parse(cursor.take(16)?)?
+                    crate::types::uuid_parse(cursor.take(16)?)?
                 } else {
-                    crate::types::guid_parse(cursor.string()?.as_bytes())?
+                    crate::types::uuid_parse(cursor.string()?.as_bytes())?
                 };
                 builder
                     .append_value(stored)
@@ -1308,8 +1308,8 @@ fn encode_cell(
         }
         Node::Uuid => {
             let stored = <&[u8; 16]>::try_from(column.as_fixed_size_binary().value(row))
-                .map_err(|_| invalid(SmolStr::new_static("expected a 16-byte GUID column")))?;
-            let spelling = crate::types::guid_text(stored);
+                .map_err(|_| invalid(SmolStr::new_static("expected a 16-byte UUID column")))?;
+            let spelling = crate::types::uuid_text(stored);
             put_bytes(payload, spelling.as_bytes());
         }
         Node::Date => put_long(

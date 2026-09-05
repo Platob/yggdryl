@@ -198,7 +198,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Currency(_)) => Ok(DataType::Currency),
             Self::Ascii(AsciiFamily::Mic(_)) => Ok(DataType::Mic),
             Self::Ascii(AsciiFamily::Cfi(_)) => Ok(DataType::Cfi),
-            Self::Guid(_) => Ok(DataType::Guid),
+            Self::Uuid(_) => Ok(DataType::Uuid),
             Self::Enum(_) => Ok(DataType::Utf8),
             Self::Bytes(Bytes::Binary(_)) => Ok(DataType::Binary),
             Self::Bytes(Bytes::FixedSizeBinary(value)) => DataType::fixed_size_binary(

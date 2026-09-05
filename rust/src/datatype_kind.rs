@@ -50,7 +50,7 @@ pub enum DataTypeKind {
     /// correct for an identifier, and it is not `String` either, because the
     /// hyphenated spelling is a rendering of sixteen bytes rather than the
     /// value itself.
-    Guid,
+    Uuid,
 }
 
 impl DataTypeKind {
@@ -67,7 +67,7 @@ impl DataTypeKind {
         Self::Bytes,
         Self::Nested,
         Self::Geospatial,
-        Self::Guid,
+        Self::Uuid,
     ];
 
     /// Parse a canonical lowercase category name.
@@ -95,7 +95,7 @@ impl DataTypeKind {
             Self::Bytes => "bytes",
             Self::Nested => "nested",
             Self::Geospatial => "geospatial",
-            Self::Guid => "guid",
+            Self::Uuid => "uuid",
         }
     }
 

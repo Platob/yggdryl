@@ -402,7 +402,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use crate::types::{ascii, bytes, decimal, geospatial, guid, integer, nested, temporal, text};
+    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text, uuid};
     use crate::{
         AsciiValue, BytesValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue,
         TemporalValue, TextValue,
@@ -460,8 +460,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
         DataTypeId::List
     );
 
-    let guid = guid::Guid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(ScalarValue::dtype(&guid).unwrap(), DataType::Guid);
+    let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
+    assert_eq!(ScalarValue::dtype(&uuid).unwrap(), DataType::Uuid);
 
     let scalar = ScalarValue::into_scalar(text);
     assert_eq!(scalar.id(), DataTypeId::LargeUtf8);
@@ -470,7 +470,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use crate::types::{ascii, bytes, decimal, geospatial, guid, integer, nested, temporal, text};
+    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text, uuid};
 
     let integer = integer::Int32::new(-7);
     assert_eq!(integer.get(), -7);
@@ -508,9 +508,9 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(binary.as_bytes(), binary_view.as_bytes());
     assert_eq!(binary.to_string(), "0001ff");
 
-    let guid = guid::Guid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(guid.to_string(), "550e8400-e29b-41d4-a716-446655440000");
-    assert_eq!(guid::Guid::from_bytes(&guid.into_bytes()).unwrap(), guid);
+    let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
+    assert_eq!(uuid.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+    assert_eq!(uuid::Uuid::from_bytes(&uuid.into_bytes()).unwrap(), uuid);
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

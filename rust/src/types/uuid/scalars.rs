@@ -1,4 +1,4 @@
-//! GUID values and the typed scalar alias.
+//! UUID values and the typed scalar alias.
 
 use std::fmt;
 
@@ -13,11 +13,11 @@ use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, Sc
     Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
 )]
 #[serde(transparent)]
-pub struct Guid(u128);
+pub struct Uuid(u128);
 
-const _: () = assert!(std::mem::size_of::<Guid>() == 16);
+const _: () = assert!(std::mem::size_of::<Uuid>() == 16);
 
-impl Guid {
+impl Uuid {
     /// Construct from the exact packed identifier.
     pub const fn new(value: u128) -> Self {
         Self(value)
@@ -25,7 +25,7 @@ impl Guid {
 
     /// Parse the accepted hyphenated, compact-hex, or 16-byte representation.
     pub fn from_bytes(value: &[u8]) -> Result<Self> {
-        Ok(Self(u128::from_be_bytes(types::guid_parse(value)?)))
+        Ok(Self(u128::from_be_bytes(types::uuid_parse(value)?)))
     }
 
     /// Return the packed identifier.
@@ -39,44 +39,44 @@ impl Guid {
     }
 }
 
-impl fmt::Display for Guid {
+impl fmt::Display for Uuid {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&types::guid_text(&self.0.to_be_bytes()))
+        formatter.write_str(&types::uuid_text(&self.0.to_be_bytes()))
     }
 }
 
-impl ScalarFamily for Guid {
-    const KIND: DataTypeKind = DataTypeKind::Guid;
+impl ScalarFamily for Uuid {
+    const KIND: DataTypeKind = DataTypeKind::Uuid;
 
     fn id(&self) -> DataTypeId {
-        DataTypeId::Guid
+        DataTypeId::Uuid
     }
 
     fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Guid)
+        Ok(DataType::Uuid)
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Guid(self)
+        Scalar::Uuid(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Guid(value) => Some(value),
+            Scalar::Uuid(value) => Some(value),
             _ => None,
         }
     }
 }
 
-impl ScalarValue for Guid {
+impl ScalarValue for Uuid {
     type Family = Self;
-    type Type = super::GuidType;
+    type Type = super::UuidType;
 
-    const ID: DataTypeId = DataTypeId::Guid;
-    const KIND: DataTypeKind = DataTypeKind::Guid;
+    const ID: DataTypeId = DataTypeId::Uuid;
+    const KIND: DataTypeKind = DataTypeKind::Uuid;
 
     fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Guid)
+        Ok(DataType::Uuid)
     }
 
     fn into_family(self) -> Self::Family {
@@ -88,7 +88,7 @@ impl ScalarValue for Guid {
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Guid(self)
+        Scalar::Uuid(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
@@ -96,4 +96,4 @@ impl ScalarValue for Guid {
     }
 }
 
-define_scalar_type!(GuidScalar, super::GuidType, "guid", crate::DataType::Guid);
+define_scalar_type!(UuidScalar, super::UuidType, "uuid", crate::DataType::Uuid);

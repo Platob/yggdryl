@@ -358,9 +358,9 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Currency
         | D::Mic
         | D::Cfi => Ok((D::Utf8, true)),
-        // Only Iceberg names an identifier type; everywhere else a GUID
+        // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Guid => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -458,9 +458,9 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Currency
         | D::Mic
         | D::Cfi => Ok((D::Utf8, true)),
-        // Only Iceberg names an identifier type; everywhere else a GUID
+        // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Guid => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -550,9 +550,9 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Currency
         | D::Mic
         | D::Cfi => Ok((D::Utf8, true)),
-        // Only Iceberg names an identifier type; everywhere else a GUID
+        // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Guid => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -603,7 +603,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         // `fixed[n]`, which is also how `uuid` is stored.
         | D::FixedSizeBinary(_)
         // Iceberg is the one target that names an identifier type.
-        | D::Guid => Ok((dtype.clone(), false)),
+        | D::Uuid => Ok((dtype.clone(), false)),
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
@@ -727,7 +727,7 @@ fn field_with_dtype(
 /// The extensions this workspace owns never reach here: `arrow.parquet.variant`,
 /// `geoarrow.wkb`, `yggdryl.ascii`, `arrow.uuid`, and each registered code's
 /// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
-/// `variant`, `geometry`, `geography`, ASCII-width, `guid` and code datatypes
+/// `variant`, `geometry`, `geography`, ASCII-width, `uuid` and code datatypes
 /// with their `ARROW:extension:*` keys stripped, so a field carrying these
 /// keys names an extension the workspace does not model.
 /// Rewriting its storage would silently relabel that foreign type, so the

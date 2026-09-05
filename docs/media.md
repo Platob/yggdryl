@@ -7737,9 +7737,9 @@ let message = PrimitiveType::from_dtype(&DataType::Int8).unwrap_err().to_string(
 assert!(message.contains("int8"));
 assert!(PrimitiveType::from_dtype(&DataType::Int16).is_err());
 
-// A UUID is the core's own `guid`, so the spelling survives the round trip
+// A UUID is the core's own `uuid`, so the spelling survives the round trip
 // in the datatype rather than in a marker beside the column.
-assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::Guid);
+assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::Uuid);
 assert_eq!(
     PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
     "uuid"

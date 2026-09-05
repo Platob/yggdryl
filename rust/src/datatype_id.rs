@@ -99,7 +99,7 @@ pub enum DataTypeId {
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi,
     /// One 128-bit universally unique identifier.
-    Guid,
+    Uuid,
     /// Variable list with 32-bit offsets.
     List,
     /// Variable list-view with 32-bit offsets.
@@ -175,7 +175,7 @@ impl DataTypeId {
         Self::Currency,
         Self::Mic,
         Self::Cfi,
-        Self::Guid,
+        Self::Uuid,
         Self::List,
         Self::ListView,
         Self::FixedSizeList,
@@ -248,7 +248,7 @@ impl DataTypeId {
             Self::Currency => "currency",
             Self::Mic => "mic",
             Self::Cfi => "cfi",
-            Self::Guid => "guid",
+            Self::Uuid => "uuid",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -328,7 +328,7 @@ impl DataTypeId {
             | Self::Currency
             | Self::Mic
             | Self::Cfi => DataTypeKind::Ascii,
-            Self::Guid => DataTypeKind::Guid,
+            Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
@@ -468,7 +468,7 @@ impl DataTypeId {
             Self::Country => Some(2),
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
-            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Guid => Some(16),
+            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }
@@ -634,7 +634,7 @@ mod tests {
         assert_eq!(DataTypeId::FixedAscii.as_u8(), 31);
         assert_eq!(DataTypeId::Country.as_u8(), 32);
         assert_eq!(DataTypeId::Cfi.as_u8(), 35);
-        assert_eq!(DataTypeId::Guid.as_u8(), 36);
+        assert_eq!(DataTypeId::Uuid.as_u8(), 36);
         assert_eq!(DataTypeId::List.as_u8(), 37);
         assert_eq!(DataTypeId::Struct.as_u8(), 42);
         assert_eq!(DataTypeId::Dictionary.as_u8(), 44);

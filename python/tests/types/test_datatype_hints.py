@@ -78,7 +78,7 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         datetime.time: "time64",
         datetime.timedelta: "duration64",
         decimal.Decimal: "decimal128",
-        uuid.UUID: "utf8",
+        uuid.UUID: "uuid",
         pathlib.Path: "utf8",
         Uri: "utf8",
         Url: "utf8",

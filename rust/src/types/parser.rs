@@ -86,7 +86,7 @@ impl fmt::Display for DataType {
             D::Currency => formatter.write_str("currency"),
             D::Mic => formatter.write_str("mic"),
             D::Cfi => formatter.write_str("cfi"),
-            D::Guid => formatter.write_str("guid"),
+            D::Uuid => formatter.write_str("uuid"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -358,9 +358,7 @@ impl<'a> Parser<'a> {
             "largeutf8" | "largestring" => DataType::LargeUtf8,
             "utf8view" | "stringview" => DataType::Utf8View,
 
-            // `uuid` is what every other system calls it, and there is no
-            // parenthesized form to disambiguate, so both spellings parse.
-            "guid" | "uuid" => DataType::Guid,
+            "uuid" => DataType::Uuid,
             // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
             // one of exactly N bytes.
             "ascii" => match self.consume_opening() {

@@ -324,11 +324,11 @@ test('Scalar identity accessors name the exact leaf and family', () => {
     ],
     [
       json.loads('"00112233-4455-6677-8899-aabbccddeeff"', {
-        field: new Field('value', 'guid', false),
+        field: new Field('value', 'uuid', false),
         scalar: true,
       }),
-      'guid',
-      'guid',
+      'uuid',
+      'uuid',
     ],
     [Scalar.fromJs(Buffer.from('bytes')), 'binary', 'bytes'],
     [Scalar.fromJs({ id: 1 }), 'struct', 'nested'],

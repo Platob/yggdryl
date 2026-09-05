@@ -679,7 +679,7 @@ mod logical {
 
     #[test]
     fn uuids_round_trip_in_both_encodings() {
-        let expected = DataType::Guid
+        let expected = DataType::Uuid
             .scalar("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             .unwrap();
         assert_eq!(
@@ -694,7 +694,7 @@ mod logical {
             r#"{"type":"fixed","name":"id","size":16,"logicalType":"uuid"}"#,
             Scalar::from("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
         );
-        assert_eq!(decoded.id(), DataTypeId::Guid);
+        assert_eq!(decoded.id(), DataTypeId::Uuid);
         assert_eq!(decoded, expected);
     }
 
@@ -1651,7 +1651,7 @@ mod records {
     #[test]
     fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
         let field = DataType::from_fields([
-            DataType::Guid.required_field("id"),
+            DataType::Uuid.required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
             DataType::FixedSizeBinary(3).required_field("raw"),
@@ -1688,7 +1688,7 @@ mod records {
         assert_eq!(
             ids,
             [
-                DataTypeId::Guid,
+                DataTypeId::Uuid,
                 DataTypeId::Decimal32,
                 DataTypeId::Decimal64,
                 DataTypeId::FixedSizeBinary,
@@ -1991,7 +1991,7 @@ mod records {
     #[test]
     fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
         // Avro has no fixed-width text, so a code spells `string` with no
-        // logical type - the contrast with a GUID, which annotates `uuid`.
+        // logical type - the contrast with a UUID, which annotates `uuid`.
         let root = DataType::from_fields([
             DataType::Country.required_field("iso"),
             DataType::Currency.required_field("ccy"),

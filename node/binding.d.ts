@@ -204,7 +204,7 @@ export type DataTypeId =
   | 'currency'
   | 'mic'
   | 'cfi'
-  | 'guid'
+  | 'uuid'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -241,7 +241,7 @@ export type DataTypeKind =
   | 'bytes'
   | 'nested'
   | 'geospatial'
-  | 'guid'
+  | 'uuid'
 
 interface DataTypeKindById {
   null: 'null'
@@ -280,7 +280,7 @@ interface DataTypeKindById {
   currency: 'ascii'
   mic: 'ascii'
   cfi: 'ascii'
-  guid: 'guid'
+  uuid: 'uuid'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -550,7 +550,7 @@ export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string,
 /** The self-describing semi-structured Variant datatype, as one field type. */
 export type VariantField = FieldOf<'variant', unknown>
 /** One 128-bit identifier; values read back as the hyphenated spelling. */
-export type GuidField = FieldOf<'guid', string>
+export type UuidField = FieldOf<'uuid', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -722,7 +722,7 @@ export interface FieldsNamespace {
     options?: FieldOptions,
   ): DenseUnionField
   variant(name: string, options?: FieldOptions): VariantField
-  guid(name: string, options?: FieldOptions): GuidField
+  uuid(name: string, options?: FieldOptions): UuidField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField
@@ -923,7 +923,7 @@ export interface FieldsNamespace {
   union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
   denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
   variant<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'variant', unknown, N, O>
-  guid<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'guid', string, N, O>
+  uuid<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uuid', string, N, O>
   country<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'country', string, N, O>
   currency<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'currency', string, N, O>
   mic<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'mic', string, N, O>

@@ -31,7 +31,7 @@ enum DefaultPlan {
     /// The 21-byte `POINT EMPTY` Well-Known Binary, a present empty geometry.
     PointEmpty,
     /// The nil identifier, sixteen zero bytes in its hyphenated spelling.
-    Guid,
+    Uuid,
 }
 
 struct Planned {
@@ -230,7 +230,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
-            | DataType::Guid
+            | DataType::Uuid
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -304,8 +304,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Interval(_) => fatal(path, "invalid interval layout"),
         D::Binary | D::LargeBinary | D::BinaryView => plan_bytes(0, path),
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
-        // spelling like every other GUID value.
-        D::Guid => scalar(DefaultPlan::Guid, false),
+        // spelling like every other UUID value.
+        D::Uuid => scalar(DefaultPlan::Uuid, false),
         D::FixedSizeBinary(width) => {
             let width = usize::try_from(*width)
                 .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
@@ -619,7 +619,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         // value spelling.
         DefaultPlan::PointEmpty => crate::types::Geometry::new(POINT_EMPTY_WKB.as_slice())
             .map(|value| Scalar::Geospatial(crate::types::Geospatial::Geometry(value))),
-        DefaultPlan::Guid => Ok(Scalar::Guid(crate::types::Guid::new(0))),
+        DefaultPlan::Uuid => Ok(Scalar::Uuid(crate::types::Uuid::new(0))),
     }
 }
 
@@ -690,10 +690,10 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             .as_mapping()
             .is_some_and(<[(Scalar, Scalar)]>::is_empty),
         DefaultPlan::PointEmpty => value.as_wkb().is_some_and(|bytes| bytes == POINT_EMPTY_WKB),
-        DefaultPlan::Guid => match value {
-            Scalar::Guid(value) => value.get() == 0,
-            _ => crate::types::guid_bytes(value)
-                .and_then(|bytes| crate::types::guid_parse(bytes).ok())
+        DefaultPlan::Uuid => match value {
+            Scalar::Uuid(value) => value.get() == 0,
+            _ => crate::types::uuid_bytes(value)
+                .and_then(|bytes| crate::types::uuid_parse(bytes).ok())
                 .is_some_and(|stored| stored == [0_u8; 16]),
         },
     }

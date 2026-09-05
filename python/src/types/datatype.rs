@@ -122,17 +122,17 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     // Every ASCII datatype - the variable form, a width, and the four
     // registered codes - carries a value rule `PyArrow` knows nothing of, and
-    // a width and a GUID store as fixed-width bytes `PyArrow` would refuse to
+    // a width and a UUID store as fixed-width bytes `PyArrow` would refuse to
     // build from a value of any other length. The core that owns both answers
     // for all of them.
-    if dtype.is_ascii() || matches!(dtype, CoreDataType::Guid) {
+    if dtype.is_ascii() || matches!(dtype, CoreDataType::Uuid) {
         return ascii_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
 }
 
-/// Stores one value into an ASCII or GUID datatype through the core boundary.
+/// Stores one value into an ASCII or UUID datatype through the core boundary.
 ///
 /// `PyArrow` builds a fixed-width binary only from exactly `width` bytes and
 /// validates no ASCII rule at all, so the core that owns the padding, the
@@ -433,7 +433,7 @@ impl PyDataType {
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
-            "guid" => CoreDataType::Guid,
+            "uuid" => CoreDataType::Uuid,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"

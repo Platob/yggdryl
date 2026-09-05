@@ -113,7 +113,7 @@ impl JsDataType {
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
-            "guid" => CoreDataType::Guid,
+            "uuid" => CoreDataType::Uuid,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"

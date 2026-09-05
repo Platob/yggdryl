@@ -22,9 +22,9 @@ use super::ascii::{
 };
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-use super::guid::GUID_EXTENSION_NAME;
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
+use super::uuid::UUID_EXTENSION_NAME;
 use super::{DataType, Fields, UnionFields, UnionMode, invalid, validate_non_negative};
 
 impl DataType {
@@ -390,7 +390,7 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
-            R::Guid => Self::FixedSizeBinary(16),
+            R::Uuid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
             R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
             R::FixedSizeList(field, length) => {
@@ -526,7 +526,7 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
-            R::Guid => Self::FixedSizeBinary(16),
+            R::Uuid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(into_arrow_field(field)?),
             R::ListView(field) => Self::ListView(into_arrow_field(field)?),
             R::FixedSizeList(field, length) => {
@@ -696,7 +696,7 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
         DataType::Ascii | DataType::FixedAscii(_) => Some((ASCII_EXTENSION_NAME, String::new())),
-        DataType::Guid => Some((GUID_EXTENSION_NAME, String::new())),
+        DataType::Uuid => Some((UUID_EXTENSION_NAME, String::new())),
         // A code carries its own name, so the identity survives Arrow: three
         // bytes under `yggdryl.currency` read back a currency, and the same
         // three bytes under `yggdryl.ascii` read back the width.
@@ -866,7 +866,7 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
-        | DataType::Guid => {
+        | DataType::Uuid => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
             let Some((name, metadata)) = arrow_extension_parts(dtype) else {

@@ -163,24 +163,24 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.throws(() => DataType.fromString('isin'), /unknown datatype/)
 })
 
-test('the guid is sixteen bytes spelled as one identifier', () => {
-  const guid = new DataType('guid')
+test('the uuid is sixteen bytes spelled as one identifier', () => {
+  const uuid = new DataType('uuid')
 
-  assert.equal(guid.id, 'guid')
-  assert.equal(guid.kind, 'guid')
-  assert.equal(guid.toString(), 'guid')
-  assert.equal(guid.asciiWidth, null)
-  // `uuid` is what every other system calls it and parses to the same type.
-  assert.ok(DataType.from('uuid').equals(guid))
-  assert.ok(DataType.fromString(guid.toString()).equals(guid))
+  assert.equal(uuid.id, 'uuid')
+  assert.equal(uuid.kind, 'uuid')
+  assert.equal(uuid.toString(), 'uuid')
+  assert.equal(uuid.asciiWidth, null)
+  // The canonical spelling parses back to the same type.
+  assert.ok(DataType.from('uuid').equals(uuid))
+  assert.ok(DataType.fromString(uuid.toString()).equals(uuid))
 
   // The identity is the sixteen bytes; the spelling is a rendering of them.
   const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
-  const field = new Field('id', guid, false)
+  const field = new Field('id', uuid, false)
   assert.equal(field.defaultJSValue(), '00000000-0000-0000-0000-000000000000')
   assert.ok(Field.fromJSON(field.toJSON()).equals(field))
   assert.ok(Field.fromString(field.toString()).equals(field))
-  assert.equal(new Field('id', 'uuid', false).dtype.id, 'guid')
+  assert.equal(new Field('id', 'uuid', false).dtype.id, 'uuid')
   void text
 })
 

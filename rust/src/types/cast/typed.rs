@@ -148,9 +148,9 @@ typed_array!(
     crate::types::ascii::CfiType,
     arrow_array::FixedSizeBinaryArray
 );
-// A GUID stores as the fixed binary of its sixteen bytes.
+// A UUID stores as the fixed binary of its sixteen bytes.
 typed_array!(
-    crate::types::guid::GuidType,
+    crate::types::uuid::UuidType,
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(crate::types::nested::ListType, arrow_array::ListArray);

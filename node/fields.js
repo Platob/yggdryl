@@ -169,7 +169,7 @@ function createFields(DataType, Field, native) {
     fixedAscii(name, width, value) {
       return field(name, DataType.ascii(width), value)
     },
-    guid: simple('guid'),
+    uuid: simple('uuid'),
     // Each registered code is a datatype of its own, storing the width its
     // standard fixes and carrying that identity across Arrow.
     country: simple('country'),

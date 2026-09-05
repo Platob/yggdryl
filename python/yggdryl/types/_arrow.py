@@ -41,7 +41,7 @@ _STRING_KINDS = frozenset(
         "currency",
         "mic",
         "cfi",
-        "guid",
+        "uuid",
     )
 )
 _LIST_KINDS = frozenset(

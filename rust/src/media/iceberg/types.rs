@@ -122,7 +122,7 @@ impl PrimitiveType {
             // A UUID is a 16-byte fixed value on the wire, and the core has a
             // datatype that is exactly that, so the spelling survives without
             // a marker beside the column.
-            Self::Uuid => DataType::Guid,
+            Self::Uuid => DataType::Uuid,
             Self::Fixed(width) => DataType::fixed_size_binary(width)?,
             Self::Binary => DataType::Binary,
         })
@@ -197,7 +197,7 @@ impl PrimitiveType {
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi => Self::String,
-            DataType::Guid => Self::Uuid,
+            DataType::Uuid => Self::Uuid,
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),
             DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,
             other => {

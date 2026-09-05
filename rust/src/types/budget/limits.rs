@@ -304,7 +304,7 @@ impl MaterializationBudget {
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
-            | DataType::Guid
+            | DataType::Uuid
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
             }
@@ -410,7 +410,7 @@ impl MaterializationBudget {
             | DataType::Decimal128 { .. }
             | DataType::BinaryView
             | DataType::Utf8View
-            | DataType::Guid
+            | DataType::Uuid
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {

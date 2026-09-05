@@ -20,7 +20,7 @@ use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
     AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Temporal,
     Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field,
-    guid_bytes, guid_parse, value_is_logically_null,
+    uuid_bytes, uuid_parse, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -642,16 +642,16 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             }
             None => canonicalization_failure(dtype),
         },
-        // The canonical GUID spelling is the hyphenated text; the sixteen
+        // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
-        D::Guid => {
-            if matches!(value, Scalar::Guid(_)) {
+        D::Uuid => {
+            if matches!(value, Scalar::Uuid(_)) {
                 Ok((value.clone(), false))
             } else {
-                let bytes = guid_bytes(value)
-                    .ok_or_else(|| canonical_error("expected GUID text or bytes"))?;
-                let guid = crate::types::Guid::new(u128::from_be_bytes(guid_parse(bytes)?));
-                Ok((Scalar::Guid(guid), true))
+                let bytes = uuid_bytes(value)
+                    .ok_or_else(|| canonical_error("expected UUID text or bytes"))?;
+                let uuid = crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(bytes)?));
+                Ok((Scalar::Uuid(uuid), true))
             }
         }
         D::List(field)
@@ -1221,11 +1221,11 @@ fn validate_dtype_value(
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
-        D::Guid => match value {
-            Scalar::Guid(_) => Ok(()),
-            _ => match guid_bytes(value).map(guid_parse) {
+        D::Uuid => match value {
+            Scalar::Uuid(_) => Ok(()),
+            _ => match uuid_bytes(value).map(uuid_parse) {
                 Some(Ok(_)) => Ok(()),
-                _ => Err(expected("guid", value)),
+                _ => Err(expected("uuid", value)),
             },
         },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {

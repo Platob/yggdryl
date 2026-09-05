@@ -1317,10 +1317,10 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             Ok(Scalar::from(value.as_str()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            DataType::Guid.scalar(crate::types::guid_text(&value.to_be_bytes()))
+            DataType::Uuid.scalar(crate::types::uuid_text(&value.to_be_bytes()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::Binary(value)) => {
-            DataType::Guid.scalar(Scalar::from(value.clone()))
+            DataType::Uuid.scalar(Scalar::from(value.clone()))
         }
         (OfficialPrimitiveType::Fixed(width), OfficialPrimitiveLiteral::Binary(value)) => {
             let width = i32::try_from(*width).map_err(|_| {
@@ -3217,7 +3217,7 @@ mod official_read_tests {
     }
 
     #[test]
-    fn official_uuid_partition_literals_use_the_exact_guid_shape() {
+    fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
         let document = crate::text::json::from_utf8(
             r#"{"type":"struct","schema-id":0,"fields":[
                 {"id":1,"name":"id","required":true,"type":"long"},
@@ -3230,7 +3230,7 @@ mod official_read_tests {
         let token = 0x0db3_e2a8_9d1d_42b9_aa7b_74eb_e558_dcebu128
             .to_be_bytes()
             .to_vec();
-        let expected = DataType::Guid.scalar(Scalar::from(token.clone())).unwrap();
+        let expected = DataType::Uuid.scalar(Scalar::from(token.clone())).unwrap();
         let input = ManifestEntry::added(
             41,
             DataFile {

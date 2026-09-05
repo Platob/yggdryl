@@ -320,19 +320,19 @@ def test_dtype_arrow_roundtrip_preserves_nested_map_and_dictionary_flags() -> No
     assert projected.field("codes").type.ordered is True
 
 
-def test_the_guid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
-    guid = DataType("guid")
+def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
+    uuid_type = DataType("uuid")
 
-    assert DataType("uuid") == guid
-    assert guid.id == "guid"
-    assert guid.kind == "guid"
-    assert str(guid) == "guid"
-    assert guid.ascii_width is None
+    assert DataType("uuid") == uuid_type
+    assert uuid_type.id == "uuid"
+    assert uuid_type.kind == "uuid"
+    assert str(uuid_type) == "uuid"
+    assert uuid_type.ascii_width is None
 
     # The identity is the sixteen bytes; the spelling is a rendering of them.
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     packed = 0x01912D68783E7C9AB1F20123456789AB
-    field = Field("id", guid, nullable=False)
+    field = Field("id", uuid_type, nullable=False)
     assert field.arrow_scalar(text) == pa.scalar(
         packed.to_bytes(16, "big"), pa.binary(16)
     )
@@ -360,7 +360,7 @@ def test_the_guid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     assert spelled.cast_arrow_batch(batch).column(0).to_pylist() == [text, text]
 
     with pytest.raises(ValueError, match="36-character"):
-        field.cast_arrow_array(pa.array(["not-a-guid"]))
+        field.cast_arrow_array(pa.array(["not-a-uuid"]))
 
 
 def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:

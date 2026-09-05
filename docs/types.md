@@ -49,7 +49,7 @@ type, with Arrow itself kept out of the value model.
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
 
-There are 56 variants: one per Arrow logical type, plus Variant, the geospatial pair, the GUID, the
+There are 56 variants: one per Arrow logical type, plus Variant, the geospatial pair, the UUID, the
 six ASCII widths, and the four registered codes, which cross Arrow as extension-typed storage.
 The parser accepts the Arrow,
 SQL, Hive, and Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`,
@@ -1043,7 +1043,7 @@ reads it beside `field:init` and `field:partition`. `from_logical_name` builds o
 listings the package ships - `CURRENCIES`, `COUNTRIES`, `MICS`, reachable as `prebuilt()` from
 either binding - so a code column declares the vocabulary it draws from without a copy per language.
 
-### The GUID
+### The UUID
 
 === "Rust"
 
@@ -1053,37 +1053,36 @@ either binding - so a code column declares the vocabulary it draws from without 
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{DataType, DataTypeKind, Field, Scalar};
 
-    // One 128-bit identifier and no parameters. `uuid` is what every other
-    // system calls it, so both spellings parse to the one type.
-    let guid = DataType::guid();
-    assert_eq!(DataType::from_str("guid")?, guid);
-    assert_eq!(DataType::from_str("uuid")?, guid);
-    assert_eq!(guid.to_string(), "guid");
-    assert_eq!(guid.kind(), DataTypeKind::Guid);
+    // One 128-bit identifier, one canonical spelling, and no parameters.
+    let uuid = DataType::uuid();
+    assert_eq!(DataType::from_str("uuid")?, uuid);
+    assert_eq!(uuid.to_string(), "uuid");
+    assert_eq!(uuid.kind(), DataTypeKind::Uuid);
 
     // The identity is the sixteen bytes; every spelling is a rendering of them.
     let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
     let packed = 0x0191_2d68_783e_7c9a_b1f2_0123_4567_89ab_u128;
-    assert_eq!(guid.guid_packed(text.as_bytes())?, packed);
-    assert_eq!(guid.guid_packed(text.to_uppercase().as_bytes())?, packed);
-    assert_eq!(guid.guid_packed(text.replace('-', "").as_bytes())?, packed);
-    assert_eq!(guid.guid_packed(&packed.to_be_bytes())?, packed);
-    assert_eq!(guid.guid_value(packed)?, text);
+    assert_eq!(uuid.uuid_packed(text.as_bytes())?, packed);
+    assert_eq!(uuid.uuid_packed(text.to_uppercase().as_bytes())?, packed);
+    assert_eq!(uuid.uuid_packed(text.replace('-', "").as_bytes())?, packed);
+    assert_eq!(uuid.uuid_packed(&packed.to_be_bytes())?, packed);
+    assert_eq!(uuid.uuid_value(packed)?, text);
 
     // Storage is the canonical `arrow.uuid` extension over sixteen bytes, and
     // the value reads back spelled out.
-    let id = Field::new("id", DataType::Guid, false);
-    let stored = scalar_array(&id, &Scalar::from(text))?;
+    let id = Field::new("id", DataType::Uuid, false);
+    let value = id.scalar(text)?;
+    let stored = scalar_array(&id, &value)?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(0), packed.to_be_bytes());
-    assert_eq!(scalar_value(&id, stored.as_ref())?, Scalar::from(text));
+    assert_eq!(scalar_value(&id, stored.as_ref())?, value);
 
     let arrow = id.clone().into_arrow()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
     assert_eq!(Field::from_arrow(&arrow)?, id);
 
-    assert!(guid.guid_packed(b"not-a-guid").is_err());
+    assert!(uuid.uuid_packed(b"not-a-uuid").is_err());
     ```
 
 === "Python"
@@ -1095,17 +1094,16 @@ either binding - so a code column declares the vocabulary it draws from without 
 
     from yggdryl import DataType, Field
 
-    # One 128-bit identifier and no parameters. `uuid` is what every other
-    # system calls it, so both spellings parse to the one type.
-    guid = DataType("guid")
-    assert DataType("uuid") == guid
-    assert str(guid) == "guid"
-    assert guid.kind == "guid"
+    # One 128-bit identifier, one canonical spelling, and no parameters.
+    uuid_type = DataType("uuid")
+    assert DataType("uuid") == uuid_type
+    assert str(uuid_type) == "uuid"
+    assert uuid_type.kind == "uuid"
 
     # The identity is the sixteen bytes; every spelling is a rendering of them.
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     packed = 0x01912D68783E7C9AB1F20123456789AB
-    id = Field("id", guid, nullable=False)
+    id = Field("id", uuid_type, nullable=False)
     assert id.arrow_scalar(text) == pa.scalar(packed.to_bytes(16, "big"), pa.binary(16))
     assert id.arrow_scalar(text.upper()) == id.arrow_scalar(text)
     assert id.arrow_scalar(packed.to_bytes(16, "big")) == id.arrow_scalar(text)
@@ -1132,21 +1130,20 @@ either binding - so a code column declares the vocabulary it draws from without 
     const assert = require('node:assert/strict')
     const { DataType, Field, fields } = require('yggdryl')
 
-    // One 128-bit identifier and no parameters. `uuid` is what every other
-    // system calls it, so both spellings parse to the one type.
-    const guid = new DataType('guid')
-    assert.ok(DataType.from('uuid').equals(guid))
-    assert.equal(guid.toString(), 'guid')
-    assert.equal(guid.kind, 'guid')
+    // One 128-bit identifier, one canonical spelling, and no parameters.
+    const uuid = new DataType('uuid')
+    assert.ok(DataType.from('uuid').equals(uuid))
+    assert.equal(uuid.toString(), 'uuid')
+    assert.equal(uuid.kind, 'uuid')
 
     // The identity is the sixteen bytes; every spelling is a rendering of them.
-    const id = new Field('id', guid, false)
+    const id = new Field('id', uuid, false)
     assert.equal(id.defaultJSValue(), '00000000-0000-0000-0000-000000000000')
-    assert.equal(fields.guid('id').dtype.id, 'guid')
+    assert.equal(fields.uuid('id').dtype.id, 'uuid')
     assert.ok(Field.fromJSON(id.toJSON()).equals(id))
     ```
 
-A GUID is the ASCII widths' sibling: one fixed-width value whose integer is its own storage bytes
+A UUID is the ASCII widths' sibling: one fixed-width value whose integer is its own storage bytes
 read big-endian, so it is the same integer in every process and is what a stable hash hashes. It is
 a `u128` rather than an `i128` because every one of the sixteen bytes carries identity. Storage is
 `FixedSizeBinary(16)` under the canonical `arrow.uuid` extension - the name Arrow itself registers,
@@ -1154,7 +1151,7 @@ taken as-is rather than re-spelled - and Iceberg's `uuid` maps straight onto it,
 survives a metadata rewrite in the datatype instead of a marker beside the column.
 
 Where an ASCII width canonicalizes toward its text, because the value *is* text and the padding is
-layout, a GUID canonicalizes toward its 36-character lowercase hyphenated spelling, because that is
+layout, a UUID canonicalizes toward its 36-character lowercase hyphenated spelling, because that is
 what a reader means by an identifier. The 32-digit bare-hex text, upper case, and the sixteen stored
 bytes are all accepted on the way in and rewrite to that one spelling; anything else is refused by
 the one rule that field validation, Arrow ingest, and every cast tier all call.
@@ -2702,8 +2699,8 @@ too: `Ascii16Field`, `Ascii24Field`, `Ascii32Field`, `Ascii64Field`, `Ascii96Fie
 too: `CountryField`, `CurrencyField`, `MicField`, and `CfiField` get the static `new` beside
 `fields.country`, `fields.currency`, `fields.mic`, and `fields.cfi`, each building the code's own
 datatype rather than the ASCII width that would hold the same bytes.
-[The GUID](types.md#the-guid) is parameterless in the same way: `GuidField` gets the static
-`new`, and the bindings spell it `fields.guid`.
+[The UUID](types.md#the-uuid) is parameterless in the same way: `UuidField` gets the static
+`new`, and the bindings spell it `fields.uuid`.
 
 ### Converting to one native field
 

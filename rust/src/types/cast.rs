@@ -36,7 +36,6 @@ use std::sync::Arc;
 
 use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
-use crate::types::guid::casts::{ingest_guid_array, render_guid_text};
 use crate::types::nested::casts::{
     cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct, default_array,
     exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null,
@@ -45,6 +44,7 @@ use crate::types::nested::casts::{
 use crate::types::temporal::casts::{
     holds_temporal, holds_text, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
+use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
 use crate::types::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_refusal};
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field};
@@ -243,11 +243,11 @@ enum ArrayCastKind {
     CodeIngest,
     /// A recognized code source rendering as trimmed text, at its own width.
     CodeText,
-    /// Values entering a GUID: every exposed value is validated under the one
-    /// GUID rule and stored as its sixteen bytes.
-    GuidIngest,
-    /// A recognized GUID source rendering as its hyphenated spelling.
-    GuidText,
+    /// Values entering a UUID: every exposed value is validated under the one
+    /// UUID rule and stored as its sixteen bytes.
+    UuidIngest,
+    /// A recognized UUID source rendering as its hyphenated spelling.
+    UuidText,
     /// Text entering a temporal: every exposed value is read through the
     /// crate's own spellings, which are wider than Arrow's. Arrow's kernel
     /// stays behind them for the spellings only it knows, so the reading is
@@ -384,7 +384,7 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            DataType::Guid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Guid)),
+            DataType::Uuid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid)),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -525,25 +525,25 @@ impl ArrayCastPlan {
             ) if matches!(source_extension, Some(RecognizedExtension::Code(_))) => {
                 ArrayCastKind::CodeText
             }
-            // A GUID takes its sixteen bytes directly and every text spelling
-            // through one Utf8 temporary; the one GUID rule runs per value
+            // A UUID takes its sixteen bytes directly and every text spelling
+            // through one Utf8 temporary; the one UUID rule runs per value
             // either way.
-            (DataType::Guid, source) => {
+            (DataType::Uuid, source) => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(16))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
-                    ArrayCastKind::GuidIngest
+                    ArrayCastKind::UuidIngest
                 } else {
                     ArrayCastKind::DeferredUnsupported {
-                        reason: format!("casting {source:?} to guid is not supported"),
+                        reason: format!("casting {source:?} to uuid is not supported"),
                     }
                 }
             }
             (
                 DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
                 ArrowDataType::FixedSizeBinary(16),
-            ) if matches!(source_extension, Some(RecognizedExtension::Guid)) => {
-                ArrayCastKind::GuidText
+            ) if matches!(source_extension, Some(RecognizedExtension::Uuid)) => {
+                ArrayCastKind::UuidText
             }
             (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, source)
                 if is_temporal_arrow(source) =>
@@ -858,7 +858,7 @@ impl ArrayCastPlan {
                 exposure,
                 budget,
             )?,
-            ArrayCastKind::GuidIngest => ingest_guid_array(
+            ArrayCastKind::UuidIngest => ingest_uuid_array(
                 &array,
                 &self.expected,
                 self.safe,
@@ -866,8 +866,8 @@ impl ArrayCastPlan {
                 exposure,
                 budget,
             )?,
-            ArrayCastKind::GuidText => {
-                render_guid_text(&array, &self.expected, &self.field, exposure, budget)?
+            ArrayCastKind::UuidText => {
+                render_uuid_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             ArrayCastKind::AsciiText => {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
@@ -1066,9 +1066,9 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
         (_, RecognizedExtension::Ascii(_) | RecognizedExtension::Code(_)) => Ok(()),
-        // A GUID source is sixteen bytes: a GUID target re-validates them,
+        // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
-        (_, RecognizedExtension::Guid) => Ok(()),
+        (_, RecognizedExtension::Uuid) => Ok(()),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(

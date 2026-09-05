@@ -16,7 +16,6 @@ mod enumeration;
 mod field;
 pub mod floating;
 pub mod geospatial;
-pub mod guid;
 pub mod integer;
 mod merge;
 pub mod nested;
@@ -28,6 +27,7 @@ pub(crate) mod serde;
 pub mod temporal;
 pub mod text;
 mod typed;
+pub mod uuid;
 mod value;
 mod vocabulary;
 
@@ -75,9 +75,6 @@ pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 pub use geospatial::{GeographyScalar, GeometryScalar};
-pub use guid::GuidScalar;
-pub use guid::*;
-pub(crate) use guid::{GUID_EXTENSION_NAME, guid_bytes, guid_parse, guid_text};
 pub use integer::scalars::{
     Int8Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Integer, UInt8Scalar, UInt16Scalar,
     UInt32Scalar, UInt64Scalar,
@@ -100,6 +97,9 @@ pub use temporal::*;
 pub use text::*;
 pub use text::{LargeUtf8Scalar, Utf8Scalar, Utf8ViewScalar};
 pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef, TypedScalar};
+pub use uuid::UuidScalar;
+pub use uuid::*;
+pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
 pub(crate) use value::{dtype_scalar, validate_dtype_value_for};
 
 #[cfg(test)]

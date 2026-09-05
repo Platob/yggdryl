@@ -116,7 +116,7 @@ enum DataTypeRef<'a> {
     Currency {},
     Mic {},
     Cfi {},
-    Guid {},
+    Uuid {},
     List {
         field: &'a Field,
     },
@@ -242,7 +242,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Currency => Self::Currency {},
             D::Mic => Self::Mic {},
             D::Cfi => Self::Cfi {},
-            D::Guid => Self::Guid {},
+            D::Uuid => Self::Uuid {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -356,7 +356,7 @@ enum DataTypeValue {
     Currency {},
     Mic {},
     Cfi {},
-    Guid {},
+    Uuid {},
     List {
         field: Field,
     },
@@ -466,7 +466,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Currency {} => Self::Currency,
             DataTypeValue::Mic {} => Self::Mic,
             DataTypeValue::Cfi {} => Self::Cfi,
-            DataTypeValue::Guid {} => Self::Guid,
+            DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -592,7 +592,7 @@ impl DataType {
             D::Currency => tag("currency"),
             D::Mic => tag("mic"),
             D::Cfi => tag("cfi"),
-            D::Guid => tag("guid"),
+            D::Uuid => tag("uuid"),
             D::DateTime64 { unit, timezone } => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -826,7 +826,7 @@ impl DataType {
             "currency" => Self::Currency,
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
-            "guid" => Self::Guid,
+            "uuid" => Self::Uuid,
             "datetime64" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

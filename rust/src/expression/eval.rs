@@ -919,17 +919,17 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 narrowed => Ok(narrowed),
             }
         }
-        DataType::Guid => {
-            if matches!(value, Scalar::Guid(_)) {
+        DataType::Uuid => {
+            if matches!(value, Scalar::Uuid(_)) {
                 return Ok(value.clone());
             }
-            // The row tier enforces the one GUID rule the cast plan enforces
+            // The row tier enforces the one UUID rule the cast plan enforces
             // on columns, so the two tiers refuse the same values.
-            let Some(bytes) = crate::types::guid_bytes(value) else {
-                return refuse("a GUID");
+            let Some(bytes) = crate::types::uuid_bytes(value) else {
+                return refuse("a UUID");
             };
-            match crate::types::guid_parse(bytes) {
-                Ok(stored) => Ok(Scalar::Guid(crate::types::Guid::new(u128::from_be_bytes(
+            match crate::types::uuid_parse(bytes) {
+                Ok(stored) => Ok(Scalar::Uuid(crate::types::Uuid::new(u128::from_be_bytes(
                     stored,
                 )))),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),

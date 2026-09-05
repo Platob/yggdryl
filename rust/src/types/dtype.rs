@@ -103,7 +103,7 @@ pub enum DataType {
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi,
     /// One 128-bit universally unique identifier.
-    Guid,
+    Uuid,
     /// Variable list with 32-bit offsets.
     List(Arc<Field>),
     /// Variable list-view with 32-bit offsets.
@@ -235,7 +235,7 @@ impl DataType {
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,
             Self::Cfi => DataTypeId::Cfi,
-            Self::Guid => DataTypeId::Guid,
+            Self::Uuid => DataTypeId::Uuid,
             Self::List(_) => DataTypeId::List,
             Self::ListView(_) => DataTypeId::ListView,
             Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
@@ -505,7 +505,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Currency => 31,
         DataType::Mic => 32,
         DataType::Cfi => 33,
-        DataType::Guid => 34,
+        DataType::Uuid => 34,
         DataType::List(_) => 35,
         DataType::ListView(_) => 36,
         DataType::FixedSizeList(..) => 37,

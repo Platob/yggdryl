@@ -43,7 +43,7 @@ pub(crate) fn projected_byte_len(
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
-        | DataType::Guid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
+        | DataType::Uuid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
         DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
         DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
@@ -200,7 +200,7 @@ pub(crate) fn byte_array_storage_ptr_eq(
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
-        | DataType::Guid => {
+        | DataType::Uuid => {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;
             byte_slices_ptr_eq(left.value_data(), right.value_data())

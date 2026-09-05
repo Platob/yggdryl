@@ -70,7 +70,7 @@ impl Scalar {
             Self::Geospatial(value) => {
                 return Some(ValueBytes::borrowed(value.as_bytes()));
             }
-            Self::Guid(value) => ValueBytes::inline(&value.into_bytes()),
+            Self::Uuid(value) => ValueBytes::inline(&value.into_bytes()),
             Self::Boolean(value) => ValueBytes::inline(&[u8::from(value.get())]),
             Self::Integer(value) => match value {
                 Integer::I8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
@@ -260,8 +260,8 @@ impl Scalar {
                 write_tag(sink, DataTypeId::Ascii);
                 write_text(sink, value.as_str());
             }
-            Self::Guid(value) => {
-                write_tag(sink, DataTypeId::Guid);
+            Self::Uuid(value) => {
+                write_tag(sink, DataTypeId::Uuid);
                 sink.write(&value.into_bytes());
             }
             Self::Enum(value) => {

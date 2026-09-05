@@ -424,7 +424,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Decimal(_) => value.into_decimal_utf8().map(SmolStr::new),
         Scalar::Text(held) => Some(SmolStr::new(held.as_str())),
         Scalar::Ascii(held) => Some(SmolStr::new(held.as_str())),
-        Scalar::Guid(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Uuid(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.

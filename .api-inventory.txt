@@ -1845,7 +1845,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type MapField = TypedField<nested::Map>;
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type VariantField = TypedField<nested::Variant>;
-  pub type GuidField = TypedField<nested::Guid>;
+  pub type UuidField = TypedField<nested::Uuid>;
   pub type GeometryField = TypedField<geospatial::Geometry>;
   pub type GeographyField = TypedField<geospatial::Geography>;
   pub type FieldRef = Arc<ArrowField>;
@@ -2014,10 +2014,10 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal128(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal256(precision: u8, scale: i8) -> Result<Self>
 
-### yggdryl::types::guid  [rust\src\types\guid\dtypes.rs]
-pub const fn guid() -> Self
-  pub fn guid_packed(&self, value: &[u8]) -> Result<u128>
-  pub fn guid_value(&self, packed: u128) -> Result<SmolStr>
+### yggdryl::types::uuid  [rust\src\types\uuid\dtypes.rs]
+pub const fn uuid() -> Self
+  pub fn uuid_packed(&self, value: &[u8]) -> Result<u128>
+  pub fn uuid_value(&self, packed: u128) -> Result<SmolStr>
 
 ### yggdryl::types::integer  [rust\src\types\integer\dtypes.rs]
 pub const fn is_integer(&self) -> bool
@@ -2400,7 +2400,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, GuidScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>

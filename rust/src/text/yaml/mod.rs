@@ -712,7 +712,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Floating(_)
             | Scalar::Text(_)
             | Scalar::Ascii(_)
-            | Scalar::Guid(_)
+            | Scalar::Uuid(_)
             | Scalar::Enum(_)
     )
 }
@@ -742,7 +742,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         )?,
         Scalar::Text(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Ascii(value) => write_scalar_string(writer, value.as_str())?,
-        Scalar::Guid(value) => write_scalar_string(writer, &value.to_string())?,
+        Scalar::Uuid(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Bytes(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.

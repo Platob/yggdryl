@@ -5990,7 +5990,7 @@ mod interop_regressions {
 
 #[test]
 fn a_uuid_column_keeps_its_type_through_a_round_trip() {
-    // `uuid` and `fixed[16]` were one physical type until `guid` became a
+    // `uuid` and `fixed[16]` were one physical type until `uuid` became a
     // datatype of its own; the spelling now survives in the datatype, so
     // rewriting another writer's metadata cannot demote the column. Surfaced
     // by the Spark interop exchange.

@@ -14,15 +14,15 @@ use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
 use crate::types::cast::arrow_cast_exposed;
 use crate::types::cast::{downcast, internal_target_error};
 use crate::types::nested::casts::is_exposed;
-use crate::types::{guid_parse, guid_text};
+use crate::types::{uuid_parse, uuid_text};
 use crate::{DataType, Field};
 
-/// Validates every exposed, non-null value entering a GUID and stores it as
+/// Validates every exposed, non-null value entering a UUID and stores it as
 /// its sixteen bytes.
 ///
 /// Sixteen-byte storage is the same array once validated; anything else first
 /// renders as Utf8 through Arrow's kernel, exactly as an ASCII width does.
-pub(crate) fn ingest_guid_array(
+pub(crate) fn ingest_uuid_array(
     array: &ArrayRef,
     expected: &ArrowDataType,
     safe: bool,
@@ -31,13 +31,13 @@ pub(crate) fn ingest_guid_array(
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
     if !matches!(expected, ArrowDataType::FixedSizeBinary(16)) {
-        return Err(internal_target_error("guid"));
+        return Err(internal_target_error("uuid"));
     }
     if let ArrowDataType::FixedSizeBinary(16) = array.data_type() {
         let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
         for index in 0..source.len() {
             if is_exposed(exposure, index) && source.is_valid(index) {
-                guid_cell(field, index, source.value(index))?;
+                uuid_cell(field, index, source.value(index))?;
             }
         }
         return Ok(Arc::clone(array));
@@ -61,7 +61,7 @@ pub(crate) fn ingest_guid_array(
     for index in 0..source.len() {
         let present = is_exposed(exposure, index) && source.is_valid(index);
         if present {
-            let stored = guid_cell(field, index, source.value(index).as_bytes())?;
+            let stored = uuid_cell(field, index, source.value(index).as_bytes())?;
             bytes[index * 16..][..16].copy_from_slice(&stored);
         }
         validity.append(present);
@@ -74,8 +74,8 @@ pub(crate) fn ingest_guid_array(
     )?))
 }
 
-/// Renders a recognized GUID column as its hyphenated spelling.
-pub(crate) fn render_guid_text(
+/// Renders a recognized UUID column as its hyphenated spelling.
+pub(crate) fn render_uuid_text(
     array: &ArrayRef,
     expected: &ArrowDataType,
     field: &Field,
@@ -88,11 +88,11 @@ pub(crate) fn render_guid_text(
     reserve_vec_bytes::<Option<SmolStr>>(budget, source.len())?;
     let mut rendered = Vec::new();
     rendered.try_reserve_exact(source.len()).map_err(|error| {
-        Error::IncompatibleSchema(format!("GUID text output allocation failed: {error}"))
+        Error::IncompatibleSchema(format!("UUID text output allocation failed: {error}"))
     })?;
     for index in 0..source.len() {
         rendered.push(if is_exposed(exposure, index) && source.is_valid(index) {
-            Some(guid_text(&guid_cell(field, index, source.value(index))?))
+            Some(uuid_text(&uuid_cell(field, index, source.value(index))?))
         } else {
             None
         });
@@ -102,13 +102,13 @@ pub(crate) fn render_guid_text(
         ArrowDataType::Utf8 => Arc::new(text.collect::<StringArray>()) as ArrayRef,
         ArrowDataType::LargeUtf8 => Arc::new(text.collect::<LargeStringArray>()) as ArrayRef,
         ArrowDataType::Utf8View => Arc::new(text.collect::<StringViewArray>()) as ArrayRef,
-        _ => return Err(internal_target_error("guid text")),
+        _ => return Err(internal_target_error("uuid text")),
     })
 }
 
-/// Validates one cell as a GUID, naming the field and the row beside the rule.
-fn guid_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<[u8; 16]> {
-    guid_parse(bytes).map_err(|error| {
+/// Validates one cell as a UUID, naming the field and the row beside the rule.
+fn uuid_cell(field: &Field, index: usize, bytes: &[u8]) -> Result<[u8; 16]> {
+    uuid_parse(bytes).map_err(|error| {
         let reason = match error {
             crate::Error::InvalidRecord { reason, .. } => reason.to_string(),
             other => other.to_string(),

@@ -905,7 +905,7 @@ static_field_constructor!(super::ascii::CurrencyType, DataType::Currency);
 static_field_constructor!(super::ascii::MicType, DataType::Mic);
 static_field_constructor!(super::ascii::CfiType, DataType::Cfi);
 static_field_constructor!(super::nested::VariantType, DataType::Variant);
-static_field_constructor!(super::guid::GuidType, DataType::Guid);
+static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
 
 #[cfg(test)]
 mod tests;

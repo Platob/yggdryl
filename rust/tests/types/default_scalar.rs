@@ -122,7 +122,7 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
         (DataType::Currency, DataTypeId::Currency),
         (DataType::Mic, DataTypeId::Mic),
         (DataType::Cfi, DataTypeId::Cfi),
-        (DataType::Guid, DataTypeId::Guid),
+        (DataType::Uuid, DataTypeId::Uuid),
         (
             DataType::Interval(TimeUnit::YearMonth),
             DataTypeId::Interval,

@@ -214,8 +214,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         | DataType::Mic
         | DataType::Cfi => plain("string"),
         // Avro's `uuid` annotates a string with the hyphenated spelling,
-        // which is what a GUID value already is.
-        DataType::Guid => logical("string", "uuid"),
+        // which is what a UUID value already is.
+        DataType::Uuid => logical("string", "uuid"),
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),

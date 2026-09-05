@@ -419,7 +419,7 @@ impl Node {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
             },
-            Self::Uuid | Self::UuidFixed(_) => DataType::Guid,
+            Self::Uuid | Self::UuidFixed(_) => DataType::Uuid,
             Self::Decimal(decimal) => DataType::decimal(
                 u8::try_from(decimal.precision).map_err(|_| {
                     invalid(format_smolstr!(

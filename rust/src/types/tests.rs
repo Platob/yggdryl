@@ -570,8 +570,8 @@ mod semi_structured_and_geospatial;
 /// The ASCII widths and the vocabularies over them.
 mod ascii;
 
-/// The GUID: one 128-bit identifier, stored as its sixteen bytes.
-mod guid;
+/// The UUID: one 128-bit identifier, stored as its sixteen bytes.
+mod uuid;
 
 /// The enum a field declares, and the codes its members name.
 mod ascii_enum;

@@ -75,7 +75,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "currency": types.currency("value"),
         "mic": types.mic("value"),
         "cfi": types.cfi("value"),
-        "guid": types.guid("value"),
+        "uuid": types.uuid("value"),
         "geometry": types.geometry("value"),
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }

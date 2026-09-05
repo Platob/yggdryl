@@ -484,7 +484,7 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
         Scalar::Text(text) => return Some(Cow::Borrowed(text.as_str())),
         Scalar::Ascii(text) => return Some(Cow::Borrowed(text.as_str())),
-        Scalar::Guid(value) => value.to_string(),
+        Scalar::Uuid(value) => value.to_string(),
         Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),
         Scalar::Integer(held) => held.to_string(),

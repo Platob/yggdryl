@@ -13,7 +13,7 @@ use arrow_schema::{
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{
-    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, GUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
+    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
     arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
@@ -231,7 +231,7 @@ pub(crate) enum RecognizedExtension {
     /// other.
     Code(DataType),
     /// The canonical `arrow.uuid` over `FixedSizeBinary(16)`.
-    Guid,
+    Uuid,
 }
 
 impl RecognizedExtension {
@@ -247,7 +247,7 @@ impl RecognizedExtension {
                 }
             }
             Self::Ascii(dtype) | Self::Code(dtype) => dtype,
-            Self::Guid => DataType::Guid,
+            Self::Uuid => DataType::Uuid,
         }
     }
 }
@@ -311,9 +311,9 @@ pub(crate) fn recognized_arrow_extension(
                 _ => None,
             })
         }
-        GUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+        UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
-                .then_some(RecognizedExtension::Guid))
+                .then_some(RecognizedExtension::Uuid))
         }
         code if document.unwrap_or("").is_empty() => {
             let (values, key) = encoded_values(storage)?;
