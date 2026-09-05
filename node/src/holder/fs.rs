@@ -152,9 +152,7 @@ fn foreign(env: &Env, error: napi::Error) -> Error {
     }
     let kind = match code.as_deref() {
         Some("NotFound" | "ENOENT") => std::io::ErrorKind::NotFound,
-        Some("PermissionDenied" | "EACCES" | "EPERM") => {
-            std::io::ErrorKind::PermissionDenied
-        }
+        Some("PermissionDenied" | "EACCES" | "EPERM") => std::io::ErrorKind::PermissionDenied,
         Some("AlreadyExists" | "EEXIST") => std::io::ErrorKind::AlreadyExists,
         Some("NotADirectory" | "ENOTDIR") => std::io::ErrorKind::NotADirectory,
         Some("IsADirectory" | "EISDIR") => std::io::ErrorKind::IsADirectory,
