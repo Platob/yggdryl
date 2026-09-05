@@ -113,6 +113,9 @@ ascii_code_leaf!(Country, 2);
 ascii_code_leaf!(Currency, 3);
 ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
+ascii_code_leaf!(Side, 4);
+ascii_code_leaf!(MsgType, 8);
+ascii_code_leaf!(Direction, 4);
 
 /// One exact ASCII storage or registered-code representation.
 ///
@@ -133,6 +136,12 @@ pub enum AsciiFamily {
     Mic(Mic),
     /// ISO 10962 classification code.
     Cfi(Cfi),
+    /// FIX's side of a trade.
+    Side(Side),
+    /// FIX's message type, case-bearing.
+    MsgType(MsgType),
+    /// Which way a captured line moved.
+    Direction(Direction),
 }
 
 impl AsciiFamily {
@@ -145,6 +154,9 @@ impl AsciiFamily {
             Self::Currency(value) => value.as_str(),
             Self::Mic(value) => value.as_str(),
             Self::Cfi(value) => value.as_str(),
+            Self::Side(value) => value.as_str(),
+            Self::MsgType(value) => value.as_str(),
+            Self::Direction(value) => value.as_str(),
         }
     }
 }
@@ -246,6 +258,16 @@ ascii_value!(
 );
 ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
 ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
+ascii_value!(Side, super::SideType, Side, Side, Side, Some(4));
+ascii_value!(MsgType, super::MsgTypeType, MsgType, MsgType, MsgType, Some(8));
+ascii_value!(
+    Direction,
+    super::DirectionType,
+    Direction,
+    Direction,
+    Direction,
+    Some(4)
+);
 
 impl ScalarValue for FixedAscii {
     type Family = AsciiFamily;
@@ -300,6 +322,9 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => DataTypeId::Currency,
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
+            Self::Side(_) => DataTypeId::Side,
+            Self::MsgType(_) => DataTypeId::MsgType,
+            Self::Direction(_) => DataTypeId::Direction,
         }
     }
 
@@ -311,6 +336,9 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => Ok(DataType::Currency),
             Self::Mic(_) => Ok(DataType::Mic),
             Self::Cfi(_) => Ok(DataType::Cfi),
+            Self::Side(_) => Ok(DataType::Side),
+            Self::MsgType(_) => Ok(DataType::MsgType),
+            Self::Direction(_) => Ok(DataType::Direction),
         }
     }
 
@@ -347,3 +375,16 @@ define_scalar_type!(
 );
 define_scalar_type!(MicScalar, super::MicType, "mic", crate::DataType::Mic);
 define_scalar_type!(CfiScalar, super::CfiType, "cfi", crate::DataType::Cfi);
+define_scalar_type!(SideScalar, super::SideType, "side", crate::DataType::Side);
+define_scalar_type!(
+    MsgTypeScalar,
+    super::MsgTypeType,
+    "msgtype",
+    crate::DataType::MsgType
+);
+define_scalar_type!(
+    DirectionScalar,
+    super::DirectionType,
+    "direction",
+    crate::DataType::Direction
+);

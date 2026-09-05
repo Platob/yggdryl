@@ -8,7 +8,8 @@ use crate::types::budget::{
     physical_limit_error, physical_union_branch, unsupported,
 };
 use crate::types::{
-    AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Decimal, MIC_WIDTH, Temporal,
+    AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, Decimal,
+    MIC_WIDTH, MSGTYPE_WIDTH, SIDE_WIDTH, Temporal,
     Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes,
     uuid_parse,
 };
@@ -179,6 +180,9 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
+        DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
+        DataType::MsgType => code_array::<MSGTYPE_WIDTH>(dtype, values)?,
+        DataType::Direction => code_array::<DIRECTION_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
@@ -463,6 +467,25 @@ pub(crate) fn value_from_array(
                 dtype,
                 fixed.value(index),
             )?)?))
+        }
+        DataType::Side => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(code_cell_text(
+                dtype,
+                fixed.value(index),
+            )?)?))
+        }
+        DataType::MsgType => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(
+                code_cell_text(dtype, fixed.value(index))?,
+            )?))
+        }
+        DataType::Direction => {
+            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            Scalar::Ascii(AsciiFamily::Direction(crate::types::Direction::new(
+                code_cell_text(dtype, fixed.value(index))?,
+            )?))
         }
         DataType::LargeBinary => {
             Scalar::Bytes(Bytes::LargeBinary(crate::types::LargeBinary::new(Arc::<

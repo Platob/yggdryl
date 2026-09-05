@@ -613,7 +613,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             None => canonicalization_failure(dtype),
         },
         // A code canonicalizes the same way, at the width its own type fixes.
-        D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => match ascii_bytes(value) {
             Some(bytes) => {
                 let text = code_cell_text(dtype, bytes)?;
                 let canonical = match dtype {
@@ -625,6 +625,13 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     }
                     D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
                     D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
+                    D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
+                    D::MsgType => {
+                        Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(text)?))
+                    }
+                    D::Direction => {
+                        Scalar::Ascii(AsciiFamily::Direction(crate::types::Direction::new(text)?))
+                    }
                     _ => unreachable!("registered ASCII datatype matched above"),
                 };
                 let unchanged = matches!(
@@ -633,6 +640,9 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                         | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
                         | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
                         | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
+                        | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
+                        | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
+                        | (D::Direction, Scalar::Ascii(AsciiFamily::Direction(_)))
                 );
                 Ok(if unchanged {
                     (value.clone(), false)
@@ -1227,7 +1237,7 @@ fn validate_dtype_value(
             },
             None => Err(expected(dtype.name(), value)),
         },
-        D::Country | D::Currency | D::Mic | D::Cfi => match ascii_bytes(value) {
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => match ascii_bytes(value) {
             Some(bytes) => code_cell_text(dtype, bytes)
                 .map(|_| ())
                 .map_err(ascii_failure),

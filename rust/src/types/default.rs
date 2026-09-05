@@ -232,6 +232,9 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
+            | DataType::Side
+            | DataType::MsgType
+            | DataType::Direction
             | DataType::Uuid
             | DataType::Version
             | DataType::Decimal32 { .. }
@@ -325,7 +328,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi => scalar(DefaultPlan::String, false),
+        | D::Cfi
+        | D::Side
+        | D::MsgType
+        | D::Direction => scalar(DefaultPlan::String, false),
         D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }

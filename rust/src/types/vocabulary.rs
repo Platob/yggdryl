@@ -7,9 +7,10 @@
 //! front of the parser, and every path after it sees an ordinary
 //! [`DataType`].
 //!
-//! Four of the names resolve to a datatype spelled the same way - `currency`
-//! to [`DataType::Currency`], `country`, `mic` and `cfi` likewise - because
-//! those four registered codes are types rather than widths. That is not
+//! Seven of the names resolve to a datatype spelled the same way - `currency`
+//! to [`DataType::Currency`], `country`, `mic`, `cfi`, `side`, `msgtype` and
+//! `direction` likewise - because those registered codes are types rather
+//! than widths. That is not
 //! a second rule: the registry still answers a datatype, and the canonical
 //! spelling of that datatype still happens to be what was asked for.
 //!
@@ -30,6 +31,9 @@
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
+//! | `Side` | char | `side` | a code set the standard declares, 4 bytes |
+//! | `MsgType` | String | `msgtype` | a code set the standard declares, 8 bytes |
+//! | `direction` | - | `direction` | which way a captured line moved, 4 bytes |
 //! | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
 //! | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 //! | `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
@@ -104,6 +108,13 @@ impl DataType {
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
+        // Three more that resolve to themselves. `side` and `msgtype` are FIX
+        // code sets the standard itself declares, addressed constantly enough
+        // to earn a packed datatype; `direction` is transport rather than FIX,
+        // because every captured line has one whatever protocol it carried.
+        ("side", DataType::Side),
+        ("msgtype", DataType::MsgType),
+        ("direction", DataType::Direction),
         // The rest are names over an ASCII width, which is all they need.
         ("language", DataType::FixedAscii(2)),
         ("monthyear", DataType::FixedAscii(8)),
