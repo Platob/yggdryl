@@ -35,14 +35,20 @@ pub struct FixEntry {
     pub tag: Option<i32>,      // None when the key named no field
     pub branch: Option<i32>,   // xxh32 of the branch; None is standard/unresolved
     pub key: Option<SmolStr>,  // the arriving key, kept only when it is not the tag
-    pub value: SmolStr,        // exactly as it arrived; never absent
+    pub value: FixValue,       // the bytes exactly as they arrived; never absent
 }
-impl FixEntry { pub fn id(&self) -> Option<FixId>; }
+impl FixEntry {
+    pub fn id(&self) -> Option<FixId>;
+    /// The value as text, for the overwhelmingly common printable case.
+    pub fn value_str(&self) -> Option<&str>;
+}
 
 impl FixMsg {
     pub fn entries(&self) -> &[FixEntry];
     pub fn anomalies(&self) -> impl Iterator<Item = FixAnomaly<'_>>;
-    pub fn into_text(&self, sep: char) -> String;
+    pub fn into_bytes(&self, sep: u8) -> Vec<u8>;
+    /// The same, as text; refuses a message carrying a non-printable value.
+    pub fn into_text(&self, sep: char) -> Result<String>;
 
     /// The version this message is expressed in, read back from the fields
     /// that declare it. Derived, never stored (N4).
@@ -53,11 +59,11 @@ impl FixMsg {
     pub fn from_pairs<'a, I>(
         registry: Arc<FixRegistry>, entries: I, branch: Option<&FixBranch>,
         source_version: Option<Version>, target_version: Option<Version>,
-    ) -> Result<Self> where I: IntoIterator<Item = (&'a str, &'a str)>;
+    ) -> Result<Self> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>;
 
-    pub fn from_text(text: &str) -> Result<Self>;
+    pub fn from_text(text: &str) -> Result<Self>;      // a log line, inferred
     pub fn from_fixtext(
-        registry: Arc<FixRegistry>, text: &str, sep: char, branch: Option<&FixBranch>,
+        registry: Arc<FixRegistry>, body: &[u8], sep: u8, branch: Option<&FixBranch>,
         source_version: Option<Version>, target_version: Option<Version>,
     ) -> Result<Self>;
     pub fn from_ultext(
@@ -89,19 +95,38 @@ impl FixMsg {
 - **P7-R4.** `branch: None` means the standard branch *and* "not resolved
   yet" — why this is not simply a `FixId`. `Option<i32>` costs 8 bytes, not
   4: `0` is a legal digest, so there is no niche.
+- **P7-R4b. A pair is bytes, not text.** FIX is a byte protocol: a
+  `data`-typed value may hold anything, including the separator (P7-R49) and
+  bytes that are not UTF-8 at all — a signature, an encrypted block, a
+  vendor's XML in some other encoding. So `from_pairs` takes
+  `(&[u8], &[u8])`, the readers hand it byte slices, and a separator is a
+  `u8` rather than a `char`, which cannot be multi-byte by accident.
+  Everything the parser must *decide* is ASCII by construction — a tag is
+  digits, a rendered key folds on ASCII case and ASCII separators (P7-R10) —
+  so the whole key path runs on bytes with no UTF-8 validation at all, which
+  is faster as well as more correct.
+- **P7-R4c. A key that is not UTF-8 drops its pair, with an anomaly.** A key
+  is a tag or a rendered name; bytes that are neither cannot address a
+  field, and keeping them as a field name would put un-renderable text in a
+  schema. `key` therefore stays a `SmolStr`. This is P7-R13's rule for a
+  different malformation, and it reports rather than fails (P7-R53).
 - **P7-R5. The value owns.** A `FixMsg` holds its entries and outlives the
   text it was read from, so a borrowed value would force `FixMsg<'a>` on
   every caller and on both bindings, which hold one across an FFI boundary.
-  `SmolStr`'s 23 inline bytes cover a side, a price, a symbol and a 21-byte
-  `UTCTimestamp`, so the common entry allocates nothing. Readers still split
-  into borrowed `(&str, &str)`; the single materialization is in
-  `from_pairs`.
+  `FixValue` is that owning value: a small byte buffer with the same inline
+  threshold `SmolStr` uses, so a side, a price, a symbol and a 21-byte
+  `UTCTimestamp` all stay on the stack and the common entry allocates
+  nothing. Readers still split into borrowed `(&[u8], &[u8])`; the single
+  materialization is in `from_pairs`. `value_str()` answers `Some` for every
+  printable value, which is all but the `data` fields.
 - **P7-R6. `tag` is optional and `key` exists** because an unresolved key
   has no tag. `VenueOwnThing=x` survives in the tree (P7-R12) and `entries`
   is the wire record, so it must hold it too. `key` is `None` for the common
   resolved pair, so nothing is stored twice.
 - **P7-R7. The value is never typed inside the entry.** Typing happens once,
-  in `from_pairs`, through `Field::scalar`.
+  in `from_pairs`, through `Field::scalar`: the bytes become the `Scalar` the
+  field's datatype declares, which for a `data` field is bytes and for
+  everything else goes through the text the value already is.
 
 ### `FixMsg` carries its entries
 
@@ -150,8 +175,8 @@ impl FixMsg {
   name an unknown key is kept under — `venueownthing`, not `VenueOwnThing`.
   The **entry keeps the spelling that arrived** (P7-R5), because `entries`
   is the wire record and the row is the interpretation (P7-R8); that is
-  where the venue's own casing survives, and it is the only place it needs
-  to.
+  where the venue's own casing survives, and — with P7-R4b — its own bytes
+  too.
 - **P7-R13. An empty value drops its pair.** `54=` is a malformed message,
   not an absent side.
 - **P7-R14. Order and repetition are the message.** A tag appearing twice
@@ -276,6 +301,21 @@ impl FixMsg {
   test it, and implement it once — the reader calls the converter rather
   than growing a second conversion path (N3).
 
+### Decided
+
+- **`FixValue`, one new type, because a FIX value is bytes.** *Rejected:*
+  validating every pair as UTF-8 — a cost on the hot path that also refuses
+  legal messages. *Rejected:* a lossy decode — it silently corrupts exactly
+  the fields that must survive intact, a signature above all. *Rejected:*
+  `Arc<[u8]>` — it allocates on every entry, throwing away the inline win
+  P7-R5 exists for. A small inline byte buffer is the only option that is
+  correct *and* free for the 99% case, and `value_str()` keeps text callers
+  from noticing.
+- **The readers are byte-native and `from_text` is the one text door.** A
+  `&str` reader that splits and then converts to bytes pays UTF-8 validation
+  for nothing. `&str` is `&[u8]` for free, so the text convenience costs one
+  coercion and the byte path stays the real one.
+
 ### Groups
 
 - **P7-R25. In scope, because the key carries the location.**
@@ -301,8 +341,12 @@ impl FixMsg {
   where it does, check the spelling it accepts is FIX's. Either way the
   generic contract learns no FIX spelling — `LOGICAL_NAMES` is deliberately
   a *type* table, not a *value* one.
-- **P7-R28. The two ways in must agree.**
-  `from_text(built.into_text('|')) == built` is a test in this phase.
+- **P7-R28. The two ways in must agree.** `into_bytes(sep: u8)` is the
+  emit, since a message that carries a `data` field cannot round-trip
+  through text; `into_text` stays as the convenience for a printable message
+  and refuses one that is not. The invariant is
+  `from_fixtext(built.into_bytes(b'|'), b'|') == built`, and it is a test in
+  this phase.
 
 ### The three readers, one builder
 
@@ -313,15 +357,17 @@ one fold, one code translation under all three.
 
 - **P7-R29. `from_text` picks the dialect by one token, never by sniffing.**
   Take the bytes before the first `=`: all ASCII digits means `from_fixtext`
-  — separator SOH when the text holds one, else `|`; anything else means
-  `from_ultext`. `from_text` is the convenience over the process default
-  with everything inferred. Empty text is a typed error, not an empty
-  message.
-- **P7-R30. `from_fixtext`.** Split on `sep` with `memchr`, then each
-  segment at its first `=`. A trailing empty segment is tolerated — a wire
-  message ends with the separator. A segment with no `=` is dropped, as an
-  empty key is. Duplicate tags stay in arrival order. Every key and value is
-  a slice of the input.
+  — separator SOH (`0x01`) when the body holds one, else `|` (`0x7C`);
+  anything else means `from_ultext`. `from_text` takes a `&str` because a
+  log line is text and `&str` is `&[u8]` for free; it is the convenience
+  over the process default with everything inferred. Empty input is a typed
+  error, not an empty message.
+- **P7-R30. `from_fixtext` takes a body and a `u8`.** Split on `sep` with
+  `memchr`, then each segment at its first `=`. A trailing empty segment is
+  tolerated — a wire message ends with the separator. A segment with no `=`
+  is dropped, as an empty key is. Duplicate tags stay in arrival order.
+  Every key and value is a slice of the input, and none of it is validated
+  as UTF-8 (P7-R4b).
 
 #### `from_ultext`
 
@@ -372,13 +418,13 @@ impl FixReader {
     pub fn target_version(self, version: Version) -> Self;    // pin
 
     pub fn texts<'a, I>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
-    where I: IntoIterator<Item = &'a str> + 'a;
-    pub fn fixtexts<'a, I>(&'a mut self, rows: I, sep: char) -> impl Iterator<Item = Result<FixMsg>> + 'a
-    where I: IntoIterator<Item = &'a str> + 'a;
+    where I: IntoIterator<Item = &'a [u8]> + 'a;
+    pub fn fixtexts<'a, I>(&'a mut self, rows: I, sep: u8) -> impl Iterator<Item = Result<FixMsg>> + 'a
+    where I: IntoIterator<Item = &'a [u8]> + 'a;
     pub fn ultexts<'a, I>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
     where I: IntoIterator<Item = &'a [u8]> + 'a;
     pub fn rows<'a, I, R>(&'a mut self, rows: I) -> impl Iterator<Item = Result<FixMsg>> + 'a
-    where I: IntoIterator<Item = R> + 'a, R: IntoIterator<Item = (&'a str, &'a str)>;
+    where I: IntoIterator<Item = R> + 'a, R: IntoIterator<Item = (&'a [u8], &'a [u8])>;
 }
 ```
 
@@ -491,6 +537,12 @@ line some venue really sent.
 6b. Every built child's name is lower-case, an unknown key included, while
     its entry keeps the arrival casing (P7-R12b) — and a `MsgType` value
     keeps its case through all of it (P8-R3).
+6c. A `data` field holding bytes that are not UTF-8 — a signature — survives
+    the whole path: typed as bytes in the row, held whole in its entry, and
+    re-emitted by `into_bytes` (P7-R4b, P7-R28). `value_str()` answers
+    `None` for it and `Some` for every other value in the same message.
+6d. A key that is not UTF-8 drops its pair and reports, while the rest of
+    the message reads (P7-R4c).
 7. Empty and blank keys dropped; an empty value dropped (P7-R13).
 8. The same pairs built against an empty registry (P7-R23).
 
@@ -563,7 +615,8 @@ line some venue really sent.
 27. `from_fixtext` over SOH-separated and `|`-separated captures of one
     message answering equal messages; `from_text` picking the dialect from
     `35=D|…` against `MSGTYPE=D|…`.
-28. `from_text(built.into_text('|')) == built` (P7-R28).
+28. `from_fixtext(built.into_bytes(b'|'), b'|') == built` (P7-R28), and
+    `into_text` refusing a message that carries a non-printable value.
 
 **Streaming.**
 28b. A row read singly and through a `FixReader` answer equal messages
