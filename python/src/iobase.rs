@@ -10,9 +10,10 @@
 
 use std::collections::BTreeMap;
 
+use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PySlice, PyString, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
@@ -132,18 +133,37 @@ impl PyIOBase {
         Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
     }
 
-    fn arrow_binding(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, String)> {
-        let bound = self.inner.bound_location().ok_or_else(|| {
-            PyValueError::new_err("this handle is not bound to a pyarrow filesystem")
-        })?;
+    fn arrow_binding(&self, py: Python<'_>) -> Option<(Py<PyAny>, String)> {
+        let bound = self.inner.bound_location()?;
         let filesystem = bound
             .filesystem()
             .as_any()
-            .downcast_ref::<crate::holder::fs::PyFileSystem>()
-            .ok_or_else(|| {
-                PyValueError::new_err("this handle is not bound to a pyarrow filesystem")
-            })?;
-        Ok((filesystem.original(py), bound.path().to_owned()))
+            .downcast_ref::<crate::holder::fs::PyFileSystem>()?;
+        Some((filesystem.original(py), bound.path().to_owned()))
+    }
+
+    fn native_cursor(slf: &Bound<'_, Self>, position: u64) -> PyIOCursor {
+        PyIOCursor {
+            handle: slf.clone().unbind(),
+            position: std::sync::atomic::AtomicU64::new(position),
+            closed: std::sync::atomic::AtomicBool::new(false),
+            reader: std::sync::Mutex::new(None),
+            close_failure: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn native_python_file<'py>(
+        slf: &Bound<'py, Self>,
+        position: u64,
+        mode: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let cursor = Py::new(py, Self::native_cursor(slf, position))?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("mode", mode)?;
+        py.import("pyarrow")?
+            .getattr("PythonFile")?
+            .call((cursor,), Some(&kwargs))
     }
 
     fn bound(&self) -> PyResult<&yggdryl::holder::fs::BoundLocation> {
@@ -426,7 +446,7 @@ impl PyIOBase {
     /// methods work exactly as they do on a local file. Per the laziness
     /// contract nothing is opened, created, or read here.
     ///
-    /// The four explicit `open_*` methods return PyArrow native files and
+    /// The four explicit `open_*` methods return `PyArrow` native files and
     /// forward writes as they arrive; close each returned stream to flush the
     /// backend exactly once.
     #[classmethod]
@@ -731,8 +751,14 @@ impl PyIOBase {
     }
 
     /// Return whether this handle exposes its byte or record surface.
-    fn is_io(&self) -> bool {
-        self.inner.is_io()
+    fn is_io(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_io())
     }
 
     /// Return whether this resource is one whole byte value.
@@ -740,8 +766,14 @@ impl PyIOBase {
     /// The byte surface - `read_bytes` and `write_bytes` - is for an atomic
     /// resource; `is_tabular` names the record surface instead. A container
     /// holding neither answers `False` to both.
-    fn is_atomic(&self) -> bool {
-        self.inner.is_atomic()
+    fn is_atomic(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_atomic())
     }
 
     /// Return whether this resource holds rows and columns.
@@ -750,8 +782,14 @@ impl PyIOBase {
     /// triplets - is for a tabular resource: a leaf whose media type names a
     /// record encoding, a folder that reads as the table beneath it, or a
     /// table format's own folder.
-    fn is_tabular(&self) -> bool {
-        self.inner.is_tabular()
+    fn is_tabular(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_tabular())
     }
 
     /// Iterate the immediate children, as `Path.iterdir`.
@@ -859,20 +897,27 @@ impl PyIOBase {
     }
 
     /// Open a random-access native Arrow input file.
-    fn open_input_file<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let (filesystem, path) = self.arrow_binding(py)?;
-        filesystem.bind(py).call_method1("open_input_file", (path,))
+    fn open_input_file<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method1("open_input_file", (&path,))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        Self::native_python_file(slf, 0, "r")
     }
 
     /// Open a sequential native Arrow input stream.
     #[pyo3(signature = (compression = Some("detect"), buffer_size = None))]
     fn open_input_stream<'py>(
-        &self,
-        py: Python<'py>,
+        slf: &Bound<'py, Self>,
         compression: Option<&str>,
         buffer_size: Option<i64>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let (filesystem, path) = self.arrow_binding(py)?;
+        let py = slf.py();
         let kwargs = PyDict::new(py);
         match compression {
             Some(compression) => kwargs.set_item("compression", compression)?,
@@ -882,21 +927,29 @@ impl PyIOBase {
             Some(size) => kwargs.set_item("buffer_size", size)?,
             None => kwargs.set_item("buffer_size", py.None())?,
         }
-        filesystem
-            .bind(py)
-            .call_method("open_input_stream", (path,), Some(&kwargs))
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_input_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        let stream = Self::native_python_file(slf, 0, "r")?;
+        py.import("pyarrow")?
+            .getattr("input_stream")?
+            .call((stream,), Some(&kwargs))
     }
 
     /// Open a truncating native Arrow output stream.
     #[pyo3(signature = (compression = Some("detect"), buffer_size = None, metadata = None))]
     fn open_output_stream<'py>(
-        &self,
-        py: Python<'py>,
+        slf: &Bound<'py, Self>,
         compression: Option<&str>,
         buffer_size: Option<i64>,
         metadata: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let (filesystem, path) = self.arrow_binding(py)?;
+        let py = slf.py();
         let kwargs = PyDict::new(py);
         match compression {
             Some(compression) => kwargs.set_item("compression", compression)?,
@@ -910,21 +963,46 @@ impl PyIOBase {
             Some(metadata) => kwargs.set_item("metadata", metadata)?,
             None => kwargs.set_item("metadata", py.None())?,
         }
-        filesystem
-            .bind(py)
-            .call_method("open_output_stream", (path,), Some(&kwargs))
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_output_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        if metadata.is_some() {
+            return Err(crate::holder::fs::storage_error(
+                yggdryl::Error::unsupported("output metadata", "native IOBase"),
+            ));
+        }
+        kwargs.del_item("metadata")?;
+        let stream = Self::native_python_file(slf, 0, "w")?;
+        let output = py
+            .import("pyarrow")?
+            .getattr("output_stream")?
+            .call((stream,), Some(&kwargs))?;
+        if let Err(error) = slf
+            .borrow_mut()
+            .inner
+            .truncate(0)
+            .map_err(crate::holder::fs::storage_error)
+        {
+            let _ = output.call_method0("close");
+            return Err(error);
+        }
+        Ok(output)
     }
 
     /// Open a native Arrow append stream.
     #[pyo3(signature = (compression = Some("detect"), buffer_size = None, metadata = None))]
     fn open_append_stream<'py>(
-        &self,
-        py: Python<'py>,
+        slf: &Bound<'py, Self>,
         compression: Option<&str>,
         buffer_size: Option<i64>,
         metadata: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let (filesystem, path) = self.arrow_binding(py)?;
+        let py = slf.py();
         let kwargs = PyDict::new(py);
         match compression {
             Some(compression) => kwargs.set_item("compression", compression)?,
@@ -938,9 +1016,36 @@ impl PyIOBase {
             Some(metadata) => kwargs.set_item("metadata", metadata)?,
             None => kwargs.set_item("metadata", py.None())?,
         }
-        filesystem
-            .bind(py)
-            .call_method("open_append_stream", (path,), Some(&kwargs))
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_append_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        if metadata.is_some() {
+            return Err(crate::holder::fs::storage_error(
+                yggdryl::Error::unsupported("append metadata", "native IOBase"),
+            ));
+        }
+        kwargs.del_item("metadata")?;
+        let position = {
+            let handle = slf.borrow();
+            match handle.inner.bound_location() {
+                Some(bound) => bound
+                    .filesystem()
+                    .file_info(bound.path())
+                    .map_err(crate::holder::fs::storage_error)?
+                    .size
+                    .unwrap_or(0),
+                None => handle.inner.size(),
+            }
+        };
+        let stream = Self::native_python_file(slf, position, "w")?;
+        py.import("pyarrow")?
+            .getattr("output_stream")?
+            .call((stream,), Some(&kwargs))
     }
 
     /// Read every byte here, as `Path.read_bytes`.
@@ -2444,11 +2549,21 @@ impl PyIOCursor {
     }
 
     fn read_buffer(&self, py: Python<'_>, wanted: usize) -> PyResult<Vec<u8>> {
+        if wanted == 0 {
+            return Ok(Vec::new());
+        }
+        let position = self.load();
         let bound = {
             let handle = self.handle.borrow(py);
             handle.inner.bound_location().cloned()
         };
-        let mut buffer = vec![0_u8; wanted];
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(wanted).map_err(|error| {
+            PyValueError::new_err(format!(
+                "cannot allocate a {wanted}-byte cursor read: {error}"
+            ))
+        })?;
+        buffer.resize(wanted, 0);
         let read = if let Some(bound) = bound {
             let mut slot = self.reader()?;
             if slot.is_none() {
@@ -2456,9 +2571,10 @@ impl PyIOCursor {
                     .filesystem()
                     .open_input_file(bound.path())
                     .map_err(crate::holder::fs::storage_error)?;
-                reader
-                    .seek(std::io::SeekFrom::Start(self.load()))
-                    .map_err(crate::holder::fs::storage_error)?;
+                if let Err(error) = reader.seek(std::io::SeekFrom::Start(position)) {
+                    let _ = reader.close();
+                    return Err(crate::holder::fs::storage_error(error));
+                }
                 *slot = Some(reader);
             }
             let reader = slot
@@ -2471,12 +2587,63 @@ impl PyIOCursor {
             self.handle
                 .borrow(py)
                 .inner
-                .pread(self.load(), &mut buffer)
+                .pread(position, &mut buffer)
                 .map_err(crate::holder::fs::storage_error)?
         };
+        if read > buffer.len() {
+            return Err(PyValueError::new_err(format!(
+                "backend reported reading {read} bytes into a {}-byte buffer",
+                buffer.len()
+            )));
+        }
         buffer.truncate(read);
-        self.store(self.load().saturating_add(read as u64));
+        let next = position
+            .checked_add(read as u64)
+            .ok_or_else(|| PyValueError::new_err("read position exceeds u64::MAX"))?;
+        self.store(next);
         Ok(buffer)
+    }
+
+    fn read_to_end_buffer(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
+        const CHUNK: usize = 64 * 1024;
+        let mut bytes = Vec::new();
+        loop {
+            let chunk = self.read_buffer(py, CHUNK)?;
+            if chunk.is_empty() {
+                return Ok(bytes);
+            }
+            bytes.try_reserve(chunk.len()).map_err(|error| {
+                PyValueError::new_err(format!("cannot grow cursor read result: {error}"))
+            })?;
+            bytes.extend_from_slice(&chunk);
+        }
+    }
+
+    fn write_slice(&self, py: Python<'_>, bytes: &[u8]) -> PyResult<u64> {
+        if let Some(mut reader) = self.reader()?.take() {
+            reader.close().map_err(crate::holder::fs::storage_error)?;
+        }
+        let mut handle = self.handle.borrow_mut(py);
+        let position = self.load();
+        let offered = u64::try_from(bytes.len())
+            .map_err(|_| PyValueError::new_err("write length exceeds u64::MAX"))?;
+        position
+            .checked_add(offered)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        let written = handle
+            .inner
+            .pwrite(position, bytes)
+            .map_err(crate::holder::fs::storage_error)?;
+        if written > bytes.len() {
+            return Err(PyValueError::new_err(
+                "backend reported writing beyond the supplied buffer",
+            ));
+        }
+        let next = position
+            .checked_add(written as u64)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        self.store(next);
+        Ok(written as u64)
     }
 }
 
@@ -2558,9 +2725,10 @@ impl PyIOCursor {
                     .filesystem()
                     .open_input_file(bound.path())
                     .map_err(crate::holder::fs::storage_error)?;
-                reader
-                    .seek(std::io::SeekFrom::Start(self.load()))
-                    .map_err(crate::holder::fs::storage_error)?;
+                if let Err(error) = reader.seek(std::io::SeekFrom::Start(self.load())) {
+                    let _ = reader.close();
+                    return Err(crate::holder::fs::storage_error(error));
+                }
                 *slot = Some(reader);
             }
             let reader = slot
@@ -2593,40 +2761,35 @@ impl PyIOCursor {
     #[pyo3(signature = (size = -1))]
     fn read<'py>(&self, py: Python<'py>, size: i64) -> PyResult<Bound<'py, PyBytes>> {
         self.require_open()?;
-        let position = self.load();
-        let wanted = match usize::try_from(size) {
-            Ok(size) => size,
-            Err(_) => {
-                let handle = self.handle.borrow(py);
-                let size = match handle.inner.bound_location() {
-                    Some(bound) => bound
-                        .filesystem()
-                        .file_info(bound.path())
-                        .map_err(crate::holder::fs::storage_error)?
-                        .size
-                        .unwrap_or(0),
-                    None => handle.inner.size(),
-                };
-                usize::try_from(size.saturating_sub(position)).map_err(value_error)?
-            }
+        let buffer = match usize::try_from(size) {
+            Ok(wanted) => self.read_buffer(py, wanted)?,
+            Err(_) => self.read_to_end_buffer(py)?,
         };
-        let buffer = self.read_buffer(py, wanted)?;
         Ok(PyBytes::new(py, &buffer))
     }
 
     /// Read bytes into any writable Python buffer.
     fn readinto(&self, py: Python<'_>, buffer: &Bound<'_, PyAny>) -> PyResult<usize> {
         self.require_open()?;
-        let capacity = buffer.len()?;
-        let bytes = self.read(
-            py,
-            i64::try_from(capacity)
-                .map_err(|_| PyValueError::new_err("buffer length exceeds i64::MAX"))?,
-        )?;
-        let count = bytes.len()?;
-        let stop = isize::try_from(count)
-            .map_err(|_| PyValueError::new_err("buffer length exceeds isize::MAX"))?;
-        buffer.set_item(PySlice::new(py, 0, stop, 1), bytes)?;
+        let view = PyBuffer::<u8>::get(buffer).map_err(|_| {
+            PyTypeError::new_err("readinto() argument must be a writable contiguous byte buffer")
+        })?;
+        let capacity = view
+            .as_mut_slice(py)
+            .ok_or_else(|| {
+                PyTypeError::new_err(
+                    "readinto() argument must be a writable contiguous byte buffer",
+                )
+            })?
+            .len();
+        let bytes = self.read_buffer(py, capacity)?;
+        let count = bytes.len();
+        let target = view.as_mut_slice(py).ok_or_else(|| {
+            PyTypeError::new_err("readinto() argument must be a writable contiguous byte buffer")
+        })?;
+        for (slot, byte) in target.iter().zip(bytes) {
+            slot.set(byte);
+        }
         Ok(count)
     }
 
@@ -2649,19 +2812,49 @@ impl PyIOCursor {
     }
 
     /// Write at the position, advancing it, returning the bytes written.
-    fn write(&self, py: Python<'_>, data: &[u8]) -> PyResult<u64> {
+    fn write(&self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<u64> {
+        const WINDOW: usize = 64 * 1024;
         self.require_open()?;
-        if let Some(mut reader) = self.reader()?.take() {
-            reader.close().map_err(crate::holder::fs::storage_error)?;
+        if let Ok(bytes) = data.cast::<PyBytes>() {
+            return self.write_slice(py, bytes.as_bytes());
         }
-        let mut handle = self.handle.borrow_mut(py);
-        let position = self.load();
-        let written = handle
-            .inner
-            .pwrite(position, data)
-            .map_err(crate::holder::fs::storage_error)?;
-        self.store(position + written as u64);
-        Ok(written as u64)
+
+        let byte_view = py
+            .import("builtins")?
+            .getattr("memoryview")?
+            .call1((data,))
+            .and_then(|view| view.call_method1("cast", ("B",)))
+            .map_err(|_| {
+                PyTypeError::new_err(
+                    "write() argument must support the contiguous byte buffer protocol",
+                )
+            })?;
+        let view = PyBuffer::<u8>::get(&byte_view).map_err(|_| {
+            PyTypeError::new_err(
+                "write() argument must support the contiguous byte buffer protocol",
+            )
+        })?;
+        let cells = view.as_slice(py).ok_or_else(|| {
+            PyTypeError::new_err("write() argument must be a contiguous byte buffer")
+        })?;
+        let length = u64::try_from(cells.len())
+            .map_err(|_| PyValueError::new_err("write length exceeds u64::MAX"))?;
+        self.load()
+            .checked_add(length)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        let mut window = vec![0_u8; cells.len().min(WINDOW)];
+        let mut total = 0_u64;
+        for chunk in cells.chunks(WINDOW) {
+            for (slot, cell) in window.iter_mut().zip(chunk) {
+                *slot = cell.get();
+            }
+            let written = self.write_slice(py, &window[..chunk.len()])?;
+            total += written;
+            if written < chunk.len() as u64 {
+                break;
+            }
+        }
+        Ok(total)
     }
 
     /// Flush the handle the cursor writes through.

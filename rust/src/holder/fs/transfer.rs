@@ -1,6 +1,9 @@
 //! Native and bounded transfers between bound locations.
 
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{Error, IOKind, Result};
 
@@ -15,10 +18,14 @@ pub fn copy_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>
         .filesystem()
         .try_equals(target.filesystem().as_ref())?
     {
+        // `copy_file` returns no count, while `IOBase::copy_into` must. Obtain
+        // that required result before mutation so a later stat failure can
+        // never report failure after a completed copy.
+        let size = transfer_size(source)?;
         source
             .filesystem()
             .copy_file(source.path(), target.path())?;
-        return copied_size(target);
+        return Ok(size);
     }
 
     let mut reader = source.filesystem().open_input_stream(source.path())?;
@@ -53,29 +60,30 @@ pub fn move_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>
         .filesystem()
         .try_equals(target.filesystem().as_ref())?
     {
+        let size = transfer_size(source)?;
         source
             .filesystem()
             .move_file(source.path(), target.path())?;
-        return copied_size(target);
+        return Ok(size);
     }
     let size = copy_bound(source, target)?;
     source.filesystem().delete_file(source.path())?;
     Ok(size)
 }
 
-fn copied_size(target: &BoundLocation) -> Result<u64> {
-    let info = target.filesystem().file_info(target.path())?;
+fn transfer_size(source: &BoundLocation) -> Result<u64> {
+    let info = source.filesystem().file_info(source.path())?;
     match info.kind {
         IOKind::File => info.size.ok_or_else(|| {
             Error::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("filesystem did not report the copied file size at {target}"),
+                format!("filesystem did not report the source file size at {source}"),
             ))
         }),
-        IOKind::Unknown => Err(Error::absent("copied file", target)),
+        IOKind::Unknown => Err(Error::absent("source file", source)),
         _ => Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::IsADirectory,
-            format!("expected a copied file at {target}, got a directory"),
+            format!("expected a source file at {source}, got a directory"),
         ))),
     }
 }
@@ -88,6 +96,15 @@ fn transfer(reader: &mut dyn ByteReader, writer: &mut dyn ByteWriter) -> Result<
         if read == 0 {
             return Ok(copied);
         }
+        if read > buffer.len() {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "cross-filesystem input stream reported {read} bytes for a {}-byte buffer",
+                    buffer.len()
+                ),
+            )));
+        }
         let mut written = 0;
         while written < read {
             let count = writer.write(&buffer[written..read])?;
@@ -95,6 +112,15 @@ fn transfer(reader: &mut dyn ByteReader, writer: &mut dyn ByteWriter) -> Result<
                 return Err(Error::Io(std::io::Error::new(
                     std::io::ErrorKind::WriteZero,
                     "cross-filesystem copy output stream stopped",
+                )));
+            }
+            if count > read - written {
+                return Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "cross-filesystem output stream reported {count} bytes for a {}-byte buffer",
+                        read - written
+                    ),
                 )));
             }
             written += count;
@@ -110,5 +136,16 @@ fn transfer(reader: &mut dyn ByteReader, writer: &mut dyn ByteWriter) -> Result<
 
 fn temporary_path(target: &str) -> String {
     let tag = TEMPORARY.fetch_add(1, Ordering::Relaxed);
-    format!("{target}.yggdryl-transfer-{}-{tag}", std::process::id())
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let first = RandomState::new().hash_one((
+        target,
+        std::process::id(),
+        tag,
+        now,
+        std::thread::current().id(),
+    ));
+    let second = RandomState::new().hash_one((now, tag, target.len(), first));
+    format!("{target}.yggdryl-transfer-{:016x}{:016x}", first, second)
 }

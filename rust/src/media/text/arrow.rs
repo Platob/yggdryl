@@ -105,9 +105,9 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     let raw: Box<dyn Read + '_> =
         Box::new(handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?);
     let source = NonemptyDecodedReader::new(raw, codings);
-    let mut records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
+    let records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
     let mut rows = 0_u64;
-    while let Some(row) = records.next() {
+    for row in records {
         row?;
         rows = rows.checked_add(1).ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -424,15 +424,9 @@ fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
 }
 
 fn header_match(options: &TextOptions, bytes: &[u8], capture_values: bool) -> Option<HeaderMatch> {
-    let Some(rowheader) = options.rowheader_regex() else {
-        return None;
-    };
-    let Some(found) = rowheader.captures(bytes) else {
-        return None;
-    };
-    let Some(whole) = found.get(0) else {
-        return None;
-    };
+    let rowheader = options.rowheader_regex()?;
+    let found = rowheader.captures(bytes)?;
+    let whole = found.get(0)?;
     let range = whole.start()..whole.end();
     if !capture_values {
         return Some(HeaderMatch {
@@ -504,9 +498,11 @@ impl<R: Read> RawRows<R> {
         let (body, captures, matched, body_decoded_size) = match header {
             ScannedHeader::Nonmatching => (
                 bytes,
-                capture_values
-                    .then(|| vec![None; options.capture_names().len()])
-                    .unwrap_or_default(),
+                if capture_values {
+                    vec![None; options.capture_names().len()]
+                } else {
+                    Vec::new()
+                },
                 false,
                 decoded_size,
             ),
@@ -546,9 +542,11 @@ impl<R: Read> RawRows<R> {
                 } else {
                     (
                         bytes,
-                        capture_values
-                            .then(|| vec![None; options.capture_names().len()])
-                            .unwrap_or_default(),
+                        if capture_values {
+                            vec![None; options.capture_names().len()]
+                        } else {
+                            Vec::new()
+                        },
                         false,
                         decoded_size,
                     )

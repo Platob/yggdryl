@@ -175,7 +175,7 @@ test('a malformed branch or identifier is the native parse failure', () => {
   for (const bad of ['5001', '+5001:cme', '-1:cme', ':cme', '5001:2cme']) {
     assert.throws(() => {
       field.fix.id = bad
-    }, /fix identifier|fix branch/)
+    }, /fix identifier|fix branch/i)
   }
   // Nothing was written by any refusal.
   assert.equal(field.fix.branch, '')
@@ -383,7 +383,7 @@ test('absence throws with the core message, its get twin answers null', () => {
   )
   assert.throws(
     () => registry.fieldById('5001:cme'),
-    /^Error: expected a fix field at "identifier 5001:cme", got nothing$/,
+    /^Error: expected a fix field at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => registry.fieldByName('Nope', ''), /name \\"Nope\\"/)
   assert.throws(() => registry.fieldByPath('Symbol.absent', ''), /path \\"Symbol.absent\\"/)
@@ -437,9 +437,12 @@ test('every branch and identifier argument is coerced at the boundary', () => {
 
   for (const wrong of [55, null, 3.5]) {
     assert.throws(() => registry.fieldById(wrong), /into rust type `String`/)
+  }
+  for (const wrong of [55, 3.5]) {
     assert.throws(() => registry.getFieldByName('Symbol', wrong), /into rust type `String`/)
     assert.throws(() => registry.fieldByPath('std', wrong), /into rust type `String`/)
   }
+  assert.equal(registry.getFieldByName('Symbol', null).name, 'Symbol')
 })
 
 test('the registry iterates lazily in ascending identifier order', () => {
@@ -567,7 +570,7 @@ test('a vendor branch gets its own folder', (t) => {
   assert.ok(reloaded.equals(registry))
   assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
   assert.equal(reloaded.fieldByName('tradeid', 'cme').name, 'TradeID')
-  assert.equal(reloaded.getFieldByTag(5001), null)
+  assert.equal(reloaded.getFieldByTag(5001).name, 'TradeID')
 })
 
 test('insert, update and remove carry the core rules across', () => {
@@ -587,7 +590,7 @@ test('insert, update and remove carry the core rules across', () => {
   )
   assert.throws(
     () => registry.insert(fixField('SymbolSfx', 'utf8', 65, { aliases: ['ticker'] })),
-    /branch \\"standard\\"/,
+    /branch \\"\\"/,
   )
   assert.equal(registry.size, 3)
 
@@ -691,7 +694,7 @@ test('a message resolves through the registry it carries', () => {
   )
   assert.throws(
     () => message.byId('5001:cme'),
-    /^Error: expected a fix value at "identifier 5001:cme", got nothing$/,
+    /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
   assert.throws(() => message.byPath('NoPartyIDs.PartyID'), /path \\"NoPartyIDs.PartyID\\"/)

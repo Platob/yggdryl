@@ -11,7 +11,7 @@ use crate::{Error, IOKind, Result};
 
 use super::{
     ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata,
-    RandomAccessReader, stream::StreamFailure,
+    RandomAccessReader, mask_uri, stream::StreamFailure,
 };
 
 #[derive(Clone)]
@@ -129,7 +129,7 @@ impl FileSystem for MemoryFileSystem {
                     std::io::ErrorKind::NotADirectory,
                     format!(
                         "expected a directory at {:?}, got a file",
-                        selector.base_dir
+                        mask_uri(&selector.base_dir)
                     ),
                 )));
             }
@@ -153,22 +153,24 @@ impl FileSystem for MemoryFileSystem {
         }
         if recursive {
             let mut current = String::new();
-            for part in path.split('/') {
-                if !current.is_empty() {
+            for (index, part) in path.split('/').enumerate() {
+                if index > 0 {
                     current.push('/');
                 }
                 current.push_str(part);
+                if current.is_empty() {
+                    continue;
+                }
                 if state.files.contains_key(&current) {
                     return Err(not_directory(&current));
                 }
                 state.directories.insert(current.clone());
             }
         } else {
-            if let Some((parent, _)) = path.rsplit_once('/')
-                && !parent.is_empty()
-                && info(&state, parent).kind != IOKind::Directory
-            {
-                return Err(Error::absent("parent directory", parent));
+            if let Some((parent, _)) = path.rsplit_once('/') {
+                if !parent.is_empty() && info(&state, parent).kind != IOKind::Directory {
+                    return Err(Error::absent("parent directory", parent));
+                }
             }
             state.directories.insert(path.to_owned());
         }
@@ -199,10 +201,32 @@ impl FileSystem for MemoryFileSystem {
         {
             return Err(Error::Io(std::io::Error::new(
                 std::io::ErrorKind::DirectoryNotEmpty,
-                format!("directory {path:?} is not empty"),
+                format!("directory {:?} is not empty", mask_uri(path)),
             )));
         }
         state.directories.remove(path);
+        Ok(())
+    }
+
+    fn delete_dir_recursive(&self, path: &str) -> Result<()> {
+        if path.is_empty() {
+            return Err(Error::unsupported(
+                "recursive delete at filesystem root",
+                "memory",
+            ));
+        }
+        let mut state = self.lock()?;
+        match info(&state, path).kind {
+            IOKind::Unknown => return Err(Error::absent("directory", path)),
+            IOKind::File => return Err(not_directory(path)),
+            _ => {}
+        }
+        state
+            .files
+            .retain(|candidate, _| beneath(path, candidate).is_none());
+        state
+            .directories
+            .retain(|candidate| candidate != path && beneath(path, candidate).is_none());
         Ok(())
     }
 
@@ -395,13 +419,13 @@ impl MemoryFileSystem {
 }
 
 fn validate_file_parent(state: &State, path: &str) -> Result<()> {
-    if let Some((parent, _)) = path.rsplit_once('/')
-        && !parent.is_empty()
-    {
-        match info(state, parent).kind {
-            IOKind::Directory => {}
-            IOKind::File => return Err(not_directory(parent)),
-            _ => return Err(Error::absent("parent directory", parent)),
+    if let Some((parent, _)) = path.rsplit_once('/') {
+        if !parent.is_empty() {
+            match info(state, parent).kind {
+                IOKind::Directory => {}
+                IOKind::File => return Err(not_directory(parent)),
+                _ => return Err(Error::absent("parent directory", parent)),
+            }
         }
     }
     Ok(())
@@ -444,11 +468,11 @@ impl Iterator for MemoryListing {
             self.failed = true;
             return Some(Err(error));
         }
-        if let Some(base) = self.initial.take()
-            && let Err(error) = self.add_level(&base)
-        {
-            self.failed = true;
-            return Some(Err(error));
+        if let Some(base) = self.initial.take() {
+            if let Err(error) = self.add_level(&base) {
+                self.failed = true;
+                return Some(Err(error));
+            }
         }
         let Reverse(info) = self.frontier.pop()?;
         if info.kind == IOKind::Directory {
@@ -463,14 +487,14 @@ impl Iterator for MemoryListing {
 fn not_directory(path: &str) -> Error {
     Error::Io(std::io::Error::new(
         std::io::ErrorKind::NotADirectory,
-        format!("expected a directory at {path:?}, got a file"),
+        format!("expected a directory at {:?}, got a file", mask_uri(path)),
     ))
 }
 
 fn is_directory(path: &str) -> Error {
     Error::Io(std::io::Error::new(
         std::io::ErrorKind::IsADirectory,
-        format!("expected a file at {path:?}, got a directory"),
+        format!("expected a file at {:?}, got a directory", mask_uri(path)),
     ))
 }
 

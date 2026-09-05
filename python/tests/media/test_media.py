@@ -75,7 +75,7 @@ KNOWN_MIME_TYPES = {
 
 
 def test_mime_type_complete_known_constants_and_default() -> None:
-    assert len(KNOWN_MIME_TYPES) == 60
+    assert len(KNOWN_MIME_TYPES) == 61
     assert MimeType() == MimeType.OCTET_STREAM
     values = []
     for name, canonical in KNOWN_MIME_TYPES.items():

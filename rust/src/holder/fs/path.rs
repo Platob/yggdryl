@@ -101,6 +101,14 @@ impl IOBase for Path {
         self.as_file().byte_stream(position, batch_size)
     }
 
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.as_file().read_all_bytes()
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.as_file().read_range_bytes(offset, length)
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.as_file().pwrite(offset, bytes)
     }
@@ -180,18 +188,23 @@ impl IOBase for Path {
     }
 
     fn clear(&mut self) -> Result<()> {
-        match self.current_kind()? {
-            IOKind::Directory => self.as_directory().clear(),
-            IOKind::Unknown => Ok(()),
-            _ => self.as_file().clear(),
+        match self.filesystem().delete_dir_contents(self.path(), true) {
+            Ok(()) => Ok(()),
+            Err(crate::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotADirectory => {
+                self.as_file().clear()
+            }
+            Err(error) => Err(error),
         }
     }
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        match self.current_kind()? {
-            IOKind::Directory => self.as_directory().remove(recursive),
-            IOKind::Unknown => Ok(()),
-            _ => self.as_file().remove(recursive),
+        match self.filesystem().delete_file(self.path()) {
+            Ok(()) => Ok(()),
+            Err(error) if error.is_absent() => Ok(()),
+            Err(crate::Error::Io(error)) if error.kind() == std::io::ErrorKind::IsADirectory => {
+                self.as_directory().remove(recursive)
+            }
+            Err(error) => Err(error),
         }
     }
 

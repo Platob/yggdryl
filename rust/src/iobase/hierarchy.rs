@@ -83,7 +83,7 @@ pub(crate) fn raw_relative<'path>(base: &str, path: &'path str) -> Option<&'path
     }
     let suffix = path.strip_prefix(base)?;
     if base.ends_with('/') {
-        Some(suffix)
+        Some(suffix.strip_prefix('/').unwrap_or(suffix))
     } else {
         suffix.strip_prefix('/')
     }

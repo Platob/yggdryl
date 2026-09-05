@@ -360,27 +360,27 @@ fn parse_addressing(values: &BTreeMap<String, String>) -> Result<S3AddressingSty
             ));
         }
     };
-    if let Some(value) = values.get("force_virtual_addressing")
-        && parse_bool("force_virtual_addressing", value)?
-    {
-        if style == S3AddressingStyle::Path {
-            return Err(invalid_option(
-                "force_virtual_addressing",
-                "conflicts with path addressing",
-            ));
+    if let Some(value) = values.get("force_virtual_addressing") {
+        if parse_bool("force_virtual_addressing", value)? {
+            if style == S3AddressingStyle::Path {
+                return Err(invalid_option(
+                    "force_virtual_addressing",
+                    "conflicts with path addressing",
+                ));
+            }
+            style = S3AddressingStyle::Virtual;
         }
-        style = S3AddressingStyle::Virtual;
     }
-    if let Some(value) = values.get("force_path_style")
-        && parse_bool("force_path_style", value)?
-    {
-        if style == S3AddressingStyle::Virtual {
-            return Err(invalid_option(
-                "force_path_style",
-                "conflicts with virtual addressing",
-            ));
+    if let Some(value) = values.get("force_path_style") {
+        if parse_bool("force_path_style", value)? {
+            if style == S3AddressingStyle::Virtual {
+                return Err(invalid_option(
+                    "force_path_style",
+                    "conflicts with virtual addressing",
+                ));
+            }
+            style = S3AddressingStyle::Path;
         }
-        style = S3AddressingStyle::Path;
     }
     Ok(style)
 }

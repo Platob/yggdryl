@@ -158,7 +158,7 @@ fn foreign(env: &Env, error: napi::Error) -> Error {
         Some("IsADirectory" | "EISDIR") => std::io::ErrorKind::IsADirectory,
         Some("DirectoryNotEmpty" | "ENOTEMPTY") => std::io::ErrorKind::DirectoryNotEmpty,
         Some("Unsupported" | "ENOTSUP" | "EOPNOTSUPP") => std::io::ErrorKind::Unsupported,
-        Some("Transport") | None | Some(_) => std::io::ErrorKind::Other,
+        _ => std::io::ErrorKind::Other,
     };
     Error::Io(std::io::Error::new(kind, reason))
 }
@@ -296,7 +296,7 @@ impl JsFileSystem {
         })
     }
 
-    fn collect_iterable(env: &Env, iterable: Object<'static>) -> napi::Result<Vec<ArrowFileInfo>> {
+    fn collect_iterable(env: Env, iterable: Object<'static>) -> napi::Result<Vec<ArrowFileInfo>> {
         let global = env.get_global()?;
         let array: Function<'_, (), Object<'_>> = global.get_named_property("Array")?;
         let from: Function<'_, Object<'static>, Vec<ArrowFileInfo>> =
@@ -391,7 +391,7 @@ impl FileSystem for JsFileSystem {
                 .list
                 .borrow_back(env)?
                 .call(FileSelector::from(selector))?;
-            Self::collect_iterable(env, iterable)
+            Self::collect_iterable(*env, iterable)
         });
         match listed {
             Ok(entries) => {
@@ -528,11 +528,11 @@ impl StreamState {
         Ok(())
     }
 
-    fn remember<T>(&mut self, env: &Env, result: napi::Result<T>) -> Result<T> {
+    fn remember<T>(&mut self, env: Env, result: napi::Result<T>) -> Result<T> {
         match result {
             Ok(value) => Ok(value),
             Err(error) => {
-                let error = foreign(env, error);
+                let error = foreign(&env, error);
                 self.failure = Some(error.to_string());
                 Err(error)
             }
@@ -570,7 +570,7 @@ impl JsByteReader {
             .read
             .borrow_back(&env)
             .and_then(|read| read.call(BigInt::from(length)));
-        let bytes = self.state.remember(&env, result)?;
+        let bytes = self.state.remember(env, result)?;
         if bytes.len() as u64 > length {
             return Err(invalid(format!(
                 "filesystem stream read returned {} bytes for a {length} byte request",
@@ -617,7 +617,7 @@ impl ByteReader for JsByteReader {
             .close
             .borrow_back(&env)
             .and_then(|close| close.call(()));
-        self.state.remember(&env, result)?;
+        self.state.remember(env, result)?;
         self.state.failure.as_ref().map_or(Ok(()), |error| {
             Err(Error::Io(std::io::Error::other(error.clone())))
         })
@@ -662,7 +662,7 @@ impl JsRandomAccessReader {
             .read_at
             .borrow_back(&env)
             .and_then(|read| read.call((BigInt::from(offset), BigInt::from(length)).into()));
-        let bytes = self.reader.state.remember(&env, result)?;
+        let bytes = self.reader.state.remember(env, result)?;
         if bytes.len() as u64 > length {
             return Err(invalid(format!(
                 "filesystem readAt returned {} bytes for a {length} byte request",
@@ -737,7 +737,7 @@ impl RandomAccessReader for JsRandomAccessReader {
             .seek
             .borrow_back(&env)
             .and_then(|seek| seek.call((BigInt::from(offset), whence.to_owned()).into()));
-        let position = self.reader.state.remember(&env, result)?;
+        let position = self.reader.state.remember(env, result)?;
         let position = exact_bigint_u64(&position, "seek result")?;
         self.reader.state.position = position;
         Ok(position)
@@ -781,7 +781,7 @@ impl JsByteWriter {
             .write
             .borrow_back(&env)
             .and_then(|write| write.call(bytes));
-        let written = self.state.remember(&env, result)?;
+        let written = self.state.remember(env, result)?;
         let written = exact_bigint_u64(&written, "write result")?;
         if written > length {
             return Err(invalid(format!(
@@ -826,7 +826,7 @@ impl ByteWriter for JsByteWriter {
             .flush
             .borrow_back(&env)
             .and_then(|flush| flush.call(()));
-        self.state.remember(&env, result)
+        self.state.remember(env, result)
     }
 
     fn close(&mut self) -> Result<()> {
@@ -841,7 +841,7 @@ impl ByteWriter for JsByteWriter {
             .close
             .borrow_back(&env)
             .and_then(|close| close.call(()));
-        self.state.remember(&env, result)?;
+        self.state.remember(env, result)?;
         self.state.failure.as_ref().map_or(Ok(()), |error| {
             Err(Error::Io(std::io::Error::other(error.clone())))
         })

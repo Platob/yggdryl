@@ -308,7 +308,7 @@ impl JsFixRegistry {
         JsMimeType::from_core(self.inner.infer_text_protocol(&line))
     }
 
-    /// Infer MsgType from a byte log line without parsing its FIX frame.
+    /// Infer `MsgType` from a byte log line without parsing its FIX frame.
     #[napi]
     pub fn infer_bytes_msgtype(&self, line: Buffer) -> Option<Buffer> {
         self.inner
@@ -316,7 +316,7 @@ impl JsFixRegistry {
             .map(|value| Buffer::from(value.to_vec()))
     }
 
-    /// Infer MsgType from a text log line without parsing its FIX frame.
+    /// Infer `MsgType` from a text log line without parsing its FIX frame.
     #[napi]
     pub fn infer_text_msgtype(&self, line: String) -> Option<String> {
         self.inner.infer_text_msgtype(&line).map(str::to_owned)

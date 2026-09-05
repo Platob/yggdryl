@@ -81,6 +81,36 @@ impl File {
         self.filesystem().open_append_stream(self.path(), metadata)
     }
 
+    /// Open a high-level output after repairing only a typed missing parent.
+    fn output_for_write(&self, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>> {
+        match self.open_output_stream(metadata) {
+            Err(error) if error.is_absent() => {
+                self.create_parent_after_absence(error)?;
+                self.open_output_stream(metadata)
+            }
+            result => result,
+        }
+    }
+
+    /// Open a high-level append after repairing only a typed missing parent.
+    fn append_for_write(&self, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>> {
+        match self.open_append_stream(metadata) {
+            Err(error) if error.is_absent() => {
+                self.create_parent_after_absence(error)?;
+                self.open_append_stream(metadata)
+            }
+            result => result,
+        }
+    }
+
+    fn create_parent_after_absence(&self, error: Error) -> Result<()> {
+        let Some(parent) = self.bound.parent() else {
+            return Err(error);
+        };
+        let parent = parent?;
+        self.filesystem().create_dir(parent.path(), true)
+    }
+
     /// Stream from one retained input open.
     pub fn byte_stream(
         &self,
@@ -103,25 +133,39 @@ impl File {
             }
             Err(error) => return Err(error),
         };
-        reader.seek(std::io::SeekFrom::Start(position))?;
+        if let Err(error) = reader.seek(std::io::SeekFrom::Start(position)) {
+            let _ = reader.close();
+            return Err(error);
+        }
         crate::ByteStream::from_fs_random_reader(reader, batch_size)
     }
 
     fn write_stream(mut writer: Box<dyn ByteWriter>, bytes: &[u8]) -> Result<()> {
-        let mut written = 0;
-        while written < bytes.len() {
-            match writer.write(&bytes[written..]) {
-                Ok(0) => {
+        let result = (|| {
+            let mut written = 0;
+            while written < bytes.len() {
+                let count = writer.write(&bytes[written..])?;
+                if count == 0 {
                     return Err(Error::Io(std::io::Error::new(
                         std::io::ErrorKind::WriteZero,
                         "output stream stopped before the complete value was written",
                     )));
                 }
-                Ok(count) => written += count,
-                Err(error) => return Err(error),
+                if count > bytes.len() - written {
+                    return Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "output stream reported writing beyond the supplied buffer",
+                    )));
+                }
+                written += count;
             }
+            Ok(())
+        })();
+        let close = writer.close();
+        match result {
+            Ok(()) => close,
+            Err(error) => Err(error),
         }
-        writer.close()
     }
 }
 
@@ -178,13 +222,77 @@ impl IOBase for File {
         self.byte_stream(position, batch_size)
     }
 
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        for chunk in self.byte_stream(0, 64 * 1024)? {
+            let chunk = chunk?;
+            bytes.try_reserve(chunk.len()).map_err(|error| {
+                Error::Io(std::io::Error::other(format!(
+                    "cannot grow whole-file read: {error}"
+                )))
+            })?;
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        if length == 0 {
+            return Ok(Vec::new());
+        }
+        let mut reader = match self.open_input_file() {
+            Ok(reader) => reader,
+            Err(error) if error.is_absent() => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let mut bytes = Vec::new();
+        if let Err(error) = bytes.try_reserve_exact(length).map_err(|error| {
+            Error::Io(std::io::Error::other(format!(
+                "cannot allocate a {length}-byte range read: {error}"
+            )))
+        }) {
+            let _ = reader.close();
+            return Err(error);
+        }
+        bytes.resize(length, 0);
+        let result = (|| {
+            let mut filled = 0;
+            while filled < length {
+                let position = offset.checked_add(filled as u64).ok_or_else(|| {
+                    Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "range read position exceeds u64::MAX",
+                    ))
+                })?;
+                let read = reader.read_at(position, &mut bytes[filled..])?;
+                if read == 0 {
+                    break;
+                }
+                if read > length - filled {
+                    return Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "filesystem read beyond the supplied range buffer",
+                    )));
+                }
+                filled += read;
+            }
+            bytes.truncate(filled);
+            Ok(bytes)
+        })();
+        let close = reader.close();
+        match result {
+            Ok(bytes) => close.map(|()| bytes),
+            Err(error) => Err(error),
+        }
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         let info = self.filesystem().file_info(self.path())?;
         let size = info.size.unwrap_or(0);
         let writer = if offset == size && info.kind == crate::IOKind::File {
-            self.open_append_stream(None)?
+            self.append_for_write(None)?
         } else if offset == 0 && info.kind == crate::IOKind::Unknown {
-            self.open_output_stream(None)?
+            self.output_for_write(None)?
         } else {
             return Err(Error::unsupported(
                 "positional writes that are not a sequential append",
@@ -196,11 +304,11 @@ impl IOBase for File {
     }
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        Self::write_stream(self.open_output_stream(None)?, bytes)
+        Self::write_stream(self.output_for_write(None)?, bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
-        let writer = self.open_append_stream(None)?;
+        let writer = self.append_for_write(None)?;
         let offset = writer.tell();
         Self::write_stream(writer, bytes)?;
         Ok(offset)
@@ -230,7 +338,7 @@ impl IOBase for File {
             return Ok(());
         }
         if size == 0 {
-            return Self::write_stream(self.open_output_stream(None)?, b"");
+            return Self::write_stream(self.output_for_write(None)?, b"");
         }
         Err(Error::unsupported(
             "non-zero truncation",

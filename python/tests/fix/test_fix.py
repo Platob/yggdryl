@@ -298,6 +298,8 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
         assert seed.infer_bytes_protocol(bytearray(line)) == protocol
         assert seed.infer_bytes_protocol(memoryview(line)) == protocol
         assert seed.infer_bytes_msgtype(line) == msgtype
+        assert seed.infer_bytes_msgtype(bytearray(line)) == msgtype
+        assert seed.infer_bytes_msgtype(memoryview(line)) == msgtype
         text = line.decode()
         assert seed.infer_text_protocol(text) == protocol
         assert seed.infer_text_msgtype(text) == (
@@ -363,10 +365,10 @@ def test_registry_absence_is_a_key_error_carrying_the_core_message(
 
     with pytest.raises(KeyError) as by_id:
         seed.field_by_id("5001:cme")
-    assert (
-        by_id.value.args[0]
-        == 'expected a fix field at "identifier 5001:cme", got nothing'
+    assert by_id.value.args[0].startswith(
+        'expected a fix field at "identifier 5001:#'
     )
+    assert by_id.value.args[0].endswith('", got nothing')
 
     with pytest.raises(KeyError) as by_name:
         seed.field_by_name("Nope", "")
@@ -424,10 +426,15 @@ def test_registry_coerces_every_branch_and_identifier_argument(
     for wrong in (55, None, 3.5):
         with pytest.raises(TypeError):
             seed.field_by_id(wrong)
+
+    for wrong in (55, 3.5):
         with pytest.raises(TypeError):
             seed.get_field_by_name("Symbol", wrong)
         with pytest.raises(TypeError):
             seed.field_by_path("std", wrong)
+
+    assert seed.get_field_by_name("Symbol", None) == seed.field_by_tag(55)
+    assert seed.get_field_by_path("Symbol", None) == seed.field_by_tag(55)
 
 
 def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
@@ -552,7 +559,7 @@ def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
     assert reloaded == registry
     assert reloaded.field_by_id("5001:cme").name == "TradeID"
     assert reloaded.field_by_name("tradeid", "cme").name == "TradeID"
-    assert reloaded.get_field_by_tag(5001) is None
+    assert reloaded.get_field_by_tag(5001) == reloaded.field_by_id("5001:cme")
 
 
 def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
@@ -675,10 +682,10 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert by_tag.value.args[0] == 'expected a fix value at "tag 1234", got nothing'
     with pytest.raises(KeyError) as by_id:
         message.by_id("5001:cme")
-    assert (
-        by_id.value.args[0]
-        == 'expected a fix value at "identifier 5001:cme", got nothing'
+    assert by_id.value.args[0].startswith(
+        'expected a fix value at "identifier 5001:#'
     )
+    assert by_id.value.args[0].endswith('", got nothing')
     with pytest.raises(KeyError) as by_name:
         message.by_name("nope")
     assert 'name \\"nope\\"' in by_name.value.args[0]

@@ -131,10 +131,16 @@ impl IOFolder for Folder {
                 self.filesystem().type_name(),
             ));
         }
-        if recursive {
-            self.filesystem().delete_dir_contents(self.path(), true)?;
+        let result = if recursive {
+            self.filesystem().delete_dir_recursive(self.path())
+        } else {
+            self.filesystem().delete_dir(self.path())
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) if error.is_absent() => Ok(()),
+            Err(error) => Err(error),
         }
-        self.delete_folder()
     }
 }
 

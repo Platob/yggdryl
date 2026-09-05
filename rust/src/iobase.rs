@@ -972,23 +972,109 @@ pub trait IOBase: Send + IOMedia {
         {
             return crate::holder::fs::copy_bound(source, target_location);
         }
-        target.truncate(0)?;
-        let mut source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
-        let mut chunk = vec![0_u8; TRANSFER_CHUNK];
-        let mut offset = 0_u64;
-        loop {
-            let read = source.read(&mut chunk)?;
-            if read == 0 {
-                break;
+
+        // The generic positional contract has no atomic publish primitive.
+        // Fully consume the source into the existing memory-filesystem
+        // implementation before touching the target. Filesystem-to-filesystem
+        // copies take the bounded native path above and never use this stage.
+        let staging: std::sync::Arc<dyn crate::holder::fs::FileSystem> =
+            std::sync::Arc::new(crate::holder::fs::MemoryFileSystem::new());
+        let staged = crate::holder::fs::BoundLocation::new(
+            std::sync::Arc::clone(&staging),
+            "copy-stage",
+            None::<String>,
+        )?;
+        let mut output = staging.open_output_stream(staged.path(), None)?;
+        let mut source = if let Some(bound) = self.bound_location() {
+            let reader = bound.filesystem().open_input_stream(bound.path())?;
+            ByteStream::from_fs_reader(reader, TRANSFER_CHUNK)?
+        } else {
+            self.pstream_bytes(0, TRANSFER_CHUNK)?
+        };
+        let staged_result = (|| {
+            let mut copied = 0_u64;
+            for chunk in &mut source {
+                let chunk = chunk?;
+                let mut written = 0;
+                while written < chunk.len() {
+                    let count = output.write(&chunk[written..])?;
+                    if count == 0 {
+                        return Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::WriteZero,
+                            "copy staging stream stopped",
+                        )));
+                    }
+                    if count > chunk.len() - written {
+                        return Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "copy staging stream over-reported a write",
+                        )));
+                    }
+                    written += count;
+                }
+                copied = copied.checked_add(chunk.len() as u64).ok_or_else(|| {
+                    Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+                })?;
             }
-            target.pwrite_all(offset, &chunk[..read])?;
-            offset = offset.checked_add(read as u64).ok_or_else(|| {
-                Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
-            })?;
+            Ok(copied)
+        })();
+        let stage_close = output.close();
+        let copied = match staged_result {
+            Ok(copied) => stage_close.map(|()| copied)?,
+            Err(error) => {
+                let _ = stage_close;
+                return Err(error);
+            }
+        };
+        let media_type = self.media_type().clone();
+
+        if let Some(target_location) = target.bound_location() {
+            crate::holder::fs::copy_bound(&staged, target_location)?;
+            target.set_media_type(media_type);
+            return Ok(copied);
         }
-        target.set_media_type(self.media_type().clone());
-        target.flush()?;
-        Ok(offset)
+
+        // Preserve a whole-value target if its publication fails. This branch
+        // exists for buffers and legacy positional handles; bound filesystem
+        // targets publish through a temporary object above.
+        let original = target.read_all_bytes()?;
+        let original_media_type = target.media_type().clone();
+        let publish = (|| {
+            target.truncate(0)?;
+            let mut input = staging.open_input_stream(staged.path())?;
+            let mut buffer = vec![0_u8; TRANSFER_CHUNK];
+            let result = (|| {
+                let mut offset = 0_u64;
+                loop {
+                    let read = input.read(&mut buffer)?;
+                    if read == 0 {
+                        break;
+                    }
+                    target.pwrite_all(offset, &buffer[..read])?;
+                    offset = offset.checked_add(read as u64).ok_or_else(|| {
+                        Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+                    })?;
+                }
+                Ok(())
+            })();
+            let close = input.close();
+            match result {
+                Ok(()) => close?,
+                Err(error) => {
+                    let _ = close;
+                    return Err(error);
+                }
+            }
+            target.set_media_type(media_type);
+            target.flush()
+        })();
+        if let Err(error) = publish {
+            let _ = target.write_all_bytes(&original);
+            target.set_media_type(original_media_type);
+            let _ = target.flush();
+            return Err(error);
+        }
+        Ok(copied)
     }
 
     /// Move this value into `target` when both locations expose that capability.

@@ -180,6 +180,17 @@ def test_file_info_preserves_size_and_nanosecond_mtime() -> None:
     assert info.size == 9_007_199_254_740_993
     assert info.mtime_ns == 1_725_000_000_123_456_789
 
+    class OptionalInfoHandler(MemoryHandler):
+        def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
+            return [pafs.FileInfo(path, pafs.FileType.File) for path in paths]
+
+    optional = IOBase.from_fs(
+        pafs.PyFileSystem(OptionalInfoHandler()), "bucket/unknown-size"
+    ).info()
+    assert optional.type == pafs.FileType.File
+    assert optional.size is None
+    assert optional.mtime_ns is None
+
 
 def test_output_options_reach_the_foreign_stream() -> None:
     class MetadataHandler(MemoryHandler):
@@ -259,11 +270,48 @@ def test_typed_permission_errors_are_not_absence() -> None:
         def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
             raise PermissionError("denied")
 
+        def open_input_stream(self, path: str) -> pa.NativeFile:
+            raise PermissionError("denied")
+
+        def open_input_file(self, path: str) -> pa.NativeFile:
+            raise PermissionError("denied")
+
     handle = IOBase.from_fs(pafs.PyFileSystem(Refuses()), "bucket/key")
     with pytest.raises(PermissionError):
         handle.info()
     with pytest.raises(PermissionError):
         handle.exists()
+    with pytest.raises(PermissionError):
+        handle.read_bytes()
+    with pytest.raises(PermissionError):
+        handle.read_range_bytes(0, 1)
+    for predicate in (handle.is_io, handle.is_atomic, handle.is_tabular):
+        with pytest.raises(PermissionError):
+            predicate()
+
+
+def test_foreign_errors_keep_their_type_without_leaking_credentials() -> None:
+    secret_uri = "s3://access:never-show@bucket/key?session_token=also-hidden"
+
+    class Refuses(MemoryHandler):
+        def open_input_stream(self, path: str) -> pa.NativeFile:
+            raise PermissionError(f"refused {secret_uri}")
+
+        def open_input_file(self, path: str) -> pa.NativeFile:
+            raise PermissionError(f"refused {secret_uri}")
+
+        def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
+            return [
+                pafs.FileInfo(path, pafs.FileType.File, size=1) for path in paths
+            ]
+
+    handle = IOBase.from_fs(pafs.PyFileSystem(Refuses()), "bucket/key", uri=secret_uri)
+    for operation in (handle.read_bytes, handle.open_input_file):
+        with pytest.raises(PermissionError) as failure:
+            operation()
+        message = str(failure.value)
+        assert "never-show" not in message
+        assert "also-hidden" not in message
 
 
 def test_selector_absence_policy_and_strict_deletes_are_typed() -> None:
@@ -271,7 +319,7 @@ def test_selector_absence_policy_and_strict_deletes_are_typed() -> None:
     missing = IOBase.from_fs(filesystem, "missing")
 
     assert list(missing.iterdir()) == []
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(io.UnsupportedOperation):
         missing.delete_dir()
     with pytest.raises(FileNotFoundError):
         missing.delete_file()
@@ -282,8 +330,9 @@ def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
 
     empty = tmp_path / "empty"
     empty.mkdir()
-    IOBase.from_fs(filesystem, empty.as_posix()).delete_dir()
-    assert not empty.exists()
+    with pytest.raises(io.UnsupportedOperation):
+        IOBase.from_fs(filesystem, empty.as_posix()).delete_dir()
+    assert empty.is_dir()
 
     kept = tmp_path / "kept"
     kept.mkdir()
@@ -294,27 +343,64 @@ def test_directory_operations_are_distinct(tmp_path: pathlib.Path) -> None:
     nonempty = tmp_path / "nonempty"
     nonempty.mkdir()
     (nonempty / "child").write_bytes(b"x")
-    with pytest.raises(OSError) as local_failure:
+    with pytest.raises(io.UnsupportedOperation):
         IOBase.from_fs(filesystem, nonempty.as_posix()).delete_dir()
-    assert local_failure.value.errno == errno.ENOTEMPTY
     assert (nonempty / "child").read_bytes() == b"x"
+    IOBase.from_fs(filesystem, nonempty.as_posix()).remove(recursive=True)
+    assert not nonempty.exists()
 
     class StrictHandler(MemoryHandler):
-        def delete_dir(self, path: str) -> None:
-            raise OSError(errno.ENOTEMPTY, "directory not empty")
-
         def delete_file(self, path: str) -> None:
             raise IsADirectoryError(path)
 
     strict_handler = StrictHandler()
     strict_handler.files["nonempty/child"] = b"x"
     strict = pafs.PyFileSystem(strict_handler)
-    with pytest.raises(OSError) as failure:
-        IOBase.from_fs(strict, "nonempty").delete_dir()
-    assert failure.value.errno == errno.ENOTEMPTY
-
     with pytest.raises(IsADirectoryError):
         IOBase.from_fs(strict, "nonempty").delete_file()
+
+    for operation in (
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).delete_file(),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).read_bytes(),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).read_range_bytes(0, 1),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_file(),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_input_stream(
+            compression=None
+        ),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_output_stream(
+            compression=None
+        ),
+        lambda: IOBase.from_fs(filesystem, empty.as_posix()).open_append_stream(
+            compression=None
+        ),
+    ):
+        with pytest.raises(IsADirectoryError):
+            operation()
+
+    source_path = tmp_path / "source.bin"
+    source_path.write_bytes(b"source")
+    source = IOBase.from_fs(filesystem, source_path.as_posix())
+    directory = IOBase.from_fs(filesystem, empty.as_posix())
+    with pytest.raises(IsADirectoryError):
+        source.copy_into(directory)
+    with pytest.raises(IsADirectoryError):
+        source.move_into(directory)
+    assert source_path.read_bytes() == b"source"
+
+
+def test_explicit_unsupported_errno_remains_typed() -> None:
+    class NoAppend(MemoryHandler):
+        def open_append_stream(
+            self, path: str, metadata: Any = None
+        ) -> pa.NativeFile:
+            del metadata
+            raise OSError(errno.ENOTSUP, "append unavailable")
+
+    handler = NoAppend()
+    handler.files["value"] = b"x"
+    handle = IOBase.from_fs(pafs.PyFileSystem(handler), "value")
+    with pytest.raises(io.UnsupportedOperation):
+        handle.append_bytes(b"y")
 
 
 def test_root_contents_deletion_requires_an_explicit_root_binding() -> None:
@@ -355,6 +441,47 @@ def test_cursor_is_a_binary_file_object() -> None:
     for capability in (cursor.readable, cursor.writable, cursor.seekable):
         with pytest.raises(ValueError, match="closed"):
             capability()
+
+
+def test_native_handles_expose_real_arrow_streams() -> None:
+    handle = IOBase.from_bytes(b"abcdef")
+
+    with handle.open_input_file() as stream:
+        assert isinstance(stream, pa.NativeFile)
+        assert stream.read_at(3, 2) == b"cde"
+    with handle.open_input_stream(compression=None, buffer_size=2) as stream:
+        assert stream.read(2) == b"ab"
+        assert stream.read() == b"cdef"
+
+    with handle.open_output_stream(compression=None, buffer_size=2) as stream:
+        stream.write(b"new")
+    assert handle.read_bytes() == b"new"
+
+    with handle.open_append_stream(compression=None, buffer_size=2) as stream:
+        stream.write(pa.py_buffer(b"-tail"))
+    assert handle.read_bytes() == b"new-tail"
+
+    with pytest.raises(io.UnsupportedOperation):
+        handle.open_output_stream(metadata={"content-type": "binary"})
+
+
+def test_cursor_read_to_end_needs_no_size_and_readinto_validates_first() -> None:
+    class UnknownSize(MemoryHandler):
+        def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
+            return [pafs.FileInfo(path, pafs.FileType.File) for path in paths]
+
+    handler = UnknownSize()
+    handler.files["value"] = b"payload"
+    cursor = IOBase.from_fs(pafs.PyFileSystem(handler), "value").cursor()
+    assert cursor.read() == b"payload"
+
+    cursor.seek(0)
+    with pytest.raises(TypeError):
+        cursor.readinto(memoryview(b"xxxx"))
+    assert cursor.tell() == 0
+    target = bytearray(4)
+    assert cursor.readinto(target) == 4
+    assert target == b"payl"
 
 
 def test_cursor_retains_one_random_access_file_across_reads_and_seeks() -> None:
