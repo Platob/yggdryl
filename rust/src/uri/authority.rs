@@ -142,14 +142,15 @@ pub(super) fn validate_authority(value: &str) -> Result<()> {
         let literal = &bracketed[..close];
         validate_ip_literal(literal, value.len() - host_port.len() + 1)?;
         let suffix = &bracketed[close + 1..];
-        if !suffix.is_empty()
-            && (!suffix.starts_with(':') || !suffix[1..].bytes().all(|byte| byte.is_ascii_digit()))
-        {
-            return Err(parse_error(
-                "authority",
-                value.len() - suffix.len(),
-                "characters after a bracketed host must form a numeric port",
-            ));
+        if !suffix.is_empty() {
+            let port = suffix.strip_prefix(':').ok_or_else(|| {
+                parse_error(
+                    "authority",
+                    value.len() - suffix.len(),
+                    "characters after a bracketed host must form a numeric port",
+                )
+            })?;
+            validate_port(port, value.len() - port.len())?;
         }
     } else {
         if let Some(position) = host_port.find(['[', ']']) {
@@ -175,16 +176,28 @@ pub(super) fn validate_authority(value: &str) -> Result<()> {
                     "authority host must not be empty",
                 ));
             }
-            if !port.bytes().all(|byte| byte.is_ascii_digit()) {
-                return Err(parse_error(
-                    "authority",
-                    value.len() - port.len(),
-                    "authority port must contain only decimal digits",
-                ));
-            }
+            validate_port(port, value.len() - port.len())?;
         }
     }
 
+    Ok(())
+}
+
+fn validate_port(port: &str, position: usize) -> Result<()> {
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(parse_error(
+            "authority",
+            position,
+            "authority port must contain one or more decimal digits",
+        ));
+    }
+    if port.parse::<u16>().is_err() {
+        return Err(parse_error(
+            "authority",
+            position,
+            "authority port must be between 0 and 65535",
+        ));
+    }
     Ok(())
 }
 

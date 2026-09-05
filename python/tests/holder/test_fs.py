@@ -100,7 +100,15 @@ class MemoryHandler(pafs.FileSystemHandler):
             del self.files[name]
 
     def delete_dir_contents(self, path: str, missing_dir_ok: bool = False) -> None:
-        self.delete_dir(path)
+        key = path.strip("/")
+        if key in self.files:
+            raise NotADirectoryError(path)
+        prefix = f"{key}/" if key else ""
+        children = [name for name in self.files if name.startswith(prefix)]
+        if key and not children and not missing_dir_ok:
+            raise FileNotFoundError(path)
+        for name in children:
+            del self.files[name]
 
     def delete_root_dir_contents(self) -> None:
         self.files.clear()
@@ -523,7 +531,7 @@ class TestCustomFilesystems:
 
     def test_a_handler_that_raises_surfaces_its_own_message(self) -> None:
         class Broken(MemoryHandler):
-            def open_input_file(self, path: str) -> pa.NativeFile:
+            def open_input_stream(self, path: str) -> pa.NativeFile:
                 raise PermissionError("the bucket refused the request: 403 Forbidden")
 
             def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
@@ -541,7 +549,7 @@ class TestCustomFilesystems:
 
     def test_an_exception_with_no_message_still_names_its_class(self) -> None:
         class Bare(MemoryHandler):
-            def open_input_file(self, path: str) -> pa.NativeFile:
+            def open_input_stream(self, path: str) -> pa.NativeFile:
                 # The shape normal Python code raises: the class is the message.
                 raise PermissionError
 

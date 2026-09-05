@@ -155,12 +155,45 @@ fn reference_conformance(filesystem: Arc<dyn FileSystem>, root: &str) {
     filesystem.delete_file(&format!("{root}/a.bin")).unwrap();
     filesystem.delete_file(&format!("{root}/b.bin")).unwrap();
     filesystem.delete_file(&format!("{root}/new.bin")).unwrap();
+    filesystem
+        .create_dir(&format!("{root}/recursive"), false)
+        .unwrap();
+    write(
+        filesystem.as_ref(),
+        &format!("{root}/recursive/child.bin"),
+        b"child",
+    )
+    .unwrap();
+    filesystem
+        .delete_dir_recursive(&format!("{root}/recursive"))
+        .unwrap();
+    assert_eq!(
+        filesystem
+            .file_info(&format!("{root}/recursive"))
+            .unwrap()
+            .kind,
+        IOKind::Unknown
+    );
     filesystem.delete_dir(root).unwrap();
 }
 
 #[test]
 fn memory_implements_the_complete_reference_contract() {
     reference_conformance(Arc::new(MemoryFileSystem::new()), "suite");
+}
+
+#[test]
+fn memory_recursive_directory_creation_preserves_leading_and_repeated_slashes() {
+    let filesystem = MemoryFileSystem::new();
+    filesystem.create_dir("/a//b", true).unwrap();
+    for path in ["/a", "/a/", "/a//b"] {
+        assert_eq!(
+            filesystem.file_info(path).unwrap().kind,
+            IOKind::Directory,
+            "{path}"
+        );
+    }
+    assert_eq!(filesystem.file_info("a/b").unwrap().kind, IOKind::Unknown);
 }
 
 #[test]
@@ -333,6 +366,36 @@ fn bound_locations_keep_raw_path_uri_and_filesystem_identity_separate() {
         globbed[0].bound_location().unwrap().path(),
         "bucket/v=a%2Fb.bin"
     );
+}
+
+#[test]
+fn native_filesystem_errors_never_expose_credentials_in_opaque_paths() {
+    let filesystem = MemoryFileSystem::new();
+    let path = "s3://access:do-not-leak@bucket/missing?session_token=also-hidden";
+    let error = match filesystem.open_input_file(path) {
+        Ok(_) => panic!("missing path unexpectedly opened"),
+        Err(error) => error,
+    };
+    for rendered in [error.to_string(), format!("{error:?}")] {
+        assert!(!rendered.contains("do-not-leak"), "{rendered}");
+        assert!(!rendered.contains("also-hidden"), "{rendered}");
+    }
+}
+
+#[test]
+fn bound_glob_preserves_repeated_separator_paths() {
+    let memory = MemoryFileSystem::new();
+    memory.create_dir("root/foo/", true).unwrap();
+    write(&memory, "root/foo//bar.txt", b"value").unwrap();
+    let filesystem: Arc<dyn FileSystem> = Arc::new(memory);
+    let root = Folder::from_path(filesystem, "root", None).unwrap();
+
+    let paths = root
+        .glob("foo//*.txt", true)
+        .unwrap()
+        .map(|entry| entry.unwrap().bound_location().unwrap().path().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(paths, ["root/foo//bar.txt"]);
 }
 
 #[derive(Default)]
@@ -540,6 +603,22 @@ fn streaming_retains_one_open_and_output_metadata_reaches_the_backend() {
     output.write(b"x").unwrap();
     output.close().unwrap();
     assert_eq!(*calls.metadata.lock().unwrap(), Some(metadata));
+}
+
+#[test]
+fn whole_and_range_reads_use_streams_without_a_metadata_probe() {
+    let inner = MemoryFileSystem::new();
+    write(&inner, "value.bin", b"0123456789").unwrap();
+    let instrumented = Arc::new(InstrumentedFileSystem::new(inner));
+    let calls = Arc::clone(&instrumented.calls);
+    let filesystem: Arc<dyn FileSystem> = instrumented;
+    let file = File::from_path(filesystem, "value.bin", None).unwrap();
+
+    assert_eq!(file.read_all_bytes().unwrap(), b"0123456789");
+    assert_eq!(file.read_range_bytes(3, 4).unwrap(), b"3456");
+    assert_eq!(calls.file_info.load(Ordering::Relaxed), 0);
+    assert_eq!(calls.input_stream.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.input_file.load(Ordering::Relaxed), 1);
 }
 
 #[test]

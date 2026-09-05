@@ -129,7 +129,7 @@ impl BoundLocation {
         }
         let path = if self.path.is_empty() {
             name.to_owned()
-        } else if self.path.ends_with('/') {
+        } else if is_filesystem_root(self.path()) {
             format!("{}{name}", self.path)
         } else {
             format!("{}/{name}", self.path)
@@ -203,7 +203,7 @@ fn relative_to<'path>(base: &str, path: &'path str) -> Option<&'path str> {
     }
     let suffix = path.strip_prefix(base)?;
     if base.ends_with('/') {
-        Some(suffix)
+        Some(suffix.strip_prefix('/').unwrap_or(suffix))
     } else {
         suffix.strip_prefix('/')
     }
@@ -211,8 +211,32 @@ fn relative_to<'path>(base: &str, path: &'path str) -> Option<&'path str> {
 
 fn uri_join(uri: &str, relative: &str) -> String {
     let (head, suffix) = split_suffix(uri);
-    let separator = if head.ends_with('/') { "" } else { "/" };
+    let separator = if uri_head_is_root(head) { "" } else { "/" };
     format!("{head}{separator}{relative}{suffix}")
+}
+
+fn is_filesystem_root(path: &str) -> bool {
+    path == "/"
+        || path.len() == 3
+            && path.as_bytes()[1] == b':'
+            && path.as_bytes()[2] == b'/'
+            && path.as_bytes()[0].is_ascii_alphabetic()
+}
+
+fn uri_head_is_root(head: &str) -> bool {
+    let Some(authority) = head.find("://").map(|marker| marker + 3) else {
+        return false;
+    };
+    let Some(path_start) = head[authority..].find('/').map(|offset| authority + offset) else {
+        return false;
+    };
+    let path = &head[path_start..];
+    path == "/"
+        || path.len() == 4
+            && path.as_bytes()[0] == b'/'
+            && path.as_bytes()[2] == b':'
+            && path.as_bytes()[3] == b'/'
+            && path.as_bytes()[1].is_ascii_alphabetic()
 }
 
 fn uri_parent(uri: &str) -> Option<String> {
@@ -237,50 +261,105 @@ fn split_suffix(uri: &str) -> (&str, &str) {
 /// Mask URI user information and credential-like query values.
 pub fn mask_uri(uri: &str) -> String {
     let mut masked = uri.to_owned();
-    if let Some(scheme) = masked.find("://") {
-        let authority = scheme + 3;
+    let mut search = 0;
+    while let Some(scheme) = masked[search..].find("://") {
+        let authority = search + scheme + 3;
         let end = masked[authority..]
-            .find(['/', '?', '#'])
+            .find(|character: char| {
+                matches!(character, '/' | '?' | '#') || character.is_whitespace()
+            })
             .map_or(masked.len(), |offset| authority + offset);
         if let Some(at) = masked[authority..end].rfind('@') {
             let at = authority + at;
             masked.replace_range(authority..at, "***");
         }
+        search = (authority + 3).min(masked.len());
     }
-    let Some(query) = masked.find('?') else {
-        return masked;
-    };
-    let fragment = masked[query + 1..]
-        .find('#')
-        .map_or(masked.len(), |offset| query + 1 + offset);
-    let query_text = masked[query + 1..fragment].to_owned();
-    let rebuilt = query_text
-        .split('&')
-        .map(|pair| {
-            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-            let decoded_key = decode_query_key(key);
-            let sensitive = matches!(
-                decoded_key.to_ascii_lowercase().as_str(),
-                "access_key"
-                    | "access_key_id"
-                    | "secret_key"
-                    | "secret_access_key"
-                    | "session_token"
-                    | "token"
-                    | "password"
-            );
-            if sensitive {
-                format!("{key}=***")
-            } else if value.is_empty() && !pair.contains('=') {
-                key.to_owned()
-            } else {
-                format!("{key}={value}")
+
+    let mut cursor = 0;
+    while let Some(relative) = masked[cursor..].find(['=', ':']) {
+        let delimiter = cursor + relative;
+        let bytes = masked.as_bytes();
+        let mut key_end = delimiter;
+        while key_end > 0 && bytes[key_end - 1].is_ascii_whitespace() {
+            key_end -= 1;
+        }
+        let mut key_start = key_end;
+        while key_start > 0 && !credential_field_boundary(bytes[key_start - 1]) {
+            key_start -= 1;
+        }
+        if sensitive_credential_key(&masked[key_start..key_end]) {
+            let mut value_start = delimiter + 1;
+            while masked
+                .as_bytes()
+                .get(value_start)
+                .is_some_and(u8::is_ascii_whitespace)
+            {
+                value_start += 1;
             }
-        })
-        .collect::<Vec<_>>()
-        .join("&");
-    masked.replace_range(query + 1..fragment, &rebuilt);
+            let quote = masked
+                .as_bytes()
+                .get(value_start)
+                .copied()
+                .filter(|byte| matches!(byte, b'\'' | b'"'));
+            if quote.is_some() {
+                value_start += 1;
+            }
+            let value_end = masked.as_bytes()[value_start..]
+                .iter()
+                .position(|byte| {
+                    quote.map_or_else(|| credential_value_boundary(*byte), |quote| *byte == quote)
+                })
+                .map_or(masked.len(), |offset| value_start + offset);
+            masked.replace_range(value_start..value_end, "***");
+            cursor = value_start + 3;
+        } else {
+            cursor = delimiter + 1;
+        }
+    }
     masked
+}
+
+fn credential_field_boundary(byte: u8) -> bool {
+    byte.is_ascii_whitespace()
+        || matches!(
+            byte,
+            b'?' | b'&' | b'#' | b';' | b',' | b'\'' | b'"' | b'(' | b'[' | b'{'
+        )
+}
+
+fn credential_value_boundary(byte: u8) -> bool {
+    byte.is_ascii_whitespace()
+        || matches!(
+            byte,
+            b'&' | b'#' | b';' | b',' | b'\'' | b'"' | b')' | b']' | b'}'
+        )
+}
+
+fn sensitive_credential_key(key: &str) -> bool {
+    let normalized = decode_query_key(key).to_ascii_lowercase().replace('-', "_");
+    matches!(
+        normalized.as_str(),
+        "access_key"
+            | "access_key_id"
+            | "aws_access_key_id"
+            | "secret_key"
+            | "secret_access_key"
+            | "aws_secret_access_key"
+            | "session_token"
+            | "aws_session_token"
+            | "security_token"
+            | "x_amz_security_token"
+            | "credential"
+            | "x_amz_credential"
+            | "signature"
+            | "x_amz_signature"
+            | "token"
+            | "password"
+    ) || normalized.contains("secret")
+        || normalized.ends_with("_token")
+        || normalized.ends_with("_credential")
+        || normalized.ends_with("_signature")
 }
 
 fn decode_query_key(value: &str) -> String {
@@ -367,5 +446,40 @@ mod tests {
 
         let encoded = mask_uri("s3://bucket/key?secret%5Fkey=also-hidden");
         assert!(!encoded.contains("also-hidden"));
+
+        let many = mask_uri(
+            "copy s3://first:first-secret@one/a?X-Amz-Credential=first-credential&X-Amz-Signature=first-signature to s3://second:second-secret@two/b#X-Amz-Security-Token=second-token aws_secret_access_key=third-secret",
+        );
+        for secret in [
+            "first-secret",
+            "first-credential",
+            "first-signature",
+            "second-secret",
+            "second-token",
+            "third-secret",
+        ] {
+            assert!(!many.contains(secret), "leaked {secret}: {many}");
+        }
+        let mappings =
+            mask_uri("secret_key: 'colon-secret' password = spaced-secret token:\"quoted-token\"");
+        for secret in ["colon-secret", "spaced-secret", "quoted-token"] {
+            assert!(!mappings.contains(secret), "leaked {secret}: {mappings}");
+        }
+
+        let repeated = BoundLocation::new(
+            location.filesystem().clone(),
+            "bucket/a//b",
+            Some("s3://bucket/a//b".to_owned()),
+        )
+        .unwrap();
+        let parent = repeated.parent().unwrap().unwrap();
+        assert_eq!(parent.path(), "bucket/a/");
+        assert_eq!(parent.uri(), Some("s3://bucket/a/"));
+        let rejoined = parent.child("b").unwrap();
+        assert_eq!(rejoined.path(), repeated.path());
+        assert_eq!(rejoined.uri(), repeated.uri());
+        let listed = parent.listed("bucket/a//b").unwrap();
+        assert_eq!(listed.path(), repeated.path());
+        assert_eq!(listed.uri(), repeated.uri());
     }
 }

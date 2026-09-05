@@ -49,6 +49,67 @@ impl PyFileSystem {
                 .map_err(|error| foreign(py, &error, operation, path, self.type_name()))
         })
     }
+
+    fn with_gil_file<T>(
+        &self,
+        operation: &'static str,
+        path: &str,
+        call: impl FnOnce(&Bound<'_, PyAny>) -> PyResult<T>,
+    ) -> Result<T> {
+        Python::attach(|py| {
+            let filesystem = self.filesystem.bind(py);
+            call(filesystem).map_err(|error| {
+                foreign_file_operation(py, filesystem, &error, operation, path, self.type_name())
+            })
+        })
+    }
+
+    fn with_gil_files<T>(
+        &self,
+        operation: &'static str,
+        source: &str,
+        target: &str,
+        call: impl FnOnce(&Bound<'_, PyAny>) -> PyResult<T>,
+    ) -> Result<T> {
+        Python::attach(|py| {
+            let filesystem = self.filesystem.bind(py);
+            call(filesystem).map_err(|error| {
+                if should_classify_file_error(py, &error) {
+                    for path in [source, target] {
+                        if is_directory(filesystem, path) {
+                            return is_directory_error(path);
+                        }
+                    }
+                }
+                foreign(py, &error, operation, source, self.type_name())
+            })
+        })
+    }
+
+    fn with_gil_directory<T>(
+        &self,
+        operation: &'static str,
+        path: &str,
+        call: impl FnOnce(&Bound<'_, PyAny>) -> PyResult<T>,
+    ) -> Result<T> {
+        Python::attach(|py| {
+            let filesystem = self.filesystem.bind(py);
+            call(filesystem).map_err(|error| {
+                if should_classify_file_error(py, &error)
+                    && filesystem
+                        .call_method1("get_file_info", (path,))
+                        .and_then(|info| file_info_from_py(&info))
+                        .is_ok_and(|info| info.kind == yggdryl::IOKind::File)
+                {
+                    return Error::Io(std::io::Error::new(
+                        ErrorKind::NotADirectory,
+                        format!("expected a directory at {:?}, got a file", mask_uri(path)),
+                    ));
+                }
+                foreign(py, &error, operation, path, self.type_name())
+            })
+        })
+    }
 }
 
 fn safe_message(error: &PyErr) -> String {
@@ -94,6 +155,10 @@ fn foreign(
             .import("io")
             .and_then(|io| io.getattr("UnsupportedOperation"))
             .is_ok_and(|class| error.matches(py, class).unwrap_or(false))
+        || error.is_instance_of::<PyOSError>(py)
+            && ["ENOTSUP", "EOPNOTSUPP", "ENOSYS"]
+                .iter()
+                .any(|name| has_errno(py, error, name))
     {
         Error::unsupported(operation, backend)
     } else if error.is_instance_of::<PyOSError>(py) && has_errno(py, error, "ENOTEMPTY") {
@@ -101,6 +166,74 @@ fn foreign(
     } else {
         io_error(ErrorKind::Other, error)
     }
+}
+
+fn should_classify_file_error(py: Python<'_>, error: &PyErr) -> bool {
+    if error.is_instance_of::<PyPermissionError>(py) {
+        return true;
+    }
+    error.is_instance_of::<PyOSError>(py)
+        && !error.is_instance_of::<PyFileNotFoundError>(py)
+        && !error.is_instance_of::<PyFileExistsError>(py)
+        && !error.is_instance_of::<PyNotADirectoryError>(py)
+        && !error.is_instance_of::<PyIsADirectoryError>(py)
+        && !has_errno(py, error, "ENOTEMPTY")
+        && !["ENOTSUP", "EOPNOTSUPP", "ENOSYS"]
+            .iter()
+            .any(|name| has_errno(py, error, name))
+}
+
+fn is_directory(filesystem: &Bound<'_, PyAny>, path: &str) -> bool {
+    filesystem
+        .call_method1("get_file_info", (path,))
+        .and_then(|info| file_info_from_py(&info))
+        .is_ok_and(|info| info.kind == yggdryl::IOKind::Directory)
+}
+
+fn is_directory_error(path: &str) -> Error {
+    Error::Io(std::io::Error::new(
+        ErrorKind::IsADirectory,
+        format!("expected a file at {:?}, got a directory", mask_uri(path)),
+    ))
+}
+
+fn foreign_file_operation(
+    py: Python<'_>,
+    filesystem: &Bound<'_, PyAny>,
+    error: &PyErr,
+    operation: &'static str,
+    path: &str,
+    backend: &str,
+) -> Error {
+    // Some PyArrow backends surface a directory passed to a strict file
+    // operation as PermissionError or a generic OSError (notably on Windows).
+    // Classify only after the attempted operation failed. A failed stat, or
+    // any non-directory answer, leaves the original failure untouched.
+    if should_classify_file_error(py, error) && is_directory(filesystem, path) {
+        return is_directory_error(path);
+    }
+    foreign(py, error, operation, path, backend)
+}
+
+/// Preserve a successful `PyArrow` `NativeFile`, but normalize the platform's
+/// ambiguous directory failure for direct public opens.
+pub(crate) fn direct_file_error(
+    py: Python<'_>,
+    filesystem: &Bound<'_, PyAny>,
+    error: &PyErr,
+    path: &str,
+) -> PyErr {
+    if should_classify_file_error(py, error) && is_directory(filesystem, path) {
+        return PyIsADirectoryError::new_err(format!(
+            "expected a file at {:?}, got a directory",
+            mask_uri(path)
+        ));
+    }
+    let message = safe_message(error);
+    error
+        .get_type(py)
+        .call1((message.clone(),))
+        .map_or_else(|_| PyOSError::new_err(message), PyErr::from_value)
 }
 
 /// Translate a core storage failure back to the closest built-in exception.
@@ -147,9 +280,7 @@ fn file_info_from_py(info: &Bound<'_, PyAny>) -> PyResult<FileInfo> {
         .and_then(|size| u64::try_from(size).ok());
     let mtime_ns = info.getattr("mtime_ns")?.extract::<Option<i64>>()?;
     match kind_name.as_str() {
-        "File" => size
-            .map(|size| FileInfo::file(path, size, mtime_ns))
-            .ok_or_else(|| PyValueError::new_err("a file info is missing its byte size")),
+        "File" => Ok(FileInfo::file(path, size, mtime_ns)),
         "Directory" => Ok(FileInfo::directory(path, mtime_ns)),
         "NotFound" => Ok(FileInfo::not_found(path)),
         other => Err(PyValueError::new_err(format!(
@@ -245,7 +376,7 @@ impl StickyFailure {
 
 fn require_stream_open(
     close_attempted: bool,
-    failure: &Option<StickyFailure>,
+    failure: Option<&StickyFailure>,
     kind: &'static str,
 ) -> Result<()> {
     if let Some(failure) = failure {
@@ -316,7 +447,7 @@ impl PyInputStream {
     }
 
     fn read_inner(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        require_stream_open(self.close_attempted, &self.failure, "input stream")?;
+        require_stream_open(self.close_attempted, self.failure.as_ref(), "input stream")?;
         let result = Python::attach(|py| {
             let value = self
                 .stream
@@ -369,18 +500,17 @@ struct PyRandomAccessFile {
 }
 
 impl PyRandomAccessFile {
-    fn new(stream: Bound<'_, PyAny>) -> PyResult<Self> {
-        let position = stream.call_method0("tell")?.extract()?;
-        Ok(Self {
+    fn new(stream: Bound<'_, PyAny>) -> Self {
+        Self {
             stream: stream.unbind(),
-            position,
+            position: 0,
             close_attempted: false,
             failure: None,
-        })
+        }
     }
 
     fn require_open(&self) -> Result<()> {
-        require_stream_open(self.close_attempted, &self.failure, "input file")
+        require_stream_open(self.close_attempted, self.failure.as_ref(), "input file")
     }
 }
 
@@ -483,18 +613,17 @@ struct PyOutputStream {
 }
 
 impl PyOutputStream {
-    fn new(stream: Bound<'_, PyAny>) -> PyResult<Self> {
-        let position = stream.call_method0("tell")?.extract()?;
-        Ok(Self {
+    fn new(stream: Bound<'_, PyAny>, position: u64) -> Self {
+        Self {
             stream: stream.unbind(),
             position,
             close_attempted: false,
             failure: None,
-        })
+        }
     }
 
     fn require_open(&self) -> Result<()> {
-        require_stream_open(self.close_attempted, &self.failure, "output stream")
+        require_stream_open(self.close_attempted, self.failure.as_ref(), "output stream")
     }
 }
 
@@ -620,26 +749,25 @@ impl FileSystem for PyFileSystem {
     }
 
     fn delete_dir(&self, path: &str) -> Result<()> {
-        let selector = FileSelector::new(path, false, false);
-        let mut children = self.list(&selector);
-        match children.next() {
-            Some(Ok(_)) => {
-                return Err(Error::Io(std::io::Error::new(
-                    ErrorKind::DirectoryNotEmpty,
-                    format!("directory is not empty at {}", mask_uri(path)),
-                )));
-            }
-            Some(Err(error)) => return Err(error),
-            None => {}
-        }
-        self.with_gil("delete_dir", path, |filesystem| {
+        // PyArrow exposes recursive `delete_dir` only. Listing first cannot
+        // make it an atomic empty-directory delete: a concurrent child could
+        // otherwise be erased between the list and mutation.
+        let _ = path;
+        Err(Error::unsupported(
+            "non-recursive directory deletion",
+            self.type_name(),
+        ))
+    }
+
+    fn delete_dir_recursive(&self, path: &str) -> Result<()> {
+        self.with_gil_directory("delete_dir", path, |filesystem| {
             filesystem.call_method1("delete_dir", (path,))?;
             Ok(())
         })
     }
 
     fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> Result<()> {
-        self.with_gil("delete_dir_contents", path, |filesystem| {
+        self.with_gil_directory("delete_dir_contents", path, |filesystem| {
             let kwargs = PyDict::new(filesystem.py());
             kwargs.set_item("missing_dir_ok", missing_dir_ok)?;
             filesystem.call_method("delete_dir_contents", (path,), Some(&kwargs))?;
@@ -657,36 +785,36 @@ impl FileSystem for PyFileSystem {
     }
 
     fn delete_file(&self, path: &str) -> Result<()> {
-        self.with_gil("delete_file", path, |filesystem| {
+        self.with_gil_file("delete_file", path, |filesystem| {
             filesystem.call_method1("delete_file", (path,))?;
             Ok(())
         })
     }
 
     fn copy_file(&self, source: &str, target: &str) -> Result<()> {
-        self.with_gil("copy_file", source, |filesystem| {
+        self.with_gil_files("copy_file", source, target, |filesystem| {
             filesystem.call_method1("copy_file", (source, target))?;
             Ok(())
         })
     }
 
     fn move_file(&self, source: &str, target: &str) -> Result<()> {
-        self.with_gil("move", source, |filesystem| {
+        self.with_gil_files("move", source, target, |filesystem| {
             filesystem.call_method1("move", (source, target))?;
             Ok(())
         })
     }
 
     fn open_input_file(&self, path: &str) -> Result<Box<dyn RandomAccessReader>> {
-        self.with_gil("open_input_file", path, |filesystem| {
+        self.with_gil_file("open_input_file", path, |filesystem| {
             let stream = filesystem.call_method1("open_input_file", (path,))?;
-            PyRandomAccessFile::new(stream)
+            Ok(PyRandomAccessFile::new(stream))
         })
         .map(|stream| Box::new(stream) as Box<dyn RandomAccessReader>)
     }
 
     fn open_input_stream(&self, path: &str) -> Result<Box<dyn ByteReader>> {
-        self.with_gil("open_input_stream", path, |filesystem| {
+        self.with_gil_file("open_input_stream", path, |filesystem| {
             let kwargs = PyDict::new(filesystem.py());
             kwargs.set_item("compression", filesystem.py().None())?;
             let stream = filesystem.call_method("open_input_stream", (path,), Some(&kwargs))?;
@@ -700,7 +828,7 @@ impl FileSystem for PyFileSystem {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> Result<Box<dyn ByteWriter>> {
-        self.with_gil("open_output_stream", path, |filesystem| {
+        self.with_gil_file("open_output_stream", path, |filesystem| {
             let py = filesystem.py();
             let kwargs = PyDict::new(py);
             kwargs.set_item("compression", py.None())?;
@@ -708,7 +836,7 @@ impl FileSystem for PyFileSystem {
                 kwargs.set_item("metadata", metadata)?;
             }
             let stream = filesystem.call_method("open_output_stream", (path,), Some(&kwargs))?;
-            PyOutputStream::new(stream)
+            Ok(PyOutputStream::new(stream, 0))
         })
         .map(|stream| Box::new(stream) as Box<dyn ByteWriter>)
     }
@@ -718,7 +846,7 @@ impl FileSystem for PyFileSystem {
         path: &str,
         metadata: Option<&OutputMetadata>,
     ) -> Result<Box<dyn ByteWriter>> {
-        self.with_gil("open_append_stream", path, |filesystem| {
+        self.with_gil_file("open_append_stream", path, |filesystem| {
             let py = filesystem.py();
             let kwargs = PyDict::new(py);
             kwargs.set_item("compression", py.None())?;
@@ -726,7 +854,17 @@ impl FileSystem for PyFileSystem {
                 kwargs.set_item("metadata", metadata)?;
             }
             let stream = filesystem.call_method("open_append_stream", (path,), Some(&kwargs))?;
-            PyOutputStream::new(stream)
+            let position = match stream
+                .call_method0("tell")
+                .and_then(|value| value.extract())
+            {
+                Ok(position) => position,
+                Err(error) => {
+                    let _ = stream.call_method0("close");
+                    return Err(error);
+                }
+            };
+            Ok(PyOutputStream::new(stream, position))
         })
         .map(|stream| Box::new(stream) as Box<dyn ByteWriter>)
     }

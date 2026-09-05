@@ -108,7 +108,22 @@ impl<'source> ByteStream<'source> {
                     self.done = true;
                     break;
                 }
-                Ok(read) => filled += read,
+                Ok(read) if read <= target.len() - filled => filled += read,
+                Ok(read) => {
+                    let error = Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "byte source reported {read} bytes for a {}-byte buffer",
+                            target.len() - filled
+                        ),
+                    ));
+                    if filled == 0 {
+                        self.done = true;
+                        return Err(error);
+                    }
+                    self.pending_error = Some(error);
+                    break;
+                }
                 Err(error) if filled == 0 => {
                     self.done = true;
                     return Err(error);
@@ -398,6 +413,24 @@ mod tests {
         assert_eq!(stream.next().unwrap().unwrap(), b"ok");
         assert!(stream.next().is_some_and(|item| item.is_err()));
         assert!(stream.next().is_none());
+        assert!(stream.next().is_none());
+    }
+
+    struct Overreports;
+
+    impl ByteSource for Overreports {
+        fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+            Ok(target.len() + 1)
+        }
+    }
+
+    #[test]
+    fn a_source_cannot_report_bytes_outside_the_supplied_buffer() {
+        let mut stream = ByteStream::from_source(Overreports, 4).unwrap();
+        let error = stream.next().unwrap().unwrap_err();
+        assert!(
+            matches!(error, Error::Io(error) if error.kind() == std::io::ErrorKind::InvalidData)
+        );
         assert!(stream.next().is_none());
     }
 }

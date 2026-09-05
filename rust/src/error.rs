@@ -305,18 +305,20 @@ impl Error {
 
     /// Report that nothing is at `path` where a `expected` was addressed.
     pub fn absent(expected: &'static str, path: impl fmt::Display) -> Self {
+        let path = crate::holder::fs::mask_uri(&path.to_string());
         Self::Absent {
             expected,
-            path: SmolStr::new(path.to_string()),
+            path: SmolStr::new(path),
         }
     }
 
     /// Report that `actual` is already at `path` where an `expected` was created.
     pub fn conflict(expected: &'static str, actual: &'static str, path: impl fmt::Display) -> Self {
+        let path = crate::holder::fs::mask_uri(&path.to_string());
         Self::Conflict {
             expected,
             actual,
-            path: SmolStr::new(path.to_string()),
+            path: SmolStr::new(path),
         }
     }
 

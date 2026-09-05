@@ -26,3 +26,18 @@ fn specialized_values_validate() {
     let urn = Urn::from_str("URN:ISBN:9780131103627").unwrap();
     assert_eq!(urn.to_string(), "urn:isbn:9780131103627");
 }
+
+#[test]
+fn authority_ports_are_explicit_valid_u16_values() {
+    assert_eq!(
+        Authority::from_str("minio:9000").unwrap().port(),
+        Some(9000)
+    );
+    assert_eq!(
+        Authority::from_str("[::1]:9000").unwrap().port(),
+        Some(9000)
+    );
+    for invalid in ["minio:", "minio:65536", "[::1]:", "[::1]:99999"] {
+        assert!(Authority::from_str(invalid).is_err(), "{invalid}");
+    }
+}

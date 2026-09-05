@@ -74,11 +74,15 @@ pub struct FileInfo {
 
 impl FileInfo {
     /// Describe a file.
-    pub fn file(path: impl Into<String>, size: u64, mtime_ns: Option<i64>) -> Self {
+    pub fn file(
+        path: impl Into<String>,
+        size: impl Into<Option<u64>>,
+        mtime_ns: Option<i64>,
+    ) -> Self {
         Self {
             path: path.into(),
             kind: IOKind::File,
-            size: Some(size),
+            size: size.into(),
             mtime_ns,
         }
     }
@@ -186,6 +190,12 @@ pub trait FileSystem: Send + Sync + Any {
     fn create_dir(&self, path: &str, recursive: bool) -> Result<()>;
     /// Delete an empty directory itself.
     fn delete_dir(&self, path: &str) -> Result<()>;
+    /// Delete a directory and all descendants when the backend provides one
+    /// native recursive operation.
+    fn delete_dir_recursive(&self, path: &str) -> Result<()> {
+        self.delete_dir_contents(path, false)?;
+        self.delete_dir(path)
+    }
     /// Delete descendants while retaining the selected directory.
     fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> Result<()>;
     /// Delete every root child while retaining the root.

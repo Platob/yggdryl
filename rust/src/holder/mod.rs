@@ -46,6 +46,7 @@ use crate::IOBase;
 /// ```
 #[derive(Debug)]
 #[non_exhaustive]
+#[allow(clippy::large_enum_variant)]
 pub enum Holder {
     /// An in-memory byte array.
     Buffer(Buffer),
