@@ -159,6 +159,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 - A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or `at least 136 bytes, got 135`.
 - `clear()` -> keeps the constructed seed and secret; it never returns an unseeded state.
 - `Hasher::finish` on `Xxh128` -> the low 64 bits; `as_u128` carries the full value.
+- `fill_arrow_batch` on a running state -> fills the batch's [digest holders](values.md) and leaves the running digest unchanged.
 
 ## Commands
 

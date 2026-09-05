@@ -7,7 +7,7 @@
 | Page | Purpose |
 | --- | --- |
 | [Streaming](streaming.md) | Resumable states, `clear()`, `Hasher`, and the XXH3 seed-and-secret rules. |
-| [Values](values.md) | The canonical `Scalar` byte feed, `stable_hash`, and Arrow row and column digests. |
+| [Values](values.md) | The canonical `Scalar` byte feed, `stable_hash`, digest holders, and Arrow row and column digests. |
 | [Handles](handles.md) | Digesting a handle, `DigestReader` / `DigestWriter`, and the `Hashed<H>` write-through wrapper. |
 
 ## Contract
@@ -200,6 +200,10 @@ assert_eq!(
 ## Performance
 
 `rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([benchmarks](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
+
+The Arrow groups report rows per second for missing or default holders, preserved populated
+holders, and forced recomputation. The JavaScript rows include the IPC copy that binding
+requires.
 
 ### Throughput per algorithm and size
 
