@@ -19,12 +19,12 @@ Every storage implementation is reached through the positional `IOBase` contract
 | key | value |
 | --- | --- |
 | Owns | one enum over every `IOBase` implementation |
-| Variants | local `Buffer`/`Folder`/`Path`/`File`, `fs`, `Buffered`/`Text`/`Media` |
+| Variants | local `Buffer`/`Folder`/`Path`/`File`, `fs`, `Buffered`/`Coded`/`Text`/`Media` |
 | `Holder::local` | `Holder::Path`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
 | Lazy | construction touches no filesystem; a role resolves only when an operation needs it |
 | `Holder::open` | wraps IPC, Parquet, Avro, text, then opens; keeps the schema, footer, and dimension caches; the bindings' route |
-| Idempotent | `into_text`, `buffered`, `into_media` never stack |
+| Idempotent | `into_text`, `into_coded`, `buffered`, `into_media` never stack |
 | Hierarchy | `parent`, `child_by_path`, `ls` return `Holder` |
 
 ## Use

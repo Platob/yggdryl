@@ -11,6 +11,7 @@ pub mod local;
 
 pub use buffer::Buffer;
 
+use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
 use crate::holder::local::{File, Folder};
 use crate::{MediaType, Result, Url};
@@ -68,6 +69,11 @@ pub enum Holder {
     /// The box is what keeps the enum a fixed size: this variant holds a
     /// handle of the very type it belongs to.
     Buffered(Box<Buffered<Self>>),
+    /// Any of the others, presenting the decoded bytes of its content coding.
+    ///
+    /// Boxed for the same reason: a [`Coded`] handle owns the `Holder` that
+    /// holds the encoded form.
+    Coded(Box<Coded>),
     /// Any handle retained as plain-text record media.
     ///
     /// Boxed because the text wrapper owns another `Holder` while keeping its
@@ -261,6 +267,43 @@ impl Holder {
         }
     }
 
+    /// Retain this holder behind the content coding its media type names.
+    ///
+    /// The wrapper presents the *decoded* bytes, so a handle named
+    /// `app.log.gz` reads as the log it holds and reports `text/plain`. The
+    /// conversion is lazy: it reads nothing and decodes nothing until a read
+    /// asks for bytes.
+    ///
+    /// A handle whose name declares no coding wraps as
+    /// [`Codec::Identity`](crate::Codec::Identity), which passes its bytes
+    /// through unchanged, so this is safe to call on any leaf. A holder that
+    /// already presents decoded bytes is returned unchanged - decoded bytes
+    /// have no second coding to remove - and a page cache stays the outermost
+    /// wrapper.
+    #[must_use]
+    pub fn into_coded(self) -> Self {
+        let codec = self.codec();
+        self.into_coded_with(codec, crate::Level::DEFAULT)
+    }
+
+    /// Retain this holder behind an explicit content coding and level.
+    ///
+    /// `level` is the scale writes encode at; reads ignore it. As with
+    /// [`Self::into_coded`], a holder that already presents decoded bytes is
+    /// returned unchanged, so neither argument re-codes an existing view.
+    #[must_use]
+    pub fn into_coded_with(self, codec: crate::Codec, level: crate::Level) -> Self {
+        match self {
+            Self::Coded(coded) => Self::Coded(coded),
+            Self::Buffered(buffered) => {
+                let options = *buffered.options();
+                let held = buffered.into_handle().into_coded_with(codec, level);
+                Self::Buffered(Box::new(Buffered::new(held, options)))
+            }
+            other => Self::Coded(Box::new(Coded::wrap(other, codec).with_level(level))),
+        }
+    }
+
     /// Borrow the held implementation as a trait object.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
@@ -272,6 +315,7 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
+            Self::Coded(inner) => inner.as_io(),
             Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
@@ -289,6 +333,7 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
+            Self::Coded(inner) => inner.as_io_mut(),
             Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
@@ -307,6 +352,7 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
+            Self::Coded(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_ref(),
@@ -325,6 +371,7 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
+            Self::Coded(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
             #[cfg(feature = "arrow")]
             Self::Media(inner) => inner.as_mut(),
@@ -587,6 +634,12 @@ impl From<crate::holder::fs::File> for Holder {
 impl From<Buffered<Holder>> for Holder {
     fn from(value: Buffered<Self>) -> Self {
         Self::Buffered(Box::new(value))
+    }
+}
+
+impl From<Coded> for Holder {
+    fn from(value: Coded) -> Self {
+        Self::Coded(Box::new(value))
     }
 }
 

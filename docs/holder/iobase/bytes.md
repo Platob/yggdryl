@@ -629,6 +629,39 @@ Both calls move every byte into another handle and add or remove a coding, recor
 
 Readers already decode through a name's codings; see [gzip](../../coding/gzip.md), [zlib](../../coding/zlib.md), and [zstd](../../coding/zstd.md).
 
+## Reading a coding in place
+
+`into_coded` retains the [coding](../../coding/index.md) the name declares and presents the decoded value, so no second handle is needed to read a compressed file as what it holds. It reads nothing until a read asks for bytes, and every read streams in bounded windows.
+
+| Call | Presents |
+| --- | --- |
+| `IOBase(path)` | the stored bytes; `codec` is the coding on them |
+| `into_coded()` | the decoded value, with that coding removed from `media_type` |
+| `into_coded(codec, level)` | the same, for bytes whose name does not admit what they are |
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = root / "app.log.gz"
+    path.write_bytes(gzip.compress(b"symbol,price\n"))
+
+    assert IOBase(path).read_bytes()[:2] == b"\x1f\x8b"
+    assert IOBase(path).into_coded().read_text() == "symbol,price\n"
+
+    # A name declaring no coding passes its bytes through, so this is safe to
+    # call on any leaf; a repeat never decodes twice.
+    plain = IOBase(root / "plain.csv")
+    plain.write_text("symbol,price\n")
+    assert plain.into_coded().into_coded().read_text() == "symbol,price\n"
+    ```
+
 ## Open and close
 
 A handle works without `open`; calling it moves materialization to a known point and keeps cached state across many small operations. Python binds the pair to `with`; JavaScript adds `Symbol.dispose`.

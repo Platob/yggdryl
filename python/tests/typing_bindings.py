@@ -925,6 +925,10 @@ bytes_levelled: int = record_handle.compress_into(coded_handle, "zstd", 9)
 bytes_read: int = coded_handle.decompress_into(record_handle)
 bytes_decoded: int = coded_handle.decompress_into(record_handle, codec="gzip")
 
+# The same coding read in place, from the name or from an explicit argument.
+decoded_view: IOBase = IOBase(Path("app.log.gz")).into_coded()
+levelled_view: IOBase = IOBase(Path("app.log")).into_coded("zstd", 9)
+
 assert declared_codec is None or declared_codec
 assert bytes_written >= 0
 assert bytes_levelled >= 0

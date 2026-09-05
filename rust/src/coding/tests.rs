@@ -570,3 +570,96 @@ mod dispatched {
         assert!(handle.read_all_bytes().unwrap().is_empty());
     }
 }
+
+mod held {
+    use crate::holder::buffered::BufferedOptions;
+    use crate::holder::{Buffer, Holder};
+    use crate::{Codec, IOBase, Level, MimeType, Url};
+
+    const PLAIN: &[u8] = b"[INFO] alpha\n[WARN] beta\n";
+
+    fn named(name: &str, bytes: Vec<u8>) -> Holder {
+        Holder::buffer(
+            Buffer::from_bytes(bytes).with_media_type(
+                Url::from_str(&format!("file:///{name}"))
+                    .unwrap()
+                    .media_type(),
+            ),
+        )
+    }
+
+    fn compressed(name: &str, codec: Codec) -> Holder {
+        named(name, codec.dump(PLAIN).unwrap())
+    }
+
+    #[test]
+    fn a_held_coding_comes_from_the_name_and_presents_decoded_bytes() {
+        for (name, codec) in [("app.log.gz", Codec::Gzip), ("app.log.zst", Codec::Zstd)] {
+            let source = compressed(name, codec);
+            assert_eq!(source.read_all_bytes().unwrap(), codec.dump(PLAIN).unwrap());
+
+            let decoded = source.into_coded();
+            assert!(matches!(decoded, Holder::Coded(_)), "{name}");
+            assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN, "{name}");
+            assert_eq!(decoded.size(), PLAIN.len() as u64, "{name}");
+            assert_eq!(decoded.media_type().base(), &MimeType::PLAIN_TEXT, "{name}");
+            assert!(decoded.media_type().encodings().is_empty(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_name_declaring_no_coding_passes_its_bytes_through() {
+        let decoded = named("app.log", PLAIN.to_vec()).into_coded();
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+        assert_eq!(decoded.media_type().base(), &MimeType::PLAIN_TEXT);
+    }
+
+    #[test]
+    fn repeating_the_conversion_never_decodes_twice() {
+        let decoded = compressed("app.log.gz", Codec::Gzip)
+            .into_coded()
+            .into_coded()
+            .into_coded_with(Codec::Zstd, Level::BEST);
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+    }
+
+    #[test]
+    fn a_page_cache_stays_outside_the_coding() {
+        let decoded = compressed("app.log.gz", Codec::Gzip)
+            .buffered(BufferedOptions::default())
+            .into_coded();
+        match &decoded {
+            Holder::Buffered(buffered) => {
+                assert!(matches!(buffered.handle(), Holder::Coded(_)));
+            }
+            other => panic!("expected a cache outside the coding, got {other:?}"),
+        }
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn a_coded_holder_reads_its_text_records_through_the_decoded_view() {
+        use crate::IOMedia as _;
+
+        let decoded = compressed("app.log.gz", Codec::Gzip).into_coded();
+        let options = decoded.record_options().unwrap();
+        assert!(matches!(options, crate::media::RecordOptions::Text(_)));
+
+        let bodies = decoded
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| {
+                let batch = batch.unwrap();
+                let index = batch.schema().index_of("body").unwrap();
+                arrow_array::cast::as_generic_binary_array::<i32>(batch.column(index))
+                    .iter()
+                    .map(|value| value.unwrap().to_vec())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+            .concat();
+        assert_eq!(bodies, [b"[INFO] alpha".to_vec(), b"[WARN] beta".to_vec()]);
+        assert_eq!(decoded.row_size().unwrap(), 2);
+    }
+}
