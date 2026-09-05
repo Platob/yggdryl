@@ -8,11 +8,11 @@ Owns the Parquet footer: field identifiers, `FileStatistics`, geospatial and var
 | --- | --- |
 | Footer read | validates the leaf is Parquet, range-reads the footer, decodes no rows |
 | Field ids | `Field::with_parquet_field_id` writes the `PARQUET:field_id` key into the file schema; `parquet_field_id()` reads it back |
-| `FileStatistics` | `num_rows`, writer, ordered `key_value_metadata` entries (duplicate keys kept), `row_groups` in file order, one column per leaf path (`address.zip`) |
+| `FileStatistics` | `num_rows`, writer, ordered `key_value_metadata` entries (duplicate keys kept), `row_groups` in file order with counts, sizes and an optional split offset, one column per leaf path (`address.zip`) |
 | Bounds | `min_bytes` / `max_bytes` are Parquet's encoded bytes; missing bounds and counts stay null, never zero |
 | `null_count(column)` | sums across row groups; `None` when no row group recorded any |
 | Geospatial column | no min/max; `bounding_box` plus sorted ISO `geometry_types`; a geography records no box |
-| Variant column | schema-level `VARIANT` logical type only |
+| Variant column | the metadata/value storage struct under a schema-level `VARIANT` logical type only |
 | Cache | `open` parses the footer once, `close` drops it, any write invalidates it |
 | Bindings | `read_parquet_statistics` and `read_parquet_geospatial_statistics(column)` (camelCase in JavaScript) return native records through [`Scalar`](../types/scalar.md) |
 | Rust only | `Parquet<H>` and the `parquet::*` free functions |
@@ -522,9 +522,11 @@ assert!(!media.opened());
 - absent file -> `read_arrow_reader` yields zero batches under the declared schema; no missing-footer error.
 - write with no batches -> a real file; the footer holds the schema and `num_rows == 0`.
 - geospatial column -> the writer records no min/max; a foreign writer's min/max is ignored on read.
+- geometry / geography declaration -> the CRS, and a geography's edge algorithm, ride into the file's logical type.
 - foreign `GEOMETRY` / `GEOGRAPHY` / `VARIANT` file -> plain `Binary` / `Struct` Arrow types without extension metadata; files written here round-trip through the embedded Arrow schema.
 - variant value across an Arrow array boundary -> unsupported until the Iceberg v3 layer lands.
 - `geoarrow.wkb` spelling -> revisitable, GeoArrow is not finalized.
+- Python and JavaScript -> an opened `IOBase` retains the same wrapper, so the footer cache applies there too.
 
 ## Commands
 

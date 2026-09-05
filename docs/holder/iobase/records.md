@@ -15,7 +15,7 @@ One Arrow batch read and three explicit write intents on every handle.
 | Commits | `commit_row_size` unset: once at end; `N`: every `N` rows plus remainder; `0`: rejected |
 | Lazy | reads stream batches; append chains stored then incoming; merge indexes only the stored side |
 | Feature flag | `arrow` (default): IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
-| Settings | one [RecordOptions](../../media/options.md) object; Python keyword-only `options=`, JavaScript trailing `options?` |
+| Settings | one [RecordOptions](../../media/options.md) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
 
 ## Use
 
@@ -895,9 +895,17 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 - limit with `merge_by_names` -> refused naming both; a limited write truncates and never pulls the rest.
 - overwrite onto a stored field -> rows cast to it; clear the handle to change it.
 - `select_by_names` with a missing name -> error listing what is there; ASCII case-insensitive; empty selects all.
-- no declared field -> stored shape, no cast; `read_arrow_field` always matches the batches.
+- no declared field -> stored shape, no cast; `read_arrow_field` answers the batches' non-null struct root.
+- a declared column the resource lacks -> the encoding reads everything and the cast fills it with nulls, reordering and converting the rest.
+- a wrong input shape for a shape-named adapter -> rejected before it crosses into the core.
+- `read_records` -> Python and JavaScript only; the Rust primitive read surface stays Arrow-native.
 - `row_size` / `column_size` -> metadata only; cached until `close` while opened; a declared Struct field answers `column_size` with no rows.
+- `row_size` -> headers or footers for schema-bearing encodings, a full multiline-extractor stream for text.
+- `row_size` on a folder -> the sum of matching leaves; a table format answers from its current metadata.
+- `kind` -> `IOKind` in Rust, a `kind` property or getter in the bindings spelling `memory`, `file`, `directory`, `table`, `namespace`, `catalog`, `unknown`.
+- the commit splitter -> slices batches as views and holds one cadence plus the current input remainder.
 - native row conversion -> bounded by the smaller of `batch_row_size` and `commit_row_size`, so a failed row keeps the committed prefix.
+- `TextOptions` -> regex `rowheader` captures, edge stripping, a fixed line separator, syntax-directed pre-read autotyping; generic `RecordOptions` keeps the shared timezone accessor.
 - plain folder -> earlier leaves stay published after a later leaf fails; see [Partitions](partitions.md).
 
 ## Commands

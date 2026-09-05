@@ -23,7 +23,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 
 ## Use
 
-A constructor accepts the obvious spelling of its argument and converts once, in Rust.
+A constructor accepts the obvious spelling of its argument and converts once, in Rust. There is no Python-side parser.
 
 ```python
 from yggdryl import DataType, Field, MediaType, MimeType, Url
@@ -40,7 +40,7 @@ assert str(MediaType("application/json")) == "application/json"
 assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 ```
 
-`from_value` is the generic entry point on every wrapper. `DataType.from_regex(pattern, autotype=True)` reaches the core's named-capture inference.
+`from_value` is the generic entry point on every wrapper: a native value, a string, a PyArrow value, or a type annotation. `DataType.from_regex(pattern, autotype=True)` reaches the core's named-capture inference.
 
 ## Native `Scalar`
 
@@ -77,8 +77,9 @@ assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 | `from_arrow_scalar` / `_array` / `_batch` / `_table` | Arrow C Data or C Stream; a table arrives batch by batch, then is owned as rows |
 | `into_arrow_*` | exact physical types; `field=` casts to a declared shape |
 | `as_bytes`, `as_utf8`, `as_json_bytes`, `as_json_utf8` | the scalar payload, then the core's natural JSON writer |
-| `len`, iteration, indexing, `get`, `path`, `keys` / `values` / `items` | child values stay native |
+| `len`, iteration, indexing, `get`, `path`, containment, `keys` / `values` / `items` | child values stay native |
 | `set`, `remove` | persistent: a rebuilt `Scalar`, source intact |
+| `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute` | checked native arithmetic, mirrored by the Python operators |
 
 All values are hashable, and `kind` survives Arrow, pickle, and repr round trips.
 
@@ -130,7 +131,7 @@ Pass a `Field` when strings or numbers need an exact decimal, binary, or tempora
 
 ## Python value protocols
 
-Wrappers fall into three identity classes. `stable_hash()` is the deterministic native `u64` that `hash()` remaps to `Py_hash_t` without locking anything.
+Wrappers fall into three identity classes. `stable_hash()` is the deterministic native `u64`, which `hash()` remaps to `Py_hash_t` without changing equal-value agreement.
 
 - immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
@@ -304,7 +305,7 @@ assert trade_field.name == "Trade"
 assert [child.name for child in trade_field] == ["trade_id", "symbol"]
 ```
 
-`@scalar(...)` forwards every dataclass option, and `Class.field()` caches one frozen Struct field per decorated class. Global conversion also accepts a native [`Field`](../types/field.md), a PyArrow Schema, Field, or DataType.
+`@scalar(...)` forwards every dataclass option, and `Class.field()` caches one frozen Struct field per decorated class. Global conversion also accepts a native [`Field`](../types/field.md), a PyArrow Schema, Field, or DataType, or a dataclass class or instance.
 
 ```python
 import pyarrow as pa
@@ -321,11 +322,11 @@ assert Trade.field() is row
 assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
 ```
 
-The import preserves exact physical layout and metadata.
+The import preserves exact physical layout and metadata, and `into_dataclass` derives its annotations from that native graph.
 
 ## ASCII vocabularies as enums
 
-`yggdryl.enums` carries the core's static spellings and the enum bases. `fixed_ascii(width)` builds one cached class per [ASCII width](../types/ascii.md), and a member *is* the integer its value packs into.
+`yggdryl.enums` carries the core's static spellings (`DATA_TYPE_IDS`, `CODECS`, `LEVELS`, and the rest) and the enum bases. `fixed_ascii(width)` builds one cached class per [ASCII width](../types/ascii.md), and a member *is* the integer its value packs into.
 
 ```python
 from yggdryl import DataType
@@ -443,7 +444,7 @@ assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"
 assert MIC.from_str("XLON").into_str() == "XLON"
 ```
 
-A `@scalar` attribute typed with one of these carries that class's members as the field's declaration.
+A `@scalar` attribute typed with one of these, or any `AsciiCode` subclass, carries that class's members as the field's declaration.
 
 ```python
 from yggdryl import scalar
@@ -522,7 +523,7 @@ assert url.match("*.gz")
 assert url.relative_to(Url("file:///lake")) == "trades/part-0.tar.gz"
 ```
 
-`IOBase.from_fs` takes any `pyarrow.fs.FileSystem` and returns this same class, so everything above works over S3, GCS, Azure, or your own handler. The filesystem is recognized without importing `pyarrow`.
+`IOBase.from_fs` takes any `pyarrow.fs.FileSystem` and returns this same class, so everything above works over S3, GCS, Azure, a `SubTreeFileSystem`, or your own handler. It is recognized without importing `pyarrow` and handed to the core's seven-method [vtable](../holder/backends/filesystems.md).
 
 ```python
 import pathlib
@@ -693,11 +694,11 @@ handle.overwrite_records([], options=empty)
 
 ### Record options
 
-Configure field, selection, batch sizing, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema and row numbering of [plain-text records](../media/text.md).
+Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema and row numbering of [plain-text records](../media/text.md).
 
 ## pandas and polars
 
-Neither library is a dependency, and neither is imported when `yggdryl` loads. A value is recognized by its *type's* module and qualified name.
+Neither library is a dependency, and neither is imported when `yggdryl` loads. A value is recognized by its *type's* module and qualified name, and the import happens only when rows are read into a frame.
 
 ```python
 import pathlib
@@ -794,11 +795,11 @@ assert json.loads(encoded, cls=Trade) == Trade(1, "AAPL")
 assert Trade.field()["trade_id"].dtype.id == "int64"
 ```
 
-A dataclass used as a dictionary *key* reads back as the tuple of its entries, because JSON and YAML have no non-string keys.
+A dataclass used as a dictionary *key* reads back as the tuple of its entries, because JSON and YAML have no non-string keys. Supplying the decorated class as the target restores the declared shape.
 
 ## Digests
 
-`yggdryl.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, at the algorithm's native width.
+`yggdryl.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, and a one-shot answers a plain `int` at its native width.
 
 ```python
 from yggdryl import Scalar, xxhash

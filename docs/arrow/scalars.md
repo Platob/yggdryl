@@ -10,7 +10,7 @@ One value across the array boundary, both ways, under the materialization budget
 | Validates | The exact `Field`: name, nullability, dictionary options, metadata, extension identity |
 | Null rule | A non-nullable Field takes a logical null only as its datatype's canonical default |
 | Copies | None; `StructScalar` column reads are slices |
-| Limits | 1,000,000 expanded slots and 64 MiB fixed bytes, checked before allocation |
+| Limits | 1,000,000 expanded slots and 64 MiB fixed bytes, summed across siblings, checked before allocation |
 | Errors | `Error::IncompatibleSchema` (shape), `Error::PhysicalLimit` (budget), `Error::Allocation` (allocator) |
 | Bindings | Rust; Python `DataType.arrow_scalar` and `Field.arrow_scalar`; JavaScript none |
 

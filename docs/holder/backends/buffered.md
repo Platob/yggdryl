@@ -11,7 +11,7 @@ A page cache over any [`IOBase`](../iobase/bytes.md) handle, with the value's fi
 | Lazy | Nothing cached at construction; a pinned page fills on the first read that wants it |
 | Page size | Default 64 KiB; rounded up to a power of two, clamped to `64 ..= 1 GiB` |
 | Max bytes | Default 8 MiB, pinned pages included; clamped up to two pages; least recently read page evicted first |
-| TTL | Default 30 s from last access; lazy expiry, no background thread |
+| TTL | Default 30 s from last access; Python `ttl` in seconds, JavaScript `ttlMs` in milliseconds; lazy expiry, no background thread |
 | Pinned | First page and the page holding the current last byte; never evicted or expired; follows a moved end |
 | Writes | `pwrite` writes through, then patches or drops overlapped pages; `truncate` invalidates at or past the new size; `flush` delegates |
 | Drops the cache | `close`, `clear`, `remove`, `handle_mut`, `clear_cache`, `into_handle` |
@@ -348,6 +348,7 @@ let _ = std::fs::remove_file(&path);
 - A hit -> no call on the inner handle; the size is remembered and re-asked only when a read runs past it.
 - Bytes written behind the cache -> invisible; `handle_mut` and `clear_cache` drop every page first.
 - `Coded<Buffered<_>>` -> caches compressed bytes and still decodes on every read.
+- `cached_pages`, `cached_bytes`, `has_cached_page`, `options` -> Rust only; the bindings expose no page inspection.
 
 ## Commands
 

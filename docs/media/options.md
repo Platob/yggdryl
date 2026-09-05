@@ -9,7 +9,7 @@
 | Owns | `IORecordOptions`, `RecordOptions`, each encoding's options struct |
 | Root parts | `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), `dtype` (none), `metadata` (empty) |
 | Shared fields | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, `filter_partitions` |
-| Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable |
+| Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable over that variant's full configuration |
 | `batch_row_size` | rows per batch; [`pstream_bytes`](../holder/iobase/bytes.md) `batch_size` counts bytes |
 | `commit_row_size` | unset publishes once; `N` publishes `N`-row prefixes plus the remainder |
 | Derivation | `for_media_type` reads the base type only |
@@ -214,7 +214,7 @@ The media type names the encoding, so no format argument is passed.
 
 ## Casting
 
-`cast_arrow_batch` and `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root. Every write path routes through this definition.
+`cast_arrow_batch` and `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root.
 
 Rust only.
 
@@ -283,11 +283,13 @@ assert!(message.contains("with_dtype"), "{message}");
 
 ## Edges
 
-- No `dtype` -> `field()` is nothing; `require_field` errors naming `with_field` and `with_dtype`.
+- No `dtype` -> `field()` is nothing, the shape is inferred, and `require_field` errors naming `with_field` and `with_dtype`.
 - `metadata` without a `dtype` -> never reaches a read or write.
 - `set_field` / `with_field` -> nullability and dictionary options dropped.
 - `take_field` -> clears `dtype` and `metadata`, keeps `name`.
+- `with_field(f)` for `f` named `"row"` with no metadata -> equal, and hash-equal, to `with_dtype(f.dtype().clone())`.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
+- Every write path -> routes through `cast_arrow_batch` / `cast_arrow_reader`, so declaration, selection, and stored shape agree.
 - Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).
 - Content coding -> ignored, the derivation [`IOMedia::record_options`](index.md) also performs.
 - `max_row_group_size` on `trades.arrows` -> `None` in Python, `null` in JavaScript.

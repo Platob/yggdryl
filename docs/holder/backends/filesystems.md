@@ -698,6 +698,7 @@ Arrow JS ships no filesystem, so the handler object is the filesystem and its si
 - Own `FileSystem` -> a missing directory lists empty, a read past the end is short, a write replaces the value.
 - JavaScript handle used from a `Worker` -> refuses with a message; the synchronous handler belongs to one thread, so build one per worker.
 - `LocalFileSystem` write -> a temporary file plus a rename; a reader never sees a half-written value.
+- Folder handle, record read -> the partitioned table beneath it; a folder holding Iceberg metadata reads through its snapshots.
 
 ## Commands
 
@@ -767,7 +768,7 @@ Every row lands the same payload twice, through an `fs` handle and natively; hos
     listing (16 entries)    85.5 us      34.4 us
     ```
 
-    Each vtable call costs roughly 12 us fixed, per call not per byte.
+    Each vtable call acquires the GIL and costs roughly 12 us fixed, per call not per byte.
 
 === "JavaScript"
 

@@ -10,11 +10,12 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
 | Pattern location | `kind` is `IOKind::Directory`; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
 | `children_where` | Leaves only, carrying every pair; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
-| `filter_partitions` | `(column, value)` pairs as paths spell them; prunes leaves by path, filters rows through the column's datatype |
+| `filter_partitions` | `(column, value)` pairs as paths spell them; prunes leaves by path, filters carried columns row by row, same answer either way |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
-| Retries | Listings and whole-leaf rewrites retry a bounded number of times; an append never retries |
+| Retries | Listings and whole-leaf rewrites retry a bounded number of times with a growing pause; an append never retries |
 | Routing | Batch by batch; the first batch to reach a leaf performs the operation, later ones append |
+| Bindings | Python listings are `pathlib`-style iterators (`iterdir`, `glob`, `rglob`); JavaScript listings are iterables |
 
 ## Use
 
@@ -119,6 +120,8 @@ Every listing yields one entry at a time, so a folder with a million leaves list
 | Lazy | Building costs nothing; a glob whose fixed prefix names nothing reads no directory |
 | Fails at the entry | The error names it; earlier items stand; `.collect::<Result<Vec<_>>>()` gives a vector |
 | Deterministic | Directory entries are sorted; a walk yields a container immediately before its subtree |
+| Frontier | A recursive walk holds one cursor per open depth, never its results |
+| Owned | `partitions` is owned, bounded by the URL's path depth, not a `Listing` |
 | Backend | [Local](../backends/local.md) reads one directory at a time; an Arrow [filesystem](../backends/filesystems.md) answers a prefix in one call |
 
 ## Partition pruning and filtering
@@ -386,10 +389,14 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
 
 ## Edges
 
+- A range, null test, or `in` list -> `children_matching`, which takes the whole [expression](../../expression/holder.md) language.
+- `len(list(listing))` in Python -> pays for the whole walk.
+- A pair on an `int32` column -> an integer comparison, the text read through the column's datatype.
 - `("price", "null")` in `filter_partitions` -> `price is null`, not text.
 - A declared schema contradicting the stored layout -> refused, naming both.
 - A column the data already carries -> left alone; the mismatch stays visible.
 - Directory value `null` on a nullable declared column -> read back as null.
+- Creating a tree -> address one partition directly, or declare the partition columns on the schema.
 - An append racing another writer -> fails; a replayed append would duplicate rows.
 - A partition touched by five batches -> rewritten five times.
 

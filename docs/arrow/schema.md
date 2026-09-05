@@ -9,11 +9,11 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 | Owns | `Field::into_arrow_schema`, `Field::into_arrow_exchange_schema`, `Field::from_arrow_schema` |
 | Validates | Bounded, non-nullable Struct root; refused, never coerced |
 | Metadata | Root metadata becomes schema metadata and comes back |
-| Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID; transport only |
+| Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
 | Errors | `Error::IncompatibleSchema` (root), `Error::Core(InvalidMetadataValue)` (sidecar) |
 | Feature flag | `arrow` (default) |
 | Bindings | Rust; [Python](../extensions/python.md) `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
-| Per-field | `Field::into_arrow`, `DataType::into_arrow`: [Field](../types/field.md), [DataType](../types/datatype.md) |
+| Per-field | `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow`: [Field](../types/field.md), [DataType](../types/datatype.md) |
 
 ## Use
 
@@ -92,7 +92,7 @@ Rust only.
 - Root not a Struct, nullable, or unbounded -> `Error::IncompatibleSchema`.
 - Caller-set root metadata under the sidecar key -> `into_arrow_exchange_schema` refuses.
 - Sidecar malformed, naming a non-dictionary field, or conflicting with a non-zero Arrow ID -> `from_arrow_schema` refuses.
-- `FFI_ArrowSchema` round trip -> `dict_id()` reads `Some(0)`; the sidecar restores it.
+- C Data Interface -> dictionary ordering crosses, IDs do not: `dict_id()` reads `Some(0)`, the sidecar restores it.
 
 ## Commands
 

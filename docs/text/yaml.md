@@ -69,7 +69,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 
 ## One inferring entry point
 
-`from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are the [inferring entry points](index.md) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`.
+`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](index.md) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`.
 
 === "Rust"
 

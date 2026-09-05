@@ -201,6 +201,7 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 
 ## Edges
 
+- Python or JavaScript `Field` with no nullability argument -> nullable, so its default is null.
 - Python registered `ExtensionType` -> rehydrates, never its storage type.
 - JavaScript `int64` -> `BigInt` (`0n`).
 - Python: `DataType.arrow_scalar`, `Field.arrow_scalar`, `Field.cast_arrow_array`, `Field.cast_arrow_batch` -> [../extensions/python.md](../extensions/python.md).

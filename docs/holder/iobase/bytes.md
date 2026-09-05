@@ -8,7 +8,7 @@ This page owns positional bytes over any handle: `pread`/`pwrite`, streams, lazi
 | --- | --- |
 | Required | `pread` and `pwrite`; every other byte method derives from them |
 | Invariants | `pread` short only at end of value; `pwrite` grows, zero-fills gaps; `size <= capacity`; `reserve` moves `capacity` only |
-| Lazy | Constructing touches nothing; reads of an absent resource yield nothing; writes, `truncate`, `reserve` create |
+| Lazy | Constructing touches nothing; reads of an absent resource yield nothing; writes, `truncate`, `reserve` create the resource and any missing parent |
 | Cached | Open caches, closed fetches; no ordinary read fills the cache |
 | Media type | Computed on ask, re-derived when bytes change; a declared type wins; `codec` is its last coding |
 | Errors | Bindings refuse `compress_into` to a target with no coding; `remove` refuses a container with children unless `recursive` |
@@ -124,7 +124,7 @@ The bindings expose the same lazy iterator with a 65,536-byte default batch.
     assert.equal(cursor.tell(), 3)
     ```
 
-`ByteStream` implements `std::io::Read`; a coded handle decodes straight from the encoded source and retains no decoded pages.
+`ByteStream` implements `std::io::Read`; it never opens a coded handle, decoding straight from the encoded source and retaining no decoded pages.
 
 ## Built from what you already hold
 
@@ -443,7 +443,7 @@ A cursor makes a position explicit; two cursors over one resource advance indepe
 
 | Language | Surface |
 | --- | --- |
-| Rust | `IOCursor`: `tell`, `seek_to`, `seek`, `read_next`, `write_next`; `Cursor<H>` implements `Read`, `Write`, `Seek` |
+| Rust | `IOCursor`: `tell`, `seek_to`, `seek`, `read_next`, `write_next`; `Cursor<H>` from `cursor`/`cursor_at` stays a full handle and implements `Read`, `Write`, `Seek` |
 | Python | shares the handle; `seek(offset, whence)`, `read(size=-1)` |
 | JavaScript | shares the handle; `seek`, `tell`, `position` |
 
@@ -867,15 +867,20 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 
 ## Edges
 
+- `pread` entirely past `size` -> returns `0`, not an error.
 - `pstream_bytes(position, 0)` -> refused; `batch_size` must be non-zero.
 - Stream error -> yielded once after every successful prefix, then the iterator stays fused.
 - `pstream_bytes` at a non-zero position on a coded handle -> decodes and discards the prefix; frames are not seekable.
 - `pstream_bytes` through [Buffered](../backends/buffered.md) -> bypasses the page cache, `cached_pages() == 0`.
+- `IOBase(handle)` in Python -> rebuilt; an in-memory source hands over its content and media type.
 - `is_tabular` on a `.parquet` leaf without the `parquet` feature -> `true`; `record_options` on [Records](records.md) names the undecodable encoding.
 - `codec` with nothing to undo -> Python `None`, JavaScript `null`, never `"identity"`.
-- `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`; nothing is written.
+- Bindings -> `codec` is a read-only property, `media_type` a settable one.
+- `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`, naming the target's media type; nothing is written.
 - `compress_into` to an in-memory target -> name the codec; the target has no name.
-- `open` on an absent resource -> succeeds without creating it.
+- `open` on an already-open handle -> no-op.
+- `open` on an absent resource -> succeeds without creating it; creation waits for the first write.
+- `close` -> publishes the pending write and releases the cache; the handle stays usable and re-materializes.
 - `clear`/`remove` on an absent resource -> success, nothing created; permission, network, busy failures stay typed errors.
 - `remove(false)` on a container with children -> refused by name; `recursive` is ignored on a leaf.
 

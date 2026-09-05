@@ -205,7 +205,7 @@ handle.reader_at(13).read_to_string(&mut text)?;
 assert_eq!(text, "AAPL,1\n");
 ```
 
-`reader_at` and `writer_at` borrow the handle as a `Reader`/`Writer`. [Adding and removing a coding](bytes.md) moves bytes through a coding in all three languages.
+`reader_at` and `writer_at` borrow the handle as a `Reader`/`Writer` implementing `std::io::Read` and `std::io::Write`. [Adding and removing a coding](bytes.md) moves bytes through a coding in all three languages.
 
 ## Edges
 

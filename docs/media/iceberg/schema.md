@@ -505,7 +505,7 @@ A schema document from an unnumbered tree is refused, while creating a table num
     assert.deepEqual(iceberg.schemaIntoJson(schema).asJs(), document)
     ```
 
-Documents pass through the core [JSON](../../text/json.md) codec as [`Scalar`](../../types/scalar.md) values, validated by the official Iceberg model before projection.
+Documents pass through the core [JSON](../../text/json.md) codec as [`Scalar`](../../types/scalar.md) values, validated and normalized by the official Iceberg model before projection.
 
 | document | `Field` |
 | --- | --- |
@@ -720,6 +720,7 @@ assert!(!written.fields()[0].is_nullable());
 - `unknown` (v3) -> `DataType::Null`, every value reads as null.
 - `Uuid` -> `DataType::Uuid`, spelled `uuid` on the way back.
 - map key -> always required; absent `element-required` or `value-required` -> required.
+- Python or JavaScript caller -> sees the type mapping in the schema a table reports, and commits files through the table's append and overwrite.
 
 ## Commands
 
