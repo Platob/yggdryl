@@ -1128,8 +1128,8 @@ export declare class FixMsg {
    * The dictionary this message is spelled in.
    *
    * Derived from the root field's own `fix:branch` at construction, never
-   * declared, so nothing can disagree with it; `'standard'` when the root
-   * states none.
+   * declared, so nothing can disagree with it; empty when the root states
+   * none.
    */
   get branch(): string
   /**
@@ -1238,8 +1238,8 @@ export declare class FixRegistry {
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
-   * Write standard shards under `<location>/<tree>` and named dictionaries
-   * under `<location>/<tree>/<branch>`, removing empty paths.
+   * Write every populated shard under `<location>/<tree>/<branch>`, removing
+   * the shards, branch folders and trees no field populates any more.
    */
   writeInto(location: LocationInput): void
   /** How many fields are registered. */
@@ -1256,8 +1256,8 @@ export declare class FixRegistry {
   /**
    * The field a canonical or alternate tag names, or `null`.
    *
-   * The standard dictionary wins, then named dictionaries in canonical name
-   * order.
+   * The standard dictionary wins, then named dictionaries in canonical
+   * name order.
    */
   getFieldByTag(tag: number): JsField | null
   /** The field a canonical or alternate tag names. */
@@ -1265,29 +1265,23 @@ export declare class FixRegistry {
   /**
    * The field a canonical name or alias names, ASCII case folded, or `null`.
    *
-   * Supplying `branch` pins one dictionary. Omitting it selects the best
-   * canonical match before any alias, standard before named branches.
+   * Supplying `branch` restricts the lookup. Otherwise the core infers the
+   * best match: canonical before alias, standard before named branches.
    */
-  getFieldByName(name: string, branch?: string): JsField | null
-  /**
-   * The field a canonical name or alias names, ASCII case folded.
-   */
-  fieldByName(name: string, branch?: string): JsField
-  /**
-   * The field a dotted path reaches through a component or group, or `null`.
-   */
-  getFieldByPath(path: string, branch?: string): JsField | null
-  /**
-   * The field a dotted path reaches through a component or group.
-   */
-  fieldByPath(path: string, branch?: string): JsField
-  /** Classify one byte log line without parsing its FIX frame. */
+  getFieldByName(name: string, branch?: string | undefined | null): JsField | null
+  /** The field a canonical name or alias names, ASCII case folded. */
+  fieldByName(name: string, branch?: string | undefined | null): JsField
+  /** The field a dotted path reaches through a component or a group, or `null`. */
+  getFieldByPath(path: string, branch?: string | undefined | null): JsField | null
+  /** The field a dotted path reaches through a component or a group. */
+  fieldByPath(path: string, branch?: string | undefined | null): JsField
+  /** Infer the native MIME classifier for a byte log line. */
   inferBytesProtocol(line: Buffer): MimeType
-  /** Classify one text log line without parsing its FIX frame. */
+  /** Infer the native MIME classifier for a text log line. */
   inferTextProtocol(line: string): MimeType
-  /** Borrow MsgType from one byte log line, or return `null`. */
+  /** Infer `MsgType` from a byte log line without parsing its FIX frame. */
   inferBytesMsgtype(line: Buffer): Buffer | null
-  /** Borrow MsgType from one text log line, or return `null`. */
+  /** Infer `MsgType` from a text log line without parsing its FIX frame. */
   inferTextMsgtype(line: string): string | null
   /** The field a tag or name reaches by deterministic best match, or `null`. */
   getField(key: number | string): JsField | null
@@ -2368,7 +2362,7 @@ export declare class ProtocolField {
   /**
    * The dictionary this field belongs to, on the `fix` view.
    *
-   * A branch crosses as text: `'standard'` is the FIX specification's own
+   * A branch crosses as text: `''` is the FIX specification's own
    * dictionary and what an absent `fix:branch` means, and assigning it
    * removes the key rather than storing it. A spelling that is not a branch
    * throws the native parse failure, and a refusal - a tag the specification
@@ -2378,7 +2372,7 @@ export declare class ProtocolField {
   /** Record the dictionary this field belongs to. */
   set branch(value: string)
   /**
-   * This field's identity, `branch:tag`, on the `fix` view.
+   * This field's identity, `tag:branch`, on the `fix` view.
    *
    * Derived from the branch and the canonical tag on every read and never
    * stored, so it is `null` exactly when `fix:tag` is absent. Assigning one
@@ -2393,9 +2387,8 @@ export declare class ProtocolField {
    *
    * Reads and writes `fix:tag` through the core's own typed accessors, so
    * the property name is never spelled at a call site. `view.delete('tag')`
-   * removes it, the way every other property is removed. A tag below
-   * `fix.STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
-   * another branch cannot claim it.
+   * removes it, the way every other property is removed. A field in another
+   * branch can claim only `fix.USER_TAG_MIN..fix.USER_TAG_MAX`.
    */
   get tag(): number | null
   /** Record the canonical FIX tag, rejecting anything but an exact `i32`. */

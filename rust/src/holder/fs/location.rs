@@ -367,18 +367,18 @@ fn decode_query_key(value: &str) -> String {
     let mut decoded = String::with_capacity(value.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%'
-            && let (Some(high), Some(low)) = (
+        if bytes[index] == b'%' {
+            if let (Some(high), Some(low)) = (
                 bytes.get(index + 1).and_then(|byte| hex(*byte)),
                 bytes.get(index + 2).and_then(|byte| hex(*byte)),
-            )
-        {
-            decoded.push((high << 4 | low) as char);
-            index += 3;
-        } else {
-            decoded.push(bytes[index] as char);
-            index += 1;
+            ) {
+                decoded.push((high << 4 | low) as char);
+                index += 3;
+                continue;
+            }
         }
+        decoded.push(bytes[index] as char);
+        index += 1;
     }
     decoded
 }

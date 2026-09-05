@@ -81,6 +81,36 @@ impl File {
         self.filesystem().open_append_stream(self.path(), metadata)
     }
 
+    /// Open a high-level output after repairing only a typed missing parent.
+    fn output_for_write(&self, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>> {
+        match self.open_output_stream(metadata) {
+            Err(error) if error.is_absent() => {
+                self.create_parent_after_absence(error)?;
+                self.open_output_stream(metadata)
+            }
+            result => result,
+        }
+    }
+
+    /// Open a high-level append after repairing only a typed missing parent.
+    fn append_for_write(&self, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>> {
+        match self.open_append_stream(metadata) {
+            Err(error) if error.is_absent() => {
+                self.create_parent_after_absence(error)?;
+                self.open_append_stream(metadata)
+            }
+            result => result,
+        }
+    }
+
+    fn create_parent_after_absence(&self, error: Error) -> Result<()> {
+        let Some(parent) = self.bound.parent() else {
+            return Err(error);
+        };
+        let parent = parent?;
+        self.filesystem().create_dir(parent.path(), true)
+    }
+
     /// Stream from one retained input open.
     pub fn byte_stream(
         &self,
@@ -260,9 +290,9 @@ impl IOBase for File {
         let info = self.filesystem().file_info(self.path())?;
         let size = info.size.unwrap_or(0);
         let writer = if offset == size && info.kind == crate::IOKind::File {
-            self.open_append_stream(None)?
+            self.append_for_write(None)?
         } else if offset == 0 && info.kind == crate::IOKind::Unknown {
-            self.open_output_stream(None)?
+            self.output_for_write(None)?
         } else {
             return Err(Error::unsupported(
                 "positional writes that are not a sequential append",
@@ -274,11 +304,11 @@ impl IOBase for File {
     }
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        Self::write_stream(self.open_output_stream(None)?, bytes)
+        Self::write_stream(self.output_for_write(None)?, bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
-        let writer = self.open_append_stream(None)?;
+        let writer = self.append_for_write(None)?;
         let offset = writer.tell();
         Self::write_stream(writer, bytes)?;
         Ok(offset)
@@ -308,7 +338,7 @@ impl IOBase for File {
             return Ok(());
         }
         if size == 0 {
-            return Self::write_stream(self.open_output_stream(None)?, b"");
+            return Self::write_stream(self.output_for_write(None)?, b"");
         }
         Err(Error::unsupported(
             "non-zero truncation",

@@ -328,10 +328,10 @@ impl FixRegistry {
             });
         }
         let digest = branch.digest();
-        if let Some(stored) = self.branches.get(&digest)
-            && !stored.has_identity(&branch)
-        {
-            return Err(branch_collision(stored, &branch));
+        if let Some(stored) = self.branches.get(&digest) {
+            if !stored.has_identity(&branch) {
+                return Err(branch_collision(stored, &branch));
+            }
         }
         let is_new = self.branches.insert(digest, branch).is_none();
         if is_new {
@@ -538,17 +538,17 @@ impl FixRegistry {
         if position != last {
             self.index(position);
         }
-        if let Ok(Some(id)) = removed.as_fix().id()
-            && !self.positions_by_id.iter().any(|held| {
+        if let Ok(Some(id)) = removed.as_fix().id() {
+            if !self.positions_by_id.iter().any(|held| {
                 self.fields
                     .get(*held)
                     .and_then(|field| field.as_fix().id().ok().flatten())
                     .is_some_and(|other| other.branch_digest() == id.branch_digest())
-            })
-        {
-            self.branches.remove(&id.branch_digest());
-            self.branch_order
-                .retain(|digest| *digest != id.branch_digest());
+            }) {
+                self.branches.remove(&id.branch_digest());
+                self.branch_order
+                    .retain(|digest| *digest != id.branch_digest());
+            }
         }
         Some(removed)
     }
@@ -594,10 +594,10 @@ impl FixRegistry {
     }
 
     fn check_branch(&self, branch: &FixBranch) -> Result<()> {
-        if let Some(stored) = self.branches.get(&branch.digest())
-            && !stored.has_identity(branch)
-        {
-            return Err(branch_collision(stored, branch));
+        if let Some(stored) = self.branches.get(&branch.digest()) {
+            if !stored.has_identity(branch) {
+                return Err(branch_collision(stored, branch));
+            }
         }
         Ok(())
     }
@@ -650,7 +650,7 @@ impl FixRegistry {
             .copied()
             .or_else(|| {
                 self.branch_values()
-                    .filter(|branch| !branch.is_standard())
+                    .filter(|branch| !branch.is_standard() && FixId::is_admissible(branch, tag))
                     .find_map(|branch| {
                         FixId::from_parts(branch, tag)
                             .ok()
@@ -660,7 +660,7 @@ impl FixRegistry {
             .or_else(|| self.alternate_ids.get(&standard).copied())
             .or_else(|| {
                 self.branch_values()
-                    .filter(|branch| !branch.is_standard())
+                    .filter(|branch| !branch.is_standard() && FixId::is_admissible(branch, tag))
                     .find_map(|branch| {
                         FixId::from_parts(branch, tag)
                             .ok()
@@ -673,10 +673,10 @@ impl FixRegistry {
         if !self.branch_matches(branch) {
             return None;
         }
-        if let Some(position) = self.names.get(&name_digest(branch, name, NAME_SEED))
-            && self.canonical_name_matches(*position, branch, name)
-        {
-            return Some(*position);
+        if let Some(position) = self.names.get(&name_digest(branch, name, NAME_SEED)) {
+            if self.canonical_name_matches(*position, branch, name) {
+                return Some(*position);
+            }
         }
         self.alias_position_by_name(branch, name)
     }
@@ -828,10 +828,10 @@ impl FixRegistry {
         let Ok(branch) = view.branch() else {
             return;
         };
-        if let Ok(Some(id)) = view.id()
-            && self.ids.get(&id) == Some(&pointing_at)
-        {
-            self.ids.remove(&id);
+        if let Ok(Some(id)) = view.id() {
+            if self.ids.get(&id) == Some(&pointing_at) {
+                self.ids.remove(&id);
+            }
         }
         for tag in view.tags().unwrap_or_default() {
             let Ok(id) = FixId::from_parts(&branch, tag) else {
@@ -1013,10 +1013,10 @@ impl LineSeparator {
                 Self::Marker(marker) => memchr::memmem::find(tail, marker),
                 Self::Whitespace => None,
             };
-            if let Some(position) = position
-                && found.is_none_or(|(held, _)| position < held)
-            {
-                found = Some((position, separator));
+            if let Some(position) = position {
+                if found.is_none_or(|(held, _)| position < held) {
+                    found = Some((position, separator));
+                }
             }
         }
         found.map_or(Self::Whitespace, |(_, separator)| separator)

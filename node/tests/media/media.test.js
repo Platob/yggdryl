@@ -70,7 +70,7 @@ const knownMimeTypes = Object.freeze({
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 60)
+  assert.equal(Object.keys(knownMimeTypes).length, 61)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {

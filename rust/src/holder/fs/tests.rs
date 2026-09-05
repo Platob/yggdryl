@@ -401,6 +401,7 @@ fn bound_glob_preserves_repeated_separator_paths() {
 #[derive(Default)]
 struct Calls {
     file_info: AtomicUsize,
+    create_dir: AtomicUsize,
     input_file: AtomicUsize,
     input_stream: AtomicUsize,
     output_stream: AtomicUsize,
@@ -461,6 +462,7 @@ impl FileSystem for InstrumentedFileSystem {
     }
 
     fn create_dir(&self, path: &str, recursive: bool) -> Result<()> {
+        self.calls.create_dir.fetch_add(1, Ordering::Relaxed);
         self.inner.create_dir(path, recursive)
     }
 
@@ -529,6 +531,29 @@ impl FileSystem for InstrumentedFileSystem {
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+#[test]
+fn high_level_writes_repair_a_missing_parent_once_without_probing() {
+    let instrumented = Arc::new(InstrumentedFileSystem::new(MemoryFileSystem::new()));
+    let calls = Arc::clone(&instrumented.calls);
+    let filesystem: Arc<dyn FileSystem> = instrumented;
+    let mut file =
+        File::from_path(Arc::clone(&filesystem), "missing/deep/value.bin", None).unwrap();
+
+    file.write_all_bytes(b"value").unwrap();
+
+    assert_eq!(calls.file_info.load(Ordering::Relaxed), 0);
+    assert_eq!(calls.output_stream.load(Ordering::Relaxed), 2);
+    assert_eq!(calls.create_dir.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        filesystem.file_info("missing/deep").unwrap().kind,
+        IOKind::Directory
+    );
+    assert_eq!(
+        read(filesystem.as_ref(), "missing/deep/value.bin").unwrap(),
+        b"value"
+    );
 }
 
 struct FailingReader {

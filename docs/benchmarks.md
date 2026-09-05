@@ -19,7 +19,7 @@ they measure:
   [Avro](media.md#against-fastavro-and-pyiceberg-on-identical-bytes), and their
   opened-session metadata sections;
 - [expressions](expression.md#against-the-raw-arrow-kernels),
-  [Arrow filesystem](holder.md#what-the-wrapper-costs), and
+  [Arrow filesystem](holder.md#performance-gates), and
   [page buffering](holder.md#what-the-cache-buys-and-what-it-costs);
 - [digests](xxhash.md#benchmarks).
 

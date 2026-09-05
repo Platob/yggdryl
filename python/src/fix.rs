@@ -27,6 +27,7 @@ use yggdryl::{
 
 use crate::enums::PyMimeType;
 use crate::media::iceberg::folder_holder_from_value;
+use crate::text::codec::with_python_bytes;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::value_error;
@@ -72,11 +73,12 @@ pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
 
 /// Retain the branch spelling beside the packed identifier for a field write.
 pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
+    let id = id_from_py(text)?;
     let branch = text
         .split_once(':')
         .map(|(_, branch)| branch)
         .ok_or_else(|| PyValueError::new_err("a FIX identifier requires tag:branch"))?;
-    Ok((branch_from_py(branch)?, id_from_py(text)?))
+    Ok((branch_from_py(branch)?, id))
 }
 
 /// One lookup key, read once at the boundary.
@@ -298,8 +300,12 @@ impl PyFixRegistry {
     }
 
     /// Infer the native MIME classifier for a byte log line.
-    fn infer_bytes_protocol(&self, line: &[u8]) -> PyMimeType {
-        PyMimeType::from_core(self.inner.infer_bytes_protocol(line))
+    fn infer_bytes_protocol(&self, line: &Bound<'_, PyAny>) -> PyResult<PyMimeType> {
+        with_python_bytes(
+            line,
+            "a FIX line must be bytes, bytearray, or memoryview",
+            |line| Ok(PyMimeType::from_core(self.inner.infer_bytes_protocol(line))),
+        )
     }
 
     /// Infer the native MIME classifier for a text log line.
@@ -307,18 +313,25 @@ impl PyFixRegistry {
         PyMimeType::from_core(self.inner.infer_text_protocol(line))
     }
 
-    /// Infer MsgType from a byte log line without parsing its FIX frame.
+    /// Infer `MsgType` from a byte log line without parsing its FIX frame.
     fn infer_bytes_msgtype<'py>(
         &self,
         py: Python<'py>,
-        line: &[u8],
-    ) -> Option<Bound<'py, PyBytes>> {
-        self.inner
-            .infer_bytes_msgtype(line)
-            .map(|value| PyBytes::new(py, value))
+        line: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Bound<'py, PyBytes>>> {
+        with_python_bytes(
+            line,
+            "a FIX line must be bytes, bytearray, or memoryview",
+            |line| {
+                Ok(self
+                    .inner
+                    .infer_bytes_msgtype(line)
+                    .map(|value| PyBytes::new(py, value)))
+            },
+        )
     }
 
-    /// Infer MsgType from a text log line without parsing its FIX frame.
+    /// Infer `MsgType` from a text log line without parsing its FIX frame.
     fn infer_text_msgtype(&self, line: &str) -> Option<String> {
         self.inner.infer_text_msgtype(line).map(str::to_owned)
     }

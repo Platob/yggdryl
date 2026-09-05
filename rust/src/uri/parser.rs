@@ -600,12 +600,8 @@ pub(super) fn canonicalize_file_drive(
     path: &mut UriPath,
     has_authority: &mut bool,
 ) {
-    let authority_bytes = authority.as_str().as_bytes();
-    if authority_bytes.len() == 2
-        && authority_bytes[0].is_ascii_alphabetic()
-        && authority_bytes[1] == b':'
-        && path.as_str().starts_with('/')
-    {
+    if is_file_drive_authority(authority.as_str(), path.as_str()) {
+        let authority_bytes = authority.as_str().as_bytes();
         let mut normalized = SmolStrBuilder::new();
         normalized.push('/');
         normalized.push(char::from(authority_bytes[0].to_ascii_uppercase()));
@@ -642,4 +638,9 @@ pub(super) fn canonicalize_file_drive(
         *path = UriPath(normalized.into());
     }
     *has_authority = true;
+}
+
+pub(super) fn is_file_drive_authority(authority: &str, path: &str) -> bool {
+    let bytes = authority.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && path.starts_with('/')
 }

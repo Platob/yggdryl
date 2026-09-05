@@ -167,11 +167,10 @@ impl FileSystem for MemoryFileSystem {
                 state.directories.insert(current.clone());
             }
         } else {
-            if let Some((parent, _)) = path.rsplit_once('/')
-                && !parent.is_empty()
-                && info(&state, parent).kind != IOKind::Directory
-            {
-                return Err(Error::absent("parent directory", parent));
+            if let Some((parent, _)) = path.rsplit_once('/') {
+                if !parent.is_empty() && info(&state, parent).kind != IOKind::Directory {
+                    return Err(Error::absent("parent directory", parent));
+                }
             }
             state.directories.insert(path.to_owned());
         }
@@ -420,13 +419,13 @@ impl MemoryFileSystem {
 }
 
 fn validate_file_parent(state: &State, path: &str) -> Result<()> {
-    if let Some((parent, _)) = path.rsplit_once('/')
-        && !parent.is_empty()
-    {
-        match info(state, parent).kind {
-            IOKind::Directory => {}
-            IOKind::File => return Err(not_directory(parent)),
-            _ => return Err(Error::absent("parent directory", parent)),
+    if let Some((parent, _)) = path.rsplit_once('/') {
+        if !parent.is_empty() {
+            match info(state, parent).kind {
+                IOKind::Directory => {}
+                IOKind::File => return Err(not_directory(parent)),
+                _ => return Err(Error::absent("parent directory", parent)),
+            }
         }
     }
     Ok(())
@@ -469,11 +468,11 @@ impl Iterator for MemoryListing {
             self.failed = true;
             return Some(Err(error));
         }
-        if let Some(base) = self.initial.take()
-            && let Err(error) = self.add_level(&base)
-        {
-            self.failed = true;
-            return Some(Err(error));
+        if let Some(base) = self.initial.take() {
+            if let Err(error) = self.add_level(&base) {
+                self.failed = true;
+                return Some(Err(error));
+            }
         }
         let Reverse(info) = self.frontier.pop()?;
         if info.kind == IOKind::Directory {

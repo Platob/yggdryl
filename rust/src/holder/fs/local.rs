@@ -262,11 +262,11 @@ impl Iterator for LocalListing {
             self.failed = true;
             return Some(Err(error));
         }
-        if let Some(initial) = self.initial.take()
-            && let Err(error) = self.add_level(initial)
-        {
-            self.failed = true;
-            return Some(Err(error));
+        if let Some(initial) = self.initial.take() {
+            if let Err(error) = self.add_level(initial) {
+                self.failed = true;
+                return Some(Err(error));
+            }
         }
         let Reverse(info) = self.frontier.pop()?;
         if info.kind == IOKind::Directory {

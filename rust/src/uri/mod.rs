@@ -560,7 +560,7 @@ impl<'de> Deserialize<'de> for Uri {
         #[serde(deny_unknown_fields)]
         struct Representation {
             scheme: Scheme,
-            authority: Authority,
+            authority: SmolStr,
             path: UriPath,
             has_authority: bool,
             query: Option<SmolStr>,
@@ -568,9 +568,16 @@ impl<'de> Deserialize<'de> for Uri {
         }
 
         let value = Representation::deserialize(deserializer)?;
+        let drive_authority = value.scheme == Scheme::FILE
+            && is_file_drive_authority(value.authority.as_str(), value.path.as_str());
+        let authority = match Authority::from_str(value.authority.as_str()) {
+            Ok(authority) => authority,
+            Err(_) if drive_authority => Authority(value.authority),
+            Err(error) => return Err(D::Error::custom(error)),
+        };
         Self::from_parts_with_authority(
             value.scheme,
-            value.authority,
+            authority,
             value.path,
             value.has_authority,
             value.query,
