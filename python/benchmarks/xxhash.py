@@ -62,11 +62,11 @@ def main() -> int:
     for size in SIZES:
         data = PAYLOAD[:size] if size <= len(PAYLOAD) else PAYLOAD * (size // len(PAYLOAD) + 1)
         data = data[:size]
-        cases.append((f"xxh3_64 {size:>9} B", lambda data=data: xxhash.xxh3_64(data), size))
+        cases.append((f"xxh3 {size:>9} B", lambda data=data: xxhash.xxh3(data), size))
         if xxhash_c is not None:
             cases.append(
                 (
-                    f"xxh3_64 {size:>9} B (C libxxhash)",
+                    f"xxh3 {size:>9} B (C libxxhash)",
                     lambda data=data: xxhash_c.xxh3_64_intdigest(data),
                     size,
                 )
@@ -77,16 +77,16 @@ def main() -> int:
     for name, native in (
         ("xxh32", xxhash.xxh32),
         ("xxh64", xxhash.xxh64),
-        ("xxh3_64", xxhash.xxh3_64),
-        ("xxh3_128", xxhash.xxh3_128),
+        ("xxh3", xxhash.xxh3),
+        ("xxh128", xxhash.xxh128),
     ):
         cases.append((f"{name} payload", lambda native=native: native(PAYLOAD), size))
     if xxhash_c is not None:
         for name, outside in (
             ("xxh32", xxhash_c.xxh32_intdigest),
             ("xxh64", xxhash_c.xxh64_intdigest),
-            ("xxh3_64", xxhash_c.xxh3_64_intdigest),
-            ("xxh3_128", xxhash_c.xxh3_128_intdigest),
+            ("xxh3", xxhash_c.xxh3_64_intdigest),
+            ("xxh128", xxhash_c.xxh3_128_intdigest),
         ):
             cases.append(
                 (f"{name} payload (C libxxhash)", lambda outside=outside: outside(PAYLOAD), size)
@@ -97,18 +97,18 @@ def main() -> int:
     mutable = bytearray(PAYLOAD)
     view = memoryview(PAYLOAD)
     text = PAYLOAD.decode()
-    cases.append(("xxh3_64 payload (bytearray)", lambda: xxhash.xxh3_64(mutable), size))
-    cases.append(("xxh3_64 payload (memoryview)", lambda: xxhash.xxh3_64(view), size))
-    cases.append(("xxh3_64 payload (str)", lambda: xxhash.xxh3_64(text), size))
+    cases.append(("xxh3 payload (bytearray)", lambda: xxhash.xxh3(mutable), size))
+    cases.append(("xxh3 payload (memoryview)", lambda: xxhash.xxh3(view), size))
+    cases.append(("xxh3 payload (str)", lambda: xxhash.xxh3(text), size))
 
     # Streaming against one-shot, and the digest wrapper against the bare int.
     def streamed() -> int:
-        state = xxhash.Xxh3_64()
+        state = xxhash.Xxh3()
         for index in range(0, len(PAYLOAD), 64 * 1024):
             state.write_bytes(view[index : index + 64 * 1024])
         return int(state.as_digest())
 
-    cases.append(("xxh3_64 payload (streamed 64 KiB)", streamed, size))
+    cases.append(("xxh3 payload (streamed 64 KiB)", streamed, size))
     cases.append(
         ("digest payload (Digest wrapper)", lambda: xxhash.digest(PAYLOAD, "xxh3-64"), size)
     )

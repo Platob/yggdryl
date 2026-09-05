@@ -525,7 +525,7 @@ impl JsScalar {
     pub fn digest(&self, algorithm: Option<String>) -> Result<crate::xxhash::JsDigest> {
         let algorithm = match algorithm.as_deref() {
             Some(algorithm) => crate::xxhash::algorithm_from_str(algorithm)?,
-            None => yggdryl::DigestAlgorithm::Xxh3_64,
+            None => yggdryl::DigestAlgorithm::Xxh3,
         };
         Ok(crate::xxhash::JsDigest::from_core(
             self.inner.digest(algorithm),

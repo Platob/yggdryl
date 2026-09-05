@@ -52,8 +52,8 @@ impl Scalar {
     /// assert_eq!(&*symbol.as_value_bytes().unwrap(), b"AAPL");
     /// // Which is what any other xxHash implementation would be given.
     /// assert_eq!(
-    ///     xxhash::xxh3_64(&symbol.as_value_bytes().unwrap()),
-    ///     xxhash::xxh3_64(b"AAPL"),
+    ///     xxhash::xxh3(&symbol.as_value_bytes().unwrap()),
+    ///     xxhash::xxh3(b"AAPL"),
     /// );
     ///
     /// assert_eq!(&*Scalar::from(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
@@ -148,13 +148,13 @@ impl Scalar {
     /// // Equal values, different widths, one digest.
     /// assert_eq!(Scalar::from(1), Scalar::from(1));
     /// assert_eq!(
-    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3_64),
-    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3_64),
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3),
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3),
     /// );
     /// // Values that differ, across variant boundaries as much as within one.
     /// assert_ne!(
-    ///     Scalar::from("1").digest(DigestAlgorithm::Xxh3_64),
-    ///     Scalar::from(0x31).digest(DigestAlgorithm::Xxh3_64),
+    ///     Scalar::from("1").digest(DigestAlgorithm::Xxh3),
+    ///     Scalar::from(0x31).digest(DigestAlgorithm::Xxh3),
     /// );
     /// ```
     ///
@@ -198,8 +198,8 @@ impl Scalar {
     /// ```
     /// use yggdryl::{DigestAlgorithm, Scalar};
     ///
-    /// let digest = Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3_64);
-    /// assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3_64);
+    /// let digest = Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3);
+    /// assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3);
     /// ```
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
         let mut digester = algorithm.digester();

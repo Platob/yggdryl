@@ -265,22 +265,22 @@ impl BuildHasher for Xxh64 {
 /// A resumable XXH3 state answering 64 bits.
 ///
 /// ```
-/// use yggdryl::xxhash::{Xxh3_64, xxh3_64};
+/// use yggdryl::xxhash::{Xxh3, xxh3};
 ///
-/// let mut state = Xxh3_64::new();
+/// let mut state = Xxh3::new();
 /// for chunk in [b"sym".as_slice(), b"bol"] {
 ///     state.write_bytes(chunk);
 /// }
-/// assert_eq!(state.as_u64(), xxh3_64(b"symbol"));
+/// assert_eq!(state.as_u64(), xxh3(b"symbol"));
 /// ```
 #[derive(Clone)]
-pub struct Xxh3_64 {
+pub struct Xxh3 {
     seed: u64,
     secret: Option<Arc<[u8]>>,
     hasher: twox_hash::xxhash3_64::Hasher,
 }
 
-impl Xxh3_64 {
+impl Xxh3 {
     /// Start a state with the default seed and secret.
     pub fn new() -> Self {
         Self {
@@ -316,7 +316,7 @@ impl Xxh3_64 {
     /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
     /// [`super::SECRET_MINIMUM_LENGTH`].
     pub fn from_seed_and_secret(seed: u64, secret: &[u8]) -> Result<Self> {
-        secret::validate(DigestAlgorithm::Xxh3_64, secret)?;
+        secret::validate(DigestAlgorithm::Xxh3, secret)?;
         let secret: Arc<[u8]> = Arc::from(secret);
         Ok(Self {
             seed,
@@ -365,7 +365,7 @@ impl Xxh3_64 {
 
     /// Answer the digest of everything fed so far.
     pub fn as_digest(&self) -> Digest {
-        Digest::new(DigestAlgorithm::Xxh3_64, u128::from(self.as_u64()))
+        Digest::new(DigestAlgorithm::Xxh3, u128::from(self.as_u64()))
     }
 
     /// Reset to the constructed seed and secret, not to [`Self::new`].
@@ -388,23 +388,23 @@ fn build_64(seed: u64, secret: &[u8]) -> twox_hash::xxhash3_64::Hasher {
     }
 }
 
-impl Default for Xxh3_64 {
+impl Default for Xxh3 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Debug for Xxh3_64 {
+impl fmt::Debug for Xxh3 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("Xxh3_64")
+            .debug_struct("Xxh3")
             .field("seed", &self.seed)
             .field("secret", &self.secret.as_ref().map(|secret| secret.len()))
             .finish()
     }
 }
 
-impl Hasher for Xxh3_64 {
+impl Hasher for Xxh3 {
     fn finish(&self) -> u64 {
         self.as_u64()
     }
@@ -414,7 +414,7 @@ impl Hasher for Xxh3_64 {
     }
 }
 
-impl BuildHasher for Xxh3_64 {
+impl BuildHasher for Xxh3 {
     type Hasher = Self;
 
     /// Build a fresh state carrying this state's seed and secret.
@@ -431,23 +431,23 @@ impl BuildHasher for Xxh3_64 {
 /// A resumable XXH3 state answering 128 bits.
 ///
 /// ```
-/// use yggdryl::xxhash::{Xxh3_128, xxh3_128, xxh3_64};
+/// use yggdryl::xxhash::{Xxh128, xxh128, xxh3};
 ///
-/// let mut state = Xxh3_128::new();
+/// let mut state = Xxh128::new();
 /// state.write_bytes(b"abc");
-/// assert_eq!(state.as_u128(), xxh3_128(b"abc"));
+/// assert_eq!(state.as_u128(), xxh128(b"abc"));
 /// // The low 64 bits are XXH3-64 of the same input.
-/// assert_eq!(u64::try_from(state.as_u128() & u128::from(u64::MAX))?, xxh3_64(b"abc"));
+/// assert_eq!(u64::try_from(state.as_u128() & u128::from(u64::MAX))?, xxh3(b"abc"));
 /// # Ok::<(), std::num::TryFromIntError>(())
 /// ```
 #[derive(Clone)]
-pub struct Xxh3_128 {
+pub struct Xxh128 {
     seed: u64,
     secret: Option<Arc<[u8]>>,
     hasher: twox_hash::xxhash3_128::Hasher,
 }
 
-impl Xxh3_128 {
+impl Xxh128 {
     /// Start a state with the default seed and secret.
     pub fn new() -> Self {
         Self {
@@ -483,7 +483,7 @@ impl Xxh3_128 {
     /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
     /// [`super::SECRET_MINIMUM_LENGTH`].
     pub fn from_seed_and_secret(seed: u64, secret: &[u8]) -> Result<Self> {
-        secret::validate(DigestAlgorithm::Xxh3_128, secret)?;
+        secret::validate(DigestAlgorithm::Xxh128, secret)?;
         let secret: Arc<[u8]> = Arc::from(secret);
         Ok(Self {
             seed,
@@ -532,7 +532,7 @@ impl Xxh3_128 {
 
     /// Answer the digest of everything fed so far.
     pub fn as_digest(&self) -> Digest {
-        Digest::new(DigestAlgorithm::Xxh3_128, self.as_u128())
+        Digest::new(DigestAlgorithm::Xxh128, self.as_u128())
     }
 
     /// Reset to the constructed seed and secret, not to [`Self::new`].
@@ -553,23 +553,23 @@ fn build_128(seed: u64, secret: &[u8]) -> twox_hash::xxhash3_128::Hasher {
     }
 }
 
-impl Default for Xxh3_128 {
+impl Default for Xxh128 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Debug for Xxh3_128 {
+impl fmt::Debug for Xxh128 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("Xxh3_128")
+            .debug_struct("Xxh128")
             .field("seed", &self.seed)
             .field("secret", &self.secret.as_ref().map(|secret| secret.len()))
             .finish()
     }
 }
 
-impl Hasher for Xxh3_128 {
+impl Hasher for Xxh128 {
     /// Answer the low 64 bits of the 128-bit value.
     ///
     /// [`Hasher::finish`] returns a `u64` and cannot carry more.
@@ -584,7 +584,7 @@ impl Hasher for Xxh3_128 {
     }
 }
 
-impl BuildHasher for Xxh3_128 {
+impl BuildHasher for Xxh128 {
     type Hasher = Self;
 
     /// Build a fresh state carrying this state's seed and secret.

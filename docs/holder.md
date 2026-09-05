@@ -592,12 +592,12 @@ object's size: a 64 GiB file costs one window rather than a copy, and nothing ca
     handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
 
     assert_eq!(
-        handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-        DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+        handle.read_digest(DigestAlgorithm::Xxh3)?,
+        DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes()?),
     );
     assert_eq!(
-        handle.read_range_digest(0, 6, DigestAlgorithm::Xxh3_64)?,
-        DigestAlgorithm::Xxh3_64.digest(b"symbol"),
+        handle.read_range_digest(0, 6, DigestAlgorithm::Xxh3)?,
+        DigestAlgorithm::Xxh3.digest(b"symbol"),
     );
     // Absence is emptiness here too: nothing written digests as no bytes.
     assert_eq!(

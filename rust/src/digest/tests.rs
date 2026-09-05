@@ -16,8 +16,28 @@ fn every_algorithm_round_trips_its_canonical_token() {
 }
 
 #[test]
+fn reference_entry_point_spellings_parse_to_canonical_algorithms() {
+    assert_eq!(
+        DigestAlgorithm::from_str("xxh3").unwrap(),
+        DigestAlgorithm::Xxh3
+    );
+    assert_eq!(
+        DigestAlgorithm::from_str("XXH128").unwrap(),
+        DigestAlgorithm::Xxh128
+    );
+    assert_eq!(
+        DigestAlgorithm::from_str("xxh3").unwrap().as_str(),
+        "xxh3-64"
+    );
+    assert_eq!(
+        DigestAlgorithm::from_str("xxh128").unwrap().as_str(),
+        "xxh3-128"
+    );
+}
+
+#[test]
 fn an_unknown_token_names_the_accepted_vocabulary() {
-    let error = DigestAlgorithm::from_str("xxh3").unwrap_err();
+    let error = DigestAlgorithm::from_str("xxh256").unwrap_err();
     let rendered = error.to_string();
     assert!(rendered.contains("xxh3-64"), "{rendered}");
     assert!(rendered.contains("xxh3-128"), "{rendered}");
@@ -27,21 +47,21 @@ fn an_unknown_token_names_the_accepted_vocabulary() {
 fn widths_and_capabilities_follow_the_algorithm() {
     assert_eq!(DigestAlgorithm::Xxh32.width(), 4);
     assert_eq!(DigestAlgorithm::Xxh64.width(), 8);
-    assert_eq!(DigestAlgorithm::Xxh3_64.width(), 8);
-    assert_eq!(DigestAlgorithm::Xxh3_128.width(), 16);
+    assert_eq!(DigestAlgorithm::Xxh3.width(), 8);
+    assert_eq!(DigestAlgorithm::Xxh128.width(), 16);
     for algorithm in DigestAlgorithm::ALL {
         assert_eq!(algorithm.bits(), algorithm.width() as u32 * 8);
         assert!(algorithm.is_seedable());
     }
     assert!(!DigestAlgorithm::Xxh32.is_secretable());
     assert!(!DigestAlgorithm::Xxh64.is_secretable());
-    assert!(DigestAlgorithm::Xxh3_64.is_secretable());
-    assert!(DigestAlgorithm::Xxh3_128.is_secretable());
+    assert!(DigestAlgorithm::Xxh3.is_secretable());
+    assert!(DigestAlgorithm::Xxh128.is_secretable());
 }
 
 #[test]
 fn the_default_algorithm_is_the_one_stable_hash_answers() {
-    assert_eq!(DigestAlgorithm::default(), DigestAlgorithm::Xxh3_64);
+    assert_eq!(DigestAlgorithm::default(), DigestAlgorithm::Xxh3);
 }
 
 #[test]
@@ -71,7 +91,7 @@ fn canonical_bytes_are_big_endian_at_the_exact_width() {
     let digest = Digest::new(DigestAlgorithm::Xxh32, 0x0102_0304);
     assert_eq!(&*digest.into_bytes(), &[0x01, 0x02, 0x03, 0x04]);
 
-    let wide = Digest::new(DigestAlgorithm::Xxh3_128, 0x0102_0304_0506_0708);
+    let wide = Digest::new(DigestAlgorithm::Xxh128, 0x0102_0304_0506_0708);
     assert_eq!(wide.into_bytes().len(), 16);
     assert_eq!(&wide.into_bytes()[8..], &[1, 2, 3, 4, 5, 6, 7, 8]);
 
@@ -112,7 +132,7 @@ fn a_digest_reads_only_its_own_width() {
     assert!(narrow.as_u64().is_none());
     assert!(narrow.as_u128().is_none());
 
-    let wide = DigestAlgorithm::Xxh3_128.digest(b"AAPL");
+    let wide = DigestAlgorithm::Xxh128.digest(b"AAPL");
     assert!(wide.as_u32().is_none());
     assert!(wide.as_u64().is_none());
     assert!(wide.as_u128().is_some());
@@ -128,12 +148,12 @@ fn a_payload_wider_than_the_algorithm_cannot_be_stored() {
 #[test]
 fn two_algorithms_never_compare_equal() {
     let left = Digest::new(DigestAlgorithm::Xxh64, 7);
-    let right = Digest::new(DigestAlgorithm::Xxh3_64, 7);
+    let right = Digest::new(DigestAlgorithm::Xxh3, 7);
     assert_ne!(left, right);
     assert!(left < right, "the canonical order sorts by algorithm first");
 
     let mut sorted = [
-        Digest::new(DigestAlgorithm::Xxh3_128, 0),
+        Digest::new(DigestAlgorithm::Xxh128, 0),
         Digest::new(DigestAlgorithm::Xxh64, 9),
         Digest::new(DigestAlgorithm::Xxh32, 1),
         Digest::new(DigestAlgorithm::Xxh64, 2),
@@ -145,7 +165,7 @@ fn two_algorithms_never_compare_equal() {
             DigestAlgorithm::Xxh32,
             DigestAlgorithm::Xxh64,
             DigestAlgorithm::Xxh64,
-            DigestAlgorithm::Xxh3_128,
+            DigestAlgorithm::Xxh128,
         ]
     );
     assert_eq!(sorted[1].as_u64(), Some(2));
@@ -170,8 +190,8 @@ fn serde_carries_the_algorithm_with_the_value() {
 
 #[test]
 fn equal_digests_hash_equally() {
-    let left = DigestAlgorithm::Xxh3_64.digest(b"AAPL");
-    let right = DigestAlgorithm::Xxh3_64.digest(b"AAPL");
+    let left = DigestAlgorithm::Xxh3.digest(b"AAPL");
+    let right = DigestAlgorithm::Xxh3.digest(b"AAPL");
     assert_eq!(left.stable_hash(), right.stable_hash());
     assert_ne!(
         left.stable_hash(),
@@ -212,11 +232,11 @@ fn the_digester_reads_a_reader_in_bounded_chunks() {
 fn the_digester_is_a_hasher() {
     use std::hash::Hasher as _;
 
-    let mut digester = DigestAlgorithm::Xxh3_64.digester();
+    let mut digester = DigestAlgorithm::Xxh3.digester();
     digester.write(b"abc");
-    assert_eq!(digester.finish(), crate::xxhash::xxh3_64(b"abc"));
+    assert_eq!(digester.finish(), crate::xxhash::xxh3(b"abc"));
 
-    let mut wide = DigestAlgorithm::Xxh3_128.digester();
+    let mut wide = DigestAlgorithm::Xxh128.digester();
     wide.write(b"abc");
-    assert_eq!(wide.finish(), crate::xxhash::xxh3_64(b"abc"));
+    assert_eq!(wide.finish(), crate::xxhash::xxh3(b"abc"));
 }

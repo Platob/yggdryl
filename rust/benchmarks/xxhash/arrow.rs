@@ -114,13 +114,13 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("buffer_path", |bencher| {
         bencher.iter(|| {
-            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh3_64)
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh3)
                 .expect("the batch digests")
         });
     });
     group.bench_function("scalar_fallback", |bencher| {
         bencher.iter(|| {
-            yggdryl::xxhash::arrow::row_digests(black_box(&fallback), DigestAlgorithm::Xxh3_64)
+            yggdryl::xxhash::arrow::row_digests(black_box(&fallback), DigestAlgorithm::Xxh3)
                 .expect("the batch digests")
         });
     });
@@ -131,13 +131,13 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
             rows.as_sequence()
                 .expect("a sequence of rows")
                 .iter()
-                .map(|row| row.digest(DigestAlgorithm::Xxh3_64))
+                .map(|row| row.digest(DigestAlgorithm::Xxh3))
                 .collect::<Vec<_>>()
         });
     });
     group.bench_function("buffer_path_128", |bencher| {
         bencher.iter(|| {
-            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh3_128)
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh128)
                 .expect("the batch digests")
         });
     });

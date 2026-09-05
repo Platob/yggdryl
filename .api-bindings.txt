@@ -14,8 +14,8 @@
   IOBase: append, append_arrow_reader, append_arrow_batch, append_arrow_table, append_bytes, append_pandas, append_pandas_frame, append_polars, append_polars_frame, append_records, buffered, children_matching, children_where, clear, close, closed, codec, column_size, compress_into, copy_into, cursor, decompress_into, exists, flush, from_arrow_fs, from_bytes, glob, into_text, is_atomic, is_dir, is_file, is_io, is_tabular, iterdir, joinpath, kind, ls, media_type, merge_arrow_reader, merge_arrow_batch, merge_arrow_table, merge_pandas, merge_pandas_frame, merge_polars, merge_polars_frame, merge_records, mkdir, name, open, opened, overwrite_arrow_reader, overwrite_arrow_batch, overwrite_arrow_table, overwrite_pandas, overwrite_pandas_frame, overwrite_polars, overwrite_polars_frame, overwrite_records, parent, partitions, pstream_bytes, pwrite, read_arrow_field, read_arrow_reader, read_bytes, read_pandas, read_pandas_frame, read_parquet_geospatial_statistics, read_parquet_statistics, read_polars, read_polars_frame, read_range, read_range_bytes, read_records, read_scalar, read_text, record_options, remove, rglob, row_size, scan_arrow, scan_polars, size, touch, truncate, unlink, url, write_arrow_reader, write_arrow_batch, write_arrow_table, write_bytes, write_pandas, write_pandas_frame, write_polars, write_polars_frame, write_records, write_scalar, write_text
   Xxh32: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, seed, write_bytes, write_scalar
   Xxh64: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, seed, write_bytes, write_scalar
-  Xxh3_64: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, secret, seed, write_bytes, write_scalar
-  Xxh3_128: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, secret, seed, write_bytes, write_scalar
+  Xxh3: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, secret, seed, write_bytes, write_scalar
+  Xxh128: __copy__, __deepcopy__, __repr__, algorithm, as_digest, clear, secret, seed, write_bytes, write_scalar
   Digest: __bytes__, __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __index__, __int__, __le__, __len__, __lt__, __ne__, __reduce__, __repr__, __str__, algorithm, bits, from_bytes, from_int, stable_hash, width
   MediaType: base, clear_encodings, encoding, encodings, extension, extensions, from_content_headers, from_extension, from_extensions, from_file_name, from_json, from_parts, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoded, is_encoding, is_font, is_haptics, is_image, is_io, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, push_encoding, set_base, set_encodings, stable_hash
   ProtocolField: __bool__, __contains__, __delitem__, __eq__, __getitem__, __iter__, __len__, __ne__, __repr__, __setitem__, __str__, aliases, branch, clear, comment, description, display, get, id, items, key, keys, merge_with, prefix, scheme, tag, tags, update, values
@@ -105,9 +105,9 @@
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
     parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); load_all/loads_all use the same native limits
   xxhash
-    exports: SECRET_MINIMUM_LENGTH, Digest, Xxh32, Xxh64, Xxh3_64, Xxh3_128, digest, xxh32, xxh64, xxh3_64, xxh3_128
+    exports: SECRET_MINIMUM_LENGTH, Digest, Xxh32, Xxh64, Xxh3, Xxh128, digest, xxh32, xxh64, xxh3, xxh128
     input: str | bytes | bytearray | memoryview | any buffer; bytes and str are borrowed, every other buffer is read through one bounded window
-    one-shot: xxh32(data, seed=0), xxh64(data, seed=0), xxh3_64(data, seed=0, secret=None), xxh3_128(data, seed=0, secret=None) -> int
+    one-shot: xxh32(data, seed=0), xxh64(data, seed=0), xxh3(data, seed=0, secret=None), xxh128(data, seed=0, secret=None) -> int
     redirects: IOBase.read_digest / read_range_digest and Scalar.digest, algorithm defaulting to "xxh3-64"
     Rust-only: the reader/writer pair and the Hashed<H> handle
 ### javascript: yggdryl
@@ -180,13 +180,13 @@
     instance: algorithm, asDigest, clear, clone, seed, writeBytes, writeScalar
   Xxh64
     instance: algorithm, asDigest, clear, clone, seed, writeBytes, writeScalar
-  Xxh3_64
+  Xxh3
     instance: algorithm, asDigest, clear, clone, secret, seed, writeBytes, writeScalar
-  Xxh3_128
+  Xxh128
     instance: algorithm, asDigest, clear, clone, secret, seed, writeBytes, writeScalar
   xxhash namespace
-    values: SECRET_MINIMUM_LENGTH, Digest, Xxh32, Xxh64, Xxh3_64, Xxh3_128
-    functions: digest, xxh32, xxh64, xxh3_64, xxh3_128
+    values: SECRET_MINIMUM_LENGTH, Digest, Xxh32, Xxh64, Xxh3, Xxh128
+    functions: digest, xxh32, xxh64, xxh3, xxh128
   AvroSchema
     statics: from
     instance: canonicalForm, clone, compare, equals, fingerprint, fromSingleObject, intoCanonicalForm, intoJSON, intoSingleObject, kind, stableHash, toJSON, toString

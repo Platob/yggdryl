@@ -3,7 +3,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::xxhash::Xxh3_64;
+use yggdryl::xxhash::Xxh3;
 use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, Uri};
 
 /// A leaf, a wide record, and a deep nest: the three shapes the feed walks
@@ -44,7 +44,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("xxhash_value");
     for (name, value) in corpus() {
         group.bench_function(format!("feed/{name}"), |bencher| {
-            let mut state = Xxh3_64::new();
+            let mut state = Xxh3::new();
             bencher.iter(|| {
                 state.clear();
                 black_box(&value).write_bytes(&mut state);
@@ -52,7 +52,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
             });
         });
         group.bench_function(format!("digest/{name}"), |bencher| {
-            bencher.iter(|| black_box(&value).digest(DigestAlgorithm::Xxh3_64));
+            bencher.iter(|| black_box(&value).digest(DigestAlgorithm::Xxh3));
         });
         group.bench_function(format!("stable_hash/{name}"), |bencher| {
             bencher.iter(|| black_box(&value).stable_hash());
@@ -91,19 +91,19 @@ pub(crate) fn stable_hash_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&field).stable_hash());
     });
     group.bench_function("field_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::xxhash::xxh3_64(black_box(field_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(field_text.as_bytes())));
     });
     group.bench_function("uri_hash", |bencher| {
         bencher.iter(|| black_box(&uri).stable_hash());
     });
     group.bench_function("uri_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::xxhash::xxh3_64(black_box(uri_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(uri_text.as_bytes())));
     });
     group.bench_function("datatype_hash", |bencher| {
         bencher.iter(|| black_box(&dtype).stable_hash());
     });
     group.bench_function("datatype_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::xxhash::xxh3_64(black_box(dtype_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(dtype_text.as_bytes())));
     });
     group.finish();
 }

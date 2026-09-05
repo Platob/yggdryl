@@ -29,34 +29,34 @@ test('published vectors pin every algorithm', () => {
   const empty = Buffer.alloc(0)
   assert.equal(xxhash.xxh32(empty), 0x02cc5d05)
   assert.equal(xxhash.xxh64(empty), 0xef46db3751d8e999n)
-  assert.equal(xxhash.xxh3_64(empty), 0x2d06800538d394c2n)
-  assert.equal(xxhash.xxh3_128(empty), 0x99aa06d3014798d86001c324468d497fn)
+  assert.equal(xxhash.xxh3(empty), 0x2d06800538d394c2n)
+  assert.equal(xxhash.xxh128(empty), 0x99aa06d3014798d86001c324468d497fn)
 
   const abc = Buffer.from('abc')
   assert.equal(xxhash.xxh32(abc), 0x32d153ff)
   assert.equal(xxhash.xxh64(abc), 0x44bc2cf5ad770999n)
-  assert.equal(xxhash.xxh3_64(abc), 0x78af5f94892f3950n)
-  assert.equal(xxhash.xxh3_128(abc), 0x06b05ab6733a618578af5f94892f3950n)
+  assert.equal(xxhash.xxh3(abc), 0x78af5f94892f3950n)
+  assert.equal(xxhash.xxh128(abc), 0x06b05ab6733a618578af5f94892f3950n)
 })
 
 test('a 32-bit answer is a number and the wider ones are bigints', () => {
   assert.equal(typeof xxhash.xxh32(PAYLOAD), 'number')
   assert.equal(typeof xxhash.xxh64(PAYLOAD), 'bigint')
-  assert.equal(typeof xxhash.xxh3_64(PAYLOAD), 'bigint')
-  assert.equal(typeof xxhash.xxh3_128(PAYLOAD), 'bigint')
+  assert.equal(typeof xxhash.xxh3(PAYLOAD), 'bigint')
+  assert.equal(typeof xxhash.xxh128(PAYLOAD), 'bigint')
   // A 32-bit value always fits a JS number exactly, so nothing is lost.
   assert.ok(Number.isSafeInteger(xxhash.xxh32(PAYLOAD)))
 })
 
 test('every byte shape reads the same bytes', () => {
-  const expected = xxhash.xxh3_64(PAYLOAD)
-  assert.equal(xxhash.xxh3_64(new Uint8Array(PAYLOAD)), expected)
-  assert.equal(xxhash.xxh3_64(PAYLOAD.buffer.slice(PAYLOAD.byteOffset, PAYLOAD.byteOffset + PAYLOAD.length)), expected)
+  const expected = xxhash.xxh3(PAYLOAD)
+  assert.equal(xxhash.xxh3(new Uint8Array(PAYLOAD)), expected)
+  assert.equal(xxhash.xxh3(PAYLOAD.buffer.slice(PAYLOAD.byteOffset, PAYLOAD.byteOffset + PAYLOAD.length)), expected)
   // A window into a larger buffer is the window's bytes, not the whole.
   const window = new Uint8Array(PAYLOAD.buffer, PAYLOAD.byteOffset + 10, 10)
-  assert.equal(xxhash.xxh3_64(window), xxhash.xxh3_64(PAYLOAD.subarray(10, 20)))
+  assert.equal(xxhash.xxh3(window), xxhash.xxh3(PAYLOAD.subarray(10, 20)))
   // A string is its UTF-8.
-  assert.equal(xxhash.xxh3_64('é—wide'), xxhash.xxh3_64(Buffer.from('é—wide', 'utf8')))
+  assert.equal(xxhash.xxh3('é—wide'), xxhash.xxh3(Buffer.from('é—wide', 'utf8')))
 })
 
 test('a seed changes every algorithm', () => {
@@ -64,8 +64,8 @@ test('a seed changes every algorithm', () => {
     const data = corpus(length)
     assert.notEqual(xxhash.xxh32(data, { seed: 42 }), xxhash.xxh32(data))
     assert.notEqual(xxhash.xxh64(data, { seed: 42n }), xxhash.xxh64(data))
-    assert.notEqual(xxhash.xxh3_64(data, { seed: 42n }), xxhash.xxh3_64(data))
-    assert.notEqual(xxhash.xxh3_128(data, { seed: 42n }), xxhash.xxh3_128(data))
+    assert.notEqual(xxhash.xxh3(data, { seed: 42n }), xxhash.xxh3(data))
+    assert.notEqual(xxhash.xxh128(data, { seed: 42n }), xxhash.xxh128(data))
   }
   // A number seed is accepted wherever it is exact.
   assert.equal(xxhash.xxh64(PAYLOAD, { seed: 42 }), xxhash.xxh64(PAYLOAD, { seed: 42n }))
@@ -74,32 +74,32 @@ test('a seed changes every algorithm', () => {
 
 test('a custom secret changes the XXH3 pair and is validated by length', () => {
   const custom = secret(xxhash.SECRET_MINIMUM_LENGTH)
-  assert.notEqual(xxhash.xxh3_64(PAYLOAD, { secret: custom }), xxhash.xxh3_64(PAYLOAD))
-  assert.notEqual(xxhash.xxh3_128(PAYLOAD, { secret: custom }), xxhash.xxh3_128(PAYLOAD))
+  assert.notEqual(xxhash.xxh3(PAYLOAD, { secret: custom }), xxhash.xxh3(PAYLOAD))
+  assert.notEqual(xxhash.xxh128(PAYLOAD, { secret: custom }), xxhash.xxh128(PAYLOAD))
 
   // XXH3's own rule for the seed-and-secret family: at or below 240 bytes the
   // derived secret and the seed decide, which is what keeps the one-shot and
   // the streaming state answering one value.
   for (const length of [0, 1, 64, 240]) {
     const short = corpus(length)
-    assert.equal(xxhash.xxh3_64(short, { secret: custom }), xxhash.xxh3_64(short))
+    assert.equal(xxhash.xxh3(short, { secret: custom }), xxhash.xxh3(short))
   }
   for (const length of [241, 1024]) {
     const long = corpus(length)
-    assert.notEqual(xxhash.xxh3_64(long, { secret: custom }), xxhash.xxh3_64(long))
+    assert.notEqual(xxhash.xxh3(long, { secret: custom }), xxhash.xxh3(long))
   }
 
   const short = secret(xxhash.SECRET_MINIMUM_LENGTH - 1)
-  assert.throws(() => xxhash.xxh3_64(PAYLOAD, { secret: short }), /at least 136 bytes, got 135/)
-  assert.throws(() => new xxhash.Xxh3_128(0n, short), /at least 136 bytes, got 135/)
+  assert.throws(() => xxhash.xxh3(PAYLOAD, { secret: short }), /at least 136 bytes, got 135/)
+  assert.throws(() => new xxhash.Xxh128(0n, short), /at least 136 bytes, got 135/)
 })
 
 test('streaming agrees with the one-shot at every split', () => {
   const cases = [
     [() => new xxhash.Xxh32(), (data) => BigInt(xxhash.xxh32(data))],
     [() => new xxhash.Xxh64(), (data) => xxhash.xxh64(data)],
-    [() => new xxhash.Xxh3_64(), (data) => xxhash.xxh3_64(data)],
-    [() => new xxhash.Xxh3_128(), (data) => xxhash.xxh3_128(data)],
+    [() => new xxhash.Xxh3(), (data) => xxhash.xxh3(data)],
+    [() => new xxhash.Xxh128(), (data) => xxhash.xxh128(data)],
   ]
   for (const [build, oneShot] of cases) {
     for (const split of [1, 7, 64, 240, 1024, PAYLOAD.length]) {
@@ -127,12 +127,12 @@ test('clear returns to the constructed seed', () => {
 })
 
 test('a state clone carries everything fed so far', () => {
-  const state = new xxhash.Xxh3_64()
+  const state = new xxhash.Xxh3()
   state.writeBytes(Buffer.from('AAPL'))
   const copy = state.clone()
   copy.writeBytes(Buffer.from(',187.23'))
-  assert.equal(state.asDigest().value(), xxhash.xxh3_64(Buffer.from('AAPL')))
-  assert.equal(copy.asDigest().value(), xxhash.xxh3_64(Buffer.from('AAPL,187.23')))
+  assert.equal(state.asDigest().value(), xxhash.xxh3(Buffer.from('AAPL')))
+  assert.equal(copy.asDigest().value(), xxhash.xxh3(Buffer.from('AAPL,187.23')))
 })
 
 test('a digest carries its algorithm and round trips', () => {
@@ -159,7 +159,7 @@ test('two algorithms never compare equal', () => {
 })
 
 test('an unknown algorithm names the accepted vocabulary', () => {
-  assert.throws(() => xxhash.digest(PAYLOAD, 'xxh3'), /xxh3-64/)
+  assert.throws(() => xxhash.digest(PAYLOAD, 'xxh256'), /xxh3-64/)
 })
 
 test('a value digests its canonical bytes', () => {
@@ -174,7 +174,7 @@ test('a value digests its canonical bytes', () => {
 
 test('a state feeds a value like the value digests itself', () => {
   const value = Scalar.fromJs({ symbol: 'AAPL', quantity: 100n })
-  const state = new xxhash.Xxh3_64()
+  const state = new xxhash.Xxh3()
   state.writeScalar(value)
   assert.ok(state.asDigest().equals(value.digest('xxh3-64')))
 })

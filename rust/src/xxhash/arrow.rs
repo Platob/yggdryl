@@ -70,7 +70,7 @@ use super::scalar::{
 ///     ],
 /// )?;
 ///
-/// let digests = row_digests(&batch, DigestAlgorithm::Xxh3_64)?;
+/// let digests = row_digests(&batch, DigestAlgorithm::Xxh3)?;
 /// let digests = digests.as_primitive::<arrow_array::types::UInt64Type>();
 /// // Identical rows answer identical digests, which is what makes this a
 /// // dedup key.
@@ -138,10 +138,10 @@ fn collect(digests: &[Digest], algorithm: DigestAlgorithm) -> ArrayRef {
         DigestAlgorithm::Xxh32 => Arc::new(UInt32Array::from_iter_values(
             digests.iter().filter_map(|digest| digest.as_u32()),
         )),
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3_64 => Arc::new(
-            UInt64Array::from_iter_values(digests.iter().filter_map(|digest| digest.as_u64())),
-        ),
-        DigestAlgorithm::Xxh3_128 => {
+        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => Arc::new(UInt64Array::from_iter_values(
+            digests.iter().filter_map(|digest| digest.as_u64()),
+        )),
+        DigestAlgorithm::Xxh128 => {
             // The canonical big-endian bytes, because no Arrow integer is 128
             // bits wide and a pair of `u64` columns would put the wire order
             // in the caller's hands.

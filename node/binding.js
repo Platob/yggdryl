@@ -3141,14 +3141,14 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
 {
   const xxh32Native = binding._xxh32Native
   const xxh64Native = binding._xxh64Native
-  const xxh3_64Native = binding._xxh3_64Native
-  const xxh3_128Native = binding._xxh3_128Native
+  const xxh3Native = binding._xxh3Native
+  const xxh128Native = binding._xxh128Native
   const digestNative = binding._xxhashDigestNative
   const secretMinimumLength = binding._xxhashSecretMinimumLengthNative()
   delete binding._xxh32Native
   delete binding._xxh64Native
-  delete binding._xxh3_64Native
-  delete binding._xxh3_128Native
+  delete binding._xxh3Native
+  delete binding._xxh128Native
   delete binding._xxhashDigestNative
   delete binding._xxhashSecretMinimumLengthNative
 
@@ -3179,8 +3179,8 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     Digest: binding.Digest,
     Xxh32: binding.Xxh32,
     Xxh64: binding.Xxh64,
-    Xxh3_64: binding.Xxh3_64,
-    Xxh3_128: binding.Xxh3_128,
+    Xxh3: binding.Xxh3,
+    Xxh128: binding.Xxh128,
     xxh32(data, options) {
       const seed = seedOf(options)
       return xxh32Native(toNativeContent(data), seed == null ? undefined : Number(seed))
@@ -3188,15 +3188,15 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     xxh64(data, options) {
       return xxh64Native(toNativeContent(data), asSeed(seedOf(options)))
     },
-    xxh3_64(data, options) {
-      return xxh3_64Native(
+    xxh3(data, options) {
+      return xxh3Native(
         toNativeContent(data),
         asSeed(seedOf(options)),
         asSecret(secretOf(options)),
       )
     },
-    xxh3_128(data, options) {
-      return xxh3_128Native(
+    xxh128(data, options) {
+      return xxh128Native(
         toNativeContent(data),
         asSeed(seedOf(options)),
         asSecret(secretOf(options)),

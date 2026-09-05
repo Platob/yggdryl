@@ -19,15 +19,15 @@ use crate::{Digest, DigestAlgorithm, Digester, Result};
 /// use yggdryl::DigestAlgorithm;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+/// let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
 /// handle.write_all_bytes(b"symbol,price\n")?;
 /// handle.append_bytes(b"AAPL,187.23\n")?;
 /// handle.flush()?;
 ///
 /// // Answered from the running state; the bytes are never read back.
 /// assert_eq!(
-///     handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-///     DigestAlgorithm::Xxh3_64.digest(b"symbol,price\nAAPL,187.23\n"),
+///     handle.read_digest(DigestAlgorithm::Xxh3)?,
+///     DigestAlgorithm::Xxh3.digest(b"symbol,price\nAAPL,187.23\n"),
 /// );
 /// # Ok(())
 /// # }

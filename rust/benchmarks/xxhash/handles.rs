@@ -44,11 +44,11 @@ fn report_memory(path: &std::path::Path) {
     let handle = yggdryl::holder::local::File::new(path).expect("a readable local file");
     let before = peak_resident();
     let streamed = handle
-        .read_digest(DigestAlgorithm::Xxh3_64)
+        .read_digest(DigestAlgorithm::Xxh3)
         .expect("the file digests");
     let after_streamed = peak_resident();
     let whole = handle.read_all_bytes().expect("the file reads");
-    let digest = DigestAlgorithm::Xxh3_64.digest(&whole);
+    let digest = DigestAlgorithm::Xxh3.digest(&whole);
     let after_whole = peak_resident();
     assert_eq!(streamed, digest, "both ways answer one value");
     drop(whole);
@@ -82,7 +82,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
         let handle = yggdryl::holder::local::File::new(&path).expect("a readable local file");
         bencher.iter(|| {
             black_box(&handle)
-                .read_digest(DigestAlgorithm::Xxh3_64)
+                .read_digest(DigestAlgorithm::Xxh3)
                 .expect("the file digests")
         });
     });
@@ -90,7 +90,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
         let handle = yggdryl::holder::local::File::new(&path).expect("a readable local file");
         bencher.iter(|| {
             let bytes = black_box(&handle).read_all_bytes().expect("the file reads");
-            DigestAlgorithm::Xxh3_64.digest(&bytes)
+            DigestAlgorithm::Xxh3.digest(&bytes)
         });
     });
     group.finish();
@@ -103,12 +103,12 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Bytes(written.len() as u64));
     group.bench_function("hashed_write_through", |bencher| {
         bencher.iter(|| {
-            let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+            let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
             handle
                 .write_all_bytes(black_box(&written))
                 .expect("a memory buffer writes");
             handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
+                .read_digest(DigestAlgorithm::Xxh3)
                 .expect("the running state answers")
         });
     });
@@ -119,7 +119,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
                 .write_all_bytes(black_box(&written))
                 .expect("a memory buffer writes");
             handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
+                .read_digest(DigestAlgorithm::Xxh3)
                 .expect("the buffer digests")
         });
     });
@@ -137,7 +137,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("digest_reader", |bencher| {
         bencher.iter(|| {
-            let mut source = xxhash::reader(written.as_slice(), DigestAlgorithm::Xxh3_64);
+            let mut source = xxhash::reader(written.as_slice(), DigestAlgorithm::Xxh3);
             let mut target = Vec::with_capacity(written.len());
             std::io::copy(&mut source, &mut target).expect("an in-memory copy");
             source.as_digest()
@@ -146,7 +146,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
     group.bench_function("digest_writer", |bencher| {
         bencher.iter(|| {
             let mut target =
-                xxhash::writer(Vec::with_capacity(written.len()), DigestAlgorithm::Xxh3_64);
+                xxhash::writer(Vec::with_capacity(written.len()), DigestAlgorithm::Xxh3);
             std::io::copy(&mut black_box(written.as_slice()), &mut target)
                 .expect("an in-memory copy");
             target.as_digest()

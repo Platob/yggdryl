@@ -40,7 +40,7 @@ use crate::{exact_u64, napi_error};
 fn digest_algorithm(value: Option<&str>) -> Result<yggdryl::DigestAlgorithm> {
     match value {
         Some(value) => crate::xxhash::algorithm_from_str(value),
-        None => Ok(yggdryl::DigestAlgorithm::Xxh3_64),
+        None => Ok(yggdryl::DigestAlgorithm::Xxh3),
     }
 }
 

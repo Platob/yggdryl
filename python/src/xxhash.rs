@@ -16,7 +16,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyType};
 
-use yggdryl::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::types::scalar::PyScalar;
@@ -30,12 +30,12 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDigest>()?;
     module.add_class::<PyXxh32>()?;
     module.add_class::<PyXxh64>()?;
-    module.add_class::<PyXxh3_64>()?;
-    module.add_class::<PyXxh3_128>()?;
+    module.add_class::<PyXxh3>()?;
+    module.add_class::<PyXxh128>()?;
     module.add_function(pyo3::wrap_pyfunction!(xxh32, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(xxh64, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(xxh3_64, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(xxh3_128, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(xxh3, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(xxh128, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(xxhash_digest, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(secret_minimum_length, module)?)?;
     Ok(())
@@ -113,11 +113,11 @@ pub(crate) fn xxh64(data: &Bound<'_, PyAny>, seed: u64) -> PyResult<u64> {
 
 /// Digest a complete value with XXH3, answering 64 bits.
 #[pyfunction]
-#[pyo3(name = "xxh3_64", signature = (data, seed = 0, secret = None))]
-pub(crate) fn xxh3_64(data: &Bound<'_, PyAny>, seed: u64, secret: Option<&[u8]>) -> PyResult<u64> {
+#[pyo3(name = "xxh3", signature = (data, seed = 0, secret = None))]
+pub(crate) fn xxh3(data: &Bound<'_, PyAny>, seed: u64, secret: Option<&[u8]>) -> PyResult<u64> {
     let mut state = match secret {
-        Some(secret) => Xxh3_64::from_seed_and_secret(seed, secret).map_err(value_error)?,
-        None => Xxh3_64::with_seed(seed),
+        Some(secret) => Xxh3::from_seed_and_secret(seed, secret).map_err(value_error)?,
+        None => Xxh3::with_seed(seed),
     };
     feed_content(data, &mut |bytes| state.write_bytes(bytes))?;
     Ok(state.as_u64())
@@ -125,15 +125,11 @@ pub(crate) fn xxh3_64(data: &Bound<'_, PyAny>, seed: u64, secret: Option<&[u8]>)
 
 /// Digest a complete value with XXH3, answering 128 bits.
 #[pyfunction]
-#[pyo3(name = "xxh3_128", signature = (data, seed = 0, secret = None))]
-pub(crate) fn xxh3_128(
-    data: &Bound<'_, PyAny>,
-    seed: u64,
-    secret: Option<&[u8]>,
-) -> PyResult<u128> {
+#[pyo3(name = "xxh128", signature = (data, seed = 0, secret = None))]
+pub(crate) fn xxh128(data: &Bound<'_, PyAny>, seed: u64, secret: Option<&[u8]>) -> PyResult<u128> {
     let mut state = match secret {
-        Some(secret) => Xxh3_128::from_seed_and_secret(seed, secret).map_err(value_error)?,
-        None => Xxh3_128::with_seed(seed),
+        Some(secret) => Xxh128::from_seed_and_secret(seed, secret).map_err(value_error)?,
+        None => Xxh128::with_seed(seed),
     };
     feed_content(data, &mut |bytes| state.write_bytes(bytes))?;
     Ok(state.as_u128())
@@ -414,11 +410,11 @@ state!(
     }
 );
 state!(
-    PyXxh3_64,
-    "Xxh3_64",
-    Xxh3_64,
+    PyXxh3,
+    "Xxh3",
+    Xxh3,
     u64,
-    DigestAlgorithm::Xxh3_64,
+    DigestAlgorithm::Xxh3,
     "A resumable XXH3 state answering 64 bits.",
     {
         /// Start a state, optionally seeded and with a custom secret.
@@ -431,8 +427,8 @@ state!(
         #[pyo3(signature = (seed = 0, secret = None))]
         fn new(seed: u64, secret: Option<&[u8]>) -> PyResult<Self> {
             let inner = match secret {
-                Some(secret) => Xxh3_64::from_seed_and_secret(seed, secret).map_err(value_error)?,
-                None => Xxh3_64::with_seed(seed),
+                Some(secret) => Xxh3::from_seed_and_secret(seed, secret).map_err(value_error)?,
+                None => Xxh3::with_seed(seed),
             };
             Ok(Self { inner })
         }
@@ -445,25 +441,23 @@ state!(
     }
 );
 state!(
-    PyXxh3_128,
-    "Xxh3_128",
-    Xxh3_128,
+    PyXxh128,
+    "Xxh128",
+    Xxh128,
     u64,
-    DigestAlgorithm::Xxh3_128,
+    DigestAlgorithm::Xxh128,
     "A resumable XXH3 state answering 128 bits.",
     {
         /// Start a state, optionally seeded and with a custom secret.
         ///
         /// A secret shorter than `SECRET_MINIMUM_LENGTH` is rejected by length
-        /// whatever the payload, for the reason `Xxh3_64` states.
+        /// whatever the payload, for the reason `Xxh3` states.
         #[new]
         #[pyo3(signature = (seed = 0, secret = None))]
         fn new(seed: u64, secret: Option<&[u8]>) -> PyResult<Self> {
             let inner = match secret {
-                Some(secret) => {
-                    Xxh3_128::from_seed_and_secret(seed, secret).map_err(value_error)?
-                }
-                None => Xxh3_128::with_seed(seed),
+                Some(secret) => Xxh128::from_seed_and_secret(seed, secret).map_err(value_error)?,
+                None => Xxh128::with_seed(seed),
             };
             Ok(Self { inner })
         }

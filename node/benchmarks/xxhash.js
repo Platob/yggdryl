@@ -36,7 +36,7 @@ function main() {
     const data = Buffer.alloc(size)
     PAYLOAD.copy(data, 0, 0, Math.min(size, PAYLOAD.length))
     const iterations = size > 64 * 1024 ? 2_000 : 200_000
-    measure(`xxh3_64 ${String(size).padStart(9)} B`, size, iterations, () => xxhash.xxh3_64(data))
+    measure(`xxh3 ${String(size).padStart(9)} B`, size, iterations, () => xxhash.xxh3(data))
   }
 
   // Every algorithm at one size, so the widths compare directly.
@@ -44,8 +44,8 @@ function main() {
   for (const [name, native] of [
     ['xxh32', xxhash.xxh32],
     ['xxh64', xxhash.xxh64],
-    ['xxh3_64', xxhash.xxh3_64],
-    ['xxh3_128', xxhash.xxh3_128],
+    ['xxh3', xxhash.xxh3],
+    ['xxh128', xxhash.xxh128],
   ]) {
     measure(`${name} payload`, size, 500, () => native(PAYLOAD))
   }
@@ -54,13 +54,13 @@ function main() {
   const array = new Uint8Array(PAYLOAD)
   const buffer = array.buffer.slice(0)
   const text = PAYLOAD.toString()
-  measure('xxh3_64 payload (Uint8Array)', size, 500, () => xxhash.xxh3_64(array))
-  measure('xxh3_64 payload (ArrayBuffer)', size, 500, () => xxhash.xxh3_64(buffer))
-  measure('xxh3_64 payload (string)', size, 500, () => xxhash.xxh3_64(text))
+  measure('xxh3 payload (Uint8Array)', size, 500, () => xxhash.xxh3(array))
+  measure('xxh3 payload (ArrayBuffer)', size, 500, () => xxhash.xxh3(buffer))
+  measure('xxh3 payload (string)', size, 500, () => xxhash.xxh3(text))
 
   // Streaming against one-shot, and the digest wrapper against the bare bigint.
-  measure('xxh3_64 payload (streamed 64 KiB)', size, 500, () => {
-    const state = new xxhash.Xxh3_64()
+  measure('xxh3 payload (streamed 64 KiB)', size, 500, () => {
+    const state = new xxhash.Xxh3()
     for (let index = 0; index < PAYLOAD.length; index += 64 * 1024) {
       state.writeBytes(PAYLOAD.subarray(index, index + 64 * 1024))
     }

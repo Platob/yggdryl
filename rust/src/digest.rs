@@ -12,7 +12,7 @@
 //! use yggdryl::{Digest, DigestAlgorithm};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let digest = DigestAlgorithm::Xxh3_64.digest(b"abc");
+//! let digest = DigestAlgorithm::Xxh3.digest(b"abc");
 //! assert_eq!(digest.as_u64(), Some(0x78af_5f94_892f_3950));
 //! assert_eq!(digest.to_string(), "xxh3-64:78af5f94892f3950");
 //! assert_eq!(Digest::from_str(&digest.to_string())?, digest);
@@ -32,15 +32,14 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{Error, Result, Scalar};
 
 /// One xxHash algorithm, and the only place a name selects an implementation.
 ///
-/// The canonical tokens are `xxh32`, `xxh64`, `xxh3-64`, and `xxh3-128`, one
-/// spelling each. There is no `xxh3` shorthand: the 64- and 128-bit XXH3
-/// variants are different algorithms answering different widths, and a caller
-/// who does not say which one means neither.
+/// The canonical tokens are `xxh32`, `xxh64`, `xxh3-64`, and `xxh3-128`.
+/// The reference-library entry-point spellings `xxh3` and `xxh128` are also
+/// accepted on input and render back to their canonical protocol names.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum DigestAlgorithm {
@@ -54,14 +53,14 @@ pub enum DigestAlgorithm {
     /// the project answers, so a caller who expresses no preference gets the
     /// value the rest of the tree already agrees on.
     #[default]
-    Xxh3_64,
+    Xxh3,
     /// XXH3 answering 128 bits.
-    Xxh3_128,
+    Xxh128,
 }
 
 impl DigestAlgorithm {
     /// Every algorithm in canonical order.
-    pub const ALL: [Self; 4] = [Self::Xxh32, Self::Xxh64, Self::Xxh3_64, Self::Xxh3_128];
+    pub const ALL: [Self; 4] = [Self::Xxh32, Self::Xxh64, Self::Xxh3, Self::Xxh128];
 
     /// Parse a canonical algorithm token.
     ///
@@ -78,8 +77,8 @@ impl DigestAlgorithm {
         match self {
             Self::Xxh32 => "xxh32",
             Self::Xxh64 => "xxh64",
-            Self::Xxh3_64 => "xxh3-64",
-            Self::Xxh3_128 => "xxh3-128",
+            Self::Xxh3 => "xxh3-64",
+            Self::Xxh128 => "xxh3-128",
         }
     }
 
@@ -89,13 +88,13 @@ impl DigestAlgorithm {
     /// use yggdryl::DigestAlgorithm;
     ///
     /// assert_eq!(DigestAlgorithm::Xxh32.width(), 4);
-    /// assert_eq!(DigestAlgorithm::Xxh3_128.width(), 16);
+    /// assert_eq!(DigestAlgorithm::Xxh128.width(), 16);
     /// ```
     pub const fn width(self) -> usize {
         match self {
             Self::Xxh32 => 4,
-            Self::Xxh64 | Self::Xxh3_64 => 8,
-            Self::Xxh3_128 => 16,
+            Self::Xxh64 | Self::Xxh3 => 8,
+            Self::Xxh128 => 16,
         }
     }
 
@@ -108,7 +107,7 @@ impl DigestAlgorithm {
     ///
     /// Only the XXH3 pair does. XXH32 and XXH64 take a seed and nothing else.
     pub const fn is_secretable(self) -> bool {
-        matches!(self, Self::Xxh3_64 | Self::Xxh3_128)
+        matches!(self, Self::Xxh3 | Self::Xxh128)
     }
 
     /// Return whether this algorithm accepts a seed.
@@ -134,8 +133,8 @@ impl DigestAlgorithm {
         Digester(match self {
             Self::Xxh32 => DigesterKind::Xxh32(Xxh32::new()),
             Self::Xxh64 => DigesterKind::Xxh64(Xxh64::new()),
-            Self::Xxh3_64 => DigesterKind::Xxh3_64(Xxh3_64::new()),
-            Self::Xxh3_128 => DigesterKind::Xxh3_128(Xxh3_128::new()),
+            Self::Xxh3 => DigesterKind::Xxh3(Xxh3::new()),
+            Self::Xxh128 => DigesterKind::Xxh128(Xxh128::new()),
         })
     }
 
@@ -157,8 +156,8 @@ impl DigestAlgorithm {
         Digester(match self {
             Self::Xxh32 => DigesterKind::Xxh32(Xxh32::with_seed(crate::xxhash::low_32(seed))),
             Self::Xxh64 => DigesterKind::Xxh64(Xxh64::with_seed(seed)),
-            Self::Xxh3_64 => DigesterKind::Xxh3_64(Xxh3_64::with_seed(seed)),
-            Self::Xxh3_128 => DigesterKind::Xxh3_128(Xxh3_128::with_seed(seed)),
+            Self::Xxh3 => DigesterKind::Xxh3(Xxh3::with_seed(seed)),
+            Self::Xxh128 => DigesterKind::Xxh128(Xxh128::with_seed(seed)),
         })
     }
 
@@ -176,8 +175,8 @@ impl DigestAlgorithm {
         match self {
             Self::Xxh32 => Digest::new(self, u128::from(crate::xxhash::xxh32(input))),
             Self::Xxh64 => Digest::new(self, u128::from(crate::xxhash::xxh64(input))),
-            Self::Xxh3_64 => Digest::new(self, u128::from(crate::xxhash::xxh3_64(input))),
-            Self::Xxh3_128 => Digest::new(self, crate::xxhash::xxh3_128(input)),
+            Self::Xxh3 => Digest::new(self, u128::from(crate::xxhash::xxh3(input))),
+            Self::Xxh128 => Digest::new(self, crate::xxhash::xxh128(input)),
         }
     }
 }
@@ -187,6 +186,12 @@ impl FromStr for DigestAlgorithm {
 
     fn from_str(value: &str) -> Result<Self> {
         let normalized = value.trim();
+        if normalized.eq_ignore_ascii_case("xxh3") {
+            return Ok(Self::Xxh3);
+        }
+        if normalized.eq_ignore_ascii_case("xxh128") {
+            return Ok(Self::Xxh128);
+        }
         Self::ALL
             .into_iter()
             .find(|algorithm| normalized.eq_ignore_ascii_case(algorithm.as_str()))
@@ -265,7 +270,7 @@ impl Digest {
     /// Return the native 64-bit value, or `None` when the width differs.
     pub const fn as_u64(self) -> Option<u64> {
         match self.algorithm {
-            DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3_64 => Some(self.payload as u64),
+            DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => Some(self.payload as u64),
             _ => None,
         }
     }
@@ -273,7 +278,7 @@ impl Digest {
     /// Return the native 128-bit value, or `None` when the width differs.
     pub const fn as_u128(self) -> Option<u128> {
         match self.algorithm {
-            DigestAlgorithm::Xxh3_128 => Some(self.payload),
+            DigestAlgorithm::Xxh128 => Some(self.payload),
             _ => None,
         }
     }
@@ -458,8 +463,8 @@ pub struct Digester(DigesterKind);
 enum DigesterKind {
     Xxh32(Xxh32),
     Xxh64(Xxh64),
-    Xxh3_64(Xxh3_64),
-    Xxh3_128(Xxh3_128),
+    Xxh3(Xxh3),
+    Xxh128(Xxh128),
 }
 
 impl Digester {
@@ -468,8 +473,8 @@ impl Digester {
         match self.0 {
             DigesterKind::Xxh32(_) => DigestAlgorithm::Xxh32,
             DigesterKind::Xxh64(_) => DigestAlgorithm::Xxh64,
-            DigesterKind::Xxh3_64(_) => DigestAlgorithm::Xxh3_64,
-            DigesterKind::Xxh3_128(_) => DigestAlgorithm::Xxh3_128,
+            DigesterKind::Xxh3(_) => DigestAlgorithm::Xxh3,
+            DigesterKind::Xxh128(_) => DigestAlgorithm::Xxh128,
         }
     }
 
@@ -478,8 +483,8 @@ impl Digester {
         match &mut self.0 {
             DigesterKind::Xxh32(state) => state.write_bytes(bytes),
             DigesterKind::Xxh64(state) => state.write_bytes(bytes),
-            DigesterKind::Xxh3_64(state) => state.write_bytes(bytes),
-            DigesterKind::Xxh3_128(state) => state.write_bytes(bytes),
+            DigesterKind::Xxh3(state) => state.write_bytes(bytes),
+            DigesterKind::Xxh128(state) => state.write_bytes(bytes),
         }
     }
 
@@ -490,8 +495,8 @@ impl Digester {
         match &mut self.0 {
             DigesterKind::Xxh32(state) => state.write_scalar(value),
             DigesterKind::Xxh64(state) => state.write_scalar(value),
-            DigesterKind::Xxh3_64(state) => state.write_scalar(value),
-            DigesterKind::Xxh3_128(state) => state.write_scalar(value),
+            DigesterKind::Xxh3(state) => state.write_scalar(value),
+            DigesterKind::Xxh128(state) => state.write_scalar(value),
         }
     }
 
@@ -504,8 +509,8 @@ impl Digester {
         match &mut self.0 {
             DigesterKind::Xxh32(state) => state.write_reader(source),
             DigesterKind::Xxh64(state) => state.write_reader(source),
-            DigesterKind::Xxh3_64(state) => state.write_reader(source),
-            DigesterKind::Xxh3_128(state) => state.write_reader(source),
+            DigesterKind::Xxh3(state) => state.write_reader(source),
+            DigesterKind::Xxh128(state) => state.write_reader(source),
         }
     }
 
@@ -514,8 +519,8 @@ impl Digester {
         match &self.0 {
             DigesterKind::Xxh32(state) => state.as_digest(),
             DigesterKind::Xxh64(state) => state.as_digest(),
-            DigesterKind::Xxh3_64(state) => state.as_digest(),
-            DigesterKind::Xxh3_128(state) => state.as_digest(),
+            DigesterKind::Xxh3(state) => state.as_digest(),
+            DigesterKind::Xxh128(state) => state.as_digest(),
         }
     }
 
@@ -524,8 +529,8 @@ impl Digester {
         match &mut self.0 {
             DigesterKind::Xxh32(state) => state.clear(),
             DigesterKind::Xxh64(state) => state.clear(),
-            DigesterKind::Xxh3_64(state) => state.clear(),
-            DigesterKind::Xxh3_128(state) => state.clear(),
+            DigesterKind::Xxh3(state) => state.clear(),
+            DigesterKind::Xxh128(state) => state.clear(),
         }
     }
 }

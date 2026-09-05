@@ -17,13 +17,13 @@ fn digests(array: &ArrayRef, algorithm: DigestAlgorithm) -> Vec<Digest> {
             .iter()
             .map(|value| Digest::new(algorithm, u128::from(*value)))
             .collect(),
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3_64 => array
+        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => array
             .as_primitive::<UInt64Type>()
             .values()
             .iter()
             .map(|value| Digest::new(algorithm, u128::from(*value)))
             .collect(),
-        DigestAlgorithm::Xxh3_128 => {
+        DigestAlgorithm::Xxh128 => {
             let array = array
                 .as_any()
                 .downcast_ref::<FixedSizeBinaryArray>()
@@ -435,12 +435,12 @@ fn a_null_never_collides_with_an_empty_value() {
     let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
     let column = digests(
-        &column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3_64).unwrap(),
-        DigestAlgorithm::Xxh3_64,
+        &column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3).unwrap(),
+        DigestAlgorithm::Xxh3,
     );
     assert_ne!(column[0], column[1]);
-    assert_eq!(column[0], Scalar::Null.digest(DigestAlgorithm::Xxh3_64));
-    assert_eq!(column[1], Scalar::from("").digest(DigestAlgorithm::Xxh3_64));
+    assert_eq!(column[0], Scalar::Null.digest(DigestAlgorithm::Xxh3));
+    assert_eq!(column[1], Scalar::from("").digest(DigestAlgorithm::Xxh3));
 }
 
 #[test]
@@ -452,11 +452,8 @@ fn the_column_width_follows_the_algorithm() {
     let widths = [
         (DigestAlgorithm::Xxh32, ArrowDataType::UInt32),
         (DigestAlgorithm::Xxh64, ArrowDataType::UInt64),
-        (DigestAlgorithm::Xxh3_64, ArrowDataType::UInt64),
-        (
-            DigestAlgorithm::Xxh3_128,
-            ArrowDataType::FixedSizeBinary(16),
-        ),
+        (DigestAlgorithm::Xxh3, ArrowDataType::UInt64),
+        (DigestAlgorithm::Xxh128, ArrowDataType::FixedSizeBinary(16)),
     ];
     for (algorithm, expected) in widths {
         let column = column_digests(array.as_ref(), &field, algorithm).unwrap();
@@ -491,15 +488,12 @@ fn a_row_is_the_sequence_of_its_columns() {
     )
     .unwrap();
     let column = digests(
-        &row_digests(&batch, DigestAlgorithm::Xxh3_64).unwrap(),
-        DigestAlgorithm::Xxh3_64,
+        &row_digests(&batch, DigestAlgorithm::Xxh3).unwrap(),
+        DigestAlgorithm::Xxh3,
     );
     assert_eq!(
         column[0],
-        Scalar::from_sequence([Scalar::from(100)]).digest(DigestAlgorithm::Xxh3_64)
+        Scalar::from_sequence([Scalar::from(100)]).digest(DigestAlgorithm::Xxh3)
     );
-    assert_ne!(
-        column[0],
-        Scalar::from(100).digest(DigestAlgorithm::Xxh3_64)
-    );
+    assert_ne!(column[0], Scalar::from(100).digest(DigestAlgorithm::Xxh3));
 }

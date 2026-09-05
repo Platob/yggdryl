@@ -599,7 +599,7 @@ fn the_canonical_value_feed_allocates_nothing() {
     // state is built outside the counted section: XXH3 keeps its secret on the
     // heap, and that is the algorithm's cost rather than the feed's.
     for (label, value) in feed_corpus() {
-        let mut sink = yggdryl::xxhash::Xxh3_64::new();
+        let mut sink = yggdryl::xxhash::Xxh3::new();
         free(&format!("feeding {label}"), || {
             value.write_bytes(black_box(&mut sink));
         });

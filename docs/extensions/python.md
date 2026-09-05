@@ -66,8 +66,8 @@ one-shot functions answer a plain `int` at the algorithm's native width and take
 ```python
 from yggdryl import Scalar, xxhash
 
-assert xxhash.xxh3_64(b"abc") == 0x78AF5F94892F3950
-assert xxhash.xxh3_64("abc") == xxhash.xxh3_64(memoryview(b"abc"))
+assert xxhash.xxh3(b"abc") == 0x78AF5F94892F3950
+assert xxhash.xxh3("abc") == xxhash.xxh3(memoryview(b"abc"))
 
 digest = xxhash.digest(b"abc", "xxh3-64")
 assert str(digest) == "xxh3-64:78af5f94892f3950"

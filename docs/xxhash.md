@@ -20,9 +20,9 @@ Digest bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XX
 
     assert_eq!(xxhash::xxh32(b"abc"), 0x32d1_53ff);
     assert_eq!(xxhash::xxh64(b"abc"), 0x44bc_2cf5_ad77_0999);
-    assert_eq!(xxhash::xxh3_64(b"abc"), 0x78af_5f94_892f_3950);
+    assert_eq!(xxhash::xxh3(b"abc"), 0x78af_5f94_892f_3950);
     assert_eq!(
-        xxhash::xxh3_128(b"abc"),
+        xxhash::xxh128(b"abc"),
         0x06b0_5ab6_733a_6185_78af_5f94_892f_3950,
     );
 
@@ -37,11 +37,11 @@ Digest bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XX
 
     assert xxhash.xxh32(b"abc") == 0x32D153FF
     assert xxhash.xxh64(b"abc") == 0x44BC2CF5AD770999
-    assert xxhash.xxh3_64(b"abc") == 0x78AF5F94892F3950
-    assert xxhash.xxh3_128(b"abc") == 0x06B05AB6733A618578AF5F94892F3950
+    assert xxhash.xxh3(b"abc") == 0x78AF5F94892F3950
+    assert xxhash.xxh128(b"abc") == 0x06B05AB6733A618578AF5F94892F3950
 
     # bytes, bytearray, memoryview, any buffer, or a str as its UTF-8.
-    assert xxhash.xxh3_64("abc") == xxhash.xxh3_64(bytearray(b"abc"))
+    assert xxhash.xxh3("abc") == xxhash.xxh3(bytearray(b"abc"))
     assert xxhash.xxh64(b"abc", seed=42) != xxhash.xxh64(b"abc")
     ```
 
@@ -56,11 +56,11 @@ Digest bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XX
     // algorithms answer bigints.
     assert.equal(xxhash.xxh32(payload), 0x32d153ff)
     assert.equal(xxhash.xxh64(payload), 0x44bc2cf5ad770999n)
-    assert.equal(xxhash.xxh3_64(payload), 0x78af5f94892f3950n)
-    assert.equal(xxhash.xxh3_128(payload), 0x06b05ab6733a618578af5f94892f3950n)
+    assert.equal(xxhash.xxh3(payload), 0x78af5f94892f3950n)
+    assert.equal(xxhash.xxh128(payload), 0x06b05ab6733a618578af5f94892f3950n)
 
     // Buffer, Uint8Array, ArrayBuffer, or a string as its UTF-8.
-    assert.equal(xxhash.xxh3_64('abc'), xxhash.xxh3_64(new Uint8Array(payload)))
+    assert.equal(xxhash.xxh3('abc'), xxhash.xxh3(new Uint8Array(payload)))
     assert.notEqual(xxhash.xxh64(payload, { seed: 42n }), xxhash.xxh64(payload))
     ```
 
@@ -76,7 +76,7 @@ call - the same relationship [`Codec`](types.md) has to [gzip](coding.md).
     ```rust
     use yggdryl::{Digest, DigestAlgorithm};
 
-    let digest = DigestAlgorithm::Xxh3_64.digest(b"abc");
+    let digest = DigestAlgorithm::Xxh3.digest(b"abc");
     assert_eq!(digest.as_u64(), Some(0x78af_5f94_892f_3950));
     assert_eq!(digest.to_string(), "xxh3-64:78af5f94892f3950");
     assert_eq!(Digest::from_str(&digest.to_string())?, digest);
@@ -86,7 +86,7 @@ call - the same relationship [`Codec`](types.md) has to [gzip](coding.md).
     // `xxh3-64` are both 64 bits wide and answer different values.
     assert_ne!(
         Digest::new(DigestAlgorithm::Xxh64, 7),
-        Digest::new(DigestAlgorithm::Xxh3_64, 7),
+        Digest::new(DigestAlgorithm::Xxh3, 7),
     );
     ```
 
@@ -131,25 +131,25 @@ sequence of bytes.
 === "Rust"
 
     ```rust
-    use yggdryl::xxhash::{Xxh3_64, xxh3_64};
+    use yggdryl::xxhash::{Xxh3, xxh3};
 
     let payload = b"symbol,price\nAAPL,187.23\n";
     for split in [1, 7, payload.len()] {
-        let mut state = Xxh3_64::new();
+        let mut state = Xxh3::new();
         for chunk in payload.chunks(split) {
             state.write_bytes(chunk);
         }
         // The split never changes the answer.
-        assert_eq!(state.as_u64(), xxh3_64(payload));
+        assert_eq!(state.as_u64(), xxh3(payload));
     }
 
     // Answering does not consume the state, so a running digest can be read at
     // every commit boundary rather than only at the end.
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     state.write_bytes(b"AAPL");
     assert_eq!(state.as_u64(), state.as_u64());
     state.write_bytes(b",187.23");
-    assert_eq!(state.as_u64(), xxh3_64(b"AAPL,187.23"));
+    assert_eq!(state.as_u64(), xxh3(b"AAPL,187.23"));
     ```
 
 === "Python"
@@ -159,16 +159,16 @@ sequence of bytes.
 
     payload = b"symbol,price\nAAPL,187.23\n"
     for split in (1, 7, len(payload)):
-        state = xxhash.Xxh3_64()
+        state = xxhash.Xxh3()
         for index in range(0, len(payload), split):
             state.write_bytes(payload[index : index + split])
-        assert int(state.as_digest()) == xxhash.xxh3_64(payload)
+        assert int(state.as_digest()) == xxhash.xxh3(payload)
 
-    state = xxhash.Xxh3_64()
+    state = xxhash.Xxh3()
     state.write_bytes(b"AAPL")
     assert state.as_digest() == state.as_digest()
     state.write_bytes(b",187.23")
-    assert int(state.as_digest()) == xxhash.xxh3_64(b"AAPL,187.23")
+    assert int(state.as_digest()) == xxhash.xxh3(b"AAPL,187.23")
     ```
 
 === "JavaScript"
@@ -179,18 +179,18 @@ sequence of bytes.
 
     const payload = Buffer.from('symbol,price\nAAPL,187.23\n')
     for (const split of [1, 7, payload.length]) {
-      const state = new xxhash.Xxh3_64()
+      const state = new xxhash.Xxh3()
       for (let index = 0; index < payload.length; index += split) {
         state.writeBytes(payload.subarray(index, index + split))
       }
-      assert.equal(state.asDigest().value(), xxhash.xxh3_64(payload))
+      assert.equal(state.asDigest().value(), xxhash.xxh3(payload))
     }
 
-    const state = new xxhash.Xxh3_64()
+    const state = new xxhash.Xxh3()
     state.writeBytes(Buffer.from('AAPL'))
     assert.ok(state.asDigest().equals(state.asDigest()))
     state.writeBytes(Buffer.from(',187.23'))
-    assert.equal(state.asDigest().value(), xxhash.xxh3_64(Buffer.from('AAPL,187.23')))
+    assert.equal(state.asDigest().value(), xxhash.xxh3(Buffer.from('AAPL,187.23')))
     ```
 
 Chunk invariance is the property everything else here rests on. A message spliced from two
@@ -201,7 +201,7 @@ correctness bug.
 
 `clear()` returns a state to the seed and secret it was **constructed with**, not to an
 unseeded one. In Rust each state is also a `std::hash::Hasher` and its own `BuildHasher`, so
-it drops into a `HashMap` carrying its seed; `Hasher::finish` on `Xxh3_128` answers the low
+it drops into a `HashMap` carrying its seed; `Hasher::finish` on `Xxh128` answers the low
 64 bits because the trait's return type cannot carry more, and `as_u128` is the full value.
 
 ## Seeds and secrets
@@ -220,26 +220,26 @@ cutoff for that reason.
 === "Rust"
 
     ```rust
-    use yggdryl::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3_64};
+    use yggdryl::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3};
     use yggdryl::{DigestAlgorithm, Error};
 
     assert!(!DigestAlgorithm::Xxh64.is_secretable());
-    assert!(DigestAlgorithm::Xxh3_64.is_secretable());
+    assert!(DigestAlgorithm::Xxh3.is_secretable());
 
     let secret = vec![0x5a_u8; SECRET_MINIMUM_LENGTH];
     let payload = vec![0x11_u8; 241];
     assert_ne!(
-        xxhash::xxh3_64_with_secret(&payload, &secret)?,
-        xxhash::xxh3_64(&payload),
+        xxhash::xxh3_with_secret(&payload, &secret)?,
+        xxhash::xxh3(&payload),
     );
     // At or below the cutoff the secret is not consulted at all.
-    assert_eq!(xxhash::xxh3_64_with_secret(b"AAPL", &secret)?, xxhash::xxh3_64(b"AAPL"));
+    assert_eq!(xxhash::xxh3_with_secret(b"AAPL", &secret)?, xxhash::xxh3(b"AAPL"));
 
     // A short secret is refused by length, whatever the payload: the reference
     // only consults a secret past its 240-byte cutoff, and a secret that is
     // sometimes used is worse than one that is refused.
     let short = vec![0x5a_u8; SECRET_MINIMUM_LENGTH - 1];
-    let error = Xxh3_64::from_secret(&short).unwrap_err();
+    let error = Xxh3::from_secret(&short).unwrap_err();
     assert!(matches!(error, Error::InvalidSecret { actual: 135, .. }));
     ```
 
@@ -252,12 +252,12 @@ cutoff for that reason.
 
     secret = bytes(xxhash.SECRET_MINIMUM_LENGTH)
     payload = bytes(241)
-    assert xxhash.xxh3_64(payload, secret=secret) != xxhash.xxh3_64(payload)
+    assert xxhash.xxh3(payload, secret=secret) != xxhash.xxh3(payload)
     # At or below the cutoff the secret is not consulted at all.
-    assert xxhash.xxh3_64(b"AAPL", secret=secret) == xxhash.xxh3_64(b"AAPL")
+    assert xxhash.xxh3(b"AAPL", secret=secret) == xxhash.xxh3(b"AAPL")
 
     with pytest.raises(ValueError, match="at least 136 bytes, got 135"):
-        xxhash.Xxh3_64(secret=bytes(xxhash.SECRET_MINIMUM_LENGTH - 1))
+        xxhash.Xxh3(secret=bytes(xxhash.SECRET_MINIMUM_LENGTH - 1))
     ```
 
 === "JavaScript"
@@ -268,14 +268,14 @@ cutoff for that reason.
 
     const payload = Buffer.alloc(241)
     const secret = new Uint8Array(xxhash.SECRET_MINIMUM_LENGTH)
-    assert.notEqual(xxhash.xxh3_64(payload, { secret }), xxhash.xxh3_64(payload))
+    assert.notEqual(xxhash.xxh3(payload, { secret }), xxhash.xxh3(payload))
     // At or below the cutoff the secret is not consulted at all.
     const brief = Buffer.from('AAPL')
-    assert.equal(xxhash.xxh3_64(brief, { secret }), xxhash.xxh3_64(brief))
+    assert.equal(xxhash.xxh3(brief, { secret }), xxhash.xxh3(brief))
 
     const truncated = new Uint8Array(xxhash.SECRET_MINIMUM_LENGTH - 1)
     assert.throws(
-      () => xxhash.xxh3_64(payload, { secret: truncated }),
+      () => xxhash.xxh3(payload, { secret: truncated }),
       /at least 136 bytes, got 135/,
     )
     ```
@@ -293,19 +293,19 @@ cutoff for that reason.
     handle.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
 
     assert_eq!(
-        handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-        DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+        handle.read_digest(DigestAlgorithm::Xxh3)?,
+        DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes()?),
     );
     assert_eq!(
-        handle.read_range_digest(0, 6, DigestAlgorithm::Xxh3_64)?,
-        DigestAlgorithm::Xxh3_64.digest(b"symbol"),
+        handle.read_range_digest(0, 6, DigestAlgorithm::Xxh3)?,
+        DigestAlgorithm::Xxh3.digest(b"symbol"),
     );
 
     // A resource that does not exist digests as no bytes, per the laziness
     // contract - absence is emptiness, not a third answer to branch on.
     assert_eq!(
-        Buffer::new().read_digest(DigestAlgorithm::Xxh3_64)?.as_u64(),
-        Some(xxhash::xxh3_64(b"")),
+        Buffer::new().read_digest(DigestAlgorithm::Xxh3)?.as_u64(),
+        Some(xxhash::xxh3(b"")),
     );
     ```
 
@@ -374,16 +374,16 @@ handle.flush()?;
 
 // The wrapper answers for the bytes it presents.
 assert_eq!(
-    handle.read_digest(DigestAlgorithm::Xxh3_64)?.as_u64(),
-    Some(xxhash::xxh3_64(plain)),
+    handle.read_digest(DigestAlgorithm::Xxh3)?.as_u64(),
+    Some(xxhash::xxh3(plain)),
 );
 // The handle underneath answers for the bytes it holds.
 let compressed = handle.handle().read_all_bytes()?;
 assert_eq!(
-    handle.handle().read_digest(DigestAlgorithm::Xxh3_64)?.as_u64(),
-    Some(xxhash::xxh3_64(&compressed)),
+    handle.handle().read_digest(DigestAlgorithm::Xxh3)?.as_u64(),
+    Some(xxhash::xxh3(&compressed)),
 );
-assert_ne!(xxhash::xxh3_64(plain), xxhash::xxh3_64(&compressed));
+assert_ne!(xxhash::xxh3(plain), xxhash::xxh3(&compressed));
 ```
 
 A container holds no bytes of its own, so it is a typed `Error::NotAtomic` naming the kind
@@ -404,11 +404,11 @@ use yggdryl::{DigestAlgorithm, xxhash};
 
 // Hash a payload that is already being moved, in the pass that was already
 // happening, rather than reading it a second time.
-let mut source = xxhash::reader(b"AAPL,187.23".as_slice(), DigestAlgorithm::Xxh3_64);
+let mut source = xxhash::reader(b"AAPL,187.23".as_slice(), DigestAlgorithm::Xxh3);
 let mut moved = Vec::new();
 source.read_to_end(&mut moved)?;
 assert_eq!(moved, b"AAPL,187.23");
-assert_eq!(source.as_digest(), DigestAlgorithm::Xxh3_64.digest(&moved));
+assert_eq!(source.as_digest(), DigestAlgorithm::Xxh3.digest(&moved));
 
 let mut target = xxhash::writer(Vec::new(), DigestAlgorithm::Xxh64);
 target.write_all(b"AAPL,187.23")?;
@@ -428,15 +428,15 @@ use yggdryl::holder::Buffer;
 use yggdryl::xxhash::Hashed;
 use yggdryl::DigestAlgorithm;
 
-let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
 handle.write_all_bytes(b"symbol,price\n")?;
 handle.append_bytes(b"AAPL,187.23\n")?;
 handle.flush()?;
 
 // Answered from the running state; the bytes are never read back.
 assert_eq!(
-    handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-    DigestAlgorithm::Xxh3_64.digest(b"symbol,price\nAAPL,187.23\n"),
+    handle.read_digest(DigestAlgorithm::Xxh3)?,
+    DigestAlgorithm::Xxh3.digest(b"symbol,price\nAAPL,187.23\n"),
 );
 
 // A positional write the running state cannot follow makes it stale, which is
@@ -444,8 +444,8 @@ assert_eq!(
 // handle and re-arms, and the answer is identical either way.
 handle.pwrite_all(7, b"PRICE")?;
 assert_eq!(
-    handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-    DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+    handle.read_digest(DigestAlgorithm::Xxh3)?,
+    DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes()?),
 );
 ```
 
@@ -479,25 +479,25 @@ borrows wherever the value already holds bytes and never allocates.
     let symbol = Scalar::from("AAPL");
     assert_eq!(&*symbol.as_value_bytes().unwrap(), b"AAPL");
     assert_eq!(
-        xxhash::xxh3_64(&symbol.as_value_bytes().unwrap()),
-        xxhash::xxh3_64(b"AAPL"),
+        xxhash::xxh3(&symbol.as_value_bytes().unwrap()),
+        xxhash::xxh3(b"AAPL"),
     );
 
     // Equal values answer one digest, across widths.
     assert_eq!(Scalar::I8(1), Scalar::I64(1));
     assert_eq!(
-        Scalar::I8(1).digest(DigestAlgorithm::Xxh3_64),
-        Scalar::I64(1).digest(DigestAlgorithm::Xxh3_64),
+        Scalar::I8(1).digest(DigestAlgorithm::Xxh3),
+        Scalar::I64(1).digest(DigestAlgorithm::Xxh3),
     );
     // Values that differ stay apart, across variant boundaries.
     assert_ne!(
-        Scalar::from("1").digest(DigestAlgorithm::Xxh3_64),
-        Scalar::U8(0x31).digest(DigestAlgorithm::Xxh3_64),
+        Scalar::from("1").digest(DigestAlgorithm::Xxh3),
+        Scalar::U8(0x31).digest(DigestAlgorithm::Xxh3),
     );
     // A null and an empty string are not the same absence.
     assert_ne!(
-        Scalar::Null.digest(DigestAlgorithm::Xxh3_64),
-        Scalar::from("").digest(DigestAlgorithm::Xxh3_64),
+        Scalar::Null.digest(DigestAlgorithm::Xxh3),
+        Scalar::from("").digest(DigestAlgorithm::Xxh3),
     );
     ```
 
@@ -516,7 +516,7 @@ borrows wherever the value already holds bytes and never allocates.
     assert Scalar.from_py("1").digest() != Scalar.from_py(b"1").digest()
     assert Scalar.from_py(None).digest() != Scalar.from_py("").digest()
 
-    state = xxhash.Xxh3_64()
+    state = xxhash.Xxh3()
     state.write_scalar(Scalar.from_py("AAPL"))
     assert state.as_digest() == Scalar.from_py("AAPL").digest()
     ```
@@ -536,7 +536,7 @@ borrows wherever the value already holds bytes and never allocates.
     // Values that differ stay apart, across variant boundaries.
     assert.ok(!Scalar.fromJs('1').digest().equals(Scalar.fromJs(Buffer.from('1')).digest()))
 
-    const state = new xxhash.Xxh3_64()
+    const state = new xxhash.Xxh3()
     state.writeScalar(symbol)
     assert.ok(state.asDigest().equals(symbol.digest()))
     ```
@@ -594,7 +594,7 @@ use yggdryl::{DigestAlgorithm, Scalar, text};
 let value = Scalar::from("AAPL");
 assert_eq!(
     value.stable_hash(),
-    value.digest(DigestAlgorithm::Xxh3_64).as_u64().unwrap(),
+    value.digest(DigestAlgorithm::Xxh3).as_u64().unwrap(),
 );
 // Equal values hash equally across widths, which is the invariant every
 // binding relies on.
@@ -604,7 +604,7 @@ let _ = text::Format::Json;
 
 Values that carry text rather than a `Scalar` - `Field`, `Uri`, `DataType`, `MimeType`, the
 Iceberg values - hash their canonical rendering through the same algorithm, so
-`Field::stable_hash` and `xxhash::xxh3_64` of that rendering are one number reached two
+`Field::stable_hash` and `xxhash::xxh3` of that rendering are one number reached two
 ways.
 
 ## Arrow row digests
@@ -634,7 +634,7 @@ let batch = RecordBatch::try_new(
     ],
 )?;
 
-let digests = row_digests(&batch, DigestAlgorithm::Xxh3_64)?;
+let digests = row_digests(&batch, DigestAlgorithm::Xxh3)?;
 let digests = digests.as_primitive::<UInt64Type>();
 // Identical rows answer identical digests, which is what makes this a dedup
 // key, a change-detection column, and a hash-join key.
@@ -689,7 +689,7 @@ why it is the default and what `stable_hash` answers.
 Both rows hash the same bytes with the same implementation, so the difference is the argument
 normalization at this module's boundary and nothing else.
 
-| payload | `xxhash::xxh3_64` | direct `twox-hash` call | `DigestAlgorithm::digest` |
+| payload | `xxhash::xxh3` | direct `twox-hash` call | `DigestAlgorithm::digest` |
 | --- | --- | --- | --- |
 | 1 B | 4.9 ns | 4.1 ns | 4.9 ns |
 | 64 B | 7.4 ns | 8.1 ns | 7.3 ns |
@@ -754,7 +754,7 @@ secret on the heap, so that construction is the gap. The feed itself allocates n
 
 `stable_hash` on the short canonical renderings it actually sees:
 
-| value | `stable_hash` | the same bytes through `xxh3_64` |
+| value | `stable_hash` | the same bytes through `xxh3` |
 | --- | --- | --- |
 | field name (19 chars) | 356.1 ns | 6.8 ns |
 | URI (52 chars) | 98.1 ns | 7.1 ns |
@@ -788,15 +788,15 @@ building every row as a value first. Answering 128 bits instead of 64 costs noth
 package binding C `libxxhash` on the same 1,080,000-byte payload:
 
 ```text
-xxh3_64 payload                     44773.2 ns    24.12 GB/s
-xxh3_64 payload (C libxxhash)       66506.4 ns    16.24 GB/s
+xxh3 payload                     44773.2 ns    24.12 GB/s
+xxh3 payload (C libxxhash)       66506.4 ns    16.24 GB/s
 xxh64 payload                       87825.4 ns    12.30 GB/s
 xxh64 payload (C libxxhash)         85947.4 ns    12.57 GB/s
-xxh3_64 payload (bytearray)         75534.4 ns    14.30 GB/s
-xxh3_64 payload (memoryview)        75835.4 ns    14.24 GB/s
-xxh3_64 payload (str)               44825.5 ns    24.09 GB/s
-xxh3_64        1 B                    165.8 ns     0.01 GB/s
-xxh3_64        1 B (C libxxhash)       78.0 ns     0.01 GB/s
+xxh3 payload (bytearray)         75534.4 ns    14.30 GB/s
+xxh3 payload (memoryview)        75835.4 ns    14.24 GB/s
+xxh3 payload (str)               44825.5 ns    24.09 GB/s
+xxh3        1 B                    165.8 ns     0.01 GB/s
+xxh3        1 B (C libxxhash)       78.0 ns     0.01 GB/s
 ```
 
 Two honest numbers here. The `bytearray` and `memoryview` rows are 1.7x slower than `bytes`,
@@ -809,16 +809,16 @@ ahead of the C build available here.
 `npm run bench:xxhash` in `node/`, release addon, on the same 1,080,000-byte payload:
 
 ```text
-xxh3_64         1 B                                 495.9 ns     0.00 GB/s
-xxh3_64      1024 B                                 505.0 ns     2.03 GB/s
-xxh3_64     65536 B                                2756.8 ns    23.77 GB/s
+xxh3         1 B                                 495.9 ns     0.00 GB/s
+xxh3      1024 B                                 505.0 ns     2.03 GB/s
+xxh3     65536 B                                2756.8 ns    23.77 GB/s
 xxh32 payload                                    170537.4 ns     6.33 GB/s
 xxh64 payload                                     87036.2 ns    12.41 GB/s
-xxh3_64 payload                                   48139.1 ns    22.43 GB/s
-xxh3_128 payload                                  51937.5 ns    20.79 GB/s
-xxh3_64 payload (Uint8Array)                      50711.2 ns    21.30 GB/s
-xxh3_64 payload (string)                         364511.2 ns     2.96 GB/s
-xxh3_64 payload (streamed 64 KiB)                 71816.4 ns    15.04 GB/s
+xxh3 payload                                   48139.1 ns    22.43 GB/s
+xxh128 payload                                  51937.5 ns    20.79 GB/s
+xxh3 payload (Uint8Array)                      50711.2 ns    21.30 GB/s
+xxh3 payload (string)                         364511.2 ns     2.96 GB/s
+xxh3 payload (streamed 64 KiB)                 71816.4 ns    15.04 GB/s
 scalar leaf digest                                 2399.2 ns     0.00 GB/s
 ```
 
@@ -839,22 +839,22 @@ never be confused for one another. `Digester` is the runtime-selected streaming 
 ```rust
 use yggdryl::{Digest, DigestAlgorithm};
 
-let digest = DigestAlgorithm::Xxh3_64.digest(b"AAPL");
-assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3_64);
+let digest = DigestAlgorithm::Xxh3.digest(b"AAPL");
+assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3);
 assert_eq!(Digest::from_str(&digest.to_string())?, digest);
-assert_eq!(digest.into_bytes().len(), DigestAlgorithm::Xxh3_64.width());
+assert_eq!(digest.into_bytes().len(), DigestAlgorithm::Xxh3.width());
 
 // A caller who knows the algorithm at compile time uses the concrete state in
 // `yggdryl::xxhash` and pays no dispatch; this is the form for one held in a
 // variable.
-let mut digester = DigestAlgorithm::Xxh3_64.digester();
+let mut digester = DigestAlgorithm::Xxh3.digester();
 digester.write_bytes(b"AA");
 digester.write_bytes(b"PL");
 assert_eq!(digester.as_digest(), digest);
 
 // Only the XXH3 pair takes a custom secret; every algorithm takes a seed.
 assert!(!DigestAlgorithm::Xxh64.is_secretable());
-assert!(DigestAlgorithm::Xxh3_64.is_secretable());
+assert!(DigestAlgorithm::Xxh3.is_secretable());
 assert_eq!(
     DigestAlgorithm::ALL.map(DigestAlgorithm::as_str),
     ["xxh32", "xxh64", "xxh3-64", "xxh3-128"],

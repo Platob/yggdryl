@@ -22,8 +22,8 @@ export {
   Url,
   Urn,
   Scalar,
-  Xxh3_64,
-  Xxh3_128,
+  Xxh3,
+  Xxh128,
   Xxh32,
   Xxh64,
   type FieldBound,
@@ -57,8 +57,8 @@ import type {
   Url,
   Urn,
   Scalar,
-  Xxh3_64,
-  Xxh3_128,
+  Xxh3,
+  Xxh128,
   Xxh32,
   Xxh64,
 } from './index'
@@ -1444,16 +1444,16 @@ export declare const xxhash: {
   readonly Digest: typeof Digest
   readonly Xxh32: typeof Xxh32
   readonly Xxh64: typeof Xxh64
-  readonly Xxh3_64: typeof Xxh3_64
-  readonly Xxh3_128: typeof Xxh3_128
+  readonly Xxh3: typeof Xxh3
+  readonly Xxh128: typeof Xxh128
   /** Digest a complete value with XXH32. */
   xxh32(data: DigestContent, options?: DigestOptions | bigint | number): number
   /** Digest a complete value with XXH64. */
   xxh64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
   /** Digest a complete value with XXH3, answering 64 bits. */
-  xxh3_64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+  xxh3(data: DigestContent, options?: DigestOptions | bigint | number): bigint
   /** Digest a complete value with XXH3, answering 128 bits. */
-  xxh3_128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+  xxh128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
   /** Digest a complete value, carrying the algorithm with the answer. */
   digest(data: DigestContent, algorithm: DigestAlgorithm): Digest
 }

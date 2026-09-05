@@ -13,7 +13,7 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Either, Result, Uint8Array};
 use napi_derive::napi;
 
-use yggdryl::xxhash::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::napi_error;
@@ -86,41 +86,39 @@ pub fn xxh64_native(
 }
 
 /// Digest a complete value with XXH3, answering 64 bits.
-#[napi(js_name = "_xxh3_64Native", skip_typescript)]
-pub fn xxh3_64_native(
+#[napi(js_name = "_xxh3Native", skip_typescript)]
+pub fn xxh3_native(
     data: Either<Buffer, Either<Uint8Array, String>>,
     seed: Option<BigInt>,
     secret: Option<Uint8Array>,
 ) -> Result<BigInt> {
     let seed = seed_from_bigint(seed)?;
     let value = match secret {
-        Some(secret) => yggdryl::xxhash::xxh3_64_with_seed_and_secret(
-            content_bytes(&data),
-            seed,
-            secret.as_ref(),
-        )
-        .map_err(napi_error)?,
-        None => yggdryl::xxhash::xxh3_64_with_seed(content_bytes(&data), seed),
+        Some(secret) => {
+            yggdryl::xxhash::xxh3_with_seed_and_secret(content_bytes(&data), seed, secret.as_ref())
+                .map_err(napi_error)?
+        }
+        None => yggdryl::xxhash::xxh3_with_seed(content_bytes(&data), seed),
     };
     Ok(BigInt::from(value))
 }
 
 /// Digest a complete value with XXH3, answering 128 bits.
-#[napi(js_name = "_xxh3_128Native", skip_typescript)]
-pub fn xxh3_128_native(
+#[napi(js_name = "_xxh128Native", skip_typescript)]
+pub fn xxh128_native(
     data: Either<Buffer, Either<Uint8Array, String>>,
     seed: Option<BigInt>,
     secret: Option<Uint8Array>,
 ) -> Result<BigInt> {
     let seed = seed_from_bigint(seed)?;
     let value = match secret {
-        Some(secret) => yggdryl::xxhash::xxh3_128_with_seed_and_secret(
+        Some(secret) => yggdryl::xxhash::xxh128_with_seed_and_secret(
             content_bytes(&data),
             seed,
             secret.as_ref(),
         )
         .map_err(napi_error)?,
-        None => yggdryl::xxhash::xxh3_128_with_seed(content_bytes(&data), seed),
+        None => yggdryl::xxhash::xxh128_with_seed(content_bytes(&data), seed),
     };
     Ok(bigint_from_u128(value))
 }
@@ -337,15 +335,15 @@ macro_rules! state {
 state!(JsXxh32, "Xxh32", Xxh32, "A resumable XXH32 state.");
 state!(JsXxh64, "Xxh64", Xxh64, "A resumable XXH64 state.");
 state!(
-    JsXxh3_64,
-    "Xxh3_64",
-    Xxh3_64,
+    JsXxh3,
+    "Xxh3",
+    Xxh3,
     "A resumable XXH3 state answering 64 bits."
 );
 state!(
-    JsXxh3_128,
-    "Xxh3_128",
-    Xxh3_128,
+    JsXxh128,
+    "Xxh128",
+    Xxh128,
     "A resumable XXH3 state answering 128 bits."
 );
 
@@ -390,7 +388,7 @@ impl JsXxh64 {
 }
 
 #[napi]
-impl JsXxh3_64 {
+impl JsXxh3 {
     /// Start a state, optionally seeded and with a custom secret.
     ///
     /// A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
@@ -402,9 +400,9 @@ impl JsXxh3_64 {
         let seed = seed_from_bigint(seed)?;
         let inner = match secret {
             Some(secret) => {
-                Xxh3_64::from_seed_and_secret(seed, secret.as_ref()).map_err(napi_error)?
+                Xxh3::from_seed_and_secret(seed, secret.as_ref()).map_err(napi_error)?
             }
-            None => Xxh3_64::with_seed(seed),
+            None => Xxh3::with_seed(seed),
         };
         Ok(Self { inner })
     }
@@ -425,19 +423,19 @@ impl JsXxh3_64 {
 }
 
 #[napi]
-impl JsXxh3_128 {
+impl JsXxh128 {
     /// Start a state, optionally seeded and with a custom secret.
     ///
     /// A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
-    /// length whatever the payload, for the reason `Xxh3_64` states.
+    /// length whatever the payload, for the reason `Xxh3` states.
     #[napi(constructor)]
     pub fn new(seed: Option<BigInt>, secret: Option<Uint8Array>) -> Result<Self> {
         let seed = seed_from_bigint(seed)?;
         let inner = match secret {
             Some(secret) => {
-                Xxh3_128::from_seed_and_secret(seed, secret.as_ref()).map_err(napi_error)?
+                Xxh128::from_seed_and_secret(seed, secret.as_ref()).map_err(napi_error)?
             }
-            None => Xxh3_128::with_seed(seed),
+            None => Xxh128::with_seed(seed),
         };
         Ok(Self { inner })
     }

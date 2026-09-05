@@ -8,12 +8,12 @@
 //! ```
 //! use yggdryl::xxhash;
 //!
-//! assert_eq!(xxhash::xxh3_64(b"abc"), 0x78af_5f94_892f_3950);
+//! assert_eq!(xxhash::xxh3(b"abc"), 0x78af_5f94_892f_3950);
 //! assert_eq!(xxhash::xxh64(b"abc"), 0x44bc_2cf5_ad77_0999);
 //! ```
 //!
-//! The four resumable states - [`Xxh32`], [`Xxh64`], [`Xxh3_64`],
-//! [`Xxh3_128`] - feed bytes and readers and answer without being consumed, so
+//! The four resumable states - [`Xxh32`], [`Xxh64`], [`Xxh3`],
+//! [`Xxh128`] - feed bytes and readers and answer without being consumed, so
 //! the split of a payload never changes its digest. That is what lets a
 //! message spliced from two spans - a record with the row header removed from
 //! the middle of a line - hash the same as the equivalent joined string,
@@ -21,27 +21,27 @@
 //! header sat would be a silent correctness bug.
 //!
 //! ```
-//! use yggdryl::xxhash::{Xxh3_64, xxh3_64};
+//! use yggdryl::xxhash::{Xxh3, xxh3};
 //!
-//! let mut state = Xxh3_64::new();
+//! let mut state = Xxh3::new();
 //! state.write_bytes(b"fill ");
 //! state.write_bytes(b"100");
-//! assert_eq!(state.as_u64(), xxh3_64(b"fill 100"));
+//! assert_eq!(state.as_u64(), xxh3(b"fill 100"));
 //!
 //! // An empty chunk contributes nothing, wherever it sits.
-//! let mut padded = Xxh3_64::new();
+//! let mut padded = Xxh3::new();
 //! for chunk in [b"".as_slice(), b"fill 100".as_slice(), b"".as_slice()] {
 //!     padded.write_bytes(chunk);
 //! }
-//! assert_eq!(padded.as_u64(), xxh3_64(b"fill 100"));
+//! assert_eq!(padded.as_u64(), xxh3(b"fill 100"));
 //!
 //! let payload = b"symbol,price\nAAPL,187.23\n";
 //! for split in [1, 7, payload.len()] {
-//!     let mut state = Xxh3_64::new();
+//!     let mut state = Xxh3::new();
 //!     for chunk in payload.chunks(split) {
 //!         state.write_bytes(chunk);
 //!     }
-//!     assert_eq!(state.as_u64(), xxh3_64(payload));
+//!     assert_eq!(state.as_u64(), xxh3(payload));
 //! }
 //! ```
 //!
@@ -68,8 +68,8 @@
 //! let short = b"AAPL";
 //! let long = vec![0x11_u8; 241];
 //!
-//! assert_eq!(xxhash::xxh3_64_with_secret(short, &secret)?, xxhash::xxh3_64(short));
-//! assert_ne!(xxhash::xxh3_64_with_secret(&long, &secret)?, xxhash::xxh3_64(&long));
+//! assert_eq!(xxhash::xxh3_with_secret(short, &secret)?, xxhash::xxh3(short));
+//! assert_ne!(xxhash::xxh3_with_secret(&long, &secret)?, xxhash::xxh3(&long));
 //! # Ok(())
 //! # }
 //! ```
@@ -100,7 +100,7 @@ pub(crate) mod stream;
 pub use handle::Hashed;
 pub use scalar::ValueBytes;
 pub use secret::SECRET_MINIMUM_LENGTH;
-pub use state::{Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+pub use state::{Xxh3, Xxh32, Xxh64, Xxh128};
 pub use stream::{DigestReader, DigestWriter};
 
 pub(crate) use state::{low_32, low_64};
@@ -131,12 +131,12 @@ pub fn xxh64_with_seed(input: &[u8], seed: u64) -> u64 {
 }
 
 /// Digest a complete buffer with XXH3, answering 64 bits.
-pub fn xxh3_64(input: &[u8]) -> u64 {
+pub fn xxh3(input: &[u8]) -> u64 {
     twox_hash::xxhash3_64::Hasher::oneshot(input)
 }
 
 /// Digest a complete buffer with XXH3-64 under an explicit seed.
-pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
+pub fn xxh3_with_seed(input: &[u8], seed: u64) -> u64 {
     twox_hash::xxhash3_64::Hasher::oneshot_with_seed(seed, input)
 }
 
@@ -146,8 +146,8 @@ pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
 ///
 /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
 /// [`SECRET_MINIMUM_LENGTH`].
-pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> Result<u64> {
-    xxh3_64_with_seed_and_secret(input, 0, secret)
+pub fn xxh3_with_secret(input: &[u8], secret: &[u8]) -> Result<u64> {
+    xxh3_with_seed_and_secret(input, 0, secret)
 }
 
 /// Digest a complete buffer with XXH3-64 under a custom seed and secret.
@@ -156,8 +156,8 @@ pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> Result<u64> {
 ///
 /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
 /// [`SECRET_MINIMUM_LENGTH`].
-pub fn xxh3_64_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u64> {
-    secret::validate(DigestAlgorithm::Xxh3_64, secret)?;
+pub fn xxh3_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u64> {
+    secret::validate(DigestAlgorithm::Xxh3, secret)?;
     match twox_hash::xxhash3_64::Hasher::oneshot_with_seed_and_secret(seed, secret, input) {
         Ok(digest) => Ok(digest),
         Err(_) => unreachable!("the secret was validated first"),
@@ -165,12 +165,12 @@ pub fn xxh3_64_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> R
 }
 
 /// Digest a complete buffer with XXH3, answering 128 bits.
-pub fn xxh3_128(input: &[u8]) -> u128 {
+pub fn xxh128(input: &[u8]) -> u128 {
     twox_hash::xxhash3_128::Hasher::oneshot(input)
 }
 
 /// Digest a complete buffer with XXH3-128 under an explicit seed.
-pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128 {
+pub fn xxh128_with_seed(input: &[u8], seed: u64) -> u128 {
     twox_hash::xxhash3_128::Hasher::oneshot_with_seed(seed, input)
 }
 
@@ -180,8 +180,8 @@ pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128 {
 ///
 /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
 /// [`SECRET_MINIMUM_LENGTH`].
-pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> Result<u128> {
-    xxh3_128_with_seed_and_secret(input, 0, secret)
+pub fn xxh128_with_secret(input: &[u8], secret: &[u8]) -> Result<u128> {
+    xxh128_with_seed_and_secret(input, 0, secret)
 }
 
 /// Digest a complete buffer with XXH3-128 under a custom seed and secret.
@@ -190,8 +190,8 @@ pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> Result<u128> {
 ///
 /// Returns [`crate::Error::InvalidSecret`] when `secret` is shorter than
 /// [`SECRET_MINIMUM_LENGTH`].
-pub fn xxh3_128_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u128> {
-    secret::validate(DigestAlgorithm::Xxh3_128, secret)?;
+pub fn xxh128_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> Result<u128> {
+    secret::validate(DigestAlgorithm::Xxh128, secret)?;
     match twox_hash::xxhash3_128::Hasher::oneshot_with_seed_and_secret(seed, secret, input) {
         Ok(digest) => Ok(digest),
         Err(_) => unreachable!("the secret was validated first"),
@@ -203,7 +203,7 @@ pub fn xxh3_128_with_seed_and_secret(input: &[u8], seed: u64, secret: &[u8]) -> 
 /// ```
 /// use yggdryl::{DigestAlgorithm, xxhash};
 ///
-/// let digest = xxhash::digest(b"abc", DigestAlgorithm::Xxh3_128);
+/// let digest = xxhash::digest(b"abc", DigestAlgorithm::Xxh128);
 /// assert_eq!(digest.to_string(), "xxh3-128:06b05ab6733a618578af5f94892f3950");
 /// ```
 pub fn digest(input: &[u8], algorithm: DigestAlgorithm) -> Digest {

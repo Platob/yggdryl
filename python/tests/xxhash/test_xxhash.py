@@ -39,13 +39,13 @@ class TestVectors:
     def test_published_vectors_pin_every_algorithm(self) -> None:
         assert xxhash.xxh32(b"") == 0x02CC5D05
         assert xxhash.xxh64(b"") == 0xEF46DB3751D8E999
-        assert xxhash.xxh3_64(b"") == 0x2D06800538D394C2
-        assert xxhash.xxh3_128(b"") == 0x99AA06D3014798D86001C324468D497F
+        assert xxhash.xxh3(b"") == 0x2D06800538D394C2
+        assert xxhash.xxh128(b"") == 0x99AA06D3014798D86001C324468D497F
 
         assert xxhash.xxh32(b"abc") == 0x32D153FF
         assert xxhash.xxh64(b"abc") == 0x44BC2CF5AD770999
-        assert xxhash.xxh3_64(b"abc") == 0x78AF5F94892F3950
-        assert xxhash.xxh3_128(b"abc") == 0x06B05AB6733A618578AF5F94892F3950
+        assert xxhash.xxh3(b"abc") == 0x78AF5F94892F3950
+        assert xxhash.xxh128(b"abc") == 0x06B05AB6733A618578AF5F94892F3950
 
     def test_the_algorithm_vocabulary_is_the_native_listing(self) -> None:
         assert DIGEST_ALGORITHMS == ("xxh32", "xxh64", "xxh3-64", "xxh3-128")
@@ -59,16 +59,16 @@ class TestOutsideImplementation:
         data = corpus(length)
         assert xxhash.xxh32(data) == xxhash_c.xxh32_intdigest(data)
         assert xxhash.xxh64(data) == xxhash_c.xxh64_intdigest(data)
-        assert xxhash.xxh3_64(data) == xxhash_c.xxh3_64_intdigest(data)
-        assert xxhash.xxh3_128(data) == xxhash_c.xxh3_128_intdigest(data)
+        assert xxhash.xxh3(data) == xxhash_c.xxh3_64_intdigest(data)
+        assert xxhash.xxh128(data) == xxhash_c.xxh3_128_intdigest(data)
 
     @pytest.mark.parametrize("length", BRANCHES)
     def test_seeded_one_shot_matches_the_c_binding(self, length: int) -> None:
         data = corpus(length)
         assert xxhash.xxh32(data, seed=42) == xxhash_c.xxh32_intdigest(data, seed=42)
         assert xxhash.xxh64(data, seed=42) == xxhash_c.xxh64_intdigest(data, seed=42)
-        assert xxhash.xxh3_64(data, seed=42) == xxhash_c.xxh3_64_intdigest(data, seed=42)
-        assert xxhash.xxh3_128(data, seed=42) == xxhash_c.xxh3_128_intdigest(
+        assert xxhash.xxh3(data, seed=42) == xxhash_c.xxh3_64_intdigest(data, seed=42)
+        assert xxhash.xxh128(data, seed=42) == xxhash_c.xxh3_128_intdigest(
             data, seed=42
         )
 
@@ -77,8 +77,8 @@ class TestOutsideImplementation:
         pairs = [
             (xxhash.Xxh32(), xxhash_c.xxh32()),
             (xxhash.Xxh64(), xxhash_c.xxh64()),
-            (xxhash.Xxh3_64(), xxhash_c.xxh3_64()),
-            (xxhash.Xxh3_128(), xxhash_c.xxh3_128()),
+            (xxhash.Xxh3(), xxhash_c.xxh3_64()),
+            (xxhash.Xxh128(), xxhash_c.xxh3_128()),
         ]
         for native, outside in pairs:
             for index in range(0, len(PAYLOAD), split):
@@ -104,29 +104,29 @@ class TestOutsideImplementation:
 
 class TestContent:
     def test_every_buffer_shape_reads_the_same_bytes(self) -> None:
-        expected = xxhash.xxh3_64(PAYLOAD)
-        assert xxhash.xxh3_64(bytearray(PAYLOAD)) == expected
-        assert xxhash.xxh3_64(memoryview(PAYLOAD)) == expected
+        expected = xxhash.xxh3(PAYLOAD)
+        assert xxhash.xxh3(bytearray(PAYLOAD)) == expected
+        assert xxhash.xxh3(memoryview(PAYLOAD)) == expected
         # A window into a larger buffer is the window's bytes, not the whole.
         window = memoryview(PAYLOAD)[10:20]
-        assert xxhash.xxh3_64(window) == xxhash.xxh3_64(PAYLOAD[10:20])
+        assert xxhash.xxh3(window) == xxhash.xxh3(PAYLOAD[10:20])
 
     def test_a_string_is_its_utf8(self) -> None:
-        assert xxhash.xxh3_64("é—wide") == xxhash.xxh3_64("é—wide".encode())
+        assert xxhash.xxh3("é—wide") == xxhash.xxh3("é—wide".encode())
 
     def test_a_non_buffer_is_a_type_error(self) -> None:
         with pytest.raises(TypeError, match="buffer protocol"):
-            xxhash.xxh3_64(1)  # type: ignore[arg-type]
+            xxhash.xxh3(1)  # type: ignore[arg-type]
 
 
 class TestStates:
     def test_answering_does_not_consume_the_state(self) -> None:
-        state = xxhash.Xxh3_64()
+        state = xxhash.Xxh3()
         state.write_bytes(b"AAPL")
         first = state.as_digest()
         assert state.as_digest() == first
         state.write_bytes(b",187.23")
-        assert int(state.as_digest()) == xxhash.xxh3_64(b"AAPL,187.23")
+        assert int(state.as_digest()) == xxhash.xxh3(b"AAPL,187.23")
 
     def test_clear_returns_to_the_constructed_seed(self) -> None:
         state = xxhash.Xxh64(seed=11)
@@ -139,11 +139,11 @@ class TestStates:
 
     def test_a_custom_secret_travels_with_the_state(self) -> None:
         custom = secret(xxhash.SECRET_MINIMUM_LENGTH)
-        state = xxhash.Xxh3_64(seed=5, secret=custom)
+        state = xxhash.Xxh3(seed=5, secret=custom)
         assert state.secret == custom
         state.write_bytes(PAYLOAD)
-        assert int(state.as_digest()) == xxhash.xxh3_64(PAYLOAD, seed=5, secret=custom)
-        assert int(state.as_digest()) != xxhash.xxh3_64(PAYLOAD, seed=5)
+        assert int(state.as_digest()) == xxhash.xxh3(PAYLOAD, seed=5, secret=custom)
+        assert int(state.as_digest()) != xxhash.xxh3(PAYLOAD, seed=5)
 
     def test_a_secret_is_consulted_only_past_the_cutoff(self) -> None:
         # XXH3's own rule for the seed-and-secret family: at or below 240 bytes
@@ -152,30 +152,30 @@ class TestStates:
         custom = secret(xxhash.SECRET_MINIMUM_LENGTH)
         for length in (0, 1, 64, 240):
             short = corpus(length)
-            assert xxhash.xxh3_64(short, secret=custom) == xxhash.xxh3_64(short)
+            assert xxhash.xxh3(short, secret=custom) == xxhash.xxh3(short)
         for length in (241, 1024):
             long = corpus(length)
-            assert xxhash.xxh3_64(long, secret=custom) != xxhash.xxh3_64(long)
+            assert xxhash.xxh3(long, secret=custom) != xxhash.xxh3(long)
 
     def test_a_short_secret_is_rejected_by_length(self) -> None:
         short = secret(xxhash.SECRET_MINIMUM_LENGTH - 1)
         with pytest.raises(ValueError, match="at least 136 bytes, got 135"):
-            xxhash.Xxh3_64(secret=short)
+            xxhash.Xxh3(secret=short)
         with pytest.raises(ValueError, match="at least 136 bytes, got 135"):
-            xxhash.xxh3_128(b"", secret=short)
+            xxhash.xxh128(b"", secret=short)
 
     def test_a_seed_only_algorithm_takes_no_secret(self) -> None:
         with pytest.raises(TypeError):
             xxhash.Xxh32(secret=secret(200))  # type: ignore[call-arg]
 
     def test_a_state_is_unhashable_and_copyable(self) -> None:
-        state = xxhash.Xxh3_64(seed=3)
+        state = xxhash.Xxh3(seed=3)
         with pytest.raises(TypeError):
             hash(state)
         state.write_bytes(b"AAPL")
         assert copy.copy(state).as_digest() == state.as_digest()
         assert copy.deepcopy(state).as_digest() == state.as_digest()
-        assert repr(state) == "Xxh3_64(seed=3)"
+        assert repr(state) == "Xxh3(seed=3)"
 
 
 class TestDigest:
@@ -208,8 +208,10 @@ class TestDigest:
             xxhash.Digest.from_bytes("xxh64", b"\x00\x00\x00\x00")
         with pytest.raises(ValueError, match="<algorithm>:<hex>"):
             xxhash.Digest("2d06800538d394c2")
+        assert xxhash.Digest.from_int("xxh3", 1).algorithm == "xxh3-64"
+        assert xxhash.Digest.from_int("xxh128", 1).algorithm == "xxh3-128"
         with pytest.raises(ValueError, match="xxh3-64"):
-            xxhash.Digest.from_int("xxh3", 1)
+            xxhash.Digest.from_int("xxh256", 1)
 
     def test_pickle_and_copy_preserve_the_value(self) -> None:
         digest = xxhash.digest(PAYLOAD, "xxh3-128")
@@ -246,7 +248,7 @@ class TestValues:
 
     def test_a_state_feeds_a_scalar_like_the_scalar_digests_itself(self) -> None:
         value = Scalar.from_py({"symbol": "AAPL", "quantity": 100})
-        state = xxhash.Xxh3_64()
+        state = xxhash.Xxh3()
         state.write_bytes(b"")
         state.write_scalar(value)
         assert state.as_digest() == value.digest("xxh3-64")

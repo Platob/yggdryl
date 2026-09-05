@@ -1,10 +1,9 @@
 use std::hash::{BuildHasher as _, Hasher as _};
 
 use super::{
-    SECRET_MINIMUM_LENGTH, Xxh3_64, Xxh3_128, Xxh32, Xxh64, xxh3_64, xxh3_64_with_secret,
-    xxh3_64_with_seed, xxh3_64_with_seed_and_secret, xxh3_128, xxh3_128_with_secret,
-    xxh3_128_with_seed, xxh3_128_with_seed_and_secret, xxh32, xxh32_with_seed, xxh64,
-    xxh64_with_seed,
+    SECRET_MINIMUM_LENGTH, Xxh3, Xxh32, Xxh64, Xxh128, xxh3, xxh3_with_secret, xxh3_with_seed,
+    xxh3_with_seed_and_secret, xxh32, xxh32_with_seed, xxh64, xxh64_with_seed, xxh128,
+    xxh128_with_secret, xxh128_with_seed, xxh128_with_seed_and_secret,
 };
 use crate::{DigestAlgorithm, Error};
 
@@ -25,17 +24,17 @@ fn secret(length: usize) -> Vec<u8> {
 fn published_vectors_pin_every_algorithm() {
     assert_eq!(xxh32(b""), 0x02cc_5d05);
     assert_eq!(xxh64(b""), 0xef46_db37_51d8_e999);
-    assert_eq!(xxh3_64(b""), 0x2d06_8005_38d3_94c2);
-    assert_eq!(xxh3_128(b""), 0x99aa_06d3_0147_98d8_6001_c324_468d_497f);
+    assert_eq!(xxh3(b""), 0x2d06_8005_38d3_94c2);
+    assert_eq!(xxh128(b""), 0x99aa_06d3_0147_98d8_6001_c324_468d_497f);
 
     assert_eq!(xxh32(b"abc"), 0x32d1_53ff);
     assert_eq!(xxh64(b"abc"), 0x44bc_2cf5_ad77_0999);
-    assert_eq!(xxh3_64(b"abc"), 0x78af_5f94_892f_3950);
-    assert_eq!(xxh3_128(b"abc"), 0x06b0_5ab6_733a_6185_78af_5f94_892f_3950);
+    assert_eq!(xxh3(b"abc"), 0x78af_5f94_892f_3950);
+    assert_eq!(xxh128(b"abc"), 0x06b0_5ab6_733a_6185_78af_5f94_892f_3950);
 }
 
 #[test]
-fn xxh3_128_carries_xxh3_64_in_its_low_half_where_the_branches_agree() {
+fn xxh128_carries_xxh3_in_its_low_half_where_the_branches_agree() {
     // The reference shares its mixing between the two widths on exactly two
     // branches: 1-to-3 bytes, and the long path past the 240-byte cutoff.
     // Everywhere else - the empty input and the 4-to-240 branches - XXH3-128
@@ -44,18 +43,18 @@ fn xxh3_128_carries_xxh3_64_in_its_low_half_where_the_branches_agree() {
     for length in [1, 2, 3, 241, 512, 4096] {
         let payload = corpus(length);
         assert_eq!(
-            super::low_64(xxh3_128(&payload)),
-            xxh3_64(&payload),
+            super::low_64(xxh128(&payload)),
+            xxh3(&payload),
             "length {length}"
         );
     }
-    assert_eq!(super::low_64(xxh3_128(b"abc")), xxh3_64(b"abc"));
+    assert_eq!(super::low_64(xxh128(b"abc")), xxh3(b"abc"));
 
     for length in [0, 4, 8, 16, 128, 240] {
         let payload = corpus(length);
         assert_ne!(
-            super::low_64(xxh3_128(&payload)),
-            xxh3_64(&payload),
+            super::low_64(xxh128(&payload)),
+            xxh3(&payload),
             "length {length}"
         );
     }
@@ -93,13 +92,13 @@ fn every_size_branch_agrees_under_a_seed() {
             xxh64_with_seed(&payload, 0x9e37_79b1_85eb_ca87)
         );
 
-        let mut state = Xxh3_64::with_seed(42);
+        let mut state = Xxh3::with_seed(42);
         state.write_bytes(&payload);
-        assert_eq!(state.as_u64(), xxh3_64_with_seed(&payload, 42));
+        assert_eq!(state.as_u64(), xxh3_with_seed(&payload, 42));
 
-        let mut state = Xxh3_128::with_seed(42);
+        let mut state = Xxh128::with_seed(42);
         state.write_bytes(&payload);
-        assert_eq!(state.as_u128(), xxh3_128_with_seed(&payload, 42));
+        assert_eq!(state.as_u128(), xxh128_with_seed(&payload, 42));
     }
 }
 
@@ -109,19 +108,19 @@ fn every_size_branch_agrees_under_a_custom_secret() {
     for length in BRANCH_LENGTHS {
         let payload = corpus(length);
 
-        let mut state = Xxh3_64::from_secret(&custom).unwrap();
+        let mut state = Xxh3::from_secret(&custom).unwrap();
         state.write_bytes(&payload);
         assert_eq!(
             state.as_u64(),
-            xxh3_64_with_secret(&payload, &custom).unwrap(),
+            xxh3_with_secret(&payload, &custom).unwrap(),
             "xxh3-64 at length {length}"
         );
 
-        let mut state = Xxh3_128::from_seed_and_secret(9, &custom).unwrap();
+        let mut state = Xxh128::from_seed_and_secret(9, &custom).unwrap();
         state.write_bytes(&payload);
         assert_eq!(
             state.as_u128(),
-            xxh3_128_with_seed_and_secret(&payload, 9, &custom).unwrap(),
+            xxh128_with_seed_and_secret(&payload, 9, &custom).unwrap(),
             "xxh3-128 at length {length}"
         );
     }
@@ -131,13 +130,10 @@ fn every_size_branch_agrees_under_a_custom_secret() {
 fn a_custom_secret_changes_the_answer_past_the_cutoff() {
     let custom = secret(SECRET_MINIMUM_LENGTH);
     let payload = corpus(4096);
+    assert_ne!(xxh3_with_secret(&payload, &custom).unwrap(), xxh3(&payload));
     assert_ne!(
-        xxh3_64_with_secret(&payload, &custom).unwrap(),
-        xxh3_64(&payload)
-    );
-    assert_ne!(
-        xxh3_128_with_secret(&payload, &custom).unwrap(),
-        xxh3_128(&payload)
+        xxh128_with_secret(&payload, &custom).unwrap(),
+        xxh128(&payload)
     );
 
     // XXH3 consults a custom secret only past 240 bytes. Below that the
@@ -148,21 +144,21 @@ fn a_custom_secret_changes_the_answer_past_the_cutoff() {
     for length in [0_usize, 1, 64, 240] {
         let short = corpus(length);
         assert_eq!(
-            xxh3_64_with_secret(&short, &custom).unwrap(),
-            xxh3_64(&short),
+            xxh3_with_secret(&short, &custom).unwrap(),
+            xxh3(&short),
             "length {length}"
         );
         assert_eq!(
-            xxh3_128_with_secret(&short, &custom).unwrap(),
-            xxh3_128(&short),
+            xxh128_with_secret(&short, &custom).unwrap(),
+            xxh128(&short),
             "length {length}"
         );
     }
     for length in [241_usize, 1024] {
         let long = corpus(length);
         assert_ne!(
-            xxh3_64_with_secret(&long, &custom).unwrap(),
-            xxh3_64(&long),
+            xxh3_with_secret(&long, &custom).unwrap(),
+            xxh3(&long),
             "length {length}"
         );
     }
@@ -172,12 +168,12 @@ fn a_custom_secret_changes_the_answer_past_the_cutoff() {
 fn a_secret_one_byte_short_is_rejected_by_length() {
     let short = secret(SECRET_MINIMUM_LENGTH - 1);
     let cases: [Error; 6] = [
-        xxh3_64_with_secret(b"", &short).unwrap_err(),
-        xxh3_64_with_seed_and_secret(b"", 1, &short).unwrap_err(),
-        xxh3_128_with_secret(b"", &short).unwrap_err(),
-        xxh3_128_with_seed_and_secret(b"", 1, &short).unwrap_err(),
-        Xxh3_64::from_secret(&short).unwrap_err(),
-        Xxh3_128::from_seed_and_secret(1, &short).unwrap_err(),
+        xxh3_with_secret(b"", &short).unwrap_err(),
+        xxh3_with_seed_and_secret(b"", 1, &short).unwrap_err(),
+        xxh128_with_secret(b"", &short).unwrap_err(),
+        xxh128_with_seed_and_secret(b"", 1, &short).unwrap_err(),
+        Xxh3::from_secret(&short).unwrap_err(),
+        Xxh128::from_seed_and_secret(1, &short).unwrap_err(),
     ];
     for error in cases {
         assert!(
@@ -198,8 +194,8 @@ fn a_secret_one_byte_short_is_rejected_by_length() {
     }
     // A short secret is rejected whatever the payload length, even though the
     // reference only consults a secret past its 240-byte cutoff.
-    assert!(xxh3_64_with_secret(&corpus(4096), &short).is_err());
-    assert!(Xxh3_64::from_secret(&secret(SECRET_MINIMUM_LENGTH)).is_ok());
+    assert!(xxh3_with_secret(&corpus(4096), &short).is_err());
+    assert!(Xxh3::from_secret(&secret(SECRET_MINIMUM_LENGTH)).is_ok());
 }
 
 #[test]
@@ -254,13 +250,13 @@ fn an_empty_chunk_contributes_nothing_wherever_it_sits() {
 
 #[test]
 fn a_state_answers_repeatedly_and_keeps_accepting_bytes() {
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     state.write_bytes(b"AAPL");
     let first = state.as_u64();
     assert_eq!(first, state.as_u64());
-    assert_eq!(first, xxh3_64(b"AAPL"));
+    assert_eq!(first, xxh3(b"AAPL"));
     state.write_bytes(b",187.23");
-    assert_eq!(state.as_u64(), xxh3_64(b"AAPL,187.23"));
+    assert_eq!(state.as_u64(), xxh3(b"AAPL,187.23"));
 }
 
 #[test]
@@ -278,32 +274,32 @@ fn clear_returns_to_the_constructed_seed_and_secret() {
     state.clear();
     assert_eq!(state.as_u64(), xxh64_with_seed(b"", 11));
 
-    let mut state = Xxh3_64::with_seed(11);
+    let mut state = Xxh3::with_seed(11);
     state.write_bytes(b"AAPL");
     state.clear();
-    assert_eq!(state.as_u64(), xxh3_64_with_seed(b"", 11));
+    assert_eq!(state.as_u64(), xxh3_with_seed(b"", 11));
 
-    let mut state = Xxh3_64::from_seed_and_secret(11, &custom).unwrap();
+    let mut state = Xxh3::from_seed_and_secret(11, &custom).unwrap();
     state.write_bytes(b"AAPL");
     state.clear();
     assert_eq!(
         state.as_u64(),
-        xxh3_64_with_seed_and_secret(b"", 11, &custom).unwrap()
+        xxh3_with_seed_and_secret(b"", 11, &custom).unwrap()
     );
     assert_eq!(state.secret(), Some(custom.as_slice()));
 
-    let mut state = Xxh3_128::from_seed_and_secret(11, &custom).unwrap();
+    let mut state = Xxh128::from_seed_and_secret(11, &custom).unwrap();
     state.write_bytes(b"AAPL");
     state.clear();
     assert_eq!(
         state.as_u128(),
-        xxh3_128_with_seed_and_secret(b"", 11, &custom).unwrap()
+        xxh128_with_seed_and_secret(b"", 11, &custom).unwrap()
     );
 
-    let mut state = Xxh3_128::new();
+    let mut state = Xxh128::new();
     state.write_bytes(b"AAPL");
     state.clear();
-    assert_eq!(state.as_u128(), xxh3_128(b""));
+    assert_eq!(state.as_u128(), xxh128(b""));
 }
 
 #[test]
@@ -321,19 +317,19 @@ fn a_state_reads_a_reader_in_bounded_chunks() {
     state.write_reader(&mut payload.as_slice()).unwrap();
     assert_eq!(state.as_u64(), xxh64(&payload));
 
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     state.write_reader(&mut payload.as_slice()).unwrap();
-    assert_eq!(state.as_u64(), xxh3_64(&payload));
+    assert_eq!(state.as_u64(), xxh3(&payload));
 
-    let mut state = Xxh3_128::new();
+    let mut state = Xxh128::new();
     state.write_reader(&mut payload.as_slice()).unwrap();
-    assert_eq!(state.as_u128(), xxh3_128(&payload));
+    assert_eq!(state.as_u128(), xxh128(&payload));
 
     // A reader interleaved with byte writes is still one contiguous payload.
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     state.write_bytes(b"AAPL");
     state.write_reader(&mut b",187.23".as_slice()).unwrap();
-    assert_eq!(state.as_u64(), xxh3_64(b"AAPL,187.23"));
+    assert_eq!(state.as_u64(), xxh3(b"AAPL,187.23"));
 }
 
 #[test]
@@ -350,10 +346,10 @@ fn a_reader_failure_surfaces_and_leaves_the_fed_prefix() {
         }
     }
 
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     let error = state.write_reader(&mut Failing(false)).unwrap_err();
     assert!(matches!(error, Error::Io(_)), "{error}");
-    assert_eq!(state.as_u64(), xxh3_64(b"AAPL"));
+    assert_eq!(state.as_u64(), xxh3(b"AAPL"));
 }
 
 #[test]
@@ -363,17 +359,17 @@ fn every_state_answers_its_own_digest_width() {
     assert_eq!(narrow.as_digest().as_u32(), Some(narrow.as_u32()));
     assert_eq!(narrow.as_digest().algorithm(), DigestAlgorithm::Xxh32);
 
-    let mut wide = Xxh3_128::new();
+    let mut wide = Xxh128::new();
     wide.write_bytes(b"AAPL");
     assert_eq!(wide.as_digest().as_u128(), Some(wide.as_u128()));
-    assert_eq!(wide.as_digest().algorithm(), DigestAlgorithm::Xxh3_128);
+    assert_eq!(wide.as_digest().algorithm(), DigestAlgorithm::Xxh128);
 }
 
 #[test]
 fn a_state_is_a_hasher_and_a_build_hasher() {
-    let mut state = Xxh3_64::new();
+    let mut state = Xxh3::new();
     state.write(b"abc");
-    assert_eq!(state.finish(), xxh3_64(b"abc"));
+    assert_eq!(state.finish(), xxh3(b"abc"));
 
     let mut narrow = Xxh32::new();
     narrow.write(b"abc");
@@ -381,10 +377,10 @@ fn a_state_is_a_hasher_and_a_build_hasher() {
 
     // `Hasher::finish` on the 128-bit state answers the low half; `as_u128`
     // is the full value.
-    let mut wide = Xxh3_128::new();
+    let mut wide = Xxh128::new();
     wide.write(b"abc");
-    assert_eq!(wide.finish(), xxh3_64(b"abc"));
-    assert_eq!(wide.as_u128(), xxh3_128(b"abc"));
+    assert_eq!(wide.finish(), xxh3(b"abc"));
+    assert_eq!(wide.as_u128(), xxh128(b"abc"));
 
     // A builder carries the seed and secret into every state it builds, and
     // builds a fresh one every time rather than handing back a fed state.
@@ -395,23 +391,23 @@ fn a_state_is_a_hasher_and_a_build_hasher() {
     built.write_bytes(b"abc");
     assert_eq!(built.as_u64(), xxh64_with_seed(b"abc", 5));
 
-    let mut built = Xxh3_64::with_seed(5).build_hasher();
+    let mut built = Xxh3::with_seed(5).build_hasher();
     built.write_bytes(b"abc");
-    assert_eq!(built.as_u64(), xxh3_64_with_seed(b"abc", 5));
+    assert_eq!(built.as_u64(), xxh3_with_seed(b"abc", 5));
 
     let custom = secret(SECRET_MINIMUM_LENGTH);
-    let mut built = Xxh3_128::from_seed_and_secret(5, &custom)
+    let mut built = Xxh128::from_seed_and_secret(5, &custom)
         .unwrap()
         .build_hasher();
     built.write_bytes(b"abc");
     assert_eq!(
         built.as_u128(),
-        xxh3_128_with_seed_and_secret(b"abc", 5, &custom).unwrap()
+        xxh128_with_seed_and_secret(b"abc", 5, &custom).unwrap()
     );
 
     // The states drop into a `HashMap` through their own `BuildHasher`.
-    let mut map: std::collections::HashMap<&str, u8, Xxh3_64> =
-        std::collections::HashMap::with_hasher(Xxh3_64::new());
+    let mut map: std::collections::HashMap<&str, u8, Xxh3> =
+        std::collections::HashMap::with_hasher(Xxh3::new());
     map.insert("AAPL", 1);
     assert_eq!(map.get("AAPL"), Some(&1));
 }
@@ -420,9 +416,9 @@ fn a_state_is_a_hasher_and_a_build_hasher() {
 fn a_default_state_is_an_unseeded_state() {
     assert_eq!(Xxh32::default().as_u32(), xxh32(b""));
     assert_eq!(Xxh64::default().as_u64(), xxh64(b""));
-    assert_eq!(Xxh3_64::default().as_u64(), xxh3_64(b""));
-    assert_eq!(Xxh3_128::default().as_u128(), xxh3_128(b""));
-    assert!(Xxh3_64::default().secret().is_none());
+    assert_eq!(Xxh3::default().as_u64(), xxh3(b""));
+    assert_eq!(Xxh128::default().as_u128(), xxh128(b""));
+    assert!(Xxh3::default().secret().is_none());
 }
 
 #[test]
@@ -430,12 +426,12 @@ fn debug_shows_the_seed_and_secret_length_rather_than_the_accumulator() {
     let custom = secret(SECRET_MINIMUM_LENGTH);
     assert_eq!(format!("{:?}", Xxh32::with_seed(3)), "Xxh32 { seed: 3 }");
     assert_eq!(
-        format!("{:?}", Xxh3_64::from_seed_and_secret(3, &custom).unwrap()),
-        "Xxh3_64 { seed: 3, secret: Some(136) }"
+        format!("{:?}", Xxh3::from_seed_and_secret(3, &custom).unwrap()),
+        "Xxh3 { seed: 3, secret: Some(136) }"
     );
     assert_eq!(
-        format!("{:?}", Xxh3_128::new()),
-        "Xxh3_128 { seed: 0, secret: None }"
+        format!("{:?}", Xxh128::new()),
+        "Xxh128 { seed: 0, secret: None }"
     );
 }
 
@@ -449,7 +445,7 @@ fn the_module_digest_helper_dispatches_like_the_algorithm() {
 mod handles {
     use std::io::{Read as _, Write as _};
 
-    use super::super::{reader, writer, xxh3_64};
+    use super::super::{reader, writer, xxh3};
     use crate::IOBase;
     use crate::holder::Buffer;
     use crate::{DigestAlgorithm, Error};
@@ -533,8 +529,8 @@ mod handles {
         let handle = Buffered::new(inner, BufferedOptions::default());
         assert_eq!(handle.cached_pages(), 0);
         assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            DigestAlgorithm::Xxh3_64.digest(&bytes)
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3.digest(&bytes)
         );
         assert_eq!(handle.cached_pages(), 0);
 
@@ -555,23 +551,20 @@ mod handles {
 
         // The wrapper answers for the bytes it presents.
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(&plain))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(&plain))
         );
         // The handle underneath answers for the bytes it holds.
         let compressed = handle.handle().read_all_bytes().unwrap();
         assert_eq!(
             handle
                 .handle()
-                .read_digest(DigestAlgorithm::Xxh3_64)
+                .read_digest(DigestAlgorithm::Xxh3)
                 .unwrap()
                 .as_u64(),
-            Some(xxh3_64(&compressed))
+            Some(xxh3(&compressed))
         );
-        assert_ne!(xxh3_64(&plain), xxh3_64(&compressed));
+        assert_ne!(xxh3(&plain), xxh3(&compressed));
         agrees("gzip view", &handle);
         agrees("gzip handle", handle.handle());
     }
@@ -596,7 +589,7 @@ mod handles {
     #[test]
     fn a_container_is_refused_by_kind() {
         let folder = crate::holder::local::Folder::new(root("container")).unwrap();
-        let error = folder.read_digest(DigestAlgorithm::Xxh3_64).unwrap_err();
+        let error = folder.read_digest(DigestAlgorithm::Xxh3).unwrap_err();
         assert!(
             matches!(
                 error,
@@ -611,7 +604,7 @@ mod handles {
         assert!(error.to_string().contains("got a directory"), "{error}");
         assert!(
             folder
-                .read_range_digest(0, 8, DigestAlgorithm::Xxh3_64)
+                .read_range_digest(0, 8, DigestAlgorithm::Xxh3)
                 .is_err()
         );
     }
@@ -683,22 +676,22 @@ mod handles {
         let mut inner = Buffer::new();
         inner.write_all_bytes(&payload()).unwrap();
         let handle = Failing { handle: inner };
-        let error = handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap_err();
+        let error = handle.read_digest(DigestAlgorithm::Xxh3).unwrap_err();
         assert!(matches!(error, Error::Io(_)), "{error}");
     }
 
     #[test]
     fn a_pass_through_reader_hashes_what_it_moves() {
         let bytes = payload();
-        let mut source = reader(bytes.as_slice(), DigestAlgorithm::Xxh3_128);
-        assert_eq!(source.algorithm(), DigestAlgorithm::Xxh3_128);
+        let mut source = reader(bytes.as_slice(), DigestAlgorithm::Xxh128);
+        assert_eq!(source.algorithm(), DigestAlgorithm::Xxh128);
         // The digest is answerable at any point, not only at the end.
-        assert_eq!(source.as_digest(), DigestAlgorithm::Xxh3_128.digest(b""));
+        assert_eq!(source.as_digest(), DigestAlgorithm::Xxh128.digest(b""));
 
         let mut moved = Vec::new();
         source.read_to_end(&mut moved).unwrap();
         assert_eq!(moved, bytes);
-        assert_eq!(source.as_digest(), DigestAlgorithm::Xxh3_128.digest(&bytes));
+        assert_eq!(source.as_digest(), DigestAlgorithm::Xxh128.digest(&bytes));
         assert!(source.into_inner().is_empty());
     }
 
@@ -721,19 +714,16 @@ mod handles {
         // digest costs the pass that was already happening.
         let bytes = payload();
         let mut handle = Buffer::new();
-        let mut target = writer(Vec::new(), DigestAlgorithm::Xxh3_64);
+        let mut target = writer(Vec::new(), DigestAlgorithm::Xxh3);
         target.write_all(&bytes).unwrap();
         let digest = target.as_digest();
         handle.write_all_bytes(&target.into_inner()).unwrap();
-        assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            digest
-        );
+        assert_eq!(handle.read_digest(DigestAlgorithm::Xxh3).unwrap(), digest);
     }
 }
 
 mod hashed {
-    use super::super::{Hashed, xxh3_64, xxh3_64_with_seed};
+    use super::super::{Hashed, xxh3, xxh3_with_seed};
     use crate::IOBase;
     use crate::holder::Buffer;
     use crate::{DigestAlgorithm, Error};
@@ -777,7 +767,7 @@ mod hashed {
 
     #[test]
     fn sequential_writes_answer_without_reading_the_bytes_back() {
-        let mut handle = Hashed::new(Counted::new(), DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(Counted::new(), DigestAlgorithm::Xxh3);
         handle.write_all_bytes(b"symbol,price\n").unwrap();
         handle.append_bytes(b"AAPL,187.23\n").unwrap();
         handle.append_bytes(b"MSFT,410.10\n").unwrap();
@@ -785,20 +775,14 @@ mod hashed {
 
         let expected = b"symbol,price\nAAPL,187.23\nMSFT,410.10\n";
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(expected))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(expected))
         );
         assert_eq!(handle.handle().reads(), 0, "the running state was used");
         // Asking again is still free.
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(expected))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(expected))
         );
         assert_eq!(handle.handle().reads(), 0);
         assert_eq!(handle.read_all_bytes().unwrap(), expected);
@@ -806,7 +790,7 @@ mod hashed {
 
     #[test]
     fn an_out_of_order_write_re_streams_to_the_same_value() {
-        let mut handle = Hashed::new(Counted::new(), DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(Counted::new(), DigestAlgorithm::Xxh3);
         handle
             .write_all_bytes(b"symbol,price\nAAPL,187.23\n")
             .unwrap();
@@ -817,11 +801,8 @@ mod hashed {
         let bytes = handle.read_all_bytes().unwrap();
         let before = handle.handle().reads();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(&bytes))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(&bytes))
         );
         assert!(
             handle.handle().reads() > before,
@@ -830,11 +811,8 @@ mod hashed {
         // The state re-armed, so the next ask is free again.
         let after = handle.handle().reads();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(&bytes))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(&bytes))
         );
         assert_eq!(handle.handle().reads(), after);
     }
@@ -857,27 +835,24 @@ mod hashed {
 
     #[test]
     fn clear_and_remove_re_arm_the_state() {
-        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
         handle.write_all_bytes(b"AAPL,187.23\n").unwrap();
 
         handle.clear().unwrap();
         assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            DigestAlgorithm::Xxh3_64.digest(b"")
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3.digest(b"")
         );
         handle.write_all_bytes(b"MSFT,410.10\n").unwrap();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(b"MSFT,410.10\n"))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(b"MSFT,410.10\n"))
         );
 
         handle.remove(false).unwrap();
         assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            DigestAlgorithm::Xxh3_64.digest(b"")
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3.digest(b"")
         );
 
         handle.write_all_bytes(b"AAPL,187.23\n").unwrap();
@@ -885,8 +860,8 @@ mod hashed {
         let bytes = handle.read_all_bytes().unwrap();
         assert_eq!(bytes, b"AAPL");
         assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            DigestAlgorithm::Xxh3_64.digest(&bytes)
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3.digest(&bytes)
         );
     }
 
@@ -901,55 +876,46 @@ mod hashed {
         // there for.
         let lake = Folder::from_location(Arc::new(MemoryFileSystem::new()), "lake").unwrap();
         let leaf = lake.child_by_path("trades.csv").unwrap();
-        let mut handle = Hashed::new(leaf, DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(leaf, DigestAlgorithm::Xxh3);
 
         handle.pwrite_all(0, b"AAPL,187.23\n").unwrap();
         // Staged but not published: the digest describes what is stored.
         assert_eq!(
-            handle.read_digest(DigestAlgorithm::Xxh3_64).unwrap(),
-            DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes().unwrap()),
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes().unwrap()),
         );
 
         handle.flush().unwrap();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64(b"AAPL,187.23\n"))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3(b"AAPL,187.23\n"))
         );
         assert_eq!(handle.read_all_bytes().unwrap(), b"AAPL,187.23\n");
     }
 
     #[test]
     fn a_seed_travels_with_the_wrapper() {
-        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64).with_seed(42);
+        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3).with_seed(42);
         assert_eq!(handle.seed(), 42);
-        assert_eq!(handle.algorithm(), DigestAlgorithm::Xxh3_64);
+        assert_eq!(handle.algorithm(), DigestAlgorithm::Xxh3);
         handle.write_all_bytes(b"AAPL,187.23\n").unwrap();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64_with_seed(b"AAPL,187.23\n", 42))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3_with_seed(b"AAPL,187.23\n", 42))
         );
 
         // Re-streaming re-arms under the same seed, not an unseeded state.
         handle.pwrite_all(4, b"!").unwrap();
         let bytes = handle.read_all_bytes().unwrap();
         assert_eq!(
-            handle
-                .read_digest(DigestAlgorithm::Xxh3_64)
-                .unwrap()
-                .as_u64(),
-            Some(xxh3_64_with_seed(&bytes, 42))
+            handle.read_digest(DigestAlgorithm::Xxh3).unwrap().as_u64(),
+            Some(xxh3_with_seed(&bytes, 42))
         );
     }
 
     #[test]
     fn another_algorithm_streams_rather_than_reading_the_running_state() {
-        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
         handle.write_all_bytes(b"AAPL,187.23\n").unwrap();
         for algorithm in DigestAlgorithm::ALL {
             assert_eq!(
@@ -962,7 +928,7 @@ mod hashed {
 
     #[test]
     fn the_wrapper_is_transparent_to_everything_else() {
-        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3_64);
+        let mut handle = Hashed::new(Buffer::new(), DigestAlgorithm::Xxh3);
         handle
             .write_all_bytes(b"symbol,price\nAAPL,187.23\n")
             .unwrap();
@@ -997,7 +963,7 @@ mod hashed {
         std::fs::create_dir_all(&root).unwrap();
         let handle = Hashed::new(
             crate::holder::local::Folder::new(&root).unwrap(),
-            DigestAlgorithm::Xxh3_64,
+            DigestAlgorithm::Xxh3,
         );
         // The running state starts live and empty and a folder's size is
         // zero, so the check has to come from the handle's kind rather than
@@ -1017,7 +983,7 @@ mod values {
     use std::hash::Hasher as _;
     use std::sync::Arc;
 
-    use super::super::{Xxh3_64, xxh3_64};
+    use super::super::{Xxh3, xxh3};
     use crate::types::{
         Ascii, AsciiFamily, BinaryView, Bytes, Decimal, Decimal32, Decimal64, FixedAscii,
         FixedSizeBinary, Geography, Geospatial, Interval, LargeBinary, LargeUtf8, Temporal, Text,
@@ -1048,7 +1014,7 @@ mod values {
 
     impl std::hash::Hasher for Collected {
         fn finish(&self) -> u64 {
-            xxh3_64(&self.0)
+            xxh3(&self.0)
         }
 
         fn write(&mut self, bytes: &[u8]) {
@@ -1211,8 +1177,8 @@ mod values {
             assert_eq!(left, right, "the corpus pair is not equal to begin with");
             assert_eq!(feed(&left), feed(&right), "{left:?} vs {right:?}");
             assert_eq!(
-                left.digest(DigestAlgorithm::Xxh3_64),
-                right.digest(DigestAlgorithm::Xxh3_64)
+                left.digest(DigestAlgorithm::Xxh3),
+                right.digest(DigestAlgorithm::Xxh3)
             );
         }
 
@@ -1335,12 +1301,12 @@ mod values {
     fn the_feed_does_not_depend_on_how_the_sink_batches_it() {
         for value in corpus() {
             let bytes = feed(&value);
-            let mut state = Xxh3_64::new();
+            let mut state = Xxh3::new();
             state.write_scalar(&value);
-            assert_eq!(state.as_u64(), xxh3_64(&bytes), "{value:?}");
+            assert_eq!(state.as_u64(), xxh3(&bytes), "{value:?}");
 
             for split in [1_usize, 3, 7, 64] {
-                let mut chunked = Xxh3_64::new();
+                let mut chunked = Xxh3::new();
                 for chunk in bytes.chunks(split) {
                     chunked.write_bytes(chunk);
                 }
@@ -1386,8 +1352,8 @@ mod values {
         let bytes = feed(&deep);
         assert_eq!(*bytes.last().unwrap(), 0xff, "the subtree was cut");
         assert_eq!(
-            deep.digest(DigestAlgorithm::Xxh3_64),
-            DigestAlgorithm::Xxh3_64.digest(&bytes)
+            deep.digest(DigestAlgorithm::Xxh3),
+            DigestAlgorithm::Xxh3.digest(&bytes)
         );
         // Values differing only below the cut are indistinguishable, exactly
         // as `dtype` refuses to name them.
@@ -1474,9 +1440,9 @@ mod values {
         assert_eq!(format!("{borrowed:?}"), format!("{inline:?}"));
         assert_eq!(borrowed.as_ref(), b"1");
 
-        let mut left = Xxh3_64::new();
+        let mut left = Xxh3::new();
         std::hash::Hash::hash(&borrowed, &mut left);
-        let mut right = Xxh3_64::new();
+        let mut right = Xxh3::new();
         std::hash::Hash::hash(&inline, &mut right);
         assert_eq!(left.finish(), right.finish());
     }

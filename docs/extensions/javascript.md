@@ -69,8 +69,8 @@ const { Scalar, xxhash } = require('yggdryl')
 
 const payload = Buffer.from('abc')
 assert.equal(xxhash.xxh32(payload), 0x32d153ff)
-assert.equal(xxhash.xxh3_64(payload), 0x78af5f94892f3950n)
-assert.equal(xxhash.xxh3_64('abc'), xxhash.xxh3_64(new Uint8Array(payload)))
+assert.equal(xxhash.xxh3(payload), 0x78af5f94892f3950n)
+assert.equal(xxhash.xxh3('abc'), xxhash.xxh3(new Uint8Array(payload)))
 
 const digest = xxhash.digest(payload, 'xxh3-64')
 assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')

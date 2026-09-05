@@ -720,13 +720,13 @@ pub trait IOBase: Send + IOMedia {
     /// handle.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
     ///
     /// assert_eq!(
-    ///     handle.read_digest(DigestAlgorithm::Xxh3_64)?,
-    ///     DigestAlgorithm::Xxh3_64.digest(&handle.read_all_bytes()?),
+    ///     handle.read_digest(DigestAlgorithm::Xxh3)?,
+    ///     DigestAlgorithm::Xxh3.digest(&handle.read_all_bytes()?),
     /// );
     /// // Nothing written yet is the digest of no bytes.
     /// assert_eq!(
-    ///     Buffer::new().read_digest(DigestAlgorithm::Xxh3_64)?.as_u64(),
-    ///     Some(xxhash::xxh3_64(b"")),
+    ///     Buffer::new().read_digest(DigestAlgorithm::Xxh3)?.as_u64(),
+    ///     Some(xxhash::xxh3(b"")),
     /// );
     /// # Ok(())
     /// # }

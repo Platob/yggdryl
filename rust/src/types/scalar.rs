@@ -941,11 +941,11 @@ impl Scalar {
     /// assert_eq!(Scalar::from(1).stable_hash(), Scalar::from(1).stable_hash());
     /// assert_eq!(
     ///     Scalar::from("AAPL").stable_hash(),
-    ///     Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3_64).as_u64().unwrap(),
+    ///     Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3).as_u64().unwrap(),
     /// );
     /// ```
     pub fn stable_hash(&self) -> u64 {
-        let mut state = crate::xxhash::Xxh3_64::new();
+        let mut state = crate::xxhash::Xxh3::new();
         self.write_bytes(&mut state);
         state.as_u64()
     }

@@ -100,12 +100,12 @@ pub(crate) fn reject_container<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
 /// use yggdryl::{DigestAlgorithm, xxhash};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let mut reader = xxhash::reader(b"AAPL,187.23".as_slice(), DigestAlgorithm::Xxh3_64);
+/// let mut reader = xxhash::reader(b"AAPL,187.23".as_slice(), DigestAlgorithm::Xxh3);
 /// let mut moved = Vec::new();
 /// reader.read_to_end(&mut moved)?;
 ///
 /// assert_eq!(moved, b"AAPL,187.23");
-/// assert_eq!(reader.as_digest(), DigestAlgorithm::Xxh3_64.digest(&moved));
+/// assert_eq!(reader.as_digest(), DigestAlgorithm::Xxh3.digest(&moved));
 /// # Ok(())
 /// # }
 /// ```

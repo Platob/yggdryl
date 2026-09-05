@@ -3726,7 +3726,7 @@ export declare class Urn {
 export type JsUrn = Urn
 
 /** A resumable XXH3 state answering 128 bits. */
-export declare class Xxh3_128 {
+export declare class Xxh128 {
   /** The canonical algorithm token. */
   get algorithm(): string
   /** Feed raw bytes or a string's UTF-8. */
@@ -3743,12 +3743,12 @@ export declare class Xxh3_128 {
   /** Reset to the constructed seed and secret, not to a fresh state. */
   clear(): void
   /** Make a cheap native clone, carrying everything fed so far. */
-  clone(): Xxh3_128
+  clone(): Xxh128
   /**
    * Start a state, optionally seeded and with a custom secret.
    *
    * A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
-   * length whatever the payload, for the reason `Xxh3_64` states.
+   * length whatever the payload, for the reason `Xxh3` states.
    */
   constructor(seed?: bigint | undefined | null, secret?: Uint8Array | undefined | null)
   /** The seed this state was constructed with. */
@@ -3756,10 +3756,10 @@ export declare class Xxh3_128 {
   /** The custom secret this state was constructed with, if any. */
   get secret(): Uint8Array | null
 }
-export type JsXxh3_128 = Xxh3_128
+export type JsXxh128 = Xxh128
 
 /** A resumable XXH3 state answering 64 bits. */
-export declare class Xxh3_64 {
+export declare class Xxh3 {
   /** The canonical algorithm token. */
   get algorithm(): string
   /** Feed raw bytes or a string's UTF-8. */
@@ -3776,7 +3776,7 @@ export declare class Xxh3_64 {
   /** Reset to the constructed seed and secret, not to a fresh state. */
   clear(): void
   /** Make a cheap native clone, carrying everything fed so far. */
-  clone(): Xxh3_64
+  clone(): Xxh3
   /**
    * Start a state, optionally seeded and with a custom secret.
    *
@@ -3791,7 +3791,7 @@ export declare class Xxh3_64 {
   /** The custom secret this state was constructed with, if any. */
   get secret(): Uint8Array | null
 }
-export type JsXxh3_64 = Xxh3_64
+export type JsXxh3 = Xxh3
 
 /** A resumable XXH32 state. */
 export declare class Xxh32 {

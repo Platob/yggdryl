@@ -5,7 +5,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::DigestAlgorithm;
-use yggdryl::xxhash::{self, Xxh3_64, Xxh3_128, Xxh32, Xxh64};
+use yggdryl::xxhash::{self, Xxh3, Xxh32, Xxh64, Xxh128};
 
 use super::{SIZES, label, payload};
 
@@ -22,11 +22,11 @@ pub(crate) fn size_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("xxh64/{size}"), |bencher| {
             bencher.iter(|| xxhash::xxh64(black_box(&data)));
         });
-        group.bench_function(format!("xxh3_64/{size}"), |bencher| {
-            bencher.iter(|| xxhash::xxh3_64(black_box(&data)));
+        group.bench_function(format!("xxh3/{size}"), |bencher| {
+            bencher.iter(|| xxhash::xxh3(black_box(&data)));
         });
-        group.bench_function(format!("xxh3_128/{size}"), |bencher| {
-            bencher.iter(|| xxhash::xxh3_128(black_box(&data)));
+        group.bench_function(format!("xxh128/{size}"), |bencher| {
+            bencher.iter(|| xxhash::xxh128(black_box(&data)));
         });
     }
     group.finish();
@@ -52,13 +52,13 @@ pub(crate) fn wrapper_benchmarks(criterion: &mut Criterion) {
         group.throughput(Throughput::Bytes(length as u64));
         let size = label(length);
         group.bench_function(format!("yggdryl/{size}"), |bencher| {
-            bencher.iter(|| xxhash::xxh3_64(black_box(&data)));
+            bencher.iter(|| xxhash::xxh3(black_box(&data)));
         });
         group.bench_function(format!("twox_hash/{size}"), |bencher| {
             bencher.iter(|| twox_hash::xxhash3_64::Hasher::oneshot(black_box(&data)));
         });
         group.bench_function(format!("digest_value/{size}"), |bencher| {
-            bencher.iter(|| DigestAlgorithm::Xxh3_64.digest(black_box(&data)));
+            bencher.iter(|| DigestAlgorithm::Xxh3.digest(black_box(&data)));
         });
     }
     group.finish();
@@ -79,11 +79,11 @@ pub(crate) fn streaming_benchmarks(criterion: &mut Criterion) {
         group.throughput(Throughput::Bytes(length as u64));
         let size = label(length);
         group.bench_function(format!("one_shot/{size}"), |bencher| {
-            bencher.iter(|| xxhash::xxh3_64(black_box(&data)));
+            bencher.iter(|| xxhash::xxh3(black_box(&data)));
         });
         group.bench_function(format!("streamed/{size}"), |bencher| {
             bencher.iter(|| {
-                let mut state = Xxh3_64::new();
+                let mut state = Xxh3::new();
                 for chunk in black_box(&data).chunks(WINDOW) {
                     state.write_bytes(chunk);
                 }
@@ -92,7 +92,7 @@ pub(crate) fn streaming_benchmarks(criterion: &mut Criterion) {
         });
         group.bench_function(format!("streamed_dispatched/{size}"), |bencher| {
             bencher.iter(|| {
-                let mut digester = DigestAlgorithm::Xxh3_64.digester();
+                let mut digester = DigestAlgorithm::Xxh3.digester();
                 for chunk in black_box(&data).chunks(WINDOW) {
                     digester.write_bytes(chunk);
                 }
@@ -118,16 +118,16 @@ pub(crate) fn streaming_benchmarks(criterion: &mut Criterion) {
             state.as_u64()
         });
     });
-    group.bench_function("state/xxh3_64", |bencher| {
+    group.bench_function("state/xxh3", |bencher| {
         bencher.iter(|| {
-            let mut state = Xxh3_64::new();
+            let mut state = Xxh3::new();
             state.write_bytes(black_box(&data));
             state.as_u64()
         });
     });
-    group.bench_function("state/xxh3_128", |bencher| {
+    group.bench_function("state/xxh128", |bencher| {
         bencher.iter(|| {
-            let mut state = Xxh3_128::new();
+            let mut state = Xxh128::new();
             state.write_bytes(black_box(&data));
             state.as_u128()
         });

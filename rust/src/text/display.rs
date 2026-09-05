@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::xxhash::Xxh3_64;
+use crate::xxhash::Xxh3;
 
 /// Maximum bytes of caller-controlled text interpolated into one error message.
 ///
@@ -22,7 +22,7 @@ const ELLIPSIS: char = '\u{2026}';
 /// The rendering is streamed through the hasher rather than assembled, so a
 /// value whose canonical text is large costs no copy of it.
 pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
-    struct StableHasher(Xxh3_64);
+    struct StableHasher(Xxh3);
 
     impl fmt::Write for StableHasher {
         fn write_str(&mut self, value: &str) -> fmt::Result {
@@ -31,7 +31,7 @@ pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
         }
     }
 
-    let mut hasher = StableHasher(Xxh3_64::new());
+    let mut hasher = StableHasher(Xxh3::new());
     let result = fmt::write(&mut hasher, format_args!("{value}"));
     debug_assert!(result.is_ok(), "the stable hash sink is infallible");
     hasher.0.as_u64()
@@ -47,12 +47,12 @@ pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
 /// XXH3-64 behind explicit little-endian integer writes.
 ///
 /// [`Hasher`]'s default `write_u8` through `write_usize` bodies use
-/// native-endian bytes, so handing a bare [`Xxh3_64`] to a [`Hash`]
+/// native-endian bytes, so handing a bare [`Xxh3`] to a [`Hash`]
 /// implementation would make a stored hash disagree between a big-endian and a
 /// little-endian machine. Overriding them is the whole reason this stays a
 /// named type rather than an inline call.
 #[derive(Default)]
-struct StableHash(Xxh3_64);
+struct StableHash(Xxh3);
 
 impl Hasher for StableHash {
     fn finish(&self) -> u64 {
@@ -320,14 +320,14 @@ mod tests {
     #[test]
     fn byte_and_display_hashing_agree() {
         use super::stable_hash_display;
-        use crate::xxhash::xxh3_64;
+        use crate::xxhash::xxh3;
 
         // A str's Display output is its bytes, so hashing the rendering here
-        // and hashing the bytes with `xxhash::xxh3_64` are the same function
+        // and hashing the bytes with `xxhash::xxh3` are the same function
         // reached two ways. That is the whole reason there is no second
         // byte-oriented spelling beside this one.
         for text in ["", "x", "fill 100 @ 187.23", "é—both\nlines"] {
-            assert_eq!(xxh3_64(text.as_bytes()), stable_hash_display(&text));
+            assert_eq!(xxh3(text.as_bytes()), stable_hash_display(&text));
         }
         // The published XXH3-64 vectors pin the contract.
         assert_eq!(stable_hash_display(&""), 0x2d06_8005_38d3_94c2);
@@ -339,7 +339,7 @@ mod tests {
         use std::hash::Hasher as _;
 
         use super::StableHash;
-        use crate::xxhash::xxh3_64;
+        use crate::xxhash::xxh3;
 
         // Every `write_*` override is pinned against the explicit
         // little-endian bytes, so a big-endian target answers the same value a
@@ -352,6 +352,6 @@ mod tests {
         expected.extend_from_slice(&0x0102_0304_u32.to_le_bytes());
         expected.extend_from_slice(&(-2_i64).to_le_bytes());
         expected.extend_from_slice(&7_u64.to_le_bytes());
-        assert_eq!(sink.finish(), xxh3_64(&expected));
+        assert_eq!(sink.finish(), xxh3(&expected));
     }
 }
