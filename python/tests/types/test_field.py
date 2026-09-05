@@ -13,7 +13,7 @@ from yggdryl import DataType, Field, MediaType, MimeType, Uri, Url
 
 def test_field_infers_datatype_and_field_representations() -> None:
     field = Field("quantity", "decimal(18, 4)", nullable=False)
-    arrow = pa.field("quantity", pa.decimal128(18, 4), nullable=False)
+    arrow = pa.field("quantity", pa.decimal64(18, 4), nullable=False)
 
     assert Field("id", DataType("int64")).dtype == DataType("int64")
     assert field.into_arrow() == arrow

@@ -90,6 +90,8 @@ def main() -> None:
                 small,
             ),
             ("duration construction", lambda: Scalar.duration(90, "s"), small),
+            ("scalar id", lambda: NATIVE_TEMPORAL.id, small),
+            ("scalar family", lambda: NATIVE_TEMPORAL.family, small),
             ("stable hash", NATIVE_VALUE.stable_hash, small),
             ("enum construction", lambda: Scalar.from_enum("io_mode", "append"), small),
             ("enum kind", lambda: NATIVE_ENUM.enum_kind, small),

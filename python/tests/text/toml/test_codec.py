@@ -106,7 +106,7 @@ def test_values_lower_to_their_canonical_native_shape() -> None:
             "type": "list",
         },
         "field": {
-            "dtype": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "dtype": {"precision": 18, "scale": 4, "type": "decimal64"},
             "metadata": {},
             "name": "price",
             "nullable": False,

@@ -654,7 +654,7 @@ function installRecords({
           converted = Reflect.apply(getter, owner, [])
           if (
             !(converted instanceof Field) ||
-            converted.dtype.kind !== 'struct' ||
+            converted.dtype.id !== 'struct' ||
             converted.nullable
           ) {
             throw new TypeError(

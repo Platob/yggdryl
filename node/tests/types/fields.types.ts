@@ -52,7 +52,7 @@ const region: GeographyField = fields.geography('region', 'OGC:CRS84', 'vincenty
 })
 const currency: CurrencyField = fields.currency('ccy', { nullable: false })
 const currencyId: 'currency' = currency.dtype.id
-const currencyKind: 'string' = currency.dtype.kind
+const currencyKind: 'ascii' = currency.dtype.kind
 const currencyValue: string = currency.defaultJSValue()
 const note: AsciiField = fields.ascii('note', { nullable: false })
 const noteId: 'ascii' = note.dtype.id

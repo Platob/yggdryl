@@ -42,7 +42,7 @@ test('bare variant is the self-describing datatype, not the union sugar', () => 
   const variant = DataType.variant()
 
   assert.equal(variant.id, 'variant')
-  assert.equal(variant.kind, 'variant')
+  assert.equal(variant.kind, 'nested')
   assert.equal(variant.toString(), 'variant')
   assert.ok(new DataType('variant').equals(variant))
   assert.ok(DataType.fromString(variant.toString()).equals(variant))
@@ -88,7 +88,7 @@ test('ASCII is one variable form and one fixed width', () => {
   const ascii = new DataType('ascii')
 
   assert.equal(ascii.id, 'ascii')
-  assert.equal(ascii.kind, 'string')
+  assert.equal(ascii.kind, 'ascii')
   assert.equal(ascii.toString(), 'ascii')
   // Variable-width ASCII stores the bytes it is given, so it has no width.
   assert.equal(ascii.asciiWidth, null)
@@ -98,7 +98,7 @@ test('ASCII is one variable form and one fixed width', () => {
   const fixed = DataType.ascii(3)
 
   assert.equal(fixed.id, 'fixed_ascii')
-  assert.equal(fixed.kind, 'string')
+  assert.equal(fixed.kind, 'ascii')
   assert.equal(fixed.toString(), 'ascii(3)')
   assert.equal(fixed.asciiWidth, 3)
   assert.ok(DataType.from('ascii(3)').equals(fixed))
@@ -135,7 +135,7 @@ test('a registered code is its own datatype over its standard width', () => {
   const currency = new DataType('currency')
 
   assert.equal(currency.id, 'currency')
-  assert.equal(currency.kind, 'string')
+  assert.equal(currency.kind, 'ascii')
   assert.equal(currency.toString(), 'currency')
   assert.equal(currency.asciiWidth, 3)
   assert.ok(!currency.equals(DataType.ascii(3)))
@@ -152,7 +152,7 @@ test('a registered code is its own datatype over its standard width', () => {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)
     assert.equal(dtype.asciiWidth, width, name)
-    assert.equal(dtype.kind, 'string', name)
+    assert.equal(dtype.kind, 'ascii', name)
     assert.equal(dtype.asciiPacked('A'), BigInt('A'.charCodeAt(0)) << BigInt(8 * (width - 1)))
   }
 

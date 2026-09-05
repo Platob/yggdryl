@@ -55,6 +55,8 @@ const enumKind: string | null = enumScalar.enumKind
 const enumValue: string | null = enumScalar.enumValue
 const enumOrdinal: number | null = enumScalar.enumOrdinal
 const kind: string = at.kind
+const scalarId: string = at.id
+const scalarFamily: string = at.family
 const count: bigint | null = at.count
 const zone: string | null = at.zone
 const unscaled: bigint | null = price.unscaled
@@ -92,6 +94,8 @@ const replacedValue: Scalar = nestedValues.set('rows', [2])
 const removedValue: Scalar = nestedValues.remove('rows')
 const iteratedValues: Scalar[] = [...nestedValues]
 void childCount
+void scalarId
+void scalarFamily
 void emptyContainer
 void childAt
 void childByKey

@@ -192,7 +192,7 @@ def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> Non
             "type": "list",
         },
         {
-            "dtype": {"precision": 18, "scale": 4, "type": "decimal128"},
+            "dtype": {"precision": 18, "scale": 4, "type": "decimal64"},
             "metadata": {},
             "name": "price",
             "nullable": False,

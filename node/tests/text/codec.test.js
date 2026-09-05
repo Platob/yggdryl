@@ -305,6 +305,56 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(Scalar.decimal(150n, 2).compare(Scalar.decimal(15n, 1)), 0)
 })
 
+test('Scalar identity accessors name the exact leaf and family', () => {
+  const values = [
+    [Scalar.fromJs(null), 'null', 'null'],
+    [Scalar.fromJs(true), 'boolean', 'boolean'],
+    [Scalar.fromJs(1n), 'int64', 'integer'],
+    [Scalar.float(1.5, 32), 'float32', 'floating'],
+    [Scalar.decimal(150n, 2), 'decimal128', 'decimal'],
+    [Scalar.date(1), 'date32', 'temporal'],
+    [Scalar.fromJs('AAPL'), 'utf8', 'text'],
+    [
+      json.loads('"USD"', {
+        field: new Field('value', 'currency', false),
+        scalar: true,
+      }),
+      'currency',
+      'ascii',
+    ],
+    [
+      json.loads('"00112233-4455-6677-8899-aabbccddeeff"', {
+        field: new Field('value', 'guid', false),
+        scalar: true,
+      }),
+      'guid',
+      'guid',
+    ],
+    [Scalar.fromJs(Buffer.from('bytes')), 'binary', 'bytes'],
+    [Scalar.fromJs({ id: 1 }), 'struct', 'nested'],
+  ]
+  for (const [value, expectedId, expectedFamily] of values) {
+    assert.equal(value.id, expectedId)
+    assert.equal(value.family, expectedFamily)
+    assert.equal(value.id, value.dtype.id)
+    assert.equal(value.family, value.dtype.kind)
+  }
+})
+
+test('exact intervals retain their flat JavaScript layouts', () => {
+  const typed = (document, dtype) => json.loads(document, {
+    field: new Field('span', dtype, false),
+    scalar: true,
+  })
+
+  assert.equal(typed('12', 'interval(year_month)').asJs(), 12)
+  assert.deepEqual(typed('[2,3]', 'interval(day_time)').asJs(), [2, 3])
+  assert.deepEqual(
+    typed('[1,2,3]', 'interval(month_day_nano)').asJs(),
+    [1, 2, 3],
+  )
+})
+
 test('Scalar traversal and persistent updates stay entirely native', () => {
   const instant = Scalar.datetime(1700000000123456789n, 'ns', 'Europe/Paris')
   const record = Scalar.fromJs({ z: 2, legs: [{ at: instant }] })

@@ -10,6 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
+use yggdryl::types::temporal::Temporal;
 use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
 
 use crate::napi_error;
@@ -259,17 +260,7 @@ fn temporal_to_js<'env>(
         D::Duration64(unit) => {
             temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 64)?
         }
-        D::Interval(TimeUnit::YearMonth) => i32::try_from(
-            value
-                .as_i128()
-                .ok_or_else(|| napi_error("invalid interval"))?,
-        )
-        .map_err(napi_error)?
-        .into_unknown(env)?,
-        D::Interval(unit @ (TimeUnit::DayTime | TimeUnit::MonthDayNano)) => {
-            integer_tuple_to_js(env, value, *unit)?
-        }
-        D::Interval(_) => return Err(napi_error("invalid native interval layout")),
+        D::Interval(unit) => interval_to_js(env, value, *unit)?,
         _ => return Ok(None),
     };
     Ok(Some(output))
@@ -321,12 +312,15 @@ fn text_or_binary_to_js<'env>(
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi
-        | D::Guid => value
+        | D::Cfi => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()
             .into_unknown(env)?,
+        D::Guid => match value {
+            Scalar::Guid(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native guid record value")),
+        },
         // A geospatial value is its Well-Known Binary payload, so it crosses
         // exactly as the binary family does.
         D::Geometry(_) | D::Geography(_) => Buffer::from(
@@ -341,32 +335,36 @@ fn text_or_binary_to_js<'env>(
     Ok(Some(output))
 }
 
-fn integer_tuple_to_js<'env>(
-    env: &'env Env,
-    value: &Scalar,
-    unit: TimeUnit,
-) -> Result<Unknown<'env>> {
-    let values = value
-        .as_sequence()
-        .ok_or_else(|| napi_error("invalid native interval tuple"))?;
-    let mut output = env.create_array(u32::try_from(values.len()).unwrap_or(u32::MAX))?;
-    for (index, value) in values.iter().enumerate() {
-        let js_index = u32::try_from(index)
-            .map_err(|_| napi_error("interval component index exceeds JavaScript limits"))?;
-        let integer = value
-            .as_i128()
-            .ok_or_else(|| napi_error("invalid native interval component"))?;
-        if unit == TimeUnit::MonthDayNano && index == 2 {
-            output.set(js_index, BigInt::from(integer))?;
-        } else {
-            output.set(
-                js_index,
-                i32::try_from(integer)
-                    .map_err(|_| napi_error("native interval component exceeds int32"))?,
-            )?;
-        }
+fn interval_to_js<'env>(env: &'env Env, value: &Scalar, unit: TimeUnit) -> Result<Unknown<'env>> {
+    let Some(Temporal::Interval(interval)) = value.as_temporal() else {
+        return Err(napi_error("invalid native interval value"));
+    };
+    if interval.unit() != unit {
+        return Err(napi_error(
+            "native interval layout disagrees with its datatype",
+        ));
     }
-    output.into_unknown(env)
+    match unit {
+        TimeUnit::YearMonth => interval.months().into_unknown(env),
+        TimeUnit::DayTime => {
+            let mut output = env.create_array(2)?;
+            output.set(0, interval.days())?;
+            output.set(
+                1,
+                i32::try_from(interval.nanoseconds() / 1_000_000)
+                    .map_err(|_| napi_error("native interval milliseconds exceed int32"))?,
+            )?;
+            output.into_unknown(env)
+        }
+        TimeUnit::MonthDayNano => {
+            let mut output = env.create_array(3)?;
+            output.set(0, interval.months())?;
+            output.set(1, interval.days())?;
+            output.set(2, BigInt::from(interval.nanoseconds()))?;
+            output.into_unknown(env)
+        }
+        _ => Err(napi_error("invalid native interval layout")),
+    }
 }
 
 fn sequence_to_js<'env>(

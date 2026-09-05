@@ -310,6 +310,18 @@ impl JsScalar {
         self.inner.kind().to_owned()
     }
 
+    /// The parameter-free datatype identifier this value proves.
+    #[napi(getter)]
+    pub fn id(&self) -> String {
+        self.inner.id().as_str().to_owned()
+    }
+
+    /// The coarse datatype family this value belongs to.
+    #[napi(getter)]
+    pub fn family(&self) -> String {
+        self.inner.family().as_str().to_owned()
+    }
+
     /// The enum vocabulary name, when this scalar is an enum.
     #[napi(getter)]
     pub fn enum_kind(&self) -> Option<String> {
@@ -2389,11 +2401,19 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 ],
             ))
         }
-        Scalar::Temporal(Temporal::Interval(interval)) => Ok(JsonValue::Array(vec![
-            integer_transport(i128::from(interval.months()))?,
-            integer_transport(i128::from(interval.days()))?,
-            integer_transport(i128::from(interval.nanoseconds()))?,
-        ])),
+        Scalar::Temporal(Temporal::Interval(interval)) => match interval.unit() {
+            TimeUnit::YearMonth => integer_transport(i128::from(interval.months())),
+            TimeUnit::DayTime => Ok(JsonValue::Array(vec![
+                integer_transport(i128::from(interval.days()))?,
+                integer_transport(i128::from(interval.nanoseconds() / 1_000_000))?,
+            ])),
+            TimeUnit::MonthDayNano => Ok(JsonValue::Array(vec![
+                integer_transport(i128::from(interval.months()))?,
+                integer_transport(i128::from(interval.days()))?,
+                integer_transport(i128::from(interval.nanoseconds()))?,
+            ])),
+            _ => Err(napi_error("invalid native interval layout")),
+        },
         Scalar::Temporal(_) => {
             let temporal = value
                 .as_temporal()

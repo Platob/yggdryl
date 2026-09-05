@@ -42,7 +42,7 @@ test('DataType.fromFields is the iterable-aware native Struct builder', () => {
   })
   const type = DataType.fromFields((function* children() { yield id })())
 
-  assert.equal(type.kind, 'struct')
+  assert.equal(type.kind, 'nested')
   assert.ok(type.getFieldAt(0).equals(id))
   assert.equal(type.getFieldAt(0).get('physical'), 'int32')
   assert.equal(DataType.fromFields([]).length, 0)
@@ -64,7 +64,7 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
   const dtype = DataType.variant(members)
 
   assert.equal(pulls, 1)
-  assert.equal(dtype.kind, 'union')
+  assert.equal(dtype.kind, 'nested')
   assert.equal(
     dtype.toString(),
     'union(dense,0=field("text",utf8,nullable=false,metadata={}),' +
@@ -200,15 +200,10 @@ test('typed field factories cover every native datatype variant', () => {
       'floating',
       'decimal',
       'temporal',
-      'binary',
-      'string',
-      'list',
-      'struct',
-      'union',
-      'map',
-      'dictionary',
-      'run_end_encoded',
-      'variant',
+      'bytes',
+      'text',
+      'ascii',
+      'nested',
       'geospatial',
       'guid',
     ]),

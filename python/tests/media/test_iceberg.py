@@ -103,7 +103,7 @@ class TestSchemasCarryIdentifiers:
         }
 
         schema = schema_from_json("row", document)
-        assert schema.dtype.kind == "struct"
+        assert schema.dtype.kind == "nested"
         assert not schema.nullable
         # `required` inverts into nullability, and `id` becomes PARQUET:field_id.
         assert not schema.dtype[0].nullable

@@ -104,20 +104,20 @@ const DATATYPE_KINDS = new Map(
       'duration64',
       'interval',
     ],
-    binary: ['binary', 'fixed_size_binary', 'large_binary', 'binary_view'],
-    string: ['utf8', 'large_utf8', 'utf8_view'],
-    list: [
+    bytes: ['binary', 'fixed_size_binary', 'large_binary', 'binary_view'],
+    text: ['utf8', 'large_utf8', 'utf8_view'],
+    nested: [
       'list',
       'list_view',
       'fixed_size_list',
       'large_list',
       'large_list_view',
+      'struct',
+      'union',
+      'map',
+      'dictionary',
+      'run_end_encoded',
     ],
-    struct: ['struct'],
-    union: ['union'],
-    map: ['map'],
-    dictionary: ['dictionary'],
-    run_end_encoded: ['run_end_encoded'],
   }).flatMap(([kind, ids]) => ids.map((id) => [id, kind])),
 )
 
@@ -253,7 +253,7 @@ test('hint-only calls skip default value projection', () => {
     assert.equal(dictionary.defaultJSHint().constructor, Buffer)
     assert.equal(encoded.defaultJSHint().constructor, Buffer)
     assert.equal(nested.defaultJSHint().constructor, Array)
-    assert.equal(union.defaultJSHint().kind, 'union')
+    assert.equal(union.defaultJSHint().kind, 'nested')
     assert.equal(nothing.defaultJSHint().constructor, null)
     assert.deepEqual(calls, {
       dataHint: 7,
@@ -429,7 +429,7 @@ test('defaultJSHint is frozen, cached, metadata-independent, and mutation-aware'
   field.setDtype('utf8')
   const changed = field.defaultJSHint()
   assert.notEqual(changed, nullable)
-  assert.equal(changed.kind, 'string')
+  assert.equal(changed.kind, 'text')
   assert.equal(changed.constructor, String)
   assert.equal(field.defaultJSValue(), null)
   field.setNullable(false)
@@ -439,7 +439,7 @@ test('defaultJSHint is frozen, cached, metadata-independent, and mutation-aware'
     fields.int32('id', { nullable: false }),
   ]).dtype
   const structHint = struct.defaultJSHint()
-  assert.equal(structHint.kind, 'struct')
+  assert.equal(structHint.kind, 'nested')
   assert.equal(structHint.constructor, Array)
   assert.deepEqual(struct.defaultJSValue(), [0])
 })
@@ -451,7 +451,7 @@ test('nested Field metadata never changes a cached Struct default hint', () => {
     { nullable: false },
   )
   const hint = field.defaultJSHint()
-  assert.equal(hint.kind, 'struct')
+  assert.equal(hint.kind, 'nested')
   assert.equal(hint.constructor, Array)
 
   field.setDtype(
@@ -604,9 +604,9 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
   // `kind` is the coarse family; the canonical display names the exact variant.
   assert.deepEqual(spark.dtype.values().map((field) => field.dtype.kind), [
     'integer',
-    'string',
-    'list',
-    'string',
+    'text',
+    'nested',
+    'text',
   ])
   assert.deepEqual(
     [0, 1, 3].map((index) => String(spark.dtype.getFieldAt(index).dtype)),

@@ -1020,6 +1020,18 @@ impl PyScalar {
         self.inner.kind()
     }
 
+    /// The parameter-free datatype identifier this value proves.
+    #[getter]
+    fn id(&self) -> &'static str {
+        self.inner.id().as_str()
+    }
+
+    /// The coarse datatype family this value belongs to.
+    #[getter]
+    fn family(&self) -> &'static str {
+        self.inner.family().as_str()
+    }
+
     /// The enum vocabulary name, or `None`.
     #[getter]
     fn enum_kind(&self) -> Option<&'static str> {
@@ -2285,9 +2297,45 @@ fn temporal_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         TemporalFamily::Time => time_as_py(py, value),
         TemporalFamily::DateTime => datetime_as_py(py, value),
         TemporalFamily::Duration => duration_as_py(py, value),
-        TemporalFamily::Interval => Err(PyValueError::new_err(
-            "calendar intervals have no Python datetime projection",
-        )),
+        TemporalFamily::Interval => interval_as_py(py, temporal),
+    }
+}
+
+/// Preserve the three existing flat Python interval shapes.
+fn interval_as_py(py: Python<'_>, temporal: &Temporal) -> PyResult<Py<PyAny>> {
+    let Temporal::Interval(value) = temporal else {
+        return Err(PyValueError::new_err("expected an interval"));
+    };
+    match value.unit() {
+        TimeUnit::YearMonth => Ok(value.months().into_pyobject(py)?.into_any().unbind()),
+        TimeUnit::DayTime => {
+            let days = value.days().into_pyobject(py)?.clone().into_any().unbind();
+            let milliseconds = (value.nanoseconds() / 1_000_000)
+                .into_pyobject(py)?
+                .clone()
+                .into_any()
+                .unbind();
+            Ok(PyList::new(py, [days, milliseconds])?.into_any().unbind())
+        }
+        TimeUnit::MonthDayNano => {
+            let months = value
+                .months()
+                .into_pyobject(py)?
+                .clone()
+                .into_any()
+                .unbind();
+            let days = value.days().into_pyobject(py)?.clone().into_any().unbind();
+            let nanoseconds = value
+                .nanoseconds()
+                .into_pyobject(py)?
+                .clone()
+                .into_any()
+                .unbind();
+            Ok(PyList::new(py, [months, days, nanoseconds])?
+                .into_any()
+                .unbind())
+        }
+        _ => Err(PyValueError::new_err("invalid interval layout")),
     }
 }
 

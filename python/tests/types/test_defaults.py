@@ -414,7 +414,7 @@ def test_field_default_nullability_comes_from_native_core() -> None:
 
     nullable_scalar = nullable.default_arrow_scalar()
     required_scalar = required.default_arrow_scalar()
-    assert nullable_scalar.type == pa.decimal128(18, 4)
+    assert nullable_scalar.type == pa.decimal64(18, 4)
     assert not nullable_scalar.is_valid
     assert nullable.default_pyvalue() is None
     assert required_scalar.as_py() == Decimal("0.0000")

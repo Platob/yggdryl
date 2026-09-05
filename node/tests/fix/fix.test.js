@@ -633,7 +633,7 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId('standard:55').asJs(), 'AAPL')
   assert.equal(message.byName('ticker').asJs(), 'AAPL')
-  assert.equal(message.byTag(38).toString(), '"100"')
+  assert.equal(message.byTag(38).toString(), '"100.00000000"')
   assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')

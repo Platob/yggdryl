@@ -88,14 +88,15 @@ def test_decimal_infers_storage_width_and_integer_like_arguments() -> None:
         def __index__(self) -> int:
             return self.value
 
-    assert DataType.decimal(18) == DataType("decimal128(18,0)")
+    assert DataType.decimal(9) == DataType("decimal32(9,0)")
+    assert DataType.decimal(18) == DataType("decimal64(18,0)")
     assert str(inspect.signature(DataType.decimal)) == "(precision, scale=0)"
     assert DataType.decimal(38, 4) == DataType("decimal128(38,4)")
     assert DataType.decimal("39", "-4") == DataType("decimal256(39,-4)")
     assert DataType.decimal(IndexValue(39), IndexValue(-4)) == DataType(
         "decimal256(39,-4)"
     )
-    assert str(DataType.decimal("18", 2)) == "decimal128(18,2)"
+    assert str(DataType.decimal("18", 2)) == "decimal64(18,2)"
 
     with pytest.raises(TypeError, match="precision.*not bool"):
         DataType.decimal(True, 0)
@@ -181,7 +182,7 @@ def test_dtype_from_fields_builds_exact_native_struct() -> None:
 
     value = DataType.from_fields(one_shot())
 
-    assert value.kind == "struct"
+    assert value.kind == "nested"
     assert consumed == ["small", "wide"]
     assert tuple(value) == fields
     arrow = value.into_arrow()
@@ -251,7 +252,7 @@ def test_bare_variant_is_the_self_describing_datatype_not_the_union_sugar() -> N
     variant = DataType.variant()
 
     assert variant.id == "variant"
-    assert variant.kind == "variant"
+    assert variant.kind == "nested"
     assert str(variant) == "variant"
     assert variant == DataType("variant")
     assert DataType(str(variant)) == variant
@@ -368,7 +369,7 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
 
     # Variable ASCII stores the bytes it is given, so it has no width.
     assert ascii_text.id == "ascii"
-    assert ascii_text.kind == "string"
+    assert ascii_text.kind == "ascii"
     assert str(ascii_text) == "ascii"
     assert ascii_text.ascii_width is None
     assert eval(repr(ascii_text), {"DataType": DataType}) == ascii_text
@@ -376,7 +377,7 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
     # A fixed width is the width, so two widths are two datatypes and neither
     # is the variable form.
     assert fixed.id == "fixed_ascii"
-    assert fixed.kind == "string"
+    assert fixed.kind == "ascii"
     assert str(fixed) == "ascii(3)"
     assert fixed.ascii_width == 3
     assert DataType("ascii(3)") == fixed
@@ -414,7 +415,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert DataType.from_logical_name("Exchange") == DataType("mic")
 
     assert currency.id == "currency"
-    assert currency.kind == "string"
+    assert currency.kind == "ascii"
     assert str(currency) == "currency"
     assert currency.ascii_width == 3
     assert currency != DataType.ascii(3)
@@ -423,7 +424,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
 
     for name, width in [("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)]:
         dtype = DataType(name)
-        assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "string")
+        assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "ascii")
 
     # The packed integer is the value's own bytes, exactly as for a width.
     assert currency.ascii_packed("USD") == DataType.ascii(3).ascii_packed("USD")

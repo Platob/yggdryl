@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import pickle
+import struct
 import sys
 from dataclasses import dataclass
 from decimal import Decimal
@@ -15,6 +16,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import Field, Scalar
+from yggdryl.text import json
 
 
 @dataclass
@@ -112,6 +114,54 @@ def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
         Scalar.duration(1, "us", "UTC")
     with pytest.raises(ValueError, match="16, 32, or 64"):
         Scalar.float(1.5, 8)
+
+
+def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
+    values = [
+        (Scalar.from_py(None), "null", "null"),
+        (Scalar.from_py(True), "boolean", "boolean"),
+        (Scalar.from_py(1), "int64", "integer"),
+        (Scalar.float(1.5, 32), "float32", "floating"),
+        (Scalar.decimal(150, 2), "decimal128", "decimal"),
+        (Scalar.date(1), "date32", "temporal"),
+        (Scalar.from_py("AAPL"), "utf8", "text"),
+        (
+            json.loads(
+                '"USD"', field=Field("value", "currency", False), cls=Scalar
+            ),
+            "currency",
+            "ascii",
+        ),
+        (
+            json.loads(
+                '"00112233-4455-6677-8899-aabbccddeeff"',
+                field=Field("value", "guid", False),
+                cls=Scalar,
+            ),
+            "guid",
+            "guid",
+        ),
+        (Scalar.from_py(b"bytes"), "binary", "bytes"),
+        (Scalar.from_py({"id": 1}), "map", "nested"),
+    ]
+    for value, expected_id, expected_family in values:
+        assert value.id == expected_id
+        assert value.family == expected_family
+        assert value.id == value.dtype.id
+        assert value.family == value.dtype.kind
+
+
+def test_exact_intervals_retain_their_flat_python_layouts() -> None:
+    def typed(document: str, dtype: str) -> Scalar:
+        return json.loads(
+            document,
+            field=Field("span", dtype, False),
+            cls=Scalar,
+        )
+
+    assert typed("12", "interval(year_month)").as_py() == 12
+    assert typed("[2,3]", "interval(day_time)").as_py() == [2, 3]
+    assert typed("[1,2,3]", "interval(month_day_nano)").as_py() == [1, 2, 3]
 
 
 def test_exact_width_factories_are_private_reconstruction_details() -> None:
@@ -320,7 +370,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ),
         ("string", "naïve"),
         ("bytes", b"\x00\xff"),
-        ("geospatial", b"\x01\x01\x00\x00\x00"),
+        ("geospatial", b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 0.0, 0.0)),
         ("date32", (1, "d", "NAIVE")),
         ("date64", (86_400_000, "ms", "NAIVE")),
         ("time32", (1, "s", "NAIVE")),

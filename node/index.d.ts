@@ -2560,6 +2560,10 @@ export declare class Scalar {
   static duration(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
   /** The canonical width-specific vocabulary name. */
   get kind(): string
+  /** The parameter-free datatype identifier this value proves. */
+  get id(): string
+  /** The coarse datatype family this value belongs to. */
+  get family(): string
   /** The enum vocabulary name, when this scalar is an enum. */
   get enumKind(): string | null
   /** The canonical enum member spelling, when this scalar is an enum. */

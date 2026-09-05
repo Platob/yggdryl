@@ -235,7 +235,7 @@ test('single-object framing uses and verifies the schema fingerprint', () => {
     decimalSchema,
   )
   assert.ok(exact instanceof Scalar)
-  assert.equal(exact.kind, 'd128')
+  assert.equal(exact.kind, 'd64')
   assert.equal(exact.unscaled, 18750n)
   assert.equal(exact.scale, 2)
 })

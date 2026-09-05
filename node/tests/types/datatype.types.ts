@@ -21,7 +21,7 @@ const arrowType: DataType = DataType.fromArrow({
 // with its own literal id, and variant(fields) stays the dense-union sugar.
 const bareVariant = DataType.variant()
 const bareVariantId: 'variant' = bareVariant.id
-const bareVariantKind: 'variant' = bareVariant.kind
+const bareVariantKind: 'nested' = bareVariant.kind
 const geometryType: DataType = DataType.geometry()
 const projectedGeometry: DataType = DataType.geometry('EPSG:3857')
 const geographyType: DataType = DataType.geography()

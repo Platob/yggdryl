@@ -170,6 +170,8 @@ async function main() {
     measure('pivot/compare_native', pivotBytes, 1_000, () => pivot.compare(pivot))
     measure('pivot/stable_hash', pivotBytes, 1_000, () => pivot.stableHash())
     measure('pivot/clone_native', pivotBytes, 1_000, () => pivot.clone())
+    measure('pivot/id', 1, 10_000, () => pivot.id)
+    measure('pivot/family', 1, 10_000, () => pivot.family)
     const enumScalar = Scalar.fromEnum('io_mode', 'append')
     measure('pivot/enum_from', 1, 10_000, () => Scalar.fromEnum('io_mode', 'append'))
     measure('pivot/enum_kind', 1, 10_000, () => enumScalar.enumKind)
