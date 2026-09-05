@@ -292,8 +292,10 @@ non-empty** — `<description />` contributes no key rather than an empty one;
 nullable, because a `vocabulary-tag` says nothing about presence.
 
 Field names are the FIX name lower-cased — `lastqty`, not `LastQty` — which
-is the versioning brief's `P3-R4b`. Nothing is lost: name resolution folds
-ASCII case, so a caller spelling it the specification's way still resolves.
+is the versioning brief's `P3-R4b`, with `alt` verbatim in `display`.
+Nothing is lost: name resolution folds ASCII case, so a caller spelling it
+the file's way still resolves, and the file's own spelling is kept beside
+it.
 
 Dictionary entries are immutable. A grammar never edits one: it clones and
 overrides the clone's nullability, so a tag bound `required="true"` in one

@@ -88,11 +88,17 @@ impl FixRegistry {
     so `field("LastQty")`, `field("lastqty")` and `field("LASTQTY")` all
     answer, and the specification's own casing needs no alias to keep
     working.
-  - **The human label is a different fact and stays where it is.** The
-    generic `display` key already carries `Client order ID` beside `clordid`
-    and `Average price` beside `avgpx`. Do not put `ClOrdID` there: a label
-    is prose for a reader, a name is an identifier, and the seed dictionary
-    already keeps them apart.
+  - **`display` carries the specification's own spelling** — `ClOrdID`
+    beside `clordid`, `LastQty` beside `lastqty` — because that is the one
+    thing a generator can put there truthfully. Orchestra states it as the
+    field's `name`; it is data, exact and free.
+  - **The prose label is not generated.** The seed's hand-written
+    `Client order ID` and `Average price` are replaced by the
+    specification's spelling when Phase 6 regenerates. Deriving a label from
+    a name means splitting `ClOrdID` on case and expanding `Cl` to `Client`
+    and `Ord` to `order` — a guess about English, which is the same guess
+    P4's Decided already refuses. A label nobody can regenerate is a fact
+    that rots the first time the dictionary is rebuilt.
   - **Three things are never lower-cased:** a `MsgType`, which is
     case-bearing (`A` is Logon and `a` is QuoteStatusRequest — P8-R3); a
     code's wire value, for the same reason; and a comp id, which is stored
@@ -524,8 +530,9 @@ which is why the script reads all of them.
   Latest datatype table: `Qty` is `decimal64(18,8)`, `SeqNum` is `int64`, no
   second mapping. A FIX datatype the table does not hold is a hard failure,
   never a silent `utf8`.
-- **P6-R7b. Every field name is written lower-cased** (P3-R4b), in the
-  shards and in the lineage entries alike, so the field's own name and its
+- **P6-R7b. Every field name is written lower-cased** (P3-R4b), with the
+  Orchestra `name` attribute verbatim in `display`, in the shards and in the
+  lineage entries alike, so the field's own name and its
   newest lineage entry still agree (P3-R8a). Assert over the whole generated
   dictionary that no name holds an uppercase byte, and that no two fields
   collide once lower-cased — as no two FIX fields differ only by case, that
@@ -593,7 +600,9 @@ a `fix:lineage` of `{"since":"2.7","name":"LastShares","type":"int"}`,
    required flags for 4.2 and 4.4 (P6-R13, P6-R14).
 4b. No name in the generated dictionary holds an uppercase byte, and no two
     collide once lower-cased (P6-R7b); a lookup by the specification's own
-    casing still answers (P3-R4b); `display` still carries the human label.
+    casing still answers (P3-R4b); `display` carries the specification's
+    spelling for every field (`ClOrdID` beside `clordid`), and no field
+    carries a hand-written prose label.
 4c. A run with no `--out` writes `config/fix` (P6-R1b), and the
     process-wide default registry loads it.
 4d. All six Orchestra kinds are accounted for (P6-R3b): every scraped field
