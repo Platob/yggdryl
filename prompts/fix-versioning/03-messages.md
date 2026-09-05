@@ -734,20 +734,27 @@ impl FixMsg {
   | facet | sources, in order |
   | --- | --- |
   | `id` | `ClOrdID(11)`, `OrderID(37)`, `QuoteID(117)`, `TradeID(1003)` — by `MsgType` (P9-R3) |
-  | `secondary_id` | `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, `OrigClOrdID(41)` |
-  | `exec_id` | `ExecID(17)` |
+  | `secondaryid` | `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, `OrigClOrdID(41)` |
+  | `execid` | `ExecID(17)` |
   | `symbol` | `Symbol(55)`, then `SecurityID(48)` with `SecurityIDSource(22)` |
   | `side` | `Side(54)`, packed (P8-R2); else derived (P9-R15) |
   | `price` | `Price(44)`, `LastPx(31)` — by `MsgType` |
-  | `bid_px` | `BidPx(132)`; else derived (P9-R14) |
-  | `ask_px` | `OfferPx(133)`; else derived (P9-R14) |
-  | `bid_size` | `BidSize(134)`; else derived (P9-R14) |
-  | `ask_size` | `OfferSize(135)`; else derived (P9-R14) |
+  | `bidpx` | `BidPx(132)`; else derived (P9-R14) |
+  | `askpx` | `OfferPx(133)`; else derived (P9-R14) |
+  | `bidsize` | `BidSize(134)`; else derived (P9-R14) |
+  | `asksize` | `OfferSize(135)`; else derived (P9-R14) |
   | `quantity` | `OrderQty(38)`, `LastQty(32)`, `Quantity(53)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
-  | `quantity_type` | `QtyType(854)`, then the deprecated `QuantityType(465)` (P9-R10) |
+  | `quantitytype` | `QtyType(854)`, then the deprecated `QuantityType(465)` (P9-R10) |
   | `currency` | `Currency(15)`, then `SettlCurrency(120)` |
-  | `transact_time` | `TransactTime(60)`, then `SendingTime(52)` |
+  | `transacttime` | `TransactTime(60)`, then `SendingTime(52)` |
   | `status` | `OrdStatus(39)`, `ExecType(150)`, `QuoteStatus(297)` |
+
+  Facet names obey the field-name rule (P3-R7): lowercase letters and
+  digits, no separators, so a lifted column sits beside a field name with no
+  change of style. Where a facet names one FIX field it *is* that field
+  case-folded — `bidpx`, `execid`, `transacttime`; `askpx` and `asksize` are
+  the two exceptions, because FIX spells that lane `Offer` and every reader
+  calls it the ask.
 
   A source that resolves to no field in the dictionary is skipped, not an
   error: a facet is a best answer, not a schema.
@@ -791,11 +798,11 @@ impl FixMsg {
   `1` shares, `2` bonds, `3` current face, `4` original face, `5` currency,
   `6` contracts, `7` other, `8` par. Five of those eight are not a share
   count, so a consumer summing `quantity` across messages without its type
-  adds shares to dollars. `lift()` yields `quantity_type` whenever it yields
+  adds shares to dollars. `lift()` yields `quantitytype` whenever it yields
   `quantity` and the message states one; a number whose unit is unstated is
   answered as exactly that, never assumed to be shares.
 - **P9-R12. A quantity in currency is denominated by the currency facet.**
-  Where `quantity_type` is `5`, the number is money, and `currency` — the
+  Where `quantitytype` is `5`, the number is money, and `currency` — the
   instrument's `Currency(15)`, else the `SettlCurrency(120)` it settles in —
   is what it is money *of*. A reading, not a conversion: nothing is
   re-denominated, and a message stating a currency quantity and no currency
@@ -827,8 +834,8 @@ but only where the answer is forced, never where it is likely.
 - **P9-R14. A side and a price fill their lane — on an order, not on a
   fill.** A buy order at `P` is a party willing to pay `P`, which is a bid;
   a sell order at `P` is an offer. So where the message is an order and
-  carries `Price(44)` with a side whose direction is a lane, `bid_px` or
-  `ask_px` answers that price, and `OrderQty(38)` fills the matching size
+  carries `Price(44)` with a side whose direction is a lane, `bidpx` or
+  `askpx` answers that price, and `OrderQty(38)` fills the matching size
   the same way. **`LastPx(31)` never projects**: a fill's price is a traded
   price, not a quote lane, and putting it on one would state a quote that
   never existed. `MsgType` is what tells the two apart (P9-R3).
@@ -841,7 +848,7 @@ but only where the answer is forced, never where it is likely.
   derived answer is offered only where the message states nothing: a quote
   that carries `BidPx` *and* `Side` answers both as stated, and a
   disagreement between them is reported through `anomalies()` rather than
-  resolved. Nothing derived is stored (P9-R9), so a derived `bid_px` and a
+  resolved. Nothing derived is stored (P9-R9), so a derived `bidpx` and a
   stated one are indistinguishable to a reader and neither can go stale.
 
 ### Decided
@@ -882,12 +889,12 @@ but only where the answer is forced, never where it is likely.
 11. `Quantity(53)` lifted as `quantity` with `QtyType(854)` as its unit; a
     message carrying only the deprecated `QuantityType(465)` answering from
     that instead, and one carrying both preferring `854` (P9-R10).
-12. A `quantity_type` of `5` read against `Currency(15)`, and against
+12. A `quantitytype` of `5` read against `Currency(15)`, and against
     `SettlCurrency(120)` when the first is absent; a currency quantity with
     no currency stated answering the quantity alone (P9-R12).
 13. A quantity whose message states no type answering the quantity with no
     unit, and saying so (P9-R11).
-14. A buy order with `Price` answers `bid_px` and no `ask_px`; a sell order
+14. A buy order with `Price` answers `bidpx` and no `askpx`; a sell order
     the reverse; `OrderQty` fills the matching size (P9-R14).
 15. An ExecutionReport with `LastPx` and a side answers neither lane
     (P9-R14) — the case that keeps a traded price off a book.

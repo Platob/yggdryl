@@ -291,8 +291,9 @@ the decimal tag as text; carrying the `DataType` its `type` resolves to;
 non-empty** — `<description />` contributes no key rather than an empty one;
 nullable, because a `vocabulary-tag` says nothing about presence.
 
-Field names are the FIX name lower-cased — `lastqty`, not `LastQty` — which
-is the versioning brief's `P3-R7`, with `alt` verbatim in `display`.
+Field names are the FIX name case-folded and nothing else — `lastqty`, not
+`LastQty` and not `last_qty` — which is the versioning brief's `P3-R7`, with
+`alt` verbatim in `display`.
 Nothing is lost: name resolution folds ASCII case, so a caller spelling it
 the file's way still resolves, and the file's own spelling is kept beside
 it.

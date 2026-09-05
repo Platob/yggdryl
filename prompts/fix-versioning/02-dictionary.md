@@ -79,11 +79,14 @@ impl FixRegistry {
 - **P3-R5. Ordering within one version is by EP.** `5.0SP2` at EP204 is
   older than at EP309; ignoring the EP puts eleven years in one bucket.
 - **P3-R6. `name`** is the spelling from that version on.
-- **P3-R7. Field names are the FIX name, lower-cased.** `lastqty`, not
-  `LastQty`; `nopartyids`, not `NoPartyIDs`; `clordid`, not `ClOrdID`. The
-  FIX name is *respected* — it is not snake-cased, abbreviated, expanded or
-  re-spelled, only lower-cased — so `lastqty` is still exactly the name the
-  specification gives, in one case.
+- **P3-R7. Field names are the FIX name, case-folded and nothing else.**
+  `lastqty`, `nopartyids`, `clordid`, `secondaryclordid` — **not**
+  `last_qty`, `no_party_i_ds`, `cl_ord_id`. Fold the case; change nothing
+  else. No separator is inserted, no word boundary is invented, nothing is
+  abbreviated, expanded or re-spelled. Inserting an underscore means
+  deciding where `ClOrdID` breaks, which is the guess about English this
+  brief refuses everywhere else, and it would turn one name into as many
+  names as there are readings.
   - **Nothing is lost.** Name resolution already folds ASCII case (P7-R14),
     so `field("LastQty")`, `field("lastqty")` and `field("LASTQTY")` all
     answer, and the specification's own casing needs no alias to keep
@@ -530,9 +533,9 @@ which is why the script reads all of them.
   Latest datatype table: `Qty` is `decimal64(18,8)`, `SeqNum` is `int64`, no
   second mapping. A FIX datatype the table does not hold is a hard failure,
   never a silent `utf8`.
-- **P6-R12. Every field name is written lower-cased** (P3-R7), with the
-  Orchestra `name` attribute verbatim in `display`, in the shards and in the
-  lineage entries alike, so the field's own name and its
+- **P6-R12. Every field name is written case-folded** (P3-R7) — no
+  separator inserted — with the Orchestra `name` attribute verbatim in
+  `display`, in the shards and in the lineage entries alike, so the field's own name and its
   newest lineage entry still agree (P3-R11). Assert over the whole generated
   dictionary that no name holds an uppercase byte, and that no two fields
   collide once lower-cased — as no two FIX fields differ only by case, that
@@ -598,8 +601,8 @@ a `fix:lineage` of `{"since":"2.7","name":"LastShares","type":"int"}`,
    standard branch's carries nothing (P6-R9, P2-R13).
 4. The generated header matches yggfin's `versions.json` ordering and
    required flags for 4.2 and 4.4 (P6-R18, P6-R19).
-4b. No name in the generated dictionary holds an uppercase byte, and no two
-    collide once lower-cased (P6-R12); a lookup by the specification's own
+4b. No name in the generated dictionary holds an uppercase byte **or an
+    underscore**, and no two collide once folded (P6-R12); a lookup by the specification's own
     casing still answers (P3-R7); `display` carries the specification's
     spelling for every field (`ClOrdID` beside `clordid`), and no field
     carries a hand-written prose label.
