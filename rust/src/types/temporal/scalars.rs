@@ -19,6 +19,25 @@ use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{DataType, Error, I256, Result, Scalar, TimeUnit, Timezone};
 
+/// Operations shared by every temporal representation.
+pub trait TemporalValue: crate::ScalarValue {
+    /// The semantic temporal family.
+    const FAMILY: TemporalFamily;
+    /// The physical count width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return the stored count widened to 64 bits.
+    fn count(&self) -> i64;
+    /// Return the count's unit.
+    fn unit(&self) -> TimeUnit;
+    /// Return the explicit timezone marker.
+    fn timezone(&self) -> Timezone;
+    /// Convert this value to another valid unit.
+    fn with_unit(self, unit: TimeUnit) -> Result<Self>;
+    /// Restate this value with another valid timezone marker.
+    fn with_timezone(self, timezone: Timezone) -> Result<Self>;
+}
+
 define_scalar_type!(DateTime64Scalar, super::DateTime64Type, "datetime64");
 define_scalar_type!(
     Date32Scalar,

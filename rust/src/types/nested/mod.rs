@@ -16,6 +16,6 @@ pub(crate) use dtypes::{
 pub use fields::*;
 pub use scalars::{
     Children, DictionaryScalar, FixedSizeListScalar, LargeListScalar, LargeListViewScalar,
-    ListScalar, ListViewScalar, MapScalar, RunEndEncodedScalar, StructScalar, UnionScalar,
-    VariantScalar,
+    ListScalar, ListViewScalar, MapScalar, NestedValue, RunEndEncodedScalar, StructScalar,
+    UnionScalar, VariantScalar,
 };

@@ -87,7 +87,7 @@ pub use nested::{
     ListViewScalar, MapScalar, RunEndEncodedScalar, StructScalar, UnionScalar, VariantScalar,
 };
 pub use pretty::Pretty;
-pub use scalar::Scalar;
+pub use scalar::{Scalar, ScalarFamily, ScalarValue};
 pub use temporal::scalars::{
     Date32Scalar, Date64Scalar, DateTime64Scalar, Duration32Scalar, Duration64Scalar,
     IntervalScalar, TemporalFamily, TemporalRef, Time32Scalar, Time64Scalar,

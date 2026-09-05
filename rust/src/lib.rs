@@ -96,8 +96,8 @@ pub use types::protocol::{
 };
 pub use types::{
     AnyType, Children, Differences, EnumScalar, Field, FieldRef, FieldType, Float, Integer,
-    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, TemporalFamily,
-    TemporalRef, TypedField, TypedFieldRef, TypedScalar,
+    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily,
+    ScalarValue, TemporalFamily, TemporalRef, TypedField, TypedFieldRef, TypedScalar,
 };
 pub use types::{
     AsciiEnum, DataType, DictionaryType, Fields, GeospatialType, MapType, RunEndEncodedType,

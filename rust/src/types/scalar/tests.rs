@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use super::{Float16, Float32, Float64, Scalar};
-use crate::{I256, TimeUnit, Timezone};
+use crate::types::floating::FloatingValue;
+use crate::{
+    DataType, DataTypeId, DataTypeKind, I256, ScalarFamily, ScalarValue, TimeUnit, Timezone,
+};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -332,4 +335,20 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
 fn time_datatype_inference_refuses_zones_it_cannot_preserve() {
     let zoned = Scalar::Time64(1, TimeUnit::Microsecond, Timezone::UTC);
     assert!(zoned.dtype().is_err());
+}
+
+#[test]
+fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
+    let leaf = Float32::from_f32(1.25);
+    let scalar = ScalarValue::into_scalar(leaf);
+
+    assert_eq!(<Float32 as ScalarValue>::ID, DataTypeId::Float32);
+    assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
+    assert_eq!(ScalarValue::dtype(&leaf), DataType::Float32);
+    assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
+    assert_eq!(ScalarFamily::id(&leaf), DataTypeId::Float32);
+    assert_eq!(ScalarFamily::dtype(&leaf), DataType::Float32);
+    assert_eq!(<Float32 as ScalarFamily>::from_scalar(&scalar), Some(&leaf));
+    assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
+    assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }

@@ -7,6 +7,18 @@ use smol_str::SmolStr;
 use crate::types::Scalar;
 use crate::types::typed::define_scalar_type;
 
+/// Borrowing access shared by every nested value shape.
+pub trait NestedValue: crate::ScalarValue {
+    /// Return the number of direct children.
+    fn len(&self) -> usize;
+    /// Return whether this value has no direct children.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Iterate over direct sequence values, mapping keys, or record values.
+    fn children(&self) -> Children<'_>;
+}
+
 /// A borrowed iterator over sequence values or mapping keys.
 pub enum Children<'a> {
     /// Sequence values.

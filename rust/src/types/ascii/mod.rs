@@ -20,5 +20,5 @@ pub(crate) use dtypes::{
 };
 pub use fields::*;
 pub use scalars::{
-    AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, MicScalar,
+    AsciiScalar, AsciiValue, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, MicScalar,
 };

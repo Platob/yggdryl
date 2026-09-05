@@ -9,6 +9,19 @@ use crate::types::typed::define_scalar_type;
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
 use crate::{DataType, Error, Result, Scalar, TimeUnit};
 
+/// Operations shared by every signed and unsigned integer representation.
+pub trait IntegerValue: crate::ScalarValue {
+    /// Whether this representation is signed.
+    const SIGNED: bool;
+    /// The physical width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return this integer as a signed 128-bit value.
+    fn as_i128(&self) -> i128;
+    /// Build this width from a signed 128-bit value.
+    fn from_i128(value: i128) -> Result<Self>;
+}
+
 define_scalar_type!(Int8Scalar, super::Int8, "int8", crate::DataType::Int8);
 define_scalar_type!(Int16Scalar, super::Int16, "int16", crate::DataType::Int16);
 define_scalar_type!(Int32Scalar, super::Int32, "int32", crate::DataType::Int32);

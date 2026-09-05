@@ -5,6 +5,12 @@ use smol_str::SmolStr;
 use crate::types::Scalar;
 use crate::types::typed::define_scalar_type;
 
+/// Borrowing access shared by every UTF-8 representation.
+pub trait TextValue: crate::ScalarValue {
+    /// Borrow the Unicode text.
+    fn as_str(&self) -> &str;
+}
+
 impl From<&str> for Scalar {
     fn from(value: &str) -> Self {
         Self::String(SmolStr::new(value))

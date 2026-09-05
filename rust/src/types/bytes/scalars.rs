@@ -5,6 +5,12 @@ use std::sync::{Arc, OnceLock};
 use crate::types::Scalar;
 use crate::types::typed::define_scalar_type;
 
+/// Borrowing access shared by every opaque-byte representation.
+pub trait BytesValue: crate::ScalarValue {
+    /// Borrow the payload bytes.
+    fn as_bytes(&self) -> &[u8];
+}
+
 impl From<Vec<u8>> for Scalar {
     fn from(value: Vec<u8>) -> Self {
         if value.is_empty() {

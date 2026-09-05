@@ -41,7 +41,9 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{Error, I256, Result, TimeUnit, Timezone};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, FieldType, I256, Result, TimeUnit, Timezone,
+};
 
 use super::decimal::scalars as decimal;
 use super::enum_scalar::EnumScalar;
@@ -49,6 +51,52 @@ use super::floating::scalars::{Float16, Float32, Float64};
 use super::integer::scalars::Integer;
 use super::nested::Children;
 use super::temporal::scalars::temporal_key;
+
+/// One concrete scalar representation.
+///
+/// Implementors are the final leaves below a [`Scalar`] family. Narrowing an
+/// existing scalar only projects a reference; validation remains owned by
+/// [`DataType::scalar`](crate::DataType::scalar) and
+/// [`Field::scalar`](crate::Field::scalar).
+pub trait ScalarValue:
+    Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
+{
+    /// The family enum containing this representation.
+    type Family: ScalarFamily;
+    /// The zero-sized marker naming this representation's datatype.
+    type Type: FieldType;
+
+    /// The exact representation identifier.
+    const ID: DataTypeId;
+    /// The representation's datatype family.
+    const KIND: DataTypeKind;
+
+    /// Return the datatype this value materializes into.
+    fn dtype(&self) -> DataType;
+    /// Widen this leaf to its family enum.
+    fn into_family(self) -> Self::Family;
+    /// Narrow a family value to this leaf.
+    fn from_family(family: &Self::Family) -> Option<&Self>;
+    /// Widen this leaf to the dynamic scalar root.
+    fn into_scalar(self) -> Scalar;
+    /// Narrow a dynamic scalar to this leaf without re-validating it.
+    fn from_scalar(value: &Scalar) -> Option<&Self>;
+}
+
+/// One dynamic family of scalar representations.
+pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash {
+    /// The datatype family shared by every member.
+    const KIND: DataTypeKind;
+
+    /// Return the exact representation identifier.
+    fn id(&self) -> DataTypeId;
+    /// Return the exact datatype carried by this value.
+    fn dtype(&self) -> DataType;
+    /// Widen this family value to the dynamic scalar root.
+    fn into_scalar(self) -> Scalar;
+    /// Narrow a dynamic scalar to this family without re-validating it.
+    fn from_scalar(value: &Scalar) -> Option<&Self>;
+}
 
 /// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]

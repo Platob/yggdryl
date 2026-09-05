@@ -22,6 +22,16 @@ use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{DataType, Error, I256, Result, Scalar};
 
+/// Operations shared by every exact-decimal representation.
+pub trait DecimalValue: crate::ScalarValue {
+    /// Return the coefficient widened to 256 bits.
+    fn coefficient(&self) -> I256;
+    /// Return the decimal scale.
+    fn scale(&self) -> i8;
+    /// Return this value represented at `scale` without losing precision.
+    fn rescale(self, scale: i8) -> Result<Self>;
+}
+
 define_scalar_type!(Decimal32Scalar, super::Decimal32, "decimal32");
 define_scalar_type!(Decimal64Scalar, super::Decimal64, "decimal64");
 define_scalar_type!(Decimal128Scalar, super::Decimal128, "decimal128");

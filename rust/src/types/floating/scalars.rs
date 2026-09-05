@@ -12,7 +12,16 @@ use smol_str::SmolStr;
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::typed::define_scalar_type;
-use crate::{DataType, Error, Result, Scalar};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue};
+
+/// Operations shared by every IEEE floating-point representation.
+pub trait FloatingValue: ScalarValue {
+    /// The physical width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return this value widened to binary64.
+    fn as_f64(&self) -> f64;
+}
 
 define_scalar_type!(
     Float16Scalar,
@@ -544,6 +553,79 @@ impl<'de> Deserialize<'de> for Float32 {
         deserializer.deserialize_any(Float32Visitor)
     }
 }
+
+// Until the tier-2 family enum replaces the flat root variants, each existing
+// floating leaf is its own one-member family. This keeps every projection safe
+// and allocation-free; the family-enum phase only changes `type Family`.
+macro_rules! floating_value {
+    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident, $bits:literal) => {
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Floating;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> DataType {
+                DataType::$dtype
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl ScalarValue for $leaf {
+            type Family = Self;
+            type Type = $marker;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Floating;
+
+            fn dtype(&self) -> DataType {
+                DataType::$dtype
+            }
+
+            fn into_family(self) -> Self::Family {
+                self
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                Some(family)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl FloatingValue for $leaf {
+            const BIT_WIDTH: u8 = $bits;
+
+            fn as_f64(&self) -> f64 {
+                <$leaf>::as_f64(*self)
+            }
+        }
+    };
+}
+
+floating_value!(Float16, super::fields::Float16, F16, Float16, Float16, 16);
+floating_value!(Float32, super::fields::Float32, F32, Float32, Float32, 32);
+floating_value!(Float64, super::fields::Float64, F64, Float64, Float64, 64);
 
 /// A copyable view over any exact floating-point width.
 #[derive(Clone, Copy, Debug)]
