@@ -13,7 +13,7 @@ Digest an `IOBase` handle's bytes, and hash a stream while it moves.
 | Container | typed `Error::NotAtomic` naming the kind; folder and recursive digests are absent |
 | Wrapper vs backing | a wrapper answers for the bytes it presents, `handle()` for the bytes it holds |
 | `Hashed<H>` | answers from the running state; the bytes are never read back |
-| Running state | covers writes strictly sequential from offset 0, counted after `flush` |
+| Running state | consulted only when it covers the whole value: writes strictly sequential from offset 0, counted after `flush` |
 | Stale state | a positional write makes the next digest re-stream and re-arm, with an identical answer |
 | Bindings | both handle methods everywhere; `DigestReader`, `DigestWriter`, `Hashed<H>` are Rust only |
 

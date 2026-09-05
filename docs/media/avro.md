@@ -719,7 +719,8 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 
 - `merge_by_names` -> upsert: rows matching the key are updated, misses are inserted.
 - `trades.avro.gz` -> refused rather than double-compressed: Avro compresses inside its blocks, like [Parquet](parquet.md) and unlike [IPC](ipc.md).
-- A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype on the record surface -> refused by name; the `Scalar` functions accept them.
+- A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype -> refused by name on the record surface.
+- The same input through the `Scalar` functions -> accepted; they carry no such limit.
 - `set_avro_block_codec` or `set_avro_sync_marker` on options for another encoding -> typed record error.
 - A sync marker of any length but 16 bytes -> refused; an absent marker generates a fresh one per write.
 - An unknown logical annotation, or attributes invalid for its underlying type -> degrades to the underlying type, never an error.
@@ -728,7 +729,8 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 - A union branch the reader cannot accept -> fails only when a datum actually takes it.
 - Same fingerprint, different retained JSON -> distinct schema values; the bindings' `equals`, comparison, and hash follow the JSON identity.
 - `avro.blocks` in Python or JavaScript -> fused after its first error.
-- A low node limit on lazy blocks -> reported at the first row over budget, after the header has opened; the header never consumes the row budget.
+- A low node limit on lazy blocks -> reported at the first row over budget, after the header has opened.
+- Opening the mandatory header -> never consumes the row budget; byte and depth bounds still apply.
 - A hostile or malformed container -> typed error carrying the byte position at or just after the failure, never an allocation the process dies of.
 - A projection -> saves the decode and allocation of skipped columns, never the row read, because Avro interleaves columns per record.
 
@@ -836,10 +838,10 @@ python/.venv/bin/python scripts/bench_avro_baseline.py
 
 From the same machine, the five `codec/avro*` groups:
 
-- **Types** (`codec/avro_types`, 10,000 rows each): primitives decode at ~2.9M rows/s and encode at ~3.5M rows/s; two-string rows decode at ~3.3M rows/s; 18-digit decimals at ~6.7M rows/s; array of records of maps at ~620K rows/s. The single-object varint floor sits at ~57-65 ns per framed datum.
-- **Codec x block size** (`codec/avro_blocks`, 65,536 three-column rows): decode throughput is nearly flat from 1,024 to 65,536 rows per block for every codec; below ~1,000 rows the per-block header and sync overhead shows. Encoded bytes decode at ~20 MiB/s for snappy, ~12 for deflate, ~9.6 for zstandard, and ~38 for null, whose bytes are bigger, so compare row rates.
-- **Projection** (`codec/avro_projection`, 40 columns, null codec so the skip itself is visible): 3 of 40 columns takes 6.4 ms against 9.4 ms for all 40 over 8,192 rows. The saving is the decode and allocation of the 37 skipped columns, jumped by their length prefixes, never the row read.
-- **Resolution** (`codec/avro_resolution`): compiling a five-field plan costs ~533 ns once; executing it per row beats the direct decode on this shape (4.12 ms against 4.74 ms for 10,000 rows) because the plan skips two writer columns the reader never wanted.
+- **Types** (`codec/avro_types`, 10,000 rows each): primitives decode at ~2.9M rows/s and encode at ~3.5M rows/s. Two-string rows decode at ~3.3M rows/s, 18-digit decimals at ~6.7M rows/s, and array of records of maps at ~620K rows/s. The single-object varint floor sits at ~57-65 ns per framed datum.
+- **Codec x block size** (`codec/avro_blocks`, 65,536 three-column rows): decode throughput is nearly flat from 1,024 to 65,536 rows per block for every codec. Below ~1,000 rows the per-block header and sync overhead shows. Encoded bytes decode at ~20 MiB/s for snappy, ~12 for deflate, ~9.6 for zstandard, and ~38 for null. Null's bytes are bigger, so compare row rates.
+- **Projection** (`codec/avro_projection`, 40 columns, null codec so the skip itself is visible). Reading 3 of 40 columns takes 6.4 ms against 9.4 ms for all 40 over 8,192 rows. The saving is the decode and allocation of the 37 skipped columns, jumped by their length prefixes, never the row read.
+- **Resolution** (`codec/avro_resolution`): compiling a five-field plan costs ~533 ns once. Executing it per row beats the direct decode on this shape: 4.12 ms against 4.74 ms for 10,000 rows. The plan skips two writer columns the reader never wanted.
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro

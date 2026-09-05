@@ -10,6 +10,7 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 | `as_value_bytes` | payload alone, no tag, no length; borrows, never allocates; `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `write_bytes` | total prefix-free feed: one [`DataTypeId`](../types/datatype.md) tag byte, then the family's canonical form; integers little-endian |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](../types/field.md), [`Uri`](../uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
+| `row_digests` | equals each row's `Scalar` fed through `write_bytes`, on every datatype family, nulls, nesting, dictionaries, unions, geospatial |
 | Arrow column | `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Feature flag | `xxhash::arrow` needs the default `arrow` feature |
 | Bindings | `Scalar.digest`, `stable_hash`, and a [state's](streaming.md) `write_scalar`; `as_value_bytes` and Arrow digests are Rust only |
@@ -88,7 +89,6 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
     assert.ok(state.asDigest().equals(symbol.digest()))
     ```
 
-
 ## Encoding
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
@@ -137,7 +137,7 @@ let _ = text::Format::Json;
 
 ## Arrow row digests
 
-A row is the ordered sequence of its columns, so `row_digests` equals feeding each row's `Scalar` through `write_bytes` without building one. That equality is the test across every datatype family, nulls, nesting, dictionaries, unions, and geospatial values.
+A row is the ordered sequence of its columns, and the answer never builds one.
 
 Rust only.
 
@@ -177,6 +177,7 @@ assert_ne!(digests.value(0), digests.value(1));
 - `as_value_bytes` on a decimal or temporal -> coefficient or stored count at storage width; scale, unit, and zone are type, not payload.
 - Subtree past `DataType::PARSE_RECURSION_LIMIT` -> one reserved `0xff` replaces it; no allocation, no panic; values differing only below that depth collide.
 - Null cell in `column_digests` -> feeds the null tag, so it never collides with an empty string.
+- The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
 
 ## Commands
 
@@ -243,6 +244,8 @@ Each case digests 65,536 rows of four columns. Both paths answer the same digest
 | scalar fallback (same shape, text dictionary-encoded) | 20.84 ms | 318 ns |
 | materializing each row as a `Scalar` first | 29.32 ms | 447 ns |
 | buffer path, XXH3-128 | 11.24 ms | 172 ns |
+
+Answering 128 bits instead of 64 costs nothing.
 
 ```bash
 cargo bench -p yggdryl --bench xxhash -- xxhash_row_digests

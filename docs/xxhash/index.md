@@ -199,11 +199,11 @@ assert_eq!(
 
 ## Performance
 
-`rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([../benchmarks.md](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
+`rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([benchmarks](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
 
 ### Throughput per algorithm and size
 
-Bytes per second, higher is better; the 64 MiB row is memory-bound rather than hash-bound.
+Bytes per second, higher is better; the 64 MiB row is memory-bound rather than hash-bound. XXH3 is roughly four times XXH32 and twice XXH64 once a payload is worth vectorizing.
 
 | payload | xxh32 | xxh64 | xxh3-64 | xxh3-128 |
 | --- | --- | --- | --- | --- |
@@ -234,7 +234,7 @@ All three columns hash the same bytes with the same implementation; the differen
 | 4 KiB | 141.9 ns | 124.1 ns | 145.6 ns |
 | 1 MiB | 37.8 µs | 37.0 µs | 39.1 µs |
 
-From 4 KiB up the columns sit inside each other's run-to-run spread.
+From 4 KiB up the columns sit inside each other's run-to-run spread. Carrying the algorithm in a `Digest` costs nothing measurable.
 
 ```bash
 cargo bench -p yggdryl --bench xxhash -- xxhash_wrapper

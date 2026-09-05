@@ -6,12 +6,13 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
 | Key | Value |
 | --- | --- |
-| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `cast_arrow`, `cast` |
-| Target | The field, never the source; an exact input returns unchanged |
+| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
+| Target | The field, never the source; an exact input returns unchanged, the same arrays |
 | Returns | `Field`, `DataType`: `ArrayRef`; `TypedField`: its own array (datetime, dictionary: `ArrayRef`) |
-| `safe` | `true`: failure nulls, non-null fields default; `false`: error |
+| `safe` | `true`: failure nulls, non-null fields default (`Field::default_value`); `false`: error |
+| Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | Batch children | Target order, ASCII-case-insensitive names |
-| Errors | The path of the first misfit |
+| Errors | The dot/bracket path of the first misfit |
 | Bindings | `Scalar` rows Rust only; [Python](../extensions/python.md), [JavaScript](../extensions/javascript.md) cast Arrow data |
 
 ## Use
@@ -223,7 +224,9 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
 - Extra column -> dropped; missing nullable -> nulls; missing required -> canonical default.
 - Nullable field, `safe` -> the null stays.
-- Text into a temporal -> everything [text](text.md) accepts; an inexact fit -> null, never rounded.
+- A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
+- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../text/index.md) accepts, a duration included, which Arrow reads into none.
+- A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
 - Bare date into a datetime, twelve-hour clock, compact `YYYYMMDD` -> Arrow's kernel.
 - Temporal to text -> the classic form, zoned instants included.
 

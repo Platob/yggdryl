@@ -7,7 +7,7 @@ Resumable hash states that answer without consuming, plus the seed and secret ru
 | item | rule |
 | --- | --- |
 | Owns | Resumable `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states |
-| Chunk invariance | Any split of the same bytes answers one digest |
+| Chunk invariance | Any split of the same bytes answers the one-shot digest |
 | Answering | Reading the digest leaves the state running |
 | `clear()` | Back to the constructed seed and secret |
 | Rust traits | Each state is a `std::hash::Hasher` and its own `BuildHasher` |
@@ -155,7 +155,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 ## Edges
 
 - An empty chunk -> contributes nothing, wherever it sits.
-- A secret with a payload of 240 bytes or fewer -> never consulted; the derived secret answers.
+- A secret with a payload of 240 bytes or fewer -> never consulted; the derived secret and the seed answer.
 - A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or `at least 136 bytes, got 135`.
 - `clear()` -> keeps the constructed seed and secret; it never returns an unseeded state.
 - `Hasher::finish` on `Xxh128` -> the low 64 bits; `as_u128` carries the full value.

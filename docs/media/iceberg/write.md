@@ -178,7 +178,7 @@ A handle on a table folder is not a folder of Parquet files: it is read through 
 
 ### The table value as a handle
 
-A `Table` value is itself a handle and answers from the metadata it already holds; the folder route probes the location on every call. Its `kind` is [`IOKind::Table`](../../holder/index.md) rather than `Directory`, because the files below a table are its storage, not its contents.
+A `Table` value is itself a handle, answering from metadata it already holds; the folder route probes the location on every call.
 
 Rust only.
 
@@ -929,20 +929,30 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 ## Edges
 
 - `merge_arrow_reader` without match keys -> refused; a merge requires `merge_by_names`.
-- A partition filter naming a column the schema does not declare, on a `Table` handle -> error; a folder of leaves ignores a column its batches do not carry.
+- A partition filter naming an undeclared column, on a `Table` handle -> error.
+- The same filter on a folder of leaves -> ignored, because its batches do not carry that column.
 - A stray file nobody committed, or a file an overwrite replaced -> never read.
-- `compact()` -> touches only partition groups holding at least two files with one under the target; every other file is carried untouched, and the prior snapshot still time-travels.
+- `record_options` / `read_arrow_field` on a table -> answered from the metadata before any data file exists; the schema keeps its field identifiers.
+- `IOBase::kind` on a `Table` -> [`IOKind::Table`](../../holder/index.md), not the root folder's `Directory`; `is_tabular` is true without touching storage.
+- A write through a `Table` value -> one commit; `current_snapshot` and `version` stay current without reopening.
+- `filter_partitions` on a `Table` -> prunes data files through the scan plan, not rows after decoding.
+- `compact()` -> touches only partition groups holding at least two files with one under the target.
+- Every file `compact()` does not touch -> carried into the new snapshot untouched; the prior snapshot still time-travels.
 - `compact()` with nothing to do -> no-op that commits nothing; all three numbers are zero.
-- A table property that is present but does not parse -> typed error naming the key and the value, never a silent default; an explicit option shadows it, so it can be repaired through the same handle.
+- A table property that is present but does not parse -> typed error naming the key and the value, never a silent default.
+- A broken stored property -> shadowed by an explicit option, which never reads it, so it can be repaired through the same handle.
 - An unparseable `read.*` property -> cannot stop the metadata-only commit that fixes it, because a commit resolves only the four `commit.retry.*` keys.
 - `new iceberg.IcebergOptions({ targetFileSize: 0 })` -> refused at the boundary, naming the value.
 - `data_mime_type` of ORC or Puffin -> the write fails before consuming rows.
-- Beaten `overwrite`, `merge`, or `compact` after the retries -> `CommitConflict` naming what happened: `expected to commit version 4, got beaten 5 times; last saw version 8`; re-plan against the table as it now is.
-- The check-then-write pair is not atomic -> on plain storage a writer landing between them goes undetected; retries shrink the window, storage that serializes writers (an object store's atomic PUT, a catalog's swap) closes it.
-- Two processes truncating one memory-mapped file at the same instant -> the documented SIGBUS hazard of [`yggdryl::holder::local`](../../holder/backends/local.md).
+- Beaten `overwrite`, `merge`, or `compact` after the retries -> `CommitConflict`: `expected to commit version 4, got beaten 5 times; last saw version 8`.
+- After a `CommitConflict` -> the in-memory state is restored; re-plan against the table as it now is.
+- The check-then-write pair is not atomic -> on plain storage a writer landing between them goes undetected.
+- Retries shrink that window but cannot close it; storage that serializes writers (an object store's atomic PUT, a catalog's swap) closes it.
+- [`yggdryl::holder::local`](../../holder/backends/local.md) memory mapping -> does not close it; two processes truncating one mapped file at the same instant is its documented SIGBUS hazard.
 - A failed commit -> no visible change; at worst orphan data files no snapshot names.
 - A branch fast-forward -> only along its own ancestry; the target must reach the branch's head by parent ids.
-- Removing a ref -> removes the name only, the snapshots stay retained; a second removal is refused naming the ref (Python `ValueError`, JavaScript throws) rather than committing nothing.
+- Removing a ref -> removes the name only; the snapshots stay retained.
+- A second removal of the same ref -> refused naming the ref (Python `ValueError`, JavaScript throws), not a commit of nothing.
 - `expire_snapshots` with cutoff or retain count omitted -> resolved from `history.expire.max-snapshot-age-ms` and `history.expire.min-snapshots-to-keep`; per-ref settings override them.
 - Explicit snapshot ids -> join age selection but cannot remove retained heads; `main` never expires; recent unreferenced snapshots survive until the cutoff.
 - `gc.enabled=false` -> the atomic expiry update is refused.
